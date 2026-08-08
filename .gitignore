@@ -1,0 +1,26 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Local permission grants for Claude Code — machine-specific, not project config.
+# .claude/launch.json IS committed: it is how the dev server gets started.
+.claude/settings.local.json
+
+# The original bundle the project started from. Its contents are tracked as
+# real files now, so committing it again would just duplicate them.
+files.zip
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

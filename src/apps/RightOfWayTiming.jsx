@@ -1,0 +1,831 @@
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye } from "lucide-react";
+
+/* =====================================================================
+   RIGHT OF WAY — conflict edition.
+
+   The window does not open when the other car leaves the intersection.
+   It opens when your path stops conflicting with theirs. Two cars going
+   straight from opposite legs never conflict at all — you go together.
+
+   Which makes the other car's INTENT the thing you have to read. Signals
+   help. Signals also lie, and plenty of drivers never touch them.
+   ===================================================================== */
+
+const SCALE = 20;
+const M = (v) => v * SCALE;
+const W = 720, H = 720, CX = 360, CY = 360;
+const LANE = M(3.6), HALF = LANE, OFF = LANE / 2;
+const SET = 26;
+
+const CAR_L = M(4.5), CAR_W = M(1.8);
+const PED_R = M(0.5);
+// Yield envelope. Padding is mostly lengthwise: you need clear road ahead of
+// and behind a car crossing your path, but one passing in the opposite lane
+// at 3.6 m of lateral separation is not in your way at all.
+const PAD_LONG = M(2.4), PAD_LAT = M(0.55);
+// A vehicle already rolling also claims the road in front of it. That is what
+// makes turning across an oncoming stream a conflict even when the arithmetic
+// says you would squeak through — and it costs nothing against a stopped car.
+const LOOKAHEAD = 0.9, MAX_CLAIM = M(18);
+
+const TIE = 0.35;
+const GRACE = 2.6;
+const CROSS = { straight: 1.5, left: 2.1, right: 1.7, walk: 3.4 };
+const STEP = 0.05;
+
+const C = {
+  asphalt: "#43474F", grass: "#5E8A54", grassDark: "#4E7746",
+  line: "#FAFAF2", yellow: "#FFC93C", ink: "#191C22",
+  red: "#E05252", green: "#3BAA51", blue: "#3B7BE8", amber: "#F0A93C",
+  white: "#FAFAF2", bg: "#16181C", signal: "#FFB330",
+};
+const FONT_D = "'Rajdhani','Oswald','Arial Narrow',system-ui,sans-serif";
+const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+const shade = (hex, amt) => {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) =>
+    Math.max(0, Math.min(255, Math.round(v + 255 * amt))));
+  return `#${((ch[0] << 16) | (ch[1] << 8) | ch[2]).toString(16).padStart(6, "0")}`;
+};
+
+/* ---------------- geometry ---------------- */
+const STOPS = {
+  S: { x: CX + OFF, y: CY + HALF + SET, rot: -90 },
+  N: { x: CX - OFF, y: CY - HALF - SET, rot: 90 },
+  W: { x: CX - HALF - SET, y: CY + OFF, rot: 0 },
+  E: { x: CX + HALF + SET, y: CY - OFF, rot: 180 },
+};
+const EXITS = {
+  S: { straight: { x: CX + OFF, y: -80 }, right: { x: 800, y: CY + OFF }, left: { x: -80, y: CY - OFF } },
+  N: { straight: { x: CX - OFF, y: 800 }, right: { x: -80, y: CY - OFF }, left: { x: 800, y: CY + OFF } },
+  W: { straight: { x: 800, y: CY + OFF }, right: { x: CX - OFF, y: 800 }, left: { x: CX + OFF, y: -80 } },
+  E: { straight: { x: -80, y: CY - OFF }, right: { x: CX + OFF, y: -80 }, left: { x: CX - OFF, y: 800 } },
+};
+const RIGHT_OF = { S: "E", N: "W", W: "S", E: "N" };
+const OPPOSITE = { S: "N", N: "S", E: "W", W: "E" };
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const quad = (p0, p1, p2, t) => {
+  const u = 1 - t;
+  return {
+    x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
+    y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y,
+  };
+};
+const angleTo = (a, b) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+
+const PED_Y = CY - HALF - 22, PED_X0 = CX - HALF - 30, PED_X1 = CX + HALF + 30;
+
+/* Position and heading of a road user at time t, before any driving traits. */
+function basePose(p, t) {
+  if (p.kind === "ped") {
+    if (t < p.departAt) return { x: PED_X0, y: PED_Y, rot: 0, hidden: t < p.arriveAt - 1.2, waiting: true };
+    const k = Math.min(1, (t - p.departAt) / CROSS.walk);
+    return { x: lerp(PED_X0, PED_X1, k), y: PED_Y, rot: 0, gone: k >= 1 };
+  }
+  const base = STOPS[p.from], exit = EXITS[p.from][p.intent];
+  const rad = (base.rot * Math.PI) / 180;
+  const bias = p.stopBias || 0;
+  const stop = { x: base.x + Math.cos(rad) * bias, y: base.y + Math.sin(rad) * bias, rot: base.rot };
+  const spawn = { x: stop.x - Math.cos(rad) * 490, y: stop.y - Math.sin(rad) * 490 };
+
+  if (t < p.arriveAt) {
+    const k = Math.max(0, Math.min(1, (t - (p.arriveAt - 2.8)) / 2.8));
+    const e = k * k * (3 - 2 * k);
+    return { x: lerp(spawn.x, stop.x, e), y: lerp(spawn.y, stop.y, e), rot: stop.rot, approaching: true };
+  }
+  if (t < p.departAt) return { x: stop.x, y: stop.y, rot: stop.rot, waiting: true };
+
+  const k = Math.min(1, (t - p.departAt) / CROSS[p.intent]);
+  if (p.intent === "straight") {
+    return { x: lerp(stop.x, exit.x, k), y: lerp(stop.y, exit.y, k), rot: stop.rot, gone: k >= 1, moving: true };
+  }
+  const vertical = p.from === "S" || p.from === "N";
+  const wide = p.turnBias || 0;
+  const ctrl = vertical
+    ? { x: stop.x + (exit.x > stop.x ? -wide : wide), y: exit.y }
+    : { x: exit.x, y: stop.y + (exit.y > stop.y ? -wide : wide) };
+  const pos = quad(stop, ctrl, exit, k);
+  const nxt = quad(stop, ctrl, exit, Math.min(1, k + 0.03));
+  return { ...pos, rot: k < 0.02 ? stop.rot : angleTo(pos, nxt), gone: k >= 1, moving: true };
+}
+
+/* ---------------- footprint overlap ----------------
+   Oriented boxes, checked in both frames. Padding is applied lengthwise
+   so that a car crossing your path blocks you, while one running parallel
+   in the opposite lane does not.                                        */
+/* =====================================================================
+   DRIVING TRAITS
+   Tells you can actually see. Each one bends the car's real behaviour, so
+   the conflict engine works out the consequences on its own — a wandering
+   car genuinely does intrude, rather than being scripted to punish you.
+   ===================================================================== */
+const TRAITS = {
+  wander: {
+    tell: "Drifting inside its lane — never held a steady line",
+    pose: (p, t, po) => {
+      if (po.hidden) return po;
+      const amp = M(1.15), w = 1.75;
+      const off = Math.sin(t * w + (p.phase || 0)) * amp;
+      const r = (po.rot * Math.PI) / 180;
+      return {
+        ...po,
+        x: po.x - Math.sin(r) * off,
+        y: po.y + Math.cos(r) * off,
+        rot: po.rot + Math.cos(t * w + (p.phase || 0)) * 6,
+      };
+    },
+  },
+  creep: {
+    tell: "Never settled at the line — kept inching forward",
+    pose: (p, t, po) => {
+      if (!po.waiting) return po;
+      const k = Math.max(0, Math.sin((t - p.arriveAt) * 2.1));
+      const d = k * M(1.6);
+      const r = (po.rot * Math.PI) / 180;
+      return { ...po, x: po.x + Math.cos(r) * d, y: po.y + Math.sin(r) * d };
+    },
+  },
+  overshoot: {
+    tell: "Stopped well past the line, nose already in the intersection",
+    setup: (p) => { p.stopBias = M(2.6); },
+  },
+  slowStart: {
+    tell: "Slow off the mark when it was clearly their turn",
+    setup: (p) => { p.startDelay = 1.7; },
+  },
+  wideTurn: {
+    tell: "Swung wide through the turn, across the next lane",
+    setup: (p) => { p.turnBias = M(2.2); },
+  },
+  lateSignal: {
+    tell: "Only indicated once it had already started to turn",
+    setup: (p) => { p.signalDelay = 0.5; },
+  },
+};
+
+const traitTells = (p) => (p.traits || []).map((k) => TRAITS[k]?.tell).filter(Boolean);
+
+/* Full pose: base motion with every trait layered on top. */
+function poseAt(p, t) {
+  let po = basePose(p, t);
+  const tr = p.traits;
+  if (tr) for (let i = 0; i < tr.length; i++) {
+    const fn = TRAITS[tr[i]]?.pose;
+    if (fn) po = fn(p, t, po);
+  }
+  return po;
+}
+// Is the indicator visible yet? A late signal only appears mid-manoeuvre.
+function signalShowing(p, t) {
+  if (!p.signal) return false;
+  if (p.signalDelay == null) return true;
+  return t >= (p.departAt ?? 0) + p.signalDelay;
+}
+
+function extentsFor(p, padL, padW, claim, mode) {
+  if (p.kind === "ped") {
+    // A pedestrian on a crossing is a legal rule, not a geometry problem:
+    // you wait until they are completely across, so while they are on it
+    // they hold the whole crossing.
+    if (mode === "yield" && p.blockUntilClear) {
+      return { hl: (PED_X1 - PED_X0) / 2 + padW, hw: M(1.3) + padW };
+    }
+    return { hl: PED_R + padW, hw: PED_R + padW };
+  }
+  return { hl: CAR_L / 2 + padL + claim / 2, hw: CAR_W / 2 + padW };
+}
+function poseFor(p, pose, claim, mode) {
+  if (p.kind === "ped" && mode === "yield" && p.blockUntilClear) {
+    return { x: (PED_X0 + PED_X1) / 2, y: PED_Y, rot: 0 };
+  }
+  if (!claim) return pose;
+  const r = (pose.rot * Math.PI) / 180;
+  return { ...pose, x: pose.x + Math.cos(r) * (claim / 2), y: pose.y + Math.sin(r) * (claim / 2) };
+}
+function forwardClaim(p, t) {
+  if (p.kind === "ped") return 0;
+  if (p.stops && t < p.departAt) return 0;
+  const a = poseAt(p, t), b = poseAt(p, t + 0.06);
+  const speed = Math.hypot(b.x - a.x, b.y - a.y) / 0.06;
+  return Math.min(speed * LOOKAHEAD, MAX_CLAIM);
+}
+// Separating-axis test on two oriented boxes. Checking each frame separately
+// is not enough once one box is stretched out by a forward claim.
+const axesOf = (rot) => {
+  const r = (rot * Math.PI) / 180;
+  return [{ x: Math.cos(r), y: Math.sin(r) }, { x: -Math.sin(r), y: Math.cos(r) }];
+};
+const dot = (u, v) => u.x * v.x + u.y * v.y;
+function boxesOverlap(pa, ea, pb, eb) {
+  const A = axesOf(pa.rot), B = axesOf(pb.rot);
+  const d = { x: pb.x - pa.x, y: pb.y - pa.y };
+  for (const ax of [A[0], A[1], B[0], B[1]]) {
+    const ra = ea.hl * Math.abs(dot(ax, A[0])) + ea.hw * Math.abs(dot(ax, A[1]));
+    const rb = eb.hl * Math.abs(dot(ax, B[0])) + eb.hw * Math.abs(dot(ax, B[1]));
+    if (Math.abs(dot(d, ax)) > ra + rb) return false;
+  }
+  return true;
+}
+function conflicts(pa, poseA, pb, poseB, padL, padW, claimB, mode) {
+  const ea = extentsFor(pa, padL, padW, 0, mode);
+  const eb = extentsFor(pb, padL, padW, claimB, mode);
+  return boxesOverlap(poseFor(pa, poseA, 0, mode), ea, poseFor(pb, poseB, claimB, mode), eb);
+}
+
+/* ---------------- rules engine ---------------- */
+function outranks(a, b) {
+  if (a.priority != null || b.priority != null) return (a.priority ?? 0) < (b.priority ?? 0);
+  const dt = a.arriveAt - b.arriveAt;
+  if (dt < -TIE) return true;
+  if (dt > TIE) return false;
+  if (a.from === RIGHT_OF[b.from]) return true;
+  if (b.from === RIGHT_OF[a.from]) return false;
+  if (a.from === OPPOSITE[b.from]) {
+    if (a.intent === "left" && b.intent !== "left") return false;
+    if (b.intent === "left" && a.intent !== "left") return true;
+  }
+  return a.arriveAt <= b.arriveAt;
+}
+
+// Earliest departure with no yield-envelope breach against anyone already scheduled.
+function earliestClear(p, scheduled, from) {
+  const span = CROSS[p.kind === "ped" ? "walk" : p.intent];
+  for (let T = from; T < from + 14; T += STEP) {
+    const trial = { ...p, departAt: T };
+    let ok = true;
+    for (let t = T; t <= T + span + 0.25 && ok; t += STEP) {
+      const mine = poseAt(trial, t);
+      if (mine.gone) break;
+      for (const q of scheduled) {
+        const theirs = poseAt(q, t);
+        if (theirs.gone || theirs.hidden) continue;
+        if (conflicts(trial, mine, q, theirs, PAD_LONG, PAD_LAT, forwardClaim(q, t), "yield")) { ok = false; break; }
+      }
+    }
+    if (ok) return Math.round(T * 100) / 100;
+  }
+  return from;
+}
+
+function applyTraits(p) {
+  (p.traits || []).forEach((k) => TRAITS[k]?.setup?.(p));
+  return p;
+}
+
+function schedule(participants) {
+  participants.forEach(applyTraits);
+  const rolling = participants.filter((p) => !p.stops);
+  rolling.forEach((p) => { p.departAt = p.arriveAt + (p.startDelay || 0); });
+
+  const queued = participants.filter((p) => p.stops)
+    .sort((a, b) => (outranks(a, b) ? -1 : 1));
+
+  const done = [...rolling];
+  queued.forEach((p) => {
+    // A distracted driver still has the right of way — they just sit on it.
+    p.departAt = earliestClear(p, done, p.arriveAt) + (p.startDelay || 0);
+    done.push(p);
+  });
+  return queued;
+}
+
+/* ---------------- scenarios ---------------- */
+const S = (o) => ({ stops: true, kind: "car", ...o });
+
+const SCENARIOS = [
+  {
+    id: "opposite",
+    title: "Don't wait for an empty box",
+    brief: "Four-way stop. Two cars got there before you.",
+    control: "stop",
+    duration: 12,
+    ego: { from: "S", intent: "straight", arriveAt: 2.4, stops: true, color: C.blue },
+    actors: [
+      S({ id: "w", from: "W", intent: "straight", arriveAt: 0.9, color: C.red, name: "Red car" }),
+      S({ id: "n", from: "N", intent: "straight", arriveAt: 1.7, color: C.green, name: "Green car", signal: null }),
+    ],
+    lesson: "The green car is still in the intersection when your turn comes — and it makes no difference. It is coming straight towards you on its own side, so your paths never touch. You only ever wait for the cars whose path crosses yours, which here was the red one.",
+  },
+  {
+    id: "signalled",
+    title: "Reading the indicator",
+    brief: "Four-way stop. The car opposite got there first.",
+    control: "stop",
+    duration: 12,
+    ego: { from: "S", intent: "straight", arriveAt: 1.6, stops: true, color: C.blue },
+    actors: [
+      S({ id: "n", from: "N", intent: "right", arriveAt: 1.0, color: C.red, name: "Red car", signal: "right" }),
+    ],
+    lesson: "The red car is indicating right, and it turns right — away from your path entirely. Nothing crosses you, so you go almost as soon as you have stopped. Reading the indicator is what buys you those seconds.",
+  },
+  {
+    id: "liar",
+    title: "The indicator that lied",
+    brief: "Four-way stop. The car on your right is indicating right.",
+    control: "stop",
+    duration: 13,
+    ego: { from: "S", intent: "straight", arriveAt: 1.5, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "left", arriveAt: 0.9, color: C.red, name: "Red car", signal: "right" }),
+    ],
+    lesson: "It indicated right, which would have tucked it away down the side road in under a second. It swung left across the whole intersection instead — the longest path there is, straight through where you were going. An indicator is a statement of intent, not a commitment: confirm it against the wheels before you move.",
+  },
+  {
+    id: "silent",
+    title: "The long way round",
+    brief: "Four-way stop. The car on your right arrived first and is indicating left.",
+    control: "stop",
+    duration: 13,
+    ego: { from: "S", intent: "straight", arriveAt: 1.7, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "left", arriveAt: 1.1, color: C.red, name: "Red car", signal: "left" }),
+    ],
+    lesson: "A left turn is the longest path through an intersection and the one that keeps your lane blocked longest. Reading that indicator tells you this is a wait, not a glance — and roughly how long a wait it is going to be.",
+  },
+  {
+    id: "gap",
+    title: "Finding the gap",
+    brief: "Green light, turning left. Oncoming traffic is not stopping.",
+    control: "signal",
+    duration: 15,
+    ego: { from: "S", intent: "left", arriveAt: 1.0, stops: true, color: C.blue },
+    actors: [
+      S({ id: "o1", from: "N", intent: "straight", arriveAt: 1.6, stops: false, color: C.red, name: "First car", priority: -3 }),
+      S({ id: "o2", from: "N", intent: "straight", arriveAt: 3.2, stops: false, color: C.green, name: "Second car", priority: -2 }),
+      S({ id: "o3", from: "N", intent: "right", arriveAt: 5.0, stops: false, color: C.amber, name: "Third car", signal: "right", priority: -1 }),
+    ],
+    lesson: "The third car is indicating right, which takes it off into the side road before it ever reaches you. Once you have read that, the gap you need arrives sooner than it looks — you are only waiting for the two that are actually coming through.",
+  },
+  {
+    id: "walker",
+    title: "The empty intersection",
+    brief: "Four-way stop. No other traffic at all.",
+    control: "stop",
+    duration: 13,
+    ego: { from: "S", intent: "straight", arriveAt: 1.0, stops: true, color: C.blue },
+    actors: [
+      S({ id: "p", from: "N", intent: "straight", arriveAt: 0.8, stops: false, kind: "ped", color: "#F2E8D5", name: "Pedestrian", priority: -1, blockUntilClear: true }),
+    ],
+    lesson: "No cars is not the same as clear. Someone walked into the crosswalk on the far side, and you are driving straight through it. You wait until they are properly out of your path, not until they have cleared your half of the road.",
+  },
+  {
+    id: "wanderer",
+    title: "The one that shouldn't matter",
+    brief: "Four-way stop. The car opposite is coming straight through.",
+    control: "stop",
+    duration: 14,
+    ego: { from: "S", intent: "straight", arriveAt: 1.3, stops: true, color: C.blue },
+    actors: [
+      S({ id: "n", from: "N", intent: "straight", arriveAt: 1.1, color: C.red, name: "Red car", traits: ["wander"], phase: 0.6 }),
+    ],
+    lesson: "A car coming straight at you on its own side cannot touch you — that was the first thing you learned here, and it holds right up until the driver stops holding their lane. This one is drifting the better part of a metre either side of centre. Watch how a car is being driven, not just where it is going.",
+  },
+  {
+    id: "sleeper",
+    title: "Asleep at the line",
+    brief: "Four-way stop. The car on your right got there well before you.",
+    control: "stop",
+    duration: 15,
+    ego: { from: "S", intent: "straight", arriveAt: 1.8, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "straight", arriveAt: 0.7, color: C.red, name: "Red car", traits: ["slowStart"] }),
+    ],
+    lesson: "They arrived first, stopped, and then did nothing — head down, most likely. It is still their turn, and the moment you decide they have waved you through is the moment they look up and go. Wait for them to actually take it.",
+  },
+  {
+    id: "creeper",
+    title: "Never quite stopped",
+    brief: "Four-way stop. The car on your right is edging forward.",
+    control: "stop",
+    duration: 14,
+    ego: { from: "S", intent: "straight", arriveAt: 1.5, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "straight", arriveAt: 0.9, color: C.red, name: "Red car", traits: ["creep", "overshoot", "slowStart"] }),
+    ],
+    lesson: "Rolling stops and a nose already over the line tell you this driver is impatient and only half committed to stopping at all. They have the right of way, so the answer is simple — let them take it, and give them room while they do.",
+  },
+  {
+    id: "lateflag",
+    title: "Signalling on the way round",
+    brief: "Four-way stop. The car on your right shows nothing at all.",
+    control: "stop",
+    duration: 14,
+    ego: { from: "S", intent: "straight", arriveAt: 1.6, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "left", arriveAt: 1.0, color: C.red, name: "Red car", signal: "left", traits: ["lateSignal", "wideTurn"] }),
+    ],
+    lesson: "No indicator until it was already turning, and then it swung wide across the next lane. By the time that signal appeared it told you nothing you could still act on. Where there is no information to read, the answer is always to wait for the wheels.",
+  },
+];
+
+/* ---------------- drawing ---------------- */
+const GRASS = (() => {
+  let a = 4242;
+  const r = () => { a = (a * 1103515245 + 12345) & 0x7fffffff; return a / 0x7fffffff; };
+  return Array.from({ length: 130 }, () => ({
+    x: r() * W, y: r() * H, rx: 6 + r() * 13, ry: 3 + r() * 5,
+    rot: r() * 180, light: r() > 0.5, o: 0.05 + r() * 0.08,
+  }));
+})();
+
+function Road({ control }) {
+  const Dash = (p) => <line {...p} stroke={C.yellow} strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(6)}`} />;
+  const Edge = (p) => <line {...p} stroke={C.line} strokeWidth={M(0.15)} />;
+  const bars = [];
+  for (let i = 0; i < 12; i++) {
+    const x = PED_X0 + i * M(0.64);
+    bars.push(<line key={i} x1={x} y1={PED_Y - M(1.1)} x2={x} y2={PED_Y + M(1.1)} stroke={C.line} strokeWidth={M(0.4)} />);
+  }
+  const signs = [[CX + HALF + 30, CY + HALF + 34], [CX - HALF - 30, CY - HALF - 34],
+  [CX - HALF - 30, CY + HALF + 34], [CX + HALF + 30, CY - HALF - 34]];
+  return (
+    <>
+      <rect x={CX - HALF} y={0} width={HALF * 2} height={H} fill={C.asphalt} />
+      <rect x={0} y={CY - HALF} width={W} height={HALF * 2} fill={C.asphalt} />
+      <Edge x1={CX - HALF} y1={0} x2={CX - HALF} y2={CY - HALF} />
+      <Edge x1={CX + HALF} y1={0} x2={CX + HALF} y2={CY - HALF} />
+      <Edge x1={CX - HALF} y1={CY + HALF} x2={CX - HALF} y2={H} />
+      <Edge x1={CX + HALF} y1={CY + HALF} x2={CX + HALF} y2={H} />
+      <Edge x1={0} y1={CY - HALF} x2={CX - HALF} y2={CY - HALF} />
+      <Edge x1={0} y1={CY + HALF} x2={CX - HALF} y2={CY + HALF} />
+      <Edge x1={CX + HALF} y1={CY - HALF} x2={W} y2={CY - HALF} />
+      <Edge x1={CX + HALF} y1={CY + HALF} x2={W} y2={CY + HALF} />
+      <Dash x1={CX} y1={0} x2={CX} y2={CY - HALF} />
+      <Dash x1={CX} y1={CY + HALF} x2={CX} y2={H} />
+      <Dash x1={0} y1={CY} x2={CX - HALF} y2={CY} />
+      <Dash x1={CX + HALF} y1={CY} x2={W} y2={CY} />
+      {bars}
+      <line x1={CX} y1={CY + HALF + 12} x2={CX + HALF} y2={CY + HALF + 12} stroke={C.line} strokeWidth={M(0.4)} />
+      {control === "signal" ? (
+        <g transform={`translate(${CX + HALF + 34},${CY + HALF + 36})`}>
+          <rect x={-8} y={-17} width={16} height={34} rx={5} fill="#2A2E36" stroke={C.ink} strokeWidth={2} />
+          <circle cy={-10} r={4} fill={shade(C.red, -0.42)} opacity={0.45} />
+          <circle cy={0} r={4} fill={shade(C.yellow, -0.42)} opacity={0.45} />
+          <circle cy={10} r={6.5} fill={C.green} opacity={0.32} />
+          <circle cy={10} r={4} fill={C.green} />
+        </g>
+      ) : signs.map(([x, y], i) => (
+        <g key={i} transform={`translate(${x},${y})`}>
+          <polygon points="-5.7,-14 5.7,-14 14,-5.7 14,5.7 5.7,14 -5.7,14 -14,5.7 -14,-5.7"
+            fill={C.red} stroke="#fff" strokeWidth={2.4} />
+          <polygon points="-5.7,-14 5.7,-14 14,-5.7 14,5.7 5.7,14 -5.7,14 -14,5.7 -14,-5.7"
+            fill="none" stroke={C.ink} strokeWidth={1.4} />
+          <text y={4} fontSize={8.5} fontWeight="700" fill="#fff" textAnchor="middle" fontFamily={FONT_D}>STOP</text>
+        </g>
+      ))}
+    </>
+  );
+}
+
+function Vehicle({ p, pose, isEgo, blink, tNow }) {
+  if (pose.hidden) return null;
+  const o = C.ink, color = p.color;
+  if (p.kind === "ped") {
+    return (
+      <g transform={`translate(${pose.x},${pose.y})`} filter="url(#sh)">
+        <ellipse rx={M(0.22)} ry={M(0.34)} fill={color} stroke={o} strokeWidth={2} />
+        <circle cx={M(0.05)} r={M(0.17)} fill="#2A2D33" stroke={o} strokeWidth={1.2} />
+      </g>
+    );
+  }
+  const L = CAR_L, Wd = CAR_W;
+  const wheel = (wx, wy) => (
+    <rect x={wx - M(0.35)} y={wy - M(0.13)} width={M(0.7)} height={M(0.26)} rx={M(0.1)}
+      fill="#1D2026" stroke={o} strokeWidth={1.2} />
+  );
+  // Indicators sit on the correct side: front-left is -y in the car's frame.
+  const side = p.signal === "left" ? -1 : 1;
+  const showSig = p.signal && blink && !pose.gone && signalShowing(p, tNow);
+  return (
+    <g transform={`translate(${pose.x},${pose.y})`}>
+      {isEgo && <circle r={M(2.9)} fill={C.blue} opacity={0.15} />}
+      {isEgo && <circle r={M(2.9)} fill="none" stroke={C.blue} strokeWidth={2.5} strokeDasharray="7 6" opacity={0.8} />}
+      <g transform={`rotate(${pose.rot})`} filter="url(#sh)">
+        {wheel(L / 2 - M(1), -Wd / 2)}{wheel(L / 2 - M(1), Wd / 2)}
+        {wheel(-L / 2 + M(0.9), -Wd / 2)}{wheel(-L / 2 + M(0.9), Wd / 2)}
+        <rect x={-L / 2} y={-Wd / 2} width={L} height={Wd} rx={M(0.5)} fill={color} stroke={o} strokeWidth={2.5} />
+        <rect x={-L / 2 + M(0.3)} y={-Wd / 2 + M(0.15)} width={L - M(0.6)} height={M(0.2)} rx={M(0.1)} fill="#fff" opacity={0.28} />
+        <rect x={-M(1.3)} y={-Wd / 2 + M(0.16)} width={M(2.4)} height={Wd - M(0.32)} rx={M(0.3)}
+          fill={shade(color, -0.14)} stroke={o} strokeWidth={1.6} />
+        <path d={`M ${M(0.5)},${-Wd / 2 + M(0.22)} L ${M(1.1)},${-Wd / 2 + M(0.46)}
+                  L ${M(1.1)},${Wd / 2 - M(0.46)} L ${M(0.5)},${Wd / 2 - M(0.22)} Z`}
+          fill="#CFE3F0" stroke={o} strokeWidth={1.2} />
+        {pose.waiting && (
+          <>
+            <rect x={-L / 2 + M(0.08)} y={-Wd / 2 + M(0.18)} width={M(0.22)} height={M(0.38)} rx={2} fill={C.red} />
+            <rect x={-L / 2 + M(0.08)} y={Wd / 2 - M(0.56)} width={M(0.22)} height={M(0.38)} rx={2} fill={C.red} />
+          </>
+        )}
+        {showSig && (
+          <g>
+            <circle cx={L / 2 - M(0.22)} cy={side * (Wd / 2 - M(0.24))} r={M(0.55)} fill={C.signal} opacity={0.4} />
+            <circle cx={L / 2 - M(0.22)} cy={side * (Wd / 2 - M(0.24))} r={M(0.24)} fill={C.signal} stroke={o} strokeWidth={1} />
+            <circle cx={-L / 2 + M(0.22)} cy={side * (Wd / 2 - M(0.24))} r={M(0.24)} fill={C.signal} stroke={o} strokeWidth={1} />
+          </g>
+        )}
+      </g>
+    </g>
+  );
+}
+
+function Timeline({ duration, legalAt, pressedAt, verdict }) {
+  const pct = (t) => `${Math.max(0, Math.min(100, (t / duration) * 100))}%`;
+  const graceEnd = Math.min(duration, legalAt + GRACE);
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ position: "relative", height: 26, borderRadius: 7, overflow: "hidden", background: "#2A2E35" }}>
+        <div style={{ position: "absolute", left: 0, width: pct(legalAt), height: "100%", background: "rgba(224,82,82,0.5)" }} />
+        <div style={{ position: "absolute", left: pct(legalAt), width: pct(graceEnd - legalAt), height: "100%", background: "rgba(59,170,81,0.75)" }} />
+        <div style={{ position: "absolute", left: pct(graceEnd), right: 0, height: "100%", background: "rgba(240,169,60,0.35)" }} />
+        {pressedAt != null && (
+          <div style={{ position: "absolute", left: pct(pressedAt), top: -3, bottom: -3, width: 3, background: "#fff", boxShadow: "0 0 0 2px rgba(0,0,0,0.55)" }} />
+        )}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "#8b9199", marginTop: 5 }}>
+        <span>yield</span>
+        <span style={{ color: verdict === "good" ? C.green : "#8b9199" }}>your window</span>
+        <span>hesitating</span>
+      </div>
+    </div>
+  );
+}
+
+/* ================= GAME ================= */
+export default function RightOfWayTiming() {
+  const [idx, setIdx] = useState(0);
+  const [phase, setPhase] = useState("ready");
+  const [t, setT] = useState(0);
+  const [pressedAt, setPressedAt] = useState(null);
+  const [verdict, setVerdict] = useState(null);
+  const [crash, setCrash] = useState(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [score, setScore] = useState({ good: 0, played: 0 });
+
+  const raf = useRef(null);
+  const t0 = useRef(0);
+  const pressRef = useRef(null);
+  const scn = SCENARIOS[idx];
+
+  const sim = React.useMemo(() => {
+    const ego = { ...scn.ego, id: "ego", kind: "car", name: "You", signal: scn.ego.signal ?? null };
+    const actors = scn.actors.map((a) => ({ ...a }));
+    schedule([ego, ...actors]);
+    // Window opens the moment ego's path is clear of everyone who outranks it.
+    const priors = actors.filter((a) => outranks(a, ego));
+    const legalAt = earliestClear(ego, priors, ego.arriveAt);
+    return { ego, actors, legalAt, priors };
+  }, [idx]);
+
+  const stopLoop = useCallback(() => {
+    if (raf.current) cancelAnimationFrame(raf.current);
+    raf.current = null;
+  }, []);
+  useEffect(() => stopLoop, [stopLoop]);
+
+  function finish(v, at, hit) {
+    stopLoop();
+    setVerdict(v); setCrash(hit || null); setPhase("done");
+    setScore((s) => ({ good: s.good + (v === "good" ? 1 : 0), played: s.played + 1 }));
+  }
+
+  function begin() {
+    setPhase("running"); setT(0); setPressedAt(null); setVerdict(null); setCrash(null);
+    pressRef.current = null;
+    t0.current = performance.now();
+
+    const loop = (now) => {
+      const el = (now - t0.current) / 1000;
+      setT(el);
+      const P = pressRef.current;
+
+      if (P != null) {
+        // Ego is moving — play it forward and see what actually happens.
+        const egoLive = { ...sim.ego, departAt: P };
+        const mine = poseAt(egoLive, el);
+        for (const a of sim.actors) {
+          const theirs = poseAt(a, el);
+          if (theirs.gone || theirs.hidden) continue;
+          if (conflicts(egoLive, mine, a, theirs, 0, 0, 0, "crash")) {
+            finish("collision", P, { x: (mine.x + theirs.x) / 2, y: (mine.y + theirs.y) / 2, who: a.name });
+            return;
+          }
+        }
+        if (mine.gone || el > P + CROSS[sim.ego.intent] + 0.35) {
+          const v = P < sim.legalAt - 0.25 ? "early" : P <= sim.legalAt + GRACE ? "good" : "late";
+          finish(v, P);
+          return;
+        }
+      } else if (el >= scn.duration) {
+        finish("missed", null);
+        return;
+      }
+      raf.current = requestAnimationFrame(loop);
+    };
+    raf.current = requestAnimationFrame(loop);
+  }
+
+  function go() {
+    if (phase !== "running" || pressRef.current != null) return;
+    pressRef.current = t;
+    setPressedAt(t);
+  }
+  function retry() { stopLoop(); setPhase("ready"); setT(0); setPressedAt(null); setVerdict(null); setCrash(null); pressRef.current = null; }
+  function next() { stopLoop(); setIdx((i) => (i + 1) % SCENARIOS.length); retry(); }
+
+  const showT = phase === "ready" ? 0 : t;
+  const blink = Math.floor(showT * 1.7) % 2 === 0;
+  const egoPose = poseAt(
+    { ...sim.ego, departAt: pressedAt != null ? pressedAt : 1e9 },
+    phase === "ready" ? Math.min(sim.ego.arriveAt, 0.001) : showT
+  );
+
+  const tells = sim.actors.flatMap((a) => traitTells(a));
+
+  const vText = {
+    collision: "Collision",
+    early: "Too early — failure to yield",
+    good: "Clean. That was your window.",
+    late: "Too slow — undue delay",
+    missed: "You never went",
+  };
+  const vColor = { collision: C.red, early: C.red, good: C.green, late: C.amber, missed: C.amber };
+
+  return (
+    <div style={st.app}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500;600&display=swap');
+        * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        html,body { overscroll-behavior:none; }
+        .btn { font-family:${FONT_U}; border-radius:11px; cursor:pointer; border:1px solid rgba(255,255,255,0.12);
+          background:rgba(58,62,70,0.9); color:${C.white}; padding:13px 16px; font-size:14px; font-weight:500;
+          min-height:48px; display:flex; align-items:center; justify-content:center; gap:8px; }
+        .btn:disabled { opacity:0.4; cursor:default; }
+        .btn.primary { background:${C.green}; border-color:transparent; font-weight:600; }
+        .btn:focus-visible { outline:3px solid ${C.yellow}; outline-offset:2px; }
+        .go { width:100%; min-height:76px; font-family:${FONT_D}; font-size:31px; font-weight:700; letter-spacing:3px;
+          background:${C.green}; border:none; border-radius:14px; color:#fff; cursor:pointer;
+          box-shadow:0 6px 0 ${shade(C.green, -0.18)}; }
+        .go:disabled { background:#3D424A; box-shadow:0 6px 0 #2A2E34; color:#8b9199; }
+        .go:active:not(:disabled) { transform:translateY(4px); box-shadow:0 2px 0 ${shade(C.green, -0.18)}; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.78} }
+        .live { animation:pulse 1.5s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .live { animation:none; } }
+      `}</style>
+
+      <header style={st.head}>
+        <div>
+          <div style={st.title}>RIGHT OF <span style={{ color: C.yellow }}>WAY</span></div>
+          <div style={st.sub}>{scn.title}</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {score.played > 0 && <div style={st.chip}><Gauge size={13} />{score.good}/{score.played}</div>}
+          <button className="btn" style={{ padding: 11, minHeight: 42 }} onClick={() => setHelpOpen(true)}
+            aria-label="How it works"><HelpCircle size={18} /></button>
+        </div>
+      </header>
+
+      <div style={st.brief}>{scn.brief}</div>
+
+      <div style={st.board}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "100%", display: "block" }}>
+          <defs>
+            <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
+              <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#0B0D10" floodOpacity="0.45" />
+            </filter>
+          </defs>
+          <rect width={W} height={H} fill={C.grass} />
+          {GRASS.map((g, i) => (
+            <ellipse key={i} cx={g.x} cy={g.y} rx={g.rx} ry={g.ry}
+              transform={`rotate(${g.rot} ${g.x} ${g.y})`}
+              fill={g.light ? shade(C.grass, 0.08) : C.grassDark} opacity={g.o} />
+          ))}
+          <Road control={scn.control} />
+
+          {sim.actors.map((a) => {
+            const pose = poseAt(a, showT);
+            return pose.gone ? null : <Vehicle key={a.id} p={a} pose={pose} blink={blink} tNow={showT} />;
+          })}
+          {!egoPose.gone && <Vehicle p={sim.ego} pose={egoPose} isEgo blink={blink} tNow={showT} />}
+
+          {crash && (
+            <g>
+              <circle cx={crash.x} cy={crash.y} r={M(2.6)} fill={C.red} opacity={0.3} />
+              <circle cx={crash.x} cy={crash.y} r={M(1.5)} fill={C.red} opacity={0.55} />
+              {[0, 45, 90, 135, 180, 225, 270, 315].map((d) => (
+                <line key={d} x1={crash.x} y1={crash.y}
+                  x2={crash.x + Math.cos((d * Math.PI) / 180) * M(3.4)}
+                  y2={crash.y + Math.sin((d * Math.PI) / 180) * M(3.4)}
+                  stroke={C.red} strokeWidth={4} strokeLinecap="round" opacity={0.75} />
+              ))}
+            </g>
+          )}
+          {phase === "running" && <circle className="live" cx={W - 44} cy={44} r={9} fill={C.red} />}
+        </svg>
+      </div>
+
+      {phase === "ready" && (
+        <>
+          <div style={st.hint}>
+            You are the outlined car. Press <strong style={{ color: C.green }}>GO</strong> as soon as your
+            path is clear — you are waiting for the cars that cross you, not for the intersection to empty.
+          </div>
+          <button className="btn primary" style={{ width: "100%" }} onClick={begin}><Play size={17} />Start</button>
+        </>
+      )}
+
+      {phase === "running" && (
+        <button className="go" onClick={go} disabled={pressedAt != null}>
+          {pressedAt != null ? "…" : "GO"}
+        </button>
+      )}
+
+      {phase === "done" && (
+        <div style={st.result}>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+            {verdict === "collision" && <AlertTriangle size={22} color={C.red} style={{ flexShrink: 0, marginTop: 2 }} />}
+            <div style={{ fontFamily: FONT_D, fontSize: 23, fontWeight: 700, color: vColor[verdict], lineHeight: 1.15 }}>
+              {vText[verdict]}
+            </div>
+          </div>
+          <Timeline duration={scn.duration} legalAt={sim.legalAt} pressedAt={pressedAt} verdict={verdict} />
+          <div style={st.readout}>
+            {verdict === "collision" && <>You pulled out at {pressedAt.toFixed(1)}s and met the {crash?.who?.toLowerCase()}. Your path was not clear until {sim.legalAt.toFixed(1)}s.</>}
+            {verdict === "early" && <>You moved at {pressedAt.toFixed(1)}s. No contact, but the way was not yours until {sim.legalAt.toFixed(1)}s.</>}
+            {verdict === "good" && <>Away at {pressedAt.toFixed(1)}s, against a window opening at {sim.legalAt.toFixed(1)}s.</>}
+            {verdict === "late" && <>Your window opened at {sim.legalAt.toFixed(1)}s; you moved at {pressedAt.toFixed(1)}s — {(pressedAt - sim.legalAt).toFixed(1)}s of hesitation.</>}
+            {verdict === "missed" && <>The window opened at {sim.legalAt.toFixed(1)}s and never closed.</>}
+          </div>
+          {tells.length > 0 && (
+            <div style={st.tells}>
+              <div style={st.tellsHead}>What that driver was telling you</div>
+              {tells.map((x, i) => (
+                <div key={i} style={st.tellRow}><Eye size={13} style={{ flexShrink: 0, marginTop: 2 }} />{x}</div>
+              ))}
+            </div>
+          )}
+          <div style={st.lesson}>{scn.lesson}</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button className="btn" onClick={retry}><RotateCcw size={16} />Again</button>
+            <button className="btn primary" style={{ flex: 1 }} onClick={next}>Next situation<ChevronRight size={16} /></button>
+          </div>
+        </div>
+      )}
+
+      {helpOpen && (
+        <div style={st.modalWrap} onClick={() => setHelpOpen(false)}>
+          <div style={st.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <strong style={{ fontFamily: FONT_D, fontSize: 21, letterSpacing: 1 }}>HOW IT WORKS</strong>
+              <button className="btn" style={{ padding: 9, minHeight: 38 }} onClick={() => setHelpOpen(false)}><X size={16} /></button>
+            </div>
+            <p style={st.p}>You are the outlined car. Press GO when your path is clear.</p>
+            <p style={st.p}><strong style={{ color: C.yellow }}>Clear means your path, not the whole intersection.</strong> A car crossing in front of you blocks you. A car passing on its own side, going the other way, does not.</p>
+            <p style={st.p}>That makes their intent the thing to read. Indicators tell you where a car is going — when the driver uses them, and when they mean it. Confirm against the wheels before you commit.</p>
+            <p style={st.p}>Some drivers give themselves away — drifting inside the lane, rolling through the stop, sitting there when it is plainly their turn. Those are the ones to leave room for.</p>
+            <p style={st.p}><strong style={{ color: C.red }}>Too early</strong> risks a collision. <strong style={{ color: C.amber }}>Too late</strong> is undue delay, which is marked too, and is the more common fault.</p>
+            <p style={{ ...st.p, color: "#7d838c", fontSize: 12 }}>
+              Windows are computed by simulating footprints through the intersection, not authored by hand.
+              Rules follow Ontario, Canada. Always defer to local law and posted signs.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const st = {
+  app: {
+    position: "relative", width: "100%", minHeight: "100dvh", background: C.bg, color: C.white,
+    fontFamily: FONT_U, display: "flex", flexDirection: "column", gap: 10,
+    padding: `calc(12px + env(safe-area-inset-top,0px)) 12px calc(12px + env(safe-area-inset-bottom,0px))`,
+    maxWidth: 540, margin: "0 auto", userSelect: "none",
+  },
+  head: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
+  title: { fontFamily: FONT_D, fontWeight: 700, fontSize: 26, letterSpacing: 1.5, lineHeight: 1 },
+  sub: { fontSize: 12.5, color: "#8b9199", marginTop: 3 },
+  chip: {
+    display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,0.07)",
+    padding: "9px 11px", borderRadius: 9, fontSize: 13, fontWeight: 600, color: "#c8cdd4",
+  },
+  brief: { fontSize: 13.5, color: "#c8cdd4", lineHeight: 1.5 },
+  board: {
+    borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
+  },
+  hint: { fontSize: 13, color: "#a8aeb6", lineHeight: 1.5 },
+  result: { background: "rgba(32,35,40,0.94)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 14, padding: 15 },
+  readout: { fontSize: 13, color: "#c8cdd4", lineHeight: 1.55, marginTop: 12 },
+  lesson: { fontSize: 13.5, color: "#e2e6ea", lineHeight: 1.6, marginTop: 10, borderLeft: `3px solid ${C.yellow}`, paddingLeft: 11 },
+  tells: { marginTop: 12, background: "rgba(240,169,60,0.10)", border: "1px solid rgba(240,169,60,0.28)", borderRadius: 10, padding: "10px 12px" },
+  tellsHead: { fontFamily: FONT_D, fontSize: 13, fontWeight: 700, letterSpacing: 1, color: C.amber, marginBottom: 6, textTransform: "uppercase" },
+  tellRow: { display: "flex", gap: 7, alignItems: "flex-start", fontSize: 12.5, lineHeight: 1.5, color: "#d8cdb8", marginTop: 3 },
+  modalWrap: {
+    position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 40,
+    display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+  },
+  modal: { background: "#22252A", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: 18, maxWidth: 420, width: "100%" },
+  p: { fontSize: 13.5, lineHeight: 1.6, color: "#c8cdd4", margin: "9px 0" },
+};
