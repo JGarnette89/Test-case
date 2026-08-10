@@ -7,11 +7,14 @@ import { C, FONT_D, FONT_U, shade } from "../theme.js";
 import { SCENARIOS } from "../engine/scenarios.js";
 import {
   M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
-  CROSS, STEP, GRACE, TIE, lerp, quad, angleTo,
+  CROSS, STEP, TIE, lerp, quad, angleTo,
   STOPS, EXITS, PED_Y, PED_X0, PED_X1,
   TRAITS, traitTells, poseAt, signalShowing, forwardClaim, conflicts,
   outranks, earliestClear, schedule, simulate,
 } from "../engine/index.js";
+import { grade, tally, emptyTally, GRACE, REACTION_FLOOR } from "../engine/score.js";
+import { planRoute, startRun, recordLeg, currentLeg, summary } from "../engine/route.js";
+import { routeById } from "../engine/routes.js";
 
 /* ---------------- drawing ---------------- */
 const GRASS = (() => {
@@ -123,14 +126,21 @@ function Vehicle({ p, pose, isEgo, blink, tNow }) {
   );
 }
 
+/* The bar is the scoring curve drawn out: solid while the score is full,
+   fading as it decays, so it is obvious that waiting costs something. */
 function Timeline({ duration, legalAt, pressedAt, verdict }) {
   const pct = (t) => `${Math.max(0, Math.min(100, (t / duration) * 100))}%`;
+  const floorEnd = Math.min(duration, legalAt + REACTION_FLOOR);
   const graceEnd = Math.min(duration, legalAt + GRACE);
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ position: "relative", height: 26, borderRadius: 7, overflow: "hidden", background: "#2A2E35" }}>
         <div style={{ position: "absolute", left: 0, width: pct(legalAt), height: "100%", background: "rgba(224,82,82,0.5)" }} />
-        <div style={{ position: "absolute", left: pct(legalAt), width: pct(graceEnd - legalAt), height: "100%", background: "rgba(59,170,81,0.75)" }} />
+        <div style={{ position: "absolute", left: pct(legalAt), width: pct(floorEnd - legalAt), height: "100%", background: C.green }} />
+        <div style={{
+          position: "absolute", left: pct(floorEnd), width: pct(graceEnd - floorEnd), height: "100%",
+          background: "linear-gradient(90deg, rgba(59,170,81,0.85), rgba(59,170,81,0.10))",
+        }} />
         <div style={{ position: "absolute", left: pct(graceEnd), right: 0, height: "100%", background: "rgba(240,169,60,0.35)" }} />
         {pressedAt != null && (
           <div style={{ position: "absolute", left: pct(pressedAt), top: -3, bottom: -3, width: 3, background: "#fff", boxShadow: "0 0 0 2px rgba(0,0,0,0.55)" }} />
@@ -138,30 +148,68 @@ function Timeline({ duration, legalAt, pressedAt, verdict }) {
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "#8b9199", marginTop: 5 }}>
         <span>yield</span>
-        <span style={{ color: verdict === "good" ? C.green : "#8b9199" }}>your window</span>
-        <span>hesitating</span>
+        <span style={{ color: verdict === "good" ? C.green : "#8b9199" }}>sooner scores higher</span>
+        <span>undue delay</span>
+      </div>
+    </div>
+  );
+}
+
+/* End of a drive. The average matters more than the total, because routes
+   differ in length — and finishing at all is worth saying when a collision
+   would have ended it. */
+function RunSummary({ run }) {
+  const s = summary(run);
+  const ended = s.outcome === "ended-early";
+  return (
+    <div style={{ ...st.tells, background: "rgba(59,123,232,0.10)", borderColor: "rgba(59,123,232,0.30)" }}>
+      <div style={{ ...st.tellsHead, color: C.blue }}>
+        {ended ? "Drive ended early" : s.perfect ? "Route complete — clean sheet" : "Route complete"}
+      </div>
+      <div style={{ fontSize: 13, color: "#c8cdd4", lineHeight: 1.55 }}>
+        {ended
+          ? <>You got through {s.played} of {s.total} intersections before it ended. {s.remaining} never reached.</>
+          : <>{s.total} intersections, {s.clean} of them clean.</>}
+        {" "}Average {s.average} out of 100, {s.points} points in total.
       </div>
     </div>
   );
 }
 
 /* ================= GAME ================= */
-export default function RightOfWayTiming() {
+/* `routeId` turns this from single intersections into one continuous drive.
+   Without it nothing changes: you get the scenario list, one at a time. */
+export default function RightOfWayTiming({ routeId = null }) {
   const [idx, setIdx] = useState(0);
   const [phase, setPhase] = useState("ready");
   const [t, setT] = useState(0);
   const [pressedAt, setPressedAt] = useState(null);
-  const [verdict, setVerdict] = useState(null);
+  const [result, setResult] = useState(null);   // what the engine made of the press
   const [crash, setCrash] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [score, setScore] = useState({ good: 0, played: 0 });
+  const [session, setSession] = useState(emptyTally);
+  const verdict = result?.verdict ?? null;
 
   const raf = useRef(null);
   const t0 = useRef(0);
   const pressRef = useRef(null);
-  const scn = SCENARIOS[idx];
 
-  const sim = React.useMemo(() => simulate(scn), [idx]);
+  // Planning is where a route's continuity is resolved: each leg gets rotated
+  // to the approach the previous one leaves you on.
+  const plan = React.useMemo(() => {
+    const route = routeId ? routeById(routeId) : null;
+    return route ? planRoute(route, SCENARIOS) : null;
+  }, [routeId]);
+  const [run, setRun] = useState(() => (plan ? startRun(plan) : null));
+
+  // A route that will not plan is a content bug. Say so plainly rather than
+  // playing three quarters of a drive and pretending it was the whole thing.
+  const planFailed = plan != null && !plan.ok;
+
+  const scn = run && !planFailed ? currentLeg(run) : SCENARIOS[idx];
+  const runOver = run?.over ?? false;
+
+  const sim = React.useMemo(() => simulate(scn), [scn]);
 
   const stopLoop = useCallback(() => {
     if (raf.current) cancelAnimationFrame(raf.current);
@@ -169,14 +217,17 @@ export default function RightOfWayTiming() {
   }, []);
   useEffect(() => stopLoop, [stopLoop]);
 
-  function finish(v, at, hit) {
+  // The engine decides what happened and what it was worth; this only shows it.
+  function finish(at, hit) {
     stopLoop();
-    setVerdict(v); setCrash(hit || null); setPhase("done");
-    setScore((s) => ({ good: s.good + (v === "good" ? 1 : 0), played: s.played + 1 }));
+    const r = grade({ legalAt: sim.legalAt, pressedAt: at, collided: !!hit });
+    setResult(r); setCrash(hit || null); setPhase("done");
+    setSession((s) => tally(s, r));
+    if (run) setRun((cur) => recordLeg(cur, r));
   }
 
   function begin() {
-    setPhase("running"); setT(0); setPressedAt(null); setVerdict(null); setCrash(null);
+    setPhase("running"); setT(0); setPressedAt(null); setResult(null); setCrash(null);
     pressRef.current = null;
     t0.current = performance.now();
 
@@ -193,17 +244,16 @@ export default function RightOfWayTiming() {
           const theirs = poseAt(a, el);
           if (theirs.gone || theirs.hidden) continue;
           if (conflicts(egoLive, mine, a, theirs, 0, 0, 0, "crash")) {
-            finish("collision", P, { x: (mine.x + theirs.x) / 2, y: (mine.y + theirs.y) / 2, who: a.name });
+            finish(P, { x: (mine.x + theirs.x) / 2, y: (mine.y + theirs.y) / 2, who: a.name });
             return;
           }
         }
         if (mine.gone || el > P + CROSS[sim.ego.intent] + 0.35) {
-          const v = P < sim.legalAt - 0.25 ? "early" : P <= sim.legalAt + GRACE ? "good" : "late";
-          finish(v, P);
+          finish(P);
           return;
         }
       } else if (el >= scn.duration) {
-        finish("missed", null);
+        finish(null);
         return;
       }
       raf.current = requestAnimationFrame(loop);
@@ -216,8 +266,16 @@ export default function RightOfWayTiming() {
     pressRef.current = t;
     setPressedAt(t);
   }
-  function retry() { stopLoop(); setPhase("ready"); setT(0); setPressedAt(null); setVerdict(null); setCrash(null); pressRef.current = null; }
-  function next() { stopLoop(); setIdx((i) => (i + 1) % SCENARIOS.length); retry(); }
+  function retry() { stopLoop(); setPhase("ready"); setT(0); setPressedAt(null); setResult(null); setCrash(null); pressRef.current = null; }
+
+  // On a route, recordLeg has already advanced the index — "next" just clears
+  // the board for the intersection you are now approaching.
+  function next() {
+    stopLoop();
+    if (!run) setIdx((i) => (i + 1) % SCENARIOS.length);
+    retry();
+  }
+  function restartRoute() { stopLoop(); setRun(startRun(plan)); setSession(emptyTally); retry(); }
 
   const showT = phase === "ready" ? 0 : t;
   const blink = Math.floor(showT * 1.7) % 2 === 0;
@@ -262,14 +320,32 @@ export default function RightOfWayTiming() {
       <header style={st.head}>
         <div>
           <div style={st.title}>RIGHT OF <span style={{ color: C.yellow }}>WAY</span></div>
-          <div style={st.sub}>{scn.title}</div>
+          <div style={st.sub}>
+            {run && <strong style={{ color: C.yellow }}>Leg {Math.min(run.index + 1, run.plan.legs.length)} of {run.plan.legs.length} · </strong>}
+            {scn.title}
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {score.played > 0 && <div style={st.chip}><Gauge size={13} />{score.good}/{score.played}</div>}
+          {session.played > 0 && (
+            <div style={st.chip} title={`${session.clean} clean of ${session.played}, best ${session.best}`}>
+              <Gauge size={13} />{session.average} avg
+            </div>
+          )}
           <button className="btn" style={{ padding: 11, minHeight: 42 }} onClick={() => setHelpOpen(true)}
             aria-label="How it works"><HelpCircle size={18} /></button>
         </div>
       </header>
+
+      {planFailed && (
+        <div style={{ ...st.tells, background: "rgba(224,82,82,0.12)", borderColor: "rgba(224,82,82,0.35)" }}>
+          <div style={{ ...st.tellsHead, color: C.red }}>This route will not plan</div>
+          {plan.problems.map((p, i) => (
+            <div key={i} style={{ fontSize: 12.5, color: "#c8cdd4", lineHeight: 1.5 }}>
+              Leg {p.leg + 1} ({p.id}): {p.detail}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={st.brief}>{scn.brief}</div>
 
@@ -328,18 +404,29 @@ export default function RightOfWayTiming() {
 
       {phase === "done" && (
         <div style={st.result}>
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
             {verdict === "collision" && <AlertTriangle size={22} color={C.red} style={{ flexShrink: 0, marginTop: 2 }} />}
-            <div style={{ fontFamily: FONT_D, fontSize: 23, fontWeight: 700, color: vColor[verdict], lineHeight: 1.15 }}>
-              {vText[verdict]}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: FONT_D, fontSize: 23, fontWeight: 700, color: vColor[verdict], lineHeight: 1.15 }}>
+                {vText[verdict]}
+              </div>
+              {result?.band && <div style={st.bandNote}>{result.band.note}</div>}
+            </div>
+            <div style={{ ...st.scoreBox, borderColor: vColor[verdict] }}>
+              <div style={{ ...st.scoreNum, color: vColor[verdict] }}>{result?.score ?? 0}</div>
+              <div style={st.scoreLabel}>{result?.band?.label ?? "no score"}</div>
             </div>
           </div>
           <Timeline duration={scn.duration} legalAt={sim.legalAt} pressedAt={pressedAt} verdict={verdict} />
           <div style={st.readout}>
             {verdict === "collision" && <>You pulled out at {pressedAt.toFixed(1)}s and met the {crash?.who?.toLowerCase()}. Your path was not clear until {sim.legalAt.toFixed(1)}s.</>}
             {verdict === "early" && <>You moved at {pressedAt.toFixed(1)}s. No contact, but the way was not yours until {sim.legalAt.toFixed(1)}s.</>}
-            {verdict === "good" && <>Away at {pressedAt.toFixed(1)}s, against a window opening at {sim.legalAt.toFixed(1)}s.</>}
-            {verdict === "late" && <>Your window opened at {sim.legalAt.toFixed(1)}s; you moved at {pressedAt.toFixed(1)}s — {(pressedAt - sim.legalAt).toFixed(1)}s of hesitation.</>}
+            {verdict === "good" && (
+              result.reaction <= REACTION_FLOOR
+                ? <>Away at {pressedAt.toFixed(1)}s against a window opening at {sim.legalAt.toFixed(1)}s — inside the {REACTION_FLOOR}s nobody reacts faster than. Full marks.</>
+                : <>Away at {pressedAt.toFixed(1)}s, {result.reaction.toFixed(2)}s after your window opened at {sim.legalAt.toFixed(1)}s.</>
+            )}
+            {verdict === "late" && <>Your window opened at {sim.legalAt.toFixed(1)}s; you moved at {pressedAt.toFixed(1)}s — {result.reaction.toFixed(1)}s of hesitation.</>}
             {verdict === "missed" && <>The window opened at {sim.legalAt.toFixed(1)}s and never closed.</>}
           </div>
           {tells.length > 0 && (
@@ -351,9 +438,21 @@ export default function RightOfWayTiming() {
             </div>
           )}
           <div style={st.lesson}>{scn.lesson}</div>
+          {run && runOver && <RunSummary run={run} />}
+
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button className="btn" onClick={retry}><RotateCcw size={16} />Again</button>
-            <button className="btn primary" style={{ flex: 1 }} onClick={next}>Next situation<ChevronRight size={16} /></button>
+            {run && runOver ? (
+              <button className="btn primary" style={{ flex: 1 }} onClick={restartRoute}>
+                <RotateCcw size={16} />Drive it again
+              </button>
+            ) : (
+              <>
+                <button className="btn" onClick={retry}><RotateCcw size={16} />Again</button>
+                <button className="btn primary" style={{ flex: 1 }} onClick={next}>
+                  {run ? "Next intersection" : "Next situation"}<ChevronRight size={16} />
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -403,6 +502,16 @@ const st = {
   hint: { fontSize: 13, color: "#a8aeb6", lineHeight: 1.5 },
   result: { background: "rgba(32,35,40,0.94)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 14, padding: 15 },
   readout: { fontSize: 13, color: "#c8cdd4", lineHeight: 1.55, marginTop: 12 },
+  bandNote: { fontSize: 12.5, color: "#8b9199", marginTop: 4, lineHeight: 1.45 },
+  scoreBox: {
+    flexShrink: 0, minWidth: 74, textAlign: "center", padding: "6px 8px 7px",
+    borderRadius: 11, border: "1px solid", background: "rgba(0,0,0,0.22)",
+  },
+  scoreNum: { fontFamily: FONT_D, fontSize: 30, fontWeight: 700, lineHeight: 1 },
+  scoreLabel: {
+    fontSize: 10, letterSpacing: 0.8, textTransform: "uppercase",
+    color: "#8b9199", marginTop: 3, fontWeight: 600,
+  },
   lesson: { fontSize: 13.5, color: "#e2e6ea", lineHeight: 1.6, marginTop: 10, borderLeft: `3px solid ${C.yellow}`, paddingLeft: 11 },
   tells: { marginTop: 12, background: "rgba(240,169,60,0.10)", border: "1px solid rgba(240,169,60,0.28)", borderRadius: 10, padding: "10px 12px" },
   tellsHead: { fontFamily: FONT_D, fontSize: 13, fontWeight: 700, letterSpacing: 1, color: C.amber, marginBottom: 6, textTransform: "uppercase" },

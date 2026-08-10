@@ -39,7 +39,7 @@ const PAD_LONG = M(2.4), PAD_LAT = M(0.55);
 const LOOKAHEAD = 0.9, MAX_CLAIM = M(18);
 
 const TIE = 0.35;
-const GRACE = 2.6;
+/* GRACE moved to ./score.js — it never gated a footprint, only a verdict. */
 const CROSS = { straight: 1.5, left: 2.1, right: 1.7, walk: 3.4 };
 const STEP = 0.05;
 
@@ -154,8 +154,8 @@ const TRAITS = {
     setup: (p) => { p.turnBias = M(2.2); },
   },
   lateSignal: {
-    tell: "Only indicated once it had already started to turn",
-    setup: (p) => { p.signalDelay = 0.5; },
+    tell: "Indicated barely before turning — nothing like the 2-3 seconds it owed you",
+    setup: (p) => { p.signalLead = LATE_SIGNAL_LEAD; },
   },
 };
 
@@ -171,11 +171,21 @@ function poseAt(p, t) {
   }
   return po;
 }
-// Is the indicator visible yet? A late signal only appears mid-manoeuvre.
+/* Signalling is modelled as lead time — how long before the manoeuvre the
+   indicator comes on — because that is what a driver actually judges.
+
+   Proper practice is 2-3 seconds before a change of direction or before
+   stopping at the line. A late signaller sits outside that, but is NOT so
+   late that it is a trick: the tell has to be readable, or the scenario
+   punishes attentiveness instead of assumption. The lesson is "do not
+   commit on an absent indicator", not "gotcha".                          */
+const PROPER_SIGNAL_LEAD = 2.5;
+const LATE_SIGNAL_LEAD = 0.8;
+
 function signalShowing(p, t) {
   if (!p.signal) return false;
-  if (p.signalDelay == null) return true;
-  return t >= (p.departAt ?? 0) + p.signalDelay;
+  const lead = p.signalLead ?? PROPER_SIGNAL_LEAD;
+  return t >= (p.departAt ?? 0) - lead;
 }
 
 function extentsFor(p, padL, padW, claim, mode) {
@@ -299,7 +309,8 @@ export function simulate(scn) {
 
 export {
   SCALE, M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
-  PAD_LONG, PAD_LAT, LOOKAHEAD, MAX_CLAIM, TIE, GRACE, CROSS, STEP,
+  PAD_LONG, PAD_LAT, LOOKAHEAD, MAX_CLAIM, TIE, CROSS, STEP,
+  PROPER_SIGNAL_LEAD, LATE_SIGNAL_LEAD,
   STOPS, EXITS, RIGHT_OF, OPPOSITE, lerp, quad, angleTo,
   PED_Y, PED_X0, PED_X1,
   basePose, TRAITS, traitTells, poseAt, signalShowing,

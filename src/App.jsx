@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Menu, X, Route, Gauge, ChevronRight } from "lucide-react";
+import { Menu, X, Route, Gauge, Milestone, ChevronRight } from "lucide-react";
 
 /* DriveDraw is no longer part of this app. Its source is still in
    src/apps/DriveDraw.jsx and still in git history — it is simply not wired
    in. This project is the game now. */
 import RightOfWay from "./apps/RightOfWay.jsx";
 import RightOfWayTiming from "./apps/RightOfWayTiming.jsx";
+import { ROUTES } from "./engine/routes.js";
 
 /* Palette and font stacks are copied from the apps rather than imported,
    because the apps keep theirs module-private. Keep them in step by eye. */
@@ -51,6 +52,19 @@ const MODES = [
     accent: C.green,
     Component: RightOfWay,
   },
+
+  /* Routes are the same renderer with a drive plan handed to it, so adding
+     one is an entry in engine/routes.js and nothing here. */
+  ...ROUTES.map((r) => ({
+    id: `drive-${r.id}`,
+    name: r.title,
+    kicker: "Drive",
+    blurb: r.blurb,
+    Icon: Milestone,
+    accent: C.yellow,
+    Component: RightOfWayTiming,
+    props: { routeId: r.id },
+  })),
 ];
 
 /* --- Routing --------------------------------------------------------
@@ -113,7 +127,7 @@ export default function App() {
 
           {/* Keyed so switching unmounts the old mode outright — that is what
               stops the timing game's animation loop when you leave it. */}
-          <Active key={mode.id} />
+          <Active key={mode.id} {...(mode.props || {})} />
         </>
       )}
 
