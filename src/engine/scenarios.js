@@ -1,0 +1,135 @@
+/* =====================================================================
+   SCENARIOS
+   Declarations, not answers. Each states who arrives, from where,
+   intending what — the engine derives when the window opens.
+   ===================================================================== */
+import { C } from "../theme.js";
+/* ---------------- scenarios ---------------- */
+const S = (o) => ({ stops: true, kind: "car", ...o });
+
+const SCENARIOS = [
+  {
+    id: "opposite",
+    title: "Don't wait for an empty box",
+    brief: "Four-way stop. Two cars got there before you.",
+    control: "stop",
+    duration: 12,
+    ego: { from: "S", intent: "straight", arriveAt: 2.4, stops: true, color: C.blue },
+    actors: [
+      S({ id: "w", from: "W", intent: "straight", arriveAt: 0.9, color: C.red, name: "Red car" }),
+      S({ id: "n", from: "N", intent: "straight", arriveAt: 1.7, color: C.green, name: "Green car", signal: null }),
+    ],
+    lesson: "The green car is still in the intersection when your turn comes — and it makes no difference. It is coming straight towards you on its own side, so your paths never touch. You only ever wait for the cars whose path crosses yours, which here was the red one.",
+  },
+  {
+    id: "signalled",
+    title: "Reading the indicator",
+    brief: "Four-way stop. The car opposite got there first.",
+    control: "stop",
+    duration: 12,
+    ego: { from: "S", intent: "straight", arriveAt: 1.6, stops: true, color: C.blue },
+    actors: [
+      S({ id: "n", from: "N", intent: "right", arriveAt: 1.0, color: C.red, name: "Red car", signal: "right" }),
+    ],
+    lesson: "The red car is indicating right, and it turns right — away from your path entirely. Nothing crosses you, so you go almost as soon as you have stopped. Reading the indicator is what buys you those seconds.",
+  },
+  {
+    id: "liar",
+    title: "The indicator that lied",
+    brief: "Four-way stop. The car on your right is indicating right.",
+    control: "stop",
+    duration: 13,
+    ego: { from: "S", intent: "straight", arriveAt: 1.5, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "left", arriveAt: 0.9, color: C.red, name: "Red car", signal: "right" }),
+    ],
+    lesson: "It indicated right, which would have tucked it away down the side road in under a second. It swung left across the whole intersection instead — the longest path there is, straight through where you were going. An indicator is a statement of intent, not a commitment: confirm it against the wheels before you move.",
+  },
+  {
+    id: "silent",
+    title: "The long way round",
+    brief: "Four-way stop. The car on your right arrived first and is indicating left.",
+    control: "stop",
+    duration: 13,
+    ego: { from: "S", intent: "straight", arriveAt: 1.7, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "left", arriveAt: 1.1, color: C.red, name: "Red car", signal: "left" }),
+    ],
+    lesson: "A left turn is the longest path through an intersection and the one that keeps your lane blocked longest. Reading that indicator tells you this is a wait, not a glance — and roughly how long a wait it is going to be.",
+  },
+  {
+    id: "gap",
+    title: "Finding the gap",
+    brief: "Green light, turning left. Oncoming traffic is not stopping.",
+    control: "signal",
+    duration: 15,
+    ego: { from: "S", intent: "left", arriveAt: 1.0, stops: true, color: C.blue },
+    actors: [
+      S({ id: "o1", from: "N", intent: "straight", arriveAt: 1.6, stops: false, color: C.red, name: "First car", priority: -3 }),
+      S({ id: "o2", from: "N", intent: "straight", arriveAt: 3.2, stops: false, color: C.green, name: "Second car", priority: -2 }),
+      S({ id: "o3", from: "N", intent: "right", arriveAt: 5.0, stops: false, color: C.amber, name: "Third car", signal: "right", priority: -1 }),
+    ],
+    lesson: "The third car is indicating right, which takes it off into the side road before it ever reaches you. Once you have read that, the gap you need arrives sooner than it looks — you are only waiting for the two that are actually coming through.",
+  },
+  {
+    id: "walker",
+    title: "The empty intersection",
+    brief: "Four-way stop. No other traffic at all.",
+    control: "stop",
+    duration: 13,
+    ego: { from: "S", intent: "straight", arriveAt: 1.0, stops: true, color: C.blue },
+    actors: [
+      S({ id: "p", from: "N", intent: "straight", arriveAt: 0.8, stops: false, kind: "ped", color: "#F2E8D5", name: "Pedestrian", priority: -1, blockUntilClear: true }),
+    ],
+    lesson: "No cars is not the same as clear. Someone walked into the crosswalk on the far side, and you are driving straight through it. You wait until they are properly out of your path, not until they have cleared your half of the road.",
+  },
+  {
+    id: "wanderer",
+    title: "The one that shouldn't matter",
+    brief: "Four-way stop. The car opposite is coming straight through.",
+    control: "stop",
+    duration: 14,
+    ego: { from: "S", intent: "straight", arriveAt: 1.3, stops: true, color: C.blue },
+    actors: [
+      S({ id: "n", from: "N", intent: "straight", arriveAt: 1.1, color: C.red, name: "Red car", traits: ["wander"], phase: 0.6 }),
+    ],
+    lesson: "A car coming straight at you on its own side cannot touch you — that was the first thing you learned here, and it holds right up until the driver stops holding their lane. This one is drifting the better part of a metre either side of centre. Watch how a car is being driven, not just where it is going.",
+  },
+  {
+    id: "sleeper",
+    title: "Asleep at the line",
+    brief: "Four-way stop. The car on your right got there well before you.",
+    control: "stop",
+    duration: 15,
+    ego: { from: "S", intent: "straight", arriveAt: 1.8, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "straight", arriveAt: 0.7, color: C.red, name: "Red car", traits: ["slowStart"] }),
+    ],
+    lesson: "They arrived first, stopped, and then did nothing — head down, most likely. It is still their turn, and the moment you decide they have waved you through is the moment they look up and go. Wait for them to actually take it.",
+  },
+  {
+    id: "creeper",
+    title: "Never quite stopped",
+    brief: "Four-way stop. The car on your right is edging forward.",
+    control: "stop",
+    duration: 14,
+    ego: { from: "S", intent: "straight", arriveAt: 1.5, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "straight", arriveAt: 0.9, color: C.red, name: "Red car", traits: ["creep", "overshoot", "slowStart"] }),
+    ],
+    lesson: "Rolling stops and a nose already over the line tell you this driver is impatient and only half committed to stopping at all. They have the right of way, so the answer is simple — let them take it, and give them room while they do.",
+  },
+  {
+    id: "lateflag",
+    title: "Signalling on the way round",
+    brief: "Four-way stop. The car on your right shows nothing at all.",
+    control: "stop",
+    duration: 14,
+    ego: { from: "S", intent: "straight", arriveAt: 1.6, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "left", arriveAt: 1.0, color: C.red, name: "Red car", signal: "left", traits: ["lateSignal", "wideTurn"] }),
+    ],
+    lesson: "No indicator until it was already turning, and then it swung wide across the next lane. By the time that signal appeared it told you nothing you could still act on. Where there is no information to read, the answer is always to wait for the wheels.",
+  },
+];
+export { SCENARIOS, S };

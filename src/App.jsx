@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Menu, X, PenTool, Route, Gauge, ChevronRight } from "lucide-react";
+import { Menu, X, Route, Gauge, ChevronRight } from "lucide-react";
 
-import DriveDraw from "./apps/DriveDraw.jsx";
+/* DriveDraw is no longer part of this app. Its source is still in
+   src/apps/DriveDraw.jsx and still in git history — it is simply not wired
+   in. This project is the game now. */
 import RightOfWay from "./apps/RightOfWay.jsx";
 import RightOfWayTiming from "./apps/RightOfWayTiming.jsx";
 
@@ -24,48 +26,30 @@ const FONT_D = "'Rajdhani','Oswald','Arial Narrow',system-ui,sans-serif";
 const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
 
 /* =====================================================================
-   THE REGISTRY
-   A fourth app is an entry here, not a change to the shell.
-
-   `chrome` is the one field that is not cosmetic. The two game screens are
-   ordinary flow content, so the shell can put a strip above them. DriveDraw
-   is a fixed 100vh box with its own toolbars pinned to every edge — take
-   height from it and its bottom toolbar goes off-screen — so it gets a
-   floating control at top centre, the one band its own UI leaves clear.
+   GAME MODES
+   One game, two ways to be asked the same question. A third mode is an
+   entry here, not a change to the shell.
    ===================================================================== */
-const APPS = [
-  {
-    id: "drivedraw",
-    name: "DriveDraw",
-    kicker: "Diagram",
-    blurb:
-      "Draw an intersection, place vehicles and signs, and number the order of movement. For the tablet in the car and the projector in the classroom.",
-    Icon: PenTool,
-    accent: C.amber,
-    Component: DriveDraw,
-    chrome: "float",
-  },
-  {
-    id: "right-of-way",
-    name: "Right of Way",
-    kicker: "Judgment",
-    blurb:
-      "Tap the road users in the order they may legally proceed. One intersection a day, graded on the order you gave.",
-    Icon: Route,
-    accent: C.green,
-    Component: RightOfWay,
-    chrome: "bar",
-  },
+const MODES = [
   {
     id: "timing",
-    name: "Right of Way — Timing",
+    name: "Timing",
     kicker: "Real time",
     blurb:
       "Traffic arrives on a schedule and you are one car in it. Press GO at the moment the road is legally yours. Too early is a failure to yield; too late is undue delay.",
     Icon: Gauge,
     accent: C.blue,
     Component: RightOfWayTiming,
-    chrome: "bar",
+  },
+  {
+    id: "order",
+    name: "Order",
+    kicker: "Judgment",
+    blurb:
+      "No clock. Tap the road users in the order they may legally proceed, and find out which rule you missed.",
+    Icon: Route,
+    accent: C.green,
+    Component: RightOfWay,
   },
 ];
 
@@ -90,13 +74,13 @@ function useRoute() {
 
 export default function App() {
   const id = useRoute();
-  const app = APPS.find((a) => a.id === id) || null;
+  const mode = MODES.find((m) => m.id === id) || null;
   const [menuOpen, setMenuOpen] = useState(false);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   useEffect(closeMenu, [id, closeMenu]);
 
-  // Bound only while the sheet is open, so the apps' own Escape handling
+  // Bound only while the sheet is open, so the modes' own Escape handling
   // is left alone the rest of the time.
   useEffect(() => {
     if (!menuOpen) return;
@@ -105,47 +89,35 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen, closeMenu]);
 
-  const Active = app?.Component;
+  const Active = mode?.Component;
 
   return (
     <>
       <Style />
 
-      {!app && <Launcher />}
+      {!mode && <Launcher />}
 
-      {app && (
+      {mode && (
         <>
-          {app.chrome === "bar" && (
-            <div style={st.bar}>
-              <button
-                className="shell-btn"
-                style={st.barBtn}
-                onClick={() => setMenuOpen(true)}
-                aria-label="Switch app"
-              >
-                <Menu size={18} />
-              </button>
-              <div style={st.barName}>{app.name}</div>
-            </div>
-          )}
-
-          {/* Keyed so switching unmounts the old app outright — that is what
-              stops the timing game's animation loop when you leave it. */}
-          <Active key={app.id} />
-
-          {app.chrome === "float" && (
+          <div style={st.bar}>
             <button
-              className="shell-btn shell-float"
+              className="shell-btn"
+              style={st.barBtn}
               onClick={() => setMenuOpen(true)}
-              aria-label="Switch app"
+              aria-label="Switch mode"
             >
               <Menu size={18} />
             </button>
-          )}
+            <div style={st.barName}>{mode.name}</div>
+          </div>
+
+          {/* Keyed so switching unmounts the old mode outright — that is what
+              stops the timing game's animation loop when you leave it. */}
+          <Active key={mode.id} />
         </>
       )}
 
-      {menuOpen && <Sheet current={app} onClose={closeMenu} />}
+      {menuOpen && <Sheet current={mode} onClose={closeMenu} />}
     </>
   );
 }
@@ -156,13 +128,13 @@ function Launcher() {
     <div style={st.launcher}>
       <div style={st.brand}>
         <div style={st.brandTitle}>
-          DRIVE<span style={{ color: C.yellow }}>DRAW</span>
+          RIGHT OF <span style={{ color: C.yellow }}>WAY</span>
         </div>
-        <div style={st.brandSub}>Ontario right-of-way teaching tools</div>
+        <div style={st.brandSub}>Ontario road rules, under a clock</div>
       </div>
 
       <div style={st.cards}>
-        {APPS.map((a) => (
+        {MODES.map((a) => (
           <button
             key={a.id}
             className="shell-card"
@@ -190,14 +162,14 @@ function Launcher() {
 }
 
 /* --- Switcher sheet -------------------------------------------------
-   z-index sits above the apps' own modals (they top out at 40) so the way
+   z-index sits above the modes' own modals (they top out at 40) so the way
    out is reachable from anywhere, including a dialog.                   */
 function Sheet({ current, onClose }) {
   return (
     <div style={st.sheetWrap} onClick={onClose} role="dialog" aria-modal="true">
       <div style={st.sheet} onClick={(e) => e.stopPropagation()}>
         <div style={st.sheetHead}>
-          <div style={st.sheetTitle}>Switch app</div>
+          <div style={st.sheetTitle}>Switch mode</div>
           <button
             className="shell-btn"
             style={st.barBtn}
@@ -208,7 +180,7 @@ function Sheet({ current, onClose }) {
           </button>
         </div>
 
-        {APPS.map((a) => {
+        {MODES.map((a) => {
           const active = current?.id === a.id;
           return (
             <button
@@ -237,8 +209,8 @@ function Sheet({ current, onClose }) {
             <Menu size={19} />
           </div>
           <div style={{ flex: 1, textAlign: "left" }}>
-            <div style={st.rowName}>All apps</div>
-            <div style={st.rowKicker}>Back to the launcher</div>
+            <div style={st.rowName}>Home</div>
+            <div style={st.rowKicker}>Back to the mode list</div>
           </div>
         </button>
       </div>
@@ -246,8 +218,8 @@ function Sheet({ current, onClose }) {
   );
 }
 
-/* Hover, focus and the resting state of the floating control — the only
-   things that cannot be expressed as inline style objects. */
+/* Hover and focus states — the only things that cannot be expressed as
+   inline style objects. */
 function Style() {
   return (
     <style>{`
@@ -261,36 +233,6 @@ function Style() {
       }
       .shell-btn:hover { background: rgba(48,52,60,0.92); }
       .shell-btn:focus-visible { outline: 2px solid ${C.yellow}; outline-offset: 2px; }
-
-      /* DriveDraw fills the frame, so this has to go where its own chrome is
-         not. It puts the tool palette across the bottom below 780px and down
-         the left above it (its breakpoint, DriveDraw.jsx: narrow = w < 780),
-         so the clear band flips sides with it. Measured, not guessed: at
-         375x812 the left edge is clear, at 1024x768 the bottom centre is.
-         z-index sits under every DriveDraw control, so if a layout ever does
-         overlap, the app's button wins the tap and this one just hides. */
-      .shell-float {
-        position: fixed;
-        z-index: 9;
-        opacity: 0.45;
-        transition: opacity 120ms ease;
-      }
-      .shell-float:hover, .shell-float:focus-visible { opacity: 1; }
-
-      @media (max-width: 779px) {
-        .shell-float {
-          left: calc(8px + env(safe-area-inset-left, 0px));
-          top: 50%;
-          transform: translateY(-50%);
-        }
-      }
-      @media (min-width: 780px) {
-        .shell-float {
-          left: 50%;
-          bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-          transform: translateX(-50%);
-        }
-      }
 
       .shell-card {
         display: flex; align-items: center; gap: 12px; width: 100%;
