@@ -15,6 +15,8 @@ import {
 import { grade, tally, emptyTally, GRACE, REACTION_FLOOR } from "../engine/score.js";
 import { planRoute, startRun, recordLeg, currentLeg, summary } from "../engine/route.js";
 import { routeById } from "../engine/routes.js";
+import { markPassed } from "../progress.js";
+import { generateScenario, dailyScenario } from "../engine/generate.js";
 
 /* ---------------- drawing ---------------- */
 const GRASS = (() => {
@@ -75,9 +77,14 @@ function Road({ control }) {
   );
 }
 
+/* Generated scenarios carry a colourKey rather than a colour, because the
+   engine is not allowed to know what anything looks like. Hand-written
+   scenarios still set `color` directly and win. */
+const ACTOR_COLOR = { red: C.red, green: C.green, amber: C.amber, blue: C.blue, pale: "#F2E8D5" };
+
 function Vehicle({ p, pose, isEgo, blink, tNow }) {
   if (pose.hidden) return null;
-  const o = C.ink, color = p.color;
+  const o = C.ink, color = p.color ?? ACTOR_COLOR[p.colorKey] ?? C.red;
   if (p.kind === "ped") {
     return (
       <g transform={`translate(${pose.x},${pose.y})`} filter="url(#sh)">
@@ -178,9 +185,13 @@ function RunSummary({ run }) {
 
 /* ================= GAME ================= */
 /* `routeId` turns this from single intersections into one continuous drive.
-   Without it nothing changes: you get the scenario list, one at a time. */
-export default function RightOfWayTiming({ routeId = null }) {
-  const [idx, setIdx] = useState(0);
+   `scenarioId` starts the single-intersection list on a chosen situation
+   rather than the first, which is how home launches one directly. */
+export default function RightOfWayTiming({ routeId = null, scenarioId = null, source = "set" }) {
+  const [idx, setIdx] = useState(() => {
+    const i = SCENARIOS.findIndex((s) => s.id === scenarioId);
+    return i < 0 ? 0 : i;
+  });
   const [phase, setPhase] = useState("ready");
   const [t, setT] = useState(0);
   const [pressedAt, setPressedAt] = useState(null);
@@ -206,7 +217,17 @@ export default function RightOfWayTiming({ routeId = null }) {
   // playing three quarters of a drive and pretending it was the whole thing.
   const planFailed = plan != null && !plan.ok;
 
-  const scn = run && !planFailed ? currentLeg(run) : SCENARIOS[idx];
+  /* Where situations come from. "set" is the tutorial list, "endless" draws
+     a fresh one each time, "daily" is seeded by the date so everyone gets
+     the same one without anything being coordinated. */
+  const [seed, setSeed] = useState(0);
+  const drawn = React.useMemo(() => {
+    if (source === "endless") return generateScenario((Date.now() % 100000) + seed * 7717);
+    if (source === "daily") return dailyScenario();
+    return null;
+  }, [source, seed]);
+
+  const scn = run && !planFailed ? currentLeg(run) : (drawn ?? SCENARIOS[idx]);
   const runOver = run?.over ?? false;
 
   const sim = React.useMemo(() => simulate(scn), [scn]);
@@ -224,6 +245,9 @@ export default function RightOfWayTiming({ routeId = null }) {
     setResult(r); setCrash(hit || null); setPhase("done");
     setSession((s) => tally(s, r));
     if (run) setRun((cur) => recordLeg(cur, r));
+    // Credit the situation, not the rotation the route happened to use.
+    // Generated draws are not tutorial situations, so they unlock nothing.
+    if (r.verdict === "good" && !scn.generated) markPassed(scn.rotatedFrom ?? scn.id, r.score);
   }
 
   function begin() {
@@ -272,7 +296,8 @@ export default function RightOfWayTiming({ routeId = null }) {
   // the board for the intersection you are now approaching.
   function next() {
     stopLoop();
-    if (!run) setIdx((i) => (i + 1) % SCENARIOS.length);
+    if (source === "endless") setSeed((s) => s + 1);
+    else if (!run) setIdx((i) => (i + 1) % SCENARIOS.length);
     retry();
   }
   function restartRoute() { stopLoop(); setRun(startRun(plan)); setSession(emptyTally); retry(); }

@@ -1,0 +1,258 @@
+/* =====================================================================
+   SCENARIO GENERATION
+   Ten hand-written situations is a tutorial. This is where the rest come
+   from.
+
+   The rule from CLAUDE.md holds absolutely: the answer is never authored.
+   This file only declares who arrives, from where, intending what — then
+   asks the engine what that means and throws the draw away if the answer
+   is not worth playing. Nothing here decides when a road is yours.
+
+   Everything is seeded, so the same seed is the same situation on every
+   device, forever. That is what makes a daily challenge possible without
+   a server: the date IS the seed.
+   ===================================================================== */
+import { simulate, poseAt, conflicts, forwardClaim, CROSS, STEP } from "./index.js";
+import { EARLY_TOLERANCE } from "./score.js";
+
+/* mulberry32 — small, fast, and good enough that consecutive seeds do not
+   produce visibly similar draws. Deterministic across every platform. */
+function rng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const pick = (r, xs) => xs[Math.floor(r() * xs.length)];
+const range = (r, lo, hi, step = 0.1) =>
+  Math.round((lo + r() * (hi - lo)) / step) * step;
+
+const SIDES = ["N", "S", "E", "W"];
+const INTENTS = ["straight", "left", "right"];
+const COLOURS = ["red", "green", "amber"];
+
+/* Traits worth generating. lateSignal is included because it changes what
+   can be read in time even though it never moves a window. wideTurn is
+   left out until there is a geometry where it bites — see CLAUDE.md. */
+const TRAIT_POOL = ["wander", "creep", "overshoot", "slowStart", "lateSignal"];
+
+/* What makes a draw worth playing. Tunable, and deliberately data. */
+export const ACCEPT = {
+  maxThink: 6.0,      // beyond this it is a waiting game, not a judgment
+  maxLegalAt: 9.0,    // the window has to arrive inside the clock
+  minDuration: 11,
+  slack: 3.0,         // seconds of run time after the window opens
+
+  /* A window opening inside the early tolerance is a wait the player
+     cannot perceive and the scorer does not punish skipping. Such a draw
+     claims to be a yield and plays as a go-now, so it is neither lesson.
+     Every accepted scenario is one or the other, never the fog between. */
+  ambiguousBelow: EARLY_TOLERANCE,
+};
+
+/* ---------------------------------------------------------------------
+   Is the window the engine derived actually safe to take, and was the
+   moment before it actually unsafe? If either fails, the draw is not a
+   fair question and gets thrown away. This is the generator checking the
+   engine, which is the only honest way round.
+   --------------------------------------------------------------------- */
+function collidesIfDepartingAt(sim, T) {
+  const ego = { ...sim.ego, departAt: T };
+  for (let t = T; t <= T + CROSS[ego.intent] + 0.3; t += STEP) {
+    const mine = poseAt(ego, t);
+    if (mine.gone) break;
+    for (const a of sim.actors) {
+      const theirs = poseAt(a, t);
+      if (theirs.gone || theirs.hidden) continue;
+      if (conflicts(ego, mine, a, theirs, 0, 0, 0, "crash")) return true;
+    }
+  }
+  return false;
+}
+
+/* Which actor is still in the way one step before the window opens. Used
+   to describe the situation truthfully rather than from a template. */
+function bindingActor(sim) {
+  const T = sim.legalAt - STEP;
+  if (T < sim.ego.arriveAt) return null;
+  const ego = { ...sim.ego, departAt: T };
+  for (let t = T; t <= T + CROSS[ego.intent] + 0.3; t += STEP) {
+    const mine = poseAt(ego, t);
+    if (mine.gone) break;
+    for (const a of sim.priors) {
+      const theirs = poseAt(a, t);
+      if (theirs.gone || theirs.hidden) continue;
+      if (conflicts(ego, mine, a, theirs, 4, 2, forwardClaim(a, t), "yield")) return a;
+    }
+  }
+  return null;
+}
+
+const SIDE_WORD = { N: "north", S: "south", E: "east", W: "west" };
+const INTENT_WORD = { straight: "straight through", left: "turning left", right: "turning right" };
+
+/* Description derived from what the engine found, never asserted ahead of
+   it. If the generator cannot say why, it says nothing rather than guessing. */
+function describe(scn, sim) {
+  const n = scn.actors.length;
+  const control = scn.control === "signal" ? "Green light" : "Four-way stop";
+  const brief = `${control}. ${n === 1 ? "One other road user" : `${n} other road users`}, and you are ${INTENT_WORD[scn.ego.intent]}.`;
+
+  const blocker = bindingActor(sim);
+  const think = Math.round((sim.legalAt - scn.ego.arriveAt) * 100) / 100;
+
+  let why;
+  if (!blocker) {
+    why = think <= 0.001
+      ? "Nothing crossed your path, so the road was yours the moment you had stopped. Waiting for the intersection to empty would have cost you the whole window."
+      : "Your path was clear of everyone who had priority.";
+  } else {
+    why = `The ${blocker.name.toLowerCase()} came from the ${SIDE_WORD[blocker.from]} ${INTENT_WORD[blocker.intent]}, ` +
+      `and that path crossed yours. You were waiting for that one — not for the intersection to empty.`;
+  }
+  return { brief, why, blockerId: blocker?.id ?? null, think };
+}
+
+/* ---------------------------------------------------------------------
+   One draw. Returns a scenario with its derived facts attached, or null
+   if the situation is not worth asking about.
+   --------------------------------------------------------------------- */
+export function drawScenario(seed) {
+  const r = rng(seed);
+
+  const control = r() < 0.25 ? "signal" : "stop";
+  const egoFrom = pick(r, SIDES);
+  const egoIntent = pick(r, INTENTS);
+  const egoArrive = range(r, 1.0, 2.6);
+
+  const count = 1 + Math.floor(r() * 3); // 1..3
+  const used = new Set([egoFrom]);
+  const actors = [];
+
+  for (let i = 0; i < count; i++) {
+    // Prefer a fresh approach so actors are not stacked in one lane.
+    const options = SIDES.filter((s) => !used.has(s));
+    const from = options.length && r() < 0.85 ? pick(r, options) : pick(r, SIDES);
+    used.add(from);
+
+    const intent = pick(r, INTENTS);
+    const rolling = control === "signal" && r() < 0.6;
+    const traits = r() < 0.45 ? [pick(r, TRAIT_POOL)] : [];
+
+    actors.push({
+      id: `a${i}`,
+      from,
+      intent,
+      arriveAt: range(r, 0.6, 3.4),
+      stops: !rolling,
+      kind: "car",
+      colorKey: COLOURS[i % COLOURS.length],
+      name: `${["Red", "Green", "Amber"][i % 3]} car`,
+      // An indicator is shown for most turns, and sometimes not at all —
+      // which is the situation the tutorial's "silent" scenario teaches.
+      signal: intent === "straight" ? null : r() < 0.75 ? intent : null,
+      ...(traits.length ? { traits } : {}),
+    });
+  }
+
+  const scn = {
+    id: `gen-${seed}`,
+    generated: true,
+    seed,
+    title: "Generated situation",
+    brief: "",
+    control,
+    duration: ACCEPT.minDuration,
+    ego: { from: egoFrom, intent: egoIntent, arriveAt: egoArrive, stops: true, colorKey: "blue" },
+    actors,
+    lesson: "",
+  };
+
+  const sim = simulate(scn);
+  const think = sim.legalAt - egoArrive;
+
+  // --- rejections, cheapest first ---
+  if (!(sim.legalAt >= egoArrive)) return null;              // window before you arrive: impossible
+  if (think > ACCEPT.maxThink) return null;                  // a wait, not a decision
+  if (sim.legalAt > ACCEPT.maxLegalAt) return null;          // outside any sensible clock
+  if (collidesIfDepartingAt(sim, sim.legalAt)) return null;  // the promised window is not safe
+  // Either the road is yours on arrival, or the wait is long enough to be
+  // a real yield. Nothing in between.
+  if (think > STEP && think <= ACCEPT.ambiguousBelow) return null;
+
+  const { brief, why } = describe(scn, sim);
+  scn.brief = brief;
+  scn.lesson = why;
+  scn.duration = Math.max(ACCEPT.minDuration, Math.ceil(sim.legalAt + ACCEPT.slack));
+
+  // Facts about the draw, for difficulty and for the harness.
+  scn.derived = {
+    legalAt: sim.legalAt,
+    think: Math.round(think * 100) / 100,
+    priors: sim.priors.length,
+    traits: actors.flatMap((a) => a.traits || []),
+  };
+  scn.difficulty = difficultyOf(scn.derived, actors.length);
+  scn.title = TITLE_BY_DIFFICULTY[scn.difficulty];
+  return scn;
+}
+
+const TITLE_BY_DIFFICULTY = {
+  1: "Straightforward",
+  2: "Watch the order",
+  3: "Read the drivers",
+  4: "Nothing obvious about it",
+};
+
+/* Difficulty is described, not decreed: it comes out of what the engine
+   found in the draw. */
+function difficultyOf(d, actorCount) {
+  let score = 0;
+  if (d.priors > 0) score += 1;
+  if (d.priors > 1) score += 1;
+  if (d.traits.length) score += 1;
+  if (actorCount >= 3) score += 1;
+  if (d.think >= 1.5) score += 1;
+  return Math.max(1, Math.min(4, score));
+}
+
+/* Keep drawing until one is worth playing. Bounded so a bad tuning cannot
+   spin forever — it returns null and the caller can say so. */
+export function generateScenario(seed, tries = 60) {
+  for (let i = 0; i < tries; i++) {
+    const scn = drawScenario((seed * 7919 + i * 104729) >>> 0);
+    if (scn) return scn;
+  }
+  return null;
+}
+
+export function generateBatch(seed, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const scn = generateScenario((seed + i) >>> 0);
+    if (scn) out.push(scn);
+  }
+  return out;
+}
+
+/* The daily challenge. The date is the seed, so every device gets the same
+   situation with nothing to coordinate and no network involved. */
+export const DAY_MS = 86400000;
+export const EPOCH = Date.UTC(2026, 0, 1);
+
+export function dayIndex(now = Date.now()) {
+  return Math.floor((now - EPOCH) / DAY_MS);
+}
+
+export function dailyScenario(now = Date.now()) {
+  const d = dayIndex(now);
+  const scn = generateScenario((d + 1) >>> 0);
+  if (scn) {
+    scn.id = `daily-${d}`;
+    scn.day = d;
+  }
+  return scn;
+}

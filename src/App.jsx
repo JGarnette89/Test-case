@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Menu, X, Route, Gauge, Milestone, ChevronRight } from "lucide-react";
+import {
+  Menu, X, Route, Gauge, Milestone, ChevronRight, Lock, Check,
+  CalendarDays, Shuffle,
+} from "lucide-react";
 
 /* DriveDraw is no longer part of this app. Its source is still in
    src/apps/DriveDraw.jsx and still in git history — it is simply not wired
@@ -7,6 +10,8 @@ import { Menu, X, Route, Gauge, Milestone, ChevronRight } from "lucide-react";
 import RightOfWay from "./apps/RightOfWay.jsx";
 import RightOfWayTiming from "./apps/RightOfWayTiming.jsx";
 import { ROUTES } from "./engine/routes.js";
+import { SCENARIOS } from "./engine/scenarios.js";
+import { useProgress, isPassed, passedCount, bestScore, reset, isPersistent } from "./progress.js";
 
 /* Palette and font stacks are copied from the apps rather than imported,
    because the apps keep theirs module-private. Keep them in step by eye. */
@@ -52,6 +57,28 @@ const MODES = [
     accent: C.green,
     Component: RightOfWay,
   },
+  {
+    id: "daily",
+    name: "Today's intersection",
+    kicker: "Daily",
+    blurb:
+      "One generated situation a day, the same one for everyone. The date is the seed, so nothing has to be fetched or coordinated.",
+    Icon: CalendarDays,
+    accent: C.yellow,
+    Component: RightOfWayTiming,
+    props: { source: "daily" },
+  },
+  {
+    id: "endless",
+    name: "Endless",
+    kicker: "Generated",
+    blurb:
+      "Fresh situations, drawn and checked by the engine. Any draw whose window is trivial, impossible or unsafe is thrown away before you see it.",
+    Icon: Shuffle,
+    accent: C.green,
+    Component: RightOfWayTiming,
+    props: { source: "endless" },
+  },
 
   /* Routes are the same renderer with a drive plan handed to it, so adding
      one is an entry in engine/routes.js and nothing here. */
@@ -71,23 +98,29 @@ const MODES = [
    The hash, not state, is the source of truth: a reload keeps you where
    you were and the browser Back button works, with no storage and no
    router dependency.                                                   */
-const readHash = () => window.location.hash.replace(/^#\/?/, "");
-const go = (id) => {
-  window.location.hash = id ? `#/${id}` : "#/";
+/* Two segments: the mode, and an optional thing to start it on —
+   #/timing/liar opens the timing mode already sitting at that situation,
+   which is how you get at one scenario directly. */
+const readHash = () => {
+  const [id = "", param = ""] = window.location.hash.replace(/^#\/?/, "").split("/");
+  return { id, param: param || null };
+};
+const go = (id, param) => {
+  window.location.hash = id ? `#/${id}${param ? `/${param}` : ""}` : "#/";
 };
 
 function useRoute() {
-  const [id, setId] = useState(readHash);
+  const [route, setRoute] = useState(readHash);
   useEffect(() => {
-    const sync = () => setId(readHash());
+    const sync = () => setRoute(readHash());
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   }, []);
-  return id;
+  return route;
 }
 
 export default function App() {
-  const id = useRoute();
+  const { id, param } = useRoute();
   const mode = MODES.find((m) => m.id === id) || null;
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -109,7 +142,7 @@ export default function App() {
     <>
       <Style />
 
-      {!mode && <Launcher />}
+      {!mode && <Home />}
 
       {mode && (
         <>
@@ -125,9 +158,9 @@ export default function App() {
             <div style={st.barName}>{mode.name}</div>
           </div>
 
-          {/* Keyed so switching unmounts the old mode outright — that is what
-              stops the timing game's animation loop when you leave it. */}
-          <Active key={mode.id} {...(mode.props || {})} />
+          {/* Keyed on the parameter too, so picking a different situation from
+              home restarts the mode rather than leaving the old one running. */}
+          <Active key={`${mode.id}/${param || ""}`} {...(mode.props || {})} scenarioId={param} />
         </>
       )}
 
@@ -136,40 +169,141 @@ export default function App() {
   );
 }
 
-/* --- Launcher ------------------------------------------------------- */
-function Launcher() {
+/* --- Home -----------------------------------------------------------
+   Nothing starts until the player chooses it. Landing straight in the
+   middle of a timed situation gives them no chance to read it, which is
+   the one thing this game is about.                                     */
+const partOfDay = () => {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+};
+
+function Section({ title, note, children }) {
+  return (
+    <div style={st.section}>
+      <div style={st.sectionHead}>{title}</div>
+      {note && <div style={st.sectionNote}>{note}</div>}
+      <div style={st.cards}>{children}</div>
+    </div>
+  );
+}
+
+function ModeCard({ mode }) {
+  return (
+    <button className="shell-card" style={st.card} onClick={() => go(mode.id)}>
+      <div style={{ ...st.cardIcon, color: mode.accent }}>
+        <mode.Icon size={22} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ ...st.cardKicker, color: mode.accent }}>{mode.kicker}</div>
+        <div style={st.cardName}>{mode.name}</div>
+        <div style={st.cardBlurb}>{mode.blurb}</div>
+      </div>
+      <ChevronRight size={18} style={{ color: C.dim, flexShrink: 0 }} />
+    </button>
+  );
+}
+
+function Home() {
+  const progress = useProgress();
+  const byKicker = (...ks) => MODES.filter((m) => ks.includes(m.kicker));
+  const daily = byKicker("Daily");
+  const drives = byKicker("Drive");
+  const generated = byKicker("Generated");
+  const singles = byKicker("Real time", "Judgment");
+
+  const cleared = SCENARIOS.filter((s) => isPassed(progress, s.id));
+  const locked = SCENARIOS.length - cleared.length;
+  const done = passedCount(progress);
+
   return (
     <div style={st.launcher}>
       <div style={st.brand}>
         <div style={st.brandTitle}>
           RIGHT OF <span style={{ color: C.yellow }}>WAY</span>
         </div>
-        <div style={st.brandSub}>Ontario road rules, under a clock</div>
+        <div style={st.brandSub}>{partOfDay()}. Ontario road rules, under a clock.</div>
       </div>
 
-      <div style={st.cards}>
-        {MODES.map((a) => (
+      <div style={st.premise}>
+        You are one car at an intersection, and the traffic does not wait for you to
+        be sure. Press <strong style={{ color: C.green }}>GO</strong> the moment the
+        road is legally yours — the sooner you read it, the better you score.
+        Going early is a failure to yield. Going late is undue delay, and it is the
+        more common fault.
+      </div>
+
+      <Section title="Today" note="A new one every day, the same for everyone.">
+        {daily.map((m) => <ModeCard key={m.id} mode={m} />)}
+      </Section>
+
+      <Section title="Keep going" note="Generated situations, as many as you want.">
+        {generated.map((m) => <ModeCard key={m.id} mode={m} />)}
+      </Section>
+
+      <Section title="Take a drive" note="Several intersections in one go. A collision ends the drive.">
+        {drives.map((m) => <ModeCard key={m.id} mode={m} />)}
+      </Section>
+
+      <Section
+        title="Tutorial"
+        note={`The set situations, worked through in order — ${done} of ${SCENARIOS.length} cleared.`}
+      >
+        {singles.map((m) => <ModeCard key={m.id} mode={m} />)}
+      </Section>
+
+      <Section
+        title="Replay a situation"
+        note={
+          cleared.length === 0
+            ? "Nothing yet. Clear a situation in the tutorial and it appears here to replay."
+            : "Situations you have driven cleanly. Go back for a better time."
+        }
+      >
+        {cleared.map((s) => (
           <button
-            key={a.id}
+            key={s.id}
             className="shell-card"
-            style={st.card}
-            onClick={() => go(a.id)}
+            style={st.thinRow}
+            onClick={() => go("timing", s.id)}
           >
-            <div style={{ ...st.cardIcon, color: a.accent }}>
-              <a.Icon size={22} />
+            <Check size={15} style={{ color: C.green, flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+              <div style={st.thinName}>{s.title}</div>
+              <div style={st.thinBrief}>{s.brief}</div>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ ...st.cardKicker, color: a.accent }}>{a.kicker}</div>
-              <div style={st.cardName}>{a.name}</div>
-              <div style={st.cardBlurb}>{a.blurb}</div>
-            </div>
-            <ChevronRight size={18} style={{ color: C.dim, flexShrink: 0 }} />
+            <code style={st.thinId}>best {bestScore(progress, s.id)}</code>
+            <ChevronRight size={16} style={{ color: C.dim, flexShrink: 0 }} />
           </button>
         ))}
-      </div>
+
+        {/* Locked situations are counted, never named. Half of these turn on
+            not knowing what is coming — listing the titles would hand the
+            answer over before the player ever meets them. */}
+        {locked > 0 && (
+          <div style={st.lockedRow}>
+            <Lock size={15} style={{ color: C.dim, flexShrink: 0 }} />
+            <span>
+              {locked} more {locked === 1 ? "situation" : "situations"} to find. They unlock as you clear them.
+            </span>
+          </div>
+        )}
+      </Section>
 
       <div style={st.foot}>
         Runs entirely on this device. Nothing is sent anywhere.
+        {!isPersistent && (
+          <> <strong style={{ color: C.amber }}>Progress will not survive a reload here</strong> — this
+          browser is refusing to store anything.</>
+        )}
+        {done > 0 && (
+          <>
+            {" "}
+            <button className="shell-link" onClick={() => reset()}>Reset progress</button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -257,6 +391,13 @@ function Style() {
         -webkit-tap-highlight-color: transparent;
         transition: background 120ms ease, transform 120ms ease;
       }
+      .shell-link {
+        background: none; border: none; padding: 0; cursor: pointer;
+        color: ${C.dim}; font-family: ${FONT_U}; font-size: inherit;
+        text-decoration: underline; text-underline-offset: 2px;
+      }
+      .shell-link:hover { color: ${C.white}; }
+
       .shell-card:hover { background: rgba(46,50,58,0.85); }
       .shell-card:active { transform: scale(0.99); }
       .shell-card:focus-visible { outline: 2px solid ${C.yellow}; outline-offset: 2px; }
@@ -316,6 +457,32 @@ const st = {
     lineHeight: 1,
   },
   brandSub: { fontSize: 13, color: C.dim, marginTop: 6 },
+  premise: {
+    fontSize: 13.5, lineHeight: 1.6, color: C.text,
+    borderLeft: `3px solid ${C.yellow}`, paddingLeft: 12,
+  },
+  section: { display: "flex", flexDirection: "column", gap: 8 },
+  sectionHead: {
+    fontFamily: FONT_D, fontSize: 15, fontWeight: 700, letterSpacing: 1.4,
+    textTransform: "uppercase", color: C.white,
+  },
+  sectionNote: { fontSize: 12, color: C.dim, lineHeight: 1.45, marginTop: -4, marginBottom: 2 },
+  thinRow: { padding: "11px 13px", borderRadius: 11, gap: 10 },
+  lockedRow: {
+    display: "flex", alignItems: "center", gap: 10, padding: "12px 13px",
+    borderRadius: 11, border: `1px dashed ${C.hair}`, background: "rgba(255,255,255,0.02)",
+    fontSize: 12.5, color: C.dim, lineHeight: 1.45,
+  },
+  thinName: { fontSize: 14, fontWeight: 600 },
+  thinBrief: {
+    fontSize: 12, color: C.dim, marginTop: 2, lineHeight: 1.4,
+    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+  },
+  thinId: {
+    fontSize: 11, color: C.dim, background: "rgba(255,255,255,0.06)",
+    padding: "3px 6px", borderRadius: 6, flexShrink: 0,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  },
   cards: { display: "flex", flexDirection: "column", gap: 10 },
   card: { alignItems: "flex-start" },
   cardIcon: {
