@@ -13,7 +13,7 @@
    a server: the date IS the seed.
    ===================================================================== */
 import {
-  simulate, poseAt, conflicts, forwardClaim, CROSS, STEP, OPPOSITE, RIGHT_OF,
+  simulate, poseAt, conflicts, forwardClaim, spanOf, STEP, OPPOSITE, RIGHT_OF,
 } from "./index.js";
 import { EARLY_TOLERANCE } from "./score.js";
 
@@ -63,7 +63,7 @@ export const ACCEPT = {
    --------------------------------------------------------------------- */
 function collidesIfDepartingAt(sim, T) {
   const ego = { ...sim.ego, departAt: T };
-  for (let t = T; t <= T + CROSS[ego.intent] + 0.3; t += STEP) {
+  for (let t = T; t <= T + spanOf(ego) + 0.3; t += STEP) {
     const mine = poseAt(ego, t);
     if (mine.gone) break;
     for (const a of sim.actors) {
@@ -81,7 +81,7 @@ function bindingActor(sim) {
   const T = sim.legalAt - STEP;
   if (T < sim.ego.arriveAt) return null;
   const ego = { ...sim.ego, departAt: T };
-  for (let t = T; t <= T + CROSS[ego.intent] + 0.3; t += STEP) {
+  for (let t = T; t <= T + spanOf(ego) + 0.3; t += STEP) {
     const mine = poseAt(ego, t);
     if (mine.gone) break;
     for (const a of sim.priors) {

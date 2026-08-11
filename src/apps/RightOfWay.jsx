@@ -590,7 +590,7 @@ export default function RightOfWay() {
           {streak > 0 && (
             <div style={s.streak}><Flame size={14} />{streak}</div>
           )}
-          <button className="btn" style={{ padding: 10, minHeight: 40 }} onClick={() => setHelpOpen(true)}
+          <button className="btn" style={{ padding: 10, minWidth: 44, minHeight: 44 }} onClick={() => setHelpOpen(true)}
             aria-label="How to play"><HelpCircle size={18} /></button>
         </div>
       </header>

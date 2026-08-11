@@ -145,10 +145,11 @@ node tools/verify-windows.mjs      every window; each trait removed on its own
 node tools/verify-route.mjs        rotation, continuity, run mechanics
 node tools/verify-generator.mjs    determinism, safety, spread, rejection rate
 node tools/verify-roundabout.mjs   direction, geometry, the exit tell
+node tools/verify-playthrough.mjs  every scenario at every press time
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All five must exit 0. Three things they check are worth understanding:
+All six must exit 0. Four things they check are worth understanding:
 
 - **A path trait that moves no window teaches nothing.** Compare a
   trait-carrying vehicle against a well-driven control. Known-inert traits are
@@ -160,6 +161,12 @@ All five must exit 0. Three things they check are worth understanding:
   asserted: it must appear before the player has to decide, and a controlled
   comparison — same scenario, same arrival times, one thing changed — has to
   show it is worth real seconds. A tell that fails either is decoration.
+- **The run loop is mirrored, because it cannot be driven headlessly.** It is
+  `requestAnimationFrame`-driven, so no automated check can exercise the real
+  component. `verify-playthrough.mjs` replays the same sequence of engine calls
+  across every scenario at every press time — catching runs that never
+  terminate, throw, miss a collision, or disagree with the scorer. It cannot
+  catch a React mistake, so the component still needs eyes on it.
 
 New engine logic gets an independent re-derivation, not a self-check — that is
 why the scoring curve is reimplemented from prose in Python rather than ported

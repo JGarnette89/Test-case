@@ -7,7 +7,7 @@ import { C, FONT_D, FONT_U, shade } from "../theme.js";
 import { SCENARIOS } from "../engine/scenarios.js";
 import {
   M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
-  CROSS, STEP, TIE, lerp, quad, angleTo,
+  CROSS, STEP, TIE, lerp, quad, angleTo, spanOf,
   STOPS, EXITS, crossingOf, RA_OUTER, RA_ISLAND,
   TRAITS, traitTells, poseAt, signalShowing, forwardClaim, conflicts,
   outranks, earliestClear, schedule, simulate,
@@ -325,7 +325,10 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
             return;
           }
         }
-        if (mine.gone || el > P + CROSS[sim.ego.intent] + 0.35) {
+        // spanOf, not CROSS: a roundabout lap is several times longer than
+        // any crossing, and cutting the run short would stop watching for
+        // collisions while the ego is still going round.
+        if (mine.gone || el > P + spanOf(sim.ego) + 0.35) {
           finish(P);
           return;
         }
@@ -417,7 +420,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
               <Gauge size={13} />{session.average} avg
             </div>
           )}
-          <button className="btn" style={{ padding: 11, minHeight: 42 }} onClick={() => setHelpOpen(true)}
+          <button className="btn" style={{ padding: 11, minWidth: 44, minHeight: 44 }} onClick={() => setHelpOpen(true)}
             aria-label="How it works"><HelpCircle size={18} /></button>
         </div>
       </header>
