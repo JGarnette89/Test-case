@@ -29,6 +29,39 @@ const SET = 26;
 
 const CAR_L = M(4.5), CAR_W = M(1.8);
 const PED_R = M(0.5);
+
+/* --- roundabout ------------------------------------------------------
+   Ontario drives on the right, so traffic circulates counterclockwise and
+   a vehicle entering yields to traffic already going round — which reaches
+   it from the left. Entering never has priority over circulating, whoever
+   arrived first. That last part is the whole difference from a four-way
+   stop, and it is a rule, not an emergent property of the footprints.
+
+   Single lane only. A multi-lane roundabout adds which-lane-for-which-exit,
+   and that is a different lesson.
+
+   On screen y grows downwards, so counterclockwise motion is a DECREASING
+   angle. Get that backwards and the traffic goes round the wrong way while
+   still looking plausible.                                                */
+const RA_OUTER = M(12);          // inscribed circle: 24 m across
+const RA_ISLAND = M(7);          // central island
+const RA_LANE = (RA_OUTER + RA_ISLAND) / 2;   // circulating lane centreline
+const RA_SPEED = M(7);           // ~25 km/h, what a single-lane roundabout holds you to
+const RA_ENTRY_ANGLE = { E: 0, S: 90, W: 180, N: 270 };
+// Exits, counted the way a driver counts them: first exit is a right turn.
+const RA_QUARTERS = { right: 1, straight: 2, left: 3 };
+const RA_SET = M(2);      // give-way line, set back from the inscribed circle
+const RA_BLEND = 18;      // degrees of arc traded for a curve in and out
+
+/* The give-way line. Not STOPS: that one is set for the cross layout and
+   sits 4.9 m from the centre, which is inside a 24 m roundabout — a car
+   would be parked on the island. Same shape, measured from the circle. */
+const RA_STOPS = {
+  S: { x: CX + OFF, y: CY + RA_OUTER + RA_SET, rot: -90 },
+  N: { x: CX - OFF, y: CY - RA_OUTER - RA_SET, rot: 90 },
+  W: { x: CX - RA_OUTER - RA_SET, y: CY + OFF, rot: 0 },
+  E: { x: CX + RA_OUTER + RA_SET, y: CY - OFF, rot: 180 },
+};
 // Yield envelope. Padding is mostly lengthwise: you need clear road ahead of
 // and behind a car crossing your path, but one passing in the opposite lane
 // at 3.6 m of lateral separation is not in your way at all.
@@ -103,8 +136,122 @@ export function crossingOf(side) {
 // Scenarios written before crossings were relative assumed the north leg.
 const crossingFor = (p) => crossingOf(p.from ?? "N");
 
+/* --- roundabout path -------------------------------------------------
+   Give-way line, round the island, out the chosen exit — sampled as a
+   polyline and walked by arc length rather than by a 0..1 parameter.
+   Uniform speed matters: forwardClaim measures how much road a vehicle is
+   claiming from how fast it is actually moving, so a path that secretly
+   speeds up through the arc would claim road it has no business claiming.
+
+   Cached per participant. earliestClear walks this thousands of times per
+   scenario and the shape never changes once the traits are applied.       */
+const raCache = new WeakMap();
+
+function raPath(p) {
+  const hit = raCache.get(p);
+  if (hit) return hit;
+
+  const enter = RA_ENTRY_ANGLE[p.from];
+  const quarters = RA_QUARTERS[p.intent] ?? 2;
+  const rad = (deg) => (deg * Math.PI) / 180;
+  const onCircle = (deg, r = RA_LANE) => ({
+    x: CX + Math.cos(rad(deg)) * r,
+    y: CY + Math.sin(rad(deg)) * r,
+  });
+
+  const give = RA_STOPS[p.from];
+  const bias = p.stopBias || 0;
+  const gaRad = rad(give.rot);
+  const gate = {
+    x: give.x + Math.cos(gaRad) * bias,
+    y: give.y + Math.sin(gaRad) * bias,
+  };
+
+  const exitAngle = enter - quarters * 90;
+  const joinAt = enter - RA_BLEND;        // where you actually meet the lane
+  const leaveAt = exitAngle + RA_BLEND;   // where you start peeling off
+
+  /* Curve in and out rather than turning a corner at the kerb. A corner
+     would make the measured speed dip across the join, and forwardClaim
+     reads speed to decide how much road a car is claiming — so a fake
+     slowdown at the mouth would quietly shrink its claim. */
+  const pts = [];
+  const sampleQuad = (p0, p1, p2, n) => {
+    for (let i = 0; i <= n; i++) pts.push(quad(p0, p1, p2, i / n));
+  };
+
+  sampleQuad(gate, onCircle(enter, RA_OUTER), onCircle(joinAt), 10);
+
+  // Round the island, counterclockwise: decreasing angle.
+  const sweep = joinAt - leaveAt;
+  const steps = Math.max(6, Math.round(sweep / 4));
+  for (let i = 1; i <= steps; i++) pts.push(onCircle(joinAt - (sweep * i) / steps));
+
+  // And out, past the frame so the car properly leaves.
+  sampleQuad(onCircle(leaveAt), onCircle(exitAngle, RA_OUTER), onCircle(exitAngle, RA_OUTER + M(28)), 10);
+
+  // Cumulative arc length, for constant-speed lookup.
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  }
+  const path = { pts, cum, length: cum[cum.length - 1], gate, rot: give.rot };
+  raCache.set(p, path);
+  return path;
+}
+
+function raAt(path, dist) {
+  const { pts, cum } = path;
+  if (dist <= 0) return pts[0];
+  if (dist >= path.length) return pts[pts.length - 1];
+  let i = 1;
+  while (i < cum.length && cum[i] < dist) i++;
+  const f = (dist - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
+  return {
+    x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * f,
+    y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * f,
+  };
+}
+
+/* How long this participant takes to clear, once moving. The cross layout
+   has fixed times per intent; a roundabout is however long its path is. */
+export function spanOf(p) {
+  if (p.kind === "ped") return CROSS.walk;
+  if (p.layout === "roundabout") return raPath(p).length / RA_SPEED;
+  return CROSS[p.intent];
+}
+
+function roundaboutPose(p, t) {
+  const path = raPath(p);
+  const spawn = {
+    x: path.gate.x - Math.cos((path.rot * Math.PI) / 180) * 490,
+    y: path.gate.y - Math.sin((path.rot * Math.PI) / 180) * 490,
+  };
+
+  if (t < p.arriveAt) {
+    const k = Math.max(0, Math.min(1, (t - (p.arriveAt - 2.8)) / 2.8));
+    const e = k * k * (3 - 2 * k);
+    return {
+      x: lerp(spawn.x, path.gate.x, e), y: lerp(spawn.y, path.gate.y, e),
+      rot: path.rot, approaching: true,
+    };
+  }
+  if (t < p.departAt) return { x: path.gate.x, y: path.gate.y, rot: path.rot, waiting: true };
+
+  const d = (t - p.departAt) * RA_SPEED;
+  const pos = raAt(path, d);
+  const nxt = raAt(path, d + 6);
+  return {
+    ...pos,
+    rot: d < 2 ? path.rot : angleTo(pos, nxt),
+    gone: d >= path.length,
+    moving: true,
+  };
+}
+
 /* Position and heading of a road user at time t, before any driving traits. */
 function basePose(p, t) {
+  if (p.layout === "roundabout" && p.kind !== "ped") return roundaboutPose(p, t);
   if (p.kind === "ped") {
     const cr = crossingFor(p);
     const start = p.reverse ? cr.b : cr.a;
@@ -281,6 +428,17 @@ function conflicts(pa, poseA, pb, poseB, padL, padW, claimB, mode) {
 /* ---------------- rules engine ---------------- */
 function outranks(a, b) {
   if (a.priority != null || b.priority != null) return (a.priority ?? 0) < (b.priority ?? 0);
+
+  /* At a roundabout there is no right-hand rule and no first-come order:
+     whoever is already going round has priority over whoever is waiting to
+     get in. Two vehicles both still at their give-way lines fall back to
+     arrival order, which is the only thing left to separate them. */
+  if (a.layout === "roundabout" || b.layout === "roundabout") {
+    const aIn = a.departAt != null && a.departAt <= b.arriveAt;
+    const bIn = b.departAt != null && b.departAt <= a.arriveAt;
+    if (aIn !== bIn) return aIn;
+  }
+
   const dt = a.arriveAt - b.arriveAt;
   if (dt < -TIE) return true;
   if (dt > TIE) return false;
@@ -295,7 +453,7 @@ function outranks(a, b) {
 
 // Earliest departure with no yield-envelope breach against anyone already scheduled.
 function earliestClear(p, scheduled, from) {
-  const span = CROSS[p.kind === "ped" ? "walk" : p.intent];
+  const span = spanOf(p);
   for (let T = from; T < from + 14; T += STEP) {
     const trial = { ...p, departAt: T };
     let ok = true;
@@ -338,8 +496,11 @@ function schedule(participants) {
    The one call a renderer needs: hand it a scenario, get back the scheduled
    actors and the moment the road is legally yours. */
 export function simulate(scn) {
-  const ego = { ...scn.ego, id: "ego", kind: "car", name: "You", signal: scn.ego.signal ?? null };
-  const actors = scn.actors.map((a) => ({ ...a }));
+  // Layout is stamped onto every participant because motion is decided per
+  // road user, not per frame — basePose only ever sees the participant.
+  const layout = scn.layout ?? "cross";
+  const ego = { ...scn.ego, id: "ego", kind: "car", name: "You", signal: scn.ego.signal ?? null, layout };
+  const actors = scn.actors.map((a) => ({ ...a, layout }));
   schedule([ego, ...actors]);
   // Window opens the moment ego's path is clear of everyone who outranks it.
   const priors = actors.filter((a) => outranks(a, ego));
@@ -351,6 +512,7 @@ export {
   SCALE, M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
   PAD_LONG, PAD_LAT, LOOKAHEAD, MAX_CLAIM, TIE, CROSS, STEP,
   PROPER_SIGNAL_LEAD, LATE_SIGNAL_LEAD,
+  RA_OUTER, RA_ISLAND, RA_LANE, RA_SPEED, RA_ENTRY_ANGLE, RA_QUARTERS, raPath,
   STOPS, EXITS, RIGHT_OF, OPPOSITE, lerp, quad, angleTo,
   PED_SETBACK, PED_OVERHANG,
   basePose, TRAITS, traitTells, poseAt, signalShowing,

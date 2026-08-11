@@ -8,7 +8,7 @@ import { SCENARIOS } from "../engine/scenarios.js";
 import {
   M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
   CROSS, STEP, TIE, lerp, quad, angleTo,
-  STOPS, EXITS, crossingOf,
+  STOPS, EXITS, crossingOf, RA_OUTER, RA_ISLAND,
   TRAITS, traitTells, poseAt, signalShowing, forwardClaim, conflicts,
   outranks, earliestClear, schedule, simulate,
 } from "../engine/index.js";
@@ -47,6 +47,42 @@ function Crossing({ side }) {
     );
   }
   return <>{bars}</>;
+}
+
+/* Drawn from the same radii the engine drives on, so what is painted and
+   what the cars do cannot drift apart. Give-way markings sit on the entry
+   half of each approach only — the exit half is not yours to yield on. */
+function Roundabout() {
+  const Edge = (p) => <line {...p} stroke={C.line} strokeWidth={M(0.15)} />;
+  const set = RA_OUTER + M(2);
+  const give = [
+    { x1: CX, y1: CY + set, x2: CX + HALF, y2: CY + set },
+    { x1: CX - HALF, y1: CY - set, x2: CX, y2: CY - set },
+    { x1: CX - set, y1: CY, x2: CX - set, y2: CY + HALF },
+    { x1: CX + set, y1: CY - HALF, x2: CX + set, y2: CY },
+  ];
+  return (
+    <>
+      <rect x={CX - HALF} y={0} width={HALF * 2} height={H} fill={C.asphalt} />
+      <rect x={0} y={CY - HALF} width={W} height={HALF * 2} fill={C.asphalt} />
+
+      <Edge x1={CX - HALF} y1={0} x2={CX - HALF} y2={H} />
+      <Edge x1={CX + HALF} y1={0} x2={CX + HALF} y2={H} />
+      <Edge x1={0} y1={CY - HALF} x2={W} y2={CY - HALF} />
+      <Edge x1={0} y1={CY + HALF} x2={W} y2={CY + HALF} />
+
+      {/* The circulating carriageway, painted over the approach stubs. */}
+      <circle cx={CX} cy={CY} r={RA_OUTER} fill={C.asphalt} stroke={C.line} strokeWidth={M(0.15)} />
+      {/* Central island, kerbed. */}
+      <circle cx={CX} cy={CY} r={RA_ISLAND} fill={C.grass} stroke={C.line} strokeWidth={M(0.3)} />
+      <circle cx={CX} cy={CY} r={RA_ISLAND - M(0.9)} fill={shade(C.grass, 0.06)} />
+
+      {give.map((g, i) => (
+        <line key={i} {...g} stroke={C.line} strokeWidth={M(0.4)}
+          strokeDasharray={`${M(0.6)} ${M(0.5)}`} />
+      ))}
+    </>
+  );
 }
 
 function Road({ control, crossings = ["N"] }) {
@@ -412,10 +448,14 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
               transform={`rotate(${g.rot} ${g.x} ${g.y})`}
               fill={g.light ? shade(C.grass, 0.08) : C.grassDark} opacity={g.o} />
           ))}
-          <Road
-            control={scn.control}
-            crossings={[...new Set(sim.actors.filter((a) => a.kind === "ped").map((a) => a.from ?? "N"))]}
-          />
+          {scn.layout === "roundabout" ? (
+            <Roundabout />
+          ) : (
+            <Road
+              control={scn.control}
+              crossings={[...new Set(sim.actors.filter((a) => a.kind === "ped").map((a) => a.from ?? "N"))]}
+            />
+          )}
 
           {sim.actors.map((a) => {
             const pose = poseAt(a, showT);

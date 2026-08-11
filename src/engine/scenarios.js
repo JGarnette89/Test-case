@@ -131,5 +131,18 @@ const SCENARIOS = [
     ],
     lesson: "No indicator until it was already turning, and then it swung wide across the next lane. By the time that signal appeared it told you nothing you could still act on. Where there is no information to read, the answer is always to wait for the wheels.",
   },
+  {
+    id: "circle",
+    title: "Already going round",
+    brief: "Roundabout. A car is in the circle, coming from your left.",
+    control: "yield",
+    layout: "roundabout",
+    duration: 16,
+    ego: { from: "S", intent: "straight", arriveAt: 1.4, stops: true, color: C.blue },
+    actors: [
+      S({ id: "w", from: "W", intent: "left", arriveAt: 0.5, color: C.red, name: "Red car" }),
+    ],
+    lesson: "A roundabout has no right-hand rule and no queue. Whoever is already going round has it, and they reach you from the left — so that is the only direction that decides when you go. The red car entered before you and is taking the third exit, which keeps it in the circle right across your entry. Once it has passed you, the road is yours, and you do not wait for it to leave the roundabout entirely.",
+  },
 ];
 export { SCENARIOS, S };
