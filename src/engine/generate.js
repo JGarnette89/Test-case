@@ -101,7 +101,9 @@ const INTENT_WORD = { straight: "straight through", left: "turning left", right:
 function describe(scn, sim) {
   const n = scn.actors.length;
   const control = scn.control === "signal" ? "Green light" : "Four-way stop";
-  const brief = `${control}. ${n === 1 ? "One other road user" : `${n} other road users`}, and you are ${INTENT_WORD[scn.ego.intent]}.`;
+  /* Deliberately silent about what the ego is doing: the player reads that
+     off their own indicator, the same way they read everyone else's. */
+  const brief = `${control}. ${n === 1 ? "One other road user." : `${n} other road users.`}`;
 
   const blocker = bindingActor(sim);
   const think = Math.round((sim.legalAt - scn.ego.arriveAt) * 100) / 100;

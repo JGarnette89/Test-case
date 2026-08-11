@@ -60,7 +60,7 @@ const SCENARIOS = [
   {
     id: "gap",
     title: "Finding the gap",
-    brief: "Green light, turning left. Oncoming traffic is not stopping.",
+    brief: "Green light. Oncoming traffic is not stopping.",
     control: "signal",
     duration: 15,
     ego: { from: "S", intent: "left", arriveAt: 1.0, stops: true, color: C.blue },

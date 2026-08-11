@@ -151,9 +151,20 @@ function Vehicle({ p, pose, isEgo, blink, tNow }) {
     <rect x={wx - M(0.35)} y={wy - M(0.13)} width={M(0.7)} height={M(0.26)} rx={M(0.1)}
       fill="#1D2026" stroke={o} strokeWidth={1.2} />
   );
+  /* The player's own intent is shown on their car rather than written over
+     the board. It is read the same way every other car's intent is read,
+     which is the skill the game is about — and it stops the brief handing
+     over half the situation in words.
+
+     Not gated on signalShowing: a real indicator comes on a couple of
+     seconds before the manoeuvre, but the player has to know the task
+     before they decide, not after. So the ego indicates from the start. */
+  const egoTurn = isEgo && p.intent !== "straight" ? p.intent : null;
+  const sig = egoTurn ?? p.signal;
   // Indicators sit on the correct side: front-left is -y in the car's frame.
-  const side = p.signal === "left" ? -1 : 1;
-  const showSig = p.signal && blink && !pose.gone && signalShowing(p, tNow);
+  const side = sig === "left" ? -1 : 1;
+  const showSig = sig && blink && !pose.gone && (egoTurn ? true : signalShowing(p, tNow));
+  const glow = egoTurn ? M(0.78) : M(0.55);
   return (
     <g transform={`translate(${pose.x},${pose.y})`}>
       {isEgo && <circle r={M(2.9)} fill={C.blue} opacity={0.15} />}
@@ -176,7 +187,7 @@ function Vehicle({ p, pose, isEgo, blink, tNow }) {
         )}
         {showSig && (
           <g>
-            <circle cx={L / 2 - M(0.22)} cy={side * (Wd / 2 - M(0.24))} r={M(0.55)} fill={C.signal} opacity={0.4} />
+            <circle cx={L / 2 - M(0.22)} cy={side * (Wd / 2 - M(0.24))} r={glow} fill={C.signal} opacity={0.4} />
             <circle cx={L / 2 - M(0.22)} cy={side * (Wd / 2 - M(0.24))} r={M(0.24)} fill={C.signal} stroke={o} strokeWidth={1} />
             <circle cx={-L / 2 + M(0.22)} cy={side * (Wd / 2 - M(0.24))} r={M(0.24)} fill={C.signal} stroke={o} strokeWidth={1} />
           </g>
@@ -485,8 +496,12 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
       {phase === "ready" && (
         <>
           <div style={st.hint}>
-            You are the outlined car. Press <strong style={{ color: C.green }}>GO</strong> as soon as your
-            path is clear — you are waiting for the cars that cross you, not for the intersection to empty.
+            You are the outlined car
+            {sim.ego.intent !== "straight" && (
+              <>, and <strong style={{ color: C.signal }}>your indicator</strong> shows where you are going</>
+            )}
+            . Press <strong style={{ color: C.green }}>GO</strong> as soon as your path is clear — you are
+            waiting for the cars that cross you, not for the intersection to empty.
           </div>
           <button className="btn primary" style={{ width: "100%" }} onClick={begin}><Play size={17} />Start</button>
         </>
@@ -561,6 +576,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
               <button className="btn" style={{ padding: 9, minHeight: 38 }} onClick={() => setHelpOpen(false)}><X size={16} /></button>
             </div>
             <p style={st.p}>You are the outlined car. Press GO when your path is clear.</p>
+            <p style={st.p}><strong style={{ color: C.signal }}>Your own indicator tells you where you are going.</strong> No indicator means straight through. You read your task off the car exactly the way you read everyone else's.</p>
             <p style={st.p}><strong style={{ color: C.yellow }}>Clear means your path, not the whole intersection.</strong> A car crossing in front of you blocks you. A car passing on its own side, going the other way, does not.</p>
             <p style={st.p}>That makes their intent the thing to read. Indicators tell you where a car is going — when the driver uses them, and when they mean it. Confirm against the wheels before you commit.</p>
             <p style={st.p}>Some drivers give themselves away — drifting inside the lane, rolling through the stop, sitting there when it is plainly their turn. Those are the ones to leave room for.</p>
