@@ -29,7 +29,20 @@ rules wins over anything you infer.** If a change depends on a traffic-law
 assumption, say so explicitly and ask rather than guessing. Getting a rule wrong
 does not merely lose a user — it teaches someone something false.
 
-Rules follow Ontario. Do not silently generalise to other jurisdictions.
+**The audience is North American, and the rules should read that way.** Where
+Ontario practice and general North American practice differ in a small way, and
+the general reading makes for better gameplay, take the general one. Nothing
+here should be so provincial that a driver in Michigan finds it wrong.
+
+That is a licence to generalise, not a licence to be vague. A rule that is
+actually different somewhere — not merely worded differently — still has to be
+picked deliberately, and said out loud when it is. Teaching something false is
+still the worst outcome available.
+
+Jurisdiction-specific rules are not lost, they are deferred: the plan is an
+international mode later, flagged by country, where the differences become the
+point rather than a trap. Anything genuinely local should be written so it can
+move into that mode rather than being baked into the default.
 
 ### Rules already established — do not regress these
 
@@ -51,6 +64,18 @@ Rules follow Ontario. Do not silently generalise to other jurisdictions.
   still be readable — `LATE_SIGNAL_LEAD` is 0.8s, not zero. The lesson is "do
   not commit on an absent indicator", never a gotcha. An indicator that appears
   after the wheels have turned punishes attentiveness instead of assumption.
+- **Signalling out of a roundabout is best practice, not common practice.** So
+  the indicator can never be the thing a roundabout scenario asks you to read.
+  The line carries it instead: a driver about to leave drifts to the outside of
+  the circulating lane, one staying in holds the inner line. That is geometry,
+  so the engine derives what it costs — it is not a script that punishes you.
+
+  Two things this has to keep satisfying, both checked in
+  `verify-roundabout.mjs`. The drift has to be visible **before the player must
+  decide**, or it is a post-mortem rather than a tell. And it has to be worth
+  reading: the payoff is at the exit *before* yours, because a car peeling off
+  at your own leg crosses your give-way line on the way out and holds you up
+  anyway. Currently worth 3.25s.
 
 ## Architecture
 
@@ -119,10 +144,11 @@ generator must be re-verified numerically before it is considered done.**
 node tools/verify-windows.mjs      every window; each trait removed on its own
 node tools/verify-route.mjs        rotation, continuity, run mechanics
 node tools/verify-generator.mjs    determinism, safety, spread, rejection rate
+node tools/verify-roundabout.mjs   direction, geometry, the exit tell
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All four must exit 0. Two things they check are worth understanding:
+All five must exit 0. Three things they check are worth understanding:
 
 - **A path trait that moves no window teaches nothing.** Compare a
   trait-carrying vehicle against a well-driven control. Known-inert traits are
@@ -130,6 +156,10 @@ All four must exit 0. Two things they check are worth understanding:
 - **The generator audits the engine.** Every derived window is replayed to prove
   that departing on it does not collide. This is a harder test of the conflict
   rules than the fixed scenarios can give.
+- **A tell has to be readable and worth reading.** Both are measured, not
+  asserted: it must appear before the player has to decide, and a controlled
+  comparison — same scenario, same arrival times, one thing changed — has to
+  show it is worth real seconds. A tell that fails either is decoration.
 
 New engine logic gets an independent re-derivation, not a self-check — that is
 why the scoring curve is reimplemented from prose in Python rather than ported
@@ -170,17 +200,17 @@ claimed to demand a wait while going immediately still scored full marks.
   fixes generation and `walker`'s un-rotatability in one go. Do that first.
   Cyclists are not agreed — they would need a ruling on how a bicycle claims
   road compared with a car.
-- **Roundabouts are the next layout — agreed.** Yield on entry to traffic
-  already circulating. This is a genuinely different geometry and the largest
-  engine change outstanding; it is not a variation on the 4-way. T-junctions,
-  uncontrolled intersections and pedestrian crossovers are wanted eventually but
-  are behind it.
-- **The daily should escalate through the week — agreed.** Easier on Monday,
-  hardest by the weekend, resetting weekly. Implement as a difficulty target per
-  weekday that the generator draws against; the date already seeds it, so this
-  must not depend on player history. Everyone getting the same intersection on
-  the same day is the property a leaderboard would later need — do not trade it
-  away for a personalised ramp.
+- **Roundabouts are in, but only just.** Single lane, two hand-written
+  situations, and the generator does not produce them yet — that needs its own
+  acceptance rules for exit choice and how many cars are circulating. They also
+  have no pedestrian crossings, which on a real roundabout sit set back from the
+  entry and are therefore not the crossings already built.
+- **An international mode is planned.** Flagged by country, where local rule
+  differences are the point rather than a trap — the thing traffic enthusiasts
+  would come for. Until then the default is North American, and anything
+  genuinely local should be written so it can move into that mode later.
+- T-junctions, uncontrolled intersections and pedestrian crossovers are all
+  wanted, behind the above.
 - **`wideTurn` is inert in `lateflag`.** Not broken: it bends the path by 1.1 m,
   but the net effect on that window is 0.01s, under the resolution floor,
   because the wide line never reaches the lane the ego uses. It needs a geometry

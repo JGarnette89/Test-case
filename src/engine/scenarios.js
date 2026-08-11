@@ -144,5 +144,24 @@ const SCENARIOS = [
     ],
     lesson: "A roundabout has no right-hand rule and no queue. Whoever is already going round has it, and they reach you from the left — so that is the only direction that decides when you go. The red car entered before you and is taking the third exit, which keeps it in the circle right across your entry. Once it has passed you, the road is yours, and you do not wait for it to leave the roundabout entirely.",
   },
+  {
+    id: "circle-leaving",
+    title: "It never indicated",
+    brief: "Roundabout. A car is coming round from your left, showing nothing.",
+    control: "yield",
+    layout: "roundabout",
+    duration: 16,
+    ego: { from: "S", intent: "straight", arriveAt: 3.2, stops: true, color: C.blue },
+    actors: [
+      /* The exit before yours is the west leg. Taking it, this car is gone
+         long before it reaches you; staying in, it comes all the way round
+         and across your entry. It drifts out for that west exit while you
+         are still approaching, so the tell lands before you have to decide
+         — which is the only thing that makes it a tell rather than a
+         post-mortem. */
+      S({ id: "n", from: "N", intent: "right", arriveAt: 0.6, color: C.red, name: "Red car", signal: null }),
+    ],
+    lesson: "It never indicated, and most drivers never do. What it did was drift to the outside of the circulating lane on the approach to the west exit, and a car moving out is a car leaving. It was gone one exit before yours, so nothing ever crossed you and your window opened the moment you stopped. Had it held the inner line it was coming all the way round to your leg and you would have sat there for seconds. Read the line, not the lamp: wheels commit, indicators only promise.",
+  },
 ];
 export { SCENARIOS, S };

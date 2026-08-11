@@ -53,6 +53,19 @@ const RA_QUARTERS = { right: 1, straight: 2, left: 3 };
 const RA_SET = M(2);      // give-way line, set back from the inscribed circle
 const RA_BLEND = 18;      // degrees of arc traded for a curve in and out
 
+/* Signalling out of a roundabout is best practice and not common practice,
+   so the indicator cannot be the thing the game asks you to read. The line
+   the car takes is: a driver about to leave drifts to the outside of the
+   circulating lane before the exit, and one staying in holds the inner
+   line. That is a real tell, it is geometry rather than a script, and the
+   conflict engine works out what it costs on its own.
+
+   Kept small on purpose. It has to be readable without being a caption. */
+const RA_EXIT_DRIFT = M(0.9);   // how far out they ease before leaving
+const RA_EXIT_TELL = 46;        // degrees before the exit that the drift starts
+// You indicate after the exit before yours, not half a lap early.
+const RA_SIGNAL_LEAD = 1.2;
+
 /* The give-way line. Not STOPS: that one is set for the cross layout and
    sits 4.9 m from the centre, which is inside a 24 m roundabout — a car
    would be parked on the island. Same shape, measured from the circle. */
@@ -62,6 +75,20 @@ const RA_STOPS = {
   W: { x: CX - RA_OUTER - RA_SET, y: CY + OFF, rot: 0 },
   E: { x: CX + RA_OUTER + RA_SET, y: CY - OFF, rot: 180 },
 };
+
+/* Leaving happens in the outbound lane — the mirror of the entry lane on
+   the same leg. Running out along the leg centreline instead would put a
+   departing car across the mouth of the entry beside it, and the engine
+   would then quite correctly refuse to let anyone in behind it. */
+const RA_EXITS = {
+  S: { x: CX - OFF, y: CY + RA_OUTER + RA_SET, out: { x: CX - OFF, y: H + 80 } },
+  N: { x: CX + OFF, y: CY - RA_OUTER - RA_SET, out: { x: CX + OFF, y: -80 } },
+  W: { x: CX - RA_OUTER - RA_SET, y: CY - OFF, out: { x: -80, y: CY - OFF } },
+  E: { x: CX + RA_OUTER + RA_SET, y: CY + OFF, out: { x: W + 80, y: CY + OFF } },
+};
+
+const RA_SIDE_AT = { 0: "E", 90: "S", 180: "W", 270: "N" };
+const sideOfAngle = (deg) => RA_SIDE_AT[((deg % 360) + 360) % 360];
 // Yield envelope. Padding is mostly lengthwise: you need clear road ahead of
 // and behind a car crossing your path, but one passing in the opposite lane
 // at 3.6 m of lateral separation is not in your way at all.
@@ -182,20 +209,38 @@ function raPath(p) {
 
   sampleQuad(gate, onCircle(enter, RA_OUTER), onCircle(joinAt), 10);
 
-  // Round the island, counterclockwise: decreasing angle.
+  /* Round the island, counterclockwise: decreasing angle. The radius eases
+     outward over the last stretch — that drift is the tell that this car is
+     about to leave, and it is what a driver reads when no indicator comes. */
   const sweep = joinAt - leaveAt;
-  const steps = Math.max(6, Math.round(sweep / 4));
-  for (let i = 1; i <= steps; i++) pts.push(onCircle(joinAt - (sweep * i) / steps));
+  const steps = Math.max(6, Math.round(sweep / 3));
+  const tell = Math.min(RA_EXIT_TELL, sweep);
+  for (let i = 1; i <= steps; i++) {
+    const ang = joinAt - (sweep * i) / steps;
+    const toGo = ang - leaveAt;
+    const f = toGo < tell ? 1 - toGo / tell : 0;
+    const eased = f * f * (3 - 2 * f);
+    pts.push(onCircle(ang, RA_LANE + RA_EXIT_DRIFT * eased));
+  }
 
-  // And out, past the frame so the car properly leaves.
-  sampleQuad(onCircle(leaveAt), onCircle(exitAngle, RA_OUTER), onCircle(exitAngle, RA_OUTER + M(28)), 10);
+  /* And out, in the outbound lane, past the frame so the car properly
+     leaves. Starts at the drifted radius the arc actually ended on — start
+     it back on the centreline and there is a kink there, which shows up as
+     a speed dip and therefore as a false claim. */
+  const peelIndex = pts.length;
+  const leg = RA_EXITS[sideOfAngle(exitAngle)];
+  sampleQuad(onCircle(leaveAt, RA_LANE + RA_EXIT_DRIFT), onCircle(exitAngle, RA_OUTER), leg, 10);
+  pts.push(leg.out);
 
   // Cumulative arc length, for constant-speed lookup.
   const cum = [0];
   for (let i = 1; i < pts.length; i++) {
     cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
   }
-  const path = { pts, cum, length: cum[cum.length - 1], gate, rot: give.rot };
+  // Where the car actually starts to leave, so an indicator can be timed
+  // against the exit rather than against entering the roundabout.
+  const peelDist = cum[peelIndex];
+  const path = { pts, cum, length: cum[cum.length - 1], gate, rot: give.rot, peelDist };
   raCache.set(p, path);
   return path;
 }
@@ -368,8 +413,17 @@ const LATE_SIGNAL_LEAD = 0.8;
 
 function signalShowing(p, t) {
   if (!p.signal) return false;
-  const lead = p.signalLead ?? PROPER_SIGNAL_LEAD;
-  return t >= (p.departAt ?? 0) - lead;
+  const lead = p.signalLead ?? (p.layout === "roundabout" ? RA_SIGNAL_LEAD : PROPER_SIGNAL_LEAD);
+  // In a roundabout the indicator is about leaving, not about entering.
+  const at = p.layout === "roundabout" && p.kind !== "ped"
+    ? raExitTime(p)
+    : (p.departAt ?? 0);
+  return t >= at - lead;
+}
+
+/* The moment a circulating car begins to peel off for its exit. */
+export function raExitTime(p) {
+  return (p.departAt ?? 0) + raPath(p).peelDist / RA_SPEED;
 }
 
 function extentsFor(p, padL, padW, claim, mode) {

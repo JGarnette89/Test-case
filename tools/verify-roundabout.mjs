@@ -150,8 +150,97 @@ console.log("\n5. PRIORITY");
     : console.log("  note: entering on arrival does not collide, only breaches the yield envelope");
 }
 
-/* ---------- 6. the cross layout is untouched ---------- */
-console.log("\n6. NO REGRESSION IN THE CROSS LAYOUT");
+/* ---------- 6. the exit tell ----------
+   Signalling out of a roundabout is best practice, not common practice, so
+   the line has to carry the information instead. A car about to leave must
+   be distinguishable from one staying in, by position alone, before the
+   player has to commit. If it is not, the scenario is a coin toss.        */
+console.log("\n6. THE EXIT TELL IS READABLE WITHOUT AN INDICATOR");
+{
+  /* From the north the west leg is the exit before the ego's. A car taking
+     it is gone before it ever reaches the ego; one staying in comes all the
+     way round and across the entry. At the moment it matters both are in
+     the same place — only the line differs, which is exactly the test. */
+  const mk = (intent) => ({
+    from: "N", intent, arriveAt: 0, departAt: 0, stops: true,
+    kind: "car", layout: "roundabout", signal: null,
+  });
+  const leaving = mk("right"); // gone at the west exit
+  const staying = mk("left");  // all the way round to the ego's leg
+
+  const radiusAt = (p, t) => {
+    const q = poseAt(p, t);
+    return Math.hypot(q.x - CX, q.y - CY);
+  };
+
+  // Walk the stretch where both are still circulating and compare lines.
+  const peel = raPath(leaving).peelDist / RA_SPEED;
+  // The tell is worthless if it appears after the player has had to commit.
+  const decideAt = SCENARIOS.find((s) => s.id === "circle-leaving").ego.arriveAt;
+  let separated = 0, samples = 0, maxGap = 0, firstTellAt = null;
+  for (let t = 0.4; t < peel; t += 0.05) {
+    const a = radiusAt(leaving, t), b = radiusAt(staying, t);
+    if (Math.abs(a - RA_LANE) > M(3) || Math.abs(b - RA_LANE) > M(3)) continue;
+    samples++;
+    const gap = a - b;
+    if (gap > maxGap) maxGap = gap;
+    if (gap > M(0.25)) {
+      separated++;
+      if (firstTellAt == null) firstTellAt = t;
+    }
+  }
+
+  console.log(`  peel-off at ${r2(peel)}s; lines differ on ${separated} of ${samples} circulating samples`);
+  console.log(`  widest separation ${r2(maxGap / 20)}m, first readable at ${firstTellAt == null ? "never" : r2(firstTellAt) + "s"}`);
+
+  if (maxGap <= M(0.25)) fail("a leaving car and a staying car take the same line — nothing to read");
+  else if (firstTellAt == null) fail("the drift never becomes readable");
+  else {
+    const warning = peel - firstTellAt;
+    warning >= 0.6
+      ? ok(`the drift is readable ${r2(warning)}s before it peels off`)
+      : fail(`only ${r2(warning)}s of warning — not enough to act on`);
+
+    // Readable in the scenario, not just in principle: the drift has to be
+    // on screen before the ego reaches its give-way line and must decide.
+    const offset = SCENARIOS.find((s) => s.id === "circle-leaving").actors[0].arriveAt;
+    const tellShowsAt = offset + firstTellAt;
+    tellShowsAt <= decideAt
+      ? ok(`in circle-leaving the drift shows at ${r2(tellShowsAt)}s, ${r2(decideAt - tellShowsAt)}s before the ego must decide`)
+      : fail(`the drift shows at ${r2(tellShowsAt)}s but the ego decides at ${decideAt}s — unreadable in time`);
+  }
+
+  // The drift must stay on the carriageway rather than clipping the kerb.
+  // Only while circulating: the approach and the exit are outside by design.
+  let worstOut = 0;
+  for (let t = 0.4; t < peel; t += 0.05) {
+    const r = radiusAt(leaving, t);
+    if (Math.abs(r - RA_LANE) > M(3)) continue;
+    worstOut = Math.max(worstOut, r);
+  }
+  worstOut <= RA_OUTER
+    ? ok(`the drift stays inside the carriageway (${r2(worstOut / 20)}m of ${r2(RA_OUTER / 20)}m)`)
+    : fail(`drifts outside the roundabout: ${r2(worstOut / 20)}m past a ${r2(RA_OUTER / 20)}m edge`);
+
+  /* And it must change the answer, or it is decoration. Controlled: the
+     same scenario, the same arrival times, only the exit differs. */
+  const base = SCENARIOS.find((s) => s.id === "circle-leaving");
+  const variant = (intent) => simulate({
+    ...base,
+    ego: { ...base.ego },
+    actors: base.actors.map((a) => ({ ...a, intent })),
+  }).legalAt;
+  const gone = variant("right"); // gone at the west exit
+  const stays = variant("left");  // all the way round to the ego's leg
+  console.log(`  window when it leaves: ${gone}   when it stays in: ${stays}`);
+  const gain = r2(stays - gone);
+  gain >= 0.5
+    ? ok(`reading the tell is worth ${gain}s`)
+    : fail(`reading it gains only ${gain}s — not worth reading`);
+}
+
+/* ---------- 7. the cross layout is untouched ---------- */
+console.log("\n7. NO REGRESSION IN THE CROSS LAYOUT");
 {
   const expected = {
     opposite: 2.4, signalled: 1.6, liar: 2.55, silent: 2.75, gap: 5.4,
