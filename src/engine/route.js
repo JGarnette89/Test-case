@@ -55,11 +55,12 @@ function turnsBetween(from, to) {
   return null;
 }
 
-/* A pedestrian is pinned to the north crossing by fixed coordinates in the
-   engine, so rotating a scenario that contains one would move the traffic
-   and leave the pedestrian behind. Refuse rather than quietly mislead. */
+/* Everything in a scenario is now expressed by which leg it belongs to,
+   pedestrian crossings included, so a quarter turn carries the whole scene.
+   Kept as a named check because a future road user with fixed coordinates
+   would have to declare itself here rather than be silently misplaced. */
 export function isRotatable(scn) {
-  return !scn.actors.some((a) => a.kind === "ped");
+  return scn.actors.every((a) => a.from != null || a.kind === "ped");
 }
 
 export function rotateScenario(scn, turns) {

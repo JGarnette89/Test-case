@@ -19,6 +19,7 @@ import { simulate, poseAt, conflicts, CROSS, STEP } from "../src/engine/index.js
 import { grade, EARLY_TOLERANCE } from "../src/engine/score.js";
 import {
   drawScenario, generateScenario, generateBatch, dailyScenario, dayIndex, ACCEPT,
+  weekdayOf, targetDifficulty, WEEK_CURVE, WEEKDAY_NAMES, EPOCH, DAY_MS,
 } from "../src/engine/generate.js";
 
 const N = Number(process.argv[2] || 400);
@@ -110,6 +111,36 @@ const q = (p) => r2(thinks[Math.floor(p * (thinks.length - 1))]);
 console.log(`  think time   min ${q(0)}  p25 ${q(0.25)}  median ${q(0.5)}  p75 ${q(0.75)}  max ${q(1)}`);
 console.log(`  difficulty   1:${diffs[1]}  2:${diffs[2]}  3:${diffs[3]}  4:${diffs[4]}`);
 console.log(`  with traits  ${withTraits} of ${batch.length} (${Math.round((withTraits / batch.length) * 100)}%)`);
+{
+  // The crossing rule must actually turn up, and on a leg the ego meets.
+  const withPed = batch.filter((s) => s.actors.some((a) => a.kind === "ped"));
+  const share = withPed.length / batch.length;
+  console.log(`  pedestrians  ${withPed.length} of ${batch.length} (${Math.round(share * 100)}%)`);
+  if (share < 0.05) fail("pedestrians almost never generated — the crossing rule stays untaught");
+  else if (share > 0.6) fail("pedestrians in over 60% of draws — they should be an occasional read");
+  else ok("pedestrians appear at a workable rate");
+
+  const legsSeen = new Set(withPed.flatMap((s) => s.actors.filter((a) => a.kind === "ped").map((a) => a.from)));
+  legsSeen.size >= 2
+    ? ok(`crossings generated on ${legsSeen.size} different legs (${[...legsSeen].join(", ")})`)
+    : fail(`crossings only ever appear on ${[...legsSeen].join(", ") || "no"} leg`);
+
+  // Being a prior is not the same as being in the way. Measure the window
+  // with the pedestrian and without, exactly as the trait check does.
+  const blocking = withPed.filter((s) => {
+    const withThem = simulate(s).legalAt;
+    const without = simulate({
+      ...s, ego: { ...s.ego },
+      actors: s.actors.filter((a) => a.kind !== "ped"),
+    }).legalAt;
+    return withThem - without > 1e-9;
+  });
+  const rate = blocking.length / withPed.length;
+  console.log(`  of those, ${blocking.length} move the window (${Math.round(rate * 100)}%)`);
+  if (rate < 0.2) fail("generated pedestrians almost never affect the window — they are scenery");
+  else if (rate > 0.95) fail("every pedestrian blocks; 'if you see one, wait' becomes the whole strategy");
+  else ok("pedestrians sometimes hold you up and sometimes do not, so they have to be read");
+}
 console.log(`  must wait    ${naiveFails} of ${batch.length} (${Math.round((naiveFails / batch.length) * 100)}%)`);
 
 const immediate = thinks.filter((t) => t <= STEP).length;
@@ -129,6 +160,60 @@ const keepRate = kept / drawn;
 console.log(`  ${kept} of ${drawn} raw draws accepted (${Math.round(keepRate * 100)}%)`);
 if (keepRate < 0.05) fail("under 5% of draws survive — the sampler and the filters disagree");
 else ok("acceptance rate is workable");
+
+/* ---------- 5. the weekly curve ---------- */
+console.log("\n5. WEEKLY CURVE");
+{
+  // The weekday derived from the day index must agree with the calendar.
+  let mismatched = 0;
+  for (let d = 0; d < 400; d++) {
+    const realWeekday = (new Date(EPOCH + d * DAY_MS).getUTCDay() + 6) % 7;
+    if (weekdayOf(d) !== realWeekday) mismatched++;
+  }
+  mismatched === 0
+    ? ok("weekday matches the calendar across 400 days")
+    : fail(`${mismatched} day(s) mapped to the wrong weekday`);
+
+  // Eight weeks of actual dailies: does each land on its target band?
+  const byWeekday = WEEK_CURVE.map(() => []);
+  let offTarget = 0, missing = 0;
+  for (let d = 0; d < 56; d++) {
+    const scn = dailyScenario(EPOCH + d * DAY_MS + 43200000);
+    if (!scn) { missing++; continue; }
+    const wd = weekdayOf(d);
+    byWeekday[wd].push(scn.difficulty);
+    if (scn.difficulty !== targetDifficulty(d)) offTarget++;
+  }
+  missing === 0 ? ok("every day produced a situation") : fail(`${missing} day(s) produced nothing`);
+
+  console.log("  weekday     target  actual difficulties over 8 weeks");
+  byWeekday.forEach((ds, wd) => {
+    console.log(`  ${WEEKDAY_NAMES[wd].padEnd(11)} ${String(WEEK_CURVE[wd]).padEnd(7)} ${ds.join(" ")}`);
+  });
+
+  const hitRate = 1 - offTarget / 56;
+  console.log(`  on target: ${56 - offTarget}/56 (${Math.round(hitRate * 100)}%)`);
+  if (hitRate < 0.9) fail(`only ${Math.round(hitRate * 100)}% of days hit their band — the search is too narrow`);
+  else ok("the curve is being hit, not approximated");
+
+  // The point of the whole thing: the weekend must actually be harder.
+  const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const early = mean([...byWeekday[0], ...byWeekday[1]]);
+  const weekend = mean([...byWeekday[5], ...byWeekday[6]]);
+  weekend > early
+    ? ok(`the weekend is harder than the start of the week (${r2(early)} -> ${r2(weekend)})`)
+    : fail(`no ramp: start of week ${r2(early)}, weekend ${r2(weekend)}`);
+
+  // Same day, same puzzle, regardless of the hour it is opened.
+  const noon = EPOCH + 200 * DAY_MS + 43200000;
+  const a = JSON.stringify(dailyScenario(noon));
+  const b = JSON.stringify(dailyScenario(noon + 6 * 3600000));
+  a === b ? ok("the daily is stable across the hours of its day") : fail("the daily changed within one day");
+
+  // And it must not depend on anything but the date.
+  const again = JSON.stringify(dailyScenario(noon));
+  again === a ? ok("repeat calls give the identical situation") : fail("dailyScenario is not pure in the date");
+}
 
 console.log("\n" + "=".repeat(66));
 console.log(problems === 0 ? "OK: generator verified." : `${problems} PROBLEM(S) FOUND.`);

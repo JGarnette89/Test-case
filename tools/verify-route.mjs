@@ -100,16 +100,24 @@ const missing = planRoute({ id: "x", legs: ["opposite", "does-not-exist"] }, SCE
 if (!missing.ok && missing.problems[0].kind === "missing") ok("unknown scenario id is reported, not thrown");
 else fail("a route naming a scenario that does not exist was accepted");
 
-// walker holds a pedestrian pinned to the north crossing, so it cannot be
-// rotated. Following a left turn it would need a different approach.
+// Crossings are relative now, so a pedestrian scenario can follow a turn.
+// The crossing must travel with it rather than staying on the north leg.
 const ped = planRoute({ id: "y", legs: ["gap", "walker"] }, SCENARIOS);
-if (!ped.ok && ped.problems[0].kind === "unrotatable") {
-  ok("a leg with fixed pedestrian geometry is refused rather than silently misplaced");
+if (ped.ok) {
+  const leg = ped.legs[1];
+  const pedActor = leg.actors.find((a) => a.kind === "ped");
+  const base = SCENARIOS.find((s) => s.id === "walker");
+  const basePed = base.actors.find((a) => a.kind === "ped");
+  if (pedActor.from !== basePed.from) {
+    ok(`walker follows a left turn; its crossing moved ${basePed.from} -> ${pedActor.from} with the scene`);
+  } else {
+    fail("walker was rotated but its pedestrian stayed on the original leg");
+  }
 } else {
-  fail("expected the pedestrian scenario to be refused after a turn");
+  fail(`walker should now plan after a turn: ${ped.problems.map((p) => p.detail).join("; ")}`);
 }
-if (alignScenario(SCENARIOS.find((s) => s.id === "walker"), "E") !== null) {
-  fail("walker should not be alignable to another approach");
+if (alignScenario(SCENARIOS.find((s) => s.id === "walker"), "E") === null) {
+  fail("walker should be alignable to another approach now that crossings are relative");
 }
 
 /* ---------- 5. running a route ---------- */

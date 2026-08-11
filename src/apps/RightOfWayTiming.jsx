@@ -8,7 +8,7 @@ import { SCENARIOS } from "../engine/scenarios.js";
 import {
   M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
   CROSS, STEP, TIE, lerp, quad, angleTo,
-  STOPS, EXITS, PED_Y, PED_X0, PED_X1,
+  STOPS, EXITS, crossingOf,
   TRAITS, traitTells, poseAt, signalShowing, forwardClaim, conflicts,
   outranks, earliestClear, schedule, simulate,
 } from "../engine/index.js";
@@ -16,7 +16,7 @@ import { grade, tally, emptyTally, GRACE, REACTION_FLOOR } from "../engine/score
 import { planRoute, startRun, recordLeg, currentLeg, summary } from "../engine/route.js";
 import { routeById } from "../engine/routes.js";
 import { markPassed } from "../progress.js";
-import { generateScenario, dailyScenario } from "../engine/generate.js";
+import { generateScenario, dailyScenario, WEEKDAY_NAMES } from "../engine/generate.js";
 
 /* ---------------- drawing ---------------- */
 const GRASS = (() => {
@@ -28,14 +28,31 @@ const GRASS = (() => {
   }));
 })();
 
-function Road({ control }) {
+/* Paint a crosswalk on whichever leg actually has one. Derived from the
+   same crossingOf() the engine yields to, so what is painted and what
+   holds you up can never drift apart. */
+function Crossing({ side }) {
+  const cr = crossingOf(side);
+  const n = 12;
+  const bars = [];
+  for (let i = 0; i < n; i++) {
+    const f = i / (n - 1);
+    const x = cr.a.x + (cr.b.x - cr.a.x) * f;
+    const y = cr.a.y + (cr.b.y - cr.a.y) * f;
+    const w = cr.vertical ? 0 : M(1.1);
+    const h = cr.vertical ? M(1.1) : 0;
+    bars.push(
+      <line key={i} x1={x - h} y1={y - w} x2={x + h} y2={y + w}
+        stroke={C.line} strokeWidth={M(0.4)} />
+    );
+  }
+  return <>{bars}</>;
+}
+
+function Road({ control, crossings = ["N"] }) {
   const Dash = (p) => <line {...p} stroke={C.yellow} strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(6)}`} />;
   const Edge = (p) => <line {...p} stroke={C.line} strokeWidth={M(0.15)} />;
-  const bars = [];
-  for (let i = 0; i < 12; i++) {
-    const x = PED_X0 + i * M(0.64);
-    bars.push(<line key={i} x1={x} y1={PED_Y - M(1.1)} x2={x} y2={PED_Y + M(1.1)} stroke={C.line} strokeWidth={M(0.4)} />);
-  }
+  const bars = crossings.map((s) => <Crossing key={s} side={s} />);
   const signs = [[CX + HALF + 30, CY + HALF + 34], [CX - HALF - 30, CY - HALF - 34],
   [CX - HALF - 30, CY + HALF + 34], [CX + HALF + 30, CY - HALF - 34]];
   return (
@@ -347,7 +364,15 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
           <div style={st.title}>RIGHT OF <span style={{ color: C.yellow }}>WAY</span></div>
           <div style={st.sub}>
             {run && <strong style={{ color: C.yellow }}>Leg {Math.min(run.index + 1, run.plan.legs.length)} of {run.plan.legs.length} · </strong>}
+            {scn.weekday != null && (
+              <strong style={{ color: C.yellow }}>{WEEKDAY_NAMES[scn.weekday]} · </strong>
+            )}
             {scn.title}
+            {scn.difficulty && (
+              <span style={{ marginLeft: 6, letterSpacing: 1 }} title={`Difficulty ${scn.difficulty} of 4`}>
+                {"●".repeat(scn.difficulty)}<span style={{ opacity: 0.28 }}>{"●".repeat(4 - scn.difficulty)}</span>
+              </span>
+            )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -387,7 +412,10 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
               transform={`rotate(${g.rot} ${g.x} ${g.y})`}
               fill={g.light ? shade(C.grass, 0.08) : C.grassDark} opacity={g.o} />
           ))}
-          <Road control={scn.control} />
+          <Road
+            control={scn.control}
+            crossings={[...new Set(sim.actors.filter((a) => a.kind === "ped").map((a) => a.from ?? "N"))]}
+          />
 
           {sim.actors.map((a) => {
             const pose = poseAt(a, showT);

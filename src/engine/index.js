@@ -69,14 +69,51 @@ const quad = (p0, p1, p2, t) => {
 };
 const angleTo = (a, b) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
 
-const PED_Y = CY - HALF - 22, PED_X0 = CX - HALF - 30, PED_X1 = CX + HALF + 30;
+/* --- crossings -------------------------------------------------------
+   A pedestrian stands on one leg's crosswalk, and which leg is given by
+   the same `from` a car uses. Deriving the geometry from the side instead
+   of pinning it to the north leg is what lets a crossing be rotated with
+   the rest of the scene, and what lets one be generated at all.
+
+   Setback is how far outside the box the crosswalk sits; overhang is how
+   far past the road edge it runs, since a crossing does not stop at the
+   kerb line. Both were previously baked into constants for the north leg. */
+const PED_SETBACK = 22;
+const PED_OVERHANG = 30;
+
+export function crossingOf(side) {
+  // On the east and west legs the crosswalk runs north-south.
+  const vertical = side === "E" || side === "W";
+  if (vertical) {
+    const x = side === "W" ? CX - HALF - PED_SETBACK : CX + HALF + PED_SETBACK;
+    return {
+      a: { x, y: CY - HALF - PED_OVERHANG },
+      b: { x, y: CY + HALF + PED_OVERHANG },
+      vertical: true, rot: 90,
+    };
+  }
+  const y = side === "N" ? CY - HALF - PED_SETBACK : CY + HALF + PED_SETBACK;
+  return {
+    a: { x: CX - HALF - PED_OVERHANG, y },
+    b: { x: CX + HALF + PED_OVERHANG, y },
+    vertical: false, rot: 0,
+  };
+}
+
+// Scenarios written before crossings were relative assumed the north leg.
+const crossingFor = (p) => crossingOf(p.from ?? "N");
 
 /* Position and heading of a road user at time t, before any driving traits. */
 function basePose(p, t) {
   if (p.kind === "ped") {
-    if (t < p.departAt) return { x: PED_X0, y: PED_Y, rot: 0, hidden: t < p.arriveAt - 1.2, waiting: true };
+    const cr = crossingFor(p);
+    const start = p.reverse ? cr.b : cr.a;
+    const end = p.reverse ? cr.a : cr.b;
+    if (t < p.departAt) {
+      return { x: start.x, y: start.y, rot: cr.rot, hidden: t < p.arriveAt - 1.2, waiting: true };
+    }
     const k = Math.min(1, (t - p.departAt) / CROSS.walk);
-    return { x: lerp(PED_X0, PED_X1, k), y: PED_Y, rot: 0, gone: k >= 1 };
+    return { x: lerp(start.x, end.x, k), y: lerp(start.y, end.y, k), rot: cr.rot, gone: k >= 1 };
   }
   const base = STOPS[p.from], exit = EXITS[p.from][p.intent];
   const rad = (base.rot * Math.PI) / 180;
@@ -194,7 +231,9 @@ function extentsFor(p, padL, padW, claim, mode) {
     // you wait until they are completely across, so while they are on it
     // they hold the whole crossing.
     if (mode === "yield" && p.blockUntilClear) {
-      return { hl: (PED_X1 - PED_X0) / 2 + padW, hw: M(1.3) + padW };
+      const cr = crossingFor(p);
+      const len = Math.hypot(cr.b.x - cr.a.x, cr.b.y - cr.a.y);
+      return { hl: len / 2 + padW, hw: M(1.3) + padW };
     }
     return { hl: PED_R + padW, hw: PED_R + padW };
   }
@@ -202,7 +241,8 @@ function extentsFor(p, padL, padW, claim, mode) {
 }
 function poseFor(p, pose, claim, mode) {
   if (p.kind === "ped" && mode === "yield" && p.blockUntilClear) {
-    return { x: (PED_X0 + PED_X1) / 2, y: PED_Y, rot: 0 };
+    const cr = crossingFor(p);
+    return { x: (cr.a.x + cr.b.x) / 2, y: (cr.a.y + cr.b.y) / 2, rot: cr.rot };
   }
   if (!claim) return pose;
   const r = (pose.rot * Math.PI) / 180;
@@ -312,7 +352,7 @@ export {
   PAD_LONG, PAD_LAT, LOOKAHEAD, MAX_CLAIM, TIE, CROSS, STEP,
   PROPER_SIGNAL_LEAD, LATE_SIGNAL_LEAD,
   STOPS, EXITS, RIGHT_OF, OPPOSITE, lerp, quad, angleTo,
-  PED_Y, PED_X0, PED_X1,
+  PED_SETBACK, PED_OVERHANG,
   basePose, TRAITS, traitTells, poseAt, signalShowing,
   extentsFor, poseFor, forwardClaim, boxesOverlap, conflicts,
   outranks, earliestClear, applyTraits, schedule,

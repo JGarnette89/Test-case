@@ -12,7 +12,9 @@
    device, forever. That is what makes a daily challenge possible without
    a server: the date IS the seed.
    ===================================================================== */
-import { simulate, poseAt, conflicts, forwardClaim, CROSS, STEP } from "./index.js";
+import {
+  simulate, poseAt, conflicts, forwardClaim, CROSS, STEP, OPPOSITE, RIGHT_OF,
+} from "./index.js";
 import { EARLY_TOLERANCE } from "./score.js";
 
 /* mulberry32 — small, fast, and good enough that consecutive seeds do not
@@ -109,6 +111,10 @@ function describe(scn, sim) {
     why = think <= 0.001
       ? "Nothing crossed your path, so the road was yours the moment you had stopped. Waiting for the intersection to empty would have cost you the whole window."
       : "Your path was clear of everyone who had priority.";
+  } else if (blocker.kind === "ped") {
+    why = `Someone was on the ${SIDE_WORD[blocker.from]} crossing, and you were driving through it. ` +
+      `A pedestrian holds the whole crossing until they are completely across — not until they have ` +
+      `cleared your half of it. That is a rule about the crossing, not about where they happen to be standing.`;
   } else {
     why = `The ${blocker.name.toLowerCase()} came from the ${SIDE_WORD[blocker.from]} ${INTENT_WORD[blocker.intent]}, ` +
       `and that path crossed yours. You were waiting for that one — not for the intersection to empty.`;
@@ -137,6 +143,32 @@ export function drawScenario(seed) {
     const options = SIDES.filter((s) => !used.has(s));
     const from = options.length && r() < 0.85 ? pick(r, options) : pick(r, SIDES);
     used.add(from);
+
+    /* Sometimes the other road user is on foot. A pedestrian holds the
+       whole crossing until they are completely across — a legal rule, not
+       a geometric one — so this is the only way that rule ever turns up
+       outside the one hand-written situation that teaches it.
+
+       Their crossing is placed on a leg the ego actually meets. A crossing
+       on the far side of the box is scenery, not a decision. */
+    if (r() < 0.22) {
+      const legs = [egoFrom, OPPOSITE[egoFrom], RIGHT_OF[egoFrom]];
+      actors.push({
+        id: `p${i}`,
+        from: pick(r, legs),
+        intent: "straight",
+        arriveAt: range(r, 0.4, 2.6),
+        stops: false,
+        kind: "ped",
+        colorKey: "pale",
+        name: "Pedestrian",
+        // Pedestrians are not resolved by arrival order against vehicles.
+        priority: -1,
+        blockUntilClear: true,
+        reverse: r() < 0.5,
+      });
+      continue;
+    }
 
     const intent = pick(r, INTENTS);
     const rolling = control === "signal" && r() < 0.6;
@@ -220,13 +252,25 @@ function difficultyOf(d, actorCount) {
 }
 
 /* Keep drawing until one is worth playing. Bounded so a bad tuning cannot
-   spin forever — it returns null and the caller can say so. */
-export function generateScenario(seed, tries = 60) {
+   spin forever — it returns null and the caller can say so.
+
+   `difficulty` asks for a band rather than taking the first acceptable
+   draw. If the run of tries never hits it, the nearest band is returned
+   instead: a day must always produce a situation, and a Tuesday that is
+   marginally too hard beats a Tuesday with nothing in it. Still fully
+   deterministic — the same seed and target give the same answer. */
+export function generateScenario(seed, opts = {}) {
+  const { difficulty = null, tries = 60 } = typeof opts === "number" ? { tries: opts } : opts;
+  let nearest = null;
   for (let i = 0; i < tries; i++) {
     const scn = drawScenario((seed * 7919 + i * 104729) >>> 0);
-    if (scn) return scn;
+    if (!scn) continue;
+    if (difficulty == null || scn.difficulty === difficulty) return scn;
+    if (!nearest || Math.abs(scn.difficulty - difficulty) < Math.abs(nearest.difficulty - difficulty)) {
+      nearest = scn;
+    }
   }
-  return null;
+  return nearest;
 }
 
 export function generateBatch(seed, n) {
@@ -247,12 +291,40 @@ export function dayIndex(now = Date.now()) {
   return Math.floor((now - EPOCH) / DAY_MS);
 }
 
+/* The week ramps: gentle on Monday, hardest at the weekend, and it resets.
+   A beginner gets a foothold early in the week; someone who has been
+   playing gets something worth the trip by Saturday.
+
+   Derived from the date and nothing else. It must never key off what the
+   player has been clearing — everyone getting the same intersection on the
+   same day is precisely the property a leaderboard would need, and a
+   personalised ramp quietly spends it. */
+export const WEEK_CURVE = [1, 1, 2, 2, 3, 4, 4]; // Monday..Sunday
+export const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/* Weekday of the epoch, Monday-based, computed rather than asserted so a
+   change of EPOCH cannot silently shift the whole week. */
+const EPOCH_WEEKDAY = (new Date(EPOCH).getUTCDay() + 6) % 7;
+
+export function weekdayOf(day) {
+  return (((day + EPOCH_WEEKDAY) % 7) + 7) % 7;
+}
+
+export function targetDifficulty(day) {
+  return WEEK_CURVE[weekdayOf(day)];
+}
+
 export function dailyScenario(now = Date.now()) {
   const d = dayIndex(now);
-  const scn = generateScenario((d + 1) >>> 0);
+  const target = targetDifficulty(d);
+  // A wider search than the endless mode: hitting the band matters more
+  // here than returning quickly, and it runs once a day.
+  const scn = generateScenario((d + 1) >>> 0, { difficulty: target, tries: 400 });
   if (scn) {
     scn.id = `daily-${d}`;
     scn.day = d;
+    scn.weekday = weekdayOf(d);
+    scn.targetDifficulty = target;
   }
   return scn;
 }
