@@ -17,16 +17,70 @@ import { planRoute, startRun, recordLeg, currentLeg, summary } from "../engine/r
 import { routeById } from "../engine/routes.js";
 import { markPassed } from "../progress.js";
 import { generateScenario, dailyScenario, WEEKDAY_NAMES } from "../engine/generate.js";
+import { environmentFor, scatter } from "../environments.js";
 
 /* ---------------- drawing ---------------- */
-const GRASS = (() => {
-  let a = 4242;
+
+/* Ground texture. Seeded per environment so city paving and a rural field
+   do not share the same speckle pattern. */
+function groundTexture(seed) {
+  let a = seed >>> 0;
   const r = () => { a = (a * 1103515245 + 12345) & 0x7fffffff; return a / 0x7fffffff; };
   return Array.from({ length: 130 }, () => ({
     x: r() * W, y: r() * H, rx: 6 + r() * 13, ry: 3 + r() * 5,
     rot: r() * 180, light: r() > 0.5, o: 0.05 + r() * 0.08,
   }));
-})();
+}
+
+/* Everything either side of the road. One component for all settings —
+   the environment declares what it contains, this only draws it. */
+function Environment({ env, seed, keepOut }) {
+  const texture = React.useMemo(() => groundTexture(seed ^ 0x9e37), [seed]);
+  const items = React.useMemo(() => scatter(env, seed, keepOut), [env, seed, keepOut]);
+  return (
+    <>
+      <rect width={W} height={H} fill={env.ground} />
+      {texture.map((g, i) => (
+        <ellipse key={i} cx={g.x} cy={g.y} rx={g.rx} ry={g.ry}
+          transform={`rotate(${g.rot} ${g.x} ${g.y})`}
+          fill={g.light ? shade(env.ground, 0.08) : env.groundDark} opacity={g.o} />
+      ))}
+      {items.map((it, i) => {
+        if (it.kind === "patch") {
+          return (
+            <ellipse key={i} cx={it.x} cy={it.y} rx={it.w / 2} ry={it.h / 2}
+              transform={`rotate(${it.rot} ${it.x} ${it.y})`} fill={it.fill} opacity={0.55} />
+          );
+        }
+        if (it.kind === "tree") {
+          return (
+            <g key={i} transform={`translate(${it.x},${it.y})`}>
+              <rect x={-2} y={0} width={4} height={it.r * 0.8} fill={it.trunk} />
+              <circle r={it.r} fill={it.fill} />
+              <circle cx={-it.r * 0.28} cy={-it.r * 0.28} r={it.r * 0.55} fill="#fff" opacity={0.09} />
+            </g>
+          );
+        }
+        if (it.kind === "pad") {
+          return (
+            <rect key={i} x={it.x - it.w / 2} y={it.y - it.h / 2} width={it.w} height={it.h}
+              rx={3} fill={it.fill} opacity={0.85} />
+          );
+        }
+        // block
+        const inset = Math.min(it.w, it.h) * 0.18;
+        return (
+          <g key={i}>
+            <rect x={it.x - it.w / 2} y={it.y - it.h / 2} width={it.w} height={it.h}
+              rx={2} fill={it.fill} />
+            <rect x={it.x - it.w / 2 + inset} y={it.y - it.h / 2 + inset}
+              width={it.w - inset * 2} height={it.h - inset * 2} rx={2} fill={it.roof} />
+          </g>
+        );
+      })}
+    </>
+  );
+}
 
 /* Paint a crosswalk on whichever leg actually has one. Derived from the
    same crossingOf() the engine yields to, so what is painted and what
@@ -52,7 +106,7 @@ function Crossing({ side }) {
 /* Drawn from the same radii the engine drives on, so what is painted and
    what the cars do cannot drift apart. Give-way markings sit on the entry
    half of each approach only — the exit half is not yours to yield on. */
-function Roundabout() {
+function Roundabout({ island = C.grass }) {
   const Edge = (p) => <line {...p} stroke={C.line} strokeWidth={M(0.15)} />;
   const set = RA_OUTER + M(2);
   const give = [
@@ -74,8 +128,8 @@ function Roundabout() {
       {/* The circulating carriageway, painted over the approach stubs. */}
       <circle cx={CX} cy={CY} r={RA_OUTER} fill={C.asphalt} stroke={C.line} strokeWidth={M(0.15)} />
       {/* Central island, kerbed. */}
-      <circle cx={CX} cy={CY} r={RA_ISLAND} fill={C.grass} stroke={C.line} strokeWidth={M(0.3)} />
-      <circle cx={CX} cy={CY} r={RA_ISLAND - M(0.9)} fill={shade(C.grass, 0.06)} />
+      <circle cx={CX} cy={CY} r={RA_ISLAND} fill={island} stroke={C.line} strokeWidth={M(0.3)} />
+      <circle cx={CX} cy={CY} r={RA_ISLAND - M(0.9)} fill={shade(island, 0.06)} />
 
       {give.map((g, i) => (
         <line key={i} {...g} stroke={C.line} strokeWidth={M(0.4)}
@@ -378,6 +432,27 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
 
   const tells = sim.actors.flatMap((a) => traitTells(a));
 
+  /* Setting cycles with the situation, derived from its id so it is stable
+     across retries and identical for everyone playing the same daily.
+     The renderer is what knows where the road is, so it is what tells the
+     scatterer where scenery may not go — clear of the carriageway and of
+     the crosswalk overhang either side of it. */
+  const env = React.useMemo(() => environmentFor(scn.id), [scn.id]);
+  const envSeed = React.useMemo(
+    () => [...String(scn.id)].reduce((h, c) => (Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0), 2166136261),
+    [scn.id]
+  );
+  const keepOut = React.useMemo(() => {
+    const zones = [
+      { kind: "band", axis: "x", at: CX, half: HALF, pad: 56 },
+      { kind: "band", axis: "y", at: CY, half: HALF, pad: 56 },
+    ];
+    if (scn.layout === "roundabout") {
+      zones.push({ kind: "circle", x: CX, y: CY, r: RA_OUTER, pad: 26 });
+    }
+    return zones;
+  }, [scn.layout]);
+
   const vText = {
     collision: "Collision",
     early: "Too early — failure to yield",
@@ -456,14 +531,9 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
               <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#0B0D10" floodOpacity="0.45" />
             </filter>
           </defs>
-          <rect width={W} height={H} fill={C.grass} />
-          {GRASS.map((g, i) => (
-            <ellipse key={i} cx={g.x} cy={g.y} rx={g.rx} ry={g.ry}
-              transform={`rotate(${g.rot} ${g.x} ${g.y})`}
-              fill={g.light ? shade(C.grass, 0.08) : C.grassDark} opacity={g.o} />
-          ))}
+          <Environment env={env} seed={envSeed} keepOut={keepOut} />
           {scn.layout === "roundabout" ? (
-            <Roundabout />
+            <Roundabout island={env.groundDark} />
           ) : (
             <Road
               control={scn.control}

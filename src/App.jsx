@@ -391,8 +391,12 @@ function Style() {
         -webkit-tap-highlight-color: transparent;
         transition: background 120ms ease, transform 120ms ease;
       }
+      /* Stays visually quiet — it throws work away — but the tap area is a
+         full 44px, because a control that is hard to hit deliberately is
+         also a control that gets hit accidentally. */
       .shell-link {
-        background: none; border: none; padding: 0; cursor: pointer;
+        display: inline-flex; align-items: center; min-height: 44px;
+        background: none; border: none; padding: 0 6px; cursor: pointer;
         color: ${C.dim}; font-family: ${FONT_U}; font-size: inherit;
         text-decoration: underline; text-underline-offset: 2px;
       }
