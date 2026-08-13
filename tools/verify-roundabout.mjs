@@ -242,9 +242,13 @@ console.log("\n6. THE EXIT TELL IS READABLE WITHOUT AN INDICATOR");
 /* ---------- 7. the cross layout is untouched ---------- */
 console.log("\n7. NO REGRESSION IN THE CROSS LAYOUT");
 {
+  /* Baseline re-derived when SET was corrected so cars stop behind the
+     line rather than with their noses in the box. Every one of these moved
+     because every footprint moved; that was the point. Update deliberately
+     and only alongside a change that is meant to move them. */
   const expected = {
-    opposite: 2.4, signalled: 1.6, liar: 2.55, silent: 2.75, gap: 5.4,
-    walker: 4.05, wanderer: 2.2, sleeper: 2.9, creeper: 3, lateflag: 2.65,
+    opposite: 2.4, signalled: 1.6, liar: 2.65, silent: 2.85, gap: 5.25,
+    walker: 3.9, wanderer: 2.45, sleeper: 2.8, creeper: 2.9, lateflag: 2.75,
   };
   let bad = 0;
   for (const [id, want] of Object.entries(expected)) {

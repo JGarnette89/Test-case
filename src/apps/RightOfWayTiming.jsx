@@ -8,7 +8,7 @@ import { SCENARIOS } from "../engine/scenarios.js";
 import {
   M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
   CROSS, STEP, TIE, lerp, quad, angleTo, spanOf,
-  STOPS, EXITS, crossingOf, PED_SETBACK, RA_OUTER, RA_ISLAND,
+  STOPS, EXITS, crossingOf, BAR_HALF, STOP_LINE_AT, RA_OUTER, RA_ISLAND,
   TRAITS, traitTells, poseAt, signalShowing, forwardClaim, conflicts,
   outranks, earliestClear, schedule, simulate,
 } from "../engine/index.js";
@@ -139,24 +139,12 @@ function Roundabout({ island = C.grass }) {
   );
 }
 
-/* Half the depth of a crosswalk bar. Shared with Crossing so the stop line
-   and the crossing it sits behind cannot drift apart. */
-const BAR_HALF = M(1.1);
-
 /* Stop lines. One on every leg — a four-way stop has four, and so does a
-   signalised crossroad. Only one was ever drawn, on the south approach.
+   signalised crossroad.
 
-   Placed behind the crossing, which is the order these markings go in on a
-   real road: stop line, then crosswalk, then the intersection. It is NOT
-   placed at STOPS: that is where the engine rests a waiting car's centre,
-   and painting a line there runs it under the middle of the car and over
-   the crosswalk both.
-
-   Worth knowing that the cars currently come to rest past this line — see
-   the note in CLAUDE.md. That is a geometry question in the engine, not a
-   painting one, and moving it would move every window. */
-const STOP_LINE_AT = HALF + PED_SETBACK + BAR_HALF + M(0.7);
-
+   Position comes from the engine, which is also what SET is measured
+   against, so the line and the bumper that stops behind it cannot drift
+   apart. Order on the road, outward: stop line, crossing, intersection. */
 function StopLines() {
   const side = (s) => (s === "N" || s === "S");
   const at = {

@@ -25,10 +25,32 @@ const SCALE = 20;
 const M = (v) => v * SCALE;
 const W = 720, H = 720, CX = 360, CY = 360;
 const LANE = M(3.6), HALF = LANE, OFF = LANE / 2;
-const SET = 26;
 
 const CAR_L = M(4.5), CAR_W = M(1.8);
 const PED_R = M(0.5);
+
+/* --- where the road furniture sits ----------------------------------
+   Distances out from the centre of the intersection, in the order a
+   driver meets them coming the other way: stop line, crossing, then the
+   box itself.
+
+   Setback is how far outside the box the crossing sits; overhang is how
+   far past the road edge it runs, since a crossing does not stop at the
+   kerb. BAR_HALF is half the depth of one painted bar.                  */
+const PED_SETBACK = 22;
+const PED_OVERHANG = 30;
+const BAR_HALF = M(1.1);
+const STOP_LINE_AT = HALF + PED_SETBACK + BAR_HALF + M(0.7);
+
+/* How far out a waiting car's CENTRE rests.
+
+   This has to account for the car being 4.5 m long. Sized as a setback
+   for a point — which it was, at 26 — the centre sits just outside the
+   box and the nose ends up 0.95 m INSIDE it, past the crossing and well
+   past the stop line. So: far enough out that the front bumper comes to
+   rest just behind the line, which is where a car actually stops.       */
+const STOP_GAP = M(0.2);
+const SET = STOP_LINE_AT - HALF + CAR_L / 2 + STOP_GAP;
 
 /* --- roundabout ------------------------------------------------------
    Ontario drives on the right, so traffic circulates counterclockwise and
@@ -135,12 +157,8 @@ const angleTo = (a, b) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
    of pinning it to the north leg is what lets a crossing be rotated with
    the rest of the scene, and what lets one be generated at all.
 
-   Setback is how far outside the box the crosswalk sits; overhang is how
-   far past the road edge it runs, since a crossing does not stop at the
-   kerb line. Both were previously baked into constants for the north leg. */
-const PED_SETBACK = 22;
-const PED_OVERHANG = 30;
-
+   Setback and overhang are declared with the rest of the road furniture
+   at the top of the file, because the stop line is placed against them. */
 export function crossingOf(side) {
   // On the east and west legs the crosswalk runs north-south.
   const vertical = side === "E" || side === "W";
@@ -371,8 +389,12 @@ const TRAITS = {
     },
   },
   overshoot: {
+    /* Derived, not typed: enough to carry the nose from just behind the
+       stop line to 0.6 m inside the box, because that is what the tell
+       claims and a tell that is not true of the car is a lie to the
+       player. A fixed 2.6 m stopped reaching once SET was corrected. */
     tell: "Stopped well past the line, nose already in the intersection",
-    setup: (p) => { p.stopBias = M(2.6); },
+    setup: (p) => { p.stopBias = STOP_LINE_AT + STOP_GAP - HALF + M(0.6); },
   },
   slowStart: {
     tell: "Slow off the mark when it was clearly their turn",
@@ -568,7 +590,7 @@ export {
   PROPER_SIGNAL_LEAD, LATE_SIGNAL_LEAD,
   RA_OUTER, RA_ISLAND, RA_LANE, RA_SPEED, RA_ENTRY_ANGLE, RA_QUARTERS, raPath,
   STOPS, EXITS, RIGHT_OF, OPPOSITE, lerp, quad, angleTo,
-  PED_SETBACK, PED_OVERHANG,
+  PED_SETBACK, PED_OVERHANG, BAR_HALF, STOP_LINE_AT, STOP_GAP,
   basePose, TRAITS, traitTells, poseAt, signalShowing,
   extentsFor, poseFor, forwardClaim, boxesOverlap, conflicts,
   outranks, earliestClear, applyTraits, schedule,
