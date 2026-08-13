@@ -8,7 +8,7 @@ import { SCENARIOS } from "../engine/scenarios.js";
 import {
   M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
   CROSS, STEP, TIE, lerp, quad, angleTo, spanOf,
-  STOPS, EXITS, crossingOf, RA_OUTER, RA_ISLAND,
+  STOPS, EXITS, crossingOf, PED_SETBACK, RA_OUTER, RA_ISLAND,
   TRAITS, traitTells, poseAt, signalShowing, forwardClaim, conflicts,
   outranks, earliestClear, schedule, simulate,
 } from "../engine/index.js";
@@ -93,8 +93,8 @@ function Crossing({ side }) {
     const f = i / (n - 1);
     const x = cr.a.x + (cr.b.x - cr.a.x) * f;
     const y = cr.a.y + (cr.b.y - cr.a.y) * f;
-    const w = cr.vertical ? 0 : M(1.1);
-    const h = cr.vertical ? M(1.1) : 0;
+    const w = cr.vertical ? 0 : BAR_HALF;
+    const h = cr.vertical ? BAR_HALF : 0;
     bars.push(
       <line key={i} x1={x - h} y1={y - w} x2={x + h} y2={y + w}
         stroke={C.line} strokeWidth={M(0.4)} />
@@ -139,6 +139,49 @@ function Roundabout({ island = C.grass }) {
   );
 }
 
+/* Half the depth of a crosswalk bar. Shared with Crossing so the stop line
+   and the crossing it sits behind cannot drift apart. */
+const BAR_HALF = M(1.1);
+
+/* Stop lines. One on every leg — a four-way stop has four, and so does a
+   signalised crossroad. Only one was ever drawn, on the south approach.
+
+   Placed behind the crossing, which is the order these markings go in on a
+   real road: stop line, then crosswalk, then the intersection. It is NOT
+   placed at STOPS: that is where the engine rests a waiting car's centre,
+   and painting a line there runs it under the middle of the car and over
+   the crosswalk both.
+
+   Worth knowing that the cars currently come to rest past this line — see
+   the note in CLAUDE.md. That is a geometry question in the engine, not a
+   painting one, and moving it would move every window. */
+const STOP_LINE_AT = HALF + PED_SETBACK + BAR_HALF + M(0.7);
+
+function StopLines() {
+  const side = (s) => (s === "N" || s === "S");
+  const at = {
+    N: { x: CX - OFF, y: CY - STOP_LINE_AT },
+    S: { x: CX + OFF, y: CY + STOP_LINE_AT },
+    W: { x: CX - STOP_LINE_AT, y: CY + OFF },
+    E: { x: CX + STOP_LINE_AT, y: CY - OFF },
+  };
+  return ["N", "S", "E", "W"].map((k) => {
+    const p = at[k];
+    const across = side(k);
+    return (
+      <line
+        key={k}
+        x1={across ? p.x - OFF : p.x}
+        y1={across ? p.y : p.y - OFF}
+        x2={across ? p.x + OFF : p.x}
+        y2={across ? p.y : p.y + OFF}
+        stroke={C.line}
+        strokeWidth={M(0.4)}
+      />
+    );
+  });
+}
+
 function Road({ control, crossings = ["N"] }) {
   const Dash = (p) => <line {...p} stroke={C.yellow} strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(6)}`} />;
   const Edge = (p) => <line {...p} stroke={C.line} strokeWidth={M(0.15)} />;
@@ -162,7 +205,7 @@ function Road({ control, crossings = ["N"] }) {
       <Dash x1={0} y1={CY} x2={CX - HALF} y2={CY} />
       <Dash x1={CX + HALF} y1={CY} x2={W} y2={CY} />
       {bars}
-      <line x1={CX} y1={CY + HALF + 12} x2={CX + HALF} y2={CY + HALF + 12} stroke={C.line} strokeWidth={M(0.4)} />
+      <StopLines />
       {control === "signal" ? (
         <g transform={`translate(${CX + HALF + 34},${CY + HALF + 36})`}>
           <rect x={-8} y={-17} width={16} height={34} rx={5} fill="#2A2E36" stroke={C.ink} strokeWidth={2} />

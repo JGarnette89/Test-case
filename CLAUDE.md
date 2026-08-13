@@ -224,6 +224,18 @@ claimed to demand a wait while going immediately still scored full marks.
   where it bites. Its tell still claims a consequence to the player.
 - **`creep` is masked by `overshoot` in `creeper`.** Accepted — creepers are for
   confusing right of way in busier scenarios than that one.
+- **Cars stop too far forward, and it is an engine question.** `STOPS` rests a
+  waiting car's *centre* at `HALF + SET`, 4.9 m from the middle. Its nose
+  therefore ends up 2.65 m out — which is 0.95 m *inside* the intersection box,
+  past the crosswalk, and well past the stop line. `SET` is a setback sized for
+  a point, not for a 4.5 m car.
+
+  The paint has been put where a stop line belongs (behind the crossing) rather
+  than where the cars happen to rest, so the markings read correctly and the
+  discrepancy is visible instead of hidden. Fixing the cars means `SET`
+  absorbing `CAR_L / 2` plus the crossing depth, which moves every footprint
+  and therefore potentially every window — a timings change, so it needs the
+  maintainer's call and a full re-verification, not a quiet edit.
 - The timing renderer is the only one. 3D is the agreed direction, not started.
 
 ## Do not
