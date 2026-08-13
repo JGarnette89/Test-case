@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye } from "lucide-react";
+import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye, Home } from "lucide-react";
 
 /* This file is now a renderer: it draws the numbers the engine produces and
    collects the player's press. All the judgment lives in ../engine. */
@@ -15,7 +15,7 @@ import {
 import { grade, tally, emptyTally, GRACE, REACTION_FLOOR } from "../engine/score.js";
 import { planRoute, startRun, recordLeg, currentLeg, summary } from "../engine/route.js";
 import { routeById } from "../engine/routes.js";
-import { markPassed } from "../progress.js";
+import { markPassed, logDaily, useProgress, dailyResult } from "../progress.js";
 import { generateScenario, dailyScenario, WEEKDAY_NAMES } from "../engine/generate.js";
 import { environmentFor, scatter } from "../environments.js";
 
@@ -314,6 +314,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   const [t, setT] = useState(0);
   const [pressedAt, setPressedAt] = useState(null);
   const [result, setResult] = useState(null);   // what the engine made of the press
+  const [countedThisRun, setCountedThisRun] = useState(false);
   const [crash, setCrash] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [session, setSession] = useState(emptyTally);
@@ -348,6 +349,11 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   const scn = run && !planFailed ? currentLeg(run) : (drawn ?? SCENARIOS[idx]);
   const runOver = run?.over ?? false;
 
+  const isDaily = source === "daily";
+  const progress = useProgress();
+  // What is on record for today, ignoring whatever this run did.
+  const logged = isDaily ? dailyResult(progress, scn.day) : null;
+
   const sim = React.useMemo(() => simulate(scn), [scn]);
 
   const stopLoop = useCallback(() => {
@@ -366,6 +372,14 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
     // Credit the situation, not the rotation the route happened to use.
     // Generated draws are not tutorial situations, so they unlock nothing.
     if (r.verdict === "good" && !scn.generated) markPassed(scn.rotatedFrom ?? scn.id, r.score);
+
+    /* The daily logs once, and it is the first attempt that counts. Replays
+       are allowed and deliberately worth nothing — otherwise the score is
+       just a measure of how many times you were willing to try. */
+    if (isDaily) {
+      logDaily(scn.day, { score: r.score, verdict: r.verdict, reaction: r.reaction })
+        .then(({ counted }) => setCountedThisRun(counted));
+    }
   }
 
   function begin() {
@@ -411,7 +425,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
     pressRef.current = t;
     setPressedAt(t);
   }
-  function retry() { stopLoop(); setPhase("ready"); setT(0); setPressedAt(null); setResult(null); setCrash(null); pressRef.current = null; }
+  function retry() { stopLoop(); setPhase("ready"); setT(0); setPressedAt(null); setResult(null); setCrash(null); setCountedThisRun(false); pressRef.current = null; }
 
   // On a route, recordLeg has already advanced the index — "next" just clears
   // the board for the intersection you are now approaching.
@@ -573,7 +587,18 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
             . Press <strong style={{ color: C.green }}>GO</strong> as soon as your path is clear — you are
             waiting for the cars that cross you, not for the intersection to empty.
           </div>
-          <button className="btn primary" style={{ width: "100%" }} onClick={begin}><Play size={17} />Start</button>
+          {isDaily && logged && (
+            <div style={{ ...st.tells, background: "rgba(255,201,60,0.10)", borderColor: "rgba(255,201,60,0.30)" }}>
+              <div style={{ ...st.tellsHead, color: C.yellow }}>Today is already on record</div>
+              <div style={{ fontSize: 13, color: "#c8cdd4", lineHeight: 1.55 }}>
+                You scored <strong style={{ color: C.white }}>{logged.score}</strong> on your first run.
+                Playing again is practice — it will not change that.
+              </div>
+            </div>
+          )}
+          <button className="btn primary" style={{ width: "100%" }} onClick={begin}>
+            <Play size={17} />{isDaily && logged ? "Replay for practice" : "Start"}
+          </button>
         </>
       )}
 
@@ -621,11 +646,33 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
           <div style={st.lesson}>{scn.lesson}</div>
           {run && runOver && <RunSummary run={run} />}
 
+          {isDaily && (
+            <div style={{ ...st.tells, background: "rgba(255,201,60,0.10)", borderColor: "rgba(255,201,60,0.30)" }}>
+              <div style={{ ...st.tellsHead, color: C.yellow }}>
+                {countedThisRun ? "Logged for today" : "Practice run — not counted"}
+              </div>
+              <div style={{ fontSize: 13, color: "#c8cdd4", lineHeight: 1.55 }}>
+                {countedThisRun
+                  ? <>That is today's score on record. There is one intersection a day and the first
+                     run is the one that counts, so it stays as it is until tomorrow.</>
+                  : <>Today is already on record at <strong style={{ color: C.white }}>{logged?.score ?? 0}</strong>.
+                     Replay it as often as you like — it will not change that.</>}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             {run && runOver ? (
               <button className="btn primary" style={{ flex: 1 }} onClick={restartRoute}>
                 <RotateCcw size={16} />Drive it again
               </button>
+            ) : isDaily ? (
+              <>
+                <button className="btn" onClick={retry}><RotateCcw size={16} />Replay</button>
+                <button className="btn primary" style={{ flex: 1 }} onClick={() => { window.location.hash = "#/"; }}>
+                  <Home size={16} />Back to menu
+                </button>
+              </>
             ) : (
               <>
                 <button className="btn" onClick={retry}><RotateCcw size={16} />Again</button>

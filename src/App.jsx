@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Menu, X, Route, Gauge, Milestone, ChevronRight, Lock, Check,
-  CalendarDays, Shuffle,
+  CalendarDays, Shuffle, BookOpen,
 } from "lucide-react";
 
 /* DriveDraw is no longer part of this app. Its source is still in
@@ -11,7 +11,11 @@ import RightOfWay from "./apps/RightOfWay.jsx";
 import RightOfWayTiming from "./apps/RightOfWayTiming.jsx";
 import { ROUTES } from "./engine/routes.js";
 import { SCENARIOS } from "./engine/scenarios.js";
-import { useProgress, isPassed, passedCount, bestScore, reset, isPersistent } from "./progress.js";
+import {
+  useProgress, isPassed, passedCount, bestScore, reset, isPersistent,
+  dailyResult, dailyStreak,
+} from "./progress.js";
+import { dayIndex } from "./engine/generate.js";
 
 /* Palette and font stacks are copied from the apps rather than imported,
    because the apps keep theirs module-private. Keep them in step by eye. */
@@ -121,7 +125,8 @@ function useRoute() {
 
 export default function App() {
   const { id, param } = useRoute();
-  const mode = MODES.find((m) => m.id === id) || null;
+  const submenu = SUBMENUS.find((s) => s.id === id) || null;
+  const mode = submenu ? null : MODES.find((m) => m.id === id) || null;
   const [menuOpen, setMenuOpen] = useState(false);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -142,7 +147,8 @@ export default function App() {
     <>
       <Style />
 
-      {!mode && <Home />}
+      {!mode && !submenu && <Home />}
+      {submenu && <SubMenu id={submenu.id} />}
 
       {mode && (
         <>
@@ -206,17 +212,51 @@ function ModeCard({ mode }) {
   );
 }
 
+/* Two things the player does most get a direct card. Everything else is a
+   folder — a home screen that lists every route and every mode is a menu
+   you have to read rather than one you can use. */
+const SUBMENUS = [
+  {
+    id: "drives",
+    name: "Take a drive",
+    kicker: "Routes",
+    accent: C.amber,
+    Icon: Milestone,
+    blurb: "Several intersections in one go. A collision ends the drive.",
+  },
+  {
+    id: "tutorial",
+    name: "Tutorial",
+    kicker: "Learn",
+    accent: C.green,
+    Icon: BookOpen,
+    blurb: "The set situations, one at a time, with the rule explained afterwards.",
+  },
+];
+
+function LinkCard({ item, onClick, note }) {
+  return (
+    <button className="shell-card" style={st.card} onClick={onClick}>
+      <div style={{ ...st.cardIcon, color: item.accent }}>
+        <item.Icon size={22} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ ...st.cardKicker, color: item.accent }}>{item.kicker}</div>
+        <div style={st.cardName}>{item.name}</div>
+        <div style={st.cardBlurb}>{note || item.blurb}</div>
+      </div>
+      <ChevronRight size={18} style={{ color: C.dim, flexShrink: 0 }} />
+    </button>
+  );
+}
+
 function Home() {
   const progress = useProgress();
-  const byKicker = (...ks) => MODES.filter((m) => ks.includes(m.kicker));
-  const daily = byKicker("Daily");
-  const drives = byKicker("Drive");
-  const generated = byKicker("Generated");
-  const singles = byKicker("Real time", "Judgment");
-
-  const cleared = SCENARIOS.filter((s) => isPassed(progress, s.id));
-  const locked = SCENARIOS.length - cleared.length;
+  const byId = (id) => MODES.find((m) => m.id === id);
   const done = passedCount(progress);
+  const today = dayIndex();
+  const played = dailyResult(progress, today);
+  const streak = dailyStreak(progress, today);
 
   return (
     <div style={st.launcher}>
@@ -224,7 +264,7 @@ function Home() {
         <div style={st.brandTitle}>
           RIGHT OF <span style={{ color: C.yellow }}>WAY</span>
         </div>
-        <div style={st.brandSub}>{partOfDay()}. Ontario road rules, under a clock.</div>
+        <div style={st.brandSub}>{partOfDay()}. Road rules, under a clock.</div>
       </div>
 
       <div style={st.premise}>
@@ -235,62 +275,26 @@ function Home() {
         more common fault.
       </div>
 
-      <Section title="Today" note="A new one every day, the same for everyone.">
-        {daily.map((m) => <ModeCard key={m.id} mode={m} />)}
-      </Section>
-
-      <Section title="Keep going" note="Generated situations, as many as you want.">
-        {generated.map((m) => <ModeCard key={m.id} mode={m} />)}
-      </Section>
-
-      <Section title="Take a drive" note="Several intersections in one go. A collision ends the drive.">
-        {drives.map((m) => <ModeCard key={m.id} mode={m} />)}
-      </Section>
-
-      <Section
-        title="Tutorial"
-        note={`The set situations, worked through in order — ${done} of ${SCENARIOS.length} cleared.`}
-      >
-        {singles.map((m) => <ModeCard key={m.id} mode={m} />)}
-      </Section>
-
-      <Section
-        title="Replay a situation"
-        note={
-          cleared.length === 0
-            ? "Nothing yet. Clear a situation in the tutorial and it appears here to replay."
-            : "Situations you have driven cleanly. Go back for a better time."
-        }
-      >
-        {cleared.map((s) => (
-          <button
+      <div style={st.cards}>
+        <LinkCard
+          item={byId("daily")}
+          onClick={() => go("daily")}
+          note={
+            played
+              ? `Done today — you scored ${played.score}${streak > 1 ? `, ${streak} days running` : ""}. Replays are practice.`
+              : byId("daily").blurb
+          }
+        />
+        <LinkCard item={byId("endless")} onClick={() => go("endless")} />
+        {SUBMENUS.map((s) => (
+          <LinkCard
             key={s.id}
-            className="shell-card"
-            style={st.thinRow}
-            onClick={() => go("timing", s.id)}
-          >
-            <Check size={15} style={{ color: C.green, flexShrink: 0 }} />
-            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-              <div style={st.thinName}>{s.title}</div>
-              <div style={st.thinBrief}>{s.brief}</div>
-            </div>
-            <code style={st.thinId}>best {bestScore(progress, s.id)}</code>
-            <ChevronRight size={16} style={{ color: C.dim, flexShrink: 0 }} />
-          </button>
+            item={s}
+            onClick={() => go(s.id)}
+            note={s.id === "tutorial" ? `${done} of ${SCENARIOS.length} situations cleared.` : undefined}
+          />
         ))}
-
-        {/* Locked situations are counted, never named. Half of these turn on
-            not knowing what is coming — listing the titles would hand the
-            answer over before the player ever meets them. */}
-        {locked > 0 && (
-          <div style={st.lockedRow}>
-            <Lock size={15} style={{ color: C.dim, flexShrink: 0 }} />
-            <span>
-              {locked} more {locked === 1 ? "situation" : "situations"} to find. They unlock as you clear them.
-            </span>
-          </div>
-        )}
-      </Section>
+      </div>
 
       <div style={st.foot}>
         Runs entirely on this device. Nothing is sent anywhere.
@@ -305,6 +309,80 @@ function Home() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/* --- Submenus -------------------------------------------------------
+   A folder from the home screen. Same shell, one level down, with a way
+   back that is always in the same place.                                */
+function SubMenu({ id }) {
+  const progress = useProgress();
+  const meta = SUBMENUS.find((s) => s.id === id);
+  const drives = MODES.filter((m) => m.kicker === "Drive");
+  const singles = MODES.filter((m) => m.kicker === "Real time" || m.kicker === "Judgment");
+
+  const cleared = SCENARIOS.filter((s) => isPassed(progress, s.id));
+  const locked = SCENARIOS.length - cleared.length;
+
+  return (
+    <div style={st.launcher}>
+      <button className="shell-link" style={{ alignSelf: "flex-start" }} onClick={() => go(null)}>
+        ← Home
+      </button>
+
+      <div style={st.brand}>
+        <div style={{ ...st.brandTitle, fontSize: 28 }}>{meta.name.toUpperCase()}</div>
+        <div style={st.brandSub}>{meta.blurb}</div>
+      </div>
+
+      {id === "drives" && (
+        <div style={st.cards}>
+          {drives.map((m) => <ModeCard key={m.id} mode={m} />)}
+        </div>
+      )}
+
+      {id === "tutorial" && (
+        <>
+          <Section title="Work through them" note="Start here if you have not played before.">
+            {singles.map((m) => <ModeCard key={m.id} mode={m} />)}
+          </Section>
+
+          <Section
+            title="Replay a situation"
+            note={
+              cleared.length === 0
+                ? "Nothing yet. Clear a situation and it appears here to replay."
+                : "Situations you have driven cleanly. Go back for a better time."
+            }
+          >
+            {cleared.map((s) => (
+              <button key={s.id} className="shell-card" style={st.thinRow}
+                onClick={() => go("timing", s.id)}>
+                <Check size={15} style={{ color: C.green, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                  <div style={st.thinName}>{s.title}</div>
+                  <div style={st.thinBrief}>{s.brief}</div>
+                </div>
+                <code style={st.thinId}>best {bestScore(progress, s.id)}</code>
+                <ChevronRight size={16} style={{ color: C.dim, flexShrink: 0 }} />
+              </button>
+            ))}
+
+            {/* Locked situations are counted, never named. Half of these turn
+                on not knowing what is coming — listing the titles would hand
+                the answer over before the player ever meets them. */}
+            {locked > 0 && (
+              <div style={st.lockedRow}>
+                <Lock size={15} style={{ color: C.dim, flexShrink: 0 }} />
+                <span>
+                  {locked} more {locked === 1 ? "situation" : "situations"} to find. They unlock as you clear them.
+                </span>
+              </div>
+            )}
+          </Section>
+        </>
+      )}
     </div>
   );
 }

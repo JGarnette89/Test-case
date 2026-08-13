@@ -13,7 +13,7 @@ import { readJSON, writeJSON, isPersistent } from "./storage.js";
 
 const KEY = "row.progress.v1";
 
-export const emptyProgress = { passed: {} };
+export const emptyProgress = { passed: {}, daily: {} };
 
 let cache = emptyProgress;
 let loaded = false;
@@ -26,10 +26,54 @@ function emit() {
 export async function load() {
   if (loaded) return cache;
   const stored = await readJSON(KEY, emptyProgress);
-  cache = { ...emptyProgress, ...stored, passed: stored.passed || {} };
+  cache = { ...emptyProgress, ...stored, passed: stored.passed || {}, daily: stored.daily || {} };
   loaded = true;
   emit();
   return cache;
+}
+
+/* =====================================================================
+   The daily
+   One logged score per day, and it is the FIRST attempt. Replays are
+   welcome but they never touch it — a score you can grind at until it is
+   good is not a score, and a leaderboard built on one would be a list of
+   who had the most spare time.
+
+   Stored per day rather than as a running total so that a leaderboard,
+   when it arrives, has something to submit and something to verify
+   against. Nothing here goes near a network.
+   ===================================================================== */
+export function dailyResult(progress, day) {
+  return progress?.daily?.[day] ?? null;
+}
+
+export function hasPlayedDaily(progress, day) {
+  return Boolean(dailyResult(progress, day));
+}
+
+/* Records the day's attempt if there is not one already, and reports
+   whether this one counted. Returns { counted, result }. */
+export async function logDaily(day, entry) {
+  if (day == null) return { counted: false, result: null };
+  const existing = cache.daily?.[day];
+  if (existing) return { counted: false, result: existing };
+
+  const record = { ...entry, at: Date.now() };
+  cache = { ...cache, daily: { ...cache.daily, [day]: record } };
+  emit();
+  await writeJSON(KEY, cache);
+  return { counted: true, result: record };
+}
+
+/* Consecutive days ending today. What a leaderboard would rank alongside
+   the score, and the reason to come back tomorrow. */
+export function dailyStreak(progress, today) {
+  let n = 0;
+  for (let d = today; d >= 0; d--) {
+    if (!progress?.daily?.[d]) break;
+    n++;
+  }
+  return n;
 }
 
 export function isPassed(progress, id) {
