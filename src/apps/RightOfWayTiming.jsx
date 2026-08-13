@@ -174,8 +174,11 @@ function Road({ control, crossings = ["N"] }) {
   const Dash = (p) => <line {...p} stroke={C.yellow} strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(6)}`} />;
   const Edge = (p) => <line {...p} stroke={C.line} strokeWidth={M(0.15)} />;
   const bars = crossings.map((s) => <Crossing key={s} side={s} />);
-  const signs = [[CX + HALF + 30, CY + HALF + 34], [CX - HALF - 30, CY - HALF - 34],
-  [CX - HALF - 30, CY + HALF + 34], [CX + HALF + 30, CY - HALF - 34]];
+  /* Signs stand level with the stop line, at the roadside. A sign the
+     driver passes before reaching the line is a sign in the wrong place. */
+  const SIGN_OUT = STOP_LINE_AT, SIGN_SIDE = HALF + M(1.4);
+  const signs = [[CX + SIGN_SIDE, CY + SIGN_OUT], [CX - SIGN_SIDE, CY - SIGN_OUT],
+  [CX - SIGN_OUT, CY + SIGN_SIDE], [CX + SIGN_OUT, CY - SIGN_SIDE]];
   return (
     <>
       <rect x={CX - HALF} y={0} width={HALF * 2} height={H} fill={C.asphalt} />

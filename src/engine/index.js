@@ -37,10 +37,14 @@ const PED_R = M(0.5);
    Setback is how far outside the box the crossing sits; overhang is how
    far past the road edge it runs, since a crossing does not stop at the
    kerb. BAR_HALF is half the depth of one painted bar.                  */
-const PED_SETBACK = 22;
+const PED_SETBACK = M(0.95);
 const PED_OVERHANG = 30;
-const BAR_HALF = M(1.1);
-const STOP_LINE_AT = HALF + PED_SETBACK + BAR_HALF + M(0.7);
+const BAR_HALF = M(0.75);
+/* The line sits just outside the crossing and hard against the edge of the
+   junction — that is where a driver actually meets it, level with the sign
+   rather than a car length before it. Everything else is measured off it:
+   the sign stands at it, and SET puts a bumper behind it. */
+const STOP_LINE_AT = HALF + PED_SETBACK + BAR_HALF + M(0.35);
 
 /* How far out a waiting car's CENTRE rests.
 
