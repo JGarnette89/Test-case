@@ -161,10 +161,18 @@ node tools/verify-generator.mjs    determinism, safety, spread, rejection rate
 node tools/verify-roundabout.mjs   direction, geometry, the exit tell
 node tools/verify-playthrough.mjs  every scenario at every press time
 node tools/verify-task.mjs         manoeuvres: order, deadlines, fault tiers
+node tools/verify-sight.mjs        occlusion, and the creep trade
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All seven must exit 0. Four things they check are worth understanding:
+All eight must exit 0. Five things they check are worth understanding:
+
+- **Creeping has to buy sight AND cost safety.** If it only buys sight it is
+  a free action and everyone holds it down; if it only costs, it is a trap.
+  `verify-sight.mjs` measures both, and also measures whether there is *room*
+  to creep: `PULL_STEP` is sized against the ~2 m between the stop line and
+  the junction, because a step that fits into that band only once makes the
+  mechanic a switch rather than a judgment.
 
 - **A path trait that moves no window teaches nothing.** Compare a
   trait-carrying vehicle against a well-driven control. Known-inert traits are
