@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Menu, X, Route, Gauge, Milestone, ChevronRight, Lock, Check,
-  CalendarDays, Shuffle, BookOpen,
+  CalendarDays, Shuffle, BookOpen, FlaskConical,
 } from "lucide-react";
 
 /* DriveDraw is no longer part of this app. Its source is still in
@@ -16,6 +16,8 @@ import {
   dailyResult, dailyStreak,
 } from "./progress.js";
 import { dayIndex } from "./engine/generate.js";
+import { simulate } from "./engine/index.js";
+import { sequenceFor } from "./engine/actions.js";
 
 /* Palette and font stacks are copied from the apps rather than imported,
    because the apps keep theirs module-private. Keep them in step by eye. */
@@ -125,8 +127,9 @@ function useRoute() {
 
 export default function App() {
   const { id, param } = useRoute();
-  const submenu = SUBMENUS.find((s) => s.id === id) || null;
-  const mode = submenu ? null : MODES.find((m) => m.id === id) || null;
+  const isTest = id === "test";
+  const submenu = isTest ? null : SUBMENUS.find((s) => s.id === id) || null;
+  const mode = isTest || submenu ? null : MODES.find((m) => m.id === id) || null;
   const [menuOpen, setMenuOpen] = useState(false);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -147,7 +150,8 @@ export default function App() {
     <>
       <Style />
 
-      {!mode && !submenu && <Home />}
+      {!mode && !submenu && !isTest && <Home />}
+      {isTest && <TestMenu />}
       {submenu && <SubMenu id={submenu.id} />}
 
       {mode && (
@@ -296,6 +300,19 @@ function Home() {
         ))}
       </div>
 
+      {/* Dev server only, so it cannot reach a tester's phone by accident.
+          The #/test route still works in a build if you type it. */}
+      {import.meta.env.DEV && (
+        <button className="shell-card" style={{ ...st.thinRow, borderStyle: "dashed" }} onClick={() => go("test")}>
+          <FlaskConical size={16} style={{ color: C.dim, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+            <div style={st.thinName}>Test menu</div>
+            <div style={st.thinBrief}>Every situation, ungated. Not in a production build.</div>
+          </div>
+          <ChevronRight size={16} style={{ color: C.dim, flexShrink: 0 }} />
+        </button>
+      )}
+
       <div style={st.foot}>
         Runs entirely on this device. Nothing is sent anywhere.
         {!isPersistent && (
@@ -309,6 +326,93 @@ function Home() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/* --- Test menu ------------------------------------------------------
+   Every situation, ungated, with the facts you need to tell whether a
+   feature is working. Not the replay list: that one is the player's and
+   is deliberately locked and deliberately unnamed. This one is a tool.
+
+   Linked from home only while running the dev server, so it cannot leak
+   into a build a tester holds — but the route works anywhere, so it can
+   still be reached on purpose by typing it.                             */
+function featuresOf(scn) {
+  const tags = [];
+  if (scn.layout === "roundabout") tags.push("roundabout");
+  if (scn.control === "signal") tags.push("signals");
+  if (scn.actors.some((a) => a.kind === "ped")) tags.push("pedestrian");
+  if (scn.sightBlockers?.length) tags.push("blind corner");
+  const seq = sequenceFor(scn.manoeuvre ?? "straight");
+  if (seq.length > 1) tags.push(seq.join("+"));
+  const traits = [...new Set(scn.actors.flatMap((a) => a.traits || []))];
+  return { tags, traits };
+}
+
+function TestMenu() {
+  const rows = React.useMemo(
+    () =>
+      SCENARIOS.map((s) => {
+        let legalAt = null, think = null;
+        try {
+          const sim = simulate(s);
+          legalAt = sim.legalAt;
+          think = Math.round((sim.legalAt - s.ego.arriveAt) * 100) / 100;
+        } catch {
+          /* A scenario that will not simulate is exactly what this menu is
+             for finding, so it is listed rather than swallowed. */
+        }
+        return { s, legalAt, think, ...featuresOf(s) };
+      }),
+    []
+  );
+
+  return (
+    <div style={st.launcher}>
+      <button className="shell-link" style={{ alignSelf: "flex-start" }} onClick={() => go(null)}>
+        ← Home
+      </button>
+
+      <div style={st.brand}>
+        <div style={{ ...st.brandTitle, fontSize: 28 }}>TEST MENU</div>
+        <div style={st.brandSub}>
+          Every situation, ungated. Shows the derived window so you can tell at a glance
+          whether a change moved something.
+        </div>
+      </div>
+
+      <Section title={`Situations (${SCENARIOS.length})`} note="Window and wait are derived live, not stored.">
+        {rows.map(({ s, legalAt, think, tags, traits }) => (
+          <button key={s.id} className="shell-card" style={st.thinRow} onClick={() => go("timing", s.id)}>
+            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+              <div style={st.thinName}>{s.title}</div>
+              <div style={st.testMeta}>
+                <code style={st.thinId}>{s.id}</code>
+                {legalAt == null
+                  ? <span style={{ color: C.red }}>will not simulate</span>
+                  : <span>window {legalAt}s · waits {think}s</span>}
+              </div>
+              {(tags.length > 0 || traits.length > 0) && (
+                <div style={st.tagRow}>
+                  {tags.map((t) => <span key={t} style={st.tag}>{t}</span>)}
+                  {traits.map((t) => <span key={t} style={{ ...st.tag, color: C.amber, borderColor: "rgba(240,169,60,0.4)" }}>{t}</span>)}
+                </div>
+              )}
+            </div>
+            <ChevronRight size={16} style={{ color: C.dim, flexShrink: 0 }} />
+          </button>
+        ))}
+      </Section>
+
+      <Section title="Generated" note="Fresh each time — for checking the generator rather than a fixed case.">
+        <LinkCard item={MODES.find((m) => m.id === "daily")} onClick={() => go("daily")} />
+        <LinkCard item={MODES.find((m) => m.id === "endless")} onClick={() => go("endless")} />
+      </Section>
+
+      <Section title="Routes" note="Continuity, rotation and the run loop across several intersections.">
+        {MODES.filter((m) => m.kicker === "Drive").map((m) => <ModeCard key={m.id} mode={m} />)}
+      </Section>
     </div>
   );
 }
@@ -550,6 +654,15 @@ const st = {
   },
   sectionNote: { fontSize: 12, color: C.dim, lineHeight: 1.45, marginTop: -4, marginBottom: 2 },
   thinRow: { padding: "11px 13px", borderRadius: 11, gap: 10 },
+  testMeta: {
+    display: "flex", alignItems: "center", gap: 8, marginTop: 4,
+    fontSize: 11.5, color: C.dim, flexWrap: "wrap",
+  },
+  tagRow: { display: "flex", gap: 5, marginTop: 6, flexWrap: "wrap" },
+  tag: {
+    fontSize: 10.5, color: C.dim, border: `1px solid ${C.hair}`,
+    borderRadius: 6, padding: "2px 6px", whiteSpace: "nowrap",
+  },
   lockedRow: {
     display: "flex", alignItems: "center", gap: 10, padding: "12px 13px",
     borderRadius: 11, border: `1px dashed ${C.hair}`, background: "rgba(255,255,255,0.02)",
