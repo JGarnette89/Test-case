@@ -160,7 +160,7 @@ node tools/verify-route.mjs        rotation, continuity, run mechanics
 node tools/verify-generator.mjs    determinism, safety, spread, rejection rate
 node tools/verify-roundabout.mjs   direction, geometry, the exit tell
 node tools/verify-playthrough.mjs  every scenario at every press time
-node tools/verify-task.mjs         action order, deadlines, partial marks
+node tools/verify-task.mjs         manoeuvres: order, deadlines, fault tiers
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
