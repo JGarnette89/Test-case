@@ -64,6 +64,20 @@ move into that mode rather than being baked into the default.
   still be readable — `LATE_SIGNAL_LEAD` is 0.8s, not zero. The lesson is "do
   not commit on an absent indicator", never a gotcha. An indicator that appears
   after the wheels have turned punishes attentiveness instead of assumption.
+- **Signal before any change of direction OR motion**, slowing included when
+  the slowing leads into a turn. In `task.js` the signal deadline therefore
+  anchors to whichever act comes first — the slow, the moving-off, or the
+  manoeuvre — never to the manoeuvre by default.
+- **Partial success is partial marks, like a road test.** Perfection is
+  rewarded, not required. Omitting a step scores nothing for that step but
+  does not fail the task; doing the right things in the wrong order keeps a
+  little credit, because the player knew to do them, but not much, because a
+  signal after the fact informed nobody.
+- **Too much creep is intersecting the path of other traffic** — which
+  includes pedestrians and cyclists approaching a crossing, not only vehicles
+  on the road. Ontario also holds that a vehicle waiting to turn left must not
+  cross the stop line while a car ahead of it is already waiting in the
+  intersection; that is a scenario waiting to be written.
 - **Signalling out of a roundabout is best practice, not common practice.** So
   the indicator can never be the thing a roundabout scenario asks you to read.
   The line carries it instead: a driver about to leave drifts to the outside of
@@ -146,10 +160,11 @@ node tools/verify-route.mjs        rotation, continuity, run mechanics
 node tools/verify-generator.mjs    determinism, safety, spread, rejection rate
 node tools/verify-roundabout.mjs   direction, geometry, the exit tell
 node tools/verify-playthrough.mjs  every scenario at every press time
+node tools/verify-task.mjs         action order, deadlines, partial marks
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All six must exit 0. Four things they check are worth understanding:
+All seven must exit 0. Four things they check are worth understanding:
 
 - **A path trait that moves no window teaches nothing.** Compare a
   trait-carrying vehicle against a well-driven control. Known-inert traits are
