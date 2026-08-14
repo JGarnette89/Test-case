@@ -162,10 +162,21 @@ node tools/verify-roundabout.mjs   direction, geometry, the exit tell
 node tools/verify-playthrough.mjs  every scenario at every press time
 node tools/verify-task.mjs         manoeuvres: order, deadlines, fault tiers
 node tools/verify-sight.mjs        occlusion, and the creep trade
+node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All eight must exit 0. Five things they check are worth understanding:
+All nine must exit 0. Six things they check are worth understanding:
+
+- **Equivalence is the one for refactors.** The others check the engine is
+  right; that one checks it has not *changed*. It matters because a change to
+  geometry moves every window, so the baselines get rebaked — and at that
+  moment the regression net stops being able to tell an intended change from a
+  mistake. `engine-golden.json` is a committed fingerprint of every window,
+  every departure, every pose at 0.05s, and what the driver can see. Rebake it
+  with `--write` only when the change is *meant* to move behaviour, and say so
+  in the commit. Verified sensitive to a 1 cm shift in where cars rest and to
+  a 40 cm shift in the driver's eye position.
 
 - **Creeping has to buy sight AND cost safety.** If it only buys sight it is
   a free action and everyone holds it down; if it only costs, it is a trap.
