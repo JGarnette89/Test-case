@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye, Home } from "lucide-react";
+import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye, Home, Check } from "lucide-react";
 
 /* This file is now a renderer: it draws the numbers the engine produces and
    collects the player's press. All the judgment lives in ../engine. */
@@ -18,6 +18,13 @@ import { routeById } from "../engine/routes.js";
 import { markPassed, logDaily, useProgress, dailyResult } from "../progress.js";
 import { generateScenario, dailyScenario, WEEKDAY_NAMES } from "../engine/generate.js";
 import { environmentFor, scatter } from "../environments.js";
+import {
+  ACTIONS, sequenceFor, deriveWindows, gradeTask, FAULT,
+} from "../engine/actions.js";
+import {
+  PULL_STEP, whatEgoSees, sightBlockersOf, encroaches, carWaitingInBox,
+  crossedStopLine, creepPose,
+} from "../engine/sight.js";
 
 /* ---------------- drawing ---------------- */
 
@@ -349,6 +356,11 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   const [pressedAt, setPressedAt] = useState(null);
   const [result, setResult] = useState(null);   // what the engine made of the press
   const [countedThisRun, setCountedThisRun] = useState(false);
+  // Multi-action manoeuvres: what has been pressed, and how far crept.
+  const [performed, setPerformed] = useState({});
+  const [creeps, setCreeps] = useState(0);
+  const [criticals, setCriticals] = useState([]);
+  const [sheet, setSheet] = useState(null);
   const [crash, setCrash] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [session, setSession] = useState(emptyTally);
@@ -357,6 +369,8 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   const raf = useRef(null);
   const t0 = useRef(0);
   const pressRef = useRef(null);
+  // Read inside the animation loop, which cannot see state updates.
+  const creepRef = useRef(0);
 
   // Planning is where a route's continuity is resolved: each leg gets rotated
   // to the approach the previous one leaves you on.
@@ -383,6 +397,15 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   const scn = run && !planFailed ? currentLeg(run) : (drawn ?? SCENARIOS[idx]);
   const runOver = run?.over ?? false;
 
+  /* Which buttons this situation asks for. A scenario that says nothing
+     gets the old single GO, so every existing situation is untouched. */
+  const sequence = React.useMemo(
+    () => sequenceFor(scn.manoeuvre ?? "straight"),
+    [scn.manoeuvre, scn.id]
+  );
+  const statics = React.useMemo(() => sightBlockersOf(scn), [scn.id]);
+  const multi = sequence.length > 1;
+
   const isDaily = source === "daily";
   const progress = useProgress();
   // What is on record for today, ignoring whatever this run did.
@@ -396,10 +419,30 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   }, []);
   useEffect(() => stopLoop, [stopLoop]);
 
+  /* Windows for every action the manoeuvre asks for. The GO window is the
+     engine's; the rest are worked backwards from it. */
+  const windows = React.useMemo(
+    () => deriveWindows(sequence, {
+      manoeuvreAt: scn.manoeuvreAt ?? sim.legalAt,
+      legalAt: sim.legalAt,
+    }),
+    [sequence, sim, scn.manoeuvreAt]
+  );
+
   // The engine decides what happened and what it was worth; this only shows it.
   function finish(at, hit) {
     stopLoop();
     const r = grade({ legalAt: sim.legalAt, pressedAt: at, collided: !!hit });
+
+    /* On a multi-action manoeuvre the press score is only the GO part of
+       it, so the sheet is what the player is actually shown. */
+    if (multi) {
+      const pressed = Object.entries({ ...performed, ...(at != null ? { go: at } : {}) })
+        .map(([action, time]) => ({ action, at: time }));
+      const hard = [...criticals, ...(hit ? [FAULT.COLLISION] : [])];
+      setSheet(gradeTask({ sequence, windows, performed: pressed, faults: hard }));
+    }
+
     setResult(r); setCrash(hit || null); setPhase("done");
     setSession((s) => tally(s, r));
     if (run) setRun((cur) => recordLeg(cur, r));
@@ -418,7 +461,9 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
 
   function begin() {
     setPhase("running"); setT(0); setPressedAt(null); setResult(null); setCrash(null);
+    setPerformed({}); setCreeps(0); setCriticals([]); setSheet(null);
     pressRef.current = null;
+    creepRef.current = 0;
     t0.current = performance.now();
 
     const loop = (now) => {
@@ -427,8 +472,10 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
       const P = pressRef.current;
 
       if (P != null) {
-        // Ego is moving — play it forward and see what actually happens.
-        const egoLive = { ...sim.ego, departAt: P };
+        /* Creeping is expressed as stopBias — the engine already knows how
+           to rest a car further forward, so the departure runs from wherever
+           the player edged to rather than from the line. */
+        const egoLive = { ...sim.ego, departAt: P, stopBias: (sim.ego.stopBias || 0) + creepRef.current * PULL_STEP };
         const mine = poseAt(egoLive, el);
         for (const a of sim.actors) {
           const theirs = poseAt(a, el);
@@ -459,7 +506,37 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
     pressRef.current = t;
     setPressedAt(t);
   }
-  function retry() { stopLoop(); setPhase("ready"); setT(0); setPressedAt(null); setResult(null); setCrash(null); setCountedThisRun(false); pressRef.current = null; }
+
+  /* One press of an action button. Each is pressed once, except pulling up,
+     which is the whole point of pulling up. */
+  function press(action) {
+    if (phase !== "running") return;
+    if (action === "go") { setPerformed((p) => ({ ...p, go: t })); go(); return; }
+
+    if (action === "pullUp") {
+      if (pressRef.current != null) return;      // already moving off
+      const next = creepRef.current + 1;
+      creepRef.current = next;
+      setCreeps(next);
+      // Edging forward is judged by what it exposes you to, not by a clock.
+      const enc = encroaches(sim, t, next);
+      if (enc.encroached) setCriticals((c) => c.some((f) => f.id === "encroach") ? c : [...c, { ...FAULT.ENCROACHED, who: enc.who }]);
+      const pose = creepPose(sim.ego, t, next);
+      if (crossedStopLine(pose)) {
+        const box = carWaitingInBox(sim, t);
+        if (box.blocked) setCriticals((c) => c.some((f) => f.id === "blockedBox") ? c : [...c, { ...FAULT.BLOCKED_BOX, who: box.who }]);
+      }
+      return;
+    }
+
+    setPerformed((p) => (p[action] != null ? p : { ...p, [action]: t }));
+  }
+
+  function retry() {
+    stopLoop(); setPhase("ready"); setT(0); setPressedAt(null); setResult(null); setCrash(null);
+    setCountedThisRun(false); setPerformed({}); setCreeps(0); setCriticals([]); setSheet(null);
+    pressRef.current = null; creepRef.current = 0;
+  }
 
   // On a route, recordLeg has already advanced the index — "next" just clears
   // the board for the intersection you are now approaching.
@@ -473,10 +550,20 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
 
   const showT = phase === "ready" ? 0 : t;
   const blink = Math.floor(showT * 1.7) % 2 === 0;
+  const liveEgo = { ...sim.ego, stopBias: (sim.ego.stopBias || 0) + creeps * PULL_STEP };
   const egoPose = poseAt(
-    { ...sim.ego, departAt: pressedAt != null ? pressedAt : 1e9 },
+    { ...liveEgo, departAt: pressedAt != null ? pressedAt : 1e9 },
     phase === "ready" ? Math.min(sim.ego.arriveAt, 0.001) : showT
   );
+
+  /* What the driver can actually see from where they are sitting. Only
+     while playing: once it is over, everything is revealed, because the
+     lesson is what was there — and being shown the car you never saw is
+     the whole point of having hidden it. */
+  const sees = React.useMemo(() => {
+    if (phase !== "running" || !multi) return null;
+    return whatEgoSees({ ...sim, ego: liveEgo }, showT, 0, statics);
+  }, [phase, multi, sim, showT, creeps, statics]);
 
   const tells = sim.actors.flatMap((a) => traitTells(a));
 
@@ -526,6 +613,10 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
           background:${C.green}; border:none; border-radius:14px; color:#fff; cursor:pointer;
           box-shadow:0 6px 0 ${shade(C.green, -0.18)}; }
         .go:disabled { background:#3D424A; box-shadow:0 6px 0 #2A2E34; color:#8b9199; }
+        .go.actionGo { flex:1.4; min-height:64px; font-size:24px; letter-spacing:2px; }
+        .btn.action { min-height:64px; font-family:${FONT_D}; font-size:16px; font-weight:700;
+          letter-spacing:1.5px; background:rgba(58,62,70,0.95); }
+        .btn.action:disabled { opacity:0.45; }
         .go:active:not(:disabled) { transform:translateY(4px); box-shadow:0 2px 0 ${shade(C.green, -0.18)}; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.78} }
         .live { animation:pulse 1.5s ease-in-out infinite; }
@@ -589,9 +680,26 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
             />
           )}
 
+          {statics.map((b) => (
+            <g key={b.p.id} transform={`translate(${b.pose.x},${b.pose.y}) rotate(${b.pose.rot})`}>
+              <rect x={-b.hl} y={-b.hw} width={b.hl * 2} height={b.hw * 2} rx={M(0.3)}
+                fill="#6E6A63" stroke={C.ink} strokeWidth={2} />
+              <rect x={-b.hl + M(0.3)} y={-b.hw + M(0.2)} width={b.hl * 2 - M(0.6)} height={M(0.3)}
+                rx={M(0.1)} fill="#fff" opacity={0.16} />
+            </g>
+          ))}
+
           {sim.actors.map((a) => {
             const pose = poseAt(a, showT);
-            return pose.gone ? null : <Vehicle key={a.id} p={a} pose={pose} blink={blink} tNow={showT} />;
+            if (pose.gone) return null;
+            // You cannot read what you cannot see.
+            const v = sees?.[a.id];
+            if (v === "hidden") return null;
+            return (
+              <g key={a.id} opacity={v === "partial" ? 0.45 : 1}>
+                <Vehicle p={a} pose={pose} blink={blink} tNow={showT} />
+              </g>
+            );
           })}
           {!egoPose.gone && <Vehicle p={sim.ego} pose={egoPose} isEgo blink={blink} tNow={showT} />}
 
@@ -636,10 +744,35 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
         </>
       )}
 
-      {phase === "running" && (
+      {phase === "running" && !multi && (
         <button className="go" onClick={go} disabled={pressedAt != null}>
           {pressedAt != null ? "…" : "GO"}
         </button>
+      )}
+
+      {phase === "running" && multi && (
+        <div style={st.actionRow}>
+          {sequence.map((id) => {
+            const def = ACTIONS[id];
+            const isGo = id === "go";
+            const isCreep = id === "pullUp";
+            const used = isCreep ? false : performed[id] != null || (isGo && pressedAt != null);
+            const dead = used || (isCreep && pressedAt != null);
+            return (
+              <button
+                key={id}
+                className={isGo ? "go actionGo" : "btn action"}
+                onClick={() => press(id)}
+                disabled={dead}
+                style={isGo ? undefined : { flex: 1 }}
+              >
+                {def.label}
+                {isCreep && creeps > 0 && <span style={st.creepCount}>×{creeps}</span>}
+                {used && !isGo && <Check size={14} style={{ marginLeft: 6 }} />}
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {phase === "done" && (
@@ -657,6 +790,32 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
               <div style={st.scoreLabel}>{result?.band?.label ?? "no score"}</div>
             </div>
           </div>
+          {sheet && (
+            <div style={{ ...st.tells, background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.12)" }}>
+              <div style={{ ...st.tellsHead, color: sheet.criticalCount ? C.red : C.white }}>
+                {sheet.criticalCount ? "Failed — " + sheet.faults.find((f) => f.tier === "critical").text
+                  : sheet.outcome === "passed" ? `Passed — ${sheet.marks} marks` : `Below standard — ${sheet.marks} marks`}
+              </div>
+              {sheet.steps.map((s) => (
+                <div key={s.action} style={st.markRow}>
+                  <span style={{ color: s.fault ? C.amber : C.green, minWidth: 74, fontWeight: 600 }}>
+                    {ACTIONS[s.action]?.label}
+                  </span>
+                  <span style={{ color: "#8b9199", fontSize: 12.5 }}>
+                    {s.fault ? s.fault.text : "as it should be"}
+                  </span>
+                  <span style={{ ...st.markScore, color: s.fault ? C.amber : C.green }}>{s.score}</span>
+                </div>
+              ))}
+              {sheet.faults.filter((f) => f.tier === "critical").map((f, i) => (
+                <div key={i} style={{ ...st.markRow, color: C.red }}>
+                  <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: 12.5 }}>{f.text}{f.who ? ` — ${f.who}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <Timeline duration={scn.duration} legalAt={sim.legalAt} pressedAt={pressedAt} verdict={verdict} />
           <div style={st.readout}>
             {verdict === "collision" && <>You pulled out at {pressedAt.toFixed(1)}s and met the {crash?.who?.toLowerCase()}. Your path was not clear until {sim.legalAt.toFixed(1)}s.</>}
@@ -766,6 +925,16 @@ const st = {
   result: { background: "rgba(32,35,40,0.94)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 14, padding: 15 },
   readout: { fontSize: 13, color: "#c8cdd4", lineHeight: 1.55, marginTop: 12 },
   bandNote: { fontSize: 12.5, color: "#8b9199", marginTop: 4, lineHeight: 1.45 },
+  actionRow: { display: "flex", gap: 8, alignItems: "stretch" },
+  creepCount: { marginLeft: 6, opacity: 0.75, fontVariantNumeric: "tabular-nums" },
+  markRow: {
+    display: "flex", alignItems: "center", gap: 10, padding: "8px 0",
+    borderTop: "1px solid rgba(255,255,255,0.07)", fontSize: 13,
+  },
+  markScore: {
+    marginLeft: "auto", fontFamily: FONT_D, fontWeight: 700, fontSize: 16,
+    fontVariantNumeric: "tabular-nums",
+  },
   scoreBox: {
     flexShrink: 0, minWidth: 74, textAlign: "center", padding: "6px 8px 7px",
     borderRadius: 11, border: "1px solid", background: "rgba(0,0,0,0.22)",

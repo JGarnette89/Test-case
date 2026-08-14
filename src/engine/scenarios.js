@@ -4,6 +4,7 @@
    intending what — the engine derives when the window opens.
    ===================================================================== */
 import { C } from "../theme.js";
+import { M } from "./index.js";
 /* ---------------- scenarios ---------------- */
 const S = (o) => ({ stops: true, kind: "car", ...o });
 
@@ -162,6 +163,28 @@ const SCENARIOS = [
       S({ id: "n", from: "N", intent: "right", arriveAt: 0.6, color: C.red, name: "Red car", signal: null }),
     ],
     lesson: "It never indicated, and most drivers never do. What it did was drift to the outside of the circulating lane on the approach to the west exit, and a car moving out is a car leaving. It was gone one exit before yours, so nothing ever crossed you and your window opened the moment you stopped. Had it held the inner line it was coming all the way round to your leg and you would have sat there for seconds. Read the line, not the lamp: wheels commit, indicators only promise.",
+  },
+  {
+    id: "unprotected",
+    title: "The one you cannot see",
+    brief: "Stop sign on the side road. A van is parked right on the corner.",
+    control: "stop",
+    manoeuvre: "unprotectedLeft",
+    duration: 18,
+    ego: { from: "S", intent: "straight", arriveAt: 1.2, stops: true, color: C.blue },
+    /* A standing obstruction on the corner, not a road user. This is what
+       actually blinds a driver at a junction — a parked van, a hedge, a
+       hoarding — rather than another car in the road. */
+    sightBlockers: [
+      { id: "van", x: 268, y: 452, rot: 0, hl: M(2.8), hw: M(1.15) },
+    ],
+    actors: [
+      /* Through traffic on the main road. It does not stop, and from the
+         line the van hides the approach it comes down. */
+      S({ id: "thru", from: "W", intent: "straight", arriveAt: 2.3, stops: false,
+        color: C.red, name: "Red car", priority: -2 }),
+    ],
+    lesson: "The van on the corner hid the road you had to read. From the line there was nothing to see, and nothing to see is not the same as nothing coming — so the question was never when to go, it was whether you had enough information to go at all. Edging forward buys that information and spends your margin doing it. Too far and you are in the path of the traffic you were trying to see.",
   },
 ];
 export { SCENARIOS, S };

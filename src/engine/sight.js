@@ -93,7 +93,9 @@ export function visibility(eye, target, targetPose, blockers) {
   for (const pt of pts) {
     let blocked = false;
     for (const b of blockers) {
-      const be = extentOf(b.p);
+      // A standing obstruction carries its own size; a road user is sized
+      // from what it is.
+      const be = b.hl != null ? { hl: b.hl, hw: b.hw } : extentOf(b.p);
       if (segmentHitsBox(eye, pt, b.pose, be.hl, be.hw)) { blocked = true; break; }
     }
     if (!blocked) seen++;
@@ -103,9 +105,25 @@ export function visibility(eye, target, targetPose, blockers) {
   return "clear";
 }
 
+/* Standing obstructions — a parked van on the kerb, a hedge on the corner.
+   Declared per scenario as plain data, because most of what actually
+   blocks a driver's view at a junction is not another car in the road.
+   The engine has no idea what the renderer draws there, so a scenario
+   that wants a blind corner has to say so.
+
+   { x, y, rot, hl, hw } in engine pixels, like everything else. */
+export function sightBlockersOf(scn) {
+  return (scn?.sightBlockers ?? []).map((b) => ({
+    p: { id: b.id ?? "obstruction", kind: "static" },
+    pose: { x: b.x, y: b.y, rot: b.rot ?? 0 },
+    hl: b.hl ?? M(2.4),
+    hw: b.hw ?? M(1.0),
+  }));
+}
+
 /* What the ego can see of everyone else, at a moment, having crept
    `steps` times. Returns a map of actor id to visibility. */
-export function whatEgoSees(sim, t, steps = 0) {
+export function whatEgoSees(sim, t, steps = 0, statics = []) {
   const egoPose = creepPose(sim.ego, t, steps);
   const eye = eyePoint(egoPose);
 
@@ -115,7 +133,7 @@ export function whatEgoSees(sim, t, steps = 0) {
 
   const out = {};
   for (const { p, pose } of live) {
-    const blockers = live.filter((o) => o.p.id !== p.id);
+    const blockers = [...live.filter((o) => o.p.id !== p.id), ...statics];
     out[p.id] = visibility(eye, p, pose, blockers);
   }
   return out;
@@ -207,7 +225,7 @@ function isStationary(p, t) {
 
 /* The whole judgment on a creep, in one call: is it allowed, and what
    did it buy? */
-export function assessCreep(sim, t, steps) {
+export function assessCreep(sim, t, steps, statics = []) {
   const pose = creepPose(sim.ego, t, steps);
   const crossed = crossedStopLine(pose);
   const box = crossed ? carWaitingInBox(sim, t) : { blocked: false };
@@ -219,6 +237,6 @@ export function assessCreep(sim, t, steps) {
     blockedBox: box.blocked,
     blockedBoxWho: box.who ?? null,
     ...enc,
-    sees: whatEgoSees(sim, t, steps),
+    sees: whatEgoSees(sim, t, steps, statics),
   };
 }
