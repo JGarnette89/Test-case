@@ -21,6 +21,11 @@
    help. Signals also lie, and plenty of drivers never touch them.
    ===================================================================== */
 
+import {
+  linePath, quadPath, polyPath, poseOn, approachFrom, approachPose, advance,
+  lerp, angleTo, quadAt as quad,
+} from "./paths.js";
+
 const SCALE = 20;
 const M = (v) => v * SCALE;
 const W = 720, H = 720, CX = 360, CY = 360;
@@ -145,15 +150,8 @@ const EXITS = {
 const RIGHT_OF = { S: "E", N: "W", W: "S", E: "N" };
 const OPPOSITE = { S: "N", N: "S", E: "W", W: "E" };
 
-const lerp = (a, b, t) => a + (b - a) * t;
-const quad = (p0, p1, p2, t) => {
-  const u = 1 - t;
-  return {
-    x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
-    y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y,
-  };
-};
-const angleTo = (a, b) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+/* lerp, quad and angleTo now live in paths.js, which is where the geometry
+   went. Imported above rather than kept as a second copy. */
 
 /* --- crossings -------------------------------------------------------
    A pedestrian stands on one leg's crosswalk, and which leg is given by
@@ -267,93 +265,95 @@ function raPath(p) {
   return path;
 }
 
-function raAt(path, dist) {
-  const { pts, cum } = path;
-  if (dist <= 0) return pts[0];
-  if (dist >= path.length) return pts[pts.length - 1];
-  let i = 1;
-  while (i < cum.length && cum[i] < dist) i++;
-  const f = (dist - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
-  return {
-    x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * f,
-    y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * f,
-  };
-}
-
-/* How long this participant takes to clear, once moving. The cross layout
-   has fixed times per intent; a roundabout is however long its path is. */
+/* How long this participant takes to clear, once moving. Comes off the
+   path now rather than a table, so a layout that is neither a crossing
+   nor a roundabout needs no special case here. */
 export function spanOf(p) {
-  if (p.kind === "ped") return CROSS.walk;
-  if (p.layout === "roundabout") return raPath(p).length / RA_SPEED;
-  return CROSS[p.intent];
+  return movementOf(p).traverse.duration;
 }
 
-function roundaboutPose(p, t) {
-  const path = raPath(p);
-  const spawn = {
-    x: path.gate.x - Math.cos((path.rot * Math.PI) / 180) * 490,
-    y: path.gate.y - Math.sin((path.rot * Math.PI) / 180) * 490,
-  };
+/* =====================================================================
+   MOVEMENTS
+   Where a road user rests and the path it takes from there. One of these
+   per participant, built once and cached, then walked by basePose.
 
-  if (t < p.arriveAt) {
-    const k = Math.max(0, Math.min(1, (t - (p.arriveAt - 2.8)) / 2.8));
-    const e = k * k * (3 - 2 * k);
-    return {
-      x: lerp(spawn.x, path.gate.x, e), y: lerp(spawn.y, path.gate.y, e),
-      rot: path.rot, approaching: true,
-    };
-  }
-  if (t < p.departAt) return { x: path.gate.x, y: path.gate.y, rot: path.rot, waiting: true };
+   This is the seam. Everything downstream — conflicts, windows, sight,
+   scoring, the renderer — only ever asks where somebody is at time t. So
+   a new junction type is a new builder here and nothing else: the rules
+   layer never learns what shape the road was.
+   ===================================================================== */
+const moveCache = new WeakMap();
 
-  const d = (t - p.departAt) * RA_SPEED;
-  const pos = raAt(path, d);
-  const nxt = raAt(path, d + 6);
-  return {
-    ...pos,
-    rot: d < 2 ? path.rot : angleTo(pos, nxt),
-    gone: d >= path.length,
-    moving: true,
-  };
-}
+/* The four-way. Straight runs to its exit; a turn bends through a control
+   point set off to the side, which is what turnBias widens. */
+function crossMovement(p) {
+  const base = STOPS[p.from];
+  const exit = EXITS[p.from][p.intent];
+  const rest = { ...advance(base, base.rot, p.stopBias || 0), rot: base.rot };
 
-/* Position and heading of a road user at time t, before any driving traits. */
-function basePose(p, t) {
-  if (p.layout === "roundabout" && p.kind !== "ped") return roundaboutPose(p, t);
-  if (p.kind === "ped") {
-    const cr = crossingFor(p);
-    const start = p.reverse ? cr.b : cr.a;
-    const end = p.reverse ? cr.a : cr.b;
-    if (t < p.departAt) {
-      return { x: start.x, y: start.y, rot: cr.rot, hidden: t < p.arriveAt - 1.2, waiting: true };
-    }
-    const k = Math.min(1, (t - p.departAt) / CROSS.walk);
-    return { x: lerp(start.x, end.x, k), y: lerp(start.y, end.y, k), rot: cr.rot, gone: k >= 1 };
-  }
-  const base = STOPS[p.from], exit = EXITS[p.from][p.intent];
-  const rad = (base.rot * Math.PI) / 180;
-  const bias = p.stopBias || 0;
-  const stop = { x: base.x + Math.cos(rad) * bias, y: base.y + Math.sin(rad) * bias, rot: base.rot };
-  const spawn = { x: stop.x - Math.cos(rad) * 490, y: stop.y - Math.sin(rad) * 490 };
-
-  if (t < p.arriveAt) {
-    const k = Math.max(0, Math.min(1, (t - (p.arriveAt - 2.8)) / 2.8));
-    const e = k * k * (3 - 2 * k);
-    return { x: lerp(spawn.x, stop.x, e), y: lerp(spawn.y, stop.y, e), rot: stop.rot, approaching: true };
-  }
-  if (t < p.departAt) return { x: stop.x, y: stop.y, rot: stop.rot, waiting: true };
-
-  const k = Math.min(1, (t - p.departAt) / CROSS[p.intent]);
   if (p.intent === "straight") {
-    return { x: lerp(stop.x, exit.x, k), y: lerp(stop.y, exit.y, k), rot: stop.rot, gone: k >= 1, moving: true };
+    return { rest, traverse: linePath(rest, exit, CROSS.straight) };
   }
   const vertical = p.from === "S" || p.from === "N";
   const wide = p.turnBias || 0;
   const ctrl = vertical
-    ? { x: stop.x + (exit.x > stop.x ? -wide : wide), y: exit.y }
-    : { x: exit.x, y: stop.y + (exit.y > stop.y ? -wide : wide) };
-  const pos = quad(stop, ctrl, exit, k);
-  const nxt = quad(stop, ctrl, exit, Math.min(1, k + 0.03));
-  return { ...pos, rot: k < 0.02 ? stop.rot : angleTo(pos, nxt), gone: k >= 1, moving: true };
+    ? { x: rest.x + (exit.x > rest.x ? -wide : wide), y: exit.y }
+    : { x: exit.x, y: rest.y + (exit.y > rest.y ? -wide : wide) };
+  return { rest, traverse: quadPath(rest, ctrl, exit, CROSS[p.intent]) };
+}
+
+/* The roundabout, whose path was already a sampled polyline walked at a
+   constant speed — the shape everything else is now expressed in. */
+function roundaboutMovement(p) {
+  const path = raPath(p);
+  return {
+    rest: { x: path.gate.x, y: path.gate.y, rot: path.rot },
+    traverse: polyPath(path.pts, path.length / RA_SPEED, { rot0: path.rot }),
+  };
+}
+
+/* On foot: straight across the crossing, at walking pace. */
+function pedMovement(p) {
+  const cr = crossingFor(p);
+  const start = p.reverse ? cr.b : cr.a;
+  const end = p.reverse ? cr.a : cr.b;
+  return {
+    rest: { x: start.x, y: start.y, rot: cr.rot },
+    traverse: linePath({ ...start, rot: cr.rot }, end, CROSS.walk),
+    onFoot: true,
+  };
+}
+
+export function movementOf(p) {
+  const hit = moveCache.get(p);
+  if (hit) return hit;
+  const mv = p.kind === "ped" ? pedMovement(p)
+    : p.layout === "roundabout" ? roundaboutMovement(p)
+    : crossMovement(p);
+  mv.spawn = mv.onFoot ? null : approachFrom(mv.rest);
+  moveCache.set(p, mv);
+  return mv;
+}
+
+/* Position and heading of a road user at time t, before any driving traits. */
+function basePose(p, t) {
+  const mv = movementOf(p);
+
+  if (mv.onFoot) {
+    if (t < p.departAt) {
+      return { ...mv.rest, hidden: t < p.arriveAt - 1.2, waiting: true };
+    }
+    const k = Math.min(1, (t - p.departAt) / mv.traverse.duration);
+    return { ...poseOn(mv.traverse, k), gone: k >= 1 };
+  }
+
+  if (t < p.arriveAt) {
+    return { ...approachPose(mv.spawn, mv.rest, t, p.arriveAt), approaching: true };
+  }
+  if (t < p.departAt) return { ...mv.rest, waiting: true };
+
+  const k = Math.min(1, (t - p.departAt) / mv.traverse.duration);
+  return { ...poseOn(mv.traverse, k), gone: k >= 1, moving: true };
 }
 
 /* ---------------- footprint overlap ----------------
@@ -593,7 +593,7 @@ export {
   PAD_LONG, PAD_LAT, LOOKAHEAD, MAX_CLAIM, TIE, CROSS, STEP,
   PROPER_SIGNAL_LEAD, LATE_SIGNAL_LEAD,
   RA_OUTER, RA_ISLAND, RA_LANE, RA_SPEED, RA_ENTRY_ANGLE, RA_QUARTERS, raPath,
-  STOPS, EXITS, RIGHT_OF, OPPOSITE, lerp, quad, angleTo,
+  STOPS, EXITS, RIGHT_OF, OPPOSITE,
   PED_SETBACK, PED_OVERHANG, BAR_HALF, STOP_LINE_AT, STOP_GAP,
   basePose, TRAITS, traitTells, poseAt, signalShowing,
   extentsFor, poseFor, forwardClaim, boxesOverlap, conflicts,

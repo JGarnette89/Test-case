@@ -7,8 +7,8 @@ import { C, FONT_D, FONT_U, shade } from "../theme.js";
 import { SCENARIOS } from "../engine/scenarios.js";
 import {
   M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
-  CROSS, STEP, TIE, lerp, quad, angleTo, spanOf,
-  STOPS, EXITS, crossingOf, BAR_HALF, STOP_LINE_AT, RA_OUTER, RA_ISLAND,
+  CROSS, STEP, TIE, spanOf,
+  crossingOf, BAR_HALF, STOP_LINE_AT, RA_OUTER, RA_ISLAND,
   TRAITS, traitTells, poseAt, signalShowing, forwardClaim, conflicts,
   outranks, earliestClear, schedule, simulate,
 } from "../engine/index.js";
