@@ -25,6 +25,10 @@ import {
   linePath, quadPath, polyPath, poseOn, approachFrom, approachPose, advance,
   lerp, angleTo, quadAt as quad,
 } from "./paths.js";
+import {
+  SIDES, RIGHT_OF, OPPOSITE, INTENTS, crossSpec, specOf,
+  stopPoint, exitPoint, exitSideFor,
+} from "./road.js";
 
 const SCALE = 20;
 const M = (v) => v * SCALE;
@@ -135,20 +139,22 @@ const CROSS = { straight: 1.5, left: 2.1, right: 1.7, walk: 3.4 };
 const STEP = 0.05;
 
 /* ---------------- geometry ---------------- */
-const STOPS = {
-  S: { x: CX + OFF, y: CY + HALF + SET, rot: -90 },
-  N: { x: CX - OFF, y: CY - HALF - SET, rot: 90 },
-  W: { x: CX - HALF - SET, y: CY + OFF, rot: 0 },
-  E: { x: CX + HALF + SET, y: CY - OFF, rot: 180 },
-};
-const EXITS = {
-  S: { straight: { x: CX + OFF, y: -80 }, right: { x: 800, y: CY + OFF }, left: { x: -80, y: CY - OFF } },
-  N: { straight: { x: CX - OFF, y: 800 }, right: { x: -80, y: CY - OFF }, left: { x: 800, y: CY + OFF } },
-  W: { straight: { x: 800, y: CY + OFF }, right: { x: CX - OFF, y: 800 }, left: { x: CX + OFF, y: -80 } },
-  E: { straight: { x: -80, y: CY - OFF }, right: { x: CX + OFF, y: -80 }, left: { x: CX - OFF, y: 800 } },
-};
-const RIGHT_OF = { S: "E", N: "W", W: "S", E: "N" };
-const OPPOSITE = { S: "N", N: "S", E: "W", W: "E" };
+/* The default four-way, derived from a road spec rather than stated. The
+   numbers are identical — checked against the old tables in
+   tools/probe/road.mjs — but it is now one instance of a general shape
+   instead of the only shape there is. A T-junction or a six-lane crossing
+   is a different spec, not different code. */
+const DEFAULT_ROAD = crossSpec();
+const stopFor = (spec, side, lane = 0) => stopPoint(spec, side, LANE, SET, lane, CX, CY);
+const exitFor = (side, lane = 0) => exitPoint(side, LANE, lane, CX, CY);
+
+const STOPS = Object.fromEntries(SIDES.map((s) => [s, stopFor(DEFAULT_ROAD, s)]));
+const EXITS = Object.fromEntries(
+  SIDES.map((s) => [
+    s,
+    Object.fromEntries(INTENTS.map((i) => [i, exitFor(exitSideFor(s, i))])),
+  ])
+);
 
 /* lerp, quad and angleTo now live in paths.js, which is where the geometry
    went. Imported above rather than kept as a second copy. */
@@ -287,8 +293,9 @@ const moveCache = new WeakMap();
 /* The four-way. Straight runs to its exit; a turn bends through a control
    point set off to the side, which is what turnBias widens. */
 function crossMovement(p) {
-  const base = STOPS[p.from];
-  const exit = EXITS[p.from][p.intent];
+  const spec = p.road ?? DEFAULT_ROAD;
+  const base = stopFor(spec, p.from, p.lane ?? 0);
+  const exit = exitFor(exitSideFor(p.from, p.intent), p.exitLane ?? p.lane ?? 0);
   const rest = { ...advance(base, base.rot, p.stopBias || 0), rot: base.rot };
 
   if (p.intent === "straight") {
@@ -579,8 +586,13 @@ export function simulate(scn) {
   // Layout is stamped onto every participant because motion is decided per
   // road user, not per frame — basePose only ever sees the participant.
   const layout = scn.layout ?? "cross";
-  const ego = { ...scn.ego, id: "ego", kind: "car", name: "You", signal: scn.ego.signal ?? null, layout };
-  const actors = scn.actors.map((a) => ({ ...a, layout }));
+  /* The road spec travels with each participant for the same reason the
+     layout does: movements are built per road user, and basePose only ever
+     sees the road user. A scenario that declares no road gets the default
+     four-way, so nothing that exists today changes. */
+  const road = specOf(scn);
+  const ego = { ...scn.ego, id: "ego", kind: "car", name: "You", signal: scn.ego.signal ?? null, layout, road };
+  const actors = scn.actors.map((a) => ({ ...a, layout, road }));
   schedule([ego, ...actors]);
   // Window opens the moment ego's path is clear of everyone who outranks it.
   const priors = actors.filter((a) => outranks(a, ego));

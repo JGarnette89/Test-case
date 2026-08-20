@@ -24,6 +24,7 @@ import path from "node:path";
 import { simulate } from "../src/engine/index.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
 import { grade, GRACE, REACTION_FLOOR, EARLY_TOLERANCE } from "../src/engine/score.js";
+import { specOf, validateRoad, validIntents } from "../src/engine/road.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -41,6 +42,24 @@ for (const s of SCENARIOS) {
     `${s.id.padEnd(15)} ${String(s.ego.arriveAt).padEnd(7)} ${String(sim.legalAt).padEnd(8)} ` +
     `${String(think).padEnd(7)} ${String(s.actors.length).padEnd(7)} ${traits.join(",") || "-"}`
   );
+}
+
+/* ---------- 1b. every scenario fits the road it is on ----------
+   A three-legged junction has intents that lead nowhere: from the stem of
+   a T, "straight" exits the leg that is not there. The car would drive off
+   into open ground and it would look almost right, so it is checked rather
+   than eyeballed. */
+console.log("\nROADS");
+{
+  let bad = 0;
+  for (const s of SCENARIOS) {
+    const found = validateRoad(specOf(s), [{ ...s.ego, id: "ego" }, ...s.actors]);
+    for (const msg of found) {
+      bad++; problems++;
+      console.log(`  FAIL: ${s.id}: ${msg}`);
+    }
+  }
+  if (bad === 0) console.log(`  ok   all ${SCENARIOS.length} scenarios use legs their road actually has`);
 }
 
 /* ---------- 2. trait vs control ----------
