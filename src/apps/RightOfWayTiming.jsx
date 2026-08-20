@@ -18,7 +18,7 @@ import { routeById } from "../engine/routes.js";
 import { markPassed, logDaily, useProgress, dailyResult } from "../progress.js";
 import { generateScenario, dailyScenario, WEEKDAY_NAMES } from "../engine/generate.js";
 import { environmentFor, scatter } from "../environments.js";
-import { crossSpec, hasLeg, controlOf, specOf } from "../engine/road.js";
+import { crossSpec, hasLeg, controlOf, specOf, roadHalf, legOf } from "../engine/road.js";
 import {
   ACTIONS, sequenceFor, deriveWindows, gradeTask, FAULT,
 } from "../engine/actions.js";
@@ -153,27 +153,63 @@ function Roundabout({ island = C.grass }) {
    Position comes from the engine, which is also what SET is measured
    against, so the line and the bumper that stops behind it cannot drift
    apart. Order on the road, outward: stop line, crossing, intersection. */
+/* =====================================================================
+   Framing
+   The board is 36m of world in a fixed square. A six-lane road is 21.6m
+   of carriageway, which fills most of it and leaves almost no approach
+   either side — so the view pulls back to fit rather than the roads being
+   made unrealistically thin.
+
+   Done by widening the viewBox around the centre, so everything scales
+   together and nothing needs to know it has been zoomed. Placeholder art
+   scales with it; when the real assets arrive they will need to hold up
+   across this range, which is worth knowing before they are drawn.
+   ===================================================================== */
+export function frameFor(spec) {
+  const vx = roadHalf(spec, "vert", LANE);
+  const hy = roadHalf(spec, "horiz", LANE);
+  // Enough road either side of the junction to read an approach.
+  const wanted = 2 * Math.max(vx, hy) + M(26);
+  const size = Math.max(W, wanted);
+  const half = size / 2;
+  return { box: `${CX - half} ${CY - half} ${size} ${size}`, scale: size / W };
+}
+
+/* Broken white line between lanes running the same way. */
+const LaneMark = (p) => (
+  <line {...p} stroke={C.line} strokeWidth={M(0.12)} opacity={0.75}
+    strokeDasharray={`${M(3)} ${M(4.5)}`} />
+);
+
 function StopLines({ spec = null }) {
   const road = spec ?? crossSpec();
   const side = (s) => (s === "N" || s === "S");
+  /* Painted across the whole inbound half, at whatever distance the road
+     it crosses actually requires — the wider that road, the further back
+     the line, exactly as the engine already parks the cars. */
+  const vx = roadHalf(road, "vert", LANE);
+  const hy = roadHalf(road, "horiz", LANE);
+  const outN = hy + LINE_BEYOND_EDGE, outE = vx + LINE_BEYOND_EDGE;
+  const half = { N: vx / 2, S: vx / 2, W: hy / 2, E: hy / 2 };
   const at = {
-    N: { x: CX - OFF, y: CY - STOP_LINE_AT },
-    S: { x: CX + OFF, y: CY + STOP_LINE_AT },
-    W: { x: CX - STOP_LINE_AT, y: CY + OFF },
-    E: { x: CX + STOP_LINE_AT, y: CY - OFF },
+    N: { x: CX - vx / 2, y: CY - outN },
+    S: { x: CX + vx / 2, y: CY + outN },
+    W: { x: CX - outE, y: CY + hy / 2 },
+    E: { x: CX + outE, y: CY - hy / 2 },
   };
   /* Only on legs that exist and are actually controlled: an uncontrolled
      through road has no line painted across it. */
   return ["N", "S", "E", "W"].filter((k) => hasLeg(road, k) && controlOf(road, k) !== "none").map((k) => {
     const p = at[k];
     const across = side(k);
+    const reach = half[k];
     return (
       <line
         key={k}
-        x1={across ? p.x - OFF : p.x}
-        y1={across ? p.y : p.y - OFF}
-        x2={across ? p.x + OFF : p.x}
-        y2={across ? p.y : p.y + OFF}
+        x1={across ? p.x - reach : p.x}
+        y1={across ? p.y : p.y - reach}
+        x2={across ? p.x + reach : p.x}
+        y2={across ? p.y : p.y + reach}
         stroke={C.line}
         strokeWidth={M(0.4)}
       />
@@ -185,25 +221,38 @@ function StopLines({ spec = null }) {
    junction gets a kerb across the gap instead — that closed edge is the
    whole visual difference between a T and a crossroads, and drawing the
    road anyway would show a leg the engine will not let anyone use. */
-const LEG_RECT = {
-  N: { x: CX - HALF, y: 0, w: HALF * 2, h: CY - HALF },
-  S: { x: CX - HALF, y: CY + HALF, w: HALF * 2, h: H - (CY + HALF) },
-  W: { x: 0, y: CY - HALF, w: CX - HALF, h: HALF * 2 },
-  E: { x: CX + HALF, y: CY - HALF, w: W - (CX + HALF), h: HALF * 2 },
-};
+/* How far past the kerb the stop line is painted. Constant, so it holds
+   whatever the road is: the line moves out with the edge, not with a
+   number typed for one lane each way. */
+const LINE_BEYOND_EDGE = STOP_LINE_AT - HALF;
 
 function Road({ control, crossings = ["N"], spec = null }) {
   const road = spec ?? crossSpec(control ?? "stop");
   const has = (side) => hasLeg(road, side);
+  /* The two roads that cross here, each as wide as the lanes it carries.
+     vx is the north-south road's half-width, hy the east-west road's — and
+     a north-south leg stops outside hy, not its own. */
+  const vx = roadHalf(road, "vert", LANE);
+  const hy = roadHalf(road, "horiz", LANE);
+  const LEG_RECT = {
+    N: { x: CX - vx, y: 0, w: vx * 2, h: CY - hy },
+    S: { x: CX - vx, y: CY + hy, w: vx * 2, h: H - (CY + hy) },
+    W: { x: 0, y: CY - hy, w: CX - vx, h: hy * 2 },
+    E: { x: CX + vx, y: CY - hy, w: W - (CX + vx), h: hy * 2 },
+  };
+  // Dividers between lanes running the same way; the centreline is separate.
+  const vLanes = legOf(road, has("N") ? "N" : "S").lanes;
+  const hLanes = legOf(road, has("E") ? "E" : "W").lanes;
   const Dash = (p) => <line {...p} stroke={C.yellow} strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(6)}`} />;
   const Edge = (p) => <line {...p} stroke={C.line} strokeWidth={M(0.15)} />;
   const bars = crossings.filter(has).map((s) => <Crossing key={s} side={s} />);
   /* Signs stand level with the stop line, at the roadside, and only on a
      leg that is actually stop-controlled. */
-  const SIGN_OUT = STOP_LINE_AT, SIGN_SIDE = HALF + M(1.4);
   const SIGN_AT = {
-    S: [CX + SIGN_SIDE, CY + SIGN_OUT], N: [CX - SIGN_SIDE, CY - SIGN_OUT],
-    W: [CX - SIGN_OUT, CY + SIGN_SIDE], E: [CX + SIGN_OUT, CY - SIGN_SIDE],
+    S: [CX + vx + M(1.4), CY + hy + LINE_BEYOND_EDGE],
+    N: [CX - vx - M(1.4), CY - hy - LINE_BEYOND_EDGE],
+    W: [CX - vx - LINE_BEYOND_EDGE, CY + hy + M(1.4)],
+    E: [CX + vx + LINE_BEYOND_EDGE, CY - hy - M(1.4)],
   };
   const signs = ["N", "S", "E", "W"]
     .filter((s) => has(s) && controlOf(road, s) === "stop")
@@ -211,30 +260,46 @@ function Road({ control, crossings = ["N"], spec = null }) {
   return (
     <>
       {/* the junction itself, then whichever legs run off it */}
-      <rect x={CX - HALF} y={CY - HALF} width={HALF * 2} height={HALF * 2} fill={C.asphalt} />
+      <rect x={CX - vx} y={CY - hy} width={vx * 2} height={hy * 2} fill={C.asphalt} />
       {["N", "S", "E", "W"].filter(has).map((side) => {
         const r = LEG_RECT[side];
         return <rect key={side} x={r.x} y={r.y} width={r.w} height={r.h} fill={C.asphalt} />;
       })}
 
-      {has("N") && <><Edge x1={CX - HALF} y1={0} x2={CX - HALF} y2={CY - HALF} />
-        <Edge x1={CX + HALF} y1={0} x2={CX + HALF} y2={CY - HALF} />
-        <Dash x1={CX} y1={0} x2={CX} y2={CY - HALF} /></>}
-      {has("S") && <><Edge x1={CX - HALF} y1={CY + HALF} x2={CX - HALF} y2={H} />
-        <Edge x1={CX + HALF} y1={CY + HALF} x2={CX + HALF} y2={H} />
-        <Dash x1={CX} y1={CY + HALF} x2={CX} y2={H} /></>}
-      {has("W") && <><Edge x1={0} y1={CY - HALF} x2={CX - HALF} y2={CY - HALF} />
-        <Edge x1={0} y1={CY + HALF} x2={CX - HALF} y2={CY + HALF} />
-        <Dash x1={0} y1={CY} x2={CX - HALF} y2={CY} /></>}
-      {has("E") && <><Edge x1={CX + HALF} y1={CY - HALF} x2={W} y2={CY - HALF} />
-        <Edge x1={CX + HALF} y1={CY + HALF} x2={W} y2={CY + HALF} />
-        <Dash x1={CX + HALF} y1={CY} x2={W} y2={CY} /></>}
+      {has("N") && <><Edge x1={CX - vx} y1={0} x2={CX - vx} y2={CY - hy} />
+        <Edge x1={CX + vx} y1={0} x2={CX + vx} y2={CY - hy} />
+        <Dash x1={CX} y1={0} x2={CX} y2={CY - hy} /></>}
+      {has("S") && <><Edge x1={CX - vx} y1={CY + hy} x2={CX - vx} y2={H} />
+        <Edge x1={CX + vx} y1={CY + hy} x2={CX + vx} y2={H} />
+        <Dash x1={CX} y1={CY + hy} x2={CX} y2={H} /></>}
+      {has("W") && <><Edge x1={0} y1={CY - hy} x2={CX - vx} y2={CY - hy} />
+        <Edge x1={0} y1={CY + hy} x2={CX - vx} y2={CY + hy} />
+        <Dash x1={0} y1={CY} x2={CX - vx} y2={CY} /></>}
+      {has("E") && <><Edge x1={CX + vx} y1={CY - hy} x2={W} y2={CY - hy} />
+        <Edge x1={CX + vx} y1={CY + hy} x2={W} y2={CY + hy} />
+        <Dash x1={CX + vx} y1={CY} x2={W} y2={CY} /></>}
+
+      {/* Lane dividers: white and broken, between lanes going the same
+          way. Only where there is more than one, so a single-lane road
+          looks exactly as it always did. */}
+      {Array.from({ length: Math.max(0, vLanes - 1) }, (_, i) => (i + 1) * LANE).flatMap((d) => [
+        has("N") && <LaneMark key={`nl${d}`} x1={CX - d} y1={0} x2={CX - d} y2={CY - hy} />,
+        has("N") && <LaneMark key={`nr${d}`} x1={CX + d} y1={0} x2={CX + d} y2={CY - hy} />,
+        has("S") && <LaneMark key={`sl${d}`} x1={CX - d} y1={CY + hy} x2={CX - d} y2={H} />,
+        has("S") && <LaneMark key={`sr${d}`} x1={CX + d} y1={CY + hy} x2={CX + d} y2={H} />,
+      ].filter(Boolean))}
+      {Array.from({ length: Math.max(0, hLanes - 1) }, (_, i) => (i + 1) * LANE).flatMap((d) => [
+        has("W") && <LaneMark key={`wt${d}`} x1={0} y1={CY - d} x2={CX - vx} y2={CY - d} />,
+        has("W") && <LaneMark key={`wb${d}`} x1={0} y1={CY + d} x2={CX - vx} y2={CY + d} />,
+        has("E") && <LaneMark key={`et${d}`} x1={CX + vx} y1={CY - d} x2={W} y2={CY - d} />,
+        has("E") && <LaneMark key={`eb${d}`} x1={CX + vx} y1={CY + d} x2={W} y2={CY + d} />,
+      ].filter(Boolean))}
 
       {/* closed sides, where a leg does not exist */}
-      {!has("N") && <Edge x1={CX - HALF} y1={CY - HALF} x2={CX + HALF} y2={CY - HALF} />}
-      {!has("S") && <Edge x1={CX - HALF} y1={CY + HALF} x2={CX + HALF} y2={CY + HALF} />}
-      {!has("W") && <Edge x1={CX - HALF} y1={CY - HALF} x2={CX - HALF} y2={CY + HALF} />}
-      {!has("E") && <Edge x1={CX + HALF} y1={CY - HALF} x2={CX + HALF} y2={CY + HALF} />}
+      {!has("N") && <Edge x1={CX - vx} y1={CY - hy} x2={CX + vx} y2={CY - hy} />}
+      {!has("S") && <Edge x1={CX - vx} y1={CY + hy} x2={CX + vx} y2={CY + hy} />}
+      {!has("W") && <Edge x1={CX - vx} y1={CY - hy} x2={CX - vx} y2={CY + hy} />}
+      {!has("E") && <Edge x1={CX + vx} y1={CY - hy} x2={CX + vx} y2={CY + hy} />}
       {bars}
       <StopLines spec={road} />
       {control === "signal" ? (
@@ -605,6 +670,8 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
      The renderer is what knows where the road is, so it is what tells the
      scatterer where scenery may not go — clear of the carriageway and of
      the crosswalk overhang either side of it. */
+  // Pull back far enough that the widest road on this junction fits.
+  const frame = React.useMemo(() => frameFor(specOf(scn)), [scn.id, scn.road]);
   const env = React.useMemo(() => environmentFor(scn.id), [scn.id]);
   const envSeed = React.useMemo(
     () => [...String(scn.id)].reduce((h, c) => (Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0), 2166136261),
@@ -697,7 +764,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
       <div style={st.brief}>{scn.brief}</div>
 
       <div style={st.board}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "100%", display: "block" }}>
+        <svg viewBox={frame.box} style={{ width: "100%", height: "100%", display: "block" }}>
           <defs>
             <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
               <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#0B0D10" floodOpacity="0.45" />

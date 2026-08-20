@@ -5,7 +5,7 @@
    ===================================================================== */
 import { C } from "../theme.js";
 import { M } from "./index.js";
-import { teeSpec } from "./road.js";
+import { teeSpec, crossSpec } from "./road.js";
 /* ---------------- scenarios ---------------- */
 const S = (o) => ({ stops: true, kind: "car", ...o });
 
@@ -182,6 +182,32 @@ const SCENARIOS = [
         color: C.green, name: "Green car", priority: -2 }),
     ],
     lesson: "Turning left out of a side road means crossing one stream and joining another, and neither of them stops for you. The gap you need is not a gap in one direction — it is a gap in both at the same moment, which is why this is the turn people take too early. Nothing here has a stop sign except you.",
+  },
+  {
+    id: "arterial",
+    title: "Six lanes to cross",
+    brief: "Stop sign, and the road you are crossing has three lanes each way.",
+    control: "stop",
+    /* The minor road is one lane; the arterial is three each way. The
+       junction is wider, so the stop line sits further back and the view
+       pulls out to fit — both derived, neither typed. */
+    road: {
+      legs: {
+        N: { lanes: 1, control: "stop" }, S: { lanes: 1, control: "stop" },
+        E: { lanes: 3, control: "none" }, W: { lanes: 3, control: "none" },
+      },
+    },
+    duration: 18,
+    ego: { from: "S", intent: "straight", arriveAt: 1.4, stops: true, color: C.blue },
+    actors: [
+      S({ id: "w1", from: "W", intent: "straight", arriveAt: 2.6, stops: false, lane: 0,
+        color: C.red, name: "Near-lane car", priority: -3 }),
+      S({ id: "w2", from: "W", intent: "straight", arriveAt: 3.4, stops: false, lane: 2,
+        color: C.green, name: "Far-lane car", priority: -2 }),
+      S({ id: "e1", from: "E", intent: "straight", arriveAt: 4.2, stops: false, lane: 1,
+        color: C.amber, name: "Amber car", priority: -1 }),
+    ],
+    lesson: "Six lanes is six lanes of exposure, and you are committed from the moment you move. The gap has to be a gap in every lane you cross, not just the near one — the car in the far lane is the one people forget, because it is furthest away and looks slowest. Crossing takes longer here than it feels like it should.",
   },
   {
     id: "unprotected",
