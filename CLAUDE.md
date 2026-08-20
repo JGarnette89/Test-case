@@ -65,7 +65,7 @@ move into that mode rather than being baked into the default.
   not commit on an absent indicator", never a gotcha. An indicator that appears
   after the wheels have turned punishes attentiveness instead of assumption.
 - **Signal before any change of direction OR motion**, slowing included when
-  the slowing leads into a turn. In `task.js` the signal deadline therefore
+  the slowing leads into a turn. In `actions.js` the signal deadline therefore
   anchors to whichever act comes first — the slow, the moving-off, or the
   manoeuvre — never to the manoeuvre by default.
 - **Partial success is partial marks, like a road test.** Perfection is
@@ -78,6 +78,27 @@ move into that mode rather than being baked into the default.
   on the road. Ontario also holds that a vehicle waiting to turn left must not
   cross the stop line while a car ahead of it is already waiting in the
   intersection; that is a scenario waiting to be written.
+- **A T-junction defaults to a stop on the minor leg only**, with the through
+  road running uninterrupted. Any other configuration must remain expressible —
+  control is per leg in `road.js`, and an all-way stop is simply four legs that
+  agree.
+- **Merging is scored on how early the driver started solving it, not on
+  hitting a moment.** This is a third scoring shape and it does not fit the two
+  that exist. `deadline` asks "done by when" and `window` asks "not before" —
+  merging asks *how soon*, with credit falling off the longer it is left.
+
+  What earns it: looking over the ramp **before the lane opens**, signalling
+  early, and adjusting speed early. A driver who waits until the merge point
+  to start assessing the traffic beside and behind them has already lost the
+  thing being measured, even if they then merge safely.
+
+  Whose fault it is when nobody lets you in depends on what the driver did.
+  Signalling late, or picking a gap that was never there, is theirs. Doing all
+  of it early and still being shut out is not.
+
+  Harder still, and the case worth building toward: an on-ramp that doubles as
+  an off-ramp, so exiting traffic crosses the merging traffic. That is a weave,
+  and the engine can derive the conflict rather than being told about it.
 - **Signalling out of a roundabout is best practice, not common practice.** So
   the indicator can never be the thing a roundabout scenario asks you to read.
   The line carries it instead: a driver about to leave drifts to the outside of
@@ -100,15 +121,20 @@ React, no SVG, no DOM and no colours in it. A renderer needs exactly one call:
 2D now, 3D later, so do not put anything visual into the engine.
 
 ```
-src/engine/index.js      geometry, motion, traits, the conflict rules
+src/engine/index.js      the conflict rules, traits, and what is where at time t
+src/engine/road.js       a junction described: legs, lanes, control per leg
+src/engine/paths.js      path shapes — line, curve, polyline — and no road at all
+src/engine/sight.js      what the driver can see, and what creeping costs
+src/engine/actions.js    manoeuvres: ordered actions, fault tiers, the mark sheet
 src/engine/score.js      grading a press against a derived window
 src/engine/route.js      several intersections in one drive, and continuity
 src/engine/generate.js   seeded scenario generation
-src/engine/scenarios.js  the ten set situations, as data
+src/engine/scenarios.js  the set situations, as data
 src/engine/routes.js     drives, as data
 src/theme.js             palette and type — the engine must never import this
+src/environments.js      city, suburban, rural scenery — renderer side only
 src/storage.js           adapter chain: artifact host, localStorage, memory
-src/progress.js          what the player has cleared
+src/progress.js          what the player has cleared, and the daily record
 ```
 
 **Never author the answer.** The safe window is computed by simulating

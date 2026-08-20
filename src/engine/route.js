@@ -73,10 +73,22 @@ export function rotateScenario(scn, turns) {
     for (let i = 0; i < n; i++) s = QUARTER[s];
     return s;
   };
+  /* The road turns with the traffic. Spin the cars and leave the junction
+     where it was and they end up entering by legs that do not exist — the
+     window still computes, everything still draws, and the situation is
+     nonsense. A T is the case that exposes it; a four-way is symmetric
+     enough to hide it. */
+  const road = scn.road
+    ? { ...scn.road, legs: Object.fromEntries(
+        Object.entries(scn.road.legs).map(([side, leg]) => [spin(side), leg])
+      ) }
+    : undefined;
+
   return {
     ...scn,
     id: `${scn.id}@${spin(scn.ego.from)}`,
     rotatedFrom: scn.id,
+    ...(road ? { road } : {}),
     ego: { ...scn.ego, from: spin(scn.ego.from) },
     actors: scn.actors.map((a) => ({ ...a, from: a.from ? spin(a.from) : a.from })),
   };

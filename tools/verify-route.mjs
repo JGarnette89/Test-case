@@ -16,6 +16,7 @@
    ===================================================================== */
 import { simulate, OPPOSITE } from "../src/engine/index.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
+import { specOf, validateRoad, hasLeg, SIDES } from "../src/engine/road.js";
 import { ROUTES } from "../src/engine/routes.js";
 import { grade } from "../src/engine/score.js";
 import {
@@ -40,6 +41,27 @@ for (const s of SCENARIOS) {
   const same = spun.every((v) => Math.abs(v - base) < 1e-9);
   if (same) ok(`${s.id.padEnd(12)} ${base} from all four approaches`);
   else fail(`${s.id}: window changes when rotated — ${base} vs ${spun.join(", ")}`);
+}
+
+/* ---------- 1b. a rotated scenario is still a valid scenario ----------
+   Comparing windows is not enough. Spin a T-junction and leave its road
+   where it was and the cars end up entering by legs that do not exist —
+   the window is unchanged, everything still draws, and the situation is
+   nonsense. A four-way is symmetric enough to hide this; a T is not. */
+console.log("");
+console.log("1b. ROTATION KEEPS THE SCENARIO VALID");
+for (const s of SCENARIOS) {
+  if (!isRotatable(s)) continue;
+  let bad = 0;
+  for (const n of [1, 2, 3]) {
+    const r = rotateScenario(s, n);
+    const found = validateRoad(specOf(r), [{ ...r.ego, id: "ego" }, ...r.actors]);
+    if (found.length) { bad++; fail(`${s.id} turned ${n}: ${found[0]}`); }
+  }
+  if (!bad) {
+    const legs = SIDES.filter((x) => hasLeg(specOf(s), x));
+    ok(`${s.id.padEnd(14)} valid from all four approaches (${legs.length} legs)`);
+  }
 }
 
 /* ---------- 2. exit/entry geometry ---------- */

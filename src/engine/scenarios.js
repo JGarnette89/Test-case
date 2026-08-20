@@ -5,6 +5,7 @@
    ===================================================================== */
 import { C } from "../theme.js";
 import { M } from "./index.js";
+import { teeSpec } from "./road.js";
 /* ---------------- scenarios ---------------- */
 const S = (o) => ({ stops: true, kind: "car", ...o });
 
@@ -163,6 +164,24 @@ const SCENARIOS = [
       S({ id: "n", from: "N", intent: "right", arriveAt: 0.6, color: C.red, name: "Red car", signal: null }),
     ],
     lesson: "It never indicated, and most drivers never do. What it did was drift to the outside of the circulating lane on the approach to the west exit, and a car moving out is a car leaving. It was gone one exit before yours, so nothing ever crossed you and your window opened the moment you stopped. Had it held the inner line it was coming all the way round to your leg and you would have sat there for seconds. Read the line, not the lamp: wheels commit, indicators only promise.",
+  },
+  {
+    id: "tee",
+    title: "Out of the side road",
+    brief: "T-junction. You are on the stem, and the road you are joining does not stop.",
+    control: "stop",
+    /* The ordinary T: a stop on the minor leg only, and no north leg at
+       all, so "straight" is not a thing you can do from here. */
+    road: teeSpec({ missing: "N", stem: "S" }),
+    duration: 15,
+    ego: { from: "S", intent: "left", arriveAt: 1.3, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e1", from: "E", intent: "straight", arriveAt: 2.2, stops: false,
+        color: C.red, name: "Red car", priority: -3 }),
+      S({ id: "w1", from: "W", intent: "straight", arriveAt: 3.9, stops: false,
+        color: C.green, name: "Green car", priority: -2 }),
+    ],
+    lesson: "Turning left out of a side road means crossing one stream and joining another, and neither of them stops for you. The gap you need is not a gap in one direction — it is a gap in both at the same moment, which is why this is the turn people take too early. Nothing here has a stop sign except you.",
   },
   {
     id: "unprotected",

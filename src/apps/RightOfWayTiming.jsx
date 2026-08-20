@@ -18,6 +18,7 @@ import { routeById } from "../engine/routes.js";
 import { markPassed, logDaily, useProgress, dailyResult } from "../progress.js";
 import { generateScenario, dailyScenario, WEEKDAY_NAMES } from "../engine/generate.js";
 import { environmentFor, scatter } from "../environments.js";
+import { crossSpec, hasLeg, controlOf, specOf } from "../engine/road.js";
 import {
   ACTIONS, sequenceFor, deriveWindows, gradeTask, FAULT,
 } from "../engine/actions.js";
@@ -152,7 +153,8 @@ function Roundabout({ island = C.grass }) {
    Position comes from the engine, which is also what SET is measured
    against, so the line and the bumper that stops behind it cannot drift
    apart. Order on the road, outward: stop line, crossing, intersection. */
-function StopLines() {
+function StopLines({ spec = null }) {
+  const road = spec ?? crossSpec();
   const side = (s) => (s === "N" || s === "S");
   const at = {
     N: { x: CX - OFF, y: CY - STOP_LINE_AT },
@@ -160,7 +162,9 @@ function StopLines() {
     W: { x: CX - STOP_LINE_AT, y: CY + OFF },
     E: { x: CX + STOP_LINE_AT, y: CY - OFF },
   };
-  return ["N", "S", "E", "W"].map((k) => {
+  /* Only on legs that exist and are actually controlled: an uncontrolled
+     through road has no line painted across it. */
+  return ["N", "S", "E", "W"].filter((k) => hasLeg(road, k) && controlOf(road, k) !== "none").map((k) => {
     const p = at[k];
     const across = side(k);
     return (
@@ -177,33 +181,62 @@ function StopLines() {
   });
 }
 
-function Road({ control, crossings = ["N"] }) {
+/* Each leg drawn only if the spec says it exists. Where one does not, the
+   junction gets a kerb across the gap instead — that closed edge is the
+   whole visual difference between a T and a crossroads, and drawing the
+   road anyway would show a leg the engine will not let anyone use. */
+const LEG_RECT = {
+  N: { x: CX - HALF, y: 0, w: HALF * 2, h: CY - HALF },
+  S: { x: CX - HALF, y: CY + HALF, w: HALF * 2, h: H - (CY + HALF) },
+  W: { x: 0, y: CY - HALF, w: CX - HALF, h: HALF * 2 },
+  E: { x: CX + HALF, y: CY - HALF, w: W - (CX + HALF), h: HALF * 2 },
+};
+
+function Road({ control, crossings = ["N"], spec = null }) {
+  const road = spec ?? crossSpec(control ?? "stop");
+  const has = (side) => hasLeg(road, side);
   const Dash = (p) => <line {...p} stroke={C.yellow} strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(6)}`} />;
   const Edge = (p) => <line {...p} stroke={C.line} strokeWidth={M(0.15)} />;
-  const bars = crossings.map((s) => <Crossing key={s} side={s} />);
-  /* Signs stand level with the stop line, at the roadside. A sign the
-     driver passes before reaching the line is a sign in the wrong place. */
+  const bars = crossings.filter(has).map((s) => <Crossing key={s} side={s} />);
+  /* Signs stand level with the stop line, at the roadside, and only on a
+     leg that is actually stop-controlled. */
   const SIGN_OUT = STOP_LINE_AT, SIGN_SIDE = HALF + M(1.4);
-  const signs = [[CX + SIGN_SIDE, CY + SIGN_OUT], [CX - SIGN_SIDE, CY - SIGN_OUT],
-  [CX - SIGN_OUT, CY + SIGN_SIDE], [CX + SIGN_OUT, CY - SIGN_SIDE]];
+  const SIGN_AT = {
+    S: [CX + SIGN_SIDE, CY + SIGN_OUT], N: [CX - SIGN_SIDE, CY - SIGN_OUT],
+    W: [CX - SIGN_OUT, CY + SIGN_SIDE], E: [CX + SIGN_OUT, CY - SIGN_SIDE],
+  };
+  const signs = ["N", "S", "E", "W"]
+    .filter((s) => has(s) && controlOf(road, s) === "stop")
+    .map((s) => SIGN_AT[s]);
   return (
     <>
-      <rect x={CX - HALF} y={0} width={HALF * 2} height={H} fill={C.asphalt} />
-      <rect x={0} y={CY - HALF} width={W} height={HALF * 2} fill={C.asphalt} />
-      <Edge x1={CX - HALF} y1={0} x2={CX - HALF} y2={CY - HALF} />
-      <Edge x1={CX + HALF} y1={0} x2={CX + HALF} y2={CY - HALF} />
-      <Edge x1={CX - HALF} y1={CY + HALF} x2={CX - HALF} y2={H} />
-      <Edge x1={CX + HALF} y1={CY + HALF} x2={CX + HALF} y2={H} />
-      <Edge x1={0} y1={CY - HALF} x2={CX - HALF} y2={CY - HALF} />
-      <Edge x1={0} y1={CY + HALF} x2={CX - HALF} y2={CY + HALF} />
-      <Edge x1={CX + HALF} y1={CY - HALF} x2={W} y2={CY - HALF} />
-      <Edge x1={CX + HALF} y1={CY + HALF} x2={W} y2={CY + HALF} />
-      <Dash x1={CX} y1={0} x2={CX} y2={CY - HALF} />
-      <Dash x1={CX} y1={CY + HALF} x2={CX} y2={H} />
-      <Dash x1={0} y1={CY} x2={CX - HALF} y2={CY} />
-      <Dash x1={CX + HALF} y1={CY} x2={W} y2={CY} />
+      {/* the junction itself, then whichever legs run off it */}
+      <rect x={CX - HALF} y={CY - HALF} width={HALF * 2} height={HALF * 2} fill={C.asphalt} />
+      {["N", "S", "E", "W"].filter(has).map((side) => {
+        const r = LEG_RECT[side];
+        return <rect key={side} x={r.x} y={r.y} width={r.w} height={r.h} fill={C.asphalt} />;
+      })}
+
+      {has("N") && <><Edge x1={CX - HALF} y1={0} x2={CX - HALF} y2={CY - HALF} />
+        <Edge x1={CX + HALF} y1={0} x2={CX + HALF} y2={CY - HALF} />
+        <Dash x1={CX} y1={0} x2={CX} y2={CY - HALF} /></>}
+      {has("S") && <><Edge x1={CX - HALF} y1={CY + HALF} x2={CX - HALF} y2={H} />
+        <Edge x1={CX + HALF} y1={CY + HALF} x2={CX + HALF} y2={H} />
+        <Dash x1={CX} y1={CY + HALF} x2={CX} y2={H} /></>}
+      {has("W") && <><Edge x1={0} y1={CY - HALF} x2={CX - HALF} y2={CY - HALF} />
+        <Edge x1={0} y1={CY + HALF} x2={CX - HALF} y2={CY + HALF} />
+        <Dash x1={0} y1={CY} x2={CX - HALF} y2={CY} /></>}
+      {has("E") && <><Edge x1={CX + HALF} y1={CY - HALF} x2={W} y2={CY - HALF} />
+        <Edge x1={CX + HALF} y1={CY + HALF} x2={W} y2={CY + HALF} />
+        <Dash x1={CX + HALF} y1={CY} x2={W} y2={CY} /></>}
+
+      {/* closed sides, where a leg does not exist */}
+      {!has("N") && <Edge x1={CX - HALF} y1={CY - HALF} x2={CX + HALF} y2={CY - HALF} />}
+      {!has("S") && <Edge x1={CX - HALF} y1={CY + HALF} x2={CX + HALF} y2={CY + HALF} />}
+      {!has("W") && <Edge x1={CX - HALF} y1={CY - HALF} x2={CX - HALF} y2={CY + HALF} />}
+      {!has("E") && <Edge x1={CX + HALF} y1={CY - HALF} x2={CX + HALF} y2={CY + HALF} />}
       {bars}
-      <StopLines />
+      <StopLines spec={road} />
       {control === "signal" ? (
         <g transform={`translate(${CX + HALF + 34},${CY + HALF + 36})`}>
           <rect x={-8} y={-17} width={16} height={34} rx={5} fill="#2A2E36" stroke={C.ink} strokeWidth={2} />
@@ -676,6 +709,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
           ) : (
             <Road
               control={scn.control}
+              spec={specOf(scn)}
               crossings={[...new Set(sim.actors.filter((a) => a.kind === "ped").map((a) => a.from ?? "N"))]}
             />
           )}
