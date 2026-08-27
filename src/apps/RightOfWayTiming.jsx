@@ -18,6 +18,7 @@ import { routeById } from "../engine/routes.js";
 import { markPassed, logDaily, useProgress, dailyResult } from "../progress.js";
 import { generateScenario, dailyScenario, WEEKDAY_NAMES } from "../engine/generate.js";
 import { environmentFor, scatter } from "../environments.js";
+import { endlessScenario, signatureOf } from "../engine/compose.js";
 import { crossSpec, hasLeg, controlOf, specOf, roadHalf, legOf } from "../engine/road.js";
 import {
   ACTIONS, sequenceFor, deriveWindows, gradeTask, FAULT,
@@ -486,8 +487,19 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
      a fresh one each time, "daily" is seeded by the date so everyone gets
      the same one without anything being coordinated. */
   const [seed, setSeed] = useState(0);
+  /* Shapes already handed out this run, so endless does not repeat itself.
+     A ref rather than state: it must not cause a redraw, and the composer
+     only reads it when a new screen is drawn. */
+  const seenShapes = useRef([]);
   const drawn = React.useMemo(() => {
-    if (source === "endless") return generateScenario((Date.now() % 100000) + seed * 7717);
+    if (source === "endless") {
+      const scn = endlessScenario((Date.now() % 100000) + seed * 7717, seenShapes.current);
+      if (scn) {
+        seenShapes.current = [...seenShapes.current.slice(-40), signatureOf(scn)];
+        return scn;
+      }
+      return generateScenario((Date.now() % 100000) + seed * 7717);
+    }
     if (source === "daily") return dailyScenario();
     return null;
   }, [source, seed]);

@@ -129,6 +129,7 @@ src/engine/actions.js    manoeuvres: ordered actions, fault tiers, the mark shee
 src/engine/score.js      grading a press against a derived window
 src/engine/route.js      several intersections in one drive, and continuity
 src/engine/generate.js   seeded scenario generation
+src/engine/compose.js    a brief in, a scene that measurably matches it out
 src/engine/scenarios.js  the set situations, as data
 src/engine/routes.js     drives, as data
 src/theme.js             palette and type — the engine must never import this
@@ -188,11 +189,12 @@ node tools/verify-roundabout.mjs   direction, geometry, the exit tell
 node tools/verify-playthrough.mjs  every scenario at every press time
 node tools/verify-task.mjs         manoeuvres: order, deadlines, fault tiers
 node tools/verify-sight.mjs        occlusion, and the creep trade
+node tools/verify-compose.mjs      briefs produce scenes that match them
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All nine must exit 0. Six things they check are worth understanding:
+All ten must exit 0. Six things they check are worth understanding:
 
 - **Equivalence is the one for refactors.** The others check the engine is
   right; that one checks it has not *changed*. It matters because a change to
@@ -267,6 +269,19 @@ claimed to demand a wait while going immediately still scored full marks.
   fixes generation and `walker`'s un-rotatability in one go. Do that first.
   Cyclists are not agreed — they would need a ruling on how a bicycle claims
   road compared with a car.
+- **Composition is a search, not a sampler.** `compose.js` takes a brief —
+  how much traffic, how much of it you can see — and builds a scene, then
+  asks the engine what it actually turned out to be and throws it away if
+  the numbers disagree. Placing a van and calling the result low-visibility
+  would be authoring the answer, exactly like hardcoding a window. Blindness
+  is measured from the driver's eye across the wait, so an obstruction where
+  nothing passes counts for nothing.
+
+  The vocabulary is deliberately small and in a driver's words. Every term
+  has to be measurable or it does not belong: traffic is how many road users
+  end up with priority, visibility is the share of them that cannot be seen
+  clearly. Endless cycles the brief so a run moves through different kinds of
+  situation, and keeps the shapes it has handed out so it does not repeat.
 - **Roundabouts are in, but only just.** Single lane, two hand-written
   situations, and the generator does not produce them yet — that needs its own
   acceptance rules for exit choice and how many cars are circulating. They also
