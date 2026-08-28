@@ -86,10 +86,6 @@ const ACCEPTED_INERT = {
   "creeper/creep": "Masked by overshoot, which already claims further into " +
     "the box than creep ever reaches. Creepers are meant to confuse right of " +
     "way in harder, busier scenarios; this one is too simple to show it.",
-  "lateflag/wideTurn": "Carries no weight here — the scenario teaches the " +
-    "late indicator, not the line through the turn. Candidate for removal: " +
-    "its tell is still shown to the player, which claims a consequence that " +
-    "does not exist.",
 };
 
 // Re-run a scenario with a chosen set of traits removed from every actor.

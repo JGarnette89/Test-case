@@ -20,6 +20,7 @@ import { generateScenario, dailyScenario, WEEKDAY_NAMES } from "../engine/genera
 import { environmentFor, scatter } from "../environments.js";
 import { endlessScenario, signatureOf } from "../engine/compose.js";
 import { crossSpec, hasLeg, controlOf, specOf, roadHalf, legOf } from "../engine/road.js";
+import { cameraFor } from "../frame.js";
 import {
   ACTIONS, sequenceFor, deriveWindows, gradeTask, FAULT,
 } from "../engine/actions.js";
@@ -154,27 +155,8 @@ function Roundabout({ island = C.grass }) {
    Position comes from the engine, which is also what SET is measured
    against, so the line and the bumper that stops behind it cannot drift
    apart. Order on the road, outward: stop line, crossing, intersection. */
-/* =====================================================================
-   Framing
-   The board is 36m of world in a fixed square. A six-lane road is 21.6m
-   of carriageway, which fills most of it and leaves almost no approach
-   either side — so the view pulls back to fit rather than the roads being
-   made unrealistically thin.
-
-   Done by widening the viewBox around the centre, so everything scales
-   together and nothing needs to know it has been zoomed. Placeholder art
-   scales with it; when the real assets arrive they will need to hold up
-   across this range, which is worth knowing before they are drawn.
-   ===================================================================== */
-export function frameFor(spec) {
-  const vx = roadHalf(spec, "vert", LANE);
-  const hy = roadHalf(spec, "horiz", LANE);
-  // Enough road either side of the junction to read an approach.
-  const wanted = 2 * Math.max(vx, hy) + M(26);
-  const size = Math.max(W, wanted);
-  const half = size / 2;
-  return { box: `${CX - half} ${CY - half} ${size} ${size}`, scale: size / W };
-}
+/* Framing (frameFor, cameraFor) now lives in ../frame.js — pure geometry,
+   testable headless the way the engine is, without needing React/JSX. */
 
 /* Broken white line between lanes running the same way. */
 const LaneMark = (p) => (
@@ -688,8 +670,15 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
      The renderer is what knows where the road is, so it is what tells the
      scatterer where scenery may not go — clear of the carriageway and of
      the crosswalk overhang either side of it. */
-  // Pull back far enough that the widest road on this junction fits.
-  const frame = React.useMemo(() => frameFor(specOf(scn)), [scn.id, scn.road]);
+  // Pull back far enough that the widest road on this junction fits, then
+  // ease out further still for anything the scenario asks the camera to
+  // track (see ../frame.js) — recomputed every frame, since that reach
+  // changes with the clock for a tracked scenario and must not for any
+  // other.
+  const frame = React.useMemo(
+    () => cameraFor(specOf(scn), sim, showT, scn.camera),
+    [scn.id, scn.road, scn.camera, sim, showT]
+  );
   const env = React.useMemo(() => environmentFor(scn.id), [scn.id]);
   const envSeed = React.useMemo(
     () => [...String(scn.id)].reduce((h, c) => (Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0), 2166136261),

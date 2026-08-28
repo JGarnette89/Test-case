@@ -129,9 +129,9 @@ const SCENARIOS = [
     duration: 14,
     ego: { from: "S", intent: "straight", arriveAt: 1.6, stops: true, color: C.blue },
     actors: [
-      S({ id: "e", from: "E", intent: "left", arriveAt: 1.0, color: C.red, name: "Red car", signal: "left", traits: ["lateSignal", "wideTurn"] }),
+      S({ id: "e", from: "E", intent: "left", arriveAt: 1.0, color: C.red, name: "Red car", signal: "left", traits: ["lateSignal"] }),
     ],
-    lesson: "No indicator until it was already turning, and then it swung wide across the next lane. By the time that signal appeared it told you nothing you could still act on. Where there is no information to read, the answer is always to wait for the wheels.",
+    lesson: "No indicator until it was already turning. By the time that signal appeared it told you nothing you could still act on. Where there is no information to read, the answer is always to wait for the wheels.",
   },
   {
     id: "circle",
