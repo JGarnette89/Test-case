@@ -16,7 +16,7 @@
 
    Pure, and seeded: the same brief and seed give the same scene forever.
    ===================================================================== */
-import { simulate, poseAt, M, CX, CY, LANE } from "./index.js";
+import { simulate, poseAt, conflicts, spanOf, M, CX, CY, LANE, STEP } from "./index.js";
 import { whatEgoSees, sightBlockersOf } from "./sight.js";
 import {
   crossSpec, teeSpec, validIntents, SIDES, OPPOSITE, roadHalf, hasLeg,
@@ -103,6 +103,31 @@ export function measure(scn) {
   };
 }
 
+/* Would taking the derived window actually hit somebody?
+
+   The window is derived against the road users who OUTRANK the ego —
+   that is what "legally yours" means. But a car that does not outrank you
+   is still a physical object, and a generated scene where the player does
+   everything correctly and is hit anyway is not a fair question, whoever
+   would be at fault in real life. Those draws are thrown away.
+
+   This was invisible while the composer handed priority to every car,
+   because then every car was checked. Fixing the priority exposed it. */
+export function windowIsSafe(scn) {
+  const sim = simulate(scn);
+  const ego = { ...sim.ego, departAt: sim.legalAt };
+  for (let t = sim.legalAt; t < sim.legalAt + spanOf(ego); t += STEP) {
+    const mine = poseAt(ego, t);
+    if (mine.gone) break;
+    for (const a of sim.actors) {
+      const theirs = poseAt(a, t);
+      if (theirs.gone || theirs.hidden) continue;
+      if (conflicts(ego, mine, a, theirs, 0, 0, 0, "crash")) return false;
+    }
+  }
+  return true;
+}
+
 /* Does what was built match what was asked for? Returns the reasons when
    it does not, because "rejected" on its own cannot be tuned. */
 export function meetsBrief(brief, m) {
@@ -143,30 +168,58 @@ export function compose(brief, seed) {
   const { kind, spec } = roadFor(brief, r);
   const traffic = TRAFFIC[brief.traffic ?? "busy"];
 
-  // The ego needs a leg that exists and an intent that leads somewhere.
+  /* The ego needs a leg that exists, an intent that leads somewhere, and
+     a reason to be stopped at all. The player's whole job is to hold and
+     then go, so putting them on an uncontrolled through road asks them to
+     wait at a road with nothing telling them to — and the engine then
+     derives a window for a car that was never going to stop, which is not
+     a window anybody can take safely. */
   const legs = SIDES.filter((s) => hasLeg(spec, s));
-  const from = pick(r, legs);
+  const controlled = legs.filter((x) => spec.legs[x].control !== "none");
+  const from = pick(r, controlled.length ? controlled : legs);
   const legal = validIntents(spec, from);
   if (!legal.length) return null;
 
   const count = Math.round(span(r, traffic.actors[0], traffic.actors[1]));
+  // The ego always holds; what varies is whether anyone else has to.
+  const egoStops = true;
+  /* Under signals only one pair of legs moves at a time. The ego is held,
+     so its own axis is held with it and the crossing axis has the green.
+     Letting every other leg roll was the same as giving all four a green
+     at once, which is why traffic appeared from directions that should
+     have been stopped alongside the player. */
+  const sameAxis = (a, b) => a === b || OPPOSITE[a] === b;
   const actors = [];
   let when = span(r, 0.6, 1.6);
   for (let i = 0; i < count; i++) {
     const side = pick(r, legs);
     const opts = validIntents(spec, side);
     if (!opts.length) continue;
+    const control = spec.legs[side].control;
+    const stops = control === "signal" ? sameAxis(side, from) : control === "stop";
+
+    /* Priority is granted by the ROAD, never by being generated. A car
+       that does not stop while the ego does has it — that is a through
+       road, or a green light. Where both stop, nobody is handed anything:
+       arrival order and the right-hand rule decide, which is the whole
+       point of a four-way.
+
+       Stamping a priority on every car regardless made later arrivals
+       outrank an ego that got to the line first, which is unreadable and
+       unfair — the player yields to someone who should have waited. */
+    const roadGivesWay = !stops && egoStops;
+
     actors.push({
       id: `a${i}`,
       from: side,
       intent: pick(r, opts),
       arriveAt: when,
-      stops: spec.legs[side].control === "stop",
+      stops,
       lane: Math.floor(r() * spec.legs[side].lanes),
       kind: "car",
       colorKey: ["red", "green", "amber"][i % 3],
       name: `${["Red", "Green", "Amber"][i % 3]} car`,
-      priority: -(count - i) - 1,
+      ...(roadGivesWay ? { priority: -(count - i) - 1 } : {}),
       signal: null,
     });
     when = Math.round((when + span(r, traffic.gap[0], traffic.gap[1])) * 10) / 10;
@@ -212,6 +265,7 @@ export function composeScenario(brief, seed, tries = 90) {
     const m = measure(scn);
     // Unplayable draws go before the brief is even considered.
     if (m.think < 0 || m.think > 7 || m.legalAt > 11) continue;
+    if (!windowIsSafe(scn)) continue;
     if (!meetsBrief(brief, m).ok) continue;
 
     scn.title = titleFor(brief);

@@ -137,6 +137,35 @@ export function approachFrom(rest, distance = APPROACH_RUN) {
   return { x: rest.x - Math.cos(r) * distance, y: rest.y - Math.sin(r) * distance };
 }
 
+/* How long a path is, so a car that is not stopping can be run up to the
+   line at the speed it will leave it at. */
+export function pathLength(path) {
+  if (path.kind === "poly") return path.length;
+  if (path.kind === "line") return Math.hypot(path.to.x - path.from.x, path.to.y - path.from.y);
+  // Curves: sampled, which is close enough for a speed.
+  let len = 0, prev = pointOn(path, 0);
+  for (let i = 1; i <= 24; i++) {
+    const q = pointOn(path, i / 24);
+    len += Math.hypot(q.x - prev.x, q.y - prev.y);
+    prev = q;
+  }
+  return len;
+}
+
+/* Running up to the line WITHOUT stopping: constant speed, no braking
+   curve. A car with no reason to stop that visibly slows at the line and
+   then accelerates away is unreadable — the player cannot tell whether it
+   is yielding, and neither can the rules. */
+export function rollingApproach(rest, t, arriveAt, speed) {
+  const back = Math.max(0, (arriveAt - t) * speed);
+  const r = rad(rest.rot);
+  return {
+    x: rest.x - Math.cos(r) * back,
+    y: rest.y - Math.sin(r) * back,
+    rot: rest.rot,
+  };
+}
+
 /* Progress along the approach at time t, given when the car settles. */
 export function approachPose(spawn, rest, t, arriveAt, time = APPROACH_TIME) {
   const k = Math.max(0, Math.min(1, (t - (arriveAt - time)) / time));

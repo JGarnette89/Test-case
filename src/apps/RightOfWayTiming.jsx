@@ -509,11 +509,15 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
 
   /* Which buttons this situation asks for. A scenario that says nothing
      gets the old single GO, so every existing situation is untouched. */
-  const sequence = React.useMemo(
-    () => sequenceFor(scn.manoeuvre ?? "straight"),
-    [scn.manoeuvre, scn.id]
-  );
   const statics = React.useMemo(() => sightBlockersOf(scn), [scn.id]);
+  /* A scene with something blocking the view gets the means to deal with
+     it, whether or not it was hand-written to. Hiding traffic and then
+     offering only GO asks the player to read what they cannot see and
+     gives them no way to fix it. */
+  const sequence = React.useMemo(
+    () => sequenceFor(scn.manoeuvre ?? (statics.length ? "blindApproach" : "straight")),
+    [scn.manoeuvre, scn.id, statics.length]
+  );
   const multi = sequence.length > 1;
 
   const isDaily = source === "daily";
@@ -671,9 +675,11 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
      lesson is what was there — and being shown the car you never saw is
      the whole point of having hidden it. */
   const sees = React.useMemo(() => {
-    if (phase !== "running" || !multi) return null;
+    // Occlusion applies wherever there is something to occlude, not only
+    // in hand-written multi-action situations.
+    if (phase !== "running" || !statics.length) return null;
     return whatEgoSees({ ...sim, ego: liveEgo }, showT, 0, statics);
-  }, [phase, multi, sim, showT, creeps, statics]);
+  }, [phase, sim, showT, creeps, statics]);
 
   const tells = sim.actors.flatMap((a) => traitTells(a));
 

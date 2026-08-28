@@ -83,6 +83,11 @@ const SEQUENCES = {
   enterLot: ["signal", "slow", "go"],
   // An unprotected left: you may creep for a sightline before committing.
   unprotectedLeft: ["signal", "pullUp", "go"],
+  /* Anywhere the view is short. No signal, because going straight ahead
+     announces nothing — but the option to edge forward has to be there,
+     or the player is being asked to read something they cannot see and
+     given no way to fix that. */
+  blindApproach: ["pullUp", "go"],
 };
 
 export function sequenceFor(manoeuvre) {

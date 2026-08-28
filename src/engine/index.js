@@ -23,6 +23,7 @@
 
 import {
   linePath, quadPath, polyPath, poseOn, approachFrom, approachPose, advance,
+  pathLength, rollingApproach,
   lerp, angleTo, quadAt as quad,
 } from "./paths.js";
 import {
@@ -355,6 +356,14 @@ function basePose(p, t) {
   }
 
   if (t < p.arriveAt) {
+    /* Only a car that is going to stop brakes for the line. One with
+       priority runs up at the speed it will carry through, because a
+       vehicle that slows for no reason is a vehicle the player cannot
+       read — and cannot be expected to predict. */
+    if (p.stops === false) {
+      const speed = pathLength(mv.traverse) / mv.traverse.duration;
+      return { ...rollingApproach(mv.rest, t, p.arriveAt, speed), approaching: true };
+    }
     return { ...approachPose(mv.spawn, mv.rest, t, p.arriveAt), approaching: true };
   }
   if (t < p.departAt) return { ...mv.rest, waiting: true };
