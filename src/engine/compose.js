@@ -18,6 +18,7 @@
    ===================================================================== */
 import { simulate, poseAt, conflicts, spanOf, M, CX, CY, LANE, STEP } from "./index.js";
 import { whatEgoSees, sightBlockersOf } from "./sight.js";
+import { GRACE } from "./score.js";
 import {
   crossSpec, teeSpec, validIntents, SIDES, OPPOSITE, roadHalf, hasLeg,
 } from "./road.js";
@@ -112,18 +113,32 @@ export function measure(scn) {
    would be at fault in real life. Those draws are thrown away.
 
    This was invisible while the composer handed priority to every car,
-   because then every car was checked. Fixing the priority exposed it. */
-export function windowIsSafe(scn) {
-  const sim = simulate(scn);
-  const ego = { ...sim.ego, departAt: sim.legalAt };
-  for (let t = sim.legalAt; t < sim.legalAt + spanOf(ego); t += STEP) {
+   because then every car was checked. Fixing the priority exposed it.
+
+   Checked across the whole GRACE stretch the scorer still calls "good",
+   not only the instant the window opens: a road user who does not
+   outrank the ego can still be mid-arrival when the window opens, and
+   get scheduled on the assumption the ego leaves promptly. A player who
+   takes the full grace the scorer offers can walk straight into that —
+   which was exactly the failure mode the paragraph above already
+   named, just re-opened by anything later than the first instant. */
+function collidesDepartingAt(sim, T) {
+  const ego = { ...sim.ego, departAt: T };
+  for (let t = T; t < T + spanOf(ego); t += STEP) {
     const mine = poseAt(ego, t);
     if (mine.gone) break;
     for (const a of sim.actors) {
       const theirs = poseAt(a, t);
       if (theirs.gone || theirs.hidden) continue;
-      if (conflicts(ego, mine, a, theirs, 0, 0, 0, "crash")) return false;
+      if (conflicts(ego, mine, a, theirs, 0, 0, 0, "crash")) return true;
     }
+  }
+  return false;
+}
+export function windowIsSafe(scn) {
+  const sim = simulate(scn);
+  for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+    if (collidesDepartingAt(sim, d)) return false;
   }
   return true;
 }

@@ -16,7 +16,7 @@
       not rejecting so many draws that tuning is broken.
    ===================================================================== */
 import { simulate, poseAt, conflicts, CROSS, STEP } from "../src/engine/index.js";
-import { grade, EARLY_TOLERANCE } from "../src/engine/score.js";
+import { grade, EARLY_TOLERANCE, GRACE } from "../src/engine/score.js";
 import {
   drawScenario, generateScenario, generateBatch, dailyScenario, dayIndex, ACCEPT,
   weekdayOf, targetDifficulty, WEEK_CURVE, WEEKDAY_NAMES, EPOCH, DAY_MS,
@@ -65,7 +65,7 @@ console.log(`\n2. PROPERTIES OVER ${N} GENERATED SCENARIOS`);
 const batch = generateBatch(1, N);
 if (batch.length < N) fail(`only ${batch.length}/${N} seeds produced a scenario`);
 
-let unsafeWindow = 0, freeRide = 0, outOfBounds = 0, shortClock = 0, noDescription = 0;
+let unsafeWindow = 0, unsafeInGrace = 0, freeRide = 0, outOfBounds = 0, shortClock = 0, noDescription = 0;
 const thinks = [], diffs = { 1: 0, 2: 0, 3: 0, 4: 0 };
 let naiveFails = 0, withTraits = 0;
 
@@ -74,6 +74,17 @@ for (const scn of batch) {
 
   // The window the engine derived must be safe to take.
   if (collidesAt(sim, sim.legalAt)) { unsafeWindow++; continue; }
+
+  /* And so must every later instant the scorer still calls "good" — a
+     road user who does not outrank the ego can still be scheduled on the
+     assumption the ego leaves promptly at legalAt. A player who takes
+     the grace the scorer offers instead can walk into exactly that.
+     Caught once for real: 1142 of 4000 draws collided somewhere in this
+     stretch before generate.js's own rejection swept the whole window
+     instead of only its first instant. */
+  for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+    if (collidesAt(sim, d)) { unsafeInGrace++; break; }
+  }
 
   // Where it says wait, going immediately must actually be a fault. The
   // threshold is the scorer's own tolerance: below that, "waiting" is not
@@ -97,6 +108,9 @@ for (const scn of batch) {
 unsafeWindow === 0
   ? ok("every derived window is safe to depart on")
   : fail(`${unsafeWindow} scenario(s) collide when departing exactly on the window`);
+unsafeInGrace === 0
+  ? ok(`every window stays safe for the full ${GRACE}s the scorer still calls good`)
+  : fail(`${unsafeInGrace} scenario(s) collide somewhere the scorer still calls good, after legalAt`);
 outOfBounds === 0 ? ok("all inside the stated acceptance bounds") : fail(`${outOfBounds} outside ACCEPT bounds`);
 shortClock === 0 ? ok("every scenario has clock left after its window opens") : fail(`${shortClock} would run out of time`);
 noDescription === 0 ? ok("every scenario carries a brief and an explanation") : fail(`${noDescription} missing description`);

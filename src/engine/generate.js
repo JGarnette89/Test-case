@@ -15,7 +15,7 @@
 import {
   simulate, poseAt, conflicts, forwardClaim, spanOf, STEP, OPPOSITE, RIGHT_OF,
 } from "./index.js";
-import { EARLY_TOLERANCE } from "./score.js";
+import { EARLY_TOLERANCE, GRACE } from "./score.js";
 
 /* mulberry32 — small, fast, and good enough that consecutive seeds do not
    produce visibly similar draws. Deterministic across every platform. */
@@ -71,6 +71,21 @@ function collidesIfDepartingAt(sim, T) {
       if (theirs.gone || theirs.hidden) continue;
       if (conflicts(ego, mine, a, theirs, 0, 0, 0, "crash")) return true;
     }
+  }
+  return false;
+}
+
+/* legalAt is derived against PRIORS only — whoever outranks the ego. A
+   road user who does not is still a physical object, and one who is
+   still arriving when the window opens can be scheduled on the
+   assumption the ego leaves promptly. The scorer calls anywhere up to
+   GRACE seconds later "good" too, so if departing later in that same
+   stretch hits that road user, the promise "good" makes was never true
+   — the draw just had not been asked the later question. Every instant
+   the scorer will call good has to be asked, not only the first one. */
+function unsafeWithinGrace(sim) {
+  for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+    if (collidesIfDepartingAt(sim, d)) return true;
   }
   return false;
 }
@@ -212,7 +227,7 @@ export function drawScenario(seed) {
   if (!(sim.legalAt >= egoArrive)) return null;              // window before you arrive: impossible
   if (think > ACCEPT.maxThink) return null;                  // a wait, not a decision
   if (sim.legalAt > ACCEPT.maxLegalAt) return null;          // outside any sensible clock
-  if (collidesIfDepartingAt(sim, sim.legalAt)) return null;  // the promised window is not safe
+  if (unsafeWithinGrace(sim)) return null;                   // not safe somewhere the scorer still calls good
   // Either the road is yours on arrival, or the wait is long enough to be
   // a real yield. Nothing in between.
   if (think > STEP && think <= ACCEPT.ambiguousBelow) return null;

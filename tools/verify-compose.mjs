@@ -14,6 +14,7 @@
 import { composeScenario, measure, meetsBrief, signatureOf, TRAFFIC, VISIBILITY } from "../src/engine/compose.js";
 import { simulate, poseAt, spanOf, conflicts, STEP } from "../src/engine/index.js";
 import { specOf, validateRoad } from "../src/engine/road.js";
+import { GRACE } from "../src/engine/score.js";
 
 let problems = 0;
 const fail = (m) => { problems++; console.log("  FAIL: " + m); };
@@ -103,7 +104,20 @@ console.log("4. DETERMINISM");
 console.log("");
 console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
 {
-  let bad = 0, unsafe = 0, illegal = 0;
+  let bad = 0, unsafe = 0, illegal = 0, unsafeInGrace = 0;
+  const collidesDepartingAt = (sim, T) => {
+    const ego = { ...sim.ego, departAt: T };
+    for (let t = T; t < T + spanOf(ego); t += STEP) {
+      const mine = poseAt(ego, t);
+      if (mine.gone) break;
+      for (const a of sim.actors) {
+        const theirs = poseAt(a, t);
+        if (theirs.gone || theirs.hidden) continue;
+        if (conflicts(ego, mine, a, theirs, 0, 0, 0, "crash")) return true;
+      }
+    }
+    return false;
+  };
   for (const made of byBrief.values()) {
     for (const scn of made) {
       const found = validateRoad(specOf(scn), [{ ...scn.ego, id: "ego" }, ...scn.actors]);
@@ -112,16 +126,17 @@ console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
       const sim = simulate(scn);
       if (!(sim.legalAt >= scn.ego.arriveAt)) { bad++; continue; }
 
-      // Departing on the derived window must not collide.
-      const ego = { ...sim.ego, departAt: sim.legalAt };
-      for (let t = sim.legalAt; t < sim.legalAt + spanOf(ego); t += STEP) {
-        const mine = poseAt(ego, t);
-        if (mine.gone) break;
-        for (const a of sim.actors) {
-          const theirs = poseAt(a, t);
-          if (theirs.gone || theirs.hidden) continue;
-          if (conflicts(ego, mine, a, theirs, 0, 0, 0, "crash")) { unsafe++; t = Infinity; break; }
-        }
+      // Departing on the derived window must not collide...
+      if (collidesDepartingAt(sim, sim.legalAt)) unsafe++;
+
+      /* ...and neither must departing anywhere later the scorer still
+         calls "good" — a road user who does not outrank the ego can be
+         mid-arrival when the window opens, scheduled on the assumption
+         the ego leaves promptly. Taking the grace the scorer offers can
+         walk straight into that; windowIsSafe in compose.js now rejects
+         it, and this is the batch-scale check that it actually does. */
+      for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+        if (collidesDepartingAt(sim, d)) { unsafeInGrace++; break; }
       }
     }
   }
@@ -130,6 +145,9 @@ console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
   unsafe === 0
     ? ok("departing on the derived window never collides, across every composed scene")
     : fail(unsafe + " scene(s) collide when departing exactly on the window");
+  unsafeInGrace === 0
+    ? ok(`every composed window stays safe for the full ${GRACE}s the scorer still calls good`)
+    : fail(`${unsafeInGrace} scene(s) collide somewhere the scorer still calls good, after legalAt`);
 }
 
 console.log("");
