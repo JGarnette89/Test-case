@@ -12,12 +12,14 @@
    failure here says which of the two is broken.
    ===================================================================== */
 import {
-  M, CX, CY, HALF, OFF, CAR_L, CAR_W, STOP_LINE_AT, simulate, poseAt,
+  M, CX, CY, HALF, OFF, LANE, CAR_L, CAR_W, PED_SETBACK, STOP_LINE_AT,
+  simulate, poseAt, crossingOf,
 } from "../src/engine/index.js";
 import {
   eyePoint, segmentHitsBox, visibility, creepPose, noseOut, crossedStopLine,
   encroaches, carWaitingInBox, assessCreep, whatEgoSees, PULL_STEP, EYE_BACK,
 } from "../src/engine/sight.js";
+import { boxHalf } from "../src/engine/road.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const m = (px) => r2(px / 20);
@@ -193,6 +195,69 @@ console.log("\n5. A CAR ALREADY WAITING IN THE INTERSECTION");
   crept.crossedStopLine && crept.blockedBox
     ? ok("crossing the line while they wait ahead is the fault Ontario names")
     : fail(`after 4 presses: crossed=${crept.crossedStopLine} blockedBox=${crept.blockedBox}`);
+}
+
+/* ---------- 6. THE BOX scales with the road, not a picked number -----
+   carWaitingInBox and the pedestrian crossing both used to test against
+   a fixed one-lane radius/offset regardless of the actual road spec —
+   invisible on every scenario built so far because they were all one
+   lane each way. A wide road exposes it: a car waiting in the outer
+   lane of a three-lane approach is still in the box, and the old
+   one-lane circle would have missed it entirely. */
+console.log("\n6. THE BOX SCALES WITH THE ROAD, NOT A PICKED NUMBER");
+{
+  const wideRoad = {
+    legs: {
+      N: { lanes: 3, control: "stop" }, S: { lanes: 3, control: "stop" },
+      E: { lanes: 3, control: "stop" }, W: { lanes: 3, control: "stop" },
+    },
+  };
+  const wideScn = {
+    id: "wide-box-probe", control: "stop", duration: 16, road: wideRoad,
+    ego: { from: "S", intent: "left", arriveAt: 1.0, stops: true },
+    actors: [
+      // Outer lane (index 2 of 3), pushed well into the box and held —
+      // a waiter, not a car passing through.
+      { id: "w", from: "W", intent: "straight", lane: 2, arriveAt: 0.4, stops: true,
+        kind: "car", name: "Outer-lane waiter", stopBias: M(6.5), startDelay: 8, priority: -3 },
+    ],
+  };
+  const sim = simulate(wideScn);
+  const t = 2.0;
+  const p = poseAt(sim.actors[0], t);
+  const oldRadius = HALF + CAR_L / 2;
+  const oldReach = Math.hypot(p.x - CX, p.y - CY);
+
+  oldReach > oldRadius
+    ? ok(`the outer-lane waiter sits ${m(oldReach)}m from centre — past the old one-lane radius of ${m(oldRadius)}m`)
+    : fail(`test is not exercising the wide case: waiter is within the old radius (${m(oldReach)}m <= ${m(oldRadius)}m)`);
+
+  carWaitingInBox(sim, t).blocked
+    ? ok("the box test still catches it — a wide-road box, not a one-lane circle")
+    : fail("a car waiting in the outer lane of a wide road was missed");
+
+  // And the widened box is not simply "always blocked": a car approaching
+  // but still short of the box on the same wide road must not trip it.
+  const approaching = { ...wideScn, actors: [{ ...wideScn.actors[0], stopBias: -M(20), startDelay: 8 }] };
+  carWaitingInBox(simulate(approaching), t).blocked
+    ? fail("a car still short of the wide box was counted as waiting inside it")
+    : ok("a car short of the wide box is correctly not counted as waiting inside it");
+
+  // The pedestrian crossing sets back from THE BOX too, not a fixed
+  // one-lane guess at it — checked against the same boxHalf the box
+  // test above now uses.
+  const { vx: wideVx } = boxHalf(wideRoad, LANE);
+  const cr = crossingOf("W", wideRoad);
+  r2(Math.abs(cr.a.x - CX)) === r2(wideVx + PED_SETBACK)
+    ? ok(`the W crossing sets back ${m(wideVx + PED_SETBACK)}m — clear of the wide box, not a one-lane guess`)
+    : fail(`crossing offset ${m(Math.abs(cr.a.x - CX))}m does not match the wide box (${m(wideVx + PED_SETBACK)}m)`);
+
+  // And a single-lane spec must reproduce the original fixed placement
+  // exactly, or every existing scenario just moved its crossing.
+  const defaultCr = crossingOf("W");
+  r2(Math.abs(defaultCr.a.x - CX)) === r2(HALF + PED_SETBACK)
+    ? ok("a single-lane spec still crosses at exactly the original, fixed distance")
+    : fail("the default one-lane crossing moved — existing scenarios would regress");
 }
 
 console.log("\n" + "=".repeat(66));

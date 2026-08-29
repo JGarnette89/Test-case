@@ -23,11 +23,10 @@
    real scenario needs it, not before.
    ===================================================================== */
 import { M, W, CX, CY, movementOf } from "./engine/index.js";
-import { roadHalf } from "./engine/road.js";
+import { boxHalf } from "./engine/road.js";
 
 export function frameFor(spec) {
-  const vx = roadHalf(spec, "vert", M(3.6));
-  const hy = roadHalf(spec, "horiz", M(3.6));
+  const { vx, hy } = boxHalf(spec, M(3.6));
   // Enough road either side of the junction to read an approach.
   const wanted = 2 * Math.max(vx, hy) + M(26);
   const size = Math.max(W, wanted);

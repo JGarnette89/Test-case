@@ -80,6 +80,16 @@ export function roadHalf(spec, axis, LANE) {
   return (lanes.length ? Math.max(...lanes) : 1) * LANE;
 }
 
+/* THE BOX. Every junction has one, painted or not — it is just the
+   rectangle the two crossing roads bound, and it is the same rectangle
+   whether a scenario draws a line through it or not. Named once so
+   nothing downstream reinvents it at the wrong width: a car "waiting in
+   the intersection" and a pedestrian crossing set back from it both mean
+   this shape, not a fixed one-lane guess at it. */
+export function boxHalf(spec, LANE) {
+  return { vx: roadHalf(spec, "vert", LANE), hy: roadHalf(spec, "horiz", LANE) };
+}
+
 /* How far out along a leg its stop line sits: clear of the road it
    crosses, plus the setback. */
 export function stopReach(spec, side, LANE, setback) {

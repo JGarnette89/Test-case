@@ -28,7 +28,7 @@ import {
 } from "./paths.js";
 import {
   SIDES, RIGHT_OF, OPPOSITE, INTENTS, crossSpec, specOf,
-  stopPoint, exitPoint, exitSideFor,
+  stopPoint, exitPoint, exitSideFor, boxHalf,
 } from "./road.js";
 
 const SCALE = 20;
@@ -168,27 +168,31 @@ const EXITS = Object.fromEntries(
 
    Setback and overhang are declared with the rest of the road furniture
    at the top of the file, because the stop line is placed against them. */
-export function crossingOf(side) {
+export function crossingOf(side, spec = DEFAULT_ROAD) {
+  // Set back from THE BOX (see road.js), not a fixed one-lane guess at
+  // it — a crossing on a six-lane arterial sits six lanes further out
+  // than one on the default four-way, same as the stop line beside it.
+  const { vx, hy } = boxHalf(spec, LANE);
   // On the east and west legs the crosswalk runs north-south.
   const vertical = side === "E" || side === "W";
   if (vertical) {
-    const x = side === "W" ? CX - HALF - PED_SETBACK : CX + HALF + PED_SETBACK;
+    const x = side === "W" ? CX - vx - PED_SETBACK : CX + vx + PED_SETBACK;
     return {
-      a: { x, y: CY - HALF - PED_OVERHANG },
-      b: { x, y: CY + HALF + PED_OVERHANG },
+      a: { x, y: CY - hy - PED_OVERHANG },
+      b: { x, y: CY + hy + PED_OVERHANG },
       vertical: true, rot: 90,
     };
   }
-  const y = side === "N" ? CY - HALF - PED_SETBACK : CY + HALF + PED_SETBACK;
+  const y = side === "N" ? CY - hy - PED_SETBACK : CY + hy + PED_SETBACK;
   return {
-    a: { x: CX - HALF - PED_OVERHANG, y },
-    b: { x: CX + HALF + PED_OVERHANG, y },
+    a: { x: CX - vx - PED_OVERHANG, y },
+    b: { x: CX + vx + PED_OVERHANG, y },
     vertical: false, rot: 0,
   };
 }
 
 // Scenarios written before crossings were relative assumed the north leg.
-const crossingFor = (p) => crossingOf(p.from ?? "N");
+const crossingFor = (p) => crossingOf(p.from ?? "N", p.road ?? DEFAULT_ROAD);
 
 /* --- roundabout path -------------------------------------------------
    Give-way line, round the island, out the chosen exit — sampled as a

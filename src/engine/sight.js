@@ -15,9 +15,10 @@
    never authored — the same rule as everything else here.
    ===================================================================== */
 import {
-  M, CX, CY, HALF, CAR_L, CAR_W, STOPS, STOP_LINE_AT,
+  M, CX, CY, LANE, CAR_L, CAR_W, STOPS, STOP_LINE_AT,
   poseAt, conflicts, PAD_LONG, PAD_LAT, forwardClaim, STEP,
 } from "./index.js";
+import { boxHalf } from "./road.js";
 
 /* The driver sits about a metre back from the front bumper. It matters:
    an eye point at the nose sees past a blocker a whole car length before
@@ -206,14 +207,24 @@ export function encroaches(sim, t, steps, until = null) {
    light changes.
 
    "Already waiting in the intersection" means inside the box and not
-   moving — a car crossing it is passing through, not occupying it. */
+   moving — a car crossing it is passing through, not occupying it.
+
+   THE BOX, not a one-lane guess at it: a car sitting in the outer lane
+   of a six-lane arterial is still in the box, and a circle drawn at
+   one-lane radius from the centre would miss it. Every participant
+   carries the same road spec the junction was built from, so the box is
+   read off that, not off a fixed number — see road.js. */
 export function carWaitingInBox(sim, t, exclude = "ego") {
+  const { vx, hy } = boxHalf(sim.ego.road, LANE);
+  const reachX = vx + CAR_L / 2, reachY = hy + CAR_L / 2;
   for (const a of [...sim.actors]) {
     if (a.id === exclude) continue;
     const p = poseAt(a, t);
     if (p.gone || p.hidden) continue;
     if (!p.waiting && !isStationary(a, t)) continue;
-    if (Math.hypot(p.x - CX, p.y - CY) <= HALF + CAR_L / 2) return { blocked: true, who: a.name ?? a.id };
+    if (Math.abs(p.x - CX) <= reachX && Math.abs(p.y - CY) <= reachY) {
+      return { blocked: true, who: a.name ?? a.id };
+    }
   }
   return { blocked: false };
 }

@@ -19,7 +19,7 @@ import { markPassed, logDaily, useProgress, dailyResult } from "../progress.js";
 import { generateScenario, dailyScenario, WEEKDAY_NAMES } from "../engine/generate.js";
 import { environmentFor, scatter } from "../environments.js";
 import { endlessScenario, signatureOf } from "../engine/compose.js";
-import { crossSpec, hasLeg, controlOf, specOf, roadHalf, legOf } from "../engine/road.js";
+import { crossSpec, hasLeg, controlOf, specOf, boxHalf, legOf } from "../engine/road.js";
 import { cameraFor } from "../frame.js";
 import {
   ACTIONS, sequenceFor, deriveWindows, gradeTask, FAULT,
@@ -95,8 +95,8 @@ function Environment({ env, seed, keepOut }) {
 /* Paint a crosswalk on whichever leg actually has one. Derived from the
    same crossingOf() the engine yields to, so what is painted and what
    holds you up can never drift apart. */
-function Crossing({ side }) {
-  const cr = crossingOf(side);
+function Crossing({ side, road }) {
+  const cr = crossingOf(side, road);
   const n = 12;
   const bars = [];
   for (let i = 0; i < n; i++) {
@@ -170,8 +170,7 @@ function StopLines({ spec = null }) {
   /* Painted across the whole inbound half, at whatever distance the road
      it crosses actually requires — the wider that road, the further back
      the line, exactly as the engine already parks the cars. */
-  const vx = roadHalf(road, "vert", LANE);
-  const hy = roadHalf(road, "horiz", LANE);
+  const { vx, hy } = boxHalf(road, LANE);
   const outN = hy + LINE_BEYOND_EDGE, outE = vx + LINE_BEYOND_EDGE;
   const half = { N: vx / 2, S: vx / 2, W: hy / 2, E: hy / 2 };
   const at = {
@@ -212,11 +211,10 @@ const LINE_BEYOND_EDGE = STOP_LINE_AT - HALF;
 function Road({ control, crossings = ["N"], spec = null }) {
   const road = spec ?? crossSpec(control ?? "stop");
   const has = (side) => hasLeg(road, side);
-  /* The two roads that cross here, each as wide as the lanes it carries.
-     vx is the north-south road's half-width, hy the east-west road's — and
-     a north-south leg stops outside hy, not its own. */
-  const vx = roadHalf(road, "vert", LANE);
-  const hy = roadHalf(road, "horiz", LANE);
+  /* THE BOX: the two roads that cross here, each as wide as the lanes it
+     carries. vx is the north-south road's half-width, hy the east-west
+     road's — and a north-south leg stops outside hy, not its own. */
+  const { vx, hy } = boxHalf(road, LANE);
   const LEG_RECT = {
     N: { x: CX - vx, y: 0, w: vx * 2, h: CY - hy },
     S: { x: CX - vx, y: CY + hy, w: vx * 2, h: H - (CY + hy) },
@@ -228,7 +226,7 @@ function Road({ control, crossings = ["N"], spec = null }) {
   const hLanes = legOf(road, has("E") ? "E" : "W").lanes;
   const Dash = (p) => <line {...p} stroke={C.yellow} strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(6)}`} />;
   const Edge = (p) => <line {...p} stroke={C.line} strokeWidth={M(0.15)} />;
-  const bars = crossings.filter(has).map((s) => <Crossing key={s} side={s} />);
+  const bars = crossings.filter(has).map((s) => <Crossing key={s} side={s} road={road} />);
   /* Signs stand level with the stop line, at the roadside, and only on a
      leg that is actually stop-controlled. */
   const SIGN_AT = {
