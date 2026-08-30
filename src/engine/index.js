@@ -30,6 +30,7 @@ import {
   SIDES, RIGHT_OF, OPPOSITE, INTENTS, crossSpec, specOf,
   stopPoint, exitPoint, exitSideFor, boxHalf,
 } from "./road.js";
+import { GRACE } from "./score.js";
 
 const SCALE = 20;
 const M = (v) => v * SCALE;
@@ -571,6 +572,107 @@ function earliestClear(p, scheduled, from) {
   return from;
 }
 
+/* Earliest departure that is not merely legally clear but literally safe
+   against everyone — priors and non-priors alike, and safe for the whole
+   GRACE stretch the scorer will call "good" from there, not just at the
+   first instant that happens to be clear. That distinction is not
+   academic: a window can open, close again as a second road user
+   arrives, and reopen later, so the first T that tests clear is not
+   necessarily safe to publish as the answer — the whole reason
+   generate.js and compose.js sweep a range instead of trusting one
+   instant (see their own comments). This is that same fix, promoted
+   into the engine so a hand-authored scenario gets it for free.
+
+   Iterative, not a single pass: candidate opens at `from`; if anything
+   in [candidate, candidate+GRACE] collides, candidate jumps to one step
+   past the LAST such instant and the whole stretch is checked again.
+   Repeats until a full GRACE stretch comes back clean. A single pass
+   bounded at from+GRACE is not enough by itself — once candidate moves
+   past `from`, the stretch that actually needs checking moves with it,
+   and a fixed bound can leave the far end of that new stretch
+   unexamined. Caught for real while building the first scenario meant
+   to use this: legalAt 1.5, one bounded pass said safe at 2.7, but nothing
+   had checked past 4.1 (1.5+GRACE) even though the scored window from
+   2.7 now reaches to 5.3.
+
+   Capped at a handful of rounds so a pathological scenario cannot hang;
+   a hand-authored scene needing more than that is describing something
+   else and should be redesigned, not chased further here.
+
+   For almost every scenario this equals legalAt exactly: a non-prior is
+   only still in the way if it does not actually yield, and well-behaved
+   traffic always does. It diverges only where a scenario deliberately
+   authors a driver who does not stop despite having no right of way —
+   see scenarios.js.
+
+   The same crash-mode footprint test the generator audits a draw with
+   (see generate.js, compose.js), promoted here so a hand-authored
+   scenario gets to SCORE against it, instead of relying on a lesson
+   nobody reads until after the crash. Also swept across creep depth for
+   the same reason those two audits are: encroaches() only ever watches
+   priors (creeping is a foul against traffic that has right of way, not
+   against traffic that must yield to you — CLAUDE.md's rule, verbatim),
+   so it cannot warn about creeping toward a road user this scenario is
+   specifically about. safeAt has to cover what the fault cannot. */
+function earliestSafe(p, everyone, from) {
+  const span = spanOf(p);
+  // Finer than STEP for this one check: the resolution floor CLAUDE.md
+  // already accepts for footprints in general (STEP itself) is a real risk
+  // here specifically, because a departure this test misses is not an
+  // invisible-and-harmless effect, it is a hit the player was told was
+  // safe. Caught for real: at STEP resolution a narrow collision window
+  // sat squarely on top of a sample that read clear either side of it.
+  //
+  // That fine a resolution only for standing still, though — checked
+  // directly against 3000 generated scenarios, STEP resolution never once
+  // missed a creep-and-grace collision the finer one caught. So: MICRO
+  // for creepSteps 0, the plain STEP*2 the generator audits already trust
+  // for the 8 creep depths on top of it. Running all nine at MICRO made
+  // verify-compose.mjs's own batch time out — correctness that costs the
+  // workflow minutes stops getting run, which is its own kind of unsafe.
+  const MICRO = STEP / 2;
+  // M(0.9), matching PULL_STEP in sight.js exactly — not imported, since
+  // sight.js already imports from this file and the reverse would cycle.
+  // If PULL_STEP is ever retuned, this needs to move with it.
+  const CREEP_STEP = M(0.9);
+  const CREEP_DEPTHS_CHECKED = 8;
+  const collidesAt = (T, creepSteps, resolution) => {
+    const trial = { ...p, departAt: T, stopBias: (p.stopBias || 0) + creepSteps * CREEP_STEP };
+    for (let t = T; t <= T + span + 0.3; t += resolution) {
+      const mine = poseAt(trial, t);
+      if (mine.gone) break;
+      for (const q of everyone) {
+        const theirs = poseAt(q, t);
+        if (theirs.gone || theirs.hidden) continue;
+        if (conflicts(trial, mine, q, theirs, 0, 0, 0, "crash")) return true;
+      }
+    }
+    return false;
+  };
+
+  let candidate = from;
+  for (let round = 0; round < 8; round++) {
+    let lastUnsafe = candidate - MICRO;
+    // The +1e-9 guards against float drift silently dropping the last
+    // sample right at the boundary, which is exactly where a narrow
+    // unsafe sliver hides — caught for real once, see generate.js.
+    for (let T = candidate; T <= candidate + GRACE + 1e-9; T += MICRO) {
+      if (collidesAt(T, 0, MICRO)) lastUnsafe = T;
+    }
+    for (let steps = 1; steps <= CREEP_DEPTHS_CHECKED; steps++) {
+      for (let T = candidate; T <= candidate + GRACE + 1e-9; T += STEP * 2) {
+        if (collidesAt(T, steps, STEP)) lastUnsafe = Math.max(lastUnsafe, T);
+      }
+    }
+    if (lastUnsafe < candidate) return Math.round(candidate * 100) / 100;
+    // A full STEP of margin past the last instant actually caught, not
+    // one MICRO — the same resolution floor that motivated checking
+    // finer in the first place is still there past this point too.
+    candidate = Math.round((lastUnsafe + STEP) * 100) / 100;
+  }
+  return candidate;
+}
+
 function applyTraits(p) {
   (p.traits || []).forEach((k) => TRAITS[k]?.setup?.(p));
   return p;
@@ -611,6 +713,20 @@ export function simulate(scn) {
   const priors = actors.filter((a) => outranks(a, ego));
   const legalAt = earliestClear(ego, priors, ego.arriveAt);
   return { ego, actors, legalAt, priors };
+}
+
+/* safeAt, on demand rather than folded into simulate(). Composition and
+   generation call simulate() deep inside their own search loops — up to
+   90 tries per accepted draw, sometimes several simulates per try — and
+   earliestSafe's grace-and-creep sweep is real work: cheap once, not
+   cheap ninety times over. Baked into simulate() unconditionally, it took
+   Endless mode from ~20ms to ~270ms per press of "next" and made
+   verify-compose.mjs time out outright — correctness that costs the
+   generator or the workflow that much stops paying for itself. The
+   renderer calls this once, when a scenario is actually about to be
+   played, which is the only place the cost belongs. */
+export function safeAtFor(sim) {
+  return earliestSafe(sim.ego, sim.actors, sim.legalAt);
 }
 
 export {

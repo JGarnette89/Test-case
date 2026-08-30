@@ -10,7 +10,7 @@ import {
   CROSS, STEP, TIE, spanOf,
   crossingOf, BAR_HALF, STOP_LINE_AT, RA_OUTER, RA_ISLAND,
   TRAITS, traitTells, poseAt, signalShowing, forwardClaim, conflicts,
-  outranks, earliestClear, schedule, simulate,
+  outranks, earliestClear, schedule, simulate, safeAtFor,
 } from "../engine/index.js";
 import { grade, tally, emptyTally, GRACE, REACTION_FLOOR } from "../engine/score.js";
 import { planRoute, startRun, recordLeg, currentLeg, summary } from "../engine/route.js";
@@ -506,6 +506,9 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   const logged = isDaily ? dailyResult(progress, scn.day) : null;
 
   const sim = React.useMemo(() => simulate(scn), [scn]);
+  // Computed once per scenario load, not folded into simulate() itself —
+  // see safeAtFor's own comment for why that split matters.
+  const safeAt = React.useMemo(() => safeAtFor(sim), [sim]);
 
   const stopLoop = useCallback(() => {
     if (raf.current) cancelAnimationFrame(raf.current);
@@ -517,16 +520,19 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
      engine's; the rest are worked backwards from it. */
   const windows = React.useMemo(
     () => deriveWindows(sequence, {
-      manoeuvreAt: scn.manoeuvreAt ?? sim.legalAt,
-      legalAt: sim.legalAt,
+      manoeuvreAt: scn.manoeuvreAt ?? safeAt,
+      legalAt: safeAt,
     }),
     [sequence, sim, scn.manoeuvreAt]
   );
 
-  // The engine decides what happened and what it was worth; this only shows it.
+  /* Graded against safeAt, not legalAt: physically safe against everyone,
+     not only legally clear against whoever outranks you. Identical to
+     legalAt for every scenario that does not deliberately author a
+     driver who fails to yield — see index.js. */
   function finish(at, hit) {
     stopLoop();
-    const r = grade({ legalAt: sim.legalAt, pressedAt: at, collided: !!hit });
+    const r = grade({ legalAt: safeAt, pressedAt: at, collided: !!hit });
 
     /* On a multi-action manoeuvre the press score is only the GO part of
        it, so the sheet is what the player is actually shown. */
@@ -922,17 +928,25 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
             </div>
           )}
 
-          <Timeline duration={scn.duration} legalAt={sim.legalAt} pressedAt={pressedAt} verdict={verdict} />
+          <Timeline duration={scn.duration} legalAt={safeAt} pressedAt={pressedAt} verdict={verdict} />
           <div style={st.readout}>
-            {verdict === "collision" && <>You pulled out at {pressedAt.toFixed(1)}s and met the {crash?.who?.toLowerCase()}. Your path was not clear until {sim.legalAt.toFixed(1)}s.</>}
-            {verdict === "early" && <>You moved at {pressedAt.toFixed(1)}s. No contact, but the way was not yours until {sim.legalAt.toFixed(1)}s.</>}
+            {verdict === "collision" && <>You pulled out at {pressedAt.toFixed(1)}s and met the {crash?.who?.toLowerCase()}. Your path was not clear until {safeAt.toFixed(1)}s.</>}
+            {verdict === "early" && <>You moved at {pressedAt.toFixed(1)}s. No contact, but the way was not yours until {safeAt.toFixed(1)}s.</>}
             {verdict === "good" && (
               result.reaction <= REACTION_FLOOR
-                ? <>Away at {pressedAt.toFixed(1)}s against a window opening at {sim.legalAt.toFixed(1)}s — inside the {REACTION_FLOOR}s nobody reacts faster than. Full marks.</>
-                : <>Away at {pressedAt.toFixed(1)}s, {result.reaction.toFixed(2)}s after your window opened at {sim.legalAt.toFixed(1)}s.</>
+                ? <>Away at {pressedAt.toFixed(1)}s against a window opening at {safeAt.toFixed(1)}s — inside the {REACTION_FLOOR}s nobody reacts faster than. Full marks.</>
+                : <>Away at {pressedAt.toFixed(1)}s, {result.reaction.toFixed(2)}s after your window opened at {safeAt.toFixed(1)}s.</>
             )}
-            {verdict === "late" && <>Your window opened at {sim.legalAt.toFixed(1)}s; you moved at {pressedAt.toFixed(1)}s — {result.reaction.toFixed(1)}s of hesitation.</>}
-            {verdict === "missed" && <>The window opened at {sim.legalAt.toFixed(1)}s and never closed.</>}
+            {verdict === "late" && <>Your window opened at {safeAt.toFixed(1)}s; you moved at {pressedAt.toFixed(1)}s — {result.reaction.toFixed(1)}s of hesitation.</>}
+            {verdict === "missed" && <>The window opened at {safeAt.toFixed(1)}s and never closed.</>}
+            {/* Only ever shows where a scenario deliberately authors a driver
+                who does not yield despite having no right of way — for
+                everything else safeAt equals legalAt exactly. */}
+            {safeAt > sim.legalAt + 0.01 && (
+              <div style={{ marginTop: 6, opacity: 0.85 }}>
+                The road was legally yours at {sim.legalAt.toFixed(1)}s — it just was not safe to take yet.
+              </div>
+            )}
           </div>
           {tells.length > 0 && (
             <div style={st.tells}>

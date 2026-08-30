@@ -18,7 +18,7 @@
    or disagreeing with the verdict — and it covers every scenario at every
    press time rather than the handful a person would try by hand.
    ===================================================================== */
-import { simulate, poseAt, conflicts, spanOf, STEP } from "../src/engine/index.js";
+import { simulate, poseAt, conflicts, spanOf, STEP, safeAtFor } from "../src/engine/index.js";
 import { grade, GRACE } from "../src/engine/score.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
 import { ROUTES } from "../src/engine/routes.js";
@@ -68,6 +68,10 @@ const perScenario = [];
 
 for (const scn of SCENARIOS) {
   const sim = simulate(scn);
+  // What the app actually scores against — see safeAtFor's own comment.
+  // Equal to legalAt for every scenario except one that deliberately
+  // authors a driver who fails to yield (wontstop).
+  const safeAt = safeAtFor(sim);
   let crashes = 0, cleared = 0;
   for (let p = 0; p <= scn.duration; p = r2(p + 0.1)) {
     runs++;
@@ -83,20 +87,20 @@ for (const scn of SCENARIOS) {
     if (res.outcome === "collision") crashes++; else cleared++;
 
     // The verdict the player is shown must agree with the scorer.
-    const g = grade({ legalAt: sim.legalAt, pressedAt: p, collided: res.outcome === "collision" });
+    const g = grade({ legalAt: safeAt, pressedAt: p, collided: res.outcome === "collision" });
     if (res.outcome === "collision" && g.verdict !== "collision") {
       mismatched++;
       fail(`${scn.id} press ${p}: hit a car but was not graded as a collision`);
     }
     // Anything that collides must have been at or before the window, or the
     // engine has promised a window that is not actually safe.
-    if (res.outcome === "collision" && p > sim.legalAt + 1e-9) {
+    if (res.outcome === "collision" && p > safeAt + 1e-9) {
       mismatched++;
-      fail(`${scn.id} press ${p}: collided AFTER the window opened at ${sim.legalAt}`);
+      fail(`${scn.id} press ${p}: collided AFTER the window opened at ${safeAt}`);
     }
   }
   collisions += crashes;
-  perScenario.push({ id: scn.id, crashes, cleared, legalAt: sim.legalAt });
+  perScenario.push({ id: scn.id, crashes, cleared, legalAt: safeAt });
 }
 
 console.log(`  ${runs} runs across ${SCENARIOS.length} scenarios`);
@@ -127,7 +131,7 @@ console.log("\n3. TODAY'S DAILY AND EVERY ROUTE LEG");
   if (!daily) fail("today's daily produced nothing");
   else {
     const sim = simulate(daily);
-    const res = play(daily, sim.legalAt + 0.2);
+    const res = play(daily, safeAtFor(sim) + 0.2);
     res.outcome === "cleared"
       ? ok(`today's daily (${daily.id}, difficulty ${daily.difficulty}) plays through cleanly on its window`)
       : fail(`today's daily ends "${res.outcome}" when played on its own window`);
@@ -139,7 +143,7 @@ console.log("\n3. TODAY'S DAILY AND EVERY ROUTE LEG");
     if (!plan.ok) { fail(`route ${route.id} will not plan`); legProblems++; continue; }
     for (const leg of plan.legs) {
       const sim = simulate(leg);
-      const res = play(leg, sim.legalAt + 0.2);
+      const res = play(leg, safeAtFor(sim) + 0.2);
       if (res.outcome !== "cleared") {
         legProblems++;
         fail(`route ${route.id}, leg ${leg.id}: "${res.outcome}" when played on its window`);
@@ -155,11 +159,12 @@ console.log("\n4. THE WINDOW IS A REAL BOUNDARY");
   let safeOnWindow = 0, riskyBefore = 0, checked = 0;
   for (const scn of SCENARIOS) {
     const sim = simulate(scn);
-    if (sim.legalAt - scn.ego.arriveAt < 0.3) continue; // nothing to be early for
+    const safeAt = safeAtFor(sim);
+    if (safeAt - scn.ego.arriveAt < 0.3) continue; // nothing to be early for
     checked++;
-    if (play(scn, sim.legalAt).outcome === "cleared") safeOnWindow++;
+    if (play(scn, safeAt).outcome === "cleared") safeOnWindow++;
     // Going a full second early should at least sometimes end badly.
-    if (play(scn, Math.max(0, sim.legalAt - 1.0)).outcome === "collision") riskyBefore++;
+    if (play(scn, Math.max(0, safeAt - 1.0)).outcome === "collision") riskyBefore++;
   }
   safeOnWindow === checked
     ? ok(`all ${checked} scenarios that require a wait are safe exactly on the window`)

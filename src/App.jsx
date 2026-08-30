@@ -16,7 +16,7 @@ import {
   dailyResult, dailyStreak,
 } from "./progress.js";
 import { dayIndex } from "./engine/generate.js";
-import { simulate } from "./engine/index.js";
+import { simulate, safeAtFor } from "./engine/index.js";
 import { sequenceFor } from "./engine/actions.js";
 
 /* Palette and font stacks are copied from the apps rather than imported,
@@ -354,16 +354,17 @@ function TestMenu() {
   const rows = React.useMemo(
     () =>
       SCENARIOS.map((s) => {
-        let legalAt = null, think = null;
+        let legalAt = null, safeAt = null, think = null;
         try {
           const sim = simulate(s);
           legalAt = sim.legalAt;
-          think = Math.round((sim.legalAt - s.ego.arriveAt) * 100) / 100;
+          safeAt = safeAtFor(sim);
+          think = Math.round((safeAt - s.ego.arriveAt) * 100) / 100;
         } catch {
           /* A scenario that will not simulate is exactly what this menu is
              for finding, so it is listed rather than swallowed. */
         }
-        return { s, legalAt, think, ...featuresOf(s) };
+        return { s, legalAt, safeAt, think, ...featuresOf(s) };
       }),
     []
   );
@@ -383,15 +384,18 @@ function TestMenu() {
       </div>
 
       <Section title={`Situations (${SCENARIOS.length})`} note="Window and wait are derived live, not stored.">
-        {rows.map(({ s, legalAt, think, tags, traits }) => (
+        {rows.map(({ s, legalAt, safeAt, think, tags, traits }) => (
           <button key={s.id} className="shell-card" style={st.thinRow} onClick={() => go("timing", s.id)}>
             <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
               <div style={st.thinName}>{s.title}</div>
               <div style={st.testMeta}>
                 <code style={st.thinId}>{s.id}</code>
-                {legalAt == null
+                {safeAt == null
                   ? <span style={{ color: C.red }}>will not simulate</span>
-                  : <span>window {legalAt}s · waits {think}s</span>}
+                  : <span>
+                      window {safeAt}s · waits {think}s
+                      {safeAt > legalAt + 0.01 && <span style={{ color: C.amber }}> (legal at {legalAt}s)</span>}
+                    </span>}
               </div>
               {(tags.length > 0 || traits.length > 0) && (
                 <div style={st.tagRow}>

@@ -136,7 +136,7 @@ console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
          the ego leaves promptly. Taking the grace the scorer offers can
          walk straight into that; windowIsSafe in compose.js now rejects
          it, and this is the batch-scale check that it actually does. */
-      for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+      for (let d = sim.legalAt; d <= sim.legalAt + GRACE + 1e-9; d += STEP * 2) {
         if (collidesDepartingAt(sim, d)) { unsafeInGrace++; break; }
       }
 
@@ -145,7 +145,7 @@ console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
          ego draws no fault at all before the hit. */
       outer:
       for (let steps = 0; steps <= 8; steps++) {
-        for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+        for (let d = sim.legalAt; d <= sim.legalAt + GRACE + 1e-9; d += STEP * 2) {
           if (collidesDepartingAt(sim, d, steps)) { unsafeCreeping++; break outer; }
         }
       }

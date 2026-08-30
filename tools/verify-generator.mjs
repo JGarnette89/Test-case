@@ -83,7 +83,7 @@ for (const scn of batch) {
      Caught once for real: 1142 of 4000 draws collided somewhere in this
      stretch before generate.js's own rejection swept the whole window
      instead of only its first instant. */
-  for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+  for (let d = sim.legalAt; d <= sim.legalAt + GRACE + 1e-9; d += STEP * 2) {
     if (collidesAt(sim, d)) { unsafeInGrace++; break; }
   }
 
@@ -95,7 +95,7 @@ for (const scn of batch) {
      a few presses of PULL UP, with zero fault ever flagged first. */
   outer:
   for (let steps = 0; steps <= 8; steps++) {
-    for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+    for (let d = sim.legalAt; d <= sim.legalAt + GRACE + 1e-9; d += STEP * 2) {
       if (collidesAt(sim, d, steps)) { unsafeCreeping++; break outer; }
     }
   }

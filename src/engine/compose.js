@@ -146,7 +146,9 @@ const CREEP_STEPS_CHECKED = 8;
 export function windowIsSafe(scn) {
   const sim = simulate(scn);
   for (let steps = 0; steps <= CREEP_STEPS_CHECKED; steps++) {
-    for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+    // +1e-9 guards against float drift silently dropping the sample right
+    // at the boundary — where a narrow unsafe sliver actually hid once.
+    for (let d = sim.legalAt; d <= sim.legalAt + GRACE + 1e-9; d += STEP * 2) {
       if (collidesDepartingAt(sim, d, steps)) return false;
     }
   }

@@ -134,6 +134,18 @@ const SCENARIOS = [
     lesson: "No indicator until it was already turning. By the time that signal appeared it told you nothing you could still act on. Where there is no information to read, the answer is always to wait for the wheels.",
   },
   {
+    id: "wontstop",
+    title: "Right of way doesn't stop a car",
+    brief: "Four-way stop. The oncoming car is not slowing for its sign.",
+    control: "stop",
+    duration: 16,
+    ego: { from: "S", intent: "straight", arriveAt: 1.5, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "N", intent: "left", arriveAt: 4.0, stops: false, color: C.red, name: "Red car", signal: "left" }),
+    ],
+    lesson: "It had no right of way — turning left across you, it was always yours to take first. It just never planned to stop for the sign at all: no braking, no hesitation, the same speed the whole way in. Right of way is a rule about who goes first when everyone actually stops. It is not a guarantee that everyone will.",
+  },
+  {
     id: "circle",
     title: "Already going round",
     brief: "Roundabout. A car is in the circle, coming from your left.",

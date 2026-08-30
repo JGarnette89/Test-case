@@ -98,7 +98,9 @@ const CREEP_STEPS_CHECKED = 8;
    (see above), so the generator has to be the one that catches it. */
 function unsafeWithinGrace(sim) {
   for (let steps = 0; steps <= CREEP_STEPS_CHECKED; steps++) {
-    for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+    // +1e-9 guards against float drift silently dropping the sample right
+    // at the boundary — where a narrow unsafe sliver actually hid once.
+    for (let d = sim.legalAt; d <= sim.legalAt + GRACE + 1e-9; d += STEP * 2) {
       if (collidesIfDepartingAt(sim, d, steps)) return true;
     }
   }
