@@ -15,6 +15,7 @@ import { composeScenario, measure, meetsBrief, signatureOf, TRAFFIC, VISIBILITY 
 import { simulate, poseAt, spanOf, conflicts, STEP } from "../src/engine/index.js";
 import { specOf, validateRoad } from "../src/engine/road.js";
 import { GRACE } from "../src/engine/score.js";
+import { PULL_STEP } from "../src/engine/sight.js";
 
 let problems = 0;
 const fail = (m) => { problems++; console.log("  FAIL: " + m); };
@@ -104,9 +105,9 @@ console.log("4. DETERMINISM");
 console.log("");
 console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
 {
-  let bad = 0, unsafe = 0, illegal = 0, unsafeInGrace = 0;
-  const collidesDepartingAt = (sim, T) => {
-    const ego = { ...sim.ego, departAt: T };
+  let bad = 0, unsafe = 0, illegal = 0, unsafeInGrace = 0, unsafeCreeping = 0;
+  const collidesDepartingAt = (sim, T, creepSteps = 0) => {
+    const ego = { ...sim.ego, departAt: T, stopBias: (sim.ego.stopBias || 0) + creepSteps * PULL_STEP };
     for (let t = T; t < T + spanOf(ego); t += STEP) {
       const mine = poseAt(ego, t);
       if (mine.gone) break;
@@ -138,6 +139,16 @@ console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
       for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
         if (collidesDepartingAt(sim, d)) { unsafeInGrace++; break; }
       }
+
+      /* ...nor at any depth of PULL UP — encroaches() only watches
+         priors, so creeping toward a road user who does not outrank the
+         ego draws no fault at all before the hit. */
+      outer:
+      for (let steps = 0; steps <= 8; steps++) {
+        for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+          if (collidesDepartingAt(sim, d, steps)) { unsafeCreeping++; break outer; }
+        }
+      }
     }
   }
   bad === 0 ? ok("every window opens at or after the ego arrives") : fail(bad + " impossible windows");
@@ -145,6 +156,9 @@ console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
   unsafe === 0
     ? ok("departing on the derived window never collides, across every composed scene")
     : fail(unsafe + " scene(s) collide when departing exactly on the window");
+  unsafeCreeping === 0
+    ? ok("every composed window stays safe through 8 presses of PULL UP too")
+    : fail(`${unsafeCreeping} scene(s) collide after creeping, with no fault ever flagged first`);
   unsafeInGrace === 0
     ? ok(`every composed window stays safe for the full ${GRACE}s the scorer still calls good`)
     : fail(`${unsafeInGrace} scene(s) collide somewhere the scorer still calls good, after legalAt`);

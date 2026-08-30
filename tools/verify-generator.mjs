@@ -17,6 +17,7 @@
    ===================================================================== */
 import { simulate, poseAt, conflicts, CROSS, STEP } from "../src/engine/index.js";
 import { grade, EARLY_TOLERANCE, GRACE } from "../src/engine/score.js";
+import { PULL_STEP } from "../src/engine/sight.js";
 import {
   drawScenario, generateScenario, generateBatch, dailyScenario, dayIndex, ACCEPT,
   weekdayOf, targetDifficulty, WEEK_CURVE, WEEKDAY_NAMES, EPOCH, DAY_MS,
@@ -28,8 +29,8 @@ let problems = 0;
 const fail = (m) => { problems++; console.log(`  FAIL: ${m}`); };
 const ok = (m) => console.log(`  ok   ${m}`);
 
-function collidesAt(sim, T) {
-  const ego = { ...sim.ego, departAt: T };
+function collidesAt(sim, T, creepSteps = 0) {
+  const ego = { ...sim.ego, departAt: T, stopBias: (sim.ego.stopBias || 0) + creepSteps * PULL_STEP };
   for (let t = T; t <= T + CROSS[ego.intent] + 0.3; t += STEP) {
     const mine = poseAt(ego, t);
     if (mine.gone) break;
@@ -65,7 +66,7 @@ console.log(`\n2. PROPERTIES OVER ${N} GENERATED SCENARIOS`);
 const batch = generateBatch(1, N);
 if (batch.length < N) fail(`only ${batch.length}/${N} seeds produced a scenario`);
 
-let unsafeWindow = 0, unsafeInGrace = 0, freeRide = 0, outOfBounds = 0, shortClock = 0, noDescription = 0;
+let unsafeWindow = 0, unsafeInGrace = 0, unsafeCreeping = 0, freeRide = 0, outOfBounds = 0, shortClock = 0, noDescription = 0;
 const thinks = [], diffs = { 1: 0, 2: 0, 3: 0, 4: 0 };
 let naiveFails = 0, withTraits = 0;
 
@@ -84,6 +85,19 @@ for (const scn of batch) {
      instead of only its first instant. */
   for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
     if (collidesAt(sim, d)) { unsafeInGrace++; break; }
+  }
+
+  /* And so must every one of those instants at every depth of PULL UP —
+     encroaches() only ever watches priors, so it cannot warn about
+     creeping toward a road user who does not outrank the ego, which is
+     exactly the actor this whole section is about. Caught once for
+     real: 62 of 1500 draws collided after nothing but a legal press and
+     a few presses of PULL UP, with zero fault ever flagged first. */
+  outer:
+  for (let steps = 0; steps <= 8; steps++) {
+    for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+      if (collidesAt(sim, d, steps)) { unsafeCreeping++; break outer; }
+    }
   }
 
   // Where it says wait, going immediately must actually be a fault. The
@@ -111,6 +125,9 @@ unsafeWindow === 0
 unsafeInGrace === 0
   ? ok(`every window stays safe for the full ${GRACE}s the scorer still calls good`)
   : fail(`${unsafeInGrace} scenario(s) collide somewhere the scorer still calls good, after legalAt`);
+unsafeCreeping === 0
+  ? ok("every window stays safe through 8 presses of PULL UP too, not only from the stop line")
+  : fail(`${unsafeCreeping} scenario(s) collide after creeping, with no fault ever flagged first`);
 outOfBounds === 0 ? ok("all inside the stated acceptance bounds") : fail(`${outOfBounds} outside ACCEPT bounds`);
 shortClock === 0 ? ok("every scenario has clock left after its window opens") : fail(`${shortClock} would run out of time`);
 noDescription === 0 ? ok("every scenario carries a brief and an explanation") : fail(`${noDescription} missing description`);

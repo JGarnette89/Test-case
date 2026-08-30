@@ -19,6 +19,7 @@
 import { simulate, poseAt, conflicts, spanOf, M, CX, CY, LANE, STEP } from "./index.js";
 import { whatEgoSees, sightBlockersOf } from "./sight.js";
 import { GRACE } from "./score.js";
+import { PULL_STEP } from "./sight.js";
 import {
   crossSpec, teeSpec, validIntents, SIDES, OPPOSITE, roadHalf, hasLeg,
 } from "./road.js";
@@ -122,8 +123,8 @@ export function measure(scn) {
    takes the full grace the scorer offers can walk straight into that —
    which was exactly the failure mode the paragraph above already
    named, just re-opened by anything later than the first instant. */
-function collidesDepartingAt(sim, T) {
-  const ego = { ...sim.ego, departAt: T };
+function collidesDepartingAt(sim, T, creepSteps = 0) {
+  const ego = { ...sim.ego, departAt: T, stopBias: (sim.ego.stopBias || 0) + creepSteps * PULL_STEP };
   for (let t = T; t < T + spanOf(ego); t += STEP) {
     const mine = poseAt(ego, t);
     if (mine.gone) break;
@@ -135,10 +136,19 @@ function collidesDepartingAt(sim, T) {
   }
   return false;
 }
+
+/* Matches generate.js's own bound: the encroachment fault only ever
+   watches priors, so it cannot warn about creeping toward a road user
+   who does not outrank the ego — this is the only check standing
+   between that and a silent hit. */
+const CREEP_STEPS_CHECKED = 8;
+
 export function windowIsSafe(scn) {
   const sim = simulate(scn);
-  for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
-    if (collidesDepartingAt(sim, d)) return false;
+  for (let steps = 0; steps <= CREEP_STEPS_CHECKED; steps++) {
+    for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+      if (collidesDepartingAt(sim, d, steps)) return false;
+    }
   }
   return true;
 }

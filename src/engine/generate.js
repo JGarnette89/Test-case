@@ -16,6 +16,7 @@ import {
   simulate, poseAt, conflicts, forwardClaim, spanOf, STEP, OPPOSITE, RIGHT_OF,
 } from "./index.js";
 import { EARLY_TOLERANCE, GRACE } from "./score.js";
+import { PULL_STEP } from "./sight.js";
 
 /* mulberry32 — small, fast, and good enough that consecutive seeds do not
    produce visibly similar draws. Deterministic across every platform. */
@@ -61,8 +62,8 @@ export const ACCEPT = {
    fair question and gets thrown away. This is the generator checking the
    engine, which is the only honest way round.
    --------------------------------------------------------------------- */
-function collidesIfDepartingAt(sim, T) {
-  const ego = { ...sim.ego, departAt: T };
+function collidesIfDepartingAt(sim, T, creepSteps = 0) {
+  const ego = { ...sim.ego, departAt: T, stopBias: (sim.ego.stopBias || 0) + creepSteps * PULL_STEP };
   for (let t = T; t <= T + spanOf(ego) + 0.3; t += STEP) {
     const mine = poseAt(ego, t);
     if (mine.gone) break;
@@ -75,6 +76,14 @@ function collidesIfDepartingAt(sim, T) {
   return false;
 }
 
+/* How many presses of PULL UP to check the draw against. The encroachment
+   fault only ever watches priors — traffic that has right of way, per the
+   rule creeping is actually judged against — so it cannot warn about a
+   road user who does not outrank the ego. Matches the range verify-sight
+   already exercises for creep, which is enough to carry the nose well
+   past the stop line and into the box on every road this generates. */
+const CREEP_STEPS_CHECKED = 8;
+
 /* legalAt is derived against PRIORS only — whoever outranks the ego. A
    road user who does not is still a physical object, and one who is
    still arriving when the window opens can be scheduled on the
@@ -82,10 +91,16 @@ function collidesIfDepartingAt(sim, T) {
    GRACE seconds later "good" too, so if departing later in that same
    stretch hits that road user, the promise "good" makes was never true
    — the draw just had not been asked the later question. Every instant
-   the scorer will call good has to be asked, not only the first one. */
+   the scorer will call good has to be asked, not only the first one.
+
+   And not only from the stop line: creeping shifts where the ego departs
+   from, and the fault that watches creep cannot see this exact danger
+   (see above), so the generator has to be the one that catches it. */
 function unsafeWithinGrace(sim) {
-  for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
-    if (collidesIfDepartingAt(sim, d)) return true;
+  for (let steps = 0; steps <= CREEP_STEPS_CHECKED; steps++) {
+    for (let d = sim.legalAt; d <= sim.legalAt + GRACE; d += STEP * 2) {
+      if (collidesIfDepartingAt(sim, d, steps)) return true;
+    }
   }
   return false;
 }
