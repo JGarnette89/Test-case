@@ -147,8 +147,8 @@ function describe(scn, sim) {
       : "Your path was clear of everyone who had priority.";
   } else if (blocker.kind === "ped") {
     why = `Someone was on the ${SIDE_WORD[blocker.from]} crossing, and you were driving through it. ` +
-      `A pedestrian holds the whole crossing until they are completely across — not until they have ` +
-      `cleared your half of it. That is a rule about the crossing, not about where they happen to be standing.`;
+      `A pedestrian holds the near half of the crossing until they are past its midpoint, not the ` +
+      `moment they step off the curb. That is a rule about the crossing, not about where they happen to be standing.`;
   } else {
     why = `The ${blocker.name.toLowerCase()} came from the ${SIDE_WORD[blocker.from]} ${INTENT_WORD[blocker.intent]}, ` +
       `and that path crossed yours. You were waiting for that one — not for the intersection to empty.`;

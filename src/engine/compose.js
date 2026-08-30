@@ -21,7 +21,7 @@ import { whatEgoSees, sightBlockersOf } from "./sight.js";
 import { GRACE } from "./score.js";
 import { PULL_STEP } from "./sight.js";
 import {
-  crossSpec, teeSpec, validIntents, SIDES, OPPOSITE, roadHalf, hasLeg,
+  crossSpec, teeSpec, validIntents, SIDES, OPPOSITE, RIGHT_OF, roadHalf, hasLeg,
 } from "./road.js";
 
 function rng(seed) {
@@ -219,6 +219,36 @@ export function compose(brief, seed) {
   const actors = [];
   let when = span(r, 0.6, 1.6);
   for (let i = 0; i < count; i++) {
+    /* Sometimes the other road user is on foot — ported from generate.js,
+       which was the only place this ever turned up before now. A
+       pedestrian holds the near half of the crossing until they are past
+       its midpoint (see index.js, PED_HOLDS_UNTIL), the same legal rule
+       generate.js's own comment describes, just narrower than it used to
+       be. Their crossing has to be on a leg the ego actually meets, or it
+       is scenery instead of a decision — and, unlike a plain four-way,
+       has to be a leg this junction actually has. */
+    if (r() < 0.22) {
+      const pedLegs = [from, OPPOSITE[from], RIGHT_OF[from]].filter((s) => s && hasLeg(spec, s));
+      if (pedLegs.length) {
+        actors.push({
+          id: `p${i}`,
+          from: pick(r, pedLegs),
+          intent: "straight",
+          arriveAt: when,
+          stops: false,
+          kind: "ped",
+          colorKey: "pale",
+          name: "Pedestrian",
+          // Pedestrians are not resolved by arrival order against vehicles.
+          priority: -1,
+          blockUntilClear: true,
+          reverse: r() < 0.5,
+        });
+        when = Math.round((when + span(r, traffic.gap[0], traffic.gap[1])) * 10) / 10;
+        continue;
+      }
+    }
+
     const side = pick(r, legs);
     const opts = validIntents(spec, side);
     if (!opts.length) continue;

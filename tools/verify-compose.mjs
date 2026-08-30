@@ -164,6 +164,40 @@ console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
     : fail(`${unsafeInGrace} scene(s) collide somewhere the scorer still calls good, after legalAt`);
 }
 
+/* ---------- 6. pedestrians turn up in Endless too --------------------
+   Ported from generate.js, which used to be the only place this rule
+   ever appeared. Mirrors that file's own checks: a workable rate, more
+   than one leg, and a real (not universal, not absent) effect on the
+   window — over every scene composed above, not a fresh batch, so this
+   is checking the exact same draws already proven playable. */
+console.log("");
+console.log("6. PEDESTRIANS TURN UP IN ENDLESS TOO");
+{
+  const all = [...byBrief.values()].flat();
+  const withPed = all.filter((s) => s.actors.some((a) => a.kind === "ped"));
+  const share = withPed.length / all.length;
+  console.log(`  pedestrians  ${withPed.length} of ${all.length} (${Math.round(share * 100)}%)`);
+  share < 0.05
+    ? fail("pedestrians almost never composed — the crossing rule stays untaught in Endless")
+    : ok("pedestrians appear at a workable rate");
+
+  const legsSeen = new Set(withPed.flatMap((s) => s.actors.filter((a) => a.kind === "ped").map((a) => a.from)));
+  legsSeen.size >= 2
+    ? ok(`crossings composed on ${legsSeen.size} different legs (${[...legsSeen].join(", ")})`)
+    : fail(`crossings only ever appear on ${[...legsSeen].join(", ") || "no"} leg`);
+
+  const blocking = withPed.filter((s) => {
+    const withThem = simulate(s).legalAt;
+    const without = simulate({ ...s, actors: s.actors.filter((a) => a.kind !== "ped") }).legalAt;
+    return withThem - without > 1e-9;
+  });
+  const rate = withPed.length ? blocking.length / withPed.length : 0;
+  console.log(`  of those, ${blocking.length} move the window (${Math.round(rate * 100)}%)`);
+  rate > 0.05 && rate < 0.98
+    ? ok("pedestrians sometimes hold you up and sometimes do not in Endless too")
+    : fail("pedestrians in Endless are either always or never in the way — not something to read");
+}
+
 console.log("");
 console.log("=".repeat(66));
 console.log(problems === 0 ? "OK: composition verified." : problems + " PROBLEM(S) FOUND.");

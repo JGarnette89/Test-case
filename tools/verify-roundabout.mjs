@@ -248,7 +248,7 @@ console.log("\n7. NO REGRESSION IN THE CROSS LAYOUT");
      and only alongside a change that is meant to move them. */
   const expected = {
     opposite: 2.4, signalled: 1.6, liar: 2.65, silent: 2.85, gap: 5.25,
-    walker: 3.9, wanderer: 2.4, sleeper: 2.85, creeper: 2.95, lateflag: 2.75,
+    walker: 3.6, wanderer: 2.4, sleeper: 2.85, creeper: 2.95, lateflag: 2.75,
   };
   let bad = 0;
   for (const [id, want] of Object.entries(expected)) {

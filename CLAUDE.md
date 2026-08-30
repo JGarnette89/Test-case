@@ -54,9 +54,22 @@ move into that mode rather than being baked into the default.
 - **A moving vehicle claims the road ahead of it**, proportional to speed. This
   is what makes turning across an oncoming stream a conflict even when the
   arithmetic says you would squeeze through. A stopped vehicle claims nothing.
-- **A pedestrian on a crossing holds the entire crossing** until completely
-  across. This is a legal rule, not a geometric one, and is encoded as an
-  explicit override (`blockUntilClear`), not emergent from footprints.
+- **A pedestrian on a crossing holds the near half, not the whole thing.**
+  Deliberately changed from "holds the entire crossing until completely
+  across": once they are past the midpoint — onto the side serving the
+  opposing direction of traffic — a driver may go. Still a legal rule, not
+  a geometric one, still encoded as an explicit override (`blockUntilClear`
+  in `index.js`), just narrower — real drivers take the lane once it opens
+  rather than waiting for someone who has already left their side of the
+  road. Progress is `pose.progress`, the same `k` `poseOn` already derives
+  for the walk, so this needs no geometry of its own and does not care
+  which direction the pedestrian is walking (`p.reverse`). One accepted
+  side effect: `walker`'s window (and any other scenario whose pedestrian
+  is on the exit leg rather than the approach) no longer lands on the same
+  instant from every rotated approach, because which physical half is
+  "near" is not compass-fixed the way the old full-crossing hold was —
+  see `verify-route.mjs`, which checks every rotation is still individually
+  safe rather than identically timed.
 - Simultaneous arrivals resolve by the right-hand rule, then left-turn-yields
   for head-to-head.
 - **Proper signalling is 2–3 seconds before a change of direction or before
@@ -306,16 +319,12 @@ invisible to the encroachment fault because it only ever watches priors — in
   this is an editor plus import/export, and sharing by file or link needs no
   server — a separate thing from the leaderboard/connectivity work above,
   which does need one.
-- **Pedestrians in generation: mostly done, one gap left.** They already
-  rotate correctly (`crossingOf` is relative to the actor's own leg) and
-  already appear in Daily — `generate.js` places one on 22% of draws. The gap
-  is Endless: `compose.js` has no pedestrian-placement code at all, so a
-  composed scene never gets one, including on the multi-lane junctions only
-  Endless can produce. The crossing-width blocker that used to make one land
-  in the wrong place on a wide road is fixed (`boxHalf`/`crossingOf` scale
-  with the actual road spec now). What's left is porting generate.js's
-  pedestrian branch into compose.js. Cyclists are not agreed — they would
-  need a ruling on how a bicycle claims road compared with a car.
+- **Pedestrians in generation: done.** They rotate correctly (`crossingOf`
+  is relative to the actor's own leg), and both generators place one now —
+  `generate.js` (Daily) on 22% of draws, `compose.js` (Endless, ported from
+  it) at a similar rate, on any leg the junction actually has, multi-lane
+  included. Cyclists are not agreed — they would need a ruling on how a
+  bicycle claims road compared with a car.
 - **Composition is a search, not a sampler.** `compose.js` takes a brief —
   how much traffic, how much of it you can see — and builds a scene, then
   asks the engine what it actually turned out to be and throws it away if

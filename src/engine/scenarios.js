@@ -83,7 +83,7 @@ const SCENARIOS = [
     actors: [
       S({ id: "p", from: "N", intent: "straight", arriveAt: 0.8, stops: false, kind: "ped", color: "#F2E8D5", name: "Pedestrian", priority: -1, blockUntilClear: true }),
     ],
-    lesson: "No cars is not the same as clear. Someone walked into the crosswalk on the far side, and you are driving straight through it. You wait until they are properly out of your path, not until they have cleared your half of the road.",
+    lesson: "No cars is not the same as clear. Someone walked into the crosswalk on the far side, and you are driving straight through it. You wait until they are past its midpoint — the near half held you up, the far half is theirs to finish crossing.",
   },
   {
     id: "wanderer",

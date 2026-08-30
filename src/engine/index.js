@@ -354,10 +354,10 @@ function basePose(p, t) {
 
   if (mv.onFoot) {
     if (t < p.departAt) {
-      return { ...mv.rest, hidden: t < p.arriveAt - 1.2, waiting: true };
+      return { ...mv.rest, hidden: t < p.arriveAt - 1.2, waiting: true, progress: 0 };
     }
     const k = Math.min(1, (t - p.departAt) / mv.traverse.duration);
-    return { ...poseOn(mv.traverse, k), gone: k >= 1 };
+    return { ...poseOn(mv.traverse, k), gone: k >= 1, progress: k };
   }
 
   if (t < p.arriveAt) {
@@ -473,12 +473,21 @@ export function raExitTime(p) {
   return (p.departAt ?? 0) + raPath(p).peelDist / RA_SPEED;
 }
 
-function extentsFor(p, padL, padW, claim, mode) {
+/* A pedestrian on a crossing holds the NEAR half, not the whole thing —
+   a legal rule, not a geometry problem, same as before, just narrower.
+   Past the midpoint they are on the side serving the opposing direction
+   of traffic, clear of the lanes a driver on this side would actually
+   use, and real drivers take the lane once it opens rather than waiting
+   for someone who has already left their side of the road.
+
+   `pose.progress` is the same k basePose already derived from poseOn —
+   0 at the start of the crossing, 1 at the far end, direction-aware
+   (walking `reverse` is baked in), so this needs no geometry of its own
+   and works the same on a wide crossing as a narrow one. */
+const PED_HOLDS_UNTIL = 0.5;
+function extentsFor(p, pose, padL, padW, claim, mode) {
   if (p.kind === "ped") {
-    // A pedestrian on a crossing is a legal rule, not a geometry problem:
-    // you wait until they are completely across, so while they are on it
-    // they hold the whole crossing.
-    if (mode === "yield" && p.blockUntilClear) {
+    if (mode === "yield" && p.blockUntilClear && (pose.progress ?? 0) < PED_HOLDS_UNTIL) {
       const cr = crossingFor(p);
       const len = Math.hypot(cr.b.x - cr.a.x, cr.b.y - cr.a.y);
       return { hl: len / 2 + padW, hw: M(1.3) + padW };
@@ -488,7 +497,7 @@ function extentsFor(p, padL, padW, claim, mode) {
   return { hl: CAR_L / 2 + padL + claim / 2, hw: CAR_W / 2 + padW };
 }
 function poseFor(p, pose, claim, mode) {
-  if (p.kind === "ped" && mode === "yield" && p.blockUntilClear) {
+  if (p.kind === "ped" && mode === "yield" && p.blockUntilClear && (pose.progress ?? 0) < PED_HOLDS_UNTIL) {
     const cr = crossingFor(p);
     return { x: (cr.a.x + cr.b.x) / 2, y: (cr.a.y + cr.b.y) / 2, rot: cr.rot };
   }
@@ -521,8 +530,8 @@ function boxesOverlap(pa, ea, pb, eb) {
   return true;
 }
 function conflicts(pa, poseA, pb, poseB, padL, padW, claimB, mode) {
-  const ea = extentsFor(pa, padL, padW, 0, mode);
-  const eb = extentsFor(pb, padL, padW, claimB, mode);
+  const ea = extentsFor(pa, poseA, padL, padW, 0, mode);
+  const eb = extentsFor(pb, poseB, padL, padW, claimB, mode);
   return boxesOverlap(poseFor(pa, poseA, 0, mode), ea, poseFor(pb, poseB, claimB, mode), eb);
 }
 

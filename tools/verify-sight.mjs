@@ -13,8 +13,9 @@
    ===================================================================== */
 import {
   M, CX, CY, HALF, OFF, LANE, CAR_L, CAR_W, PED_SETBACK, STOP_LINE_AT,
-  simulate, poseAt, crossingOf,
+  simulate, poseAt, crossingOf, conflicts,
 } from "../src/engine/index.js";
+import { SCENARIOS } from "../src/engine/scenarios.js";
 import {
   eyePoint, segmentHitsBox, visibility, creepPose, noseOut, crossedStopLine,
   encroaches, carWaitingInBox, assessCreep, whatEgoSees, PULL_STEP, EYE_BACK,
@@ -258,6 +259,60 @@ console.log("\n6. THE BOX SCALES WITH THE ROAD, NOT A PICKED NUMBER");
   r2(Math.abs(defaultCr.a.x - CX)) === r2(HALF + PED_SETBACK)
     ? ok("a single-lane spec still crosses at exactly the original, fixed distance")
     : fail("the default one-lane crossing moved — existing scenarios would regress");
+}
+
+/* ---------- 7. a pedestrian releases the near half, not the far one --
+   The rule used to be "hold the whole crossing until completely
+   across". It is now "hold it until past the midpoint" — a driver
+   takes the lane once it opens, same as CLAUDE.md's rule says. Checked
+   directly against conflicts() itself, in "yield" mode, with a phantom
+   PEDESTRIAN (not a car) planted exactly on the crossing's own midpoint
+   — small and point-like (PED_R), the one footprint guaranteed to sit
+   inside the full-crossing block were it still active without also
+   being big enough to still reach the walker's real body once they
+   have moved well clear. A car-sized probe here would span 4.5m end to
+   end and collide with them from the far half too, proving nothing. */
+console.log("\n7. A PEDESTRIAN RELEASES THE NEAR HALF, NOT THE FAR ONE");
+{
+  const walker = SCENARIOS.find((s) => s.id === "walker");
+  const sim = simulate(walker);
+  const ped = sim.actors[0];
+  const cr = crossingOf(ped.from, ped.road);
+  const mid = { x: (cr.a.x + cr.b.x) / 2, y: (cr.a.y + cr.b.y) / 2, rot: 0 };
+  const phantom = { id: "probe", kind: "ped" };
+
+  /* Walk time forward and find where progress actually crosses 0.5. `after`
+     is taken well past the crossing, not the instant it happens — right at
+     0.5 the pedestrian's own real body still sits on the midpoint, and a
+     probe planted there would collide with THEM, not with the block. That
+     is correct, not a bug, and testing there would prove nothing about
+     whether the block itself released. */
+  let before = null, after = null;
+  for (let t = ped.arriveAt; t <= ped.arriveAt + 6; t += 0.02) {
+    const p = poseAt(ped, t);
+    if (p.gone) break;
+    if (p.progress < 0.5) before = t;
+    if (p.progress >= 0.7 && after == null) after = t;
+  }
+  const blockedAt = (t) => {
+    const p = poseAt(ped, t);
+    return conflicts(phantom, mid, ped, p, 0, 0, 0, "yield");
+  };
+  blockedAt(before)
+    ? ok(`blocks the midpoint at progress ${r2(poseAt(ped, before).progress)}, just under halfway`)
+    : fail("does not block before halfway — the near half is not held at all");
+  !blockedAt(after)
+    ? ok(`releases the midpoint at progress ${r2(poseAt(ped, after).progress)}, at or past halfway`)
+    : fail("still blocks the midpoint past halfway — the far half is being held too");
+
+  // And it has to actually be visible in the derived window, not just in
+  // this one isolated probe. 3.9 is walker's window under the old
+  // full-crossing hold, from before this rule changed — a baseline, not
+  // a picked number; update it deliberately, alongside a change that is
+  // meant to move it again.
+  sim.legalAt < 3.9
+    ? ok(`walker's window opened earlier for it — ${sim.legalAt}s, was 3.9s under the old full-crossing hold`)
+    : fail(`walker's window (${sim.legalAt}s) did not move — the rule change is not reaching the derived window`);
 }
 
 console.log("\n" + "=".repeat(66));
