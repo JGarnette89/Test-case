@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye, Home, Check } from "lucide-react";
+import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye, Home, Check, Sparkles, Skull } from "lucide-react";
 
 /* This file is now a renderer: it draws the numbers the engine produces and
    collects the player's press. All the judgment lives in ../engine. */
@@ -19,6 +19,11 @@ import { markPassed, logDaily, useProgress, dailyResult } from "../progress.js";
 import { generateScenario, dailyScenario, WEEKDAY_NAMES } from "../engine/generate.js";
 import { environmentFor, scatter } from "../environments.js";
 import { endlessScenario, signatureOf } from "../engine/compose.js";
+import {
+  startRun as startRoguelikeRun, recordSituation, applyDraft, drawForRun,
+  summary as roguelikeSummary,
+} from "../engine/roguelike.js";
+import { emptyMods, TRAIT_CATALOG } from "../engine/traits.js";
 import { crossSpec, hasLeg, controlOf, specOf, boxHalf, legOf } from "../engine/road.js";
 import { cameraFor } from "../frame.js";
 import {
@@ -373,10 +378,10 @@ function Vehicle({ p, pose, isEgo, blink, tNow }) {
 
 /* The bar is the scoring curve drawn out: solid while the score is full,
    fading as it decays, so it is obvious that waiting costs something. */
-function Timeline({ duration, legalAt, pressedAt, verdict }) {
+function Timeline({ duration, legalAt, pressedAt, verdict, reactionFloor = REACTION_FLOOR, grace = GRACE }) {
   const pct = (t) => `${Math.max(0, Math.min(100, (t / duration) * 100))}%`;
-  const floorEnd = Math.min(duration, legalAt + REACTION_FLOOR);
-  const graceEnd = Math.min(duration, legalAt + GRACE);
+  const floorEnd = Math.min(duration, legalAt + reactionFloor);
+  const graceEnd = Math.min(duration, legalAt + grace);
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ position: "relative", height: 26, borderRadius: 7, overflow: "hidden", background: "#2A2E35" }}>
@@ -416,6 +421,58 @@ function RunSummary({ run }) {
           ? <>You got through {s.played} of {s.total} intersections before it ended. {s.remaining} never reached.</>
           : <>{s.total} intersections, {s.clean} of them clean.</>}
         {" "}Average {s.average} out of 100, {s.points} points in total.
+      </div>
+    </div>
+  );
+}
+
+/* A roguelike run ended — a critical fault, same as a road test, no
+   partial credit for the situations that never happened. */
+function RoguelikeRunSummary({ run }) {
+  const s = roguelikeSummary(run);
+  return (
+    <div style={{ ...st.tells, background: "rgba(224,82,82,0.10)", borderColor: "rgba(224,82,82,0.30)" }}>
+      <div style={{ ...st.tellsHead, color: C.red, display: "flex", alignItems: "center", gap: 6 }}>
+        <Skull size={14} />Run over — {s.situationsCleared} cleared
+      </div>
+      <div style={{ fontSize: 13, color: "#c8cdd4", lineHeight: 1.55 }}>
+        {s.traits.length
+          ? <>You drafted {s.traits.length} trait{s.traits.length === 1 ? "" : "s"}: {s.traits.map((id) => TRAIT_CATALOG.find((t) => t.id === id)?.name).join(", ")}.</>
+          : "No traits drafted this run."}
+        {" "}Average {s.average} out of 100, {s.points} points, best {s.best}.
+      </div>
+    </div>
+  );
+}
+
+/* Choose 1 of 3, offered every mods.draftEvery clean clears. Replaces the
+   normal "Next situation" button while a choice is pending — picking one
+   is what advances, not a separate step in front of it. */
+function TraitDraftScreen({ options, onPick }) {
+  return (
+    <div style={{ ...st.tells, background: "rgba(59,170,81,0.08)", borderColor: "rgba(59,170,81,0.28)" }}>
+      <div style={{ ...st.tellsHead, color: C.green, display: "flex", alignItems: "center", gap: 6 }}>
+        <Sparkles size={14} />Choose a trait
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+        {options.map((t) => (
+          <button
+            key={t.id}
+            className="btn"
+            style={{
+              width: "100%", textAlign: "left", display: "flex", flexDirection: "column",
+              alignItems: "flex-start", justifyContent: "center", gap: 3, padding: "10px 12px", minHeight: 56,
+            }}
+            onClick={() => onPick(t.id)}
+          >
+            <span style={{ fontFamily: FONT_D, fontWeight: 700, fontSize: 14.5, letterSpacing: 0.5 }}>
+              {t.name}
+            </span>
+            <span style={{ fontSize: 12.5, color: "#a8aeb6", lineHeight: 1.4, fontWeight: 400 }}>
+              {t.description}
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -465,15 +522,45 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
 
   /* Where situations come from. "set" is the tutorial list, "endless" draws
      a fresh one each time, "daily" is seeded by the date so everyone gets
-     the same one without anything being coordinated. */
+     the same one without anything being coordinated, "roguelike" draws
+     through the current run's own bias (see roguelike.js). */
   const [seed, setSeed] = useState(0);
   /* Shapes already handed out this run, so endless does not repeat itself.
      A ref rather than state: it must not cause a redraw, and the composer
      only reads it when a new screen is drawn. */
   const seenShapes = useRef([]);
+
+  /* The roguelike run. A ref mirrors the state, updated inside the same
+     setState call rather than in a later effect — drawn's memo below
+     reads the ref, and it has to see a just-drafted trait immediately,
+     not one render behind. */
+  const endlessRunRef = useRef(null);
+  const [endlessRun, setEndlessRunState] = useState(() => {
+    if (source !== "roguelike") return null;
+    const r = startRoguelikeRun(Date.now() % 100000);
+    endlessRunRef.current = r;
+    return r;
+  });
+  const setEndlessRun = useCallback((updater) => {
+    setEndlessRunState((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      endlessRunRef.current = next;
+      return next;
+    });
+  }, []);
+
   const drawn = React.useMemo(() => {
     if (source === "endless") {
       const scn = endlessScenario((Date.now() % 100000) + seed * 7717, seenShapes.current);
+      if (scn) {
+        seenShapes.current = [...seenShapes.current.slice(-40), signatureOf(scn)];
+        return scn;
+      }
+      return generateScenario((Date.now() % 100000) + seed * 7717);
+    }
+    if (source === "roguelike") {
+      const mods = endlessRunRef.current?.mods ?? emptyMods();
+      const scn = drawForRun({ mods }, (Date.now() % 100000) + seed * 7717, seenShapes.current);
       if (scn) {
         seenShapes.current = [...seenShapes.current.slice(-40), signatureOf(scn)];
         return scn;
@@ -532,20 +619,30 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
      driver who fails to yield — see index.js. */
   function finish(at, hit) {
     stopLoop();
-    const r = grade({ legalAt: safeAt, pressedAt: at, collided: !!hit });
+    /* A drafted trait can widen the scoring curve for this run, never
+       narrow it — see traits.js. Nothing else about grade() changes:
+       EARLY_TOLERANCE stays fixed, and legalAt/safeAt are the engine's
+       own, untouched. */
+    const r = grade({
+      legalAt: safeAt, pressedAt: at, collided: !!hit,
+      ...(endlessRun ? { reactionFloor: endlessRun.mods.reactionFloor, grace: endlessRun.mods.grace } : {}),
+    });
 
     /* On a multi-action manoeuvre the press score is only the GO part of
        it, so the sheet is what the player is actually shown. */
+    let sheetResult = null;
     if (multi) {
       const pressed = Object.entries({ ...performed, ...(at != null ? { go: at } : {}) })
         .map(([action, time]) => ({ action, at: time }));
       const hard = [...criticals, ...(hit ? [FAULT.COLLISION] : [])];
-      setSheet(gradeTask({ sequence, windows, performed: pressed, faults: hard }));
+      sheetResult = gradeTask({ sequence, windows, performed: pressed, faults: hard });
+      setSheet(sheetResult);
     }
 
     setResult(r); setCrash(hit || null); setPhase("done");
     setSession((s) => tally(s, r));
     if (run) setRun((cur) => recordLeg(cur, r));
+    if (endlessRun) setEndlessRun((cur) => recordSituation(cur, r, sheetResult));
     // Credit the situation, not the rotation the route happened to use.
     // Generated draws are not tutorial situations, so they unlock nothing.
     if (r.verdict === "good" && !scn.generated) markPassed(scn.rotatedFrom ?? scn.id, r.score);
@@ -642,11 +739,25 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   // the board for the intersection you are now approaching.
   function next() {
     stopLoop();
-    if (source === "endless") setSeed((s) => s + 1);
+    if (source === "endless" || source === "roguelike") setSeed((s) => s + 1);
     else if (!run) setIdx((i) => (i + 1) % SCENARIOS.length);
     retry();
   }
   function restartRoute() { stopLoop(); setRun(startRun(plan)); setSession(emptyTally); retry(); }
+
+  // Drafting a trait folds it into the run, then moves on exactly like
+  // pressing "Next situation" — the draft screen replaces that button
+  // while one is pending, it does not add a step in front of it.
+  function pickTrait(traitId) {
+    setEndlessRun((cur) => applyDraft(cur, traitId));
+    next();
+  }
+  function startNewRun() {
+    setEndlessRun(startRoguelikeRun(Date.now() % 100000));
+    setSeed((s) => s + 1);
+    setSession(emptyTally);
+    retry();
+  }
 
   const showT = phase === "ready" ? 0 : t;
   const blink = Math.floor(showT * 1.7) % 2 === 0;
@@ -751,6 +862,16 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {endlessRun && (
+            <div
+              style={st.chip}
+              title={endlessRun.traits.length
+                ? `Drafted: ${endlessRun.traits.map((id) => TRAIT_CATALOG.find((t) => t.id === id)?.name).join(", ")}`
+                : "No traits drafted yet"}
+            >
+              <Sparkles size={13} />{endlessRun.situationsCleared} cleared · {endlessRun.traits.length} traits
+            </div>
+          )}
           {session.played > 0 && (
             <div style={st.chip} title={`${session.clean} clean of ${session.played}, best ${session.best}`}>
               <Gauge size={13} />{session.average} avg
@@ -804,11 +925,22 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
           {sim.actors.map((a) => {
             const pose = poseAt(a, showT);
             if (pose.gone) return null;
-            // You cannot read what you cannot see.
+            /* You cannot read what you cannot see — unless a drafted
+               trait says otherwise. Render-only: sight.js's own idea of
+               what is visible never changes, only how a "hidden" or
+               "partial" read is drawn for this run. */
             const v = sees?.[a.id];
-            if (v === "hidden") return null;
+            if (v === "hidden") {
+              const opacity = endlessRun?.mods.revealHiddenOpacity ?? 0;
+              if (opacity <= 0) return null;
+              return (
+                <g key={a.id} opacity={opacity}>
+                  <Vehicle p={a} pose={pose} blink={blink} tNow={showT} />
+                </g>
+              );
+            }
             return (
-              <g key={a.id} opacity={v === "partial" ? 0.45 : 1}>
+              <g key={a.id} opacity={v === "partial" ? (endlessRun?.mods.partialOpacity ?? 0.45) : 1}>
                 <Vehicle p={a} pose={pose} blink={blink} tNow={showT} />
               </g>
             );
@@ -928,7 +1060,10 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
             </div>
           )}
 
-          <Timeline duration={scn.duration} legalAt={safeAt} pressedAt={pressedAt} verdict={verdict} />
+          <Timeline
+            duration={scn.duration} legalAt={safeAt} pressedAt={pressedAt} verdict={verdict}
+            reactionFloor={endlessRun?.mods.reactionFloor} grace={endlessRun?.mods.grace}
+          />
           <div style={st.readout}>
             {verdict === "collision" && <>You pulled out at {pressedAt.toFixed(1)}s and met the {crash?.who?.toLowerCase()}. Your path was not clear until {safeAt.toFixed(1)}s.</>}
             {verdict === "early" && <>You moved at {pressedAt.toFixed(1)}s. No contact, but the way was not yours until {safeAt.toFixed(1)}s.</>}
@@ -958,6 +1093,10 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
           )}
           <div style={st.lesson}>{scn.lesson}</div>
           {run && runOver && <RunSummary run={run} />}
+          {endlessRun?.over && <RoguelikeRunSummary run={endlessRun} />}
+          {endlessRun && !endlessRun.over && endlessRun.pendingDraft && (
+            <TraitDraftScreen options={endlessRun.pendingDraft} onPick={pickTrait} />
+          )}
 
           {isDaily && (
             <div style={{ ...st.tells, background: "rgba(255,201,60,0.10)", borderColor: "rgba(255,201,60,0.30)" }}>
@@ -979,6 +1118,14 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
               <button className="btn primary" style={{ flex: 1 }} onClick={restartRoute}>
                 <RotateCcw size={16} />Drive it again
               </button>
+            ) : endlessRun?.over ? (
+              <button className="btn primary" style={{ flex: 1 }} onClick={startNewRun}>
+                <RotateCcw size={16} />New run
+              </button>
+            ) : endlessRun?.pendingDraft ? (
+              <div style={{ fontSize: 12.5, color: "#8b9199", textAlign: "center", flex: 1, padding: "10px 0" }}>
+                Choose a trait above to continue.
+              </div>
             ) : isDaily ? (
               <>
                 <button className="btn" onClick={retry}><RotateCcw size={16} />Replay</button>

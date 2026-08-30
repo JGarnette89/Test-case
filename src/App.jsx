@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Menu, X, Route, Gauge, Milestone, ChevronRight, Lock, Check,
-  CalendarDays, Shuffle, BookOpen, FlaskConical,
+  CalendarDays, Shuffle, BookOpen, FlaskConical, Dices,
 } from "lucide-react";
 
 /* DriveDraw is no longer part of this app. Its source is still in
@@ -84,6 +84,17 @@ const MODES = [
     accent: C.green,
     Component: RightOfWayTiming,
     props: { source: "endless" },
+  },
+  {
+    id: "roguelike",
+    name: "Roguelike",
+    kicker: "Endless, with stakes",
+    blurb:
+      "The same generator as Endless, but a run remembers you: draft a perk every few clean clears, and one critical fault ends it. How far can you take a run?",
+    Icon: Dices,
+    accent: C.amber,
+    Component: RightOfWayTiming,
+    props: { source: "roguelike" },
   },
 
   /* Routes are the same renderer with a drive plan handed to it, so adding
@@ -290,6 +301,7 @@ function Home() {
           }
         />
         <LinkCard item={byId("endless")} onClick={() => go("endless")} />
+        <LinkCard item={byId("roguelike")} onClick={() => go("roguelike")} />
         {SUBMENUS.map((s) => (
           <LinkCard
             key={s.id}

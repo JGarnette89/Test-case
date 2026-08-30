@@ -45,11 +45,19 @@ export function bandFor(score) {
 /* The whole judgment in one call: what happened, and what it was worth.
    `legalAt` comes from the engine. `pressedAt` is null if they never went.
 
+   `reactionFloor`/`grace` default to the constants above and exist so a
+   run-scoped modifier (a drafted trait — see roguelike.js) can widen how
+   generous the curve is being *for display*, without this file having
+   any idea a roguelike exists. `EARLY_TOLERANCE` is not a parameter: it
+   is the boundary of a failure to yield, not a matter of taste, and no
+   caller gets to move it. Every existing call site, unchanged, gets
+   back exactly what it always has.
+
    Returns:
      verdict   collision | early | good | late | missed
      score     0-100, continuous inside the window
      reaction  seconds after the window opened; negative means premature */
-export function grade({ legalAt, pressedAt, collided = false }) {
+export function grade({ legalAt, pressedAt, collided = false, reactionFloor = REACTION_FLOOR, grace = GRACE }) {
   if (collided) {
     return { verdict: "collision", score: 0, reaction: pressedAt == null ? null : pressedAt - legalAt, band: null };
   }
@@ -65,12 +73,12 @@ export function grade({ legalAt, pressedAt, collided = false }) {
 
   // Decay runs from the reaction floor to the grace limit, so the score
   // hits exactly zero where undue delay begins — no cliff at the boundary.
-  const over = Math.max(0, reaction - REACTION_FLOOR);
-  const span = GRACE - REACTION_FLOOR;
+  const over = Math.max(0, reaction - reactionFloor);
+  const span = grace - reactionFloor;
   const q = clamp(1 - over / span, 0, 1);
   const score = Math.round(100 * q);
 
-  const verdict = reaction > GRACE ? "late" : "good";
+  const verdict = reaction > grace ? "late" : "good";
   return { verdict, score, reaction, band: bandFor(score) };
 }
 
