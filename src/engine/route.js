@@ -58,8 +58,18 @@ function turnsBetween(from, to) {
 /* Everything in a scenario is now expressed by which leg it belongs to,
    pedestrian crossings included, so a quarter turn carries the whole scene.
    Kept as a named check because a future road user with fixed coordinates
-   would have to declare itself here rather than be silently misplaced. */
+   would have to declare itself here rather than be silently misplaced.
+
+   sightBlockers are exactly that: fixed x/y, authored for one specific
+   approach (the van in "unprotected" sits where it blocks the S leg's
+   view, not any rotated leg's). rotateScenario spins the road and every
+   actor's `from`, but a static blocker has no `from` to spin — a rotated
+   copy would keep it planted in the same screen position while the road
+   and cars turned around it. legalAt does not read sightBlockers, so
+   nothing about safety would notice; the driver would, since the whole
+   point of the van is to be seen sitting where it blocks the approach. */
 export function isRotatable(scn) {
+  if (scn.sightBlockers?.length) return false;
   return scn.actors.every((a) => a.from != null || a.kind === "ped");
 }
 

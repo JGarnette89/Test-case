@@ -21,9 +21,9 @@ import { environmentFor, scatter } from "../environments.js";
 import { endlessScenario, signatureOf } from "../engine/compose.js";
 import {
   startRun as startRoguelikeRun, recordSituation, applyDraft, drawForRun,
-  summary as roguelikeSummary,
+  summary as roguelikeSummary, chooseBranch, stageById, bossById,
 } from "../engine/roguelike.js";
-import { emptyMods, TRAIT_CATALOG } from "../engine/traits.js";
+import { TRAIT_CATALOG } from "../engine/traits.js";
 import { crossSpec, hasLeg, controlOf, specOf, boxHalf, legOf } from "../engine/road.js";
 import { cameraFor } from "../frame.js";
 import {
@@ -445,6 +445,78 @@ function RoguelikeRunSummary({ run }) {
   );
 }
 
+/* The one win state: every stage cleared, every boss cleared, and all
+   four Checkride legs clean of a critical fault. */
+function RoguelikeWinSummary({ run }) {
+  const s = roguelikeSummary(run);
+  return (
+    <div style={{ ...st.tells, background: "rgba(59,170,81,0.10)", borderColor: "rgba(59,170,81,0.30)" }}>
+      <div style={{ ...st.tellsHead, color: C.green, display: "flex", alignItems: "center", gap: 6 }}>
+        <Check size={14} />Passed — the Checkride is clear
+      </div>
+      <div style={{ fontSize: 13, color: "#c8cdd4", lineHeight: 1.55 }}>
+        {s.traits.length
+          ? <>You drafted {s.traits.length} trait{s.traits.length === 1 ? "" : "s"}: {s.traits.map((id) => TRAIT_CATALOG.find((t) => t.id === id)?.name).join(", ")}.</>
+          : "No traits drafted this run."}
+        {" "}{s.situationsCleared} situations cleared across all {s.stagesCleared} stages and the full Checkride.
+        Average {s.average} out of 100, {s.points} points, best {s.best}.
+      </div>
+    </div>
+  );
+}
+
+/* The roundabout: a stage's boss is down, and the run stops here to pick
+   what comes next. Decorative circle up top (the Roundabout component
+   already exists for the roundabout scenario layout — reused verbatim),
+   the actual choice is plain buttons below, same pattern as a trait
+   draft: pick one, and that picks the next stage's shape as well as its
+   difficulty. */
+function RoundaboutBody({ run, onPick }) {
+  const options = run.pendingBranch?.options ?? [];
+  return (
+    <>
+      <div style={st.brief}>
+        {run.clearedStages.length === 0
+          ? "Pick where the run starts."
+          : `${run.clearedStages.length} of ${run.clearedStages.length + options.length} stages cleared. Pick what's next.`}
+      </div>
+      <div style={st.board}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "100%", display: "block" }}>
+          <rect width={W} height={H} fill={C.grass} />
+          <Roundabout island={C.grass} />
+        </svg>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+        {options.map((id) => {
+          const stage = stageById(id);
+          const boss = bossById(stage.bossId);
+          return (
+            <button
+              key={id}
+              className="btn"
+              style={{
+                width: "100%", textAlign: "left", display: "flex", flexDirection: "column",
+                alignItems: "flex-start", justifyContent: "center", gap: 3, padding: "10px 12px", minHeight: 64,
+              }}
+              onClick={() => onPick(id)}
+            >
+              <span style={{ fontFamily: FONT_D, fontWeight: 700, fontSize: 14.5, letterSpacing: 0.5 }}>
+                {stage.name}
+              </span>
+              <span style={{ fontSize: 12.5, color: "#a8aeb6", lineHeight: 1.4, fontWeight: 400 }}>
+                {stage.theme}
+              </span>
+              <span style={{ fontSize: 11.5, color: C.amber, fontWeight: 600, letterSpacing: 0.3 }}>
+                BOSS: {boss.title}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 /* Choose 1 of 3, offered every mods.draftEvery clean clears. Replaces the
    normal "Next situation" button while a choice is pending — picking one
    is what advances, not a separate step in front of it. */
@@ -559,10 +631,17 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
       return generateScenario((Date.now() % 100000) + seed * 7717);
     }
     if (source === "roguelike") {
-      const mods = endlessRunRef.current?.mods ?? emptyMods();
-      const scn = drawForRun({ mods }, (Date.now() % 100000) + seed * 7717, seenShapes.current);
+      const r = endlessRunRef.current;
+      // Nothing to draw at a roundabout screen — there is no scenario
+      // being played, only a stage to choose.
+      if (!r || r.stage === "roundabout") return null;
+      const scn = drawForRun(r, (Date.now() % 100000) + seed * 7717, seenShapes.current);
       if (scn) {
-        seenShapes.current = [...seenShapes.current.slice(-40), signatureOf(scn)];
+        // A boss or a Checkride leg is fixed content, not a fresh
+        // composition — nothing to track against future repeats.
+        if (!scn.boss && r.stage !== "checkride") {
+          seenShapes.current = [...seenShapes.current.slice(-40), signatureOf(scn)];
+        }
         return scn;
       }
       return generateScenario((Date.now() % 100000) + seed * 7717);
@@ -759,6 +838,14 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
     retry();
   }
 
+  // Picking an exit at a roundabout screen moves the run into that stage
+  // and draws its first situation — same "advance, then redraw" shape as
+  // pickTrait, just with a stage id instead of a trait id.
+  function pickBranch(stageId) {
+    setEndlessRun((cur) => chooseBranch(cur, stageId));
+    next();
+  }
+
   const showT = phase === "ready" ? 0 : t;
   const blink = Math.floor(showT * 1.7) % 2 === 0;
   const liveEgo = { ...sim.ego, stopBias: (sim.ego.stopBias || 0) + creeps * PULL_STEP };
@@ -819,6 +906,13 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   };
   const vColor = { collision: C.red, early: C.red, good: C.green, late: C.amber, missed: C.amber };
 
+  // No scenario is being played at a roundabout screen — scn is just an
+  // inert placeholder underneath it (see the drawn useMemo above), so the
+  // whole board/phase view is swapped out for the branch choice instead.
+  const atRoundabout = source === "roguelike" && endlessRun?.stage === "roundabout";
+  const playingBoss = source === "roguelike" && Boolean(endlessRun?.pendingBoss) && !atRoundabout;
+  const onCheckride = source === "roguelike" && endlessRun?.stage === "checkride";
+
   return (
     <div style={st.app}>
       <style>{`
@@ -849,15 +943,25 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
         <div>
           <div style={st.title}>RIGHT OF <span style={{ color: C.yellow }}>WAY</span></div>
           <div style={st.sub}>
-            {run && <strong style={{ color: C.yellow }}>Leg {Math.min(run.index + 1, run.plan.legs.length)} of {run.plan.legs.length} · </strong>}
-            {scn.weekday != null && (
-              <strong style={{ color: C.yellow }}>{WEEKDAY_NAMES[scn.weekday]} · </strong>
-            )}
-            {scn.title}
-            {scn.difficulty && (
-              <span style={{ marginLeft: 6, letterSpacing: 1 }} title={`Difficulty ${scn.difficulty} of 4`}>
-                {"●".repeat(scn.difficulty)}<span style={{ opacity: 0.28 }}>{"●".repeat(4 - scn.difficulty)}</span>
-              </span>
+            {atRoundabout ? "Choose your next stage" : (
+              <>
+                {run && <strong style={{ color: C.yellow }}>Leg {Math.min(run.index + 1, run.plan.legs.length)} of {run.plan.legs.length} · </strong>}
+                {onCheckride && (
+                  <strong style={{ color: C.red }}>
+                    Checkride — leg {endlessRun.checkrideRun.index + 1} of {endlessRun.checkrideRun.plan.legs.length} ·{" "}
+                  </strong>
+                )}
+                {playingBoss && <strong style={{ color: C.red }}>BOSS · </strong>}
+                {scn.weekday != null && (
+                  <strong style={{ color: C.yellow }}>{WEEKDAY_NAMES[scn.weekday]} · </strong>
+                )}
+                {scn.title}
+                {scn.difficulty && (
+                  <span style={{ marginLeft: 6, letterSpacing: 1 }} title={`Difficulty ${scn.difficulty} of 4`}>
+                    {"●".repeat(scn.difficulty)}<span style={{ opacity: 0.28 }}>{"●".repeat(4 - scn.difficulty)}</span>
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -882,6 +986,10 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
         </div>
       </header>
 
+      {atRoundabout ? (
+        <RoundaboutBody run={endlessRun} onPick={pickBranch} />
+      ) : (
+      <>
       {planFailed && (
         <div style={{ ...st.tells, background: "rgba(224,82,82,0.12)", borderColor: "rgba(224,82,82,0.35)" }}>
           <div style={{ ...st.tellsHead, color: C.red }}>This route will not plan</div>
@@ -1093,7 +1201,8 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
           )}
           <div style={st.lesson}>{scn.lesson}</div>
           {run && runOver && <RunSummary run={run} />}
-          {endlessRun?.over && <RoguelikeRunSummary run={endlessRun} />}
+          {endlessRun?.over && endlessRun.outcome === "won" && <RoguelikeWinSummary run={endlessRun} />}
+          {endlessRun?.over && endlessRun.outcome === "ended" && <RoguelikeRunSummary run={endlessRun} />}
           {endlessRun && !endlessRun.over && endlessRun.pendingDraft && (
             <TraitDraftScreen options={endlessRun.pendingDraft} onPick={pickTrait} />
           )}
@@ -1143,6 +1252,8 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
             )}
           </div>
         </div>
+      )}
+      </>
       )}
 
       {helpOpen && (

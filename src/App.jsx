@@ -88,9 +88,9 @@ const MODES = [
   {
     id: "roguelike",
     name: "Roguelike",
-    kicker: "Endless, with stakes",
+    kicker: "A driving test, roguelike",
     blurb:
-      "The same generator as Endless, but a run remembers you: draft a perk every few clean clears, and one critical fault ends it. How far can you take a run?",
+      "Named stages, each capped by a hand-authored boss, building to a four-intersection Checkride. Draft a perk every few clean clears, pick your own order at the roundabout between stages, and one critical fault anywhere ends the run.",
     Icon: Dices,
     accent: C.amber,
     Component: RightOfWayTiming,

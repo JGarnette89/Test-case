@@ -33,6 +33,17 @@ export const ROUTES = [
       "Every leg carries a driver who is telling you something. Nothing here is decided by arithmetic alone.",
     legs: ["wanderer", "sleeper", "creeper", "lateflag"],
   },
+  {
+    id: "checkride",
+    title: "The Checkride",
+    blurb:
+      "Four intersections, back to back, no room for a critical fault in any of them. The roguelike's finale.",
+    // "unprotected" carries a fixed sightBlocker and cannot be rotated
+    // (see route.js's isRotatable), so it has to lead — every other leg
+    // here is ordinary geometry and free to align to whatever the
+    // previous leg leaves you facing.
+    legs: ["unprotected", "tee", "arterial", "wontstop"],
+  },
 ];
 
 export const routeById = (id) => ROUTES.find((r) => r.id === id) || null;

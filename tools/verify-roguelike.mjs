@@ -25,7 +25,7 @@ import {
   TRAIT_CATALOG, emptyMods, applyTrait, draftFor, rng,
 } from "../src/engine/traits.js";
 import {
-  isCritical, startRun, recordSituation, applyDraft, drawForRun,
+  isCritical, startRun, recordSituation, applyDraft, drawForRun, chooseBranch,
 } from "../src/engine/roguelike.js";
 import { grade } from "../src/engine/score.js";
 import { FAULT } from "../src/engine/actions.js";
@@ -92,8 +92,12 @@ console.log("\n2. A CRITICAL FAULT ENDS THE RUN — EXHAUSTIVELY, NOT BY SAMPLE"
   wrong === 0 ? ok(`all ${cases.length} verdict/fault combinations classified correctly`) : null;
 
   // And the state transition itself: a critical result ends the run;
-  // a non-critical one keeps it going and updates the tally.
+  // a non-critical one keeps it going and updates the tally. A fresh run
+  // starts at the roundabout, so a stage has to be chosen before any
+  // situation can be recorded against it — the roundabout/boss/Checkride
+  // state machine itself is covered separately in verify-stages.mjs.
   let run = startRun(1);
+  run = chooseBranch(run, "basics");
   run = recordSituation(run, grade({ legalAt, pressedAt: legalAt + 0.1 }));
   (!run.over && run.tally.played === 1) ? ok("a clean result keeps the run alive and tallies it") : fail("a clean result should not end the run");
   run = recordSituation(run, grade({ legalAt, pressedAt: legalAt + 5 }));
