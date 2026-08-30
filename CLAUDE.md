@@ -82,6 +82,18 @@ move into that mode rather than being baked into the default.
   road running uninterrupted. Any other configuration must remain expressible —
   control is per leg in `road.js`, and an all-way stop is simply four legs that
   agree.
+- **Legally yours and safe to take are not the same thing, and the scorer
+  grades the second one.** `legalAt` is derived against priors only — whoever
+  outranks the ego. A non-prior is still a physical object: one still
+  arriving when the window opens can be scheduled, or simply driving, on the
+  assumption the ego leaves promptly, and a player who takes the grace the
+  scorer offers can meet it anyway. `safeAtFor(sim)` in `index.js` is the
+  real scoring boundary — checked against everyone, across the whole graced
+  window and every depth of creep — and equals `legalAt` for every scenario
+  except one that deliberately authors a driver who fails to yield
+  (`wontstop`), and two more by exactly one `STEP` (`sleeper`, `creeper`,
+  each carrying a slow prior that creep alone could still reach). Grade
+  against `safeAtFor(sim)`, never against `sim.legalAt` directly.
 - **Merging is scored on how early the driver started solving it, not on
   hitting a moment.** This is a third scoring shape and it does not fit the two
   that exist. `deadline` asks "done by when" and `window` asks "not before" —
@@ -115,10 +127,14 @@ move into that mode rather than being baked into the default.
 ## Architecture
 
 **The engine is pure and the renderer is disposable.** `src/engine/` has no
-React, no SVG, no DOM and no colours in it. A renderer needs exactly one call:
-`simulate(scenario) -> { ego, actors, legalAt, priors }`. This is what makes a
-3D view a second renderer rather than a rewrite — that is the agreed direction,
-2D now, 3D later, so do not put anything visual into the engine.
+React, no SVG, no DOM and no colours in it. A renderer needs two calls:
+`simulate(scenario) -> { ego, actors, legalAt, priors }`, then
+`safeAtFor(sim) -> number` for the window to actually grade against. Kept
+separate on purpose — folding the second into the first made Endless
+generation roughly 13x slower, because composition calls `simulate()` deep
+inside its own search loop, where only `legalAt` is ever needed. This is what
+makes a 3D view a second renderer rather than a rewrite — that is the agreed
+direction, 2D now, 3D later, so do not put anything visual into the engine.
 
 ```
 src/engine/index.js      the conflict rules, traits, and what is where at time t
@@ -134,6 +150,7 @@ src/engine/scenarios.js  the set situations, as data
 src/engine/routes.js     drives, as data
 src/theme.js             palette and type — the engine must never import this
 src/environments.js      city, suburban, rural scenery — renderer side only
+src/frame.js             the camera: frameFor and cameraFor — no React
 src/storage.js           adapter chain: artifact host, localStorage, memory
 src/progress.js          what the player has cleared, and the daily record
 ```
@@ -161,9 +178,12 @@ expected to move a window:
 `OPPOSITE`, so a scenario written for a southern approach is reusable from all
 four — verified to produce an identical window from every approach. This is how
 routes keep continuity without four hand-written copies of each intersection.
-`walker` is the exception: its pedestrian is pinned to the north crossing by
-fixed coordinates, so it cannot be rotated and the planner refuses rather than
-silently misplacing it.
+Pedestrians rotate with the scene too — `crossingOf` is derived from the
+actor's own `from` leg, not pinned to north, so `isRotatable`/`rotateScenario`
+in `route.js` carry a pedestrian like any other actor; `walker` rotates
+cleanly to all four approaches. `isRotatable` still exists as a named refusal
+path for a future road user with genuinely fixed coordinates — worth knowing
+it is there, since nothing currently trips it.
 
 **Scoring rewards reading, not luck.** Full marks anywhere inside 0.35s of the
 window opening, because nobody reacts to a visual cue faster than that, decaying
@@ -186,15 +206,17 @@ node tools/verify-windows.mjs      every window; each trait removed on its own
 node tools/verify-route.mjs        rotation, continuity, run mechanics
 node tools/verify-generator.mjs    determinism, safety, spread, rejection rate
 node tools/verify-roundabout.mjs   direction, geometry, the exit tell
+node tools/verify-wontstop.mjs     a driver who fails to yield: tell, safety, the extended window
 node tools/verify-playthrough.mjs  every scenario at every press time
 node tools/verify-task.mjs         manoeuvres: order, deadlines, fault tiers
 node tools/verify-sight.mjs        occlusion, and the creep trade
 node tools/verify-compose.mjs      briefs produce scenes that match them
+node tools/verify-camera.mjs       the camera opens gradually, never shrinks, keeps a revealed actor in frame
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All ten must exit 0. Six things they check are worth understanding:
+All twelve must exit 0. Seven things they check are worth understanding:
 
 - **Equivalence is the one for refactors.** The others check the engine is
   right; that one checks it has not *changed*. It matters because a change to
@@ -219,6 +241,16 @@ All ten must exit 0. Six things they check are worth understanding:
 - **The generator audits the engine.** Every derived window is replayed to prove
   that departing on it does not collide. This is a harder test of the conflict
   rules than the fixed scenarios can give.
+- **A safe window has to stay safe for its whole grace period, not just its
+  first instant — and at every depth of creep.** A window can open, close
+  again as a second road user arrives, and reopen later; creeping shifts
+  where the ego actually departs from, which the encroachment fault cannot
+  see because it only ever watches priors — creeping toward traffic that has
+  right of way is the foul, not creeping toward traffic that does not.
+  Both generators sweep grace and creep before accepting a draw;
+  `safeAtFor` in `index.js` does the same for hand-authored scenarios, on
+  demand rather than inside `simulate()` itself, because the sweep is too
+  expensive to pay on every call a search loop makes.
 - **A tell has to be readable and worth reading.** Both are measured, not
   asserted: it must appear before the player has to decide, and a controlled
   comparison — same scenario, same arrival times, one thing changed — has to
@@ -241,8 +273,14 @@ to represent" — measure at finer resolution before concluding which.
 
 This requirement has caught real bugs: an approximate box-overlap test that let
 collisions through, a left turn that could legally cut in front of oncoming
-traffic, two traits that had no effect at all, and 31 generated scenarios that
-claimed to demand a wait while going immediately still scored full marks.
+traffic, two traits that had no effect at all, 31 generated scenarios that
+claimed to demand a wait while going immediately still scored full marks, a
+scored window that stayed "good" past the instant a non-prior road user's own
+schedule assumed the ego was already gone (1142 of 4000 generated drafts
+before the fix), and the same failure again through creep specifically —
+invisible to the encroachment fault because it only ever watches priors — in
+62 of 1500 further drafts, plus two scenarios that had already shipped
+(`sleeper`, `creeper`) by exactly one `STEP` each.
 
 ## Conventions
 
@@ -255,20 +293,29 @@ claimed to demand a wait while going immediately still scored full marks.
 
 ## Known work in progress
 
-- **Leaderboard is unresolved.** It is the intended hook, and it is the one
-  feature that cannot be built offline. The offline rule below has not been
-  changed. Do not add a network call on the assumption it was.
+- **Leaderboards and Play-style connectivity are the agreed direction — not
+  started.** The goal is what a game shipping on Google Play is expected to
+  have: a leaderboard, achievements against the situations `progress.js`
+  already tracks, cloud save so a cleared record survives a new device, and
+  whatever sign-in that requires. This is the one part of the app the offline
+  rule was always expected to eventually give way to — see Do not below. It
+  has not given way yet: no account, network call, or SDK exists in this
+  codebase, and none should be added except deliberately, on request. Agreeing
+  to the direction is not the same as authorizing the build.
 - **User-created scenarios** are wanted. Scenarios are already plain data, so
   this is an editor plus import/export, and sharing by file or link needs no
-  server.
-- **Pedestrians belong in generation — agreed, blocked on geometry.** Generated
-  scenarios are cars only, so the crossing rule above is taught by exactly one
-  hand-written situation and never appears in the daily or endless modes. The
-  blocker is that pedestrian position is pinned to the north crossing by fixed
-  coordinates (`PED_Y`, `PED_X0`, `PED_X1`). Making it relative to the approach
-  fixes generation and `walker`'s un-rotatability in one go. Do that first.
-  Cyclists are not agreed — they would need a ruling on how a bicycle claims
-  road compared with a car.
+  server — a separate thing from the leaderboard/connectivity work above,
+  which does need one.
+- **Pedestrians in generation: mostly done, one gap left.** They already
+  rotate correctly (`crossingOf` is relative to the actor's own leg) and
+  already appear in Daily — `generate.js` places one on 22% of draws. The gap
+  is Endless: `compose.js` has no pedestrian-placement code at all, so a
+  composed scene never gets one, including on the multi-lane junctions only
+  Endless can produce. The crossing-width blocker that used to make one land
+  in the wrong place on a wide road is fixed (`boxHalf`/`crossingOf` scale
+  with the actual road spec now). What's left is porting generate.js's
+  pedestrian branch into compose.js. Cyclists are not agreed — they would
+  need a ruling on how a bicycle claims road compared with a car.
 - **Composition is a search, not a sampler.** `compose.js` takes a brief —
   how much traffic, how much of it you can see — and builds a scene, then
   asks the engine what it actually turned out to be and throws it away if
@@ -287,24 +334,37 @@ claimed to demand a wait while going immediately still scored full marks.
   acceptance rules for exit choice and how many cars are circulating. They also
   have no pedestrian crossings, which on a real roundabout sit set back from the
   entry and are therefore not the crossings already built.
+- **The camera a merge scenario will need already exists, unused.**
+  `src/frame.js` has `cameraFor`, which eases the view out to keep a named
+  actor in frame before the decision point — verified in `verify-camera.mjs`
+  against real scenario data, because no merge scenario exists yet to verify
+  it against. What's missing is the merge itself: real conflict geometry for
+  two converging lanes, which needs the maintainer's ruling the same as any
+  other traffic-law question in this file, not a guess.
 - **An international mode is planned.** Flagged by country, where local rule
   differences are the point rather than a trap — the thing traffic enthusiasts
   would come for. Until then the default is North American, and anything
   genuinely local should be written so it can move into that mode later.
 - T-junctions, uncontrolled intersections and pedestrian crossovers are all
   wanted, behind the above.
-- **`wideTurn` is inert in `lateflag`.** Not broken: it bends the path by 1.1 m,
-  but the net effect on that window is 0.01s, under the resolution floor,
-  because the wide line never reaches the lane the ego uses. It needs a geometry
-  where it bites. Its tell still claims a consequence to the player.
+- **`wideTurn` is unused.** It used to ride along in `lateflag` — bending the
+  path by 1.1 m for a 0.01s effect on the window, under the resolution floor,
+  while its tell still claimed a consequence to the player that was not
+  really there. Removed from that scenario rather than left as a false tell.
+  Still defined in `TRAITS`, waiting for a scenario where the wide line
+  actually reaches the lane the ego uses.
 - **`creep` is masked by `overshoot` in `creeper`.** Accepted — creepers are for
   confusing right of way in busier scenarios than that one.
 - The timing renderer is the only one. 3D is the agreed direction, not started.
 
 ## Do not
 
-- Do not add analytics, accounts, or network calls. These run offline in a car.
-  This is the rule the leaderboard would have to break; it has not been broken.
+- Do not add analytics, accounts, or network calls without being asked to. The
+  offline-in-a-car rule still holds for everything the game does today.
+  Leaderboards and Play-style connectivity are the agreed exception and the
+  intended direction — see Known work in progress — but that is a decision to
+  build toward, not a standing invitation. Nothing has been wired up; do not
+  start on the assumption agreeing to the direction means agreeing to begin.
 - Do not use `localStorage` directly. Go through `src/storage.js`, which falls
   back cleanly when storage is refused — a private window will hand you a
   `localStorage` that throws on first write.
