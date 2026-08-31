@@ -45,6 +45,7 @@ export function emptyMods() {
     visibilityBias: null,
     preferPedestrian: false,
     draftEvery: 3,              // clean clears between drafts
+    insightBonus: 0,            // extra Insight per clean clear — see roguelike.js
   };
 }
 
@@ -53,15 +54,21 @@ export const TRAIT_CATALOG = [
     id: "peripheral-awareness",
     name: "Peripheral Awareness",
     category: "reveal",
-    description: "Cars you can't clearly see no longer vanish outright — they show faintly instead.",
-    apply: (mods) => ({ ...mods, revealHiddenOpacity: Math.max(mods.revealHiddenOpacity, 0.2) }),
+    description: "Cars you can't clearly see no longer vanish outright — they show faintly instead. Also earns a little extra Insight on every clean clear.",
+    // insightBonus is additive rather than Math.max-guarded like the rest
+    // of this file: it is meant to stack when more than one reveal trait
+    // is active, and draftFor already guarantees a trait is only ever
+    // applied once per run, so there is no double-application to guard
+    // against the way the other fields (which a future trait might one
+    // day also touch) are guarded.
+    apply: (mods) => ({ ...mods, revealHiddenOpacity: Math.max(mods.revealHiddenOpacity, 0.2), insightBonus: mods.insightBonus + 1 }),
   },
   {
     id: "mirror-check",
     name: "Mirror Check",
     category: "reveal",
-    description: "Cars you can partly see read more clearly.",
-    apply: (mods) => ({ ...mods, partialOpacity: Math.max(mods.partialOpacity, 0.7) }),
+    description: "Cars you can partly see read more clearly. Also earns a little extra Insight on every clean clear.",
+    apply: (mods) => ({ ...mods, partialOpacity: Math.max(mods.partialOpacity, 0.7), insightBonus: mods.insightBonus + 1 }),
   },
   {
     id: "steady-hands",
@@ -111,6 +118,57 @@ export function applyTrait(mods, traitId) {
   const trait = TRAIT_CATALOG.find((t) => t.id === traitId);
   return trait ? trait.apply(mods) : mods;
 }
+
+/* =====================================================================
+   CONSUMABLES
+   What Insight buys. Same shape as a trait — id, name, description,
+   apply(mods) -> mods — for the same reason: it is what proves a spend
+   cannot smuggle in an effect the trait system's own safety boundary
+   does not already cover (see tools/verify-roguelike.mjs). Most of these
+   are not really "modifiers" at all — rerolling a draw, calling a draft
+   early, reshuffling a roundabout — so their `apply` is the identity;
+   only reveal-burst actually widens anything, and it does so the same
+   Math.max way a permanent reveal trait would. What each id actually
+   *does* (redraw, force a draft, reshuffle exits) is roguelike.js's job,
+   in spendConsumable — this catalog only has to prove none of it is
+   secretly a different kind of effect.
+   ===================================================================== */
+export const CONSUMABLES = [
+  {
+    id: "peek-reroll",
+    name: "Reroll the situation",
+    cost: 3,
+    description: "Discard what's about to play and draw something else instead.",
+    apply: (mods) => mods,
+  },
+  {
+    id: "reveal-burst",
+    name: "Reveal burst",
+    cost: 5,
+    description: "Just this one situation — nothing hidden, nothing partial.",
+    apply: (mods) => ({
+      ...mods,
+      revealHiddenOpacity: Math.max(mods.revealHiddenOpacity, 1),
+      partialOpacity: Math.max(mods.partialOpacity, 1),
+    }),
+  },
+  {
+    id: "early-draft",
+    name: "Call an early draft",
+    cost: 6,
+    description: "Skip ahead to your next trait choice, milestone or not.",
+    apply: (mods) => mods,
+  },
+  {
+    id: "reroll-branch",
+    name: "Reroll the roundabout",
+    cost: 4,
+    description: "Redraw what's on offer here.",
+    apply: (mods) => mods,
+  },
+];
+
+export const consumableById = (id) => CONSUMABLES.find((c) => c.id === id) || null;
 
 /* `count` distinct catalog entries not already active, deterministic for
    a given rng — the same draw offered twice from the same (seed,

@@ -22,10 +22,10 @@
    the generator toward a kind of situation; it can never reach into how
    the generator decides a draw is safe.
    ===================================================================== */
-import { emptyMods, applyTrait, draftFor, rng } from "./traits.js";
+import { emptyMods, applyTrait, draftFor, rng, CONSUMABLES, consumableById } from "./traits.js";
 import { emptyTally, tally } from "./score.js";
 import { ENDLESS_BRIEFS, composeScenario, signatureOf } from "./compose.js";
-import { STAGES, stageById, exitsFor, ALL_STAGE_IDS } from "./stages.js";
+import { STAGES, stageById, exitsFor, ALL_STAGE_IDS, INSIGHT_CACHE } from "./stages.js";
 import { BOSSES, bossById } from "./bosses.js";
 import { planRoute, currentLeg as routeCurrentLeg } from "./route.js";
 import { routeById } from "./routes.js";
@@ -72,24 +72,76 @@ export function startRun(seed) {
     pendingBoss: null,       // null | bossId — the next draw is the boss, not a regular one
     pendingBranch: { options: ALL_STAGE_IDS }, // the roundabout's exits, when stage === "roundabout"
     checkrideRun: null,      // { plan, index, results } once stage === "checkride"
+
+    insight: 0,              // spendable resource — see CONSUMABLES in traits.js
+    branchRerollCount: 0,    // feeds the cache's seeded appearance — see branchOptionsFor
+    revealBurstPrior: null,  // { revealHiddenOpacity, partialOpacity } while a one-shot burst is active, else null
   };
+}
+
+/* The Insight Cache doesn't show up at the very first roundabout — with
+   nothing cleared yet there is nothing to protect a reroll against, per
+   the plan. After that it is a seeded maybe, not a certainty: rerolling
+   would otherwise have nothing to actually change, since the stage exits
+   themselves are always every stage still uncleared, never a subset. */
+const CACHE_CHANCE = 0.6;
+function branchOptionsFor(clearedStages, remaining, seed, rerollCount) {
+  if (clearedStages.length === 0 || !remaining.length) return remaining;
+  const r = rng((seed * 2654435761 + clearedStages.length * 97 + rerollCount * 131) >>> 0);
+  return r() < CACHE_CHANCE ? [...remaining, INSIGHT_CACHE.id] : remaining;
 }
 
 /* Picking an exit at a roundabout screen. Silently a no-op on a stale or
    unknown choice — the caller only ever offers what pendingBranch.options
-   actually lists, so this is a defensive floor, not a real path. */
+   actually lists, so this is a defensive floor, not a real path. The
+   cache is not a stage: taking it grants Insight and removes itself from
+   this stop's options (a real stage still has to be picked next), rather
+   than advancing the run — it reappears, maybe, at the next roundabout. */
 export function chooseBranch(run, choice) {
   if (!run.pendingBranch || !run.pendingBranch.options.includes(choice)) return run;
+  if (choice === INSIGHT_CACHE.id) {
+    const options = run.pendingBranch.options.filter((o) => o !== INSIGHT_CACHE.id);
+    return { ...run, insight: run.insight + INSIGHT_CACHE.insightAward, pendingBranch: { options } };
+  }
   return { ...run, stage: choice, pendingBranch: null, stageProgress: 0, pendingBoss: null };
 }
 
-export function recordSituation(run, result, sheet = null) {
+/* What a clean clear is worth: a flat amount, plus a bonus for the
+   harder categories — restricted visibility, a pedestrian in play — read
+   straight off the scenario that was actually played rather than any
+   label attached at generation time, so it works identically for a
+   composed situation, a hand-authored boss, or a Checkride leg. Reveal
+   traits add their own bonus on top via mods.insightBonus. */
+const INSIGHT_PER_CLEAR = 1;
+const INSIGHT_RESTRICTED_BONUS = 2;
+const INSIGHT_PEDESTRIAN_BONUS = 1;
+function insightFrom(scn, mods, clean) {
+  if (!clean) return 0;
+  let n = INSIGHT_PER_CLEAR + (mods.insightBonus || 0);
+  if (scn?.sightBlockers?.length) n += INSIGHT_RESTRICTED_BONUS;
+  if (scn?.actors?.some((a) => a.kind === "ped")) n += INSIGHT_PEDESTRIAN_BONUS;
+  return n;
+}
+
+/* A reveal burst is scoped to exactly one played situation. Reverting it
+   here, unconditionally and before anything else, means it applies to
+   whatever situation was actually drawn when it was bought — including
+   across a peek-reroll spent afterward — and is gone the instant that
+   situation is graded, win or lose. */
+function revertBurst(run) {
+  if (!run.revealBurstPrior) return run;
+  return { ...run, mods: { ...run.mods, ...run.revealBurstPrior }, revealBurstPrior: null };
+}
+
+export function recordSituation(run, result, sheet = null, scn = null) {
   if (run.over) return run;
-  if (run.stage === "checkride") return recordCheckrideLeg(run, result, sheet);
+  run = revertBurst(run);
+  if (run.stage === "checkride") return recordCheckrideLeg(run, result, sheet, scn);
   if (isCritical(result, sheet)) return { ...run, over: true, outcome: "ended" };
 
   const clean = result.verdict === "good";
   const nextTally = tally(run.tally, result);
+  const insight = run.insight + insightFrom(scn, run.mods, clean);
 
   /* A boss was just cleared: the stage is done. Either hand off to a
      fresh roundabout with whatever stages remain, or — once every stage
@@ -100,11 +152,12 @@ export function recordSituation(run, result, sheet = null) {
     const clearedStages = [...run.clearedStages, run.stage];
     const situationsCleared = run.situationsCleared + (clean ? 1 : 0);
     const remaining = exitsFor(clearedStages);
-    const base = { ...run, situationsCleared, tally: nextTally, clearedStages, pendingBoss: null, stageProgress: 0 };
+    const base = { ...run, situationsCleared, tally: nextTally, insight, clearedStages, pendingBoss: null, stageProgress: 0 };
     if (remaining.length === 0) {
       return { ...base, stage: "checkride", checkrideRun: startCheckride() };
     }
-    return { ...base, stage: "roundabout", pendingBranch: { options: remaining } };
+    const options = branchOptionsFor(clearedStages, remaining, run.seed, run.branchRerollCount);
+    return { ...base, stage: "roundabout", pendingBranch: { options } };
   }
 
   const situationsCleared = run.situationsCleared + (clean ? 1 : 0);
@@ -123,7 +176,7 @@ export function recordSituation(run, result, sheet = null) {
   }
 
   return {
-    ...run, situationsCleared, stageProgress, tally: nextTally, pendingDraft, draftCount,
+    ...run, situationsCleared, stageProgress, tally: nextTally, insight, pendingDraft, draftCount,
     pendingBoss: bossDue ? stage.bossId : null,
   };
 }
@@ -138,19 +191,63 @@ export function recordSituation(run, result, sheet = null) {
    all. planRoute/currentLeg are still reused for what they are actually
    good at — resolving each leg's rotation so it is entered from the
    correct side of the previous one. */
-function recordCheckrideLeg(run, result, sheet) {
+function recordCheckrideLeg(run, result, sheet, scn) {
   const cr = run.checkrideRun;
   const fatal = isCritical(result, sheet);
   const nextIndex = cr.index + 1;
   const exhausted = nextIndex >= cr.plan.legs.length;
   const checkrideRun = { ...cr, results: [...cr.results, result], index: fatal ? cr.index : nextIndex };
-  const situationsCleared = run.situationsCleared + (result.verdict === "good" ? 1 : 0);
+  const clean = result.verdict === "good";
+  const situationsCleared = run.situationsCleared + (clean ? 1 : 0);
   const nextTally = tally(run.tally, result);
-  const base = { ...run, checkrideRun, situationsCleared, tally: nextTally };
+  const insight = run.insight + insightFrom(scn, run.mods, clean);
+  const base = { ...run, checkrideRun, situationsCleared, tally: nextTally, insight };
 
   if (fatal) return { ...base, over: true, outcome: "ended" };
   if (exhausted) return { ...base, over: true, outcome: "won" };
   return base;
+}
+
+/* ---------------------------------------------------------------------
+   Spending Insight
+   Every consumable is a no-op if unaffordable or inapplicable right now
+   — the same defensive-floor shape as chooseBranch/applyDraft, so the UI
+   only has to decide when to disable a button, never guard correctness.
+   reveal-burst folds straight into run.mods (revertBurst above unwinds
+   it); the other three are pure state actions with nothing to fold, so
+   their own CONSUMABLES.apply is the identity — see traits.js.
+   --------------------------------------------------------------------- */
+export function spendConsumable(run, id) {
+  const c = consumableById(id);
+  if (!c || run.over || run.insight < c.cost) return run;
+  const insight = run.insight - c.cost;
+
+  if (id === "reveal-burst") {
+    if (run.revealBurstPrior) return run; // already active for the situation in hand
+    return {
+      ...run, insight,
+      revealBurstPrior: { revealHiddenOpacity: run.mods.revealHiddenOpacity, partialOpacity: run.mods.partialOpacity },
+      mods: c.apply(run.mods),
+    };
+  }
+  if (id === "early-draft") {
+    if (run.pendingDraft) return run;
+    const r = rng((run.seed * 2654435761 + run.draftCount * 40503 + 11) >>> 0);
+    return { ...run, insight, pendingDraft: draftFor(r, run.traits, 3), draftCount: run.draftCount + 1 };
+  }
+  if (id === "reroll-branch") {
+    if (!run.pendingBranch) return run;
+    const remaining = run.pendingBranch.options.filter((o) => o !== INSIGHT_CACHE.id);
+    const branchRerollCount = run.branchRerollCount + 1;
+    const options = branchOptionsFor(run.clearedStages, remaining, run.seed, branchRerollCount);
+    return { ...run, insight, branchRerollCount, pendingBranch: { options } };
+  }
+  if (id === "peek-reroll") {
+    // The redraw itself is the caller's job (bump the seed that feeds
+    // drawForRun) — this file has no seed of its own to bump.
+    return { ...run, insight };
+  }
+  return run;
 }
 
 export function applyDraft(run, traitId) {
@@ -177,6 +274,7 @@ export function summary(run) {
     over: run.over,
     outcome: run.outcome,
     stagesCleared: run.clearedStages.length,
+    insight: run.insight,
   };
 }
 
@@ -259,4 +357,4 @@ export function drawForRun(run, seed, recent = []) {
   return drawRegular(run, seed, recent);
 }
 
-export { ENDLESS_BRIEFS, STAGES, BOSSES, stageById, bossById };
+export { ENDLESS_BRIEFS, STAGES, BOSSES, stageById, bossById, CONSUMABLES, INSIGHT_CACHE };

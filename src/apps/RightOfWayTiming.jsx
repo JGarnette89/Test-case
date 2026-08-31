@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye, Home, Check, Sparkles, Skull } from "lucide-react";
+import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye, Home, Check, Sparkles, Skull, Zap, Shuffle } from "lucide-react";
 
 /* This file is now a renderer: it draws the numbers the engine produces and
    collects the player's press. All the judgment lives in ../engine. */
@@ -22,6 +22,7 @@ import { endlessScenario, signatureOf } from "../engine/compose.js";
 import {
   startRun as startRoguelikeRun, recordSituation, applyDraft, drawForRun,
   summary as roguelikeSummary, chooseBranch, stageById, bossById,
+  spendConsumable, CONSUMABLES, INSIGHT_CACHE,
 } from "../engine/roguelike.js";
 import { TRAIT_CATALOG } from "../engine/traits.js";
 import { crossSpec, hasLeg, controlOf, specOf, boxHalf, legOf } from "../engine/road.js";
@@ -470,15 +471,20 @@ function RoguelikeWinSummary({ run }) {
    already exists for the roundabout scenario layout — reused verbatim),
    the actual choice is plain buttons below, same pattern as a trait
    draft: pick one, and that picks the next stage's shape as well as its
-   difficulty. */
-function RoundaboutBody({ run, onPick }) {
+   difficulty. The cache is not a stage — id "cache" never resolves
+   through stageById — so it gets its own card rather than being folded
+   into the stage.map below. */
+function RoundaboutBody({ run, onPick, onRerollBranch }) {
   const options = run.pendingBranch?.options ?? [];
+  const stageOptions = options.filter((id) => id !== INSIGHT_CACHE.id);
+  const hasCache = options.includes(INSIGHT_CACHE.id);
+  const rerollCost = CONSUMABLES.find((c) => c.id === "reroll-branch").cost;
   return (
     <>
       <div style={st.brief}>
         {run.clearedStages.length === 0
           ? "Pick where the run starts."
-          : `${run.clearedStages.length} of ${run.clearedStages.length + options.length} stages cleared. Pick what's next.`}
+          : `${run.clearedStages.length} of ${run.clearedStages.length + stageOptions.length} stages cleared. Pick what's next.`}
       </div>
       <div style={st.board}>
         <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "100%", display: "block" }}>
@@ -487,7 +493,7 @@ function RoundaboutBody({ run, onPick }) {
         </svg>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-        {options.map((id) => {
+        {stageOptions.map((id) => {
           const stage = stageById(id);
           const boss = bossById(stage.bossId);
           return (
@@ -512,7 +518,33 @@ function RoundaboutBody({ run, onPick }) {
             </button>
           );
         })}
+        {hasCache && (
+          <button
+            key={INSIGHT_CACHE.id}
+            className="btn"
+            style={{
+              width: "100%", textAlign: "left", display: "flex", flexDirection: "column",
+              alignItems: "flex-start", justifyContent: "center", gap: 3, padding: "10px 12px", minHeight: 64,
+              borderColor: "rgba(255,201,60,0.4)",
+            }}
+            onClick={() => onPick(INSIGHT_CACHE.id)}
+          >
+            <span style={{ fontFamily: FONT_D, fontWeight: 700, fontSize: 14.5, letterSpacing: 0.5, color: C.yellow, display: "flex", alignItems: "center", gap: 6 }}>
+              <Zap size={14} />{INSIGHT_CACHE.name}
+            </span>
+            <span style={{ fontSize: 12.5, color: "#a8aeb6", lineHeight: 1.4, fontWeight: 400 }}>
+              +{INSIGHT_CACHE.insightAward} Insight, no boss — then choose again.
+            </span>
+          </button>
+        )}
       </div>
+      <button
+        className="btn" style={{ width: "100%", marginTop: 10, fontSize: 12.5 }}
+        disabled={run.insight < rerollCost}
+        onClick={onRerollBranch} title="Redraw what's on offer here"
+      >
+        <Shuffle size={14} />Reroll the roundabout ({rerollCost})
+      </button>
     </>
   );
 }
@@ -721,7 +753,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
     setResult(r); setCrash(hit || null); setPhase("done");
     setSession((s) => tally(s, r));
     if (run) setRun((cur) => recordLeg(cur, r));
-    if (endlessRun) setEndlessRun((cur) => recordSituation(cur, r, sheetResult));
+    if (endlessRun) setEndlessRun((cur) => recordSituation(cur, r, sheetResult, scn));
     // Credit the situation, not the rotation the route happened to use.
     // Generated draws are not tutorial situations, so they unlock nothing.
     if (r.verdict === "good" && !scn.generated) markPassed(scn.rotatedFrom ?? scn.id, r.score);
@@ -844,6 +876,31 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   function pickBranch(stageId) {
     setEndlessRun((cur) => chooseBranch(cur, stageId));
     next();
+  }
+
+  /* Insight spends. Each is a no-op inside spendConsumable itself when
+     unaffordable or inapplicable, so these only have to decide when to
+     disable a button, never guard correctness. Rerolling is the one that
+     also has to redraw: it bumps the seed the same way "Next situation"
+     does, and retry() keeps that safe even though nothing has actually
+     been pressed yet. */
+  function buyReroll() {
+    if (!endlessRun) return;
+    setEndlessRun((cur) => spendConsumable(cur, "peek-reroll"));
+    setSeed((s) => s + 1);
+    retry();
+  }
+  function buyRevealBurst() {
+    if (!endlessRun) return;
+    setEndlessRun((cur) => spendConsumable(cur, "reveal-burst"));
+  }
+  function buyEarlyDraft() {
+    if (!endlessRun) return;
+    setEndlessRun((cur) => spendConsumable(cur, "early-draft"));
+  }
+  function buyRerollBranch() {
+    if (!endlessRun) return;
+    setEndlessRun((cur) => spendConsumable(cur, "reroll-branch"));
   }
 
   const showT = phase === "ready" ? 0 : t;
@@ -976,6 +1033,11 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
               <Sparkles size={13} />{endlessRun.situationsCleared} cleared · {endlessRun.traits.length} traits
             </div>
           )}
+          {endlessRun && (
+            <div style={st.chip} title="Spend Insight on a reroll, a reveal, an early draft, or a roundabout reshuffle">
+              <Zap size={13} />{endlessRun.insight} insight
+            </div>
+          )}
           {session.played > 0 && (
             <div style={st.chip} title={`${session.clean} clean of ${session.played}, best ${session.best}`}>
               <Gauge size={13} />{session.average} avg
@@ -987,7 +1049,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
       </header>
 
       {atRoundabout ? (
-        <RoundaboutBody run={endlessRun} onPick={pickBranch} />
+        <RoundaboutBody run={endlessRun} onPick={pickBranch} onRerollBranch={buyRerollBranch} />
       ) : (
       <>
       {planFailed && (
@@ -1088,6 +1150,35 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
                 You scored <strong style={{ color: C.white }}>{logged.score}</strong> on your first run.
                 Playing again is practice — it will not change that.
               </div>
+            </div>
+          )}
+          {endlessRun && !endlessRun.over && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              {!playingBoss && !onCheckride && (
+                <button
+                  className="btn" style={{ flex: 1, fontSize: 12.5 }}
+                  disabled={endlessRun.insight < CONSUMABLES.find((c) => c.id === "peek-reroll").cost}
+                  onClick={buyReroll} title="Discard this situation and draw another"
+                >
+                  <Shuffle size={14} />Reroll ({CONSUMABLES.find((c) => c.id === "peek-reroll").cost})
+                </button>
+              )}
+              <button
+                className="btn" style={{ flex: 1, fontSize: 12.5 }}
+                disabled={endlessRun.insight < CONSUMABLES.find((c) => c.id === "reveal-burst").cost}
+                onClick={buyRevealBurst} title="Show everything, just for this situation"
+              >
+                <Zap size={14} />Reveal ({CONSUMABLES.find((c) => c.id === "reveal-burst").cost})
+              </button>
+              {!endlessRun.pendingDraft && (
+                <button
+                  className="btn" style={{ flex: 1, fontSize: 12.5 }}
+                  disabled={endlessRun.insight < CONSUMABLES.find((c) => c.id === "early-draft").cost}
+                  onClick={buyEarlyDraft} title="Call your next trait choice now, milestone or not"
+                >
+                  <Sparkles size={14} />Draft ({CONSUMABLES.find((c) => c.id === "early-draft").cost})
+                </button>
+              )}
             </div>
           )}
           <button className="btn primary" style={{ width: "100%" }} onClick={begin}>

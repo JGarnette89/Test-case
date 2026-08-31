@@ -9,7 +9,7 @@
    this engine is: numerically, and by re-deriving rather than trusting
    the code that makes the claim.
 
-   Five things, matching the plan:
+   Six things, matching the plan:
      1. drafts are valid — no repeat offers, no duplicate options, and
         reproducible from (seed, milestone).
      2. every critical-tier fault this game defines ends a run, and
@@ -20,12 +20,16 @@
         re-derivation of windowIsSafe.
      5. the dependency only ever runs one way: compose.js and
         generate.js never import this system.
+     6. Insight — every consumable's own modifier shape is exactly what a
+        trait could already produce, spending never drives the balance
+        negative, and each of the four spends does what it claims.
    ===================================================================== */
 import {
-  TRAIT_CATALOG, emptyMods, applyTrait, draftFor, rng,
+  TRAIT_CATALOG, emptyMods, applyTrait, draftFor, rng, CONSUMABLES,
 } from "../src/engine/traits.js";
 import {
   isCritical, startRun, recordSituation, applyDraft, drawForRun, chooseBranch,
+  spendConsumable, INSIGHT_CACHE,
 } from "../src/engine/roguelike.js";
 import { grade } from "../src/engine/score.js";
 import { FAULT } from "../src/engine/actions.js";
@@ -238,6 +242,125 @@ console.log("\n5. COMPOSE.JS AND GENERATE.JS NEVER IMPORT THE TRAIT SYSTEM");
   leaked === 0
     ? ok("compose.js and generate.js carry no reference to roguelike.js or traits.js")
     : null;
+}
+
+/* ---------- 6. Insight ---------- */
+console.log("\n6. INSIGHT");
+{
+  // 6a. Every consumable's own modifier shape is exactly what a trait
+  // could already produce — same keys, nothing smuggled in.
+  const baseKeys = Object.keys(emptyMods()).sort().join(",");
+  let badShape = 0;
+  for (const c of CONSUMABLES) {
+    const applied = c.apply(emptyMods());
+    const keys = Object.keys(applied).sort().join(",");
+    if (keys !== baseKeys) { badShape++; fail(`${c.id}: apply() produced a different key set than a trait would (${keys})`); }
+  }
+  badShape === 0 ? ok(`all ${CONSUMABLES.length} consumables produce a mods object with exactly a trait's own shape`) : null;
+
+  // 6b. Earning: flat, plus restricted/pedestrian bonuses, only on a
+  // clean clear, read off the scenario actually played.
+  const legalAt = 2.0;
+  const good = grade({ legalAt, pressedAt: legalAt + 0.1 });
+  const late = grade({ legalAt, pressedAt: legalAt + 5 });
+  let run = chooseBranch(startRun(1), "basics");
+  const plain = recordSituation(run, good, null, { actors: [] });
+  const restricted = recordSituation(run, good, null, { actors: [], sightBlockers: [{ id: "van" }] });
+  const withPed = recordSituation(run, good, null, { actors: [{ kind: "ped" }] });
+  const notClean = recordSituation(run, late, null, { actors: [] });
+  if (plain.insight === 1 && restricted.insight === 3 && withPed.insight === 2 && notClean.insight === 0) {
+    ok(`clean clears earn Insight (plain 1, +2 restricted, +1 pedestrian), a non-clean clear earns none`);
+  } else {
+    fail(`Insight earning wrong: plain=${plain.insight} restricted=${restricted.insight} ped=${withPed.insight} notClean=${notClean.insight}`);
+  }
+
+  // 6c. reveal-burst: folds in immediately, unaffordable is a no-op,
+  // and it reverts the instant the next situation is graded.
+  let richRun = { ...run, insight: 10 };
+  let burstRun = spendConsumable(richRun, "reveal-burst");
+  const burstApplied = burstRun.mods.revealHiddenOpacity === 1 && burstRun.mods.partialOpacity === 1 && burstRun.insight === 5;
+  const afterGraded = recordSituation(burstRun, good, null, { actors: [] });
+  const reverted = afterGraded.mods.revealHiddenOpacity === run.mods.revealHiddenOpacity
+    && afterGraded.mods.partialOpacity === run.mods.partialOpacity
+    && afterGraded.revealBurstPrior === null;
+  burstApplied && reverted
+    ? ok(`reveal-burst folds into mods for one situation and reverts once it is graded`)
+    : fail(`reveal-burst applied=${burstApplied} reverted=${reverted}`);
+  const poorRun = spendConsumable({ ...run, insight: 1 }, "reveal-burst");
+  poorRun.insight === 1 && poorRun.revealBurstPrior === null
+    ? ok("reveal-burst is a no-op without enough Insight")
+    : fail("reveal-burst should refuse to spend below its cost");
+
+  // 6d. early-draft: triggers a draft immediately, milestone or not.
+  const earlyRun = spendConsumable({ ...run, insight: 10 }, "early-draft");
+  Array.isArray(earlyRun.pendingDraft) && earlyRun.pendingDraft.length === 3 && earlyRun.insight === 4
+    ? ok("early-draft triggers a 3-option draft on demand")
+    : fail(`early-draft should have drafted immediately, got pendingDraft=${JSON.stringify(earlyRun.pendingDraft)}`);
+  // Well-funded this time, so it is the pending-draft guard being
+  // tested, not a second insufficient-funds refusal.
+  const blockedEarly = spendConsumable({ ...earlyRun, insight: 20 }, "early-draft");
+  blockedEarly.pendingDraft === earlyRun.pendingDraft && blockedEarly.insight === 20
+    ? ok("early-draft refuses to stack a second draft on top of a pending one, even when affordable")
+    : fail("early-draft should be a no-op while a draft is already pending");
+
+  // 6e. The cache and reroll-branch, driven through a real second
+  // roundabout (one stage cleared) — the only point the cache can appear.
+  // 3 clean clears queues the stage's boss (pendingBoss set, still in the
+  // stage); a 4th clear resolves that boss and is what actually reaches
+  // the roundabout.
+  let cacheRun = chooseBranch(startRun(2), "basics");
+  for (let i = 0; i < 4; i++) cacheRun = recordSituation(cacheRun, good, null, { actors: [] });
+  if (cacheRun.stage !== "roundabout" || cacheRun.clearedStages.length !== 1) {
+    fail(`expected a second roundabout after clearing one stage, got stage=${cacheRun.stage} cleared=${cacheRun.clearedStages.length}`);
+  } else {
+    let sawCache = 0, sawDifferentAfterReroll = 0, tries = 30;
+    for (let seed = 10; seed < 10 + tries; seed++) {
+      // Rebuilt per seed: pendingBranch.options is derived from run.seed
+      // at the moment the boss clears, so overriding .seed after the
+      // fact on an already-computed run would not actually change it.
+      let seeded = chooseBranch(startRun(seed), "basics");
+      for (let i = 0; i < 4; i++) seeded = recordSituation(seeded, good, null, { actors: [] });
+      const before = spendConsumable({ ...seeded, insight: 0 }, "reroll-branch"); // unaffordable: must be inert
+      if (before.pendingBranch.options.join(",") !== seeded.pendingBranch.options.join(",")) {
+        fail(`seed ${seed}: reroll-branch changed the offer without enough Insight`);
+      }
+      const rerolled = spendConsumable({ ...seeded, insight: 10 }, "reroll-branch");
+      if (rerolled.pendingBranch.options.join(",") !== seeded.pendingBranch.options.join(",")) sawDifferentAfterReroll++;
+      if (seeded.pendingBranch.options.includes(INSIGHT_CACHE.id)) sawCache++;
+    }
+    sawCache > 0 && sawCache < tries
+      ? ok(`the cache appears at a second roundabout some of the time, not always or never (${sawCache}/${tries})`)
+      : fail(`the cache should appear sometimes but not always at a second roundabout, saw ${sawCache}/${tries}`);
+    sawDifferentAfterReroll > 0
+      ? ok(`reroll-branch measurably changes what's on offer at least sometimes (${sawDifferentAfterReroll}/${tries})`)
+      : fail("reroll-branch never changed the offered options across 30 seeds");
+
+    // Taking the cache grants Insight, stays at the roundabout, and
+    // removes itself — it does not advance the stage.
+    const seeded = { ...cacheRun, seed: 10, branchRerollCount: 0, pendingBranch: { options: [...cacheRun.pendingBranch.options, INSIGHT_CACHE.id] } };
+    const tookCache = chooseBranch(seeded, INSIGHT_CACHE.id);
+    if (tookCache.stage === "roundabout" && tookCache.insight === seeded.insight + INSIGHT_CACHE.insightAward
+      && !tookCache.pendingBranch.options.includes(INSIGHT_CACHE.id)) {
+      ok(`taking the cache grants ${INSIGHT_CACHE.insightAward} Insight, stays at the roundabout, and removes itself from this stop`);
+    } else {
+      fail(`taking the cache behaved wrong: ${JSON.stringify({ stage: tookCache.stage, insight: tookCache.insight, options: tookCache.pendingBranch?.options })}`);
+    }
+    // A real stage choice still advances normally alongside the cache.
+    const tookStage = chooseBranch(seeded, seeded.pendingBranch.options[0]);
+    tookStage.stage === seeded.pendingBranch.options[0] && tookStage.pendingBranch === null
+      ? ok("a real stage choice still advances the run even when a cache was also on offer")
+      : fail("choosing a real stage alongside a cache option did not advance the run correctly");
+  }
+
+  // 6f. Never negative, across a long sequence of over-eager spending.
+  let poorest = { ...run, insight: 2 };
+  let negative = 0;
+  for (let i = 0; i < 50; i++) {
+    const id = CONSUMABLES[i % CONSUMABLES.length].id;
+    poorest = spendConsumable(poorest, id);
+    if (poorest.insight < 0) negative++;
+  }
+  negative === 0 ? ok("50 spend attempts against a near-empty balance never drive Insight negative") : fail(`Insight went negative ${negative} time(s)`);
 }
 
 console.log("\n" + "=".repeat(66));
