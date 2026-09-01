@@ -21,9 +21,9 @@
        than one frame to open, so nothing pops
    ===================================================================== */
 import { SCENARIOS } from "../src/engine/scenarios.js";
-import { simulate, movementOf, poseAt, CX, CY, STEP } from "../src/engine/index.js";
+import { simulate, movementOf, poseAt, CX, CY, STEP, W } from "../src/engine/index.js";
 import { specOf } from "../src/engine/road.js";
-import { frameFor, cameraFor } from "../src/frame.js";
+import { frameFor, cameraFor, worldHalfFor } from "../src/frame.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 let problems = 0;
@@ -215,6 +215,73 @@ console.log("\n5. SHIPPED CAMERAS REVEAL THEIR ACTOR IN TIME");
         : ok(`${scn.id}: and it is NOT visible without the camera — the widening is what reveals it`);
     }
   }
+}
+
+/* ---------- the world is drawn as wide as the camera opens ----------
+   A camera that widens past the fixed 720x720 board used to reveal
+   nothing: ground, scenery and the road legs were all laid out to that
+   board, so the extra space was bare and the road simply stopped in
+   mid-air — with a tracked actor driving in across it, since the camera
+   widened to cover that actor's approach in the first place.
+
+   worldHalfFor is what the renderer sizes all three to. Two things have
+   to hold. It must reach at least as far as the camera ever opens, and
+   it must not move with the clock: scenery is scattered once per
+   scenario and would visibly grow outward mid-reveal otherwise. */
+console.log("\n7. THE DRAWN WORLD COVERS EVERYTHING THE CAMERA REVEALS");
+{
+  let short = 0, unstable = 0, widened = 0;
+  for (const scn of SCENARIOS) {
+    const spec = specOf(scn);
+    const sim = simulate(scn);
+    const world = worldHalfFor(spec, sim, scn.camera);
+    const resting = (frameFor(spec).scale * W) / 2;
+    if (world > resting + 1e-6) widened++;
+
+    let widest = 0;
+    for (let t = 0; t <= scn.duration; t += 0.05) {
+      widest = Math.max(widest, (cameraFor(spec, sim, t, scn.camera).scale * W) / 2);
+    }
+    if (world < widest - 1e-6) {
+      short++;
+      fail(`${scn.id}: world drawn to ${r2(world)} but the camera opens to ${r2(widest)} — bare ground at the edges`);
+    }
+    // Same answer whenever it is asked: it is a property of the scenario.
+    if (worldHalfFor(spec, sim, scn.camera) !== world) {
+      unstable++;
+      fail(`${scn.id}: worldHalfFor is not stable — scenery would resize as the camera eases`);
+    }
+  }
+  short === 0 ? ok(`all ${SCENARIOS.length} scenarios draw a world at least as wide as their camera ever opens`) : null;
+  unstable === 0 ? ok("and the extent is a stable property of the scenario, not of the clock") : null;
+  widened > 0
+    ? ok(`${widened} scenario(s) genuinely need more world than the resting board — the check has something to catch`)
+    : fail("no scenario widens past the resting board, so this check proves nothing");
+
+  /* And the invariant that actually matters at the pixel level: anything
+     VISIBLE in the frame has world drawn under it. Being outside the
+     world while also outside the frame is fine — that is just off
+     screen, which is where an approach starts from. */
+  let offWorld = 0;
+  for (const scn of SCENARIOS) {
+    const spec = specOf(scn);
+    const sim = simulate(scn);
+    const world = worldHalfFor(spec, sim, scn.camera);
+    for (const a of [sim.ego, ...sim.actors]) {
+      for (let t = 0; t <= scn.duration; t += 0.05) {
+        const p = poseAt(a, t);
+        if (p.gone) break;
+        if (p.hidden) continue;
+        const [bx, by, bw, bh] = cameraFor(spec, sim, t, scn.camera).box.split(" ").map(Number);
+        if (!(p.x > bx && p.x < bx + bw && p.y > by && p.y < by + bh)) continue;
+        if (Math.max(Math.abs(p.x - CX), Math.abs(p.y - CY)) > world + 1e-6) {
+          offWorld++;
+          fail(`${scn.id}/${a.id}: visible at (${r2(p.x)},${r2(p.y)}) with no world drawn under it`);
+        }
+      }
+    }
+  }
+  offWorld === 0 ? ok("every road user that is on screen has ground and road drawn beneath it") : null;
 }
 
 console.log("\n" + "=".repeat(66));

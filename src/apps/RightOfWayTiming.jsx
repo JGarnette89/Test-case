@@ -32,7 +32,7 @@ import {
   RoguelikeRunSummary, RoguelikeWinSummary, RoundaboutBody, TraitDraftScreen,
 } from "./RoguelikeScreens.jsx";
 import { crossSpec, hasLeg, controlOf, specOf, boxHalf, legOf } from "../engine/road.js";
-import { cameraFor } from "../frame.js";
+import { cameraFor, worldHalfFor } from "../frame.js";
 import {
   ACTIONS, sequenceFor, deriveWindows, gradeTask, FAULT,
 } from "../engine/actions.js";
@@ -44,24 +44,40 @@ import {
 /* ---------------- drawing ---------------- */
 
 /* Ground texture. Seeded per environment so city paving and a rural field
-   do not share the same speckle pattern. */
-function groundTexture(seed) {
+   do not share the same speckle pattern. Scaled to `half` — the widest
+   this scenario's camera ever opens to, see worldHalfFor in ../frame.js —
+   so a wide-open camera does not thin the speckle out over ground that
+   was tuned to look right on a fixed 720x720 board. */
+function groundTexture(seed, half = W / 2, cx = CX, cy = CY) {
   let a = seed >>> 0;
   const r = () => { a = (a * 1103515245 + 12345) & 0x7fffffff; return a / 0x7fffffff; };
-  return Array.from({ length: 130 }, () => ({
-    x: r() * W, y: r() * H, rx: 6 + r() * 13, ry: 3 + r() * 5,
+  const count = Math.round(130 * Math.min(6, (half * half) / ((W / 2) * (W / 2))));
+  return Array.from({ length: count }, () => ({
+    x: cx - half + r() * half * 2, y: cy - half + r() * half * 2, rx: 6 + r() * 13, ry: 3 + r() * 5,
     rot: r() * 180, light: r() > 0.5, o: 0.05 + r() * 0.08,
   }));
 }
 
 /* Everything either side of the road. One component for all settings —
-   the environment declares what it contains, this only draws it. */
-function Environment({ env, seed, keepOut }) {
-  const texture = React.useMemo(() => groundTexture(seed ^ 0x9e37), [seed]);
-  const items = React.useMemo(() => scatter(env, seed, keepOut), [env, seed, keepOut]);
+   the environment declares what it contains, this only draws it.
+
+   `worldHalf` is how far this scenario's camera can ever open to (its
+   maximum, not the live easing value — see worldHalfFor). Ground,
+   texture and scatter are all sized to it rather than to the fixed
+   720x720 board, or a widened camera reveals bare space around the edges
+   — exactly where a tracked actor, like an emergency vehicle, is coming
+   from, since that is what the camera opened to cover in the first
+   place. Defaults to the board's own half-extent, so an ordinary
+   scenario with no camera declared draws exactly as it always has. */
+function Environment({ env, seed, keepOut, worldHalf = W / 2 }) {
+  const texture = React.useMemo(() => groundTexture(seed ^ 0x9e37, worldHalf), [seed, worldHalf]);
+  const items = React.useMemo(
+    () => scatter(env, seed, keepOut, { cx: CX, cy: CY, half: worldHalf }),
+    [env, seed, keepOut, worldHalf]
+  );
   return (
     <>
-      <rect width={W} height={H} fill={env.ground} />
+      <rect x={CX - worldHalf} y={CY - worldHalf} width={worldHalf * 2} height={worldHalf * 2} fill={env.ground} />
       {texture.map((g, i) => (
         <ellipse key={i} cx={g.x} cy={g.y} rx={g.rx} ry={g.ry}
           transform={`rotate(${g.rot} ${g.x} ${g.y})`}
@@ -185,18 +201,29 @@ function StopLines({ spec = null }) {
    number typed for one lane each way. */
 const LINE_BEYOND_EDGE = STOP_LINE_AT - HALF;
 
-function Road({ control, crossings = ["N"], spec = null }) {
+/* `reach` is how far from the junction the road has to be drawn: the
+   widest this scenario's camera ever opens to (see worldHalfFor in
+   ../frame.js), not the fixed 720x720 board. A camera that opens further
+   than the board used to leave the legs ending in mid-air, and a tracked
+   actor — an emergency vehicle, say — would approach across bare ground
+   before reaching any road at all, since the camera widened precisely to
+   cover its spawn point. Defaults to the board's own half-extent, so
+   every scenario without a camera draws exactly as it always has. */
+function Road({ control, crossings = ["N"], spec = null, reach = W / 2 }) {
   const road = spec ?? crossSpec(control ?? "stop");
   const has = (side) => hasLeg(road, side);
   /* THE BOX: the two roads that cross here, each as wide as the lanes it
      carries. vx is the north-south road's half-width, hy the east-west
      road's — and a north-south leg stops outside hy, not its own. */
   const { vx, hy } = boxHalf(road, LANE);
+  // The far edge of the world in each direction. At the default reach
+  // these are exactly 0, 720, 0, 720 — the board this was written against.
+  const T = CY - reach, B = CY + reach, L = CX - reach, R = CX + reach;
   const LEG_RECT = {
-    N: { x: CX - vx, y: 0, w: vx * 2, h: CY - hy },
-    S: { x: CX - vx, y: CY + hy, w: vx * 2, h: H - (CY + hy) },
-    W: { x: 0, y: CY - hy, w: CX - vx, h: hy * 2 },
-    E: { x: CX + vx, y: CY - hy, w: W - (CX + vx), h: hy * 2 },
+    N: { x: CX - vx, y: T, w: vx * 2, h: CY - hy - T },
+    S: { x: CX - vx, y: CY + hy, w: vx * 2, h: B - (CY + hy) },
+    W: { x: L, y: CY - hy, w: CX - vx - L, h: hy * 2 },
+    E: { x: CX + vx, y: CY - hy, w: R - (CX + vx), h: hy * 2 },
   };
   // Dividers between lanes running the same way; the centreline is separate.
   const vLanes = legOf(road, has("N") ? "N" : "S").lanes;
@@ -224,33 +251,33 @@ function Road({ control, crossings = ["N"], spec = null }) {
         return <rect key={side} x={r.x} y={r.y} width={r.w} height={r.h} fill={C.asphalt} />;
       })}
 
-      {has("N") && <><Edge x1={CX - vx} y1={0} x2={CX - vx} y2={CY - hy} />
-        <Edge x1={CX + vx} y1={0} x2={CX + vx} y2={CY - hy} />
-        <Dash x1={CX} y1={0} x2={CX} y2={CY - hy} /></>}
-      {has("S") && <><Edge x1={CX - vx} y1={CY + hy} x2={CX - vx} y2={H} />
-        <Edge x1={CX + vx} y1={CY + hy} x2={CX + vx} y2={H} />
-        <Dash x1={CX} y1={CY + hy} x2={CX} y2={H} /></>}
-      {has("W") && <><Edge x1={0} y1={CY - hy} x2={CX - vx} y2={CY - hy} />
-        <Edge x1={0} y1={CY + hy} x2={CX - vx} y2={CY + hy} />
-        <Dash x1={0} y1={CY} x2={CX - vx} y2={CY} /></>}
-      {has("E") && <><Edge x1={CX + vx} y1={CY - hy} x2={W} y2={CY - hy} />
-        <Edge x1={CX + vx} y1={CY + hy} x2={W} y2={CY + hy} />
-        <Dash x1={CX + vx} y1={CY} x2={W} y2={CY} /></>}
+      {has("N") && <><Edge x1={CX - vx} y1={T} x2={CX - vx} y2={CY - hy} />
+        <Edge x1={CX + vx} y1={T} x2={CX + vx} y2={CY - hy} />
+        <Dash x1={CX} y1={T} x2={CX} y2={CY - hy} /></>}
+      {has("S") && <><Edge x1={CX - vx} y1={CY + hy} x2={CX - vx} y2={B} />
+        <Edge x1={CX + vx} y1={CY + hy} x2={CX + vx} y2={B} />
+        <Dash x1={CX} y1={CY + hy} x2={CX} y2={B} /></>}
+      {has("W") && <><Edge x1={L} y1={CY - hy} x2={CX - vx} y2={CY - hy} />
+        <Edge x1={L} y1={CY + hy} x2={CX - vx} y2={CY + hy} />
+        <Dash x1={L} y1={CY} x2={CX - vx} y2={CY} /></>}
+      {has("E") && <><Edge x1={CX + vx} y1={CY - hy} x2={R} y2={CY - hy} />
+        <Edge x1={CX + vx} y1={CY + hy} x2={R} y2={CY + hy} />
+        <Dash x1={CX + vx} y1={CY} x2={R} y2={CY} /></>}
 
       {/* Lane dividers: white and broken, between lanes going the same
           way. Only where there is more than one, so a single-lane road
           looks exactly as it always did. */}
       {Array.from({ length: Math.max(0, vLanes - 1) }, (_, i) => (i + 1) * LANE).flatMap((d) => [
-        has("N") && <LaneMark key={`nl${d}`} x1={CX - d} y1={0} x2={CX - d} y2={CY - hy} />,
-        has("N") && <LaneMark key={`nr${d}`} x1={CX + d} y1={0} x2={CX + d} y2={CY - hy} />,
-        has("S") && <LaneMark key={`sl${d}`} x1={CX - d} y1={CY + hy} x2={CX - d} y2={H} />,
-        has("S") && <LaneMark key={`sr${d}`} x1={CX + d} y1={CY + hy} x2={CX + d} y2={H} />,
+        has("N") && <LaneMark key={`nl${d}`} x1={CX - d} y1={T} x2={CX - d} y2={CY - hy} />,
+        has("N") && <LaneMark key={`nr${d}`} x1={CX + d} y1={T} x2={CX + d} y2={CY - hy} />,
+        has("S") && <LaneMark key={`sl${d}`} x1={CX - d} y1={CY + hy} x2={CX - d} y2={B} />,
+        has("S") && <LaneMark key={`sr${d}`} x1={CX + d} y1={CY + hy} x2={CX + d} y2={B} />,
       ].filter(Boolean))}
       {Array.from({ length: Math.max(0, hLanes - 1) }, (_, i) => (i + 1) * LANE).flatMap((d) => [
-        has("W") && <LaneMark key={`wt${d}`} x1={0} y1={CY - d} x2={CX - vx} y2={CY - d} />,
-        has("W") && <LaneMark key={`wb${d}`} x1={0} y1={CY + d} x2={CX - vx} y2={CY + d} />,
-        has("E") && <LaneMark key={`et${d}`} x1={CX + vx} y1={CY - d} x2={W} y2={CY - d} />,
-        has("E") && <LaneMark key={`eb${d}`} x1={CX + vx} y1={CY + d} x2={W} y2={CY + d} />,
+        has("W") && <LaneMark key={`wt${d}`} x1={L} y1={CY - d} x2={CX - vx} y2={CY - d} />,
+        has("W") && <LaneMark key={`wb${d}`} x1={L} y1={CY + d} x2={CX - vx} y2={CY + d} />,
+        has("E") && <LaneMark key={`et${d}`} x1={CX + vx} y1={CY - d} x2={R} y2={CY - d} />,
+        has("E") && <LaneMark key={`eb${d}`} x1={CX + vx} y1={CY + d} x2={R} y2={CY + d} />,
       ].filter(Boolean))}
 
       {/* closed sides, where a leg does not exist */}
@@ -806,6 +833,17 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
     () => cameraFor(specOf(scn), sim, showT, scn.camera),
     [scn.id, scn.road, scn.camera, sim, showT]
   );
+  /* How much world there is to draw. Deliberately the camera's MAXIMUM
+     rather than the frame above: ground, scenery and the road legs are
+     laid out once per scenario and must not resize as the camera eases,
+     or they would visibly grow outward mid-reveal. Without this a widened
+     camera showed the road ending in mid-air with bare ground beyond it,
+     which is where a tracked actor comes in from — the camera opened to
+     cover its spawn point in the first place. */
+  const worldHalf = React.useMemo(
+    () => worldHalfFor(specOf(scn), sim, scn.camera),
+    [scn.id, scn.road, scn.camera, sim]
+  );
   const env = React.useMemo(() => environmentFor(scn.id), [scn.id]);
   const envSeed = React.useMemo(
     () => [...String(scn.id)].reduce((h, c) => (Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0), 2166136261),
@@ -940,13 +978,14 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
               <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#0B0D10" floodOpacity="0.45" />
             </filter>
           </defs>
-          <Environment env={env} seed={envSeed} keepOut={keepOut} />
+          <Environment env={env} seed={envSeed} keepOut={keepOut} worldHalf={worldHalf} />
           {scn.layout === "roundabout" ? (
-            <Roundabout island={env.groundDark} />
+            <Roundabout island={env.groundDark} reach={worldHalf} />
           ) : (
             <Road
               control={scn.control}
               spec={specOf(scn)}
+              reach={worldHalf}
               crossings={[...new Set(sim.actors.filter((a) => a.kind === "ped").map((a) => a.from ?? "N"))]}
             />
           )}

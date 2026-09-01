@@ -93,10 +93,24 @@ function rng(seed) {
    Scenery must never sit on the road, on a crosswalk, or inside a
    roundabout. `keepOut` describes the road so this file does not have to
    know the layouts — the renderer, which does, hands it in.
+
+   `bounds` describes how much ground there is to fill: `{ cx, cy, half }`,
+   a square of that half-extent centred on (cx, cy). Defaults to the
+   original fixed 720x720 board (half 360, centred at 360,360) so nothing
+   that does not pass bounds explicitly changes behaviour. A scenario
+   whose camera opens wider than that board needs more ground than the
+   default reaches, or the extra space a wide camera reveals is bare —
+   see worldHalfFor in ../frame.js, which is what the renderer measures
+   this from. `density` scales with the area actually being filled, on
+   the same reasoning: the number env.density names was tuned for the
+   720x720 board, and holding it fixed over a much larger board would
+   thin the scenery out rather than fill the space a wider camera opened.
    ===================================================================== */
-export function scatter(env, seed, keepOut) {
+const BASE_HALF = 360;
+export function scatter(env, seed, keepOut, bounds = { cx: 360, cy: 360, half: BASE_HALF }) {
   const r = rng(seed);
   const pick = (lo, hi) => lo + r() * (hi - lo);
+  const { cx, cy, half } = bounds;
 
   // Weighted bag, resolved once.
   const bag = [];
@@ -117,7 +131,11 @@ export function scatter(env, seed, keepOut) {
   };
 
   const out = [];
-  const target = env.density;
+  // Capped: a camera that opened very wide should still fill it, but not
+  // at unbounded cost. 6x the tuned baseline is comfortably past anything
+  // a scenario built so far asks for.
+  const areaRatio = Math.min(6, (half * half) / (BASE_HALF * BASE_HALF));
+  const target = Math.round(env.density * areaRatio);
   // Bounded: a crowded layout should thin out rather than spin.
   for (let attempt = 0; attempt < target * 14 && out.length < target; attempt++) {
     const spec = bag[Math.floor(r() * bag.length)];
@@ -125,8 +143,8 @@ export function scatter(env, seed, keepOut) {
     const rad = isTree ? pick(spec.r[0], spec.r[1]) : 0;
     const w = isTree ? rad * 2 : pick(spec.w[0], spec.w[1]);
     const h = isTree ? rad * 2 : pick(spec.h[0], spec.h[1]);
-    const x = pick(w, 720 - w);
-    const y = pick(h, 720 - h);
+    const x = pick(cx - half + w, cx + half - w);
+    const y = pick(cy - half + h, cy + half - h);
     if (!clear(x, y, w / 2, h / 2)) continue;
     out.push({
       kind: spec.kind, x, y, w, h, r: rad,

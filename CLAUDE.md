@@ -234,6 +234,22 @@ the graded window with it. Advance `drawSeed` deliberately (`nextDraw()`)
 when a new situation is actually wanted, and record what was drawn in an
 effect after commit.
 
+**Whatever the camera can reveal has to be drawn.** Ground, scenery and
+the road legs were all laid out to a fixed 720x720 board, which was
+invisible until `cameraFor` started widening past it — then the extra
+space was bare and the legs stopped in mid-air, with the tracked actor
+driving in across nothing, since the camera had widened precisely to
+cover that actor's approach. `worldHalfFor` in `frame.js` is the extent
+all three now size to: the camera's MAXIMUM, deliberately not the live
+easing value, because scenery is scattered once per scenario and would
+visibly grow outward mid-reveal otherwise. Scenery density scales with
+the area so a wider world is filled rather than thinned. `Road` and
+`Roundabout` take `reach`, `Environment` takes `worldHalf`, and all
+three default to the board — so a scenario with no camera draws exactly
+as it always has. Checked in `verify-camera.mjs`: the world covers the
+widest frame, the extent does not move with the clock, and anything
+visible has ground under it.
+
 **Never author the answer.** The safe window is computed by simulating
 footprints through the intersection. Do not hardcode "window opens at 3.2s". If
 a scenario needs a specific window, change the arrival times until the engine

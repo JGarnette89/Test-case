@@ -70,3 +70,20 @@ export function cameraFor(spec, sim, t, camera) {
   const size = half * 2;
   return { box: `${CX - half} ${CY - half} ${size} ${size}`, scale: size / W };
 }
+
+/* The widest this scenario's camera will EVER open to — not the live,
+   still-easing value, but where it tops out. Ground, scenery and the
+   speckle texture all have to be laid out to at least this extent, or a
+   camera that opens further than a fixed 720x720 board reveals empty
+   space around the edges: exactly what a tracked actor drives through
+   coming from off-board, since its spawn point is what the camera widened
+   to cover in the first place.
+
+   Deliberately not the live frame: scenery is scattered once per scenario
+   (see the renderer's own useMemo) and must not resize as the camera
+   eases, or it would visibly pop outward mid-reveal. `t = Infinity` reads
+   as fully eased in on every track (easeWindow clamps to 1), which is
+   exactly "as wide as this scenario ever gets". */
+export function worldHalfFor(spec, sim, camera) {
+  return cameraFor(spec, sim, Infinity, camera).scale * W / 2;
+}
