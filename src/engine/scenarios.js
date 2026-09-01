@@ -250,5 +250,60 @@ const SCENARIOS = [
     ],
     lesson: "The van on the corner hid the road you had to read. From the line there was nothing to see, and nothing to see is not the same as nothing coming — so the question was never when to go, it was whether you had enough information to go at all. Edging forward buys that information and spends your margin doing it. Too far and you are in the path of the traffic you were trying to see.",
   },
+  {
+    id: "button",
+    title: "Somebody pressed the button",
+    brief: "Four-way stop. Someone is waiting at the crossing you are about to drive through.",
+    control: "stop",
+    duration: 20,
+    /* This window CLOSES. Every other scenario in the game opens one and
+       leaves it open — once your path is clear it stays clear, so a late
+       press only ever costs marks. Here the walk phase arrives and takes
+       the crossing back, which is the entire point of the button being
+       worth reading. Declared rather than inferred so verify-playthrough
+       can keep enforcing "an open window is always safe to take" for
+       everything that has not said otherwise. The graded stretch
+       [safeAt, safeAt+GRACE] is still guaranteed safe by safeAtFor — what
+       is allowed here is a collision AFTER the scorer has already called
+       it undue delay. */
+    windowCloses: true,
+    ego: { from: "S", intent: "straight", arriveAt: 1.4, stops: true, color: C.blue },
+    actors: [
+      S({ id: "e", from: "E", intent: "straight", arriveAt: 0.9, color: C.red, name: "Red car" }),
+      /* At the button, not on the crossing. They hold none of it while the
+         signal has not changed (see holdsCrossing in index.js), so the
+         window opens as soon as the red car is clear — about four seconds
+         earlier than if they had simply walked out. Reading which of those
+         two is happening is the whole scenario. */
+      S({
+        id: "p", from: "N", intent: "straight", arriveAt: 1.0, stops: false, kind: "ped",
+        color: "#F2E8D5", name: "Pedestrian", priority: -1,
+        blockUntilClear: true, button: true,
+      }),
+    ],
+    lesson: "They are standing at the button, not stepping off it. The signal has not changed, so the crossing is not theirs yet and the road ahead of you is still clear — you wait for the red car and then go. What the press buys you is a warning: a walk phase is coming, and every second you spend deciding is a second closer to sitting behind a full crossing. Read the difference between waiting to cross and crossing.",
+  },
+  {
+    id: "ambulance",
+    title: "Yours, but not yet",
+    brief: "Four-way stop. Nothing else is waiting — but listen.",
+    control: "stop",
+    duration: 20,
+    /* The view eases out so the approach is on screen before the ego is at
+       the line. Without it an emergency vehicle doing 36 km/h shows up
+       about three quarters of a second before it arrives, and marking a
+       player early for something they could not see is the opposite of
+       what this game is for. */
+    camera: { track: [{ id: "amb", revealBy: 3.5, rampFor: 2.5, pad: 30 }] },
+    ego: { from: "S", intent: "straight", arriveAt: 3.0, stops: true, color: C.blue },
+    actors: [
+      /* Arrives well after the ego and would ordinarily be the one waiting.
+         `emergency` outranks everything (see outranks in index.js), which
+         is a rule rather than anything the footprints could derive. */
+      S({ id: "amb", from: "W", intent: "straight", arriveAt: 4.6, stops: false,
+        color: C.red, name: "Ambulance", emergency: true }),
+    ],
+    lesson: "You stopped first, and there was nothing at any of the other three lines — by arrival order the intersection was yours to take. It is still not yours. An emergency vehicle on a call outranks everybody, whoever got there first and whichever side they are on, and the only thing being asked of you is to stay put and go once it has passed. Notice it does not need to be close to matter: the moment you can tell what it is, the right of way you thought you had is gone.",
+  },
 ];
 export { SCENARIOS, S };

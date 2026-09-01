@@ -95,6 +95,36 @@ move into that mode rather than being baked into the default.
   road running uninterrupted. Any other configuration must remain expressible —
   control is per leg in `road.js`, and an all-way stop is simply four legs that
   agree.
+- **An emergency vehicle on a call outranks everybody.** Not by arrival
+  order, not by which side it is on, and not by any `priority` a scenario
+  stamped on somebody else — `outranks` in `index.js` checks `emergency`
+  first, before anything else can talk its way past it. The only thing
+  asked of the player is to yield and go once it is safe, so there is no
+  new action and no new button: it is the ordinary GO, against a window
+  the rule has moved.
+
+  **Yielding is not freezing.** Priority decides who goes first where the
+  paths actually meet. A call three intersections away is still a prior
+  and still costs nothing, because the ego is long clear before it
+  arrives — a version that pinned a driver to the line for a distant siren
+  would be teaching a habit nobody wants. Both halves are checked in
+  `verify-events.mjs`.
+
+  Pulling over is deliberately NOT modelled here. It only makes sense
+  for a driver already in motion, so it belongs to a lane-change or
+  merge scenario rather than to a car stopped at a line.
+- **Someone waiting at a crossing button holds none of the crossing.**
+  The signal has not changed; traffic keeps moving, which is what happens
+  at a real push-button crossing and what makes the press worth reading —
+  it is a warning that a phase is coming, not the phase itself. See
+  `holdsCrossing` in `index.js`. Without that rule a waiting pedestrian
+  would block from the moment they became visible, and the button would
+  be indistinguishable from them simply walking out.
+
+  The wait between press and walk signal (`PED_BUTTON_WAIT`) must stay
+  longer than `GRACE`, so the phase never lands inside the graded window.
+  Otherwise the scorer would be handing out marks for time that drives
+  into a crossing.
 - **Legally yours and safe to take are not the same thing, and the scorer
   grades the second one.** `legalAt` is derived against priors only — whoever
   outranks the ego. A non-prior is still a physical object: one still
@@ -364,11 +394,12 @@ node tools/verify-compose.mjs      briefs produce scenes that match them
 node tools/verify-camera.mjs       the camera opens gradually, never shrinks, keeps a revealed actor in frame
 node tools/verify-roguelike.mjs    traits and Insight: the safety wall, the one-way dependency
 node tools/verify-stages.mjs       stages, bosses, the branch graph, a full run end to end
+node tools/verify-events.mjs       the crossing button and the emergency vehicle: rule, readable, worth reading
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All fourteen must exit 0. Seven things they check are worth understanding:
+All fifteen must exit 0. Seven things they check are worth understanding:
 
 - **Equivalence is the one for refactors.** The others check the engine is
   right; that one checks it has not *changed*. It matters because a change to
@@ -488,6 +519,32 @@ invisible to the encroachment fault because it only ever watches priors — in
   — all fine, and the last one is a real skill. A district with a genuinely
   different right-of-way rule is a domain question, and it is the
   maintainer's, like every other one in this file.
+- **Longer waits are answered with something to read, not with shorter
+  waits.** Realistic acceleration made every wait about three times what
+  it was, and the agreed direction is to fill that time rather than tune
+  it away: things that happen DURING the wait and change what the answer
+  is. Two are built — the crossing button and the emergency vehicle, both
+  in the established rules above — and both had to clear the same bar as
+  any other tell: readable before the decision, and worth real seconds in
+  a controlled comparison (`verify-events.mjs`).
+
+  Still wanted, not built: a **fender bender** that blocks a lane
+  mid-scenario. It is the one of these that changes the road rather than
+  the traffic on it — a moving car becomes a static obstruction, sightlines
+  close, and other traffic would want to re-route around it. That last part
+  is genuine dynamic re-planning, which the engine does not do: everything
+  is derived once, up front. Worth being deliberate about, because it is an
+  architectural addition rather than a data entry.
+- **A window can now CLOSE.** Every scenario used to open one and leave it
+  open, so a late press only ever cost marks. `button` is the first where
+  the answer expires — the walk phase takes the crossing back. Scenarios
+  like that declare `windowCloses: true`, which is what lets
+  `verify-playthrough.mjs` keep enforcing "an open window is always safe
+  to take" everywhere else while allowing a collision *after* the graded
+  stretch here. The graded stretch itself is still guaranteed safe by
+  `safeAtFor`; what is permitted is only the region the scorer has already
+  called undue delay. Do not set that flag to quiet a failure — a window
+  closing anywhere it was not designed to is a real bug.
 - **Pedestrians in generation: done.** They rotate correctly (`crossingOf`
   is relative to the actor's own leg), and both generators place one now —
   `generate.js` (Daily) on 22% of draws, `compose.js` (Endless, ported from

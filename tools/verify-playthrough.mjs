@@ -92,11 +92,23 @@ for (const scn of SCENARIOS) {
       mismatched++;
       fail(`${scn.id} press ${p}: hit a car but was not graded as a collision`);
     }
-    // Anything that collides must have been at or before the window, or the
-    // engine has promised a window that is not actually safe.
-    if (res.outcome === "collision" && p > safeAt + 1e-9) {
+    /* Anything that collides must have been at or before the window, or
+       the engine has promised a window that is not actually safe.
+
+       Unless the scenario says its window CLOSES again — `button` is the
+       first, where a walk phase takes the crossing back. Even then the
+       promise is not waived, only bounded to what safeAtFor actually
+       guarantees: the whole graded stretch [safeAt, safeAt+GRACE] must
+       still be collision-free. A crash is only tolerated beyond that, by
+       which point the scorer has already called it undue delay and given
+       it nothing. Opt-in per scenario, so a window silently closing
+       anywhere else still fails here. */
+    const promisedUntil = safeAt + (scn.windowCloses ? GRACE : Infinity);
+    if (res.outcome === "collision" && p > safeAt + 1e-9 && p <= promisedUntil + 1e-9) {
       mismatched++;
-      fail(`${scn.id} press ${p}: collided AFTER the window opened at ${safeAt}`);
+      fail(scn.windowCloses
+        ? `${scn.id} press ${p}: collided INSIDE the graded window [${safeAt}, ${r2(promisedUntil)}]`
+        : `${scn.id} press ${p}: collided AFTER the window opened at ${safeAt}`);
     }
   }
   collisions += crashes;

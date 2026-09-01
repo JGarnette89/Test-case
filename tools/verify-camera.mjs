@@ -41,6 +41,10 @@ console.log("\n1. UNDECLARED CAMERA IS THE RESTING FRAME, EXACTLY");
 {
   let bad = 0;
   for (const scn of SCENARIOS) {
+    // A scenario that declares a camera is supposed to move — checked
+    // separately below, against the real declaration rather than a
+    // synthetic one.
+    if (scn.camera) continue;
     const spec = specOf(scn);
     const sim = simulate(scn);
     const base = frameFor(spec);
@@ -161,6 +165,56 @@ console.log("\n5. ONCE REVEALED, THE TRACKED ACTOR STAYS INSIDE FRAME");
     }
   }
   if (bad === 0) ok(`stayed inside its frame across ${checked} sampled poses from revealBy to departure`);
+}
+
+/* ---------- every shipped camera earns its keep ----------
+   The sections above prove the mechanism against a synthetic declaration.
+   This one proves the real ones do the job they were added for: a tracked
+   actor has to be ON SCREEN before the ego must decide, because the whole
+   reason to widen the view is that something is coming which the player
+   would otherwise be marked for not seeing. */
+console.log("\n5. SHIPPED CAMERAS REVEAL THEIR ACTOR IN TIME");
+{
+  const declared = SCENARIOS.filter((s) => s.camera?.track?.length);
+  if (!declared.length) console.log("  (none declared)");
+  for (const scn of declared) {
+    const spec = specOf(scn);
+    const sim = simulate(scn);
+    for (const track of scn.camera.track) {
+      const p = track.id === "ego" ? sim.ego : sim.actors.find((a) => a.id === track.id);
+      if (!p) { fail(`${scn.id}: camera tracks "${track.id}", which is not in the scenario`); continue; }
+
+      let seenAt = null;
+      for (let t = 0; t < scn.duration; t += 0.05) {
+        const pose = poseAt(p, t);
+        if (pose.gone) break;
+        if (pose.hidden) continue;
+        const [bx, by, bw, bh] = cameraFor(spec, sim, t, scn.camera).box.split(" ").map(Number);
+        // A margin, because a sliver at the very edge is not "seen".
+        if (pose.x > bx + 20 && pose.x < bx + bw - 20 && pose.y > by + 20 && pose.y < by + bh - 20) {
+          seenAt = r2(t); break;
+        }
+      }
+      /* Same bar the roundabout's exit tell has to clear: appearing at
+         the exact instant of the decision is not a warning. */
+      const MIN_WARNING = 0.6;
+      const decide = scn.ego.arriveAt;
+      if (seenAt == null) { fail(`${scn.id}: ${track.id} never comes into frame at all`); continue; }
+      seenAt <= decide - MIN_WARNING
+        ? ok(`${scn.id}: ${track.id} is on screen at ${seenAt}s, ${r2(decide - seenAt)}s before the ego reaches the line`)
+        : fail(`${scn.id}: ${track.id} appears at ${seenAt}s against a decision at ${decide}s — under the ${MIN_WARNING}s a player needs to act on it`);
+
+      // And the widening has to be what did it: with the camera removed,
+      // the same actor should still be off screen at the decision point.
+      const [fx, fy, fw, fh] = frameFor(spec).box.split(" ").map(Number);
+      const atDecide = poseAt(p, decide);
+      const inFixed = atDecide.x > fx + 20 && atDecide.x < fx + fw - 20
+        && atDecide.y > fy + 20 && atDecide.y < fy + fh - 20;
+      inFixed
+        ? fail(`${scn.id}: ${track.id} is already visible in the resting frame — the camera is decoration here`)
+        : ok(`${scn.id}: and it is NOT visible without the camera — the widening is what reveals it`);
+    }
+  }
 }
 
 console.log("\n" + "=".repeat(66));

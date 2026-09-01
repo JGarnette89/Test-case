@@ -292,6 +292,21 @@ function Vehicle({ p, pose, isEgo, blink, tNow }) {
   if (p.kind === "ped") {
     return (
       <g transform={`translate(${pose.x},${pose.y})`} filter="url(#sh)">
+        {/* Waiting at a pressed button is the whole tell of the `button`
+            scenario, and it is invisible unless it is drawn: a lit
+            pushbox beside them, and a ring so the pair reads as "waiting
+            to cross" rather than "crossing". Once they step off, both go
+            and they are an ordinary pedestrian again. */}
+        {pose.pressed && (
+          <g>
+            <circle r={M(0.95)} fill="none" stroke={C.signal} strokeWidth={M(0.09)}
+              opacity={blink ? 0.85 : 0.35} />
+            <rect x={M(0.5)} y={-M(0.42)} width={M(0.42)} height={M(0.62)} rx={M(0.1)}
+              fill="#2A2D33" stroke={o} strokeWidth={1.4} />
+            <circle cx={M(0.71)} cy={-M(0.11)} r={M(0.13)} fill={C.signal}
+              opacity={blink ? 1 : 0.5} />
+          </g>
+        )}
         <ellipse rx={M(0.22)} ry={M(0.34)} fill={color} stroke={o} strokeWidth={2} />
         <circle cx={M(0.05)} r={M(0.17)} fill="#2A2D33" stroke={o} strokeWidth={1.2} />
       </g>
@@ -341,6 +356,22 @@ function Vehicle({ p, pose, isEgo, blink, tNow }) {
             <circle cx={L / 2 - M(0.22)} cy={side * (Wd / 2 - M(0.24))} r={glow} fill={C.signal} opacity={0.4} />
             <circle cx={L / 2 - M(0.22)} cy={side * (Wd / 2 - M(0.24))} r={M(0.24)} fill={C.signal} stroke={o} strokeWidth={1} />
             <circle cx={-L / 2 + M(0.22)} cy={side * (Wd / 2 - M(0.24))} r={M(0.24)} fill={C.signal} stroke={o} strokeWidth={1} />
+          </g>
+        )}
+        {/* On a call. There is no siren to hear, so the lightbar has to
+            carry the whole tell on its own — alternating red and blue
+            across the roof, plus a battenburg stripe so it still reads as
+            an emergency vehicle in a still frame rather than only while
+            it happens to be flashing. */}
+        {p.emergency && !pose.gone && (
+          <g>
+            <rect x={-M(0.55)} y={-Wd / 2 + M(0.05)} width={M(1.1)} height={Wd - M(0.1)} rx={M(0.12)}
+              fill="#E9EDF2" stroke={o} strokeWidth={1.4} />
+            <rect x={-M(0.5)} y={-Wd / 2 + M(0.1)} width={M(1)} height={(Wd - M(0.2)) / 2} rx={M(0.08)}
+              fill={blink ? "#2F6BE0" : "#E0473F"} />
+            <rect x={-M(0.5)} y={M(0.0)} width={M(1)} height={(Wd - M(0.2)) / 2} rx={M(0.08)}
+              fill={blink ? "#E0473F" : "#2F6BE0"} />
+            <circle r={M(2.2)} fill={blink ? "#2F6BE0" : "#E0473F"} opacity={0.18} />
           </g>
         )}
       </g>

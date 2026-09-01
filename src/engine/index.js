@@ -168,7 +168,22 @@ const V_RIGHT = M(6.2);        // ~22 km/h through a tighter right
    through. Through traffic on a road with no sign for it runs faster
    than anything pulling away from a line ever reaches. */
 const V_THROUGH = M(12.5);     // ~45 km/h
+/* Running to a call, but through a junction it still has to clear as it
+   comes — real crews slow hard for one rather than trusting the siren, and
+   a vehicle doing 54 km/h past a stop line is on screen for well under a
+   second, which is not something a player could be asked to read. Faster
+   than ordinary through traffic, slow enough to see coming. */
+const V_EMERGENCY = M(10);     // ~36 km/h
 const WALK = M(1.35);          // a real walking pace, ~4.9 km/h
+
+/* How long after the button goes in before the walk signal actually
+   changes. This is the whole point of the button: it is a tell with a
+   lead time, so a driver who notices someone press it knows a crossing
+   phase is coming and can decide to go NOW rather than discover it. Long
+   enough that the graded window (GRACE, 2.6s) fits inside it — otherwise
+   the phase would land mid-window and the player would be punished for
+   taking time the scorer told them they had. */
+const PED_BUTTON_WAIT = 6.0;
 
 /* The profile a participant departs on: accelerating if it had stopped,
    already rolling if it never did. Intent picks the cruise figure, so a
@@ -176,6 +191,7 @@ const WALK = M(1.35);          // a real walking pace, ~4.9 km/h
 const CRUISE = { straight: V_STRAIGHT, left: V_LEFT, right: V_RIGHT };
 function motionOf(p) {
   const v = CRUISE[p.intent] ?? V_STRAIGHT;
+  if (p.emergency) return cruiseProfile(p.intent === "straight" ? V_EMERGENCY : v);
   if (p.stops === false) return cruiseProfile(p.intent === "straight" ? V_THROUGH : v);
   return accelProfile(p.intent === "straight" ? ACCEL : TURN_ACCEL, v);
 }
@@ -407,7 +423,13 @@ function basePose(p, t) {
 
   if (mv.onFoot) {
     if (t < p.departAt) {
-      return { ...mv.rest, hidden: t < p.arriveAt - 1.2, waiting: true, progress: 0 };
+      // `pressed` is what the renderer lights the button on: they have
+      // reached the kerb and pushed it, and are now waiting for the walk
+      // signal. Before arriveAt they are still walking up to it.
+      return {
+        ...mv.rest, hidden: t < p.arriveAt - 1.2, waiting: true, progress: 0,
+        pressed: Boolean(p.button) && t >= p.arriveAt,
+      };
     }
     const k = progressAt(mv.traverse, t - p.departAt);
     return { ...poseOn(mv.traverse, k), gone: k >= 1, progress: k };
@@ -539,9 +561,22 @@ export function raExitTime(p) {
    (walking `reverse` is baked in), so this needs no geometry of its own
    and works the same on a wide crossing as a narrow one. */
 const PED_HOLDS_UNTIL = 0.5;
+
+/* Somebody standing at the kerb with the button pressed is NOT on the
+   crossing, and holds none of it. The signal has not changed yet; traffic
+   keeps moving, which is exactly what happens at a real push-button
+   crossing and exactly what makes the press worth reading — it is a
+   warning about a phase that is coming, not the phase itself.
+
+   Without this a waiting pedestrian would block from the moment they
+   became visible, and the button would be indistinguishable from them
+   simply walking out: same block, just announced earlier. */
+const holdsCrossing = (p, pose) =>
+  p.blockUntilClear && !(p.button && pose.waiting) && (pose.progress ?? 0) < PED_HOLDS_UNTIL;
+
 function extentsFor(p, pose, padL, padW, claim, mode) {
   if (p.kind === "ped") {
-    if (mode === "yield" && p.blockUntilClear && (pose.progress ?? 0) < PED_HOLDS_UNTIL) {
+    if (mode === "yield" && holdsCrossing(p, pose)) {
       const cr = crossingFor(p);
       const len = Math.hypot(cr.b.x - cr.a.x, cr.b.y - cr.a.y);
       return { hl: len / 2 + padW, hw: M(1.3) + padW };
@@ -551,7 +586,7 @@ function extentsFor(p, pose, padL, padW, claim, mode) {
   return { hl: CAR_L / 2 + padL + claim / 2, hw: CAR_W / 2 + padW };
 }
 function poseFor(p, pose, claim, mode) {
-  if (p.kind === "ped" && mode === "yield" && p.blockUntilClear && (pose.progress ?? 0) < PED_HOLDS_UNTIL) {
+  if (p.kind === "ped" && mode === "yield" && holdsCrossing(p, pose)) {
     const cr = crossingFor(p);
     return { x: (cr.a.x + cr.b.x) / 2, y: (cr.a.y + cr.b.y) / 2, rot: cr.rot };
   }
@@ -598,6 +633,16 @@ function conflicts(pa, poseA, pb, poseB, padL, padW, claimB, mode) {
 
 /* ---------------- rules engine ---------------- */
 function outranks(a, b) {
+  /* An emergency vehicle on a call outranks everything, and it is checked
+     before anything else so that nothing below can talk its way past it.
+     This is a rule, not an emergent property of arrival order: it does not
+     matter who reached the line first, which side anyone is on, or what
+     priority a scenario stamped on somebody. You yield, and you go when it
+     is safe — which is the whole of what the player has to do, so there is
+     no new action to press. Two emergency vehicles fall through to the
+     ordinary rules, which is as good an answer as any for a case that
+     should not arise. */
+  if (Boolean(a.emergency) !== Boolean(b.emergency)) return Boolean(a.emergency);
   if (a.priority != null || b.priority != null) return (a.priority ?? 0) < (b.priority ?? 0);
 
   /* At a roundabout there is no right-hand rule and no first-come order:
@@ -751,7 +796,14 @@ function applyTraits(p) {
 function schedule(participants) {
   participants.forEach(applyTraits);
   const rolling = participants.filter((p) => !p.stops);
-  rolling.forEach((p) => { p.departAt = p.arriveAt + (p.startDelay || 0); });
+  /* A pedestrian at a push button reaches the kerb, presses, and then
+     waits for the signal. The wait is the readable part — see
+     PED_BUTTON_WAIT — so it belongs in the schedule rather than being
+     faked by moving their arrival later, which would hide the press. */
+  rolling.forEach((p) => {
+    p.departAt = p.arriveAt + (p.startDelay || 0)
+      + (p.button ? (p.buttonWait ?? PED_BUTTON_WAIT) : 0);
+  });
 
   const queued = participants.filter((p) => p.stops)
     .sort((a, b) => (outranks(a, b) ? -1 : 1));
