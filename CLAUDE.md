@@ -171,8 +171,27 @@ src/frame.js             the camera: frameFor and cameraFor — no React
 src/storage.js           adapter chain: artifact host, localStorage, memory
 src/progress.js          what the player has cleared, and the daily record
 src/apps/RightOfWayTiming.jsx  the renderer — every mode is this one component
+src/apps/RoguelikeScreens.jsx  the run's own four screens: branch, draft, both endings
+src/apps/roadArt.jsx     SVG shared by the renderer and those screens
+src/apps/timingStyles.js the style objects both of the above use
 src/apps/MergeRush.jsx   a minigame prototype, deliberately not wired in
 ```
+
+**The renderer is one component, and it is the thing that grows.** Every
+mode — set, daily, endless, roguelike, routes — is a branch inside
+`RightOfWayTiming.jsx`, so a new mode means reading it first. When a
+screen has no business with the timing loop, the press or the grade, it
+belongs beside `RoguelikeScreens.jsx` instead: take a run and a callback,
+render, and let `roguelike.js` decide what the callback actually does.
+
+**The scenario draw must stay pure.** `drawn` is a `useMemo` over
+`(source, drawSeed)` and nothing else. Do not seed it from `Date.now()`
+and do not write to `seenShapes` inside it. `useMemo` is a performance
+hint React may discard and recompute whenever it likes: a clock-seeded
+draw silently swaps the intersection mid-play, taking `sim`, `safeAt` and
+the graded window with it. Advance `drawSeed` deliberately (`nextDraw()`)
+when a new situation is actually wanted, and record what was drawn in an
+effect after commit.
 
 **Never author the answer.** The safe window is computed by simulating
 footprints through the intersection. Do not hardcode "window opens at 3.2s". If
