@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye, Home, Check, Sparkles, Skull, Zap, Shuffle } from "lucide-react";
+import { Play, RotateCcw, HelpCircle, X, ChevronRight, Gauge, AlertTriangle, Eye, Home, Check, Sparkles, Zap, Shuffle } from "lucide-react";
 
 /* This file is now a renderer: it draws the numbers the engine produces and
    collects the player's press. All the judgment lives in ../engine. */
@@ -8,7 +8,7 @@ import { SCENARIOS } from "../engine/scenarios.js";
 import {
   M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
   CROSS, STEP, TIE, spanOf,
-  crossingOf, BAR_HALF, STOP_LINE_AT, RA_OUTER, RA_ISLAND,
+  crossingOf, BAR_HALF, STOP_LINE_AT, RA_OUTER,
   TRAITS, traitTells, poseAt, signalShowing, forwardClaim, conflicts,
   outranks, earliestClear, schedule, simulate, safeAtFor,
 } from "../engine/index.js";
@@ -21,10 +21,16 @@ import { environmentFor, scatter } from "../environments.js";
 import { endlessScenario, signatureOf } from "../engine/compose.js";
 import {
   startRun as startRoguelikeRun, recordSituation, applyDraft, drawForRun,
-  summary as roguelikeSummary, chooseBranch, stageById, bossById,
-  spendConsumable, CONSUMABLES, INSIGHT_CACHE,
+  chooseBranch, spendConsumable, CONSUMABLES,
 } from "../engine/roguelike.js";
 import { TRAIT_CATALOG } from "../engine/traits.js";
+/* The run's own screens and the art they share — see RoguelikeScreens.jsx
+   for why those four live outside this file. */
+import { Roundabout } from "./roadArt.jsx";
+import { st } from "./timingStyles.js";
+import {
+  RoguelikeRunSummary, RoguelikeWinSummary, RoundaboutBody, TraitDraftScreen,
+} from "./RoguelikeScreens.jsx";
 import { crossSpec, hasLeg, controlOf, specOf, boxHalf, legOf } from "../engine/road.js";
 import { cameraFor } from "../frame.js";
 import {
@@ -119,41 +125,6 @@ function Crossing({ side, road }) {
   return <>{bars}</>;
 }
 
-/* Drawn from the same radii the engine drives on, so what is painted and
-   what the cars do cannot drift apart. Give-way markings sit on the entry
-   half of each approach only — the exit half is not yours to yield on. */
-function Roundabout({ island = C.grass }) {
-  const Edge = (p) => <line {...p} stroke={C.line} strokeWidth={M(0.15)} />;
-  const set = RA_OUTER + M(2);
-  const give = [
-    { x1: CX, y1: CY + set, x2: CX + HALF, y2: CY + set },
-    { x1: CX - HALF, y1: CY - set, x2: CX, y2: CY - set },
-    { x1: CX - set, y1: CY, x2: CX - set, y2: CY + HALF },
-    { x1: CX + set, y1: CY - HALF, x2: CX + set, y2: CY },
-  ];
-  return (
-    <>
-      <rect x={CX - HALF} y={0} width={HALF * 2} height={H} fill={C.asphalt} />
-      <rect x={0} y={CY - HALF} width={W} height={HALF * 2} fill={C.asphalt} />
-
-      <Edge x1={CX - HALF} y1={0} x2={CX - HALF} y2={H} />
-      <Edge x1={CX + HALF} y1={0} x2={CX + HALF} y2={H} />
-      <Edge x1={0} y1={CY - HALF} x2={W} y2={CY - HALF} />
-      <Edge x1={0} y1={CY + HALF} x2={W} y2={CY + HALF} />
-
-      {/* The circulating carriageway, painted over the approach stubs. */}
-      <circle cx={CX} cy={CY} r={RA_OUTER} fill={C.asphalt} stroke={C.line} strokeWidth={M(0.15)} />
-      {/* Central island, kerbed. */}
-      <circle cx={CX} cy={CY} r={RA_ISLAND} fill={island} stroke={C.line} strokeWidth={M(0.3)} />
-      <circle cx={CX} cy={CY} r={RA_ISLAND - M(0.9)} fill={shade(island, 0.06)} />
-
-      {give.map((g, i) => (
-        <line key={i} {...g} stroke={C.line} strokeWidth={M(0.4)}
-          strokeDasharray={`${M(0.6)} ${M(0.5)}`} />
-      ))}
-    </>
-  );
-}
 
 /* Stop lines. One on every leg — a four-way stop has four, and so does a
    signalised crossroad.
@@ -427,161 +398,6 @@ function RunSummary({ run }) {
   );
 }
 
-/* A roguelike run ended — a critical fault, same as a road test, no
-   partial credit for the situations that never happened. */
-function RoguelikeRunSummary({ run }) {
-  const s = roguelikeSummary(run);
-  return (
-    <div style={{ ...st.tells, background: "rgba(224,82,82,0.10)", borderColor: "rgba(224,82,82,0.30)" }}>
-      <div style={{ ...st.tellsHead, color: C.red, display: "flex", alignItems: "center", gap: 6 }}>
-        <Skull size={14} />Run over — {s.situationsCleared} cleared
-      </div>
-      <div style={{ fontSize: 13, color: "#c8cdd4", lineHeight: 1.55 }}>
-        {s.traits.length
-          ? <>You drafted {s.traits.length} trait{s.traits.length === 1 ? "" : "s"}: {s.traits.map((id) => TRAIT_CATALOG.find((t) => t.id === id)?.name).join(", ")}.</>
-          : "No traits drafted this run."}
-        {" "}Average {s.average} out of 100, {s.points} points, best {s.best}.
-      </div>
-    </div>
-  );
-}
-
-/* The one win state: every stage cleared, every boss cleared, and all
-   four Checkride legs clean of a critical fault. */
-function RoguelikeWinSummary({ run }) {
-  const s = roguelikeSummary(run);
-  return (
-    <div style={{ ...st.tells, background: "rgba(59,170,81,0.10)", borderColor: "rgba(59,170,81,0.30)" }}>
-      <div style={{ ...st.tellsHead, color: C.green, display: "flex", alignItems: "center", gap: 6 }}>
-        <Check size={14} />Passed — the Checkride is clear
-      </div>
-      <div style={{ fontSize: 13, color: "#c8cdd4", lineHeight: 1.55 }}>
-        {s.traits.length
-          ? <>You drafted {s.traits.length} trait{s.traits.length === 1 ? "" : "s"}: {s.traits.map((id) => TRAIT_CATALOG.find((t) => t.id === id)?.name).join(", ")}.</>
-          : "No traits drafted this run."}
-        {" "}{s.situationsCleared} situations cleared across all {s.stagesCleared} stages and the full Checkride.
-        Average {s.average} out of 100, {s.points} points, best {s.best}.
-      </div>
-    </div>
-  );
-}
-
-/* The roundabout: a stage's boss is down, and the run stops here to pick
-   what comes next. Decorative circle up top (the Roundabout component
-   already exists for the roundabout scenario layout — reused verbatim),
-   the actual choice is plain buttons below, same pattern as a trait
-   draft: pick one, and that picks the next stage's shape as well as its
-   difficulty. The cache is not a stage — id "cache" never resolves
-   through stageById — so it gets its own card rather than being folded
-   into the stage.map below. */
-function RoundaboutBody({ run, onPick, onRerollBranch }) {
-  const options = run.pendingBranch?.options ?? [];
-  const stageOptions = options.filter((id) => id !== INSIGHT_CACHE.id);
-  const hasCache = options.includes(INSIGHT_CACHE.id);
-  const rerollCost = CONSUMABLES.find((c) => c.id === "reroll-branch").cost;
-  return (
-    <>
-      <div style={st.brief}>
-        {run.clearedStages.length === 0
-          ? "Pick where the run starts."
-          : `${run.clearedStages.length} of ${run.clearedStages.length + stageOptions.length} stages cleared. Pick what's next.`}
-      </div>
-      <div style={st.board}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "100%", display: "block" }}>
-          <rect width={W} height={H} fill={C.grass} />
-          <Roundabout island={C.grass} />
-        </svg>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-        {stageOptions.map((id) => {
-          const stage = stageById(id);
-          const boss = bossById(stage.bossId);
-          return (
-            <button
-              key={id}
-              className="btn"
-              style={{
-                width: "100%", textAlign: "left", display: "flex", flexDirection: "column",
-                alignItems: "flex-start", justifyContent: "center", gap: 3, padding: "10px 12px", minHeight: 64,
-              }}
-              onClick={() => onPick(id)}
-            >
-              <span style={{ fontFamily: FONT_D, fontWeight: 700, fontSize: 14.5, letterSpacing: 0.5 }}>
-                {stage.name}
-              </span>
-              <span style={{ fontSize: 12.5, color: "#a8aeb6", lineHeight: 1.4, fontWeight: 400 }}>
-                {stage.theme}
-              </span>
-              <span style={{ fontSize: 11.5, color: C.amber, fontWeight: 600, letterSpacing: 0.3 }}>
-                BOSS: {boss.title}
-              </span>
-            </button>
-          );
-        })}
-        {hasCache && (
-          <button
-            key={INSIGHT_CACHE.id}
-            className="btn"
-            style={{
-              width: "100%", textAlign: "left", display: "flex", flexDirection: "column",
-              alignItems: "flex-start", justifyContent: "center", gap: 3, padding: "10px 12px", minHeight: 64,
-              borderColor: "rgba(255,201,60,0.4)",
-            }}
-            onClick={() => onPick(INSIGHT_CACHE.id)}
-          >
-            <span style={{ fontFamily: FONT_D, fontWeight: 700, fontSize: 14.5, letterSpacing: 0.5, color: C.yellow, display: "flex", alignItems: "center", gap: 6 }}>
-              <Zap size={14} />{INSIGHT_CACHE.name}
-            </span>
-            <span style={{ fontSize: 12.5, color: "#a8aeb6", lineHeight: 1.4, fontWeight: 400 }}>
-              +{INSIGHT_CACHE.insightAward} Insight, no boss — then choose again.
-            </span>
-          </button>
-        )}
-      </div>
-      <button
-        className="btn" style={{ width: "100%", marginTop: 10, fontSize: 12.5 }}
-        disabled={run.insight < rerollCost}
-        onClick={onRerollBranch} title="Redraw what's on offer here"
-      >
-        <Shuffle size={14} />Reroll the roundabout ({rerollCost})
-      </button>
-    </>
-  );
-}
-
-/* Choose 1 of 3, offered every mods.draftEvery clean clears. Replaces the
-   normal "Next situation" button while a choice is pending — picking one
-   is what advances, not a separate step in front of it. */
-function TraitDraftScreen({ options, onPick }) {
-  return (
-    <div style={{ ...st.tells, background: "rgba(59,170,81,0.08)", borderColor: "rgba(59,170,81,0.28)" }}>
-      <div style={{ ...st.tellsHead, color: C.green, display: "flex", alignItems: "center", gap: 6 }}>
-        <Sparkles size={14} />Choose a trait
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
-        {options.map((t) => (
-          <button
-            key={t.id}
-            className="btn"
-            style={{
-              width: "100%", textAlign: "left", display: "flex", flexDirection: "column",
-              alignItems: "flex-start", justifyContent: "center", gap: 3, padding: "10px 12px", minHeight: 56,
-            }}
-            onClick={() => onPick(t.id)}
-          >
-            <span style={{ fontFamily: FONT_D, fontWeight: 700, fontSize: 14.5, letterSpacing: 0.5 }}>
-              {t.name}
-            </span>
-            <span style={{ fontSize: 12.5, color: "#a8aeb6", lineHeight: 1.4, fontWeight: 400 }}>
-              {t.description}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ================= GAME ================= */
 /* `routeId` turns this from single intersections into one continuous drive.
    `scenarioId` starts the single-intersection list on a chosen situation
@@ -628,10 +444,25 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
      a fresh one each time, "daily" is seeded by the date so everyone gets
      the same one without anything being coordinated, "roguelike" draws
      through the current run's own bias (see roguelike.js). */
-  const [seed, setSeed] = useState(0);
+  /* The draw seed, advanced deliberately whenever a NEW situation is
+     wanted — never read from the clock while rendering.
+
+     useMemo is a performance hint, not a promise: React may discard a
+     memo and recompute it whenever it likes. A draw seeded by
+     `Date.now()` inside the memo is therefore not stable — recompute it
+     one second later and it hands back a different intersection, while
+     `sim`, `safeAt` and the whole graded window quietly re-derive
+     against a scene the player was never shown. Seeding from state
+     instead makes the memo a pure function of (source, drawSeed): React
+     may recompute it as often as it wants and always gets the same
+     scenario back. */
+  const [drawSeed, setDrawSeed] = useState(() => Date.now() % 100000);
+  const nextDraw = useCallback(() => setDrawSeed((s) => (s + 7717) % 100000), []);
+
   /* Shapes already handed out this run, so endless does not repeat itself.
      A ref rather than state: it must not cause a redraw, and the composer
-     only reads it when a new screen is drawn. */
+     only reads it when a new screen is drawn. Written in an effect after
+     commit, never during render — see the recorder below the draw. */
   const seenShapes = useRef([]);
 
   /* The roguelike run. A ref mirrors the state, updated inside the same
@@ -653,34 +484,39 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
     });
   }, []);
 
+  /* Pure in (source, drawSeed): same inputs, same scenario, however many
+     times React chooses to run it. Reads seenShapes but never writes it —
+     the write happens in the effect below, after commit. */
   const drawn = React.useMemo(() => {
     if (source === "endless") {
-      const scn = endlessScenario((Date.now() % 100000) + seed * 7717, seenShapes.current);
-      if (scn) {
-        seenShapes.current = [...seenShapes.current.slice(-40), signatureOf(scn)];
-        return scn;
-      }
-      return generateScenario((Date.now() % 100000) + seed * 7717);
+      return endlessScenario(drawSeed, seenShapes.current) ?? generateScenario(drawSeed);
     }
     if (source === "roguelike") {
       const r = endlessRunRef.current;
       // Nothing to draw at a roundabout screen — there is no scenario
       // being played, only a stage to choose.
       if (!r || r.stage === "roundabout") return null;
-      const scn = drawForRun(r, (Date.now() % 100000) + seed * 7717, seenShapes.current);
-      if (scn) {
-        // A boss or a Checkride leg is fixed content, not a fresh
-        // composition — nothing to track against future repeats.
-        if (!scn.boss && r.stage !== "checkride") {
-          seenShapes.current = [...seenShapes.current.slice(-40), signatureOf(scn)];
-        }
-        return scn;
-      }
-      return generateScenario((Date.now() % 100000) + seed * 7717);
+      return drawForRun(r, drawSeed, seenShapes.current) ?? generateScenario(drawSeed);
     }
     if (source === "daily") return dailyScenario();
     return null;
-  }, [source, seed]);
+  }, [source, drawSeed]);
+
+  /* Remember the SHAPE of what was drawn so the next draw can avoid
+     repeating it. Only generated draws take part: a boss and a Checkride
+     leg are fixed content, and recording those would make a later
+     composed scene look like a repeat of something it has nothing to do
+     with. An effect rather than a line in the memo above, because a memo
+     that mutates on the way past is a side effect during render — it
+     double-fires under StrictMode and silently changes what the next
+     recompute would return. */
+  useEffect(() => {
+    if (!drawn?.generated) return;
+    if (source !== "endless" && source !== "roguelike") return;
+    const sig = signatureOf(drawn);
+    if (seenShapes.current[seenShapes.current.length - 1] === sig) return;
+    seenShapes.current = [...seenShapes.current.slice(-40), sig];
+  }, [drawn, source]);
 
   const scn = run && !planFailed ? currentLeg(run) : (drawn ?? SCENARIOS[idx]);
   const runOver = run?.over ?? false;
@@ -850,7 +686,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   // the board for the intersection you are now approaching.
   function next() {
     stopLoop();
-    if (source === "endless" || source === "roguelike") setSeed((s) => s + 1);
+    if (source === "endless" || source === "roguelike") nextDraw();
     else if (!run) setIdx((i) => (i + 1) % SCENARIOS.length);
     retry();
   }
@@ -865,7 +701,8 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   }
   function startNewRun() {
     setEndlessRun(startRoguelikeRun(Date.now() % 100000));
-    setSeed((s) => s + 1);
+    seenShapes.current = [];
+    nextDraw();
     setSession(emptyTally);
     retry();
   }
@@ -887,7 +724,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
   function buyReroll() {
     if (!endlessRun) return;
     setEndlessRun((cur) => spendConsumable(cur, "peek-reroll"));
-    setSeed((s) => s + 1);
+    nextDraw();
     retry();
   }
   function buyRevealBurst() {
@@ -1370,57 +1207,3 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
     </div>
   );
 }
-
-const st = {
-  app: {
-    position: "relative", width: "100%", minHeight: "100dvh", background: C.bg, color: C.white,
-    fontFamily: FONT_U, display: "flex", flexDirection: "column", gap: 10,
-    padding: `calc(12px + env(safe-area-inset-top,0px)) 12px calc(12px + env(safe-area-inset-bottom,0px))`,
-    maxWidth: 540, margin: "0 auto", userSelect: "none",
-  },
-  head: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
-  title: { fontFamily: FONT_D, fontWeight: 700, fontSize: 26, letterSpacing: 1.5, lineHeight: 1 },
-  sub: { fontSize: 12.5, color: "#8b9199", marginTop: 3 },
-  chip: {
-    display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,0.07)",
-    padding: "9px 11px", borderRadius: 9, fontSize: 13, fontWeight: 600, color: "#c8cdd4",
-  },
-  brief: { fontSize: 13.5, color: "#c8cdd4", lineHeight: 1.5 },
-  board: {
-    borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
-  },
-  hint: { fontSize: 13, color: "#a8aeb6", lineHeight: 1.5 },
-  result: { background: "rgba(32,35,40,0.94)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 14, padding: 15 },
-  readout: { fontSize: 13, color: "#c8cdd4", lineHeight: 1.55, marginTop: 12 },
-  bandNote: { fontSize: 12.5, color: "#8b9199", marginTop: 4, lineHeight: 1.45 },
-  actionRow: { display: "flex", gap: 8, alignItems: "stretch" },
-  creepCount: { marginLeft: 6, opacity: 0.75, fontVariantNumeric: "tabular-nums" },
-  markRow: {
-    display: "flex", alignItems: "center", gap: 10, padding: "8px 0",
-    borderTop: "1px solid rgba(255,255,255,0.07)", fontSize: 13,
-  },
-  markScore: {
-    marginLeft: "auto", fontFamily: FONT_D, fontWeight: 700, fontSize: 16,
-    fontVariantNumeric: "tabular-nums",
-  },
-  scoreBox: {
-    flexShrink: 0, minWidth: 74, textAlign: "center", padding: "6px 8px 7px",
-    borderRadius: 11, border: "1px solid", background: "rgba(0,0,0,0.22)",
-  },
-  scoreNum: { fontFamily: FONT_D, fontSize: 30, fontWeight: 700, lineHeight: 1 },
-  scoreLabel: {
-    fontSize: 10, letterSpacing: 0.8, textTransform: "uppercase",
-    color: "#8b9199", marginTop: 3, fontWeight: 600,
-  },
-  lesson: { fontSize: 13.5, color: "#e2e6ea", lineHeight: 1.6, marginTop: 10, borderLeft: `3px solid ${C.yellow}`, paddingLeft: 11 },
-  tells: { marginTop: 12, background: "rgba(240,169,60,0.10)", border: "1px solid rgba(240,169,60,0.28)", borderRadius: 10, padding: "10px 12px" },
-  tellsHead: { fontFamily: FONT_D, fontSize: 13, fontWeight: 700, letterSpacing: 1, color: C.amber, marginBottom: 6, textTransform: "uppercase" },
-  tellRow: { display: "flex", gap: 7, alignItems: "flex-start", fontSize: 12.5, lineHeight: 1.5, color: "#d8cdb8", marginTop: 3 },
-  modalWrap: {
-    position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 40,
-    display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
-  },
-  modal: { background: "#22252A", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: 18, maxWidth: 420, width: "100%" },
-  p: { fontSize: 13.5, lineHeight: 1.6, color: "#c8cdd4", margin: "9px 0" },
-};
