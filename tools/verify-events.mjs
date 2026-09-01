@@ -20,9 +20,12 @@
    ===================================================================== */
 import { C } from "../src/theme.js";
 import {
-  simulate, safeAtFor, poseAt, spanOf, movementOf, conflicts, crossingOf, M,
+  simulate, safeAtFor, poseAt, spanOf, movementOf, conflicts, crossingOf, eventsAreReadable, M,
 } from "../src/engine/index.js";
 import { SCENARIOS, S } from "../src/engine/scenarios.js";
+import { ENDLESS_BRIEFS, composeScenario } from "../src/engine/compose.js";
+import { cameraFor } from "../src/frame.js";
+import { specOf } from "../src/engine/road.js";
 import { GRACE } from "../src/engine/score.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -196,6 +199,53 @@ console.log("\n4. THE EMERGENCY SCENARIO IS FAIR TO THE PLAYER");
       ? ok(`it crosses at ${r2(kmh)} km/h — quick, but slow enough to see coming`)
       : fail(`it crosses at ${r2(kmh)} km/h, too fast to be read in the frame available`);
   }
+}
+
+/* ================= GENERATED, NOT JUST HAND-AUTHORED ================= */
+console.log("\n5. THE GENERATORS PRODUCE BOTH, AND ONLY WHEN THEY WORK");
+{
+  let drawn = 0, buttons = 0, ambs = 0;
+  let unreadable = 0, notPrior = 0, unframed = 0, freeAmb = 0;
+  for (let seed = 1; seed <= 260; seed++) {
+    const scn = composeScenario(ENDLESS_BRIEFS[seed % ENDLESS_BRIEFS.length], seed);
+    if (!scn) continue;
+    drawn++;
+    if (!eventsAreReadable(scn)) unreadable++;
+    if (scn.actors.some((a) => a.kind === "ped" && a.button)) buttons++;
+
+    const amb = scn.actors.find((a) => a.emergency);
+    if (!amb) continue;
+    ambs++;
+    const sim = simulate(scn);
+    if (!sim.priors.some((p) => p.id === amb.id)) notPrior++;
+    if (safeAtFor(sim) - scn.ego.arriveAt < 0.3) freeAmb++;
+
+    // On screen before the decision, given the camera the draw declared.
+    let seen = null;
+    for (let t = 0; t <= scn.ego.arriveAt; t += 0.05) {
+      const pose = poseAt(sim.actors.find((a) => a.id === amb.id), t);
+      if (pose.gone) break;
+      const [bx, by, bw, bh] = cameraFor(specOf(scn), sim, t, scn.camera).box.split(" ").map(Number);
+      if (pose.x > bx + 20 && pose.x < bx + bw - 20 && pose.y > by + 20 && pose.y < by + bh - 20) { seen = t; break; }
+    }
+    if (seen == null || seen > scn.ego.arriveAt - 0.6) unframed++;
+  }
+
+  console.log(`  ${drawn} draws: ${buttons} with a button (${r2(buttons / drawn * 100)}%), ${ambs} with an emergency vehicle (${r2(ambs / drawn * 100)}%)`);
+  buttons > 0 ? ok("the composer does produce crossing buttons") : fail("no generated draw carried a crossing button");
+  ambs > 0 ? ok("and does produce emergency vehicles") : fail("no generated draw carried an emergency vehicle");
+  unreadable === 0
+    ? ok("every generated draw's events are readable before the decision")
+    : fail(`${unreadable} generated draw(s) carry an event the player could not read in time`);
+  notPrior === 0
+    ? ok("every generated emergency vehicle takes priority")
+    : fail(`${notPrior} generated emergency vehicle(s) were not priors`);
+  unframed === 0
+    ? ok("every generated emergency vehicle is in frame before the decision")
+    : fail(`${unframed} generated emergency vehicle(s) were still off screen when the player had to commit`);
+  freeAmb === 0
+    ? ok("and every one of them actually costs the ego time")
+    : fail(`${freeAmb} generated emergency vehicle(s) cost the ego nothing — decoration`);
 }
 
 console.log("\n" + "=".repeat(66));

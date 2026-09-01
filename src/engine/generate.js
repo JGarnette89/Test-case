@@ -13,7 +13,8 @@
    a server: the date IS the seed.
    ===================================================================== */
 import {
-  simulate, poseAt, conflicts, forwardClaim, spanOf, STEP, OPPOSITE, RIGHT_OF,
+  simulate, poseAt, conflicts, forwardClaim, spanOf, eventsAreReadable,
+  STEP, OPPOSITE, RIGHT_OF,
 } from "./index.js";
 import { EARLY_TOLERANCE, GRACE } from "./score.js";
 import { PULL_STEP } from "./sight.js";
@@ -200,6 +201,14 @@ export function drawScenario(seed) {
         priority: -1,
         blockUntilClear: true,
         reverse: r() < 0.5,
+        /* Some are waiting at a push button instead of already crossing —
+           they hold none of it while the signal is unchanged, so the road
+           is still yours (holdsCrossing in index.js). Kept a minority so
+           that a pedestrian still ordinarily means wait; the skill is
+           telling the two apart, not learning to ignore them. The draw is
+           only kept if the press lands early enough to be read, which the
+           acceptance loop below checks. */
+        ...(r() < 0.6 ? { button: true } : {}),
       });
       continue;
     }
@@ -245,6 +254,7 @@ export function drawScenario(seed) {
   if (think > ACCEPT.maxThink) return null;                  // a wait, not a decision
   if (sim.legalAt > ACCEPT.maxLegalAt) return null;          // outside any sensible clock
   if (unsafeWithinGrace(sim)) return null;                   // not safe somewhere the scorer still calls good
+  if (!eventsAreReadable(scn)) return null;                  // a press the driver could not have seen in time
   // Either the road is yours on arrival, or the wait is long enough to be
   // a real yield. Nothing in between.
   if (think > STEP && think <= ACCEPT.ambiguousBelow) return null;

@@ -837,6 +837,42 @@ export function simulate(scn) {
   return { ego, actors, legalAt, priors };
 }
 
+/* An event during the wait is only an event if the player can see it in
+   time. A button pressed after the driver is already at the line is not a
+   warning about a coming phase, it is a surprise — and the whole value of
+   the press is that it arrives BEFORE the decision.
+
+   Lives here rather than in either generator because it is a rule about
+   scenarios, and both generators have to apply the same one. MIN_WARNING
+   matches the bar the roundabout's exit tell clears: appearing at the
+   instant of the decision is not a warning.
+
+   Hand-authored scenarios are held to it too, by verify-events.mjs. */
+export const MIN_WARNING = 0.6;
+
+/* An emergency vehicle has to arrive close enough behind the decision to
+   be on screen when it is made, and not so close the driver has no time
+   to act. Stated as TIME rather than as anything about the frame on
+   purpose: how much road fits on screen is a renderer's business, and a
+   3D view would answer it differently. A scenario says "this one matters
+   early" by declaring a `camera`; whether the 2D renderer actually got it
+   into shot is checked separately, in verify-camera.mjs. */
+export const EMERGENCY_LEAD = [0.5, 2.5];
+
+export function eventsAreReadable(scn) {
+  const decide = scn.ego.arriveAt;
+  for (const a of scn.actors) {
+    // Only the press needs this lead. A pedestrian simply walking out is
+    // not an event during the wait, it is the traffic itself.
+    if (a.button && a.arriveAt > decide - MIN_WARNING) return false;
+    if (a.emergency) {
+      const lead = a.arriveAt - decide;
+      if (lead < EMERGENCY_LEAD[0] || lead > EMERGENCY_LEAD[1]) return false;
+    }
+  }
+  return true;
+}
+
 /* safeAt, on demand rather than folded into simulate(). Composition and
    generation call simulate() deep inside their own search loops — up to
    90 tries per accepted draw, sometimes several simulates per try — and

@@ -394,7 +394,7 @@ node tools/verify-compose.mjs      briefs produce scenes that match them
 node tools/verify-camera.mjs       the camera opens gradually, never shrinks, keeps a revealed actor in frame
 node tools/verify-roguelike.mjs    traits and Insight: the safety wall, the one-way dependency
 node tools/verify-stages.mjs       stages, bosses, the branch graph, a full run end to end
-node tools/verify-events.mjs       the crossing button and the emergency vehicle: rule, readable, worth reading
+node tools/verify-events.mjs       the crossing button and the emergency vehicle: rule, readable, worth reading, generated
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
@@ -545,6 +545,28 @@ invisible to the encroachment fault because it only ever watches priors — in
   `safeAtFor`; what is permitted is only the region the scorer has already
   called undue delay. Do not set that flag to quiet a failure — a window
   closing anywhere it was not designed to is a real bug.
+- **Events in generation: done.** Both generators place a crossing
+  button (~11% of composed draws) and, more rarely, an emergency vehicle
+  (~3%). Three things are MEASURED per draw rather than assumed, and a
+  draw failing any of them is thrown away like one that misses its brief:
+  the press lands early enough to be read (`eventsAreReadable`, in
+  index.js so both generators share one rule); the emergency vehicle is
+  actually in frame before the decision, given the camera the draw
+  declares (`framedInTime`); and it actually moves the window
+  (`emergencyEarnsItsPlace`, a controlled comparison against the same
+  scene with the call switched off — one crossing the far side of a
+  junction genuinely costs nothing, which is correct and is exactly why
+  it has to be checked).
+
+  Two things worth knowing if these get tuned. The emergency vehicle
+  REPLACES a car rather than joining them, and is kept out of `heavy`
+  briefs: it pushes the window past itself, so every extra road user
+  still arriving after that is another chance for the window to land on
+  somebody, which `windowIsSafe` then rejects — adding rather than
+  swapping dropped the yield to under 1%. And `framedInTime` is the one
+  place composition looks at the 2D frame; it checks a declaration the
+  scenario makes, while `eventsAreReadable` states the requirement in
+  time alone, so another renderer can satisfy it its own way.
 - **Pedestrians in generation: done.** They rotate correctly (`crossingOf`
   is relative to the actor's own leg), and both generators place one now —
   `generate.js` (Daily) on 22% of draws, `compose.js` (Endless, ported from

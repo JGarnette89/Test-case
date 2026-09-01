@@ -16,8 +16,12 @@
 
    Pure, and seeded: the same brief and seed give the same scene forever.
    ===================================================================== */
-import { simulate, poseAt, conflicts, spanOf, M, CX, CY, LANE, STEP } from "./index.js";
+import {
+  simulate, poseAt, conflicts, spanOf, eventsAreReadable, MIN_WARNING, EMERGENCY_LEAD,
+  M, CX, CY, LANE, STEP,
+} from "./index.js";
 import { whatEgoSees, sightBlockersOf } from "./sight.js";
+import { cameraFor } from "../frame.js";
 import { GRACE } from "./score.js";
 import { PULL_STEP } from "./sight.js";
 import {
@@ -210,6 +214,12 @@ export function compose(brief, seed) {
   const count = Math.round(span(r, traffic.actors[0], traffic.actors[1]));
   // The ego always holds; what varies is whether anyone else has to.
   const egoStops = true;
+  /* Decided before the actors rather than after them, because whether a
+     pedestrian can be given a push button depends on it: a press the
+     driver is already past cannot be read, and building one only to throw
+     the whole draw away costs a try for no reason. */
+  const egoArrive = span(r, 1.0, 2.2);
+  const egoIntent = pick(r, legal);
   /* Under signals only one pair of legs moves at a time. The ego is held,
      so its own axis is held with it and the crossing axis has the green.
      Letting every other leg roll was the same as giving all four a green
@@ -230,6 +240,18 @@ export function compose(brief, seed) {
     if (r() < 0.22) {
       const pedLegs = [from, OPPOSITE[from], RIGHT_OF[from]].filter((s) => s && hasLeg(spec, s));
       if (pedLegs.length) {
+        /* Some of them are waiting at a push button rather than already
+           crossing, which is a different answer to the same picture: the
+           signal has not changed, so they hold none of it and the road is
+           still yours (see holdsCrossing in index.js). Generated rather
+           than hand-authored only, because the whole skill is telling the
+           two apart when you did not know which one you were getting.
+
+           Not so often that a pedestrian stops meaning "wait" — the
+           default reading has to stay the common one, or the lesson
+           inverts into "pedestrians never matter". */
+        // Only where the press would land early enough to be read.
+        const atButton = r() < 0.6 && when <= egoArrive - MIN_WARNING;
         actors.push({
           id: `p${i}`,
           from: pick(r, pedLegs),
@@ -243,6 +265,7 @@ export function compose(brief, seed) {
           priority: -1,
           blockUntilClear: true,
           reverse: r() < 0.5,
+          ...(atButton ? { button: true } : {}),
         });
         when = Math.round((when + span(r, traffic.gap[0], traffic.gap[1])) * 10) / 10;
         continue;
@@ -283,6 +306,55 @@ export function compose(brief, seed) {
   }
   if (!actors.length) return null;
 
+  /* Occasionally one of them is on a call. Rare on purpose — an emergency
+     vehicle that turns up every third junction stops being the thing that
+     rearranges the right of way and becomes just another car with lights.
+
+     Added after the ordinary traffic rather than inside the loop, because
+     its arrival is pinned relative to the ego's decision (see
+     EMERGENCY_LEAD in index.js) instead of following the gap sequence:
+     it has to land close enough behind the decision to be on screen when
+     it is made, and far enough to be acted on. */
+  let camera;
+  /* Not in heavy traffic. An emergency vehicle pushes the window PAST
+     itself, and in a busy scene that lands the window on whoever was
+     arriving next — which windowIsSafe then rightly rejects, so a heavy
+     brief mostly burns tries producing draws it will throw away. It also
+     does not need the company: the ambulance IS the event, and a quieter
+     junction is where "the road was yours and it still is not" reads
+     most clearly. */
+  if ((brief.traffic ?? "busy") !== "heavy" && r() < 0.2) {
+    const side = pick(r, legs.filter((s) => s !== from));
+    const opts = validIntents(spec, side);
+    if (opts.length) {
+      /* It REPLACES a car rather than joining them. An emergency vehicle
+         pushes the ego's window past itself, and every extra road user
+         still arriving after that is another chance for the window to
+         land on somebody — which windowIsSafe then rejects. Swapping
+         rather than adding keeps the junction about as busy as the brief
+         asked for and makes the draw far likelier to survive. */
+      if (actors.length > 1) actors.pop();
+      const lead = span(r, EMERGENCY_LEAD[0] + 0.2, EMERGENCY_LEAD[1] - 0.4);
+      actors.push({
+        id: "amb",
+        from: side,
+        intent: "straight",
+        arriveAt: Math.round((egoArrive + lead) * 10) / 10,
+        stops: false,
+        lane: 0,
+        kind: "car",
+        colorKey: "red",
+        name: "Ambulance",
+        emergency: true,
+        signal: null,
+      });
+      /* Declared so the renderer widens to bring it into shot before the
+         decision. Whether that actually worked is measured below rather
+         than assumed — the frame depends on how wide this junction is. */
+      camera = { track: [{ id: "amb", revealBy: lead + 2.2, rampFor: 2.5, pad: 30 }] };
+    }
+  }
+
   const scn = {
     id: `composed-${seed}`,
     generated: true,
@@ -293,8 +365,9 @@ export function compose(brief, seed) {
     brief: "",
     control: spec.legs[from].control === "signal" ? "signal" : "stop",
     road: spec,
+    ...(camera ? { camera } : {}),
     duration: 18,
-    ego: { from, intent: pick(r, legal), arriveAt: span(r, 1.0, 2.2), stops: true, colorKey: "blue" },
+    ego: { from, intent: egoIntent, arriveAt: egoArrive, stops: true, colorKey: "blue" },
     actors,
   };
 
@@ -313,6 +386,58 @@ export function compose(brief, seed) {
   return scn;
 }
 
+/* Did the camera this scene declared actually get its actor into shot
+   before the decision? Measured, not assumed — how much road fits on
+   screen depends on how wide the junction turned out to be, and a wide
+   arterial frames very differently from a two-lane cross. A draw whose
+   emergency vehicle is still off screen when the player has to commit
+   would mark them for not seeing something invisible, so it is thrown
+   away like any other draw that does not measure up.
+
+   This is the one place composition looks at the 2D frame. It is a check
+   on a declaration the scenario makes, not a rule the engine derives —
+   `eventsAreReadable` above states the renderer-independent requirement,
+   and another renderer would satisfy it its own way. */
+function framedInTime(scn) {
+  if (!scn.camera?.track?.length) return true;
+  const sim = simulate(scn);
+  const spec = scn.road ?? crossSpec();
+  const decide = scn.ego.arriveAt;
+  for (const track of scn.camera.track) {
+    const p = sim.actors.find((a) => a.id === track.id);
+    if (!p) continue;
+    let seen = false;
+    for (let t = 0; t <= decide - MIN_WARNING; t += 0.05) {
+      const pose = poseAt(p, t);
+      if (pose.gone) break;
+      if (pose.hidden) continue;
+      const [bx, by, bw, bh] = cameraFor(spec, sim, t, scn.camera).box.split(" ").map(Number);
+      if (pose.x > bx + 20 && pose.x < bx + bw - 20 && pose.y > by + 20 && pose.y < by + bh - 20) {
+        seen = true; break;
+      }
+    }
+    if (!seen) return false;
+  }
+  return true;
+}
+
+/* An emergency vehicle that changes nothing is decoration, and worse than
+   decoration: it teaches that they can be ignored. One crossing the far
+   side of the junction on its own path genuinely costs a driver nothing —
+   which is correct, and is exactly why the draw has to be checked rather
+   than assumed. Controlled comparison, the same shape every other tell in
+   this game is held to: the identical scene with the call switched off. */
+const EMERGENCY_MUST_COST = 0.3;
+function emergencyEarnsItsPlace(scn) {
+  if (!scn.actors.some((a) => a.emergency)) return true;
+  const withCall = simulate(scn).legalAt;
+  const without = simulate({
+    ...scn,
+    actors: scn.actors.map((a) => (a.emergency ? { ...a, emergency: false } : a)),
+  }).legalAt;
+  return withCall - without >= EMERGENCY_MUST_COST;
+}
+
 /* Draw until the measurements agree with the brief. Bounded, and it
    returns nothing rather than something that does not match. */
 export function composeScenario(brief, seed, tries = 90) {
@@ -322,6 +447,9 @@ export function composeScenario(brief, seed, tries = 90) {
     const m = measure(scn);
     // Unplayable draws go before the brief is even considered.
     if (m.think < 0 || m.think > 7 || m.legalAt > 11) continue;
+    if (!eventsAreReadable(scn)) continue;
+    if (!framedInTime(scn)) continue;
+    if (!emergencyEarnsItsPlace(scn)) continue;
     if (!windowIsSafe(scn)) continue;
     if (!meetsBrief(brief, m).ok) continue;
 
