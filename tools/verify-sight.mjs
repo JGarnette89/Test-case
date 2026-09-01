@@ -13,7 +13,7 @@
    ===================================================================== */
 import {
   M, CX, CY, HALF, OFF, LANE, CAR_L, CAR_W, PED_SETBACK, STOP_LINE_AT,
-  simulate, poseAt, crossingOf, conflicts,
+  simulate, poseAt, crossingOf, conflicts, spanOf,
 } from "../src/engine/index.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
 import {
@@ -305,14 +305,25 @@ console.log("\n7. A PEDESTRIAN RELEASES THE NEAR HALF, NOT THE FAR ONE");
     ? ok(`releases the midpoint at progress ${r2(poseAt(ped, after).progress)}, at or past halfway`)
     : fail("still blocks the midpoint past halfway — the far half is being held too");
 
-  // And it has to actually be visible in the derived window, not just in
-  // this one isolated probe. 3.9 is walker's window under the old
-  // full-crossing hold, from before this rule changed — a baseline, not
-  // a picked number; update it deliberately, alongside a change that is
-  // meant to move it again.
-  sim.legalAt < 3.9
-    ? ok(`walker's window opened earlier for it — ${sim.legalAt}s, was 3.9s under the old full-crossing hold`)
-    : fail(`walker's window (${sim.legalAt}s) did not move — the rule change is not reaching the derived window`);
+  /* And it has to reach the DERIVED window, not just this isolated probe.
+
+     Compared against the pedestrian's own crossing rather than a recorded
+     number: a fixed baseline only meant anything while the walk took a
+     fixed time, and the walk is now derived from a real 1.35 m/s pace, so
+     any such number would be measuring the walking speed instead of the
+     rule. The two release moments the rule chooses between are these —
+     halfway across, and all the way across — and the window has to sit
+     nearer the near-half one. That comparison holds at any walking pace. */
+  const walk = spanOf(ped);
+  const halfRelease = ped.departAt + walk * 0.5;
+  const fullRelease = ped.departAt + walk;
+  console.log(`  pedestrian crosses ${r2(walk)}s: halfway at ${r2(halfRelease)}s, fully across at ${r2(fullRelease)}s`);
+  sim.legalAt < fullRelease
+    ? ok(`walker's window (${sim.legalAt}s) opens before they are fully across (${r2(fullRelease)}s) — the near-half rule reaches the window`)
+    : fail(`walker's window (${sim.legalAt}s) waits for the whole crossing (${r2(fullRelease)}s) — the rule is not reaching the derived window`);
+  sim.legalAt >= halfRelease
+    ? ok(`and not before they pass halfway (${r2(halfRelease)}s) — the near half is genuinely held`)
+    : fail(`walker's window (${sim.legalAt}s) opens before halfway (${r2(halfRelease)}s) — the near half is not held at all`);
 }
 
 console.log("\n" + "=".repeat(66));

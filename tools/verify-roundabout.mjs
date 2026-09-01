@@ -11,10 +11,19 @@
    it from the left. Entering never outranks circulating.
    ===================================================================== */
 import {
-  simulate, poseAt, conflicts, spanOf, raPath,
+  simulate, poseAt, conflicts, spanOf, raPath, movementOf,
   CX, CY, RA_LANE, RA_OUTER, RA_ISLAND, RA_SPEED, STEP, M,
 } from "../src/engine/index.js";
+import { timeToCover } from "../src/engine/paths.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
+
+/* When a car reaches a given distance along its own path. Was
+   `distance / RA_SPEED`, which only held while everything moved at a
+   constant speed from the first instant. A car now accelerates away from
+   the give-way line, so it reaches any given point LATER than that
+   division claimed — and a test that looked at the wrong moment reported
+   the exit tell missing when it was simply not there yet. */
+const timeAtDistance = (p, d) => timeToCover(movementOf(p).traverse.profile, d);
 
 const r2 = (n) => Math.round(n * 100) / 100;
 let problems = 0;
@@ -69,20 +78,35 @@ console.log("\n2. THE ISLAND IS SOLID");
     : fail(`${at} cuts across the island: ${r2(worst / 20)}m from centre, island is ${r2(RA_ISLAND / 20)}m`);
 }
 
-/* ---------- 3. constant speed round the circle ---------- */
+/* ---------- 3. speed round the circle ----------
+   A car pulling away from the give-way line accelerates, so the whole
+   path is NOT one speed and should not be — that was the old fixed-time
+   model, where a stopped car appeared in the circle already doing 25
+   km/h. What still has to hold is that the CIRCULATING stretch is
+   uniform: forwardClaim reads speed to size a claim, so a path that
+   secretly sped up or slowed through the arc would claim road it has no
+   business claiming. Checked from the moment the car is up to speed. */
 console.log("\n3. SPEED IS HONEST");
 {
   const car = sim.actors[0];
+  const upToSpeed = car.departAt + timeAtDistance(car, 0) + RA_SPEED / (M(2.4)); // v/a
   const speeds = [];
-  for (let t = car.departAt + 0.2; t < car.departAt + spanOf(car) - 0.2; t += 0.1) {
+  for (let t = upToSpeed + 0.2; t < car.departAt + spanOf(car) - 0.2; t += 0.1) {
     const a = poseAt(car, t), b = poseAt(car, t + 0.05);
     speeds.push(Math.hypot(b.x - a.x, b.y - a.y) / 0.05);
   }
   const min = Math.min(...speeds), max = Math.max(...speeds);
   const drift = (max - min) / RA_SPEED;
   drift < 0.12
-    ? ok(`speed holds within ${Math.round(drift * 100)}% of ${r2(RA_SPEED / 20)} m/s along the whole path`)
+    ? ok(`once up to speed it holds within ${Math.round(drift * 100)}% of ${r2(RA_SPEED / 20)} m/s round the circle`)
     : fail(`speed varies by ${Math.round(drift * 100)}% (${r2(min / 20)}-${r2(max / 20)} m/s) — forwardClaim would lie`);
+
+  // And the ramp itself is real: it must start from a standstill.
+  const offLine = poseAt(car, car.departAt + 0.02), soon = poseAt(car, car.departAt + 0.07);
+  const v0 = Math.hypot(soon.x - offLine.x, soon.y - offLine.y) / 0.05;
+  v0 < RA_SPEED * 0.35
+    ? ok(`it leaves the give-way line from rest (${r2(v0 / 20)} m/s just after departing, not ${r2(RA_SPEED / 20)})`)
+    : fail(`it is already doing ${r2(v0 / 20)} m/s the instant it departs — that is not a standing start`);
 }
 
 /* ---------- 4. exits land on the right leg ---------- */
@@ -174,13 +198,17 @@ console.log("\n6. THE EXIT TELL IS READABLE WITHOUT AN INDICATOR");
   };
 
   // Walk the stretch where both are still circulating and compare lines.
-  const peel = raPath(leaving).peelDist / RA_SPEED;
+  const peel = timeAtDistance(leaving, raPath(leaving).peelDist);
   // The tell is worthless if it appears after the player has had to commit.
   const decideAt = SCENARIOS.find((s) => s.id === "circle-leaving").ego.arriveAt;
   let separated = 0, samples = 0, maxGap = 0, firstTellAt = null;
   for (let t = 0.4; t < peel; t += 0.05) {
     const a = radiusAt(leaving, t), b = radiusAt(staying, t);
-    if (Math.abs(a - RA_LANE) > M(3) || Math.abs(b - RA_LANE) > M(3)) continue;
+    // Only the circulating arc. M(3) was loose enough to admit the
+    // entry curve, which sits outside the carriageway by design —
+    // harmless while a constant speed put t=0.4 past it, wrong now
+    // that a car accelerating from the give-way line is still on it.
+    if (Math.abs(a - RA_LANE) > M(1.5) || Math.abs(b - RA_LANE) > M(1.5)) continue;
     samples++;
     const gap = a - b;
     if (gap > maxGap) maxGap = gap;
@@ -215,7 +243,7 @@ console.log("\n6. THE EXIT TELL IS READABLE WITHOUT AN INDICATOR");
   let worstOut = 0;
   for (let t = 0.4; t < peel; t += 0.05) {
     const r = radiusAt(leaving, t);
-    if (Math.abs(r - RA_LANE) > M(3)) continue;
+    if (Math.abs(r - RA_LANE) > M(1.5)) continue;
     worstOut = Math.max(worstOut, r);
   }
   worstOut <= RA_OUTER
@@ -242,13 +270,15 @@ console.log("\n6. THE EXIT TELL IS READABLE WITHOUT AN INDICATOR");
 /* ---------- 7. the cross layout is untouched ---------- */
 console.log("\n7. NO REGRESSION IN THE CROSS LAYOUT");
 {
-  /* Baseline re-derived when SET was corrected so cars stop behind the
-     line rather than with their noses in the box. Every one of these moved
-     because every footprint moved; that was the point. Update deliberately
-     and only alongside a change that is meant to move them. */
+  /* Baseline re-derived when traversal stopped being a fixed time per
+     manoeuvre and became a real motion profile — cars accelerate away
+     from a stop instead of leaving the line at 72 km/h, and a wider road
+     now takes longer to cross rather than being driven faster. Every one
+     of these moved because every footprint moved; that was the point.
+     Update deliberately and only alongside a change meant to move them. */
   const expected = {
-    opposite: 2.4, signalled: 1.6, liar: 2.65, silent: 2.85, gap: 5.25,
-    walker: 3.6, wanderer: 2.4, sleeper: 2.85, creeper: 2.95, lateflag: 2.75,
+    opposite: 4.15, signalled: 1.6, liar: 5.6, silent: 5.8, gap: 4.25,
+    walker: 5.35, wanderer: 1.65, sleeper: 3.85, creeper: 3.65, lateflag: 5.7,
   };
   let bad = 0;
   for (const [id, want] of Object.entries(expected)) {

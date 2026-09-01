@@ -164,8 +164,15 @@ const SCENARIOS = [
     brief: "Roundabout. A car is coming round from your left, showing nothing.",
     control: "yield",
     layout: "roundabout",
-    duration: 16,
-    ego: { from: "S", intent: "straight", arriveAt: 3.2, stops: true, color: C.blue },
+    duration: 18,
+    /* Arrives at 4.2, not 3.2. The red car now accelerates away from its
+       give-way line instead of appearing in the circle already at speed,
+       so it reaches the drift — the tell this whole scenario is built on
+       — about a second later than it used to. At 3.2 the ego was at the
+       line and committing before the tell had happened, which makes it a
+       post-mortem rather than something to read. Checked in
+       verify-roundabout.mjs, which fails if the drift lands late. */
+    ego: { from: "S", intent: "straight", arriveAt: 4.2, stops: true, color: C.blue },
     actors: [
       /* The exit before yours is the west leg. Taking it, this car is gone
          long before it reaches you; staying in, it comes all the way round

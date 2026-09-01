@@ -15,7 +15,7 @@
    5. The spread is worth playing — not all trivial, not all brutal, and
       not rejecting so many draws that tuning is broken.
    ===================================================================== */
-import { simulate, poseAt, conflicts, CROSS, STEP } from "../src/engine/index.js";
+import { simulate, poseAt, conflicts, spanOf, STEP } from "../src/engine/index.js";
 import { grade, EARLY_TOLERANCE, GRACE } from "../src/engine/score.js";
 import { PULL_STEP } from "../src/engine/sight.js";
 import {
@@ -31,7 +31,9 @@ const ok = (m) => console.log(`  ok   ${m}`);
 
 function collidesAt(sim, T, creepSteps = 0) {
   const ego = { ...sim.ego, departAt: T, stopBias: (sim.ego.stopBias || 0) + creepSteps * PULL_STEP };
-  for (let t = T; t <= T + CROSS[ego.intent] + 0.3; t += STEP) {
+  // spanOf, not a fixed per-intent time: how long a traverse takes is now
+  // derived from its length and the car's motion profile (see paths.js).
+  for (let t = T; t <= T + spanOf(ego) + 0.3; t += STEP) {
     const mine = poseAt(ego, t);
     if (mine.gone) break;
     for (const a of sim.actors) {

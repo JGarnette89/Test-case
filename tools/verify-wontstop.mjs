@@ -34,37 +34,51 @@ const legalAt = sim.legalAt;
 const safeAt = safeAtFor(sim);
 const offender = sim.actors[0];
 
-/* ---------- 1. safeAt changes nothing anywhere else -----------------
-   Two rulings, not bugs: sleeper and creeper each carry a PRIOR that
-   dawdles (slowStart, and creeper's creep+overshoot on top of it) —
-   already accounted for in legalAt itself. What safeAt adds on top is
-   creep, which legalAt never considered at all: the ego creeping
-   forward can reach into where that slow prior is still lingering, by
-   exactly one STEP (0.05s) in both cases. Genuine, small, and correctly
-   caught — not something wontstop should be blamed for by being the
-   only scenario checked here. */
-console.log("\n1. SAFEAT IS A NO-OP EVERYWHERE ELSE");
+/* ---------- 1. safeAt only ever points the safe way -----------------
+   This used to assert safeAt was a no-op everywhere but here. That held
+   while traffic crossed an intersection in a fixed 1.5s at 72 km/h:
+   almost nothing was still arriving inside the ego's grace window, so
+   almost nothing diverged. Once cars accelerate from a stop at a real
+   rate they take three times as long to clear, and a second road user
+   still on its way in during those 2.6s is ordinary rather than
+   exceptional. Divergence is now common, and it is the mechanism
+   working, not failing.
+
+   What must still hold is the direction and the magnitude. safeAt
+   EARLIER than legalAt would mean the scorer offering a window the
+   engine itself calls unsafe, which is the bug this field exists to
+   prevent — that is checked absolutely. And wontstop, the one scenario
+   that deliberately authors a driver who never yields, must remain the
+   largest divergence by a clear margin: if an ordinary scenario ever
+   out-diverges it, something has gone wrong somewhere else and this is
+   where it should surface. */
+console.log("\n1. SAFEAT ONLY EVER POINTS THE SAFE WAY");
 {
-  const KNOWN = { sleeper: 2.9, creeper: 3.0 };
-  let diffs = 0;
+  const ORDINARY_MAX = 2.0;
+  let backwards = 0, worst = { id: null, d: 0 };
+  const diverged = [];
   for (const s of SCENARIOS) {
-    if (s.id === "wontstop") continue;
     const ssim = simulate(s);
-    const ssafe = safeAtFor(ssim);
-    if (s.id in KNOWN) {
-      ssafe === KNOWN[s.id]
-        ? ok(`${s.id}: safeAt ${ssafe} — known, a slow prior plus creep, not this scenario's doing`)
-        : fail(`${s.id}: expected the known safeAt of ${KNOWN[s.id]}, got ${ssafe} — investigate before trusting this`);
-      continue;
+    const d = r2(safeAtFor(ssim) - ssim.legalAt);
+    if (d < 0) {
+      backwards++;
+      fail(`${s.id}: safeAt is EARLIER than legalAt by ${-d}s — the scorer would offer an unsafe window`);
     }
-    if (ssafe !== ssim.legalAt) {
-      diffs++;
-      fail(`${s.id}: safeAt (${ssafe}) diverged from legalAt (${ssim.legalAt}) with no reason to`);
-    }
+    if (d > 0 && s.id !== "wontstop") diverged.push(`${s.id} +${d}`);
+    if (s.id !== "wontstop" && d > worst.d) worst = { id: s.id, d };
   }
-  diffs === 0
-    ? ok(`safeAt equals legalAt for the remaining ${SCENARIOS.length - 1 - Object.keys(KNOWN).length} scenarios`)
+  backwards === 0
+    ? ok(`no scenario has safeAt before legalAt — every divergence costs the player time rather than granting it`)
     : null;
+  console.log(`  diverging (all later, all graded against): ${diverged.join(", ") || "none"}`);
+
+  const gap = r2(safeAt - legalAt);
+  gap > worst.d
+    ? ok(`wontstop diverges most, by ${gap}s against ${worst.d}s for the next (${worst.id})`)
+    : fail(`${worst.id} diverges by ${worst.d}s, at or beyond wontstop's ${gap}s — wontstop should be the extreme case`);
+  worst.d <= ORDINARY_MAX
+    ? ok(`no ordinary scenario diverges by more than ${ORDINARY_MAX}s (worst ${worst.d}s, ${worst.id})`)
+    : fail(`${worst.id} diverges by ${worst.d}s, past the ${ORDINARY_MAX}s an ordinary scenario should ever need`);
 }
 
 /* ---------- 2. the tell is readable before the decision ------------

@@ -24,6 +24,7 @@
 import {
   linePath, quadPath, polyPath, poseOn, approachFrom, approachPose, advance,
   pathLength, rollingApproach,
+  accelProfile, cruiseProfile, progressAt, speedAt,
   lerp, angleTo, quadAt as quad,
 } from "./paths.js";
 import {
@@ -137,7 +138,48 @@ const LOOKAHEAD = 0.9, MAX_CLAIM = M(18);
 
 const TIE = 0.35;
 /* GRACE moved to ./score.js — it never gated a footprint, only a verdict. */
-const CROSS = { straight: 1.5, left: 2.1, right: 1.7, walk: 3.4 };
+
+/* =====================================================================
+   HOW FAST ANYBODY ACTUALLY MOVES
+   These replace a table of fixed traversal times (straight 1.5s, left
+   2.1s, ...). That table had two things wrong with it, and both were
+   measured rather than suspected:
+
+   A car left the stop line at a constant 72 km/h with no acceleration —
+   0 to 72 in no time at all — and because the time was fixed rather than
+   derived, a car crossing a six-lane arterial travelled further in the
+   same 1.5s and therefore moved FASTER (89 km/h) than one crossing two
+   lanes. The arterial scenario's own lesson says "crossing takes longer
+   here than it feels like it should", which the engine then contradicted.
+
+   So speed is stated and time is derived. A car pulling away from a stop
+   accelerates; a car that never stopped is already at speed.
+
+   ACCEL is a brisk-but-ordinary pull-away. The cruise figures are what a
+   vehicle actually settles at through a junction, not what it would do
+   on the open road — you are through the box long before an urban limit
+   is reached, and a turn is taken slower than a straight-through.       */
+const ACCEL = M(2.4);          // ~2.4 m/s^2 away from a stop
+const TURN_ACCEL = M(2.0);     // a little gentler, because you are also steering
+const V_STRAIGHT = M(11.5);    // ~41 km/h once clear of the box
+const V_LEFT = M(7.2);         // ~26 km/h through a left
+const V_RIGHT = M(6.2);        // ~22 km/h through a tighter right
+/* A vehicle that is not stopping arrives at the speed it will carry
+   through. Through traffic on a road with no sign for it runs faster
+   than anything pulling away from a line ever reaches. */
+const V_THROUGH = M(12.5);     // ~45 km/h
+const WALK = M(1.35);          // a real walking pace, ~4.9 km/h
+
+/* The profile a participant departs on: accelerating if it had stopped,
+   already rolling if it never did. Intent picks the cruise figure, so a
+   turn is slower than a straight both ways. */
+const CRUISE = { straight: V_STRAIGHT, left: V_LEFT, right: V_RIGHT };
+function motionOf(p) {
+  const v = CRUISE[p.intent] ?? V_STRAIGHT;
+  if (p.stops === false) return cruiseProfile(p.intent === "straight" ? V_THROUGH : v);
+  return accelProfile(p.intent === "straight" ? ACCEL : TURN_ACCEL, v);
+}
+
 const STEP = 0.05;
 
 /* ---------------- geometry ---------------- */
@@ -304,35 +346,46 @@ function crossMovement(p) {
   const exit = exitFor(exitSideFor(p.from, p.intent), p.exitLane ?? p.lane ?? 0);
   const rest = { ...advance(base, base.rot, p.stopBias || 0), rot: base.rot };
 
+  const motion = motionOf(p);
   if (p.intent === "straight") {
-    return { rest, traverse: linePath(rest, exit, CROSS.straight) };
+    return { rest, traverse: linePath(rest, exit, motion) };
   }
   const vertical = p.from === "S" || p.from === "N";
   const wide = p.turnBias || 0;
   const ctrl = vertical
     ? { x: rest.x + (exit.x > rest.x ? -wide : wide), y: exit.y }
     : { x: exit.x, y: rest.y + (exit.y > rest.y ? -wide : wide) };
-  return { rest, traverse: quadPath(rest, ctrl, exit, CROSS[p.intent]) };
+  return { rest, traverse: quadPath(rest, ctrl, exit, motion) };
 }
 
 /* The roundabout, whose path was already a sampled polyline walked at a
    constant speed — the shape everything else is now expressed in. */
 function roundaboutMovement(p) {
   const path = raPath(p);
+  /* Accelerating away from the give-way line, then holding the
+     circulating speed — which is the constant the arc was always walked
+     at, and still is once the car is up to it. What changes is only the
+     first second or so, where a car that has genuinely stopped no longer
+     appears in the circle already doing 25 km/h. */
+  const motion = p.stops === false ? cruiseProfile(RA_SPEED) : accelProfile(ACCEL, RA_SPEED);
   return {
     rest: { x: path.gate.x, y: path.gate.y, rot: path.rot },
-    traverse: polyPath(path.pts, path.length / RA_SPEED, { rot0: path.rot }),
+    traverse: polyPath(path.pts, motion, { rot0: path.rot }),
   };
 }
 
-/* On foot: straight across the crossing, at walking pace. */
+/* On foot: straight across the crossing, at a walking pace — and it is
+   now genuinely a walking pace. The old fixed 3.4s crossing put someone
+   across the default four-way at 3.0 m/s, which is a jog, and across a
+   wider road faster still, because a fixed time over a longer crossing
+   is a faster pedestrian. Both follow from stating the speed instead. */
 function pedMovement(p) {
   const cr = crossingFor(p);
   const start = p.reverse ? cr.b : cr.a;
   const end = p.reverse ? cr.a : cr.b;
   return {
     rest: { x: start.x, y: start.y, rot: cr.rot },
-    traverse: linePath({ ...start, rot: cr.rot }, end, CROSS.walk),
+    traverse: linePath({ ...start, rot: cr.rot }, end, cruiseProfile(WALK)),
     onFoot: true,
   };
 }
@@ -356,7 +409,7 @@ function basePose(p, t) {
     if (t < p.departAt) {
       return { ...mv.rest, hidden: t < p.arriveAt - 1.2, waiting: true, progress: 0 };
     }
-    const k = Math.min(1, (t - p.departAt) / mv.traverse.duration);
+    const k = progressAt(mv.traverse, t - p.departAt);
     return { ...poseOn(mv.traverse, k), gone: k >= 1, progress: k };
   }
 
@@ -366,14 +419,15 @@ function basePose(p, t) {
        vehicle that slows for no reason is a vehicle the player cannot
        read — and cannot be expected to predict. */
     if (p.stops === false) {
-      const speed = pathLength(mv.traverse) / mv.traverse.duration;
-      return { ...rollingApproach(mv.rest, t, p.arriveAt, speed), approaching: true };
+      // Its cruise speed IS the speed it carries through, so the run-up
+      // and the traverse are the same motion rather than two guesses.
+      return { ...rollingApproach(mv.rest, t, p.arriveAt, mv.traverse.profile.v), approaching: true };
     }
     return { ...approachPose(mv.spawn, mv.rest, t, p.arriveAt), approaching: true };
   }
   if (t < p.departAt) return { ...mv.rest, waiting: true };
 
-  const k = Math.min(1, (t - p.departAt) / mv.traverse.duration);
+  const k = progressAt(mv.traverse, t - p.departAt);
   return { ...poseOn(mv.traverse, k), gone: k >= 1, moving: true };
 }
 
@@ -505,6 +559,13 @@ function poseFor(p, pose, claim, mode) {
   const r = (pose.rot * Math.PI) / 180;
   return { ...pose, x: pose.x + Math.cos(r) * (claim / 2), y: pose.y + Math.sin(r) * (claim / 2) };
 }
+/* How much road ahead of itself a vehicle is claiming, from how fast it
+   is actually going. Still sampled from the poses rather than read off
+   the profile: a trait can bend the path (wander swings the body about,
+   creep shuffles it forward while nominally stopped), and what is
+   claimed should follow the car that is really being driven, not the
+   idealised one. With real acceleration this finally discriminates —
+   a car just off the line claims a couple of metres, not the ceiling. */
 function forwardClaim(p, t) {
   if (p.kind === "ped") return 0;
   if (p.stops && t < p.departAt) return 0;
@@ -740,7 +801,7 @@ export function safeAtFor(sim) {
 
 export {
   SCALE, M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
-  PAD_LONG, PAD_LAT, LOOKAHEAD, MAX_CLAIM, TIE, CROSS, STEP,
+  PAD_LONG, PAD_LAT, LOOKAHEAD, MAX_CLAIM, TIE, STEP,
   PROPER_SIGNAL_LEAD, LATE_SIGNAL_LEAD,
   RA_OUTER, RA_ISLAND, RA_LANE, RA_SPEED, RA_ENTRY_ANGLE, RA_QUARTERS, raPath,
   STOPS, EXITS, RIGHT_OF, OPPOSITE,

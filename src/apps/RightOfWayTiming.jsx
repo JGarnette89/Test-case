@@ -7,7 +7,7 @@ import { C, FONT_D, FONT_U, shade } from "../theme.js";
 import { SCENARIOS } from "../engine/scenarios.js";
 import {
   M, W, H, CX, CY, LANE, HALF, OFF, SET, CAR_L, CAR_W, PED_R,
-  CROSS, STEP, TIE, spanOf,
+  STEP, TIE, spanOf,
   crossingOf, BAR_HALF, STOP_LINE_AT, RA_OUTER,
   TRAITS, traitTells, poseAt, signalShowing, forwardClaim, conflicts,
   outranks, earliestClear, schedule, simulate, safeAtFor,
@@ -1111,9 +1111,13 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
             {verdict === "late" && <>Your window opened at {safeAt.toFixed(1)}s; you moved at {pressedAt.toFixed(1)}s — {result.reaction.toFixed(1)}s of hesitation.</>}
             {verdict === "missed" && <>The window opened at {safeAt.toFixed(1)}s and never closed.</>}
             {/* Only ever shows where a scenario deliberately authors a driver
-                who does not yield despite having no right of way — for
-                everything else safeAt equals legalAt exactly. */}
-            {safeAt > sim.legalAt + 0.01 && (
+                who does not yield despite having no right of way, or
+                where a second road user is still arriving inside the
+                grace the scorer offers. Both are worth explaining; a
+                one-STEP rounding difference is not, and below 0.15s the
+                two numbers print identically at one decimal place, which
+                would read as the same instant twice. */}
+            {safeAt >= sim.legalAt + 0.15 && (
               <div style={{ marginTop: 6, opacity: 0.85 }}>
                 The road was legally yours at {sim.legalAt.toFixed(1)}s — it just was not safe to take yet.
               </div>

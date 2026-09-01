@@ -102,11 +102,22 @@ move into that mode rather than being baked into the default.
   assumption the ego leaves promptly, and a player who takes the grace the
   scorer offers can meet it anyway. `safeAtFor(sim)` in `index.js` is the
   real scoring boundary — checked against everyone, across the whole graced
-  window and every depth of creep — and equals `legalAt` for every scenario
-  except one that deliberately authors a driver who fails to yield
-  (`wontstop`), and two more by exactly one `STEP` (`sleeper`, `creeper`,
-  each carrying a slow prior that creep alone could still reach). Grade
-  against `safeAtFor(sim)`, never against `sim.legalAt` directly.
+  window and every depth of creep. Grade against `safeAtFor(sim)`, never
+  against `sim.legalAt` directly.
+
+  It diverges from `legalAt` on about half the set situations now, and
+  that is the mechanism working rather than failing. It used to be nearly
+  a no-op, but only because traffic crossed an intersection in a fixed
+  1.5s: almost nothing was still arriving inside the ego's 2.6s of grace.
+  Real acceleration made crossings take three times as long, so a second
+  road user still on its way in during that grace is ordinary. What is
+  checked in `verify-wontstop.mjs` is the invariant that actually
+  matters: `safeAt` is NEVER earlier than `legalAt` — that direction
+  would mean the scorer offering a window the engine calls unsafe — and
+  `wontstop`, which deliberately authors a driver who never yields,
+  stays the largest divergence by a clear margin (4.1s against 1.4s for
+  the next). An ordinary scenario diverging past 2s is treated as a bug
+  somewhere else surfacing here.
 - **Merging is scored on how early the driver started solving it, not on
   hitting a moment.** This is a third scoring shape and it does not fit the two
   that exist. `deadline` asks "done by when" and `window` asks "not before" —
@@ -261,6 +272,32 @@ which is the one thing no perk is allowed to buy.
 truck 9 x 2.55 m, painted lines 0.15 m. Signs are the one deliberate
 exaggeration, drawn as map symbols because a real 0.75 m sign face would be
 unreadable.
+
+**True-to-life motion, too — speed is stated and time is derived.** A path
+knows its own length; how long it takes comes from a motion profile in
+`paths.js`. A vehicle that stopped accelerates away at ~2.4 m/s² and levels
+off (41 km/h straight, 26 through a left, 22 through a right); one that
+never stopped cruises at the speed it carries through (45 km/h); a
+pedestrian walks at 1.35 m/s. Crossing a stop-controlled junction therefore
+takes about five seconds, not one and a half.
+
+The version this replaced set a fixed duration per manoeuvre, and it was
+wrong in two ways that were measured rather than suspected. Cars left the
+line at a constant 72 km/h having accelerated from rest in no time at all.
+And because the time was fixed rather than derived, a wider road made
+traffic move FASTER — the six-lane `arterial` was crossed at 89 km/h in the
+same 1.5s as a two-lane street, while that scenario's own lesson says
+"crossing takes longer here than it feels like it should". A player
+learning gap judgment from that was learning something false, which is the
+one outcome this file cares about most.
+
+It also quietly disabled a rule: "a moving vehicle claims road proportional
+to speed" was pegged at the `MAX_CLAIM` ceiling for 18 of 21 road users,
+because everything moved fast enough to saturate it. Real speeds
+un-saturate it — 0 of 21 now — so the claim discriminates again.
+
+Do not reintroduce a fixed traversal time. If a scenario needs a different
+window, move the arrival times, exactly as with everything else here.
 
 ## The roguelike layer
 
