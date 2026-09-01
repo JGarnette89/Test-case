@@ -9,6 +9,11 @@ import {
    in. This project is the game now. */
 import RightOfWay from "./apps/RightOfWay.jsx";
 import RightOfWayTiming from "./apps/RightOfWayTiming.jsx";
+/* A between-stages minigame prototype — not on the home screen or in the
+   mode switcher yet, deliberately. Reachable directly at #/merge-rush
+   while it is still a standalone thing to look at, not a decision to
+   wire into the roguelike run. */
+import MergeRush from "./apps/MergeRush.jsx";
 import { ROUTES } from "./engine/routes.js";
 import { SCENARIOS } from "./engine/scenarios.js";
 import {
@@ -139,8 +144,9 @@ function useRoute() {
 export default function App() {
   const { id, param } = useRoute();
   const isTest = id === "test";
-  const submenu = isTest ? null : SUBMENUS.find((s) => s.id === id) || null;
-  const mode = isTest || submenu ? null : MODES.find((m) => m.id === id) || null;
+  const isPrototype = id === "merge-rush";
+  const submenu = isTest || isPrototype ? null : SUBMENUS.find((s) => s.id === id) || null;
+  const mode = isTest || isPrototype || submenu ? null : MODES.find((m) => m.id === id) || null;
   const [menuOpen, setMenuOpen] = useState(false);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -161,8 +167,9 @@ export default function App() {
     <>
       <Style />
 
-      {!mode && !submenu && !isTest && <Home />}
+      {!mode && !submenu && !isTest && !isPrototype && <Home />}
       {isTest && <TestMenu />}
+      {isPrototype && <MergeRush />}
       {submenu && <SubMenu id={submenu.id} />}
 
       {mode && (

@@ -150,7 +150,7 @@ makes a 3D view a second renderer rather than a rewrite — that is the agreed
 direction, 2D now, 3D later, so do not put anything visual into the engine.
 
 ```
-src/engine/index.js      the conflict rules, traits, and what is where at time t
+src/engine/index.js      the conflict rules, driver traits, and what is where at time t
 src/engine/road.js       a junction described: legs, lanes, control per leg
 src/engine/paths.js      path shapes — line, curve, polyline — and no road at all
 src/engine/sight.js      what the driver can see, and what creeping costs
@@ -161,11 +161,17 @@ src/engine/generate.js   seeded scenario generation
 src/engine/compose.js    a brief in, a scene that measurably matches it out
 src/engine/scenarios.js  the set situations, as data
 src/engine/routes.js     drives, as data
+src/engine/traits.js     PLAYER perks and consumables — not the driver traits above
+src/engine/roguelike.js  a run: stages, bosses, the branch, the Checkride, Insight
+src/engine/stages.js     the roguelike's stages and its roundabout graph, as data
+src/engine/bosses.js     hand-authored boss situations, as data
 src/theme.js             palette and type — the engine must never import this
 src/environments.js      city, suburban, rural scenery — renderer side only
 src/frame.js             the camera: frameFor and cameraFor — no React
 src/storage.js           adapter chain: artifact host, localStorage, memory
 src/progress.js          what the player has cleared, and the daily record
+src/apps/RightOfWayTiming.jsx  the renderer — every mode is this one component
+src/apps/MergeRush.jsx   a minigame prototype, deliberately not wired in
 ```
 
 **Never author the answer.** The safe window is computed by simulating
@@ -176,6 +182,17 @@ and then asks the engine what they mean.
 
 **Data over code.** Scenarios, routes and traits are plain declarations. Adding
 a situation, a drive, or a trait must be a data entry, not a new component.
+
+**There are two unrelated things called "traits". Know which one you are in.**
+
+- **Driver traits** — `TRAITS` in `src/engine/index.js`. How an NPC actually
+  drives. They belong to a car in a scenario.
+- **Player traits** — `TRAIT_CATALOG` in `src/engine/traits.js`. Run-scoped
+  perks the player drafts in the roguelike. They belong to a run, and they
+  bend nothing about how anyone drives.
+
+They are one word apart and do opposite things: a driver trait is *supposed*
+to move a window, and a player trait must never be able to.
 
 **Driver behaviour is composable traits.** `wander`, `creep`, `overshoot`,
 `slowStart`, `wideTurn`, `lateSignal`. A trait bends how the car actually drives
@@ -194,9 +211,18 @@ routes keep continuity without four hand-written copies of each intersection.
 Pedestrians rotate with the scene too — `crossingOf` is derived from the
 actor's own `from` leg, not pinned to north, so `isRotatable`/`rotateScenario`
 in `route.js` carry a pedestrian like any other actor; `walker` rotates
-cleanly to all four approaches. `isRotatable` still exists as a named refusal
-path for a future road user with genuinely fixed coordinates — worth knowing
-it is there, since nothing currently trips it.
+cleanly to all four approaches.
+
+**`sightBlockers` are the one thing that cannot rotate**, and `isRotatable`
+refuses them. A blocker is fixed x/y, authored to blind one specific approach
+— the van in `unprotected` sits where it hides the S leg. Rotation spins the
+road and every actor's `from`, but a static blocker has no `from` to spin, so
+a rotated copy leaves it planted in the same screen position while the road
+turns around it. `legalAt` never reads `sightBlockers`, so nothing about
+safety would notice; the driver would. Two situations trip this today —
+`unprotected` and `boss-blind-rush` — which is why the Checkride's leg order
+leads with `unprotected`: it is the one leg that can never be aligned to
+whatever the previous leg leaves you facing.
 
 **Scoring rewards reading, not luck.** Full marks anywhere inside 0.35s of the
 window opening, because nobody reacts to a visual cue faster than that, decaying
@@ -204,10 +230,65 @@ to zero at 2.6s — exactly where undue delay begins, so there is no cliff at th
 verdict boundary. A press more than 0.25s early is a failure to yield and scores
 nothing on any curve.
 
+`REACTION_FLOOR` and `GRACE` are now *defaults*, not constants: `grade()` takes
+both as optional parameters so a drafted player trait can widen the curve for
+one run. Widen only — nothing may narrow them, and every existing call site
+that passes neither behaves exactly as it always did. **`EARLY_TOLERANCE` is
+deliberately not a parameter.** It is the boundary of a failure to yield, not a
+matter of taste; loosening it would reward going before the road was yours,
+which is the one thing no perk is allowed to buy.
+
 **True-to-life scale.** The game is 20 px per metre. Lane 3.6 m, car 4.5 x 1.8 m,
 truck 9 x 2.55 m, painted lines 0.15 m. Signs are the one deliberate
 exaggeration, drawn as map symbols because a real 0.75 m sign face would be
 unreadable.
+
+## The roguelike layer
+
+A run is a driving test with stakes: named **stages** (`stages.js`), each
+capped by a hand-authored **boss** (`bosses.js`), with a roundabout branch
+screen between them for choosing what comes next, building to a four-leg
+**Checkride** finale. Clearing the Checkride is the run's one win state
+(`outcome: "won"`); any critical fault anywhere ends it (`"ended"`).
+
+**The boundary that makes the whole thing safe.** A player trait or a
+purchased consumable may change exactly three things: what the player is
+shown, how generous the scorer is being *for display this run*, and which
+brief the generator is asked for next. It may never touch `legalAt`,
+`safeAt`, collision detection, or a pad/claim/resolution constant. A perk
+that moved the window would be authoring the answer wearing a costume.
+
+This is enforced structurally, not by good intentions:
+
+- **The dependency runs one way only.** `traits.js` and `roguelike.js` may
+  import `compose.js`'s exported vocabulary; `compose.js` and `generate.js`
+  never import them. A trait describes an *intent* (`trafficBias: "heavy"`)
+  and it is `roguelike.js`'s job to turn that into a draw. Checked by a
+  source-level grep in `verify-roguelike.mjs`.
+- **Bias picks the brief, never the verdict.** `composeScenario`'s own
+  `windowIsSafe` gate runs unconditionally whatever was asked for, so a
+  biased draw has passed exactly the audit an unbiased one would.
+- **A consumable is shaped like a trait.** Every `CONSUMABLES` entry has the
+  same `apply(mods) -> mods` signature as a permanent trait, verified to
+  produce the identical key set — so a spend cannot smuggle in a kind of
+  effect the trait system's invariants do not already cover. Most are the
+  identity function; the *action* lives in `spendConsumable`.
+
+**`isCritical` is broader than `route.js`'s `DEFAULT_END_ON`, on purpose.**
+That default only checks `result.verdict === "collision"`. A failure to yield
+reports as `"early"`, and encroachment or a blocked box only ever surface
+through `gradeTask()`'s sheet, never as a verdict string. Copying the default
+uninspected would let a run survive its own worst faults. The Checkride
+therefore grades its legs through `isCritical` too, not `recordLeg` — one of
+its four legs (`unprotected`) is manoeuvre-graded, exactly the case the
+narrower check misses. `planRoute`/`currentLeg` are still reused for what they
+are good at: resolving each leg's rotation.
+
+**A hand-authored scenario skips the generator's safety net.** `windowIsSafe`
+lives inside `composeScenario`, so it only ever guards generated draws.
+Anything written by hand — every boss, every entry in `scenarios.js` — has to
+be checked against `safeAtFor` directly instead. `verify-stages.mjs` does this
+for the bosses; a new hand-authored situation must not skip it.
 
 ## Verification requirement
 
@@ -225,11 +306,13 @@ node tools/verify-task.mjs         manoeuvres: order, deadlines, fault tiers
 node tools/verify-sight.mjs        occlusion, and the creep trade
 node tools/verify-compose.mjs      briefs produce scenes that match them
 node tools/verify-camera.mjs       the camera opens gradually, never shrinks, keeps a revealed actor in frame
+node tools/verify-roguelike.mjs    traits and Insight: the safety wall, the one-way dependency
+node tools/verify-stages.mjs       stages, bosses, the branch graph, a full run end to end
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All twelve must exit 0. Seven things they check are worth understanding:
+All fourteen must exit 0. Seven things they check are worth understanding:
 
 - **Equivalence is the one for refactors.** The others check the engine is
   right; that one checks it has not *changed*. It matters because a change to
@@ -319,6 +402,36 @@ invisible to the encroachment fault because it only ever watches priors — in
   this is an editor plus import/export, and sharing by file or link needs no
   server — a separate thing from the leaderboard/connectivity work above,
   which does need one.
+- **The roguelike is built** — stages, bosses, the branch, the Checkride and
+  the Insight economy all ship and are verified. See "The roguelike layer"
+  above for the boundary rule that keeps it safe. What it does *not* have yet
+  is any of the world around it: see the next two entries.
+- **Minigames: one prototype, deliberately unwired.** `src/apps/MergeRush.jsx`
+  is a convoy-runner in the style of the crowd-battle mobile ads, reskinned to
+  this game's world — sign-gantry gates, a merge through rush-hour traffic
+  rather than a crash, since this game is about avoiding those. It is
+  standalone: no import from `src/engine/`, not on the home screen, not in the
+  mode switcher, reachable only at `#/merge-rush`. The intent is
+  WarioWare-style minigames between stages, but nothing is hooked up and it
+  has not been playtested — see Do not.
+- **An overworld and a narrative frame are agreed in direction, not built.**
+  The setting is driving purgatory: the player had an incident and is stuck
+  retaking the test until they can prove their way out, which is what the run
+  loop already does mechanically. Bosses become examiners; deeper stages
+  become stranger districts. The overworld is a literal road — cleared stages
+  as landmarks behind you, fog ahead, roundabouts as interchanges, minigames
+  as rest stops — reusing the road primitives rather than a new map system.
+  Ideas, escalation levers and the open questions are collected in the
+  "Purgatory Road" artifact rather than here, since they are a brainstorm
+  rather than decisions:
+  https://claude.ai/code/artifact/01c6d8d4-904b-401e-9f69-a4006be2dd88
+
+  One rule survives the reskin intact: **the fiction can be as strange as it
+  likes, the traffic law cannot.** A weirder vehicle, a stranger sign, a
+  district where you must read signs by shape because the text is unreadable
+  — all fine, and the last one is a real skill. A district with a genuinely
+  different right-of-way rule is a domain question, and it is the
+  maintainer's, like every other one in this file.
 - **Pedestrians in generation: done.** They rotate correctly (`crossingOf`
   is relative to the actor's own leg), and both generators place one now —
   `generate.js` (Daily) on 22% of draws, `compose.js` (Endless, ported from
@@ -343,6 +456,11 @@ invisible to the encroachment fault because it only ever watches priors — in
   acceptance rules for exit choice and how many cars are circulating. They also
   have no pedestrian crossings, which on a real roundabout sit set back from the
   entry and are therefore not the crossings already built.
+
+  The `Roundabout` component now has a **second, non-driving use**: it draws
+  the roguelike's between-stages branch screen, where the exits are the stages
+  on offer rather than roads. Two hand-written situations makes it look
+  under-used; it is not.
 - **The camera a merge scenario will need already exists, unused.**
   `src/frame.js` has `cameraFor`, which eases the view out to keep a named
   actor in frame before the decision point — verified in `verify-camera.mjs`
@@ -378,6 +496,11 @@ invisible to the encroachment fault because it only ever watches priors — in
   back cleanly when storage is refused — a private window will hand you a
   `localStorage` that throws on first write.
 - Do not put colour, React, or anything visual into `src/engine/`.
+- Do not wire MergeRush — or any other minigame — into the roguelike run until
+  it has been playtested and the shape is settled. It is a prototype to react
+  to, and it is unwired on purpose, not by omission.
+- Do not let a player trait or consumable reach `legalAt`, `safeAt`, collision
+  detection, or a pad/claim/resolution constant. See "The roguelike layer".
 - Do not "simplify" the scenario, route or trait systems back into hardcoded
   cases.
 - Do not spoil the set situations in UI that lists them. Half of them turn on
