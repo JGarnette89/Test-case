@@ -22,7 +22,7 @@
    ===================================================================== */
 
 import {
-  linePath, quadPath, polyPath, poseOn, approachFrom, approachPose, advance,
+  linePath, quadPath, polyPath, turnPoints, poseOn, approachFrom, approachPose, advance,
   pathLength, rollingApproach,
   accelProfile, cruiseProfile, progressAt, speedAt,
   lerp, angleTo, quadAt as quad,
@@ -175,6 +175,10 @@ const V_THROUGH = M(12.5);     // ~45 km/h
    than ordinary through traffic, slow enough to see coming. */
 const V_EMERGENCY = M(10);     // ~36 km/h
 const WALK = M(1.35);          // a real walking pace, ~4.9 km/h
+
+/* The tightest a passenger car can steer, at full lock. A turn is never
+   asked to be tighter than this, however badly it is being driven. */
+const TURN_R_MIN = M(5.5);
 
 /* How long after the button goes in before the walk signal actually
    changes. This is the whole point of the button: it is a tell with a
@@ -366,12 +370,28 @@ function crossMovement(p) {
   if (p.intent === "straight") {
     return { rest, traverse: linePath(rest, exit, motion) };
   }
+
+  /* Where the two lane centrelines actually cross. A vertical approach
+     holds its own x and takes the exit lane's y, and the other way round
+     — that point is the corner the turn is built around. */
   const vertical = p.from === "S" || p.from === "N";
-  const wide = p.turnBias || 0;
-  const ctrl = vertical
-    ? { x: rest.x + (exit.x > rest.x ? -wide : wide), y: exit.y }
-    : { x: exit.x, y: rest.y + (exit.y > rest.y ? -wide : wide) };
-  return { rest, traverse: quadPath(rest, ctrl, exit, motion) };
+  const corner = vertical ? { x: rest.x, y: exit.y } : { x: exit.x, y: rest.y };
+
+  /* The honest radius is exactly how far the car is standing from where
+     those centrelines cross: turn on that and the arc finishes on the
+     receiving lane. So a wider road, whose stop line sits further back,
+     turns wider on its own, and a left — whose corner is across the
+     junction — comes out wider than a right. Nothing here is picked.
+
+     `turnBias` is then how badly this driver takes it, in metres of
+     finishing error: positive swings wide of the lane, negative cuts
+     inside it. Floored at what a car can physically steer, however badly
+     it is being driven. */
+  const toCorner = Math.hypot(corner.x - rest.x, corner.y - rest.y);
+  const radius = Math.max(TURN_R_MIN, toCorner + (p.turnBias || 0));
+
+  const pts = turnPoints(rest, corner, exit, radius);
+  return { rest, traverse: polyPath(pts, motion, { rot0: base.rot }) };
 }
 
 /* The roundabout, whose path was already a sampled polyline walked at a
@@ -503,7 +523,25 @@ const TRAITS = {
   },
   wideTurn: {
     tell: "Swung wide through the turn, across the next lane",
-    setup: (p) => { p.turnBias = M(2.2); },
+    setup: (p) => { p.turnBias = M(4.5); },
+  },
+  cutsCorner: {
+    /* The fault every turn in this game used to commit by accident, back
+       when a turn was one Bezier that did all its bending at the stop
+       line. Now it only happens where a scenario asks for it, and the
+       driver it belongs to is the one who does not go far enough into the
+       junction before turning.
+
+       Left only, and that is the real rule rather than a shortcut. A left
+       turns around a corner across the junction, so there is a lot of
+       radius to give away and the car ends up inside the receiving lane,
+       over the centre it should have gone around — measured at 2.8 m. A
+       right turns around the near kerb, where the clean radius is already
+       close to TURN_R_MIN: cutting it is not a bad habit, it is a steering
+       lock the car does not have, so the floor absorbs the bias and the
+       tell would be claiming a fault nobody could see. */
+    tell: "Cut the corner — turned inside the centre of the junction",
+    setup: (p) => { if (p.intent === "left") p.turnBias = -M(2.6); },
   },
   lateSignal: {
     tell: "Indicated barely before turning — nothing like the 2-3 seconds it owed you",

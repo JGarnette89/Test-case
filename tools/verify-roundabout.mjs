@@ -275,10 +275,19 @@ console.log("\n7. NO REGRESSION IN THE CROSS LAYOUT");
      from a stop instead of leaving the line at 72 km/h, and a wider road
      now takes longer to cross rather than being driven faster. Every one
      of these moved because every footprint moved; that was the point.
-     Update deliberately and only alongside a change meant to move them. */
+     Update deliberately and only alongside a change meant to move them.
+
+     Re-derived a second time when turns stopped cutting the corner. Only
+     the three with a left-turning prior moved — liar, silent, lateflag —
+     and all three by the same 0.95s, because the old single-Bezier turn
+     did all its bending at the stop line and swung the turning car across
+     the ego's own approach lane. That was a conflict the law never
+     asked for, so the ego was held 0.95s too long; a real arc gives it
+     back. The seven without a turning prior are untouched, which is the
+     evidence that this was the turn geometry and nothing else. */
   const expected = {
-    opposite: 4.15, signalled: 1.6, liar: 5.6, silent: 5.8, gap: 4.25,
-    walker: 5.35, wanderer: 1.65, sleeper: 3.85, creeper: 3.65, lateflag: 5.7,
+    opposite: 4.15, signalled: 1.6, liar: 4.65, silent: 4.85, gap: 4.25,
+    walker: 5.35, wanderer: 1.65, sleeper: 3.85, creeper: 3.65, lateflag: 4.75,
   };
   let bad = 0;
   for (const [id, want] of Object.entries(expected)) {

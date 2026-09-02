@@ -271,7 +271,7 @@ They are one word apart and do opposite things: a driver trait is *supposed*
 to move a window, and a player trait must never be able to.
 
 **Driver behaviour is composable traits.** `wander`, `creep`, `overshoot`,
-`slowStart`, `wideTurn`, `lateSignal`. A trait bends how the car actually drives
+`slowStart`, `wideTurn`, `cutsCorner`, `lateSignal`. A trait bends how the car actually drives
 and the conflict engine works out the consequences. Never script a trait to
 punish the player directly. Traits divide into two kinds and only one is
 expected to move a window:
@@ -345,6 +345,45 @@ un-saturate it — 0 of 21 now — so the claim discriminates again.
 Do not reintroduce a fixed traversal time. If a scenario needs a different
 window, move the arrival times, exactly as with everything else here.
 
+**A car steers through a turn; it does not cut the corner.** A turn is a
+circular arc that starts at the car and is tangent to the lane it is
+leaving, so the bending happens at the corner where a driver actually turns
+the wheel. `turnPoints` in `paths.js` builds it, and the radius is derived
+rather than chosen: it is the distance from the car to where the two
+centrelines cross, floored at `TURN_R_MIN` (5.5 m, a passenger car at full
+lock). A wider road, whose stop line sits further back, therefore turns
+wider on its own, and a left — whose corner is across the junction — comes
+out wider than a right. Nothing about the shape is authored.
+
+The version this replaced was one quadratic Bezier from the stop line to an
+off-board exit with its control point at the corner: legs of 2.7 m against
+20 m, so all the bending happened at the stop line and none at the corner.
+Measured, every turn in the game was committing two real faults. A left
+crossed onto the oncoming side of its own approach while still 3.3 m short
+of the junction. A right left the carriageway — 4 m from the centreline
+against a 3.6 m road edge — at a 3.4 m radius, tighter than a car can
+physically steer. That was reported by eye before it was ever measured,
+which is why `verify-turns.mjs` now exists.
+
+Fixing it moved exactly three windows, and only the three with a
+left-turning prior: `liar`, `silent` and `lateflag`, all by the same 0.95s
+earlier. The old line swung a turning car across the ego's own approach
+lane, which is a conflict the law never asked for, so the ego was being
+held 0.95s longer than it should have been. Every scenario without a
+turning actor is byte-identical, and that partition is the evidence the
+change was confined to turn geometry.
+
+**Bad turning is a trait, and its tell has to be true.** `turnBias` is how
+badly a driver takes the corner, in metres of finishing error: positive
+swings wide, negative cuts inside. `wideTurn` (+4.5 m) finishes in the far
+lane of the road it turned into. `cutsCorner` (-2.6 m) is **left only**, and
+that is a real rule rather than a shortcut — a left turns around a corner
+across the junction, so there is radius to give away, while a right turns
+around the near kerb where the clean radius is already close to
+`TURN_R_MIN`, so the floor absorbs the bias and the tell would be claiming a
+fault nobody could see. `verify-turns.mjs` checks each tell against the path
+actually built.
+
 ## The roguelike layer
 
 A run is a driving test with stakes: named **stages** (`stages.js`), each
@@ -411,11 +450,21 @@ node tools/verify-camera.mjs       the camera opens gradually, never shrinks, ke
 node tools/verify-roguelike.mjs    traits and Insight: the safety wall, the one-way dependency
 node tools/verify-stages.mjs       stages, bosses, the branch graph, a full run end to end
 node tools/verify-events.mjs       the crossing button and the emergency vehicle: rule, readable, worth reading, generated
+node tools/verify-turns.mjs        turns are steered, not cut: radius, lane discipline, and honest fault tells
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All fifteen must exit 0. Seven things they check are worth understanding:
+All sixteen must exit 0. Eight things they check are worth understanding:
+
+- **`verify-turns.mjs` exists because a fault got past every other check.**
+  Turns cut the corner for the entire life of the project, and nothing in
+  the suite noticed: every check asked whether the *window* was right, and
+  the window was self-consistent with a wrong path. It took someone playing
+  it and saying the turns looked wrong. So this one measures the shape of
+  the drive rather than its timing — steerable radius, which side of the
+  road the car is on, which lane it finishes in — and it is the template for
+  any future check of how the world moves rather than when.
 
 - **Equivalence is the one for refactors.** The others check the engine is
   right; that one checks it has not *changed*. It matters because a change to
@@ -625,12 +674,17 @@ invisible to the encroachment fault because it only ever watches priors — in
   genuinely local should be written so it can move into that mode later.
 - T-junctions, uncontrolled intersections and pedestrian crossovers are all
   wanted, behind the above.
-- **`wideTurn` is unused.** It used to ride along in `lateflag` — bending the
-  path by 1.1 m for a 0.01s effect on the window, under the resolution floor,
-  while its tell still claimed a consequence to the player that was not
-  really there. Removed from that scenario rather than left as a false tell.
-  Still defined in `TRAITS`, waiting for a scenario where the wide line
-  actually reaches the lane the ego uses.
+- **`wideTurn` and `cutsCorner` are real now, and still unused.** `wideTurn`
+  used to ride along in `lateflag` — bending the path by 1.1 m for a 0.01s
+  effect on the window, under the resolution floor, while its tell claimed a
+  consequence to the player that was not really there. It was removed from
+  that scenario rather than left as a false tell, and this entry used to say
+  it was waiting for a scenario where the wide line actually reaches the lane
+  the ego uses. Under real turn geometry it does: 4.5 m wide, into the far
+  lane of the receiving road. `cutsCorner` is its opposite and is new. Both
+  are measured in `verify-turns.mjs` and both are ready to attach; neither is
+  attached to a scenario yet, because which situation should teach a wide or
+  a cut turn is a domain question, not a mechanical one.
 - **`creep` is masked by `overshoot` in `creeper`.** Accepted — creepers are for
   confusing right of way in busier scenarios than that one.
 - The timing renderer is the only one. 3D is the agreed direction, not started.
