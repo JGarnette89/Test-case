@@ -126,6 +126,31 @@ move into that mode rather than being baked into the default.
   Pulling over is deliberately NOT modelled here. It only makes sense
   for a driver already in motion, so it belongs to a lane-change or
   merge scenario rather than to a car stopped at a line.
+- **An instruction is given as early as it is clear what it is
+  specifically asking.** The maintainer's practice, verbatim: "I will ask the
+  applicant to 'turn right at the first street' more or less as soon as that
+  statement is true to where our route takes us." So the instruction window
+  OPENS when the phrase stops being ambiguous — when the junction ahead is the
+  one the phrase points at — and CLOSES when the candidate must already be
+  acting on it. Neither edge is a number anybody picked; both are derived in
+  `directions.js`.
+
+  **Stacking instructions is a trade, not a fault.** Also verbatim: "I will
+  avoid giving instructions in a row, only when having multiple instructions
+  to execute does not overwhelm the concentration of the applicant, or when
+  knowing the multiple steps required in advance will give the driver the most
+  possible time to complete their task." Both halves are real and they pull
+  opposite ways, which is what makes it a mechanic. Calling ahead buys the
+  candidate time — an instruction given early can never be given late — and
+  buys the examiner attention back for the other three systems. It costs the
+  candidate's concentration, and **a loaded driver is a worse driver**. You
+  are trading your own risk for theirs.
+
+  Measured, so the meter is not a feeling: at full stack the candidate's
+  wide turn is 62% wider and their slow start 56% worse. `verify-directions.mjs`
+  reads that through the same fault derivation the examiner marks against,
+  rather than asserting that a number moved.
+
 - **Someone waiting at a crossing button holds none of the crossing.**
   The signal has not changed; traffic keeps moving, which is what happens
   at a real push-button crossing and what makes the press worth reading —
@@ -255,7 +280,7 @@ purpose: missing a fault because a van was in the way is the scenario's doing,
 missing it because you were looking elsewhere is yours. Only one of those is
 markable against the player.
 
-### Directions — agreed in design, not built
+### Directions — built
 
 **A set course is a route.** `route.js` already sequences intersections and
 keeps continuity, and the instruction to give at each junction is simply that
@@ -278,8 +303,6 @@ Three rules make this the system that ties the other three together:
 
 ### Still open — and three of these are the maintainer's
 
-- **How far ahead must an instruction be given** to count as in good time?
-  Domain question.
 - **Does going off course end the drive, or do you re-route?** Real tests
   re-route. Re-routing needs `planRoute` to replan from the actual exit
   heading rather than plan the whole course up front.
@@ -333,6 +356,7 @@ src/engine/road.js       a junction described: legs, lanes, control per leg
 src/engine/paths.js      path shapes — line, curve, polyline — and no road at all
 src/engine/sight.js      what the driver can see, the examiner's cone, and what creeping costs
 src/engine/faults.js     what the candidate did wrong, derived by controlled comparison
+src/engine/directions.js the instruction you give, and what stacking them costs
 src/engine/actions.js    manoeuvres: ordered actions, fault tiers, the mark sheet
 src/engine/score.js      grading a press against a derived window
 src/engine/route.js      several intersections in one drive, and continuity
@@ -614,11 +638,12 @@ node tools/verify-stages.mjs       stages, bosses, the branch graph, a full run 
 node tools/verify-events.mjs       the crossing button and the emergency vehicle: rule, readable, worth reading, generated
 node tools/verify-turns.mjs        turns are steered, not cut: radius, lane discipline, and honest fault tells
 node tools/verify-faults.mjs       examiner: faults derive from a control, and the cone decides what was markable
+node tools/verify-directions.mjs   the instruction window, and what stacking costs the candidate
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All seventeen must exit 0. Nine things they check are worth understanding:
+All eighteen must exit 0. Nine things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take

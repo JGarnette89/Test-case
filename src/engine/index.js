@@ -483,19 +483,42 @@ function basePose(p, t) {
    the conflict engine works out the consequences on its own — a wandering
    car genuinely does intrude, rather than being scripted to punish you.
    ===================================================================== */
+/* =====================================================================
+   DRIVER SKILL
+
+   A driver's composure right now, 0..1, where 1 is this driver at their
+   best. Skill does NOT decide which faults a driver has — their traits
+   do that, and a trait is a habit rather than a mistake. Skill decides
+   how badly the habit shows.
+
+   Kept as a multiplier anchored at 1 so `skill` absent, or 1, reproduces
+   every existing scenario exactly. Nothing in the shipped set sets it,
+   and nothing in the shipped set moves.
+
+   The reason this exists: the examiner may stack directions to buy back
+   their own attention, and stacking loads the candidate. A loaded driver
+   is a worse driver. See directions.js, where that trade is measured.
+
+   Note for whoever wires pressure into a live drive: the `pose` traits
+   below read skill at pose time, so they respond immediately, but the
+   `setup` traits are applied once in schedule(). Changing skill mid-drive
+   means re-scheduling, not mutating a participant in place.            */
+const SKILL_SPAN = 1.0;
+const severityOf = (p) => 1 + (1 - (p.skill ?? 1)) * SKILL_SPAN;
+
 const TRAITS = {
   wander: {
     tell: "Drifting inside its lane — never held a steady line",
     pose: (p, t, po) => {
       if (po.hidden) return po;
-      const amp = M(1.15), w = 1.75;
+      const amp = M(1.15) * severityOf(p), w = 1.75;
       const off = Math.sin(t * w + (p.phase || 0)) * amp;
       const r = (po.rot * Math.PI) / 180;
       return {
         ...po,
         x: po.x - Math.sin(r) * off,
         y: po.y + Math.cos(r) * off,
-        rot: po.rot + Math.cos(t * w + (p.phase || 0)) * 6,
+        rot: po.rot + Math.cos(t * w + (p.phase || 0)) * 6 * severityOf(p),
       };
     },
   },
@@ -504,7 +527,7 @@ const TRAITS = {
     pose: (p, t, po) => {
       if (!po.waiting) return po;
       const k = Math.max(0, Math.sin((t - p.arriveAt) * 2.1));
-      const d = k * M(1.6);
+      const d = k * M(1.6) * severityOf(p);
       const r = (po.rot * Math.PI) / 180;
       return { ...po, x: po.x + Math.cos(r) * d, y: po.y + Math.sin(r) * d };
     },
@@ -515,15 +538,15 @@ const TRAITS = {
        claims and a tell that is not true of the car is a lie to the
        player. A fixed 2.6 m stopped reaching once SET was corrected. */
     tell: "Stopped well past the line, nose already in the intersection",
-    setup: (p) => { p.stopBias = STOP_LINE_AT + STOP_GAP - HALF + M(0.6); },
+    setup: (p) => { p.stopBias = STOP_LINE_AT + STOP_GAP - HALF + M(0.6) * severityOf(p); },
   },
   slowStart: {
     tell: "Slow off the mark when it was clearly their turn",
-    setup: (p) => { p.startDelay = 1.7; },
+    setup: (p) => { p.startDelay = 1.7 * severityOf(p); },
   },
   wideTurn: {
     tell: "Swung wide through the turn, across the next lane",
-    setup: (p) => { p.turnBias = M(4.5); },
+    setup: (p) => { p.turnBias = M(4.5) * severityOf(p); },
   },
   cutsCorner: {
     /* The fault every turn in this game used to commit by accident, back
@@ -541,11 +564,11 @@ const TRAITS = {
        lock the car does not have, so the floor absorbs the bias and the
        tell would be claiming a fault nobody could see. */
     tell: "Cut the corner — turned inside the centre of the junction",
-    setup: (p) => { if (p.intent === "left") p.turnBias = -M(2.6); },
+    setup: (p) => { if (p.intent === "left") p.turnBias = -M(2.6) * severityOf(p); },
   },
   lateSignal: {
     tell: "Indicated barely before turning — nothing like the 2-3 seconds it owed you",
-    setup: (p) => { p.signalLead = LATE_SIGNAL_LEAD; },
+    setup: (p) => { p.signalLead = LATE_SIGNAL_LEAD / severityOf(p); },
   },
 };
 
@@ -933,6 +956,7 @@ export {
   STOPS, EXITS, RIGHT_OF, OPPOSITE,
   PED_SETBACK, PED_OVERHANG, BAR_HALF, STOP_LINE_AT, STOP_GAP,
   basePose, TRAITS, traitTells, poseAt, signalShowing,
+  SKILL_SPAN, severityOf,
   extentsFor, poseFor, forwardClaim, boxesOverlap, conflicts,
   outranks, earliestClear, applyTraits, schedule,
 };
