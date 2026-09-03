@@ -26,6 +26,7 @@
    ===================================================================== */
 import {
   TRAIT_CATALOG, emptyMods, applyTrait, draftFor, rng, CONSUMABLES,
+  RARITIES, rarityOf, rarityRank,
 } from "../src/engine/traits.js";
 import {
   isCritical, startRun, recordSituation, applyDraft, drawForRun, chooseBranch,
@@ -127,7 +128,7 @@ console.log("\n3. EVERY TRAIT MEASURABLY MATTERS");
        reactionFloor only bites near the default floor (0.45s); grace
        only bites near the default grace boundary (2.7s, "late" under
        the old 2.6s ceiling). One fixed probe point would pass
-       steady-hands and rubber-stamp extra-beat without ever really
+       head-up-display and rubber-stamp acoustic-glass without ever really
        testing it — caught for real building this check. */
     if (t.category === "scoring") {
       const legalAt = 2.0;
@@ -152,7 +153,7 @@ console.log("\n3. EVERY TRAIT MEASURABLY MATTERS");
 
   // Generation-bias traits, checked against real composition: a biased
   // draw should shift the measured distribution, not just set a flag.
-  const rushHour = applyTrait(emptyMods(), "rush-hour");
+  const rushHour = applyTrait(emptyMods(), "traffic-routing");
   const rushRun = { mods: rushHour };
   const plainRun = { mods: emptyMods() };
   let rushHeavy = 0, plainHeavy = 0, samples = 60;
@@ -163,10 +164,10 @@ console.log("\n3. EVERY TRAIT MEASURABLY MATTERS");
     if (r2?.conditions?.traffic === "heavy") plainHeavy++;
   }
   rushHeavy > plainHeavy
-    ? ok(`rush-hour draws heavy traffic more often (${rushHeavy}/${samples} vs ${plainHeavy}/${samples} unbiased)`)
-    : fail(`rush-hour did not measurably shift toward heavy traffic (${rushHeavy}/${samples} vs ${plainHeavy}/${samples})`);
+    ? ok(`traffic-routing draws heavy traffic more often (${rushHeavy}/${samples} vs ${plainHeavy}/${samples} unbiased)`)
+    : fail(`traffic-routing did not measurably shift toward heavy traffic (${rushHeavy}/${samples} vs ${plainHeavy}/${samples})`);
 
-  const guardRun = { mods: applyTrait(emptyMods(), "crossing-guard") };
+  const guardRun = { mods: applyTrait(emptyMods(), "school-zone-routing") };
   let guardPed = 0, plainPed = 0;
   for (let seed = 1; seed <= samples; seed++) {
     const r1 = drawForRun(guardRun, seed, []);
@@ -175,15 +176,15 @@ console.log("\n3. EVERY TRAIT MEASURABLY MATTERS");
     if (r2?.actors?.some((a) => a.kind === "ped")) plainPed++;
   }
   guardPed > plainPed
-    ? ok(`crossing-guard draws a pedestrian more often (${guardPed}/${samples} vs ${plainPed}/${samples} unbiased)`)
-    : fail(`crossing-guard did not measurably shift toward pedestrians (${guardPed}/${samples} vs ${plainPed}/${samples})`);
+    ? ok(`school-zone-routing draws a pedestrian more often (${guardPed}/${samples} vs ${plainPed}/${samples} unbiased)`)
+    : fail(`school-zone-routing did not measurably shift toward pedestrians (${guardPed}/${samples} vs ${plainPed}/${samples})`);
 
   // Quick Study: proven against the run state machine's own milestone math.
   let quickRun = startRun(1);
-  quickRun = applyDraft({ ...quickRun, pendingDraft: [{ id: "quick-study" }] }, "quick-study");
+  quickRun = applyDraft({ ...quickRun, pendingDraft: [{ id: "extended-warranty" }] }, "extended-warranty");
   quickRun.mods.draftEvery === 2
-    ? ok("quick-study lowers the clean-clear gap between drafts (3 -> 2)")
-    : fail(`quick-study should set draftEvery to 2, got ${quickRun.mods.draftEvery}`);
+    ? ok("extended-warranty lowers the clean-clear gap between drafts (3 -> 2)")
+    : fail(`extended-warranty should set draftEvery to 2, got ${quickRun.mods.draftEvery}`);
 }
 
 /* ---------- 4. the safety wall holds under the heaviest trait combo --
@@ -361,6 +362,79 @@ console.log("\n6. INSIGHT");
     if (poorest.insight < 0) negative++;
   }
   negative === 0 ? ok("50 spend attempts against a near-empty balance never drive Insight negative") : fail(`Insight went negative ${negative} time(s)`);
+}
+
+/* ---------- 7. rarity ------------------------------------------------
+   Rarity is presentation plus scarcity and nothing else, so there are
+   exactly two things to prove: that no upgrade smuggled a stronger
+   effect in behind a tier label the engine does not read, and that the
+   tier is not decoration — a rare part has to actually turn up less
+   often than a common one when the draft is run enough times. */
+console.log("\n7. RARITY");
+{
+  let bad = 0;
+  for (const t of TRAIT_CATALOG) {
+    if (rarityRank(t.rarity) < 0) { bad++; fail(`${t.id}: rarity "${t.rarity}" is not a tier in RARITIES`); }
+  }
+  bad === 0 ? ok(`all ${TRAIT_CATALOG.length} upgrades carry a real rarity tier`) : null;
+
+  /* No palette in the engine — rarity is named and weighted here, and
+     painted by the renderer. Guards the same one-way rule section 5
+     guards for compose.js. */
+  const src = readFileSync(new URL("../src/engine/traits.js", import.meta.url), "utf8");
+  // An import of the palette, or a literal colour anywhere. Prose may say
+  // the word "theme" — the point is that no colour ever reaches this file.
+  const importsTheme = /^\s*import[^\n]*["'][^"']*theme[^"']*["']/m.test(src);
+  const hasColour = /#[0-9a-fA-F]{3,8}\b|\brgba?\s*\(/.test(src);
+  importsTheme || hasColour
+    ? fail(`traits.js has picked up ${importsTheme ? "a theme import" : "a literal colour"} — rarity is painted by the renderer`)
+    : ok("traits.js names and weights rarity but never colours it");
+
+  /* Scarcity, measured over many independent drafts from an empty run.
+     Counting appearances-on-offer rather than picks, since what rarity
+     governs is what you are SHOWN. */
+  const seen = Object.fromEntries(RARITIES.map((r) => [r.id, 0]));
+  const RUNS = 4000;
+  for (let s = 1; s <= RUNS; s++) for (const t of draftFor(rng(s), [], 3)) seen[t.rarity]++;
+  const perEntry = {};
+  for (const r of RARITIES) {
+    const n = TRAIT_CATALOG.filter((t) => t.rarity === r.id).length;
+    perEntry[r.id] = n ? seen[r.id] / n : null;   // per-entry, so tier size does not confound it
+  }
+  const tiers = RARITIES.filter((r) => perEntry[r.id] !== null);
+  let monotone = true;
+  for (let i = 1; i < tiers.length; i++) {
+    if (!(perEntry[tiers[i].id] < perEntry[tiers[i - 1].id])) {
+      monotone = false;
+      fail(`${tiers[i].id} is offered as often as ${tiers[i - 1].id} (${perEntry[tiers[i].id].toFixed(0)} vs ${perEntry[tiers[i - 1].id].toFixed(0)} per entry) — the tier is decoration`);
+    }
+  }
+  if (monotone) ok(`rarer is scarcer, per entry across ${RUNS} drafts: ${tiers.map((r) => `${r.id} ${perEntry[r.id].toFixed(0)}`).join(", ")}`);
+
+  /* Scarce, but reachable: a tier nobody ever sees is content that does
+     not exist. */
+  const rarest = RARITIES[RARITIES.length - 1].id;
+  seen[rarest] > 0
+    ? ok(`the rarest tier is still reachable (${seen[rarest]} offers in ${RUNS} drafts)`)
+    : fail(`no ${rarest} upgrade was offered once in ${RUNS} drafts`);
+
+  /* Weighting must not have cost the draft its two structural promises. */
+  let dupes = 0, short = 0;
+  for (let s = 1; s <= 400; s++) {
+    const picks = draftFor(rng(s * 7), [], 3);
+    if (new Set(picks.map((p) => p.id)).size !== picks.length) dupes++;
+    if (picks.length !== 3) short++;
+  }
+  dupes === 0 && short === 0
+    ? ok("400 weighted drafts each offered 3 distinct upgrades")
+    : fail(`${dupes} draft(s) repeated an upgrade, ${short} returned the wrong count`);
+
+  const a = draftFor(rng(99), [], 3).map((t) => t.id).join(",");
+  const b = draftFor(rng(99), [], 3).map((t) => t.id).join(",");
+  a === b ? ok("a weighted draft is still deterministic for a given seed") : fail(`same seed gave different offers: ${a} vs ${b}`);
+
+  const exhausted = draftFor(rng(5), TRAIT_CATALOG.map((t) => t.id), 3);
+  exhausted.length === 0 ? ok("an exhausted catalog offers nothing rather than looping") : fail(`exhausted catalog returned ${exhausted.length}`);
 }
 
 console.log("\n" + "=".repeat(66));

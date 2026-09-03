@@ -23,7 +23,7 @@ import {
   startRun as startRoguelikeRun, recordSituation, applyDraft, drawForRun,
   chooseBranch, spendConsumable, CONSUMABLES,
 } from "../engine/roguelike.js";
-import { TRAIT_CATALOG } from "../engine/traits.js";
+import { traitById, rarityOf } from "../engine/traits.js";
 /* The run's own screens and the art they share — see RoguelikeScreens.jsx
    for why those four live outside this file. */
 import { Roundabout } from "./roadArt.jsx";
@@ -933,10 +933,13 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
             <div
               style={st.chip}
               title={endlessRun.traits.length
-                ? `Drafted: ${endlessRun.traits.map((id) => TRAIT_CATALOG.find((t) => t.id === id)?.name).join(", ")}`
-                : "No traits drafted yet"}
+                ? `Fitted: ${endlessRun.traits.map((id) => {
+                  const t = traitById(id);
+                  return t ? `${t.name} (${rarityOf(t.rarity).label})` : id;
+                }).join(", ")}`
+                : "Nothing fitted yet"}
             >
-              <Sparkles size={13} />{endlessRun.situationsCleared} cleared · {endlessRun.traits.length} traits
+              <Sparkles size={13} />{endlessRun.situationsCleared} cleared · {endlessRun.traits.length} fitted
             </div>
           )}
           {endlessRun && (
@@ -1081,7 +1084,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
                 <button
                   className="btn" style={{ flex: 1, fontSize: 12.5 }}
                   disabled={endlessRun.insight < CONSUMABLES.find((c) => c.id === "early-draft").cost}
-                  onClick={buyEarlyDraft} title="Call your next trait choice now, milestone or not"
+                  onClick={buyEarlyDraft} title="Call your next upgrade now, milestone or not"
                 >
                   <Sparkles size={14} />Draft ({CONSUMABLES.find((c) => c.id === "early-draft").cost})
                 </button>

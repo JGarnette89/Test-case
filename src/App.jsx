@@ -95,7 +95,7 @@ const MODES = [
     name: "Roguelike",
     kicker: "A driving test, roguelike",
     blurb:
-      "Named stages, each capped by a hand-authored boss, building to a four-intersection Checkride. Draft a perk every few clean clears, pick your own order at the roundabout between stages, and one critical fault anywhere ends the run.",
+      "Named stages, each capped by a hand-authored boss, building to a four-intersection Checkride. Fit an upgrade to your car every few clean clears, pick your own order at the roundabout between stages, and one critical fault anywhere ends the run.",
     Icon: Dices,
     accent: C.amber,
     Component: RightOfWayTiming,

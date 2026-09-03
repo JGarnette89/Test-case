@@ -17,12 +17,12 @@
 import React from "react";
 import { Skull, Check, Sparkles, Zap, Shuffle } from "lucide-react";
 
-import { C, FONT_D } from "../theme.js";
+import { C, RARITY_C, FONT_D } from "../theme.js";
 import { W, H } from "../engine/index.js";
 import {
   summary as roguelikeSummary, stageById, bossById, CONSUMABLES, INSIGHT_CACHE,
 } from "../engine/roguelike.js";
-import { TRAIT_CATALOG } from "../engine/traits.js";
+import { traitById, rarityOf } from "../engine/traits.js";
 import { Roundabout } from "./roadArt.jsx";
 import { st } from "./timingStyles.js";
 
@@ -35,10 +35,27 @@ const cardButton = {
 const cardTitle = { fontFamily: FONT_D, fontWeight: 700, fontSize: 14.5, letterSpacing: 0.5 };
 const cardBody = { fontSize: 12.5, color: "#a8aeb6", lineHeight: 1.4, fontWeight: 400 };
 
+/* The tier badge. Colour comes from theme.js keyed by the engine's own
+   rarity id, so adding a tier is a data entry there and a palette entry
+   here — never a new component. */
+export function RarityTag({ rarity, style }) {
+  const col = RARITY_C[rarity] || RARITY_C.common;
+  return (
+    <span style={{
+      fontFamily: FONT_D, fontWeight: 700, fontSize: 10, letterSpacing: 1.1,
+      textTransform: "uppercase", color: col, border: `1px solid ${col}66`,
+      background: `${col}1A`, borderRadius: 3, padding: "1px 5px", lineHeight: 1.5,
+      whiteSpace: "nowrap", ...style,
+    }}>
+      {rarityOf(rarity).label}
+    </span>
+  );
+}
+
 function draftedLine(s) {
-  if (!s.traits.length) return "No traits drafted this run.";
-  const names = s.traits.map((id) => TRAIT_CATALOG.find((t) => t.id === id)?.name).join(", ");
-  return `You drafted ${s.traits.length} trait${s.traits.length === 1 ? "" : "s"}: ${names}.`;
+  if (!s.traits.length) return "Nothing fitted this run.";
+  const names = s.traits.map((id) => traitById(id)?.name).join(", ");
+  return `You fitted ${s.traits.length} upgrade${s.traits.length === 1 ? "" : "s"}: ${names}.`;
 }
 
 /* A roguelike run ended — a critical fault, same as a road test, no
@@ -147,12 +164,25 @@ export function TraitDraftScreen({ options, onPick }) {
   return (
     <div style={{ ...st.tells, background: "rgba(59,170,81,0.08)", borderColor: "rgba(59,170,81,0.28)" }}>
       <div style={{ ...st.tellsHead, color: C.green, display: "flex", alignItems: "center", gap: 6 }}>
-        <Sparkles size={14} />Choose a trait
+        <Sparkles size={14} />Fit an upgrade
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
         {options.map((t) => (
-          <button key={t.id} className="btn" style={{ ...cardButton, minHeight: 56 }} onClick={() => onPick(t.id)}>
-            <span style={cardTitle}>{t.name}</span>
+          <button
+            key={t.id}
+            className="btn"
+            style={{
+              ...cardButton, minHeight: 56,
+              // The tier reads at a glance from the edge, so a legendary is
+              // recognisable before the name has been read.
+              borderLeft: `3px solid ${RARITY_C[t.rarity] || RARITY_C.common}`,
+            }}
+            onClick={() => onPick(t.id)}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+              <span style={cardTitle}>{t.name}</span>
+              <RarityTag rarity={t.rarity} />
+            </span>
             <span style={cardBody}>{t.description}</span>
           </button>
         ))}
