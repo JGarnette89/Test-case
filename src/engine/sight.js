@@ -140,6 +140,117 @@ export function whatEgoSees(sim, t, steps = 0, statics = []) {
   return out;
 }
 
+/* =====================================================================
+   THE EXAMINER'S SEAT
+
+   Everything above answers "what can the driver see", and answers it
+   omnidirectionally: occlusion only, no field of view, because a driver
+   choosing when to go is assumed to have looked. An examiner is the
+   opposite case. Their whole job is where they point their attention,
+   so what they see is occlusion AND a cone.
+
+   The cone is one angular test in front of the occlusion work already
+   here. That is the entire engine cost of the examiner flip's headline
+   mechanic.
+   ===================================================================== */
+
+/* Across from the driver, same row. The examiner's head turns; the car
+   does not turn with it. */
+export const EXAMINER_ACROSS = M(0.7);
+
+/* A comfortable field of useful attention, full angle. Wider than this
+   and holding a gaze stops being a decision; much narrower and the
+   measured spread of real faults (54 degrees across the shipped set)
+   stops fitting in any single look. */
+export const EXAMINER_CONE = 60;
+
+export function examinerEye(egoPose, across = EXAMINER_ACROSS) {
+  const e = eyePoint(egoPose);
+  const r = rad(egoPose.rot);
+  return { x: e.x - Math.sin(r) * across, y: e.y + Math.cos(r) * across };
+}
+
+/* Signed degrees from the car's own heading to a point: negative is to
+   the candidate's left, positive to their right, zero straight ahead.
+
+   RELATIVE to the car, never absolute, and that is load-bearing rather
+   than a convenience. route.js rotates a scenario a quarter turn to reuse
+   it from another approach, and the whole reason that is safe is that a
+   rotated scene is an identical situation pointing a different way. An
+   examiner gaze held in world degrees would break exactly that: the same
+   drive would need a different look on every rotation. Held against the
+   car's heading it rotates with the scene for free. */
+export function bearingFromCar(egoPose, eye, point) {
+  const ang = (Math.atan2(point.y - eye.y, point.x - eye.x) * 180) / Math.PI;
+  return ((ang - egoPose.rot + 540) % 360) - 180;
+}
+
+/* Is `point` inside a cone of `cone` degrees centred `gaze` degrees off
+   the car's heading? */
+export function inCone(egoPose, eye, gaze, point, cone = EXAMINER_CONE) {
+  const off = bearingFromCar(egoPose, eye, point) - gaze;
+  return Math.abs(((off + 540) % 360) - 180) <= cone / 2;
+}
+
+/* What the examiner can see of everyone at a moment, given where they are
+   looking. Same shape as whatEgoSees — actor id to visibility — with one
+   extra state the driver's version never needed: "away", meaning nothing
+   is blocking it, you simply were not looking there.
+
+   Distinguishing "away" from "hidden" is the point. Missing a fault
+   because a van was in the way is the scenario's doing; missing it
+   because you were looking the other way is yours. */
+export function whatExaminerSees(sim, t, { gaze = 0, cone = EXAMINER_CONE, statics = [] } = {}) {
+  const egoPose = poseAt(sim.ego, t);
+  const eye = examinerEye(egoPose);
+
+  const live = sim.actors
+    .map((p) => ({ p, pose: poseAt(p, t) }))
+    .filter(({ pose }) => !pose.gone && !pose.hidden);
+
+  const out = {};
+  for (const { p, pose } of live) {
+    if (!inCone(egoPose, eye, gaze, pose, cone)) { out[p.id] = "away"; continue; }
+    const blockers = [...live.filter((o) => o.p.id !== p.id), ...statics];
+    out[p.id] = visibility(eye, p, pose, blockers);
+  }
+  return out;
+}
+
+/* Could the examiner have seen this fault happen, looking `gaze` degrees
+   off the car's heading the whole time it was live?
+
+   Returns the share of the fault's own duration during which it was both
+   in the cone and not occluded — so a fault glimpsed at the edge of a
+   look reads differently from one watched throughout. A signal-channel
+   fault is judged on the car's position exactly like a path one: you read
+   an indicator by looking at the car wearing it. */
+export function faultVisibility(sim, fault, { gaze = 0, cone = EXAMINER_CONE, statics = [] } = {}) {
+  const subject = [sim.ego, ...sim.actors].find((p) => p.id === fault.who);
+  if (!subject) return { seen: 0, best: "away" };
+
+  const rank = { away: 0, hidden: 1, partial: 2, clear: 3 };
+  let seenFor = 0, best = "away";
+
+  for (const s of fault.samples) {
+    const egoPose = poseAt(sim.ego, s.t);
+    const eye = examinerEye(egoPose);
+    const pose = poseAt(subject, s.t);
+    let state;
+    if (!inCone(egoPose, eye, gaze, pose, cone)) {
+      state = "away";
+    } else {
+      const others = sim.actors
+        .map((p) => ({ p, pose: poseAt(p, s.t) }))
+        .filter(({ p, pose }) => !pose.gone && !pose.hidden && p.id !== fault.who);
+      state = visibility(eye, subject, pose, [...others, ...statics]);
+    }
+    if (rank[state] > rank[best]) best = state;
+    if (state === "partial" || state === "clear") seenFor++;
+  }
+  return { seen: fault.samples.length ? seenFor / fault.samples.length : 0, best };
+}
+
 /* ---------------------------------------------------------------------
    Creeping
    --------------------------------------------------------------------- */

@@ -5,10 +5,23 @@ get right, and several of them are non-obvious.
 
 ## What this repo is
 
-**Right of Way** — a real-time judgment game. You are one car at an
-intersection. Traffic arrives on a schedule. Press GO at the moment the road is
-legally yours. Too early is a failure to yield; too late is undue delay, and it
-is the more common fault.
+**Right of Way** — a real-time judgment game. **You are the examiner.**
+
+You sit in the passenger seat while a candidate drives a set course. You hold
+a field of view and can only mark what you actually saw. You give the
+directions, in time for them to be followed. You watch for danger and take the
+wheel when you have to. And you mark the faults you catch — while paying for
+the ones you invent.
+
+This is the whole game. There are no other modes.
+
+**It was a driver game until 2 Sep 2026, and most of the code still is.** You
+were one car at an intersection, pressing GO the moment the road became
+legally yours. That premise is finished, but nothing has been deleted: the
+driver game is shipped, verified, working code and it is the material the
+examiner game is built from, not a thing to tear out. Sections of this file
+still describe it because it still exists. See "The examiner game" below for
+what is agreed, what is built, and what is not.
 
 React + SVG, no canvas, no game engine. Mobile-first.
 
@@ -178,6 +191,130 @@ move into that mode rather than being baked into the default.
   at your own leg crosses your give-way line on the way out and holds you up
   anyway. Currently worth 3.25s.
 
+## The examiner game
+
+Four systems running at once, which is the point: they compete for the same
+attention, and the interesting failures come from that competition rather than
+from any one of them being hard.
+
+1. **Observe the candidate's driving.** They drive; you watch.
+2. **Assess observable errors.** Mark what you caught. Marking a fault that
+   did not happen has to cost, or the strategy is to mark everything.
+3. **Watch for danger and intervene.** Take the wheel before it becomes a
+   collision.
+4. **Give the directions.** A set course, and the candidate only knows what
+   you told them.
+
+**The flip was cheap for one reason: the candidate is just a participant.**
+`simulate()` calls `schedule([ego, ...actors])`, and `schedule` applies driver
+traits to everything it is handed, the ego included. So the car being examined
+needs no special case anywhere — it drives badly in the same named, measured
+ways any NPC does. Measured: 6 of the 7 driver traits produce a visible fault
+on the candidate's own car.
+
+### Never author the fault
+
+The driver game's one inviolable rule was **never author the answer** — the
+safe window is simulated, never typed in. The same temptation reappears here
+wearing a new costume: hand-writing "at 3.4s this driver swings wide, mark
+it". Do that and the game is a memory test with a driving skin.
+
+So a fault is DERIVED, by controlled comparison: simulate as written,
+simulate again with one trait stripped from one driver, diff the poses. Where
+they separate by more than a driver could fail to notice, the fault is
+happening, and the car's position at those instants is where an examiner would
+have to be looking. Same car, same schedule, one thing changed — the technique
+`verify-windows.mjs` already used to prove a trait matters at all.
+`src/engine/faults.js` does this and `verify-faults.mjs` proves it: strip the
+trait and the fault must disappear, every time.
+
+This also settles the hardest content question for free. The derivation that
+produces a fault produces its **visibility** too, so a fault the player could
+not physically have seen cannot be marked against them.
+
+### What is built
+
+- **`src/engine/faults.js`** — fault derivation. `faultsIn(scn)` returns every
+  fault from every participant with who, what, when, where, how long, and
+  which channel it reads on. `MIN_DURATION` is a real gate: `lateflag`'s late
+  signal lasts 0.15s and is correctly dropped as uncallable.
+- **The examiner's seat, in `sight.js`** — `examinerEye`, `inCone`,
+  `whatExaminerSees`, `faultVisibility`. The cone is one angular test in front
+  of the occlusion `visibility()` already did; that is the entire engine cost
+  of the headline mechanic.
+
+**Gaze is relative to the car's heading, never absolute, and that is
+load-bearing.** `route.js` rotates a scenario a quarter turn to reuse it from
+another approach, and the whole reason that is safe is that a rotated scene is
+an identical situation pointing a different way. A gaze held in world degrees
+would break exactly that — the same drive would need a different look from
+each approach. Checked on 9 rotated copies in `verify-faults.mjs`.
+
+**Three visibility states, not two.** `away` is distinct from `hidden` on
+purpose: missing a fault because a van was in the way is the scenario's doing,
+missing it because you were looking elsewhere is yours. Only one of those is
+markable against the player.
+
+### Directions — agreed in design, not built
+
+**A set course is a route.** `route.js` already sequences intersections and
+keeps continuity, and the instruction to give at each junction is simply that
+leg's `ego.intent`. `exitHeading` and `entrySideAfter` already derive where the
+candidate ends up **from their actual intent**, which is exactly what going
+off course needs.
+
+Three rules make this the system that ties the other three together:
+
+- **Silence means straight on.** A candidate told nothing carries on ahead. So
+  a late instruction is a missed turn, not a pause.
+- **An instruction has a deadline, not a window.** It must be given in time to
+  be followed. That is the `deadline` shape `actions.js` already implements —
+  no new scoring shape needed for this one.
+- **A late instruction is the examiner's fault, not the candidate's.** This is
+  real practice and it is the interlock the whole design rests on: being busy
+  marking a fault makes you late with a direction, and the resulting error is
+  then yours and unmarkable. The four systems have to be able to make each
+  other fail, or they are four scoreboards rather than one game.
+
+### Still open — and three of these are the maintainer's
+
+- **How far ahead must an instruction be given** to count as in good time?
+  Domain question.
+- **Does going off course end the drive, or do you re-route?** Real tests
+  re-route. Re-routing needs `planRoute` to replan from the actual exit
+  heading rather than plan the whole course up front.
+- **What is an intervention, in law and on the sheet?** An examiner taking
+  control is itself a recorded outcome. Automatic fail for the candidate? Is
+  failing to intervene a fail for the player?
+- **Detection is a fourth scoring shape and is not built.** Not `deadline`,
+  not `window`, not merging's "how soon". Precision and recall against the
+  derived fault list, plus timeliness. It gets its own module and an
+  independent re-derivation, like the scoring curve.
+- **The candidate's observations are not modelled at all.** No head, no
+  mirrors, no eyes for anyone — the engine knows where cars are, not where
+  drivers are looking. A large share of what a real examiner marks is whether
+  the candidate *looked*. This is the biggest gap in the whole design and it
+  is new modelling, not reuse.
+- **Intervention cannot be triggered by the conflict.** Measured across ten
+  situations, warning time from first conflict to contact is min 0.45s, median
+  1.10s, max 2.30s — against a 0.35s floor for noticing anything at all. That
+  is a reflex test. The cue has to be the candidate's behaviour beforehand,
+  which is the same bar every other tell in this file has to clear.
+- **Content.** 4 of 18 situations carry any driver trait; 6 instances in the
+  whole set. `generate.js` attaches one to 45% of actors from a five-trait
+  pool; `compose.js` attaches none, ever.
+
+### Humour is allowed. The traffic law is not
+
+The candidates are sinful drivers in purgatory and they can be as ridiculous
+as they like. **The driving standards they are measured against cannot be.**
+A parody driver may do something absurd; what makes it a fault, and how bad a
+fault it is, still has to be true. This is the same rule the fiction already
+lived under and it does not soften because the tone did.
+
+The reference doc, kept current alongside this file:
+https://claude.ai/code/artifact/2c436e9e-ddc3-4f18-a192-d42734d9127b
+
 ## Architecture
 
 **The engine is pure and the renderer is disposable.** `src/engine/` has no
@@ -194,7 +331,8 @@ direction, 2D now, 3D later, so do not put anything visual into the engine.
 src/engine/index.js      the conflict rules, driver traits, and what is where at time t
 src/engine/road.js       a junction described: legs, lanes, control per leg
 src/engine/paths.js      path shapes — line, curve, polyline — and no road at all
-src/engine/sight.js      what the driver can see, and what creeping costs
+src/engine/sight.js      what the driver can see, the examiner's cone, and what creeping costs
+src/engine/faults.js     what the candidate did wrong, derived by controlled comparison
 src/engine/actions.js    manoeuvres: ordered actions, fault tiers, the mark sheet
 src/engine/score.js      grading a press against a derived window
 src/engine/route.js      several intersections in one drive, and continuity
@@ -202,7 +340,7 @@ src/engine/generate.js   seeded scenario generation
 src/engine/compose.js    a brief in, a scene that measurably matches it out
 src/engine/scenarios.js  the set situations, as data
 src/engine/routes.js     drives, as data
-src/engine/traits.js     PLAYER perks and consumables — not the driver traits above
+src/engine/traits.js     PLAYER car upgrades and consumables — not the driver traits above
 src/engine/roguelike.js  a run: stages, bosses, the branch, the Checkride, Insight
 src/engine/stages.js     the roguelike's stages and its roundabout graph, as data
 src/engine/bosses.js     hand-authored boss situations, as data
@@ -263,12 +401,36 @@ a situation, a drive, or a trait must be a data entry, not a new component.
 
 - **Driver traits** — `TRAITS` in `src/engine/index.js`. How an NPC actually
   drives. They belong to a car in a scenario.
-- **Player traits** — `TRAIT_CATALOG` in `src/engine/traits.js`. Run-scoped
-  perks the player drafts in the roguelike. They belong to a run, and they
-  bend nothing about how anyone drives.
+- **Player upgrades** — `TRAIT_CATALOG` in `src/engine/traits.js`. Run-scoped
+  equipment fitted to the player's car in the roguelike. They belong to a
+  run, and they bend nothing about how anyone drives.
 
 They are one word apart and do opposite things: a driver trait is *supposed*
-to move a window, and a player trait must never be able to.
+to move a window, and a player upgrade must never be able to.
+
+**The player's side is presented as car equipment, in rarity tiers.** Common
+through Legendary, ordered and weighted in `RARITIES`. That is a reskin of
+what was already there, not a new power: rarity governs how often a part is
+*offered*, never how hard the game is or how the scorer behaves, and there is
+no pity timer and no scaling with run depth. A rare part is rare at every
+draft.
+
+The fiction is chosen to keep the safety boundary obvious rather than merely
+enforced. **Every upgrade is glass, a mirror, a camera, a readout, or a route
+choice** — things that change what the driver *knows*. No brakes, no tyres,
+no suspension, no engine, and nothing that touches how the player's car moves
+through the world. A part that cannot be described without implying the car
+handles differently does not belong in that file, because it would be moving
+`legalAt` with it.
+
+Two consequences worth keeping. Names must stay literally true, exactly like
+a driver trait's tell: `school-zone-routing` is named for the routing it does
+and is pointedly *not* called "Pedestrian Detection", because `preferPedestrian`
+sends you where the pedestrians are and does nothing to help you see one.
+And `RARITIES` carries ids, labels and weights but **no colour** — the palette
+lives in `theme.js` and the renderer keys off those ids, same as everywhere
+else the engine refuses to know what things look like. Both are checked in
+`verify-roguelike.mjs`, along with rarer actually being scarcer.
 
 **Driver behaviour is composable traits.** `wander`, `creep`, `overshoot`,
 `slowStart`, `wideTurn`, `cutsCorner`, `lateSignal`. A trait bends how the car actually drives
@@ -307,7 +469,7 @@ verdict boundary. A press more than 0.25s early is a failure to yield and scores
 nothing on any curve.
 
 `REACTION_FLOOR` and `GRACE` are now *defaults*, not constants: `grade()` takes
-both as optional parameters so a drafted player trait can widen the curve for
+both as optional parameters so a fitted player upgrade can widen the curve for
 one run. Widen only — nothing may narrow them, and every existing call site
 that passes neither behaves exactly as it always did. **`EARLY_TOLERANCE` is
 deliberately not a parameter.** It is the boundary of a failure to yield, not a
@@ -392,7 +554,7 @@ screen between them for choosing what comes next, building to a four-leg
 **Checkride** finale. Clearing the Checkride is the run's one win state
 (`outcome: "won"`); any critical fault anywhere ends it (`"ended"`).
 
-**The boundary that makes the whole thing safe.** A player trait or a
+**The boundary that makes the whole thing safe.** A player upgrade or a
 purchased consumable may change exactly three things: what the player is
 shown, how generous the scorer is being *for display this run*, and which
 brief the generator is asked for next. It may never touch `legalAt`,
@@ -451,11 +613,19 @@ node tools/verify-roguelike.mjs    traits and Insight: the safety wall, the one-
 node tools/verify-stages.mjs       stages, bosses, the branch graph, a full run end to end
 node tools/verify-events.mjs       the crossing button and the emergency vehicle: rule, readable, worth reading, generated
 node tools/verify-turns.mjs        turns are steered, not cut: radius, lane discipline, and honest fault tells
+node tools/verify-faults.mjs       examiner: faults derive from a control, and the cone decides what was markable
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All sixteen must exit 0. Eight things they check are worth understanding:
+All seventeen must exit 0. Nine things they check are worth understanding:
+
+- **`verify-faults.mjs` guards the examiner game's honesty.** Its central
+  check is the one that separates a derived fault from an asserted one: take
+  the fault it found, remove the trait that caused it, and the same query must
+  come back empty. A fault that survives its own cause being removed was
+  never derived from it.
+
 
 - **`verify-turns.mjs` exists because a fault got past every other check.**
   Turns cut the corner for the entire life of the project, and nothing in
@@ -704,7 +874,7 @@ invisible to the encroachment fault because it only ever watches priors — in
 - Do not wire MergeRush — or any other minigame — into the roguelike run until
   it has been playtested and the shape is settled. It is a prototype to react
   to, and it is unwired on purpose, not by omission.
-- Do not let a player trait or consumable reach `legalAt`, `safeAt`, collision
+- Do not let a player upgrade or consumable reach `legalAt`, `safeAt`, collision
   detection, or a pad/claim/resolution constant. See "The roguelike layer".
 - Do not "simplify" the scenario, route or trait systems back into hardcoded
   cases.
