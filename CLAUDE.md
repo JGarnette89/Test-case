@@ -280,6 +280,40 @@ purpose: missing a fault because a van was in the way is the scenario's doing,
 missing it because you were looking elsewhere is yours. Only one of those is
 markable against the player.
 
+### The camera rides with the candidate — built
+
+`chaseFor` in `frame.js`: the view is centred on the candidate's car and
+turns alongside it, so the candidate's straight-ahead always draws upward.
+That is what makes the examiner's gaze — already held in degrees off the
+car's heading — land on a fixed screen direction, and it is the reason
+relative gaze was the right call in `sight.js`.
+
+**It follows the INTENDED pose, not the actual one, and that is the whole
+design rather than an implementation detail.** Lock the camera to
+`poseAt()` — where the car really is — and the car sits dead centre and
+perfectly straight forever while the WORLD wobbles around it. Every
+steering fault the game exists to catch would vanish at exactly the moment
+it happened: a wandering driver would read as a wandering camera, a wide
+turn as the road sliding sideways.
+
+So the camera rides `basePose()`, the same trait-free control
+`faults.js` diffs against. The car is drawn at its real pose and visibly
+deviates from the centre of frame; that deviation IS the fault, exposed as
+`drift` for a renderer that wants to say so out loud. One idea read two
+ways. It also kills the wobble for free — `wander` turns the heading ±6°
+several times a scenario, and `basePose` has no twitch in it.
+
+**A chase view sweeps far more world, in two ways.** It travels with the
+car, and it rotates — so the corners of a square viewport swing out to the
+half-DIAGONAL, not the half-width. `worldHalfFor(spec, sim, camera,
+{ chase: true })` pays for both, measured off the car's own path. Same
+failure mode as the ambulance in the void: whatever the camera can reveal
+has to have been drawn. On `gap` the world goes from 360 to 951.
+
+Not wired to the renderer yet — verified headlessly in
+`verify-camera.mjs`, the same way `cameraFor` shipped before a scenario
+needed it.
+
 ### Directions — built
 
 **A set course is a route.** `route.js` already sequences intersections and

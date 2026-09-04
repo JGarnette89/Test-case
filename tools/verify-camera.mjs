@@ -21,9 +21,17 @@
        than one frame to open, so nothing pops
    ===================================================================== */
 import { SCENARIOS } from "../src/engine/scenarios.js";
-import { simulate, movementOf, poseAt, CX, CY, STEP, W } from "../src/engine/index.js";
+import { simulate, movementOf, poseAt, basePose, M, CX, CY, STEP, W } from "../src/engine/index.js";
 import { specOf } from "../src/engine/road.js";
-import { frameFor, cameraFor, worldHalfFor } from "../src/frame.js";
+import { rotateScenario } from "../src/engine/route.js";
+
+const QUARTER = { S: "W", W: "N", N: "E", E: "S" };
+function turnsToFace(scn, from) {
+  let cur = scn.ego.from;
+  for (let n = 0; n < 4; n++) { if (cur === from) return n; cur = QUARTER[cur]; }
+  return 0;
+}
+import { frameFor, cameraFor, worldHalfFor, chaseFor } from "../src/frame.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 let problems = 0;
@@ -282,6 +290,94 @@ console.log("\n7. THE DRAWN WORLD COVERS EVERYTHING THE CAMERA REVEALS");
     }
   }
   offWorld === 0 ? ok("every road user that is on screen has ground and road drawn beneath it") : null;
+}
+
+/* ---------- the chase camera --------------------------------------- */
+console.log("\nTHE CHASE CAMERA RIDES WITH THE CANDIDATE");
+{
+  const scn = SCENARIOS.find((x) => x.id === "gap");   // the candidate turns left
+  const spec = specOf(scn);
+  const sim = simulate(scn);
+
+  /* It follows the car. */
+  let offCar = 0;
+  for (let t = 0; t <= 8; t += 0.1) {
+    const c = chaseFor(spec, sim, t, scn.camera);
+    const b = basePose(sim.ego, t);
+    if (!b || b.hidden || !Number.isFinite(b.x)) continue;
+    if (Math.hypot(c.cx - b.x, c.cy - b.y) > 1e-6) offCar++;
+  }
+  offCar === 0 ? ok("the view stays centred on the candidate throughout") : fail(`${offCar} frame(s) left the car off centre`);
+
+  /* Straight ahead is up, whichever way the car is pointing. Checked from
+     all four approaches, since a course rotates every leg. */
+  let mis = 0, seen = 0;
+  for (const from of ["S", "N", "E", "W"]) {
+    const rot = rotateScenario(scn, turnsToFace(scn, from));
+    if (!rot) continue;
+    const rsim = simulate(rot);
+    for (const t of [0, 2, 4]) {
+      const c = chaseFor(specOf(rot), rsim, t, rot.camera);
+      const b = basePose(rsim.ego, t);
+      const onScreen = ((b.rot + c.rotate + 540) % 360) - 180;
+      seen++;
+      if (Math.abs(onScreen + 90) > 1e-6) mis++;
+    }
+  }
+  mis === 0
+    ? ok(`the candidate's straight-ahead draws upward in all ${seen} frames, from every approach`)
+    : fail(`${mis} frame(s) did not put the heading up the screen`);
+
+  /* Turning is continuous. A camera that jumped would be a bug you would
+     feel before you saw it. */
+  let worst = 0, prev = null;
+  for (let t = 0; t <= 8; t += STEP) {
+    const c = chaseFor(spec, sim, t, scn.camera);
+    if (prev != null) worst = Math.max(worst, Math.abs(((c.rotate - prev + 540) % 360) - 180));
+    prev = c.rotate;
+  }
+  worst < 8
+    ? ok(`the view turns continuously, never more than ${worst.toFixed(1)} deg in one ${STEP}s step`)
+    : fail(`the view jumped ${worst.toFixed(1)} deg in a single step`);
+
+  /* THE ONE THAT MATTERS. Riding the car must not hide what the car is
+     doing wrong. A camera locked to the real pose would pin the car dead
+     centre and perfectly straight, and every steering fault would vanish
+     into a wobbling world. */
+  const dirty = { ...scn, ego: { ...scn.ego, traits: ["wander"] } };
+  const dsim = simulate(dirty);
+  let peakLat = 0, peakHead = 0;
+  for (let t = 0; t <= 8; t += 0.05) {
+    const c = chaseFor(spec, dsim, t, dirty.camera);
+    peakLat = Math.max(peakLat, Math.abs(c.drift.lateral));
+    peakHead = Math.max(peakHead, Math.abs(c.drift.heading));
+  }
+  peakLat > M(0.4) && peakHead > 3
+    ? ok(`a wandering candidate still visibly wanders: ${(peakLat / 20).toFixed(2)}m off line, ${peakHead.toFixed(1)} deg off heading`)
+    : fail(`the chase camera hid the fault (${(peakLat / 20).toFixed(2)}m, ${peakHead.toFixed(1)} deg) - it is following the real pose, not the intended one`);
+
+  const clean = chaseFor(spec, sim, 3, scn.camera);
+  Math.abs(clean.drift.lateral) < 1e-9
+    ? ok("a clean candidate reads as no drift at all, so there are no false positives")
+    : fail(`a clean candidate reported ${clean.drift.lateral} of drift`);
+
+  /* And whatever it can reveal has to be drawn under it, corners
+     included: a rotating square viewport sweeps its half-DIAGONAL. */
+  const fixedWorld = worldHalfFor(spec, sim, scn.camera);
+  const chaseWorld = worldHalfFor(spec, sim, scn.camera, { chase: true });
+  chaseWorld > fixedWorld
+    ? ok(`the world grows for a chase view (${Math.round(fixedWorld)} to ${Math.round(chaseWorld)})`)
+    : fail("a chase camera did not widen the world it draws");
+
+  let bare = 0;
+  for (let t = 0; t <= 8; t += 0.1) {
+    const c = chaseFor(spec, sim, t, scn.camera);
+    const halfDiag = ((c.scale * W) / 2) * Math.SQRT2;
+    if (Math.hypot(c.cx - CX, c.cy - CY) + halfDiag > chaseWorld + 1e-6) bare++;
+  }
+  bare === 0
+    ? ok("every chase frame, at every rotation, lands inside the drawn world")
+    : fail(`${bare} chase frame(s) could show bare ground in a corner`);
 }
 
 console.log("\n" + "=".repeat(66));
