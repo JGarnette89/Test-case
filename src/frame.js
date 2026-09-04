@@ -23,6 +23,7 @@
    real scenario needs it, not before.
    ===================================================================== */
 import { M, W, CX, CY, movementOf, basePose, poseAt } from "./engine/index.js";
+import { speedAt } from "./engine/paths.js";
 import { boxHalf } from "./engine/road.js";
 
 export function frameFor(spec) {
@@ -107,20 +108,54 @@ export function cameraFor(spec, sim, t, camera) {
    and the rotation to apply about it. Composing them is the renderer's
    job; this file still draws nothing.
    ===================================================================== */
-export function chaseFor(spec, sim, t, camera) {
-  // Same extent as the fixed camera would use, so the chase view shows as
-  // much world as before rather than inventing a zoom level.
-  const frame = cameraFor(spec, sim, t, camera);
-  const half = (frame.scale * W) / 2;
+/* How far ahead the examiner can read, in SECONDS of travel rather than
+   in metres. A distance would be wrong at one speed or the other; a
+   duration is the same judgment at any speed, and it is how far ahead a
+   driver is actually thinking. Ten seconds is the starting value, meant
+   to be played with.
+
+   And a little road behind, because a chase view with the car on the
+   bottom edge feels like the world is shoving it forward. A quarter of
+   the forward reach is enough to sit in. */
+export const LOOK_AHEAD = 10;
+export const LOOK_BEHIND_FRACTION = 0.25;
+
+/* The speed this leg is driven at — the profile's own cruise or top
+   speed, not the instantaneous one. Instantaneous would collapse the
+   view to nothing while the candidate sits at a stop line and then heave
+   it open as they pull away, which is exactly the seasick camera nobody
+   wants. Read off the engine's motion profile, so a slower manoeuvre
+   genuinely does draw the view in. */
+function legSpeed(p) {
+  const prof = movementOf(p)?.traverse?.profile;
+  if (!prof) return M(11.5);
+  return prof.kind === "cruise" ? prof.v : prof.vmax;
+}
+
+export function chaseFor(spec, sim, t, camera, { lookAhead = LOOK_AHEAD } = {}) {
+  const speed = legSpeed(sim.ego);
+  const ahead = Math.max(M(12), lookAhead * speed);
+  const behind = ahead * LOOK_BEHIND_FRACTION;
+  const size = ahead + behind;
+  const half = size / 2;
 
   const pose = intendedPose(sim.ego, t);
-  const size = half * 2;
+  /* Sit the car low in the frame so the road ahead gets most of it. The
+     centre therefore rides in front of the car, along its heading. */
+  const r = (pose.rot * Math.PI) / 180;
+  const push = half - behind;
+  const cx = pose.x + Math.cos(r) * push;
+  const cy = pose.y + Math.sin(r) * push;
+
   return {
-    box: `${pose.x - half} ${pose.y - half} ${size} ${size}`,
-    scale: frame.scale,
-    cx: pose.x,
-    cy: pose.y,
+    box: `${cx - half} ${cy - half} ${size} ${size}`,
+    scale: size / W,
+    cx, cy,
+    // Where the car actually is, which is not the centre of the frame.
+    carX: pose.x, carY: pose.y,
     rotate: -90 - pose.rot,
+    ahead, behind,
+    seconds: ahead / speed,
     // What the car is actually doing, for a renderer that wants to show
     // the deviation explicitly rather than leave it implicit.
     drift: driftOf(sim.ego, t, pose),
@@ -177,12 +212,14 @@ export function worldHalfFor(spec, sim, camera, { chase = false } = {}) {
      Same failure as the one that put an ambulance in the void: whatever
      the camera can reveal has to have been drawn. Measured off the car's
      own path rather than guessed, at the engine's own step. */
-  const reach = half * Math.SQRT2;
-  let far = 0;
+  let far = 0, reach = half * Math.SQRT2;
   for (let t = 0; t <= 24; t += 0.1) {
     const q = basePose(sim.ego, t);
     if (!q || !Number.isFinite(q.x) || q.hidden) continue;
-    far = Math.max(far, Math.hypot(q.x - CX, q.y - CY));
+    const c = chaseFor(spec, sim, t, camera);
+    // Measured from the frame's OWN centre, which rides ahead of the car.
+    far = Math.max(far, Math.hypot(c.cx - CX, c.cy - CY));
+    reach = Math.max(reach, ((c.scale * W) / 2) * Math.SQRT2);
     if (q.gone) break;
   }
   return far + reach;

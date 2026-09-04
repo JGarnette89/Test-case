@@ -91,6 +91,24 @@ console.log("\n2. THE CANDIDATE FAULTS LIKE ANYONE ELSE");
     ? ok(`all ${traits.length} path traits derive a fault on the candidate's own car`)
     : null;
 
+  /* Reading your own car is a different act from spotting someone else's.
+     The examiner sits IN the candidate's car, so the bearing to it is
+     meaningless — every fault it committed would read as 90 degrees off to
+     the side, and the whole candidate-observation half of the game would
+     score zero. It is judged against the road ahead of the bonnet instead,
+     which is what an examiner is actually reading. Gaze still has to
+     matter, or looking out of the side window would be free. */
+  {
+    const scn = { ...base, ego: { ...base.ego, traits: ["wander"] } };
+    const sim = simulate(scn);
+    const f = faultsIn(scn).find((x) => x.who === "ego");
+    const ahead = faultVisibility(sim, f, { gaze: 0 });
+    const aside = faultVisibility(sim, f, { gaze: 90 });
+    ahead.seen > 0.9 && aside.seen === 0
+      ? ok(`the candidate's own line reads while looking ahead (${Math.round(ahead.seen * 100)}%) and not while looking away (${Math.round(aside.seen * 100)}%)`)
+      : fail(`own-car readability is wrong: ${Math.round(ahead.seen * 100)}% ahead, ${Math.round(aside.seen * 100)}% aside`);
+  }
+
   const clean = faultsIn(base).filter((f) => f.who === "ego");
   clean.length === 0
     ? ok("a candidate with no traits commits no faults — no false positives")

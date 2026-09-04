@@ -299,15 +299,36 @@ console.log("\nTHE CHASE CAMERA RIDES WITH THE CANDIDATE");
   const spec = specOf(scn);
   const sim = simulate(scn);
 
-  /* It follows the car. */
-  let offCar = 0;
+  /* It follows the car — but the car is deliberately NOT at the centre of
+     the frame. The view is sized as a duration of road ahead, and the car
+     sits low in it so that road gets the space, so the frame's centre
+     rides in front of the bonnet. What has to hold is that the car is
+     tracked exactly, and that it stays comfortably inside the frame. */
+  let offCar = 0, outOfFrame = 0, aheadWrong = 0;
   for (let t = 0; t <= 8; t += 0.1) {
     const c = chaseFor(spec, sim, t, scn.camera);
     const b = basePose(sim.ego, t);
     if (!b || b.hidden || !Number.isFinite(b.x)) continue;
-    if (Math.hypot(c.cx - b.x, c.cy - b.y) > 1e-6) offCar++;
+    if (Math.hypot(c.carX - b.x, c.carY - b.y) > 1e-6) offCar++;
+    // The car sits `behind` up from the rear edge of the frame.
+    const half = (c.scale * W) / 2;
+    const backEdge = Math.hypot(c.cx - b.x, c.cy - b.y) + c.behind;
+    if (Math.abs(backEdge - half) > 1e-6) aheadWrong++;
+    if (Math.hypot(c.carX - c.cx, c.carY - c.cy) > half) outOfFrame++;
   }
-  offCar === 0 ? ok("the view stays centred on the candidate throughout") : fail(`${offCar} frame(s) left the car off centre`);
+  offCar === 0 ? ok("the view tracks the candidate exactly") : fail(`${offCar} frame(s) lost the car`);
+  aheadWrong === 0
+    ? ok("the car sits low in the frame, so the road ahead gets the space")
+    : fail(`${aheadWrong} frame(s) placed the car wrongly within the view`);
+  outOfFrame === 0 ? ok("the candidate is always inside the frame") : fail(`${outOfFrame} frame(s) pushed the car off screen`);
+
+  /* The view is sized as a DURATION of road, so a slower manoeuvre draws
+     it in. That is the whole reason it is stated in seconds. */
+  const wide = chaseFor(spec, sim, 2, scn.camera, { lookAhead: 10 });
+  const tight = chaseFor(spec, sim, 2, scn.camera, { lookAhead: 4 });
+  wide.ahead > tight.ahead && Math.abs(wide.seconds - 10) < 0.01 && Math.abs(tight.seconds - 4) < 0.01
+    ? ok(`look-ahead is real seconds of road: 10s = ${(wide.ahead / 20).toFixed(0)}m, 4s = ${(tight.ahead / 20).toFixed(0)}m`)
+    : fail(`look-ahead did not scale as a duration (${wide.seconds}s / ${tight.seconds}s)`);
 
   /* Straight ahead is up, whichever way the car is pointing. Checked from
      all four approaches, since a course rotates every leg. */

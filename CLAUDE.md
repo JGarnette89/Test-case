@@ -303,6 +303,22 @@ deviates from the centre of frame; that deviation IS the fault, exposed as
 ways. It also kills the wobble for free — `wander` turns the heading ±6°
 several times a scenario, and `basePose` has no twitch in it.
 
+**The view is sized as a DURATION of road ahead, not a distance.** A
+distance is wrong at one speed or the other; ten seconds is the same
+judgment at any speed, and it is roughly how far ahead a driver is
+actually thinking. `LOOK_AHEAD` is 10s, read against the leg's own motion
+profile — its cruise or top speed, never the instantaneous one, which
+would collapse the view to nothing at a stop line and heave it open again
+on the pull-away. The car sits low in the frame (a quarter of the forward
+reach behind it) so the road ahead gets the space.
+
+At 10s that is 72m on `gap` and 115m on a 41 km/h straight, and **it is
+almost certainly too wide to read a fault by** — the candidate is a few
+pixels on a phone. Around 4s (29m) reads well and 10s reads as
+anticipation. That tension is real and not yet resolved: the examiner
+needs both, and the answer is probably not one fixed number. The Examiner
+lab has it on a slider for exactly this reason.
+
 **A chase view sweeps far more world, in two ways.** It travels with the
 car, and it rotates — so the corners of a square viewport swing out to the
 half-DIAGONAL, not the half-width. `worldHalfFor(spec, sim, camera,
@@ -310,9 +326,22 @@ half-DIAGONAL, not the half-width. `worldHalfFor(spec, sim, camera,
 failure mode as the ambulance in the void: whatever the camera can reveal
 has to have been drawn. On `gap` the world goes from 360 to 951.
 
-Not wired to the renderer yet — verified headlessly in
-`verify-camera.mjs`, the same way `cameraFor` shipped before a scenario
-needed it.
+Playable in the **Examiner lab** (`src/apps/ExaminerLab.jsx`, `#/examiner`,
+first entry in the mode switcher): the chase camera, the gaze cone, every
+derived fault with its live visibility, and the stacking meter, all on one
+canvas with the knobs exposed. It is a bench, not a game — it scores
+nothing, and when there is a real examiner renderer it is scaffolding and
+should go.
+
+**Reading the candidate's own car is a different act from spotting anyone
+else's, and the geometry says so.** The examiner sits IN that car, about
+a metre from its centre, so the bearing to it is meaningless — every fault
+it commits would read as 90 degrees off to the side, and the whole
+candidate-observation half of the game would score zero. `faultVisibility`
+therefore judges the ego against the road ahead of its own bonnet
+(`OWN_CAR_READ_AT`), with no occlusion, since nothing can hide your own
+car. Gaze still matters: looking out of the side window stops you reading
+the line, measured at 100% ahead against 0% aside.
 
 ### Directions — built
 

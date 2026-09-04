@@ -225,9 +225,39 @@ export function whatExaminerSees(sim, t, { gaze = 0, cone = EXAMINER_CONE, stati
    look reads differently from one watched throughout. A signal-channel
    fault is judged on the car's position exactly like a path one: you read
    an indicator by looking at the car wearing it. */
+/* Reading the candidate's OWN driving is a different act from spotting
+   another road user, and the geometry says so: the examiner is sitting in
+   that car, roughly a metre from its centre, so the bearing to it is
+   meaningless and every fault it commits would read as 90 degrees off to
+   the side. Nothing occludes it either.
+
+   What an examiner is actually doing is reading the car against the road
+   ahead of it — its line in the lane, how square it is to the kerb, where
+   it is going to end up. So the cone is tested against the road the car
+   is about to cover, one look-ahead in front of the bonnet, and occlusion
+   does not apply. Gaze still matters: stare out of the side window and
+   you stop reading the line. */
+export const OWN_CAR_READ_AT = M(12);
+
+function ownCarTarget(pose) {
+  const r = rad(pose.rot);
+  return { x: pose.x + Math.cos(r) * OWN_CAR_READ_AT, y: pose.y + Math.sin(r) * OWN_CAR_READ_AT };
+}
+
 export function faultVisibility(sim, fault, { gaze = 0, cone = EXAMINER_CONE, statics = [] } = {}) {
   const subject = [sim.ego, ...sim.actors].find((p) => p.id === fault.who);
   if (!subject) return { seen: 0, best: "away" };
+
+  if (subject.id === sim.ego.id) {
+    let seenFor = 0;
+    for (const s of fault.samples) {
+      const egoPose = poseAt(sim.ego, s.t);
+      const eye = examinerEye(egoPose);
+      if (inCone(egoPose, eye, gaze, ownCarTarget(egoPose), cone)) seenFor++;
+    }
+    const share = fault.samples.length ? seenFor / fault.samples.length : 0;
+    return { seen: share, best: share > 0 ? "clear" : "away" };
+  }
 
   const rank = { away: 0, hidden: 1, partial: 2, clear: 3 };
   let seenFor = 0, best = "away";

@@ -48,7 +48,7 @@ import {
    this scenario's camera ever opens to, see worldHalfFor in ../frame.js —
    so a wide-open camera does not thin the speckle out over ground that
    was tuned to look right on a fixed 720x720 board. */
-function groundTexture(seed, half = W / 2, cx = CX, cy = CY) {
+export function groundTexture(seed, half = W / 2, cx = CX, cy = CY) {
   let a = seed >>> 0;
   const r = () => { a = (a * 1103515245 + 12345) & 0x7fffffff; return a / 0x7fffffff; };
   const count = Math.round(130 * Math.min(6, (half * half) / ((W / 2) * (W / 2))));
@@ -69,7 +69,7 @@ function groundTexture(seed, half = W / 2, cx = CX, cy = CY) {
    from, since that is what the camera opened to cover in the first
    place. Defaults to the board's own half-extent, so an ordinary
    scenario with no camera declared draws exactly as it always has. */
-function Environment({ env, seed, keepOut, worldHalf = W / 2 }) {
+export function Environment({ env, seed, keepOut, worldHalf = W / 2 }) {
   const texture = React.useMemo(() => groundTexture(seed ^ 0x9e37, worldHalf), [seed, worldHalf]);
   const items = React.useMemo(
     () => scatter(env, seed, keepOut, { cx: CX, cy: CY, half: worldHalf }),
@@ -209,7 +209,7 @@ const LINE_BEYOND_EDGE = STOP_LINE_AT - HALF;
    before reaching any road at all, since the camera widened precisely to
    cover its spawn point. Defaults to the board's own half-extent, so
    every scenario without a camera draws exactly as it always has. */
-function Road({ control, crossings = ["N"], spec = null, reach = W / 2 }) {
+export function Road({ control, crossings = ["N"], spec = null, reach = W / 2 }) {
   const road = spec ?? crossSpec(control ?? "stop");
   const has = (side) => hasLeg(road, side);
   /* THE BOX: the two roads that cross here, each as wide as the lanes it

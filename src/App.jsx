@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Menu, X, Route, Gauge, Milestone, ChevronRight, Lock, Check,
-  CalendarDays, Shuffle, BookOpen, FlaskConical, Dices,
-} from "lucide-react";
+  CalendarDays, Shuffle, BookOpen, FlaskConical, Dices, Eye } from "lucide-react";
 
 /* DriveDraw is no longer part of this app. Its source is still in
    src/apps/DriveDraw.jsx and still in git history — it is simply not wired
    in. This project is the game now. */
 import RightOfWay from "./apps/RightOfWay.jsx";
 import RightOfWayTiming from "./apps/RightOfWayTiming.jsx";
+import ExaminerLab from "./apps/ExaminerLab.jsx";
 /* A between-stages minigame prototype — not on the home screen or in the
    mode switcher yet, deliberately. Reachable directly at #/merge-rush
    while it is still a standalone thing to look at, not a decision to
@@ -48,6 +48,17 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
    entry here, not a change to the shell.
    ===================================================================== */
 const MODES = [
+  {
+    id: "examiner",
+    name: "Examiner lab",
+    kicker: "You are the examiner",
+    blurb:
+      "A bench for the examiner game: the chase camera that rides with the candidate, the gaze cone that decides what you could have seen, every fault the engine derives, and what stacking directions does to the driver. Nothing is scored yet.",
+    Icon: Eye,
+    accent: C.blue,
+    Component: ExaminerLab,
+  },
+
   {
     id: "timing",
     name: "Timing",
