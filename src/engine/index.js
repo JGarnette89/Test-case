@@ -849,9 +849,58 @@ function earliestSafe(p, everyone, from) {
   return candidate;
 }
 
+/* What a trait's `setup` is allowed to write. Captured BEFORE the traits
+   run so a trait-free twin of this participant can be reconstructed
+   later — see cleanPose, and the comment there for why that is not the
+   same thing as basePose. */
+const SETUP_FIELDS = ["stopBias", "startDelay", "turnBias", "signalLead"];
+const preTrait = new WeakMap();
+const cleanTwins = new WeakMap();
+
 function applyTraits(p) {
-  (p.traits || []).forEach((k) => TRAITS[k]?.setup?.(p));
+  const traits = p.traits || [];
+  if (traits.length) {
+    const before = {};
+    for (const f of SETUP_FIELDS) before[f] = p[f];
+    preTrait.set(p, before);
+  }
+  traits.forEach((k) => TRAITS[k]?.setup?.(p));
   return p;
+}
+
+/* This participant driving properly: every trait removed, both the kinds
+   that bend the pose and the kinds that rewrote a parameter.
+
+   NOT the same as basePose, and the difference caused a real bug. poseAt
+   is basePose plus the `pose` traits (wander, creep), so basePose is
+   clean of those — but the `setup` traits (overshoot, slowStart,
+   wideTurn, cutsCorner) write stopBias / startDelay / turnBias, which
+   movementOf reads, so basePose already CONTAINS their fault. Anything
+   wanting a genuine control has to undo those too.
+
+   The twin is cached because movementOf keys its own cache on object
+   identity, and handing it a fresh object every call would rebuild the
+   whole movement each time. */
+function cleanTwin(p) {
+  let twin = cleanTwins.get(p);
+  if (!twin) {
+    const before = preTrait.get(p) || {};
+    twin = { ...p, ...before, traits: [] };
+    /* startDelay is the odd one out: schedule() spends it into departAt
+       rather than leaving it for movementOf, so clearing the field alone
+       leaves the delay baked into a departure time that has already been
+       computed. Wind it back by hand or slowStart becomes invisible to
+       every control that uses this twin. */
+    const spent = (p.startDelay || 0) - (before.startDelay || 0);
+    if (spent && twin.departAt != null) twin.departAt = twin.departAt - spent;
+    cleanTwins.set(p, twin);
+  }
+  return twin;
+}
+
+export function cleanPose(p, t) {
+  if (!(p.traits || []).length) return basePose(p, t);
+  return basePose(cleanTwin(p), t);
 }
 
 function schedule(participants) {

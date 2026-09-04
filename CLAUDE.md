@@ -280,6 +280,43 @@ purpose: missing a fault because a van was in the way is the scenario's doing,
 missing it because you were looking elsewhere is yours. Only one of those is
 markable against the player.
 
+### Belief: where you think the traffic is — built
+
+Sight answers "can I see it now". `src/engine/belief.js` answers the
+examiner-ish question: what do I still think is true about a car I looked
+at four seconds ago? Look at a car and you learn where it is; look away
+and you carry on believing it is doing the normal thing, vaguer the longer
+you leave it; look back and you find out.
+
+**The prediction is "they carry on driving properly", not dead
+reckoning.** A straight-line extrapolation would have every turning car
+read as a deviation, including impeccably driven ones, and the mechanic
+would be noise. What an observer expects is competence. So the prediction
+rides `cleanPose`, and the payoff is the property that makes it worth
+having: **belief and reality diverge exactly where a driver is doing
+something wrong.** Looking away from good driving costs nothing —
+measured at 0 m across every clean driver in the set, including 7 clean
+turning cars. 3 of 23 road users would betray a stale belief, so a
+deviation means something rather than being a tax on looking away.
+
+**`cleanPose` is NOT `basePose`, and assuming otherwise cost four traits
+their entire contribution.** `poseAt` is `basePose` plus the traits that
+bend a pose (`wander`, `creep`), so `basePose` is clean of those — but the
+traits that rewrite a parameter (`overshoot`, `slowStart`, `wideTurn`,
+`cutsCorner`) write `stopBias`/`turnBias`/`startDelay`, which `movementOf`
+and `schedule` then read, so `basePose` already CONTAINS their fault.
+Predicting from it hands the observer oracle knowledge of the very faults
+they are supposed to catch: all four measured a belief error of exactly
+zero until this was found. `cleanPose` in `index.js` rebuilds a trait-free
+twin, and `startDelay` needs winding back by hand because `schedule()`
+spends it into `departAt` rather than leaving it for `movementOf`.
+
+The offset is **carried, not snapped**: the prediction keeps whatever
+error the car had when you last looked, so a glance never teleports it and
+a car has to CHANGE what it is doing wrong to fool you. `lateSignal`
+correctly produces no belief error at all — it bends no path, so it is
+something you had to have been watching.
+
 ### The camera rides with the candidate — built
 
 `chaseFor` in `frame.js`: the view is centred on the candidate's car and
@@ -420,6 +457,7 @@ src/engine/paths.js      path shapes — line, curve, polyline — and no road a
 src/engine/sight.js      what the driver can see, the examiner's cone, and what creeping costs
 src/engine/faults.js     what the candidate did wrong, derived by controlled comparison
 src/engine/directions.js the instruction you give, and what stacking them costs
+src/engine/belief.js     where you think the traffic is once you stop looking
 src/engine/actions.js    manoeuvres: ordered actions, fault tiers, the mark sheet
 src/engine/score.js      grading a press against a derived window
 src/engine/route.js      several intersections in one drive, and continuity
@@ -702,11 +740,12 @@ node tools/verify-events.mjs       the crossing button and the emergency vehicle
 node tools/verify-turns.mjs        turns are steered, not cut: radius, lane discipline, and honest fault tells
 node tools/verify-faults.mjs       examiner: faults derive from a control, and the cone decides what was markable
 node tools/verify-directions.mjs   the instruction window, and what stacking costs the candidate
+node tools/verify-belief.mjs       what you still think is true once you look away
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All eighteen must exit 0. Nine things they check are worth understanding:
+All nineteen must exit 0. Nine things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take

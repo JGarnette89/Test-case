@@ -25,6 +25,9 @@ import {
 import {
   instructionWindow, pressureOf, skillUnderPressure, severityUnder, loadCandidate,
 } from "../engine/directions.js";
+import {
+  observe, predictAt, confidenceAt, divergenceAt, BELIEF_SAME,
+} from "../engine/belief.js";
 import { chaseFor, worldHalfFor, frameFor, LOOK_AHEAD } from "../frame.js";
 import { environmentFor, scatter } from "../environments.js";
 import { Road, Environment } from "./RightOfWayTiming.jsx";
@@ -134,12 +137,38 @@ export default function ExaminerLab() {
     setGaze(Math.round(bearingFromCar(pose, eye, pt)));
   };
 
+  /* What you currently believe about each car. A ref, not state: it is
+     written from an effect after commit (never during render, which would
+     make the draw impure the way a clock-seeded useMemo would) and the
+     one-frame lag it costs is invisible at 60fps. */
+  const beliefs = useRef(new Map());
+  useEffect(() => { beliefs.current = new Map(); }, [scnId, trait, held]);
+
   const egoPose = poseAt(sim.ego, t);
   const eye = examinerEye(egoPose);
   const sees = whatExaminerSees(sim, t, { gaze, cone, statics });
   const onStage = Object.keys(sees);
   const readable = onStage.filter((id) => sees[id] === "clear" || sees[id] === "partial");
   const live = faults.filter((f) => t >= f.from && t <= f.to);
+
+  /* Anything you can actually make out right now refreshes your belief.
+     Occluded and out-of-cone traffic does not: that is the whole point. */
+  useEffect(() => {
+    for (const a of sim.actors) {
+      const v = sees[a.id];
+      if (v !== "clear" && v !== "partial") continue;
+      const o = observe(a, t);
+      if (o) beliefs.current.set(a.id, o);
+    }
+  });
+
+  /* Only meaningful under Truth — it is what the player does not know. */
+  const stale = sim.actors.filter((a) => {
+    const v = sees[a.id];
+    if (v === "clear" || v === "partial") return false;
+    const obs = beliefs.current.get(a.id);
+    return confidenceAt(obs, t) > 0 && divergenceAt(a, obs, t) > BELIEF_SAME;
+  }).length;
 
   const pressure = pressureOf(held);
   const skill = skillUnderPressure(1, pressure);
@@ -165,9 +194,27 @@ export default function ExaminerLab() {
 
             <GazeCone eye={eye} rot={egoPose.rot} gaze={gaze} cone={cone} reach={view.ahead || M(40)} />
 
-            {sim.actors.map((a) => (
-              <Actor key={a.id} p={a} pose={poseAt(a, t)} vis={sees[a.id]} reveal={reveal} />
-            ))}
+            {sim.actors.map((a) => {
+              const vis = sees[a.id];
+              const readable = vis === "clear" || vis === "partial";
+              if (readable) {
+                return <Actor key={a.id} p={a} pose={poseAt(a, t)} vis={vis} reveal={reveal} />;
+              }
+              /* Out of the cone, or behind something. You are no longer
+                 seeing it — you are remembering it, and remembering it
+                 carrying on driving properly. */
+              const obs = beliefs.current.get(a.id);
+              const conf = confidenceAt(obs, t);
+              return (
+                <g key={a.id}>
+                  {reveal && <Actor p={a} pose={poseAt(a, t)} vis="hidden" reveal />}
+                  {conf > 0 && (
+                    <Belief p={a} pose={predictAt(a, obs, t)} conf={conf}
+                      wrong={divergenceAt(a, obs, t) > BELIEF_SAME} />
+                  )}
+                </g>
+              );
+            })}
             <Actor p={sim.ego} pose={egoPose} vis="candidate" />
             {statics.map((b, i) => (
               <rect
@@ -184,8 +231,13 @@ export default function ExaminerLab() {
           <span style={S.hudT}>{t.toFixed(2)}s</span>
           {chase && <span style={S.hudDim}>{m1(view.ahead)}m ahead · {view.seconds.toFixed(1)}s</span>}
           <span style={{ ...S.hudDim, color: readable.length < onStage.length ? C.amber : C.green }}>
-            {readable.length}/{onStage.length} vehicles readable
+            {readable.length}/{onStage.length} seen
           </span>
+          {stale > 0 && (
+            <span style={{ ...S.hudDim, color: C.red }}>
+              {stale} belief{stale === 1 ? "" : "s"} out of date
+            </span>
+          )}
           {view.drift && (
             <span style={{ ...S.hudDim, color: Math.abs(view.drift.lateral) > M(0.4) ? C.amber : "#7b828c" }}>
               drift {m1(view.drift.lateral)}m · {view.drift.heading.toFixed(1)}°
@@ -355,6 +407,29 @@ function GazeCone({ eye, rot, gaze, cone, reach }) {
         stroke={C.yellow} strokeWidth={2} opacity={0.5} fill="none"
       />
       <circle cx={eye.x} cy={eye.y} r={M(0.35)} fill={C.yellow} />
+    </g>
+  );
+}
+
+/* A remembered car. Drawn as an outline rather than a solid, because it
+   is not a thing you can see — it is a thing you think. It thins out as
+   the look that produced it wears off, and vanishes when you have simply
+   lost track.
+
+   Deliberately NOT tinted differently when the belief has gone wrong:
+   you do not get told you are wrong, you get told by looking. `wrong` is
+   passed so the lab can show it under Truth, and for nothing else. */
+function Belief({ p, pose, conf, wrong }) {
+  if (!pose || pose.hidden || pose.gone) return null;
+  const col = "#8b93a0";
+  if (p.kind === "ped") {
+    return <circle cx={pose.x} cy={pose.y} r={PED_R} fill="none" stroke={col}
+      strokeWidth={2.5} strokeDasharray="5 5" opacity={conf * 0.75} />;
+  }
+  return (
+    <g transform={`rotate(${pose.rot} ${pose.x} ${pose.y})`} opacity={conf * 0.75}>
+      <rect x={pose.x - CAR_L / 2} y={pose.y - CAR_W / 2} width={CAR_L} height={CAR_W} rx={M(0.3)}
+        fill="none" stroke={col} strokeWidth={3} strokeDasharray="7 6" />
     </g>
   );
 }
