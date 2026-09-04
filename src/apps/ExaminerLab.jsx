@@ -19,7 +19,8 @@ import { specOf } from "../engine/road.js";
 import { SCENARIOS } from "../engine/scenarios.js";
 import { faultsIn } from "../engine/faults.js";
 import {
-  examinerEye, faultVisibility, whatExaminerSees, sightBlockersOf, EXAMINER_CONE,
+  examinerEye, faultVisibility, whatExaminerSees, sightBlockersOf, bearingFromCar,
+  EXAMINER_CONE,
 } from "../engine/sight.js";
 import {
   instructionWindow, pressureOf, skillUnderPressure, severityUnder, loadCandidate,
@@ -48,6 +49,8 @@ export default function ExaminerLab() {
   const [held, setHeld] = useState(0);
   const [trait, setTrait] = useState("wander");
   const [chase, setChase] = useState(true);
+  const [looking, setLooking] = useState(false);
+  const [reveal, setReveal] = useState(false);
 
   /* The candidate drives themselves — that is the whole flip — so the ego
      gets a departure of its own instead of waiting for a button. Derived
@@ -106,9 +109,36 @@ export default function ExaminerLab() {
     return () => cancelAnimationFrame(raf.current);
   }, [playing]);
 
+  /* Looking around. The pointer is mapped into the rotated world group's
+     own coordinate system via its screen CTM, so none of the camera's
+     rotation has to be reasoned about here — the browser already knows
+     it. From there it is the same bearingFromCar the cone itself uses,
+     which is what keeps mouse, finger and slider all talking about one
+     number.
+
+     Move-to-look rather than drag-to-look: a mouse gets to glance around
+     by moving, and a finger produces pointermove only while it is down,
+     so the same handler is a drag on touch without a second code path. */
+  const worldRef = useRef(null);
+  const aim = (e) => {
+    const g = worldRef.current;
+    if (!g || !g.getScreenCTM) return;
+    const ctm = g.getScreenCTM();
+    if (!ctm) return;
+    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+    const pose = poseAt(sim.ego, t);
+    const eye = examinerEye(pose);
+    // Dead zone: right on top of the seat every pixel is a different
+    // bearing, and the cone would snap around under your finger.
+    if (Math.hypot(pt.x - eye.x, pt.y - eye.y) < M(3)) return;
+    setGaze(Math.round(bearingFromCar(pose, eye, pt)));
+  };
+
   const egoPose = poseAt(sim.ego, t);
   const eye = examinerEye(egoPose);
   const sees = whatExaminerSees(sim, t, { gaze, cone, statics });
+  const onStage = Object.keys(sees);
+  const readable = onStage.filter((id) => sees[id] === "clear" || sees[id] === "partial");
   const live = faults.filter((f) => t >= f.from && t <= f.to);
 
   const pressure = pressureOf(held);
@@ -117,8 +147,16 @@ export default function ExaminerLab() {
   return (
     <div style={S.page}>
       <div style={S.canvasWrap}>
-        <svg viewBox={view.box} style={S.svg} preserveAspectRatio="xMidYMid meet">
-          <g transform={`rotate(${view.rotate} ${view.cx} ${view.cy})`}>
+        <svg
+          viewBox={view.box}
+          style={S.svg}
+          preserveAspectRatio="xMidYMid meet"
+          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setLooking(true); aim(e); }}
+          onPointerMove={aim}
+          onPointerUp={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); setLooking(false); }}
+          onPointerLeave={() => setLooking(false)}
+        >
+          <g ref={worldRef} transform={`rotate(${view.rotate} ${view.cx} ${view.cy})`}>
             <Environment env={env} seed={scn.id.length * 977} keepOut={[]} worldHalf={worldHalf} />
             <Road control={scn.control} crossings={scn.crossings || []} spec={spec} reach={worldHalf} />
 
@@ -128,7 +166,7 @@ export default function ExaminerLab() {
             <GazeCone eye={eye} rot={egoPose.rot} gaze={gaze} cone={cone} reach={view.ahead || M(40)} />
 
             {sim.actors.map((a) => (
-              <Actor key={a.id} p={a} pose={poseAt(a, t)} vis={sees[a.id]} />
+              <Actor key={a.id} p={a} pose={poseAt(a, t)} vis={sees[a.id]} reveal={reveal} />
             ))}
             <Actor p={sim.ego} pose={egoPose} vis="candidate" />
             {statics.map((b, i) => (
@@ -145,6 +183,9 @@ export default function ExaminerLab() {
         <div style={S.hud}>
           <span style={S.hudT}>{t.toFixed(2)}s</span>
           {chase && <span style={S.hudDim}>{m1(view.ahead)}m ahead · {view.seconds.toFixed(1)}s</span>}
+          <span style={{ ...S.hudDim, color: readable.length < onStage.length ? C.amber : C.green }}>
+            {readable.length}/{onStage.length} vehicles readable
+          </span>
           {view.drift && (
             <span style={{ ...S.hudDim, color: Math.abs(view.drift.lateral) > M(0.4) ? C.amber : "#7b828c" }}>
               drift {m1(view.drift.lateral)}m · {view.drift.heading.toFixed(1)}°
@@ -177,7 +218,7 @@ export default function ExaminerLab() {
 
         <Slider label="Look ahead" value={lookAhead} min={2} max={20} step={0.5}
           fmt={(v) => `${v}s · ${m1(view.ahead)}m`} onChange={setLookAhead} disabled={!chase} />
-        <Slider label="Gaze" value={gaze} min={-120} max={120} step={1}
+        <Slider label={looking ? "Gaze — looking" : "Gaze — drag the view"} value={gaze} min={-180} max={180} step={1}
           fmt={(v) => `${v > 0 ? "+" : ""}${v}°`} onChange={setGaze} />
         <Slider label="Cone" value={cone} min={20} max={160} step={5}
           fmt={(v) => `${v}°`} onChange={setCone} />
@@ -188,6 +229,9 @@ export default function ExaminerLab() {
           </Toggle>
           <Toggle on={held > 0} onClick={() => setHeld((h) => (h + 1) % 4)}>
             {held} stacked
+          </Toggle>
+          <Toggle on={reveal} onClick={() => setReveal((v) => !v)}>
+            {reveal ? "Truth shown" : "What you see"}
           </Toggle>
         </Row>
 
@@ -246,21 +290,47 @@ function IntendedGhost({ p, t }) {
   );
 }
 
-function Actor({ p, pose, vis }) {
+/* Four states, drawn four ways, because the difference between them is
+   the mechanic rather than a detail:
+
+     clear    you are looking at it and nothing is in the way
+     partial  you can see some of it — dimmed, but there
+     hidden   something is between you and it. NOT DRAWN. You cannot see
+              through a van, and drawing a ghost would be lying about
+              what the examiner knows.
+     away     nothing blocks it, you are simply looking elsewhere. Drawn
+              as a faint silhouette: real peripheral vision notices that
+              something is there without being able to read it.
+
+   `reveal` is the bench's cheat, not the game's: it draws what is really
+   out there so the engine's answer can be checked against the truth. */
+function Actor({ p, pose, vis, reveal }) {
   if (!pose || pose.gone || pose.hidden) return null;
   const isCandidate = vis === "candidate";
+
+  if (!isCandidate && vis === "hidden" && !reveal) return null;
+
   const fill = isCandidate ? C.blue : VIS_COLOUR[vis] || "#7b828c";
-  const faded = !isCandidate && (vis === "away" || vis === "hidden");
+  const opacity = isCandidate ? 1
+    : vis === "clear" ? 1
+    : vis === "partial" ? 0.55
+    : vis === "away" ? 0.16
+    : 0.28;                                  // hidden, and only under reveal
+  const ghost = !isCandidate && (vis === "hidden" || vis === "away");
+
   if (p.kind === "ped") {
-    return <circle cx={pose.x} cy={pose.y} r={PED_R} fill={fill} opacity={faded ? 0.3 : 1} />;
+    return <circle cx={pose.x} cy={pose.y} r={PED_R} fill={fill} opacity={opacity} />;
   }
   return (
-    <g transform={`rotate(${pose.rot} ${pose.x} ${pose.y})`} opacity={faded ? 0.3 : 1}>
+    <g transform={`rotate(${pose.rot} ${pose.x} ${pose.y})`} opacity={opacity}>
       <rect x={pose.x - CAR_L / 2} y={pose.y - CAR_W / 2} width={CAR_L} height={CAR_W} rx={M(0.3)}
-        fill={fill} stroke="#12151a" strokeWidth={2} />
-      {/* nose, so heading is readable at any zoom */}
-      <rect x={pose.x + CAR_L / 2 - M(0.5)} y={pose.y - CAR_W / 2} width={M(0.5)} height={CAR_W}
-        fill="#12151a" opacity={0.55} />
+        fill={ghost ? "none" : fill} stroke={ghost ? fill : "#12151a"} strokeWidth={ghost ? 3 : 2}
+        strokeDasharray={vis === "hidden" ? "8 6" : undefined} />
+      {!ghost && (
+        /* nose, so heading is readable at any zoom */
+        <rect x={pose.x + CAR_L / 2 - M(0.5)} y={pose.y - CAR_W / 2} width={M(0.5)} height={CAR_W}
+          fill="#12151a" opacity={0.55} />
+      )}
     </g>
   );
 }
