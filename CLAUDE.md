@@ -280,6 +280,41 @@ purpose: missing a fault because a van was in the way is the scenario's doing,
 missing it because you were looking elsewhere is yours. Only one of those is
 markable against the player.
 
+### Detection: grading the examiner — built
+
+`src/engine/detect.js`. The fourth scoring shape, and none of the three
+existing ones can express it: `deadline` asks "had you done it by when",
+`window` asks "not before when", merging asks "how soon did you start".
+This asks which of the things that actually happened you caught, what you
+invented, and whether you were watching at the time. Precision and recall
+with a clock on it.
+
+Three rules carry it:
+
+- **A fault you could not see is not one you missed.** Recall counts only
+  faults genuinely observable — `SEEN_ENOUGH` of them, given where the
+  player was really looking. A drive where nothing was visible is a clean
+  sheet, not a failure. Without this the game punishes players for its own
+  geometry.
+- **Inventing a fault costs** (`FALSE_COST`), or the dominant strategy is
+  to mark constantly. Measured: spraying 40 marks scores 0 against a real
+  drive's 100, and precision drops to 0.075. One fault pays once — repeat
+  marks on it are recorded as invented.
+- **Prompt beats late beats silent.** Full credit while the fault is
+  happening, easing to `LATE_CREDIT` by the end of `CALL_GRACE`, because
+  noticing on the way out of a junction is still noticing.
+
+**Whether a mark carries a category is deliberately left open**, because
+it is the maintainer's call whether a player picks one one-thumbed
+mid-drive. Pass `what` and it is scored as a categorised call — naming the
+wrong fault is an invented call, not a free hit; omit it and only the
+timing is graded. Both are verified.
+
+`verify-detect.mjs` is property-based rather than a restatement of the
+formula: marking everything must lose, marking nothing must lose, catching
+more must never score worse, and an unseen fault must never count against
+you. Those would have to hold of any correct implementation.
+
 ### Belief: where you think the traffic is — built
 
 Sight answers "can I see it now". `src/engine/belief.js` answers the
@@ -409,10 +444,6 @@ Three rules make this the system that ties the other three together:
 - **What is an intervention, in law and on the sheet?** An examiner taking
   control is itself a recorded outcome. Automatic fail for the candidate? Is
   failing to intervene a fail for the player?
-- **Detection is a fourth scoring shape and is not built.** Not `deadline`,
-  not `window`, not merging's "how soon". Precision and recall against the
-  derived fault list, plus timeliness. It gets its own module and an
-  independent re-derivation, like the scoring curve.
 - **The candidate's observations are not modelled at all.** No head, no
   mirrors, no eyes for anyone — the engine knows where cars are, not where
   drivers are looking. A large share of what a real examiner marks is whether
@@ -458,6 +489,7 @@ src/engine/sight.js      what the driver can see, the examiner's cone, and what 
 src/engine/faults.js     what the candidate did wrong, derived by controlled comparison
 src/engine/directions.js the instruction you give, and what stacking them costs
 src/engine/belief.js     where you think the traffic is once you stop looking
+src/engine/detect.js     grading the examiner on what they caught and invented
 src/engine/actions.js    manoeuvres: ordered actions, fault tiers, the mark sheet
 src/engine/score.js      grading a press against a derived window
 src/engine/route.js      several intersections in one drive, and continuity
@@ -741,11 +773,12 @@ node tools/verify-turns.mjs        turns are steered, not cut: radius, lane disc
 node tools/verify-faults.mjs       examiner: faults derive from a control, and the cone decides what was markable
 node tools/verify-directions.mjs   the instruction window, and what stacking costs the candidate
 node tools/verify-belief.mjs       what you still think is true once you look away
+node tools/verify-detect.mjs       grading the examiner: caught, missed, invented, and when
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All nineteen must exit 0. Nine things they check are worth understanding:
+All twenty must exit 0. Nine things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take

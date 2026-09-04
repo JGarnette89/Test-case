@@ -12,7 +12,7 @@
    renderer this file is scaffolding and should go.
    ===================================================================== */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, Eye, TriangleAlert } from "lucide-react";
+import { Play, Pause, RotateCcw, Eye, TriangleAlert, Flag } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { simulate, poseAt, basePose, CAR_L, CAR_W, PED_R, M, W, CX, CY } from "../engine/index.js";
 import { specOf } from "../engine/road.js";
@@ -28,6 +28,7 @@ import {
 import {
   observe, predictAt, confidenceAt, divergenceAt, BELIEF_SAME,
 } from "../engine/belief.js";
+import { scoreDetection, summarise } from "../engine/detect.js";
 import { chaseFor, worldHalfFor, frameFor, LOOK_AHEAD } from "../frame.js";
 import { environmentFor, scatter } from "../environments.js";
 import { Road, Environment } from "./RightOfWayTiming.jsx";
@@ -54,6 +55,7 @@ export default function ExaminerLab() {
   const [chase, setChase] = useState(true);
   const [looking, setLooking] = useState(false);
   const [reveal, setReveal] = useState(false);
+  const [marks, setMarks] = useState([]);
 
   /* The candidate drives themselves — that is the whole flip — so the ego
      gets a departure of its own instead of waiting for a button. Derived
@@ -142,7 +144,15 @@ export default function ExaminerLab() {
      make the draw impure the way a clock-seeded useMemo would) and the
      one-frame lag it costs is invisible at 60fps. */
   const beliefs = useRef(new Map());
-  useEffect(() => { beliefs.current = new Map(); }, [scnId, trait, held]);
+  /* How much of each fault the player actually had sight of, accumulated
+     frame by frame from where they were really looking. This is what
+     makes recall fair: a fault is only "missed" if it was on offer. */
+  const watched = useRef(new Map());
+  useEffect(() => {
+    beliefs.current = new Map();
+    watched.current = new Map();
+    setMarks([]);
+  }, [scnId, trait, held]);
 
   const egoPose = poseAt(sim.ego, t);
   const eye = examinerEye(egoPose);
@@ -160,6 +170,18 @@ export default function ExaminerLab() {
       const o = observe(a, t);
       if (o) beliefs.current.set(a.id, o);
     }
+    /* Tally sight of each fault while it is happening. faultVisibility is
+       reused with a single sample at now, so the instantaneous answer
+       comes from exactly the same rule the whole-fault one uses. */
+    for (const f of faults) {
+      if (t < f.from || t > f.to) continue;
+      const key = `${f.who}/${f.trait}`;
+      const rec = watched.current.get(key) || { seen: 0, total: 0 };
+      rec.total += 1;
+      const now = { ...f, samples: [{ t, x: 0, y: 0, rot: 0 }] };
+      if (faultVisibility(sim, now, { gaze, cone, statics }).seen > 0) rec.seen += 1;
+      watched.current.set(key, rec);
+    }
   });
 
   /* Only meaningful under Truth — it is what the player does not know. */
@@ -169,6 +191,15 @@ export default function ExaminerLab() {
     const obs = beliefs.current.get(a.id);
     return confidenceAt(obs, t) > 0 && divergenceAt(a, obs, t) > BELIEF_SAME;
   }).length;
+
+  const sheet = scoreDetection({
+    faults,
+    marks,
+    seenShare: (f) => {
+      const r = watched.current.get(`${f.who}/${f.trait}`);
+      return r && r.total ? r.seen / r.total : 0;
+    },
+  });
 
   const pressure = pressureOf(held);
   const skill = skillUnderPressure(1, pressure);
@@ -292,6 +323,32 @@ export default function ExaminerLab() {
           <Meter label="Composure" v={skill} colour={skill > 0.7 ? C.green : C.red} />
           <div style={S.meterNote}>
             faults {severityUnder(held).toFixed(2)}× worse
+          </div>
+        </div>
+
+        <Row>
+          <button
+            className="btn"
+            style={{ ...S.mark, borderColor: C.amber, color: C.amber }}
+            onClick={() => setMarks((m) => [...m, { at: +t.toFixed(2) }])}
+          >
+            <Flag size={15} /> Mark a fault
+          </button>
+          <button className="btn" style={S.btn} onClick={() => { setMarks([]); watched.current = new Map(); }}>
+            <RotateCcw size={16} />
+          </button>
+        </Row>
+
+        <div style={S.section}>
+          <div style={S.sectionHead}><Flag size={13} /> Your sheet</div>
+          <div style={S.sheetRow}>
+            <div style={{ ...S.big, color: sheet.score >= 60 ? C.green : C.red }}>{sheet.score}</div>
+            <div style={S.sheetBits}>
+              <div style={S.dim}>{summarise(sheet) || "nothing called yet"}</div>
+              <div style={S.dim}>
+                precision {sheet.precision} · recall {sheet.recall} · timeliness {sheet.timeliness}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -526,6 +583,15 @@ const S = {
     letterSpacing: 0.8, textTransform: "uppercase", color: "#98a0ab", marginBottom: 5,
   },
   dim: { fontSize: 12.5, color: "#98a0ab", lineHeight: 1.5 },
+  mark: {
+    flex: 1, minHeight: 44, borderRadius: 6, border: "1px solid",
+    background: "rgba(240,169,60,0.08)", fontFamily: FONT_D, fontSize: 14,
+    letterSpacing: 0.6, display: "flex", alignItems: "center",
+    justifyContent: "center", gap: 7,
+  },
+  sheetRow: { display: "flex", gap: 12, alignItems: "center" },
+  big: { fontFamily: FONT_D, fontWeight: 700, fontSize: 34, lineHeight: 1, minWidth: 52 },
+  sheetBits: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
   fault: { display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, padding: "3px 0", flexWrap: "wrap" },
   dot: { width: 8, height: 8, borderRadius: 4, flex: "0 0 auto" },
   faultWho: { fontFamily: FONT_D, color: C.white, minWidth: 26 },
