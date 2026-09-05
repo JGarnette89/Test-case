@@ -1,13 +1,18 @@
 /* THE STAGE 2 GATE: is the viewport actually scarce?
  *
- * Deliberately NOT one of the verify-* checks and not part of the suite.
- * It is a measurement, and as of 2 Sep 2026 it REPORTS A FAILURE: on the
- * current single-junction content the camera cannot be the constraint,
- * because everything worth watching is closer together than any usable
- * frame is wide. See EXAMINER-REDESIGN.md, section 6.
+ * Deliberately NOT one of the verify-* checks and not part of the suite:
+ * it is a measurement that reports numbers, not a pass/fail gate on the
+ * build.
  *
- * Re-run it when the continuous drivable world exists. The design needs
- * this to pass before stages 3 to 5 are worth building.
+ * Two halves, and they answer opposite ways, which is the point.
+ *
+ * On SINGLE-JUNCTION content it fails, and always will: everything worth
+ * watching sits within 35.8m while any usable frame is 57m wide, so the
+ * viewport cannot be scarce. That is what sent the work to the world.
+ *
+ * On the CONTINUOUS WORLD it passes from 78m of spacing upward, because
+ * the two examiner jobs -- read the junction ahead, watch the car here --
+ * are then genuinely in different places. See WORLD-DESIGN.md.
  */
 import { simulate, poseAt, W, CX, CY, M } from "../src/engine/index.js";
 const MW = M, W_ = W;
@@ -15,7 +20,7 @@ import { specOf } from "../src/engine/road.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
 import { faultsIn } from "../src/engine/faults.js";
 import { chaseFor, frameAround } from "../src/frame.js";
-import { driveThrough, candidateAt } from "../src/engine/world.js";
+import { driveThrough, candidateAt, runwayFor } from "../src/engine/world.js";
 import { runwayNeeded } from "../src/engine/directions.js";
 
 const m = (px) => Math.round((px / 20) * 10) / 10;
@@ -133,7 +138,7 @@ console.log("=".repeat(70));
     return { ...raw, ego: { ...raw.ego, traits: [trait], departAt: simulate(raw).legalAt } };
   };
 
-  for (const spacingM of [65, 75, 80, 85, 90, 100, 120, 140, 160]) {
+  for (const spacingM of [70, 72, 74, 76, 78, 80, 100, 140]) {
     const spacing = MW(spacingM);
     /* Leg A is driven straight through, so the candidate travels toward
        junction B; leg B is the turn that has to be directed, which is
@@ -142,29 +147,27 @@ console.log("=".repeat(70));
     const drive = driveThrough({ legs, spacing });
     const B = drive.junctions[1];
 
-    /* Walk the drive to the moment the candidate is exactly one approach
-       short of junction B — the instruction deadline. */
-    let best = null;
-    for (let t = 0; t <= 40; t += 0.02) {
-      const p = candidateAt(drive, t);
-      if (!p || !Number.isFinite(p.x)) continue;
-      /* The deadline only exists AFTER the first junction is behind us --
-         otherwise the search happily reports a point on the approach to
-         junction A and calls it runway for junction B, which is how a
-         spacing too tight to be directable would look like a pass. */
-      if (p.junction < 1 && p.phase !== "link") continue;
-      const d = Math.hypot(B.at.x - p.x, B.at.y - p.y);
-      if (best == null || Math.abs(d - gap) < Math.abs(best.d - gap)) best = { t, p, d };
-    }
-    if (!best) { console.log(`  spacing ${String(spacingM).padStart(3)}m   no runway exists at all -- not directable`); continue; }
-    const shortfall = gap - best.d;
-    if (shortfall > M(3)) {
+    /* Runway comes from runwayFor -- the same implementation the tile
+       check uses. Two measurements of one quantity is exactly the drift
+       this whole exercise keeps punishing. */
+    const delivered = runwayFor(drive, 1);
+    if (delivered + M(1) < gap) {
       console.log(
-        `  spacing ${String(spacingM).padStart(3)}m   best runway only ${(best.d / 20).toFixed(0)}m of the ` +
+        `  spacing ${String(spacingM).padStart(3)}m   best runway only ${(delivered / 20).toFixed(0)}m of the ` +
         `${(gap / 20).toFixed(0)}m needed -- NOT DIRECTABLE`
       );
       continue;
     }
+    /* Then locate the instant that runway is actually available, which is
+       where the two jobs get measured against one frame. */
+    let best = null;
+    for (let t = 0; t <= 40; t += 0.02) {
+      const p = candidateAt(drive, t);
+      if (!p || !Number.isFinite(p.x) || p.phase !== "link") continue;
+      const d = Math.hypot(B.at.x - p.x, B.at.y - p.y);
+      if (best == null || Math.abs(d - gap) < Math.abs(best.d - gap)) best = { t, p, d };
+    }
+    if (!best) { console.log(`  spacing ${String(spacingM).padStart(3)}m   no link to measure on`); continue; }
 
     const view = frameAround(best.p, V, { lookAhead: 4 });
     const half = (view.scale * W_) / 2;
@@ -193,6 +196,10 @@ console.log("=".repeat(70));
     );
   }
 
-  console.log("\n  The design band is 65 to 140m. Below it a junction cannot be");
-  console.log("  directed at all; above it the drive is empty road.");
+  console.log("\n  MEASURED: 78m is the minimum spacing that delivers the 63m of runway");
+  console.log("  a turn needs on a one-lane road. Runway is spacing minus what the");
+  console.log("  junction being LEFT consumes on the way out, minus how far back the");
+  console.log("  junction being APPROACHED puts its stop line. Both scale with road");
+  console.log("  width, which is why a tile declares RUNWAY and the planner derives");
+  console.log("  the spacing. See WORLD-DESIGN.md and verify-tiles.mjs.");
 }

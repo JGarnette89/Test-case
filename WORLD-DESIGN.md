@@ -527,7 +527,7 @@ first and directed to turn at the second. At the instruction deadline:
 | 65 m | 43 m | — | — | not directable |
 | 75 m | 53 m | — | — | not directable |
 | 80 m | 58 m | — | — | not directable |
-| **85 m** | **63 m** | yes | **no** | **PASSES** |
+| **85 m** | **63 m** | yes | **no** | **PASSES** (superseded, see §12.4) |
 | 100 m | 63 m | yes | no | passes |
 | 140 m | 63 m | yes | no | passes |
 | 160 m | 63 m | yes | no | passes |
@@ -668,3 +668,30 @@ tiles into an unbounded drive, the pacing budget (§5.2) and its
 `verify-world.mjs`, and the distance culling in §7.4 — which matters more now
 that a residential tile puts 28 blockers per 100 m in front of an O(n²)
 visibility pass.
+
+### 12.8 The threshold moved when the exit was fixed
+
+W1 measured the minimum spacing at **85 m**. That number was produced by the
+board-relative `exitPoint`, which charged a flat 22.1 m to every junction
+regardless of width. With `worldExitOf` the consumption is junction-relative
+and scales properly:
+
+| Lanes | Old (board-relative) | New (junction-relative) |
+|---|---|---|
+| 1 | 22.1 m | 7.8 m |
+| 2 | 22.1 m | 11.3 m |
+| 3 | 22.1 m | 14.9 m |
+
+Re-measured, the minimum spacing for a one-lane road is **78 m**, not 85 m,
+and the arithmetic now closes: 63.3 m of runway + 7.8 m consumed leaving +
+8.1 m of stop-line setback = 79.2 m, against a measured 78 m at the sweep's
+2 m granularity.
+
+The gate and `verify-tiles.mjs` now share one implementation of runway
+(`runwayFor`). They previously measured it twice, which is the same drift
+risk that produced every error in §12.4 — and the threshold shifting by 7 m
+under a geometry fix is exactly the kind of thing two implementations would
+have disagreed about silently.
+
+**W1's conclusion stands and is now measured on a correct model:** the
+viewport is scarce, and the two examiner jobs cannot be held in one frame.
