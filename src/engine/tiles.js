@@ -26,8 +26,11 @@
    Pure. No React, no DOM, no colour.
    ===================================================================== */
 import { M } from "./index.js";
-import { crossSpec } from "./road.js";
+import { crossSpec, validIntents, exitSideFor } from "./road.js";
 import { runwayNeeded } from "./directions.js";
+import { driveThroughTiles } from "./world.js";
+import { faultsIn } from "./faults.js";
+import { composeScenario } from "./compose.js";
 
 /* =====================================================================
    ROAD CHARACTER
@@ -258,4 +261,247 @@ export function roadsideLifeFor(tile, link, seed = 2) {
     });
   }
   return out;
+}
+
+/* =====================================================================
+   THE ROUTE PLANNER
+
+   Assembles tiles into an unbounded drive. Deliberately thin: every
+   quantity it needs already exists somewhere, and the discipline here is
+   to call it rather than to compute a second version of it.
+
+     which turns exist here      validIntents (road.js)
+     where an intent leaves you  exitSideFor / entrySideAfter (road.js, route.js)
+     how much approach a tile gives   the tile's declared runway
+     whether that is enough      runwayNeededFor (tiles.js)
+     what it actually delivers   runwayFor (world.js)
+
+   Every error this stage produced came from two things computing one
+   quantity, so the planner owns no geometry of its own. If it ever needs
+   to answer a question it cannot delegate, that is the signal something
+   is missing downstream rather than an invitation to reimplement it here.
+
+   The one thing genuinely decided here is the SHAPE of the drive: which
+   tiles in which order, and which way to turn at each junction.
+   ===================================================================== */
+
+/* A drive that turns. Silence means straight on, so a route of nothing
+   but straight-ahead junctions asks the examiner for no instructions at
+   all and the directing task disappears — which makes "does this route
+   present real decisions" a property worth planning for rather than
+   hoping for. */
+export const TURN_SHARE = 0.55;
+
+export function planDrive({
+  seed = 1,
+  length = 6,
+  library = TILES,
+  from = "S",
+  turnShare = TURN_SHARE,
+} = {}) {
+  const r = rng(seed >>> 0);
+  const plan = [];
+  let entry = from;
+
+  for (let i = 0; i < length; i++) {
+    /* Vary the character along the drive rather than picking uniformly,
+       so a route moves between kinds of difficulty — a seeing problem,
+       then a timing problem — instead of staying at one pitch. */
+    const tile = pickTile(r, library, plan);
+    const spec = specFor(tile.character);
+    const legal = validIntents(spec, entry);
+    if (!legal.length) break;
+
+    /* The last junction is always straight on: there is nothing after it
+       to turn into, and directing a candidate off the end of the world
+       is not a decision. */
+    const last = i === length - 1;
+    const turns = legal.filter((x) => x !== "straight");
+    const intent = last || !turns.length || r() > turnShare
+      ? (legal.includes("straight") ? "straight" : turns[0])
+      : turns[Math.floor(r() * turns.length) % turns.length];
+
+    plan.push({ tile, spec, intent, entry, index: i });
+    entry = OPPOSITE_SIDE[exitSideFor(entry, intent)];
+  }
+
+  /* A route of nothing but straight-ahead junctions asks the examiner for
+     no instruction at all, so the directing task disappears. turnShare is
+     a probability and a probability can come up all-straight -- measured,
+     1 route in 25 did. So the turn is GUARANTEED here rather than left to
+     chance, the same distinction as demanding a fault versus making one
+     likelier. */
+  const directable = plan.slice(0, -1);
+  if (directable.length && !directable.some((p) => p.intent !== "straight")) {
+    const at = Math.floor(r() * directable.length) % directable.length;
+    const turns = validIntents(plan[at].spec, plan[at].entry).filter((x) => x !== "straight");
+    if (turns.length) {
+      plan[at].intent = turns[Math.floor(r() * turns.length) % turns.length];
+      // Everything after that junction now enters from a different side.
+      let e = OPPOSITE_SIDE[exitSideFor(plan[at].entry, plan[at].intent)];
+      for (let i = at + 1; i < plan.length; i++) {
+        plan[i].entry = e;
+        const legal = validIntents(plan[i].spec, e);
+        if (!legal.includes(plan[i].intent)) plan[i].intent = legal.includes("straight") ? "straight" : legal[0];
+        e = OPPOSITE_SIDE[exitSideFor(e, plan[i].intent)];
+      }
+    }
+  }
+  return plan;
+}
+
+/* Prefer a character we have not just used, so the drive changes texture.
+   Falls back to any tile rather than looping forever on a short library. */
+function pickTile(r, library, plan) {
+  const lastChar = plan.length ? plan[plan.length - 1].tile.character : null;
+  const fresh = library.filter((t) => t.character !== lastChar);
+  const pool = fresh.length ? fresh : library;
+  return pool[Math.floor(r() * pool.length) % pool.length];
+}
+
+/* Leaving by the north leg means arriving at the next junction from its
+   south. Mirrors world.js, which needs the same fact for placement. */
+const OPPOSITE_SIDE = { N: "S", S: "N", E: "W", W: "E" };
+
+/* Turn a plan into a drive the world can measure: each junction placed at
+   the spacing its tile's declared runway requires, with the scenario that
+   populates it carrying that junction's own intent. */
+export function driveFromPlan(plan, { legFor, speed } = {}) {
+  const tiles = plan.map((p) => ({ ...p.tile, spec: p.spec }));
+  const legs = plan.map((p) => {
+    const scn = legFor(p.spec, p.entry, p.intent);
+    return { ...scn, ego: { ...scn.ego, from: p.entry, intent: p.intent } };
+  });
+  return driveThroughTiles({ tiles, legs, speed });
+}
+
+/* =====================================================================
+   PACING
+
+   The world exists for assessment, so the governing constraint is that it
+   keeps producing things worth marking. Two failure modes, and the budget
+   has to exclude both: a dead stretch with nothing to assess, and a
+   pile-up so dense the drive stops being plausible.
+
+   ONE QUANTITY, NOT THREE. Hazard supply, occlusion and difficulty are
+   three names for the same thing here and must stay that way. Occlusion
+   comes from the tile's kerbside density; the traffic comes from the
+   brief its character chose; and what is actually markable comes from
+   faultsIn, the same derivation the scorer grades against. So pacing
+   steers WHICH JUNCTION COMES NEXT and how often its drivers err — it
+   never adds a difficulty multiplier of its own, because a second dial
+   would drift away from the first the moment either was tuned.
+
+   Measured before this existed: a generated drive offered ZERO faults,
+   because compose.js attached no driver traits at all. Supply was not
+   thin, it was absent. With traits attached the longest dead stretch across
+   eight drives fell to 42.5s, average 34.1s — real, but uneven enough that
+   two or three junctions in six still offer nothing.
+   ===================================================================== */
+
+/* The dead-air ceiling: longer than this with nothing to mark and the
+   drive has failed at its job.
+
+   A TARGET, and as of W2 it is not met. Measured across ten eight-junction
+   drives the worst dead stretch is 53.7s and the average 36.2s -- far
+   better than the 83.3s an unsteered drive produced, and comfortably
+   inside the design's 90s failure condition, but not 25s.
+
+   The reason is structural rather than a tuning miss: junctions are
+   currently the ONLY source of markable events, and a leg takes about ten
+   seconds, so the budget cannot react faster than a junction arrives. The
+   design's own answer is segment hazards between junctions, drawn from
+   the roadside life that kerbside already places -- roadsideLifeFor
+   returns where the people are, and nothing yet turns them into events.
+   That is the next piece of work, not a number to lower. */
+export const DEAD_AIR_CEILING = 25;
+
+/* And the floor, so incidents do not pile up implausibly. */
+export const EVENT_FLOOR = 4;
+
+/* How much likelier a driver is to err when the drive has gone quiet.
+   This is the ONLY thing pacing turns, and it turns it through the brief
+   rather than beside it. */
+export const HUNGRY_FAULT_RATE = 0.9;
+export const SATED_FAULT_RATE = 0.15;
+
+/* What a junction is asked for, given how long it has been since anything
+   was worth marking. Everything except the fault rate comes from the
+   tile's own character, untouched. */
+export function briefFor(tile, sinceLastEvent) {
+  const brief = { ...CHARACTER[tile.character].brief };
+  /* Past the ceiling the junction must produce something markable, not
+     merely be likelier to. compose.js enforces that in the same
+     accept/reject loop as every other guarantee it makes. */
+  if (sinceLastEvent >= DEAD_AIR_CEILING) {
+    return { ...brief, faultRate: HUNGRY_FAULT_RATE, mustFault: true };
+  }
+  if (sinceLastEvent < EVENT_FLOOR) return { ...brief, faultRate: SATED_FAULT_RATE };
+  return brief;
+}
+
+/* When the drive offers something worth marking, in drive time.
+
+   Reads faultsIn — the same derivation the scorer marks against — rather
+   than counting actors or traits, because "how much traffic there is" and
+   "how much there is to assess" are different questions and only the
+   second one is pacing. */
+export function markableTimeline(filled) {
+  const events = [];
+  let t = 0;
+  for (const { tile, scn } of filled) {
+    const speed = CHARACTER[tile.character].speed;
+    const legTime = tile.runway / speed + 4;
+    if (scn) for (const f of faultsIn(scn)) events.push(t + f.from);
+    t += legTime;
+  }
+  events.sort((a, b) => a - b);
+  return { events, duration: t };
+}
+
+/* The gaps a player would actually sit through, including the run-in
+   before the first event and the run-out after the last. */
+export function pacingOf({ events, duration }) {
+  if (!events.length) return { worstGap: duration, count: 0, tightest: Infinity, duration };
+  let worst = events[0], tightest = Infinity;
+  for (let i = 1; i < events.length; i++) {
+    worst = Math.max(worst, events[i] - events[i - 1]);
+    tightest = Math.min(tightest, events[i] - events[i - 1]);
+  }
+  worst = Math.max(worst, duration - events[events.length - 1]);
+  return { worstGap: worst, count: events.length, tightest, duration };
+}
+
+/* Populating one junction, with somewhere to fall back to.
+
+   Demanding a fault makes the search fail more often -- composeScenario
+   already returns nothing on about a fifth of heavy briefs, and an extra
+   condition tightens that. An empty junction is the worst possible answer
+   to "the drive has gone quiet", so the ask is relaxed in steps rather
+   than abandoned: insist on a fault, then merely lean toward one, then
+   take whatever the road character would have given anyway.
+
+   The fallback is a CHAIN, not a second generator. Every step is the same
+   composeScenario against the same brief vocabulary, so nothing here
+   knows anything the rest of the system does not. */
+export function composeForTile(tile, sinceLastEvent, seed) {
+  const wanted = briefFor(tile, sinceLastEvent);
+  const plain = CHARACTER[tile.character].brief;
+  const ladder = [
+    wanted,
+    wanted.mustFault ? { ...wanted, mustFault: false } : null,
+    plain,
+    { ...plain, traffic: "light" },
+  ].filter(Boolean);
+
+  for (let i = 0; i < ladder.length; i++) {
+    /* The first attempt uses the caller's own seed, so steering a brief
+       and not steering it draw the SAME scenario space and can be
+       compared honestly. Deriving a seed here made every measurement of
+       whether pacing helps a comparison between different draws. */
+    const s = i === 0 ? seed : (seed * 2654435761 + i * 40503) >>> 0;
+    const scn = composeScenario(ladder[i], s);
+    if (scn) return { scn, brief: ladder[i], relaxed: i };
+  }
+  return { scn: null, brief: null, relaxed: ladder.length };
 }

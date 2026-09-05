@@ -27,6 +27,7 @@ import { PULL_STEP } from "./sight.js";
 import {
   crossSpec, teeSpec, validIntents, SIDES, OPPOSITE, RIGHT_OF, roadHalf, hasLeg,
 } from "./road.js";
+import { faultsIn } from "./faults.js";
 
 function rng(seed) {
   let a = seed >>> 0;
@@ -194,6 +195,33 @@ function roadFor(brief, r) {
   return { kind, spec: crossSpec(brief.control ?? (r() < 0.25 ? "signal" : "stop")) };
 }
 
+/* What a driver does wrong, if anything.
+
+   Endless produced no markable behaviour AT ALL before this: every
+   composed junction came back with zero traits and therefore zero faults,
+   so a whole generated drive offered nothing to assess. For a game whose
+   world exists to present a continuous stream of markable situations,
+   that is the supply being zero rather than thin.
+
+   generate.js has attached traits to 45% of actors since the Daily mode
+   was built; this is the same idea with the pool widened to the traits
+   that actually produce a derivable, watchable fault. wideTurn and
+   cutsCorner bend the line through the junction, which is exactly what an
+   examiner reads, and neither was in the original pool because neither
+   existed when it was written.
+
+   The RATE is the one thing pacing is allowed to steer, via the brief —
+   because hazard supply, occlusion and difficulty must stay one idea
+   rather than three. Everything else about how hard a junction is comes
+   from the road character that chose the brief in the first place. */
+const TRAIT_POOL = ["wander", "creep", "overshoot", "slowStart", "wideTurn", "cutsCorner", "lateSignal"];
+const FAULT_RATE = 0.45;
+
+function traitsFor(r, brief) {
+  const rate = brief?.faultRate ?? FAULT_RATE;
+  return r() < rate ? { traits: [pick(r, TRAIT_POOL)] } : {};
+}
+
 export function compose(brief, seed) {
   const r = rng(seed);
   const { kind, spec } = roadFor(brief, r);
@@ -300,6 +328,7 @@ export function compose(brief, seed) {
       colorKey: ["red", "green", "amber"][i % 3],
       name: `${["Red", "Green", "Amber"][i % 3]} car`,
       ...(roadGivesWay ? { priority: -(count - i) - 1 } : {}),
+      ...traitsFor(r, brief),
       signal: null,
     });
     when = Math.round((when + span(r, traffic.gap[0], traffic.gap[1])) * 10) / 10;
@@ -452,6 +481,17 @@ export function composeScenario(brief, seed, tries = 90) {
     if (!emergencyEarnsItsPlace(scn)) continue;
     if (!windowIsSafe(scn)) continue;
     if (!meetsBrief(brief, m).ok) continue;
+    /* When the drive has gone quiet, a junction is REQUIRED to produce
+       something markable rather than merely made likelier to. Nudging the
+       fault rate moved the worst dead stretch from 83.3s to 52.1s and the
+       average not at all, because a trait is not a fault: the driver has
+       to actually do something a controlled comparison can see.
+
+       So the guarantee goes where every other guarantee in this file
+       already lives -- the accept/reject loop -- instead of becoming a
+       second mechanism beside it. Checked last, because it is the most
+       expensive gate and most candidates never reach it. */
+    if (brief.mustFault && faultsIn(scn).length === 0) continue;
 
     scn.title = titleFor(brief);
     scn.brief = describe(brief, m);

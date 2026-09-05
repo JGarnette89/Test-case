@@ -15,7 +15,13 @@ import {
   whatEgoSees, visibility, eyePoint, reachOf, withinReach, sightBlockersOf,
 } from "../src/engine/sight.js";
 import { driveThroughTiles, runwayFor, candidateAt } from "../src/engine/world.js";
-import { TILES, specFor, kerbsideFor, roadsideLifeFor, CHARACTER } from "../src/engine/tiles.js";
+import {
+  TILES, specFor, kerbsideFor, roadsideLifeFor, CHARACTER,
+  planDrive, driveFromPlan, runwayNeededFor, composeForTile,
+  markableTimeline, pacingOf, DEAD_AIR_CEILING,
+} from "../src/engine/tiles.js";
+import { composeScenario } from "../src/engine/compose.js";
+import { faultsIn } from "../src/engine/faults.js";
 import { frameAround } from "../src/frame.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
 
@@ -179,6 +185,103 @@ console.log("\n4. OMITTING THE REACH LEAVES EVERYTHING AS IT WAS");
     : fail(`${differ} samples changed when no reach was given`);
 }
 
+/* ---------- 5. routes are directable, and present decisions ---------- */
+console.log("\n5. EVERY PLANNED ROUTE IS DIRECTABLE, AND ASKS FOR DECISIONS");
+{
+  let short = 0, straightOnly = 0, routes = 0, junctions = 0;
+  const characters = new Set();
+  for (let seed = 1; seed <= 25; seed++) {
+    const plan = planDrive({ seed, length: 6 });
+    const drive = driveFromPlan(plan, { legFor: (spec) => legFor(spec) });
+    routes++;
+    for (const p of plan) characters.add(p.tile.character);
+
+    for (let i = 1; i < drive.legs.length; i++) {
+      junctions++;
+      const delivered = runwayFor(drive, i);
+      const needed = runwayNeededFor(plan[i].tile.character);
+      if (delivered + M(0.6) < needed) {
+        short++;
+        if (short <= 3) fail(`seed ${seed} junction ${i} (${plan[i].tile.character}): ${m(delivered)}m runway, needs ${m(needed)}m`);
+      }
+    }
+    /* Silence means straight on, so a route of nothing but straight-ahead
+       junctions never asks the examiner for an instruction at all and the
+       directing task quietly disappears. */
+    if (!plan.slice(0, -1).some((p) => p.intent !== "straight")) straightOnly++;
+  }
+  short === 0
+    ? ok(`all ${junctions} junctions across ${routes} routes deliver the runway their character needs`)
+    : null;
+  straightOnly === 0
+    ? ok("every route turns somewhere, so the directing task always has something to ask")
+    : fail(`${straightOnly} of ${routes} routes are straight through, asking for no instruction`);
+  characters.size > 1
+    ? ok(`routes mix road character (${[...characters].join(", ")}), so difficulty changes kind along a drive`)
+    : fail("every route is one kind of road");
+}
+
+/* ---------- 6. pacing: supply exists, and steering improves it ------- */
+console.log("\n6. THE DRIVE KEEPS OFFERING SOMETHING TO MARK");
+{
+  /* The regression that made this necessary: compose.js attached no driver
+     traits at all, so a generated drive offered ZERO faults and the world
+     failed at the one job it exists for. */
+  let anyFault = 0, tries = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const scn = composeScenario({ traffic: "busy", visibility: "open" }, seed * 7919);
+    if (!scn) continue;
+    tries++;
+    if (faultsIn(scn).length) anyFault++;
+  }
+  anyFault > 0
+    ? ok(`generated junctions produce markable behaviour (${anyFault} of ${tries} draws)`)
+    : fail("no generated junction produced a derivable fault -- the world offers nothing to assess");
+
+  console.log("\n   seed   unsteered   steered   events   empty");
+  console.log("   " + "-".repeat(50));
+  const plainGaps = [], fedGaps = [];
+  let empties = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const plan = planDrive({ seed, length: 8 });
+    const plain = plan.map((p, i) => ({
+      tile: p.tile,
+      scn: composeScenario(CHARACTER[p.tile.character].brief, (seed * 7919 + i * 104729) >>> 0),
+    }));
+    const pp = pacingOf(markableTimeline(plain));
+
+    let since = 0; const fed = []; let e = 0;
+    for (let i = 0; i < plan.length; i++) {
+      const tile = plan[i].tile;
+      const { scn } = composeForTile(tile, since, (seed * 7919 + i * 104729) >>> 0);
+      if (!scn) e++;
+      const legTime = tile.runway / CHARACTER[tile.character].speed + 4;
+      const fs = scn ? faultsIn(scn) : [];
+      since = fs.length ? legTime - Math.min(...fs.map((f) => f.from)) : since + legTime;
+      fed.push({ tile, scn });
+    }
+    const fp = pacingOf(markableTimeline(fed));
+    plainGaps.push(pp.worstGap); fedGaps.push(fp.worstGap); empties += e;
+    console.log(
+      `   ${String(seed).padStart(4)}   ${pp.worstGap.toFixed(1).padStart(8)}s ${fp.worstGap.toFixed(1).padStart(8)}s ` +
+      `${String(fp.count).padStart(7)} ${String(e).padStart(6)}`
+    );
+  }
+  const worstPlain = Math.max(...plainGaps), worstFed = Math.max(...fedGaps);
+  empties === 0
+    ? ok("the fallback ladder means no junction is ever left empty")
+    : fail(`${empties} junction(s) came back with nothing at all`);
+  worstFed < worstPlain
+    ? ok(`steering cuts the worst dead stretch from ${worstPlain.toFixed(1)}s to ${worstFed.toFixed(1)}s`)
+    : fail(`steering did not improve the worst dead stretch (${worstPlain.toFixed(1)}s vs ${worstFed.toFixed(1)}s)`);
+  worstFed < 90
+    ? ok(`and stays inside the design's 90s failure condition (worst ${worstFed.toFixed(1)}s)`)
+    : fail(`a drive went ${worstFed.toFixed(1)}s with nothing to mark`);
+  console.log(`   note: the ${DEAD_AIR_CEILING}s target is NOT met. Junctions are still the only`);
+  console.log("   source of events and a leg takes about 10s, so the budget cannot react");
+  console.log("   faster than a junction arrives. Segment hazards are the next piece.");
+}
+
 console.log("\n" + "=".repeat(70));
-console.log(problems === 0 ? "OK: culling is invisible, derived and worth doing." : `${problems} PROBLEM(S) FOUND.`);
+console.log(problems === 0 ? "OK: culling, routes and pacing all measured." : `${problems} PROBLEM(S) FOUND.`);
 process.exit(problems === 0 ? 0 : 1);
