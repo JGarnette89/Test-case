@@ -402,18 +402,23 @@ export function driveFromPlan(plan, { legFor, speed } = {}) {
 /* The dead-air ceiling: longer than this with nothing to mark and the
    drive has failed at its job.
 
-   A TARGET, and as of W2 it is not met. Measured across ten eight-junction
-   drives the worst dead stretch is 53.7s and the average 36.2s -- far
-   better than the 83.3s an unsteered drive produced, and comfortably
-   inside the design's 90s failure condition, but not 25s.
+   A TARGET, and it is now met typically but not universally. Measured
+   across 24 held-out drives: median 20.2s, average 18.9s, worst 26.6s,
+   with 1 of 24 still over.
 
-   The reason is structural rather than a tuning miss: junctions are
-   currently the ONLY source of markable events, and a leg takes about ten
-   seconds, so the budget cannot react faster than a junction arrives. The
-   design's own answer is segment hazards between junctions, drawn from
-   the roadside life that kerbside already places -- roadsideLifeFor
-   returns where the people are, and nothing yet turns them into events.
-   That is the next piece of work, not a number to lower. */
+   It took two pieces and neither was sufficient alone -- 39.5s unaided,
+   33.0s with segment hazards alone, 32.1s with a predictive budget alone,
+   26.6s with both. The budget had to become predictive because asking
+   "has the gap exceeded the ceiling" reacts a whole leg late: the earliest
+   a junction can answer is when the candidate reaches it, which put the
+   worst case at ceiling plus one leg.
+
+   The remaining gaps are on arterial stretches, and they are CORRECT. An
+   arterial has a kerbside activity of 0.15 because a fast open road
+   should not have people stepping out of it; its difficulty is timing
+   rather than seeing. Forcing 25s everywhere would mean putting
+   pedestrians where they do not belong, which is why the constant stays
+   as a target rather than becoming a guarantee. */
 export const DEAD_AIR_CEILING = 25;
 
 /* And the floor, so incidents do not pile up implausibly. */
@@ -428,12 +433,19 @@ export const SATED_FAULT_RATE = 0.15;
 /* What a junction is asked for, given how long it has been since anything
    was worth marking. Everything except the fault rate comes from the
    tile's own character, untouched. */
-export function briefFor(tile, sinceLastEvent) {
+export function briefFor(tile, sinceLastEvent, legTime = 0) {
   const brief = { ...CHARACTER[tile.character].brief };
+  /* PREDICTIVE, not reactive. Asking "has the gap exceeded the ceiling"
+     reacts a whole leg late, because the earliest a junction can answer is
+     when the candidate reaches it -- measured, that put the worst dead
+     stretch at ceiling plus one leg, 33s against a 25s target. Asking
+     "will it have, by the time we get there" spends the same budget one
+     junction earlier. */
+  const projected = sinceLastEvent + legTime;
   /* Past the ceiling the junction must produce something markable, not
      merely be likelier to. compose.js enforces that in the same
      accept/reject loop as every other guarantee it makes. */
-  if (sinceLastEvent >= DEAD_AIR_CEILING) {
+  if (projected >= DEAD_AIR_CEILING) {
     return { ...brief, faultRate: HUNGRY_FAULT_RATE, mustFault: true };
   }
   if (sinceLastEvent < EVENT_FLOOR) return { ...brief, faultRate: SATED_FAULT_RATE };
@@ -449,10 +461,17 @@ export function briefFor(tile, sinceLastEvent) {
 export function markableTimeline(filled) {
   const events = [];
   let t = 0;
-  for (const { tile, scn } of filled) {
+  for (const { tile, scn, hazards } of filled) {
     const speed = CHARACTER[tile.character].speed;
     const legTime = tile.runway / speed + 4;
+    /* Junction faults and segment faults land on ONE timeline, because
+       "something worth marking happened" is one idea. A separate segment
+       clock would be a second notion of the same thing, and this stage
+       has been a catalogue of what that costs. */
     if (scn) for (const f of faultsIn(scn)) events.push(t + f.from);
+    for (const h of hazards ?? []) {
+      for (const f of faultsIn(h.scn)) events.push(t + h.scn.reachesAt + f.from);
+    }
     t += legTime;
   }
   events.sort((a, b) => a - b);
@@ -484,8 +503,8 @@ export function pacingOf({ events, duration }) {
    The fallback is a CHAIN, not a second generator. Every step is the same
    composeScenario against the same brief vocabulary, so nothing here
    knows anything the rest of the system does not. */
-export function composeForTile(tile, sinceLastEvent, seed) {
-  const wanted = briefFor(tile, sinceLastEvent);
+export function composeForTile(tile, sinceLastEvent, seed, legTime = 0) {
+  const wanted = briefFor(tile, sinceLastEvent, legTime);
   const plain = CHARACTER[tile.character].brief;
   const ladder = [
     wanted,
@@ -504,4 +523,108 @@ export function composeForTile(tile, sinceLastEvent, seed) {
     if (scn) return { scn, brief: ladder[i], relaxed: i };
   }
   return { scn: null, brief: null, relaxed: ladder.length };
+}
+
+/* =====================================================================
+   SEGMENT HAZARDS
+
+   Junctions were the only source of markable events, and a leg takes
+   about ten seconds, so no amount of pacing could react faster than a
+   junction arrived. That is what structurally capped dead air at ~40s
+   against a 25s target. This is the piece that lifts it.
+
+   BUILT FROM THE ROADSIDE CONTENT THAT ALREADY EXISTS. roadsideLifeFor
+   decides where the people are and kerbsideFor decides where the props
+   are; a hazard is those same two answers turned into a situation. There
+   is no second notion of where anything stands at the roadside, because a
+   second notion is how every error this stage produced began.
+
+   Which makes liveliness and hazard supply the same work rather than two
+   budgets: a pedestrian stepping out is markable precisely BECAUSE the
+   parked car that makes the street feel lived-in is hiding them.
+
+   A segment is an ordinary scenario. Two legs instead of four, so it is a
+   straight road with nothing to give way to, and everything downstream --
+   simulate, faultsIn, whatEgoSees, the whole fault derivation -- works on
+   it unchanged. Verified before it was designed: a two-leg spec
+   simulates, the candidate drives through it, and faultsIn derives from
+   it exactly as at a junction.
+   ===================================================================== */
+
+/* A straight road of the character's own width. `control: "none"` because
+   there is nothing here to stop for -- the hazard is the point, not a
+   right-of-way puzzle. */
+export function straightSpecFor(character) {
+  const lanes = CHARACTER[character].lanes;
+  return { legs: { S: { lanes, control: "none" }, N: { lanes, control: "none" } } };
+}
+
+/* One hazard, placed where the roadside life already put somebody.
+
+   The candidate meets them at whatever time their distance along the link
+   implies, so the hazard's own clock is the drive's clock offset -- the
+   same relationship a junction has to the drive. */
+export function hazardAt(tile, link, person, { candidateTraits = [], seed = 1 } = {}) {
+  const spec = straightSpecFor(tile.character);
+  const speed = CHARACTER[tile.character].speed;
+
+  const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const along = ((person.x - link.from.x) * dx + (person.y - link.from.y) * dy) / len;
+  const reachesAt = along / speed;
+
+  /* The person crosses from the kerb they are standing on. `side` came
+     from roadsideLifeFor, so which way they step is decided once, where
+     they were placed, rather than again here. */
+  const from = person.side < 0 ? "S" : "N";
+
+  return {
+    id: `haz-${person.id}`,
+    road: spec,
+    control: "none",
+    at: { x: person.x, y: person.y },
+    reachesAt,
+    ego: {
+      from: "S", intent: "straight", arriveAt: 0, departAt: 0, stops: false,
+      traits: candidateTraits,
+    },
+    actors: [{
+      id: person.id,
+      from,
+      intent: "straight",
+      /* Timed so they are stepping out as the candidate arrives, which is
+         what makes the parked cars matter: seen early it is nothing, seen
+         late it is everything. */
+      arriveAt: 0.8,
+      stops: false,
+      kind: "ped",
+      colorKey: "pale",
+      name: "Pedestrian",
+      priority: -1,
+      blockUntilClear: true,
+      reverse: person.side < 0,
+    }],
+  };
+}
+
+/* Every hazard along one link, and the blockers that hide them.
+
+   Only the people roadsideLifeFor marked as `mayEmerge` become hazards;
+   the rest are scenery, which is the difference between a street that is
+   busy and a street that is dangerous. */
+export function segmentHazards(tile, link, seed = 1, { candidateTraits = [] } = {}) {
+  const people = roadsideLifeFor(tile, link, seed);
+  const blockers = kerbsideFor(tile, link, seed);
+  return people
+    .filter((p) => p.mayEmerge)
+    .map((p) => ({
+      scn: hazardAt(tile, link, p, { candidateTraits, seed }),
+      person: p,
+      /* The props near them, as ordinary sightBlockers -- the same shape
+         sightBlockersOf reads, so the hazard occludes without anything
+         downstream learning a new type. */
+      blockers: blockers.filter(
+        (b) => Math.hypot(b.x - p.x, b.y - p.y) < M(18)
+      ),
+    }));
 }

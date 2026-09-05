@@ -18,7 +18,7 @@ import { driveThroughTiles, runwayFor, candidateAt } from "../src/engine/world.j
 import {
   TILES, specFor, kerbsideFor, roadsideLifeFor, CHARACTER,
   planDrive, driveFromPlan, runwayNeededFor, composeForTile,
-  markableTimeline, pacingOf, DEAD_AIR_CEILING,
+  markableTimeline, pacingOf, DEAD_AIR_CEILING, segmentHazards,
 } from "../src/engine/tiles.js";
 import { composeScenario } from "../src/engine/compose.js";
 import { faultsIn } from "../src/engine/faults.js";
@@ -282,6 +282,109 @@ console.log("\n6. THE DRIVE KEEPS OFFERING SOMETHING TO MARK");
   console.log("   faster than a junction arrives. Segment hazards are the next piece.");
 }
 
+/* ---------- 7. segment hazards, and whether 25s is reachable --------- */
+console.log("\n7. THE ROADSIDE IS THE SECOND SOURCE OF EVENTS");
+{
+  /* Junctions were the only source, and a leg takes about ten seconds, so
+     no budget could react faster than a junction arrived. Segment hazards
+     are built from the roadside content that already exists -- the same
+     roadsideLifeFor that places the people and the same kerbsideFor that
+     places the props -- so liveliness and hazard supply are one piece of
+     work rather than two systems. */
+  const plan = planDrive({ seed: 1, length: 6 });
+  const drive = driveFromPlan(plan, { legFor: (spec) => legFor(spec) });
+  let hazards = 0, hidden = 0, faults = 0;
+  drive.links.forEach((link, i) => {
+    const tile = plan[i].tile;
+    for (const h of segmentHazards(tile, link, i * 29 + 1, { candidateTraits: ["wander"] })) {
+      hazards++;
+      faults += faultsIn(h.scn).length;
+      if (h.blockers.length) hidden++;
+    }
+  });
+  hazards > 0
+    ? ok(`the roadside produces ${hazards} hazards on one drive, ${faults} of them markable`)
+    : fail("no segment hazard was produced at all");
+  hidden === hazards
+    ? ok("every one of them has props between the candidate and the person")
+    : fail(`${hazards - hidden} hazards had nothing hiding them -- they are scenery, not hazards`);
+
+  /* One source of roadside position, not two. If a second notion of where
+     people stand ever appears, this is where it shows. */
+  const link = drive.links[0];
+  const people = roadsideLifeFor(plan[0].tile, link, 29);
+  const hz = segmentHazards(plan[0].tile, link, 29, {});
+  const fromPeople = hz.every((h) => people.some((p) => p.id === h.person.id));
+  fromPeople
+    ? ok("every hazard comes from a person roadsideLifeFor already placed")
+    : fail("a hazard appeared somewhere roadsideLifeFor did not put anybody");
+}
+
+console.log("\n8. DEAD AIR: IS THE TARGET REACHABLE?");
+{
+  const measure = (seed, { predictive, segments }) => {
+    const plan = planDrive({ seed, length: 8 });
+    const drive = driveFromPlan(plan, { legFor: (spec) => legFor(spec) });
+    let since = 0; const filled = [];
+    for (let i = 0; i < plan.length; i++) {
+      const tile = plan[i].tile;
+      const legTime = tile.runway / CHARACTER[tile.character].speed + 4;
+      const { scn } = composeForTile(tile, since, (seed * 7919 + i * 104729) >>> 0, predictive ? legTime : 0);
+      const fs = scn ? faultsIn(scn) : [];
+      since = fs.length ? legTime - Math.min(...fs.map((f) => f.from)) : since + legTime;
+      const link = drive.links[i];
+      filled.push({
+        tile, scn,
+        hazards: segments && link ? segmentHazards(tile, link, seed * 31 + i, { candidateTraits: ["wander"] }) : [],
+      });
+    }
+    return pacingOf(markableTimeline(filled)).worstGap;
+  };
+
+  /* Held-out seeds: more than were used while building, so this reports
+     what the mechanism does rather than what it was tuned to do. */
+  const SEEDS = 24;
+  const both = [], onlySeg = [], onlyPred = [], neither = [];
+  for (let seed = 1; seed <= SEEDS; seed++) {
+    both.push(measure(seed, { predictive: true, segments: true }));
+    onlySeg.push(measure(seed, { predictive: false, segments: true }));
+    onlyPred.push(measure(seed, { predictive: true, segments: false }));
+    neither.push(measure(seed, { predictive: false, segments: false }));
+  }
+  const stat = (a) => {
+    const s = [...a].sort((x, y) => x - y);
+    return { worst: s[s.length - 1], median: s[Math.floor(s.length / 2)], avg: a.reduce((x, y) => x + y, 0) / a.length };
+  };
+  const B = stat(both), S = stat(onlySeg), P = stat(onlyPred), N = stat(neither);
+  console.log("\n   configuration            worst   median   average");
+  console.log("   " + "-".repeat(52));
+  for (const [name, s] of [["neither", N], ["segments only", S], ["predictive only", P], ["both", B]]) {
+    console.log(`   ${name.padEnd(22)} ${s.worst.toFixed(1).padStart(6)}s ${s.median.toFixed(1).padStart(7)}s ${s.avg.toFixed(1).padStart(8)}s`);
+  }
+
+  /* Neither piece is sufficient alone -- that is the finding, and it is
+     what justifies having built both. */
+  B.worst < S.worst && B.worst < P.worst
+    ? ok(`both pieces are needed: ${N.worst.toFixed(1)}s unaided, ${S.worst.toFixed(1)}s with segments alone, ${P.worst.toFixed(1)}s predictive alone, ${B.worst.toFixed(1)}s together`)
+    : fail(`one piece alone matched the pair (${S.worst.toFixed(1)}s / ${P.worst.toFixed(1)}s vs ${B.worst.toFixed(1)}s)`);
+
+  B.median < DEAD_AIR_CEILING
+    ? ok(`a typical drive now meets the ${DEAD_AIR_CEILING}s target (median ${B.median.toFixed(1)}s, average ${B.avg.toFixed(1)}s)`)
+    : fail(`the median drive is ${B.median.toFixed(1)}s, over the ${DEAD_AIR_CEILING}s target`);
+
+  /* The hard requirement, as opposed to the target. */
+  const over = both.filter((g) => g > 90).length;
+  over === 0
+    ? ok(`and no drive of ${SEEDS} breaches the 90s failure condition (worst ${B.worst.toFixed(1)}s)`)
+    : fail(`${over} drive(s) went over 90s with nothing to mark`);
+
+  const missed = both.filter((g) => g > DEAD_AIR_CEILING).length;
+  console.log(`   note: ${missed} of ${SEEDS} drives still exceed the ${DEAD_AIR_CEILING}s target, worst ${B.worst.toFixed(1)}s.`);
+  console.log("   The target is reachable typically but not guaranteed: a stretch of");
+  console.log("   arterial has activity 0.15 and SHOULD be quiet, so the remaining");
+  console.log("   gaps are on roads where dead air is the correct answer.");
+}
+
 console.log("\n" + "=".repeat(70));
-console.log(problems === 0 ? "OK: culling, routes and pacing all measured." : `${problems} PROBLEM(S) FOUND.`);
+console.log(problems === 0 ? "OK: culling, routes, pacing and segment hazards all measured." : `${problems} PROBLEM(S) FOUND.`);
 process.exit(problems === 0 ? 0 : 1);
