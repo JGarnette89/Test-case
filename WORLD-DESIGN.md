@@ -32,14 +32,19 @@ both ends:
 - **Above ~150 m** the drive is mostly empty road, which fails the assessment
   requirement — nothing to mark for long stretches.
 
-**Target spacing: 85–140 m** — corrected from 65–140 m by the W1
-measurement, see §11. At 41 km/h that is one junction every **7.5–12.3 s**,
-still ordinary urban block spacing.
+**Tiles declare RUNWAY, never spacing** — ruled after W1, and the evidence
+is in §12. Spacing is a proxy that happens to correlate; runway is the
+quantity the game depends on, and the two diverge in three separate ways:
 
-The correction matters and is easy to make again: **centre-to-centre spacing
-is not the runway the candidate gets.** The previous junction's own traverse
-consumes about 22 m reaching its exit, so runway ≈ spacing − 22 m. Designing
-to 63 m of runway means spacing of 85 m, not 65 m.
+- the previous junction's traverse consumes distance reaching its exit
+- a wider junction's stop line sits further back, so the same spacing
+  delivers less runway
+- a faster road *needs* more runway, because `runwayNeeded` is in seconds
+  and distance is seconds × speed
+
+Spacing is derived from the declared runway by the planner
+(`spacingForRunway`) and never authored. `verify-tiles.mjs` holds every tile
+to its declaration against measured geometry.
 
 A layout that does not produce that separation is a layout that does not
 serve the game, and should be rejected by the planner rather than shipped.
@@ -569,3 +574,97 @@ undefined rotation and every frame built on it came out `NaN`.
 Twenty checks passing. `engine-golden.json` untouched — no shipped
 scenario's behaviour changed, which is the evidence that threading the
 junction origin was additive rather than a rewrite.
+
+---
+
+## 12. W2 result — tiles, road character and roadside life
+
+Built and measured 2 Sep 2026. `src/engine/tiles.js`, runway-first placement
+in `world.js`, and `tools/verify-tiles.mjs` as the twenty-first check.
+
+### 12.1 Tiles declare runway, and the check holds them to it
+
+Every tile is verified against measured geometry **for every tile that could
+precede it**, because what the previous junction consumes depends on *its*
+width rather than on the tile making the promise. Sixteen pairings, all
+delivering the declared runway to within 0.4 m.
+
+| Tile | Character | Speed | Declares | A turn needs |
+|---|---|---|---|---|
+| `res-quiet` | residential | 30 km/h | 55 m | 45.7 m |
+| `res-busy` | residential | 30 km/h | 60 m | 45.7 m |
+| `coll-standard` | collector | 41 km/h | 72 m | 63.3 m |
+| `art-main` | arterial | 50 km/h | 88 m | 76.5 m |
+
+### 12.2 The arterial squeeze, measured
+
+The reason a single spacing band could never have worked. At a fixed 100 m
+spacing, runway **delivered** falls with width — 69.9 m at one lane, 66.3 m
+at two, 62.7 m at three — while runway **needed** rises with speed: 46 m
+residential, 63 m collector, 76 m arterial.
+
+So an arterial is squeezed from both ends, and at 100 m spacing it is not
+directable at all. Declaring runway is what makes that impossible to ship by
+accident.
+
+### 12.3 Density is the occlusion budget and the difficulty dial
+
+One declaration produces the props and the people, so the street that feels
+most lived-in is the one that hides the most. Measured through `visibility`
+across 40 seeds, sighting the people the tile itself placed at the kerb:
+
+| Tile | Props per 100 m | People hidden by props |
+|---|---|---|
+| `res-quiet` | 27 | **94%** |
+| `res-busy` | 28 | **94%** |
+| `coll-standard` | 18 | 81% |
+| `art-main` | 4.5 | **18%** |
+
+**The inversion holds and is now asserted.** Density falls as speed rises, so
+difficulty changes kind rather than degree: a residential street is a seeing
+problem, an arterial is a timing problem. An author could break that quietly
+by making a fast road cluttered, so `verify-tiles.mjs` fails if they do.
+
+### 12.4 Three modelling errors the checks caught
+
+All three are the same error in different clothes — a proxy standing in for
+the quantity that matters — and none would have been visible without a
+measurement aimed at a number.
+
+1. **`exitPoint` does not translate.** It computes its far edge from the
+   720×720 *board*, not from the junction origin, so a junction placed
+   anywhere but the board centre gets an exit in the wrong place entirely.
+   W1 passed only because its first junction sat at the centre. Fixed with
+   `worldExitOf`, which is junction-relative and scales with the junction's
+   own box — deliberately *not* a change to `exitPoint`, since moving the
+   scenario exit would change every traverse length in `engine-golden`.
+2. **`runwayFor` used the drive's spec for every junction's stop line.** A
+   drive mixing widths mismeasured by the setback difference — 7.2 m between
+   one lane and three, enough to turn a directable tile into a failing one.
+   It now reads the spec of the junction being approached.
+3. **The occlusion check sighted along the centreline**, where the kerb is
+   never between eye and target, and reported 0% blocked for every tile. The
+   props sit at the kerb, so the sightline has to go there — which is also
+   the case the design turns on: a pedestrian is hidden because the parked
+   car that makes the street feel alive is in the way.
+
+### 12.5 Pedestrians
+
+Folded in rather than deferred. `roadsideLifeFor` draws people from the same
+`kerbside` declaration that places the props, which is the point — someone
+stepping out between parked cars is a hazard *because* the cars were there to
+hide them. Junction crossings need only the origin threading W1 already did
+(§6.4).
+
+### 12.6 State
+
+Twenty-one checks passing, `gate-viewport` still passing across the band,
+`engine-golden.json` untouched.
+
+### 12.7 What W2 did not do
+
+Held back deliberately, and still open: the route planner that assembles
+tiles into an unbounded drive, the pacing budget (§5.2) and its
+`verify-world.mjs`, and the distance culling in §7.4 — which matters more now
+that a residential tile puts 28 blockers per 100 m in front of an O(n²)
+visibility pass.
