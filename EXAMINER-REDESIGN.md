@@ -417,7 +417,59 @@ Update `verify-faults.mjs` sections 3–5.
 untouched; a fault behind a van is still unmarkable; a fault the van never hid
 is markable from anywhere on screen, whatever the player was looking at.
 
-### Stage 2 — Dynamic framing, and prove the scarcity is real
+### Stage 2 — Dynamic framing, and prove the scarcity is real — **FAILED, 2 Sep 2026**
+
+**Measured before building, and the gate does not pass.** `tools/gate-viewport.mjs`
+holds the measurement; it is deliberately not part of the verify suite.
+
+Across 40 situation/trait configurations, with the camera as tight as is
+usable:
+
+| Look-ahead | Frame width | Configs where a fault leaves frame | Fault-time off screen |
+|---|---|---|---|
+| 10 s | ~144 m | 2 of 40 | 0.3% |
+| 6 s | ~86 m | 4 of 40 | 0.9% |
+| 4 s | ~58 m | 4 of 40 | 1.3% |
+| 3 s | ~43 m | 8 of 40 | 1.9% |
+
+The reason is not tuning, it is content scale. **The widest separation
+between two simultaneous faults anywhere in the set is 35.8 m**, and a 4 s
+look-ahead already frames 57.5 m across. Faults happen at a junction, the
+junction box is 7.2 m, and everything worth watching sits inside a few tens
+of metres. To make the viewport scarce you would have to shrink it below
+~36 m, at which point the candidate's car fills a third of the screen and
+the junction cannot be read at all — the "fighting the camera" failure mode
+flagged in §5.
+
+**What this does and does not invalidate.** It does not kill the design. It
+identifies that fault-versus-fault separation is the wrong source of
+scarcity: two faults at one junction will always be close together. The
+scarcity the design actually wants is **job versus job** — reading the
+junction ahead against watching the car — and those are genuinely far apart:
+
+| Situation | Candidate → junction at t=0 | at departure |
+|---|---|---|
+| `gap` | 15.3 m | 8.3 m |
+| `tee` | 19.1 m | 8.3 m |
+| `arterial` | 27.6 m | 15.4 m |
+| `opposite` | 31.3 m | 8.3 m |
+
+Today those are 8–31 m apart, comfortably inside one frame. In a continuous
+world they would not be: a turn needs 5.5 s of approach to be directable
+(§4.2 and `runwayNeeded`), which at 41 km/h is **about 63 m of separation**
+— against a 57 m frame. That is scarcity, and it is real.
+
+**Conclusion:** the gate fails on current content and would plausibly pass on
+continuous-world content. Stage 2 therefore **depends on the continuous
+drivable world**, which §7 previously listed as a stage 4 dependency. That
+was wrong; it is a stage 2 dependency, and the whole camera-as-constraint
+mechanic rests on it.
+
+Stages 3–5 are not blocked by this — see the revised ordering below — but
+nothing should be built that *assumes* viewport scarcity until this gate is
+re-run and passes.
+
+### Stage 2 (original wording, for the record)
 Extend `frame.js` with traffic-extent framing and smoothing. Move it into
 `src/engine/` and record the new boundary in CLAUDE.md.
 
@@ -452,6 +504,11 @@ Only after stage 4 has been played. Needs its own design pass first (§4.5).
 
 **Depends on it:**
 
+- **Stage 2, the camera-as-constraint mechanic itself.** Corrected after the
+  gate measurement above: on single-junction content the viewport cannot be
+  scarce, because the widest gap between two faults (35.8 m) is smaller than
+  any usable frame (57.5 m at a 4 s look-ahead). Scarcity needs the two jobs
+  to be far apart, and that needs road between them.
 - Stage 4 in its full form. Reading a junction *before the car arrives*
   needs road ahead of the current junction to exist and be framable.
 - Sections at genuinely natural breaks across a long drive. Today a "natural
