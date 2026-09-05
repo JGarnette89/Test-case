@@ -141,144 +141,76 @@ export function whatEgoSees(sim, t, steps = 0, statics = []) {
 }
 
 /* =====================================================================
-   THE EXAMINER'S SEAT
+   WHAT THE EXAMINER CAN SEE
 
-   Everything above answers "what can the driver see", and answers it
-   omnidirectionally: occlusion only, no field of view, because a driver
-   choosing when to go is assumed to have looked. An examiner is the
-   opposite case. Their whole job is where they point their attention,
-   so what they see is occlusion AND a cone.
+   There was a view cone here. It gated whether a fault counted, and it
+   was removed because it produced the one exchange a judgment game cannot
+   survive: the player watches a car swing wide, marks it, and the game
+   says they did not see it. Technically defensible, completely illegible.
 
-   The cone is one angular test in front of the occlusion work already
-   here. That is the entire engine cost of the examiner flip's headline
-   mechanic.
+   What constrains attention now is the VIEWPORT — the camera is smaller
+   than the situation, so where you point it is a real choice, and that
+   lives in frame.js. What survives here is occlusion, which is a
+   different thing and stays for a reason worth writing down:
+
+     "things being hidden is core to our gameplay, looking around and
+      through objects is what driving in traffic is all about"
+
+   Occlusion is only fair under one constraint, and it is the constraint
+   that separates it from the cone:
+
+     THE SCORER MUST NEVER KNOW SOMETHING THE SCREEN DID NOT SHOW.
+
+   So a fault hidden behind a van must also be hidden on the display. This
+   file decides; the renderer is obliged to agree with it, and must draw
+   from this same answer rather than computing its own. Two visibility
+   sources would drift, and the drift would only ever surface as a player
+   being wrongly marked. See EXAMINER-REDESIGN.md.
+
+   Sightlines are cast from the CAR's eye, never from the overhead camera,
+   because it is the occupant's view that is being modelled. The god's-eye
+   presentation is a convenience of the renderer, not a superpower of the
+   examiner.
    ===================================================================== */
 
-/* Across from the driver, same row. The examiner's head turns; the car
-   does not turn with it. */
-export const EXAMINER_ACROSS = M(0.7);
+/* Can the examiner see this fault at this instant?
 
-/* A comfortable field of useful attention, full angle. Wider than this
-   and holding a gaze stops being a decision; much narrower and the
-   measured spread of real faults (54 degrees across the shipped set)
-   stops fitting in any single look. */
-export const EXAMINER_CONE = 60;
-
-export function examinerEye(egoPose, across = EXAMINER_ACROSS) {
-  const e = eyePoint(egoPose);
-  const r = rad(egoPose.rot);
-  return { x: e.x - Math.sin(r) * across, y: e.y + Math.cos(r) * across };
-}
-
-/* Signed degrees from the car's own heading to a point: negative is to
-   the candidate's left, positive to their right, zero straight ahead.
-
-   RELATIVE to the car, never absolute, and that is load-bearing rather
-   than a convenience. route.js rotates a scenario a quarter turn to reuse
-   it from another approach, and the whole reason that is safe is that a
-   rotated scene is an identical situation pointing a different way. An
-   examiner gaze held in world degrees would break exactly that: the same
-   drive would need a different look on every rotation. Held against the
-   car's heading it rotates with the scene for free. */
-export function bearingFromCar(egoPose, eye, point) {
-  const ang = (Math.atan2(point.y - eye.y, point.x - eye.x) * 180) / Math.PI;
-  return ((ang - egoPose.rot + 540) % 360) - 180;
-}
-
-/* Is `point` inside a cone of `cone` degrees centred `gaze` degrees off
-   the car's heading? */
-export function inCone(egoPose, eye, gaze, point, cone = EXAMINER_CONE) {
-  const off = bearingFromCar(egoPose, eye, point) - gaze;
-  return Math.abs(((off + 540) % 360) - 180) <= cone / 2;
-}
-
-/* What the examiner can see of everyone at a moment, given where they are
-   looking. Same shape as whatEgoSees — actor id to visibility — with one
-   extra state the driver's version never needed: "away", meaning nothing
-   is blocking it, you simply were not looking there.
-
-   Distinguishing "away" from "hidden" is the point. Missing a fault
-   because a van was in the way is the scenario's doing; missing it
-   because you were looking the other way is yours. */
-export function whatExaminerSees(sim, t, { gaze = 0, cone = EXAMINER_CONE, statics = [] } = {}) {
-  const egoPose = poseAt(sim.ego, t);
-  const eye = examinerEye(egoPose);
-
-  const live = sim.actors
-    .map((p) => ({ p, pose: poseAt(p, t) }))
-    .filter(({ pose }) => !pose.gone && !pose.hidden);
-
-  const out = {};
-  for (const { p, pose } of live) {
-    if (!inCone(egoPose, eye, gaze, pose, cone)) { out[p.id] = "away"; continue; }
-    const blockers = [...live.filter((o) => o.p.id !== p.id), ...statics];
-    out[p.id] = visibility(eye, p, pose, blockers);
-  }
-  return out;
-}
-
-/* Could the examiner have seen this fault happen, looking `gaze` degrees
-   off the car's heading the whole time it was live?
-
-   Returns the share of the fault's own duration during which it was both
-   in the cone and not occluded — so a fault glimpsed at the edge of a
-   look reads differently from one watched throughout. A signal-channel
-   fault is judged on the car's position exactly like a path one: you read
-   an indicator by looking at the car wearing it. */
-/* Reading the candidate's OWN driving is a different act from spotting
-   another road user, and the geometry says so: the examiner is sitting in
-   that car, roughly a metre from its centre, so the bearing to it is
-   meaningless and every fault it commits would read as 90 degrees off to
-   the side. Nothing occludes it either.
-
-   What an examiner is actually doing is reading the car against the road
-   ahead of it — its line in the lane, how square it is to the kerb, where
-   it is going to end up. So the cone is tested against the road the car
-   is about to cover, one look-ahead in front of the bonnet, and occlusion
-   does not apply. Gaze still matters: stare out of the side window and
-   you stop reading the line. */
-export const OWN_CAR_READ_AT = M(12);
-
-function ownCarTarget(pose) {
-  const r = rad(pose.rot);
-  return { x: pose.x + Math.cos(r) * OWN_CAR_READ_AT, y: pose.y + Math.sin(r) * OWN_CAR_READ_AT };
-}
-
-export function faultVisibility(sim, fault, { gaze = 0, cone = EXAMINER_CONE, statics = [] } = {}) {
+   Nothing can occlude your own car, so the candidate's own faults are
+   always visible to someone sitting in it. Whether they are on SCREEN is
+   the viewport's business, not this function's. */
+export function faultSeenAt(sim, fault, t, statics = []) {
   const subject = [sim.ego, ...sim.actors].find((p) => p.id === fault.who);
-  if (!subject) return { seen: 0, best: "away" };
+  if (!subject) return "hidden";
+  if (subject.id === sim.ego.id) return "clear";
 
-  if (subject.id === sim.ego.id) {
-    let seenFor = 0;
-    for (const s of fault.samples) {
-      const egoPose = poseAt(sim.ego, s.t);
-      const eye = examinerEye(egoPose);
-      if (inCone(egoPose, eye, gaze, ownCarTarget(egoPose), cone)) seenFor++;
-    }
-    const share = fault.samples.length ? seenFor / fault.samples.length : 0;
-    return { seen: share, best: share > 0 ? "clear" : "away" };
-  }
+  const pose = poseAt(subject, t);
+  if (pose.gone || pose.hidden) return "hidden";
 
-  const rank = { away: 0, hidden: 1, partial: 2, clear: 3 };
-  let seenFor = 0, best = "away";
+  const eye = eyePoint(poseAt(sim.ego, t));
+  const others = sim.actors
+    .map((p) => ({ p, pose: poseAt(p, t) }))
+    .filter(({ p, pose: q }) => !q.gone && !q.hidden && p.id !== fault.who);
+  return visibility(eye, subject, pose, [...others, ...statics]);
+}
 
+/* How long the screen actually showed this fault, in seconds.
+
+   This is the scorer's gate, and it is a DURATION rather than a share of
+   the fault's life on purpose. A share reintroduces exactly the unfairness
+   the cone had: a fault visible for a fifth of its duration was shown
+   plainly, and calling it unmarkable tells the player they did not see
+   something they watched. The honest question is "was it ever on screen
+   long enough to register", and REACTION_FLOOR already answers what long
+   enough means. */
+export function faultShownFor(sim, fault, statics = []) {
+  if (!fault.samples || !fault.samples.length) return 0;
+  // faults.js samples at STEP, so counting samples IS measuring time.
+  let shown = 0;
   for (const s of fault.samples) {
-    const egoPose = poseAt(sim.ego, s.t);
-    const eye = examinerEye(egoPose);
-    const pose = poseAt(subject, s.t);
-    let state;
-    if (!inCone(egoPose, eye, gaze, pose, cone)) {
-      state = "away";
-    } else {
-      const others = sim.actors
-        .map((p) => ({ p, pose: poseAt(p, s.t) }))
-        .filter(({ p, pose }) => !pose.gone && !pose.hidden && p.id !== fault.who);
-      state = visibility(eye, subject, pose, [...others, ...statics]);
-    }
-    if (rank[state] > rank[best]) best = state;
-    if (state === "partial" || state === "clear") seenFor++;
+    const v = faultSeenAt(sim, fault, s.t, statics);
+    if (v === "clear" || v === "partial") shown += STEP;
   }
-  return { seen: fault.samples.length ? seenFor / fault.samples.length : 0, best };
+  return Math.round(shown * 1000) / 1000;
 }
 
 /* ---------------------------------------------------------------------

@@ -3,7 +3,7 @@
 
    A bench, not a game. Everything built for the examiner flip so far is
    headless and verified but has never been looked at: the chase camera,
-   the gaze cone, derived faults and their visibility, and what stacking
+   occlusion, derived faults and their visibility, and what stacking
    directions does to the candidate. This screen puts all four on one
    canvas with the knobs exposed, so they can be judged by eye instead of
    by a passing check.
@@ -14,13 +14,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, Eye, TriangleAlert, Flag } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
-import { simulate, poseAt, basePose, CAR_L, CAR_W, PED_R, M, W, CX, CY } from "../engine/index.js";
+import { simulate, poseAt, basePose, CAR_L, CAR_W, PED_R, M, W, CX, CY, STEP } from "../engine/index.js";
 import { specOf } from "../engine/road.js";
 import { SCENARIOS } from "../engine/scenarios.js";
 import { faultsIn } from "../engine/faults.js";
 import {
-  examinerEye, faultVisibility, whatExaminerSees, sightBlockersOf, bearingFromCar,
-  EXAMINER_CONE,
+  whatEgoSees, faultSeenAt, faultShownFor, sightBlockersOf, eyePoint,
 } from "../engine/sight.js";
 import {
   instructionWindow, pressureOf, skillUnderPressure, severityUnder, loadCandidate,
@@ -47,13 +46,10 @@ export default function ExaminerLab() {
   const [scnId, setScnId] = useState("gap");
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(true);
-  const [gaze, setGaze] = useState(0);
-  const [cone, setCone] = useState(EXAMINER_CONE);
   const [lookAhead, setLookAhead] = useState(LOOK_AHEAD);
   const [held, setHeld] = useState(0);
   const [trait, setTrait] = useState("wander");
   const [chase, setChase] = useState(true);
-  const [looking, setLooking] = useState(false);
   const [reveal, setReveal] = useState(false);
   const [marks, setMarks] = useState([]);
 
@@ -114,55 +110,15 @@ export default function ExaminerLab() {
     return () => cancelAnimationFrame(raf.current);
   }, [playing]);
 
-  /* Looking around. The pointer is mapped into the rotated world group's
-     own coordinate system via its screen CTM, so none of the camera's
-     rotation has to be reasoned about here — the browser already knows
-     it. From there it is the same bearingFromCar the cone itself uses,
-     which is what keeps mouse, finger and slider all talking about one
-     number.
-
-     Move-to-look rather than drag-to-look: a mouse gets to glance around
-     by moving, and a finger produces pointermove only while it is down,
-     so the same handler is a drag on touch without a second code path. */
-  const worldRef = useRef(null);
-  const aim = (e) => {
-    const g = worldRef.current;
-    if (!g || !g.getScreenCTM) return;
-    const ctm = g.getScreenCTM();
-    if (!ctm) return;
-    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
-    const pose = poseAt(sim.ego, t);
-    const eye = examinerEye(pose);
-    // Dead zone: right on top of the seat every pixel is a different
-    // bearing, and the cone would snap around under your finger.
-    if (Math.hypot(pt.x - eye.x, pt.y - eye.y) < M(3)) return;
-    setGaze(Math.round(bearingFromCar(pose, eye, pt)));
-  };
-
-  /* What you currently believe about each car. A ref, not state: it is
-     written from an effect after commit (never during render, which would
-     make the draw impure the way a clock-seeded useMemo would) and the
-     one-frame lag it costs is invisible at 60fps. */
-  const beliefs = useRef(new Map());
-  /* How much of each fault the player actually had sight of, accumulated
-     frame by frame from where they were really looking. This is what
-     makes recall fair: a fault is only "missed" if it was on offer. */
-  const watched = useRef(new Map());
-  useEffect(() => {
-    beliefs.current = new Map();
-    watched.current = new Map();
-    setMarks([]);
-  }, [scnId, trait, held]);
-
   const egoPose = poseAt(sim.ego, t);
-  const eye = examinerEye(egoPose);
-  const sees = whatExaminerSees(sim, t, { gaze, cone, statics });
+  const eye = eyePoint(egoPose);
+  const sees = whatEgoSees(sim, t, 0, statics);
   const onStage = Object.keys(sees);
   const readable = onStage.filter((id) => sees[id] === "clear" || sees[id] === "partial");
   const live = faults.filter((f) => t >= f.from && t <= f.to);
 
   /* Anything you can actually make out right now refreshes your belief.
-     Occluded and out-of-cone traffic does not: that is the whole point. */
+     Occluded traffic does not: that is the whole point. */
   useEffect(() => {
     for (const a of sim.actors) {
       const v = sees[a.id];
@@ -173,24 +129,15 @@ export default function ExaminerLab() {
     /* Two separate records per fault, because the scorer asks two
        different questions and conflating them broke marking.
 
-         clear      was anything IN THE WAY — measured with the cone
-                    thrown wide open, so it is about the scenario rather
-                    than about where this player chose to look.
-         lastSeen   the last moment they actually had sight of it, which
-                    is what decides whether a mark is an observation.  */
+         shown      how long the SCREEN actually showed it, which is the
+                    only thing the scorer is allowed to know. If the
+                    renderer hid it, this must not count it. */
     for (const f of faults) {
       if (t < f.from || t > f.to) continue;
       const key = `${f.who}/${f.trait}`;
-      const rec = watched.current.get(key) || { clear: 0, total: 0, seenTimes: [] };
-      if (!rec.seenTimes) rec.seenTimes = [];
-      const now = { ...f, samples: [{ t, x: 0, y: 0, rot: 0 }] };
-      rec.total += 1;
-      if (faultVisibility(sim, now, { gaze: 0, cone: 360, statics }).seen > 0) rec.clear += 1;
-      /* A history, not just the latest: the scorer asks "had you seen it
-         when you pressed", and a single advancing lastSeen answers that
-         with a look from AFTER the mark. It kept every correct call from
-         landing once the drive moved on. */
-      if (faultVisibility(sim, now, { gaze, cone, statics }).seen > 0) rec.seenTimes.push(t);
+      const rec = watched.current.get(key) || { shown: 0 };
+      const v = faultSeenAt(sim, f, t, statics);
+      if (v === "clear" || v === "partial") rec.shown += STEP;
       watched.current.set(key, rec);
     }
   });
@@ -206,21 +153,7 @@ export default function ExaminerLab() {
   const sheet = scoreDetection({
     faults,
     marks,
-    clearOf: (f) => {
-      const r = watched.current.get(`${f.who}/${f.trait}`);
-      return r && r.total ? r.clear / r.total : 0;
-    },
-    lastSeenAt: (f, at) => {
-      const r = watched.current.get(`${f.who}/${f.trait}`);
-      if (!r || !r.seenTimes.length) return null;
-      // Latest sight at or before the moment they pressed.
-      let lo = 0, hi = r.seenTimes.length - 1, best = null;
-      while (lo <= hi) {
-        const midx = (lo + hi) >> 1;
-        if (r.seenTimes[midx] <= at) { best = r.seenTimes[midx]; lo = midx + 1; } else hi = midx - 1;
-      }
-      return best;
-    },
+    shownFor: (f) => (watched.current.get(`${f.who}/${f.trait}`) || { shown: 0 }).shown,
   });
 
   const pressure = pressureOf(held);
@@ -245,15 +178,13 @@ export default function ExaminerLab() {
             {/* Where a clean drive would have been, so the deviation reads. */}
             <IntendedGhost p={sim.ego} t={t} />
 
-            <GazeCone eye={eye} rot={egoPose.rot} gaze={gaze} cone={cone} reach={view.ahead || M(40)} />
-
             {sim.actors.map((a) => {
               const vis = sees[a.id];
               const readable = vis === "clear" || vis === "partial";
               if (readable) {
                 return <Actor key={a.id} p={a} pose={poseAt(a, t)} vis={vis} reveal={reveal} />;
               }
-              /* Out of the cone, or behind something. You are no longer
+              /* Behind something. You are no longer
                  seeing it — you are remembering it, and remembering it
                  carrying on driving properly. */
               const obs = beliefs.current.get(a.id);
@@ -284,7 +215,7 @@ export default function ExaminerLab() {
           <span style={S.hudT}>{t.toFixed(2)}s</span>
           {chase && <span style={S.hudDim}>{m1(view.ahead)}m ahead · {view.seconds.toFixed(1)}s</span>}
           <span style={{ ...S.hudDim, color: readable.length < onStage.length ? C.amber : C.green }}>
-            {readable.length}/{onStage.length} seen
+            {readable.length}/{onStage.length} in sight
           </span>
           {stale > 0 && (
             <span style={{ ...S.hudDim, color: C.red }}>
@@ -323,10 +254,6 @@ export default function ExaminerLab() {
 
         <Slider label="Look ahead" value={lookAhead} min={2} max={20} step={0.5}
           fmt={(v) => `${v}s · ${m1(view.ahead)}m`} onChange={setLookAhead} disabled={!chase} />
-        <Slider label={looking ? "Gaze — looking" : "Gaze — drag the view"} value={gaze} min={-180} max={180} step={1}
-          fmt={(v) => `${v > 0 ? "+" : ""}${v}°`} onChange={setGaze} />
-        <Slider label="Cone" value={cone} min={20} max={160} step={5}
-          fmt={(v) => `${v}°`} onChange={setCone} />
 
         <Row>
           <Toggle on={chase} onClick={() => setChase((v) => !v)}>
@@ -378,7 +305,7 @@ export default function ExaminerLab() {
           <div style={S.sectionHead}><Eye size={13} /> Faults derived ({faults.length})</div>
           {faults.length === 0 && <div style={S.dim}>Nothing derivable in this situation.</div>}
           {faults.map((f) => {
-            const v = faultVisibility(sim, f, { gaze, cone, statics });
+            const v = { best: faultSeenAt(sim, f, Math.min(Math.max(t, f.from), f.to), statics), seen: faultShownFor(sim, f, statics) };
             const isLive = live.includes(f);
             return (
               <div key={`${f.who}/${f.trait}`} style={{ ...S.fault, opacity: isLive ? 1 : 0.5 }}>
@@ -387,7 +314,7 @@ export default function ExaminerLab() {
                 <span style={S.faultTell}>{f.tell}</span>
                 <span style={S.faultWhen}>{f.from.toFixed(1)}–{f.to.toFixed(1)}s</span>
                 <span style={{ ...S.faultSeen, color: VIS_COLOUR[v.best] }}>
-                  {Math.round(v.seen * 100)}% seen
+                  {v.seen.toFixed(1)}s shown
                 </span>
               </div>
             );
@@ -462,53 +389,6 @@ function Actor({ p, pose, vis, reveal }) {
         <rect x={pose.x + CAR_L / 2 - M(0.5)} y={pose.y - CAR_W / 2} width={M(0.5)} height={CAR_W}
           fill="#12151a" opacity={0.55} />
       )}
-    </g>
-  );
-}
-
-/* The cone is drawn in world space from the examiner's seat, at the car's
-   heading plus the gaze offset — so it turns with the car for free, which
-   is the same reason gaze is stored relative rather than absolute. */
-function GazeCone({ eye, rot, gaze, cone, reach }) {
-  const a0 = ((rot + gaze - cone / 2) * Math.PI) / 180;
-  const a1 = ((rot + gaze + cone / 2) * Math.PI) / 180;
-  const p0 = { x: eye.x + Math.cos(a0) * reach, y: eye.y + Math.sin(a0) * reach };
-  const p1 = { x: eye.x + Math.cos(a1) * reach, y: eye.y + Math.sin(a1) * reach };
-  const large = cone > 180 ? 1 : 0;
-  return (
-    <g>
-      <path
-        d={`M${eye.x} ${eye.y} L${p0.x} ${p0.y} A${reach} ${reach} 0 ${large} 1 ${p1.x} ${p1.y} Z`}
-        fill={C.yellow} opacity={0.10}
-      />
-      <path
-        d={`M${eye.x} ${eye.y} L${p0.x} ${p0.y} M${eye.x} ${eye.y} L${p1.x} ${p1.y}`}
-        stroke={C.yellow} strokeWidth={2} opacity={0.5} fill="none"
-      />
-      <circle cx={eye.x} cy={eye.y} r={M(0.35)} fill={C.yellow} />
-    </g>
-  );
-}
-
-/* A remembered car. Drawn as an outline rather than a solid, because it
-   is not a thing you can see — it is a thing you think. It thins out as
-   the look that produced it wears off, and vanishes when you have simply
-   lost track.
-
-   Deliberately NOT tinted differently when the belief has gone wrong:
-   you do not get told you are wrong, you get told by looking. `wrong` is
-   passed so the lab can show it under Truth, and for nothing else. */
-function Belief({ p, pose, conf, wrong }) {
-  if (!pose || pose.hidden || pose.gone) return null;
-  const col = "#8b93a0";
-  if (p.kind === "ped") {
-    return <circle cx={pose.x} cy={pose.y} r={PED_R} fill="none" stroke={col}
-      strokeWidth={2.5} strokeDasharray="5 5" opacity={conf * 0.75} />;
-  }
-  return (
-    <g transform={`rotate(${pose.rot} ${pose.x} ${pose.y})`} opacity={conf * 0.75}>
-      <rect x={pose.x - CAR_L / 2} y={pose.y - CAR_W / 2} width={CAR_L} height={CAR_W} rx={M(0.3)}
-        fill="none" stroke={col} strokeWidth={3} strokeDasharray="7 6" />
     </g>
   );
 }

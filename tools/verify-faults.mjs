@@ -1,29 +1,27 @@
-/* Fault derivation and the examiner's cone.
+/* Fault derivation, and what occlusion still hides.
  *
  * The examiner game's whole claim to honesty is that a fault is DERIVED,
  * never authored — the same rule that keeps the driver game's window
- * trustworthy, applied to a different object. So the things checked here
- * are the things that claim would be false without:
+ * trustworthy, applied to a different object. So:
  *
  *   1. A derived fault is real: strip the trait and it goes away.
- *   2. A fault nobody could see is not a fault, and the engine says which
- *      kind of unseeable it was — occluded, or you were looking away.
- *   3. Gaze is relative to the car, so a rotated scenario plays
- *      identically. route.js rotates every leg of a course; if gaze were
- *      held in world degrees the same drive would need a different look
- *      from each approach.
- *   4. Where you look is a real decision — some gaze must beat another.
+ *   2. The candidate's own car faults like any other participant.
+ *   3. Occlusion still gates detection, from ONE oracle the renderer is
+ *      obliged to draw from — because the scorer must never know
+ *      something the screen did not show.
+ *
+ * The view cone is gone. What constrains attention is the viewport, and
+ * that is verify-camera.mjs's business now.
  */
 import {
   faultsIn, faultWindow, faultAt, POS_VISIBLE, MIN_DURATION,
 } from "../src/engine/faults.js";
 import {
-  whatExaminerSees, faultVisibility, examinerEye, bearingFromCar, inCone,
-  EXAMINER_CONE, sightBlockersOf,
+  whatEgoSees, faultSeenAt, faultShownFor, sightBlockersOf,
 } from "../src/engine/sight.js";
+import { SHOWN_ENOUGH } from "../src/engine/detect.js";
 import { simulate, poseAt, M } from "../src/engine/index.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
-import { rotateScenario, isRotatable } from "../src/engine/route.js";
 
 const m = (px) => Math.round((px / 20) * 100) / 100;
 let problems = 0;
@@ -91,154 +89,59 @@ console.log("\n2. THE CANDIDATE FAULTS LIKE ANYONE ELSE");
     ? ok(`all ${traits.length} path traits derive a fault on the candidate's own car`)
     : null;
 
-  /* Reading your own car is a different act from spotting someone else's.
-     The examiner sits IN the candidate's car, so the bearing to it is
-     meaningless — every fault it committed would read as 90 degrees off to
-     the side, and the whole candidate-observation half of the game would
-     score zero. It is judged against the road ahead of the bonnet instead,
-     which is what an examiner is actually reading. Gaze still has to
-     matter, or looking out of the side window would be free. */
-  {
-    const scn = { ...base, ego: { ...base.ego, traits: ["wander"] } };
-    const sim = simulate(scn);
-    const f = faultsIn(scn).find((x) => x.who === "ego");
-    const ahead = faultVisibility(sim, f, { gaze: 0 });
-    const aside = faultVisibility(sim, f, { gaze: 90 });
-    ahead.seen > 0.9 && aside.seen === 0
-      ? ok(`the candidate's own line reads while looking ahead (${Math.round(ahead.seen * 100)}%) and not while looking away (${Math.round(aside.seen * 100)}%)`)
-      : fail(`own-car readability is wrong: ${Math.round(ahead.seen * 100)}% ahead, ${Math.round(aside.seen * 100)}% aside`);
-  }
-
   const clean = faultsIn(base).filter((f) => f.who === "ego");
   clean.length === 0
     ? ok("a candidate with no traits commits no faults — no false positives")
     : fail(`a clean candidate derived ${clean.length} fault(s)`);
 }
 
-/* ---------- 3. seen, occluded, or simply not looked at -------------- */
-console.log("\n3. A FAULT NOBODY COULD SEE IS NOT MARKABLE");
+/* ---------- 3. occlusion still gates, and honestly ------------------ */
+console.log("\n3. A FAULT BEHIND SOMETHING IS NOT ONE YOU MISSED");
 {
-  const scn = SCENARIOS.find((s) => s.id === "wanderer");
-  const sim = simulate(scn);
-  const f = faultsIn(scn)[0];
-  if (!f) { fail("wanderer derived no fault to test visibility against"); }
-  else {
-    const eye = examinerEye(poseAt(sim.ego, f.from));
-    const at = faultAt(f, (f.from + f.to) / 2);
-    const bearing = bearingFromCar(poseAt(sim.ego, (f.from + f.to) / 2), eye, at);
+  /* The view cone is gone: nothing about WHERE the player looks within
+     the screen gates detection any more. Occlusion stays, because being
+     hidden behind a van is core to the game -- and it is fair only under
+     one constraint, which is what this section exists to guard:
 
-    const looking = faultVisibility(sim, f, { gaze: bearing });
-    const away = faultVisibility(sim, f, { gaze: bearing + 180 });
+       the scorer must never know something the screen did not show.
 
-    looking.seen > away.seen
-      ? ok(`looking at it beats looking away (${(looking.seen * 100).toFixed(0)}% vs ${(away.seen * 100).toFixed(0)}% of the fault seen)`)
-      : fail(`gaze made no difference (${looking.seen} vs ${away.seen}) — the cone is decoration`);
-
-    /* "away" vs "hidden" is a per-instant distinction, so it is tested at
-       an instant. Across a whole fault it would not hold and should not:
-       wanderer's fault runs 6.1s and the car drives through the cone
-       during it, which is the mechanic working rather than failing. */
-    const tMid = (f.from + f.to) / 2;
-    const bMid = bearingFromCar(poseAt(sim.ego, tMid), examinerEye(poseAt(sim.ego, tMid)), faultAt(f, tMid));
-    const behind = whatExaminerSees(sim, tMid, { gaze: bMid + 180, cone: 60 });
-    behind[f.who] === "away"
-      ? ok("at an instant, a fault outside the cone reports \"away\" — your fault, not the scenario's")
-      : fail(`a fault behind the examiner reported "${behind[f.who]}"`);
-  }
-
-  /* Occlusion still has to win independently of gaze: staring straight at
-     a van does not let you see through it. */
-  const blind = SCENARIOS.find((s) => s.id === "unprotected");
+     So the check is that the value the SCORER uses is the same value a
+     renderer would draw from. One oracle, consumed by both. */
+  const blind = SCENARIOS.find((x) => x.id === "unprotected");
   const bsim = simulate(blind);
   const statics = sightBlockersOf(blind);
-  let occluded = 0, clear = 0;
-  for (let t = blind.ego.arriveAt ?? 0; t <= (blind.ego.arriveAt ?? 0) + 3; t += 0.25) {
-    const sees = whatExaminerSees(bsim, t, { gaze: 0, cone: 360, statics });
-    for (const v of Object.values(sees)) {
-      if (v === "hidden" || v === "partial") occluded++;
-      if (v === "clear") clear++;
-    }
+
+  let hid = 0, showed = 0;
+  for (let t = 0; t <= 6; t += 0.1) {
+    const sees = whatEgoSees(bsim, t, 0, statics);
+    for (const v of Object.values(sees)) (v === "hidden" ? hid++ : showed++);
   }
-  occluded > 0
-    ? ok(`with a full 360 cone, the van still hides traffic (${occluded} occluded readings vs ${clear} clear)`)
-    : fail("occlusion stopped applying once the cone was opened — the two tests are tangled");
+  hid > 0
+    ? ok(`the van still hides traffic (${hid} hidden readings against ${showed} visible)`)
+    : fail("nothing was ever hidden -- occlusion stopped applying");
+
+  /* Nothing can occlude your own car, so the candidate own faults are
+     always available to someone sitting in it. */
+  const own = { ...SCENARIOS.find((x) => x.id === "gap") };
+  own.ego = { ...own.ego, traits: ["wander"] };
+  const osim = simulate(own);
+  const of_ = faultsIn(own).find((f) => f.who === "ego");
+  faultSeenAt(osim, of_, (of_.from + of_.to) / 2, []) === "clear"
+    ? ok("the candidate own line is never occluded -- you are sitting in it")
+    : fail("something occluded the candidate own car");
+
+  /* And the gate is a DURATION, not a share of the fault life -- a share
+     is the cone bug in new clothes. */
+  const shown = faultShownFor(osim, of_, []);
+  shown >= SHOWN_ENOUGH
+    ? ok(`an unobstructed fault is shown for ${shown.toFixed(2)}s, past the ${SHOWN_ENOUGH}s floor`)
+    : fail(`an unobstructed fault was only shown ${shown}s`);
 }
 
-/* ---------- 4. gaze rotates with the scene -------------------------- */
-console.log("\n4. GAZE IS RELATIVE, SO A ROTATED COURSE PLAYS IDENTICALLY");
-{
-  /* route.js rotates a scenario to meet whichever approach the previous
-     leg leaves you on. If the examiner's look were held in world degrees,
-     the same drive would demand a different gaze from each approach and
-     rotation would stop being safe. */
-  let checked = 0, drifted = 0;
-  for (const scn of SCENARIOS) {
-    if (!isRotatable(scn)) continue;
-    const faults = faultsIn(scn);
-    if (!faults.length) continue;
-    const f0 = faults[0];
-    const sim0 = simulate(scn);
-    const mid = (f0.from + f0.to) / 2;
-    const eye0 = examinerEye(poseAt(sim0.ego, mid));
-    const base = bearingFromCar(poseAt(sim0.ego, mid), eye0, faultAt(f0, mid));
-
-    for (const turns of [1, 2, 3]) {
-      const rot = rotateScenario(scn, turns);
-      if (!rot) continue;
-      const fr = faultsIn(rot).find((x) => x.trait === f0.trait);
-      if (!fr) { drifted++; fail(`${scn.id}@${turns}: the fault vanished under rotation`); continue; }
-      const simR = simulate(rot);
-      const eyeR = examinerEye(poseAt(simR.ego, mid));
-      const b = bearingFromCar(poseAt(simR.ego, mid), eyeR, faultAt(fr, mid));
-      checked++;
-      if (Math.abs(b - base) > 1) {
-        drifted++;
-        fail(`${scn.id}@${turns}: needs gaze ${b.toFixed(1)}deg, unrotated needs ${base.toFixed(1)}deg`);
-      }
-    }
-  }
-  checked > 0 && drifted === 0
-    ? ok(`${checked} rotated copies all need the same gaze as the original`)
-    : checked === 0 ? fail("no rotatable scenario carried a fault to test") : null;
-}
-
-/* ---------- 5. where you look has to matter ------------------------- */
-console.log("\n5. WHERE YOU LOOK IS A REAL DECISION");
-{
-  /* Not "a gaze exists" but "no single gaze is free". If one fixed look
-     caught everything, the mechanic would be a switch. */
-  const rows = [];
-  for (const scn of SCENARIOS) {
-    const fs = faultsIn(scn);
-    if (fs.length < 2) continue;
-    const sim = simulate(scn);
-    const statics = sightBlockersOf(scn);
-    for (let gaze = -90; gaze <= 90; gaze += 15) {
-      let caught = 0;
-      for (const f of fs) if (faultVisibility(sim, f, { gaze, statics }).seen > 0.25) caught++;
-      rows.push({ scn: scn.id, gaze, caught, of: fs.length });
-    }
-  }
-  if (!rows.length) {
-    console.log("  note: no situation carries two faults at once yet — the trade is untestable here");
-    ok("skipped: needs a multi-fault situation, which examiner content will bring");
-  } else {
-    const byScn = new Map();
-    for (const r of rows) {
-      const cur = byScn.get(r.scn);
-      if (!cur || r.caught > cur.caught) byScn.set(r.scn, r);
-    }
-    let allFree = 0;
-    for (const [id, best] of byScn) {
-      console.log(`   ${id.padEnd(12)} best single gaze ${String(best.gaze).padStart(4)}deg catches ${best.caught} of ${best.of}`);
-      if (best.caught === best.of) allFree++;
-    }
-    allFree < byScn.size
-      ? ok("at least one situation cannot be solved by holding a single gaze")
-      : console.log("  note: every situation here is solvable with one look — expected until faults are placed apart on purpose");
-  }
-}
+/* Sections 4 and 5 moved to verify-camera.mjs when the cone was removed.
+   Rotation invariance is now a property of FRAMING rather than of gaze,
+   and "no single view holds everything" is the camera mechanic itself. */
 
 console.log("\n" + "=".repeat(70));
-console.log(problems === 0 ? "OK: faults derive, and the cone decides what was markable." : `${problems} PROBLEM(S) FOUND.`);
+console.log(problems === 0 ? "OK: faults derive, and occlusion decides honestly what was markable." : `${problems} PROBLEM(S) FOUND.`);
 process.exit(problems === 0 ? 0 : 1);
