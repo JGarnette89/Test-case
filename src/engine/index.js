@@ -550,13 +550,24 @@ const TRAITS = {
     /* Derived, not typed: enough to carry the nose from just behind the
        stop line to 0.6 m inside the box, because that is what the tell
        claims and a tell that is not true of the car is a lie to the
-       player. A fixed 2.6 m stopped reaching once SET was corrected. */
+       player. A fixed 2.6 m stopped reaching once SET was corrected.
+
+       Only for a driver who stops, and that is the same rule cutsCorner
+       already lives under rather than a special case. stopBias shifts the
+       origin of the traverse whether or not anyone braked, so on a road
+       with no line a rolling driver picked up a visible, derivable fault
+       whose tell said they had stopped past a line that was not there.
+       Measured on a segment before this guard existed: 3.8s of it. */
     tell: "Stopped well past the line, nose already in the intersection",
-    setup: (p) => { p.stopBias = STOP_LINE_AT + STOP_GAP - HALF + M(0.6) * severityOf(p); },
+    setup: (p) => {
+      if (p.stops) p.stopBias = STOP_LINE_AT + STOP_GAP - HALF + M(0.6) * severityOf(p);
+    },
   },
   slowStart: {
+    /* "Their turn" is a queue word: a driver who never stopped never had
+       one. Same guard, same reason. */
     tell: "Slow off the mark when it was clearly their turn",
-    setup: (p) => { p.startDelay = 1.7 * severityOf(p); },
+    setup: (p) => { if (p.stops) p.startDelay = 1.7 * severityOf(p); },
   },
   wideTurn: {
     tell: "Swung wide through the turn, across the next lane",
@@ -585,6 +596,30 @@ const TRAITS = {
     setup: (p) => { p.signalLead = LATE_SIGNAL_LEAD / severityOf(p); },
   },
 };
+
+/* One seeded random source for the whole engine. mulberry32, and it was
+   written out identically in four separate files before this — the exact
+   duplication the project treats as a bug arriving early. Its first draw
+   is well distributed for small seeds, which a plain LCG's is not: a
+   naive one written for candidate.js returned ~0.236 for every seed in
+   sequence, so a 15% branch taken on the first draw never fired once in
+   200 candidates. */
+export function rng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* The one list of what habits exist. compose.js used to keep a literal
+   copy of this and generate.js keeps a deliberate SUBSET (it predates
+   wideTurn and cutsCorner and is the pre-flip driver mode's pool); a
+   second copy of the full set is how a new trait gets forgotten by one
+   generator and not the other. */
+const TRAIT_KEYS = Object.keys(TRAITS);
 
 const traitTells = (p) => (p.traits || []).map((k) => TRAITS[k]?.tell).filter(Boolean);
 
@@ -1018,7 +1053,7 @@ export {
   RA_OUTER, RA_ISLAND, RA_LANE, RA_SPEED, RA_ENTRY_ANGLE, RA_QUARTERS, raPath,
   STOPS, EXITS, RIGHT_OF, OPPOSITE,
   PED_SETBACK, PED_OVERHANG, BAR_HALF, STOP_LINE_AT, STOP_GAP,
-  basePose, TRAITS, traitTells, poseAt, signalShowing,
+  basePose, TRAITS, TRAIT_KEYS, traitTells, poseAt, signalShowing,
   SKILL_SPAN, severityOf,
   extentsFor, poseFor, forwardClaim, boxesOverlap, conflicts,
   outranks, earliestClear, applyTraits, schedule,

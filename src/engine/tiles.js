@@ -25,11 +25,12 @@
 
    Pure. No React, no DOM, no colour.
    ===================================================================== */
-import { M } from "./index.js";
+import { M, rng } from "./index.js";
 import { crossSpec, validIntents, exitSideFor } from "./road.js";
 import { runwayNeeded } from "./directions.js";
 import { driveThroughTiles } from "./world.js";
 import { faultsIn } from "./faults.js";
+import { egoFor, chancesAt, shapeOf, valueOfShape, SHOWINGS_FOR_A_HABIT } from "./candidate.js";
 import { composeScenario } from "./compose.js";
 
 /* =====================================================================
@@ -169,15 +170,6 @@ const KIND_SIZE = {
 };
 
 /* mulberry32, as everywhere else that needs a reproducible draw. */
-function rng(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /* Blockers along one link, both kerbs, spaced by the tile's density.
 
@@ -292,16 +284,44 @@ export function roadsideLifeFor(tile, link, seed = 2) {
    hoping for. */
 export const TURN_SHARE = 0.55;
 
+/* A junction's shape, for planning. The candidate always stops at one --
+   compose() puts them on a controlled leg and holds them -- so the only
+   thing a plan gets to choose is which way they go. `prior` is assumed
+   rather than known, because whether the traffic that turns up outranks
+   them is decided by the draw and not by the route; how far that
+   assumption strays from the scenes actually produced is measured in
+   verify-candidate.mjs rather than waved through. */
+const junctionShape = (intent) => shapeOf({ stops: true, intent, prior: true });
+
+/* Which of the turns on offer is worth most to this driver, given what
+   the route has already promised their other habits. */
+const bestTurn = (candidate, turns, owed) =>
+  turns.reduce(
+    (best, x) =>
+      valueOfShape(candidate, junctionShape(x), owed) >
+      valueOfShape(candidate, junctionShape(best), owed)
+        ? x
+        : best,
+    turns[0]
+  );
+
 export function planDrive({
   seed = 1,
   length = 6,
   library = TILES,
   from = "S",
   turnShare = TURN_SHARE,
+  candidate = null,
 } = {}) {
   const r = rng(seed >>> 0);
   const plan = [];
   let entry = from;
+  /* What the route has already given each habit a chance at. A forecast,
+     not a tally of showings -- the scenes do not exist yet. */
+  const owed = {};
+  const credit = (intent) => {
+    for (const t of chancesAt(junctionShape(intent))) owed[t] = (owed[t] || 0) + 1;
+  };
 
   for (let i = 0; i < length; i++) {
     /* Vary the character along the drive rather than picking uniformly,
@@ -317,10 +337,32 @@ export function planDrive({
        is not a decision. */
     const last = i === length - 1;
     const turns = legal.filter((x) => x !== "straight");
-    const intent = last || !turns.length || r() > turnShare
-      ? (legal.includes("straight") ? "straight" : turns[0])
-      : turns[Math.floor(r() * turns.length) % turns.length];
+    /* Whether to turn is left exactly as it was -- a route still has to
+       read like a route, not like a trait-delivery mechanism. What the
+       candidate gets to influence is WHICH turn, and only among turns the
+       junction was going to offer anyway.
 
+       A left is where cutsCorner shows and a right is not, so a driver who
+       cuts corners on a route that only ever turns right has had their
+       character hidden rather than the player's eye tested. Measured
+       before this existed: cutsCorner reached a habit's worth of showings
+       on 1 drive in 3, against wander on 3 in 3. */
+    const goStraight = last || !turns.length || r() > turnShare;
+    let intent;
+    if (goStraight) {
+      intent = legal.includes("straight") ? "straight" : turns[0];
+    } else {
+      /* The draw happens whether or not it is used, so a steered plan and
+         an unsteered one walk the same random stream and differ only where
+         the candidate actually changed a choice. Skipping it would have
+         reshuffled every route and made the comparison meaningless -- the
+         same uncontrolled-comparison mistake this stage has caught before,
+         one layer down. */
+      const drawn = turns[Math.floor(r() * turns.length) % turns.length];
+      intent = candidate && turns.length > 1 ? bestTurn(candidate, turns, owed) : drawn;
+    }
+
+    credit(intent);
     plan.push({ tile, spec, intent, entry, index: i });
     entry = OPPOSITE_SIDE[exitSideFor(entry, intent)];
   }
@@ -336,7 +378,8 @@ export function planDrive({
     const at = Math.floor(r() * directable.length) % directable.length;
     const turns = validIntents(plan[at].spec, plan[at].entry).filter((x) => x !== "straight");
     if (turns.length) {
-      plan[at].intent = turns[Math.floor(r() * turns.length) % turns.length];
+      const drawn = turns[Math.floor(r() * turns.length) % turns.length];
+      plan[at].intent = candidate && turns.length > 1 ? bestTurn(candidate, turns, owed) : drawn;
       // Everything after that junction now enters from a different side.
       let e = OPPOSITE_SIDE[exitSideFor(plan[at].entry, plan[at].intent)];
       for (let i = at + 1; i < plan.length; i++) {
@@ -503,14 +546,32 @@ export function pacingOf({ events, duration }) {
    The fallback is a CHAIN, not a second generator. Every step is the same
    composeScenario against the same brief vocabulary, so nothing here
    knows anything the rest of the system does not. */
-export function composeForTile(tile, sinceLastEvent, seed, legTime = 0) {
+export function composeForTile(tile, sinceLastEvent, seed, opts = {}) {
+  const { legTime = 0, candidate = null, at = null, show = null } = opts;
   const wanted = briefFor(tile, sinceLastEvent, legTime);
   const plain = CHARACTER[tile.character].brief;
+
+  /* Who is driving, and which way the route says they go. Both are the
+     SAME driver at every junction -- before this the composer invented a
+     flawless ego of its own and re-decided the turn, and the plan's
+     (entry, intent) survived 9 times in 120. */
+  const ego = candidate ? egoFor(candidate, { from: at?.from, intent: at?.intent }) : null;
+  const place = at ? { from: at.from, intent: at.intent } : null;
+  const driver = ego || place ? { ...(ego || {}), ...(place || {}) } : null;
+
+  /* The ladder gains one rung at the top and keeps the rest. Asking for a
+     particular habit to show SUBSUMES asking for any fault at all -- a
+     showing by the candidate is a fault -- so the strictest rung is the
+     new one, and everything below it is the chain that already existed.
+
+     A habit that cannot show at this junction must not cost the junction:
+     rung 1 drops the demand rather than the draw. */
   const ladder = [
-    wanted,
-    wanted.mustFault ? { ...wanted, mustFault: false } : null,
-    plain,
-    { ...plain, traffic: "light" },
+    show && show.length ? { brief: wanted, show } : null,
+    { brief: wanted },
+    wanted.mustFault ? { brief: { ...wanted, mustFault: false } } : null,
+    { brief: plain },
+    { brief: { ...plain, traffic: "light" } },
   ].filter(Boolean);
 
   for (let i = 0; i < ladder.length; i++) {
@@ -519,10 +580,13 @@ export function composeForTile(tile, sinceLastEvent, seed, legTime = 0) {
        compared honestly. Deriving a seed here made every measurement of
        whether pacing helps a comparison between different draws. */
     const s = i === 0 ? seed : (seed * 2654435761 + i * 40503) >>> 0;
-    const scn = composeScenario(ladder[i], s);
-    if (scn) return { scn, brief: ladder[i], relaxed: i };
+    const scn = composeScenario(ladder[i].brief, s, {
+      ...(driver ? { ego: driver } : {}),
+      ...(ladder[i].show ? { mustShow: ladder[i].show } : {}),
+    });
+    if (scn) return { scn, brief: ladder[i].brief, relaxed: i, asked: ladder[i].show ?? null };
   }
-  return { scn: null, brief: null, relaxed: ladder.length };
+  return { scn: null, brief: null, relaxed: ladder.length, asked: null };
 }
 
 /* =====================================================================
@@ -564,7 +628,7 @@ export function straightSpecFor(character) {
    The candidate meets them at whatever time their distance along the link
    implies, so the hazard's own clock is the drive's clock offset -- the
    same relationship a junction has to the drive. */
-export function hazardAt(tile, link, person, { candidateTraits = [], seed = 1 } = {}) {
+export function hazardAt(tile, link, person, { candidate = null, seed = 1 } = {}) {
   const spec = straightSpecFor(tile.character);
   const speed = CHARACTER[tile.character].speed;
 
@@ -584,9 +648,12 @@ export function hazardAt(tile, link, person, { candidateTraits = [], seed = 1 } 
     control: "none",
     at: { x: person.x, y: person.y },
     reachesAt,
+    /* The same driver who is at the junctions. A segment used to take
+       whatever traits its caller felt like handing it, which made the
+       candidate two different people on one drive. */
     ego: {
-      from: "S", intent: "straight", arriveAt: 0, departAt: 0, stops: false,
-      traits: candidateTraits,
+      ...egoFor(candidate, { from: "S", intent: "straight", arriveAt: 0, stops: false }),
+      departAt: 0,
     },
     actors: [{
       id: person.id,
@@ -612,13 +679,13 @@ export function hazardAt(tile, link, person, { candidateTraits = [], seed = 1 } 
    Only the people roadsideLifeFor marked as `mayEmerge` become hazards;
    the rest are scenery, which is the difference between a street that is
    busy and a street that is dangerous. */
-export function segmentHazards(tile, link, seed = 1, { candidateTraits = [] } = {}) {
+export function segmentHazards(tile, link, seed = 1, { candidate = null } = {}) {
   const people = roadsideLifeFor(tile, link, seed);
   const blockers = kerbsideFor(tile, link, seed);
   return people
     .filter((p) => p.mayEmerge)
     .map((p) => ({
-      scn: hazardAt(tile, link, p, { candidateTraits, seed }),
+      scn: hazardAt(tile, link, p, { candidate, seed }),
       person: p,
       /* The props near them, as ordinary sightBlockers -- the same shape
          sightBlockersOf reads, so the hazard occludes without anything

@@ -29,15 +29,7 @@ import { REACTION_FLOOR, GRACE } from "./score.js";
    already carry their own copy of. A run's draft is exactly the kind of
    thing that has to be reproducible from (seed, milestone index), the
    same reason a scenario is reproducible from a seed. */
-export function rng(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export { rng } from "./index.js";
 
 /* The baseline: a run with no traits drafted behaves byte-identical to
    the engine's own defaults. Every `apply` below only ever widens a

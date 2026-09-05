@@ -436,6 +436,68 @@ Three rules make this the system that ties the other three together:
   then yours and unmarkable. The four systems have to be able to make each
   other fail, or they are four scoreboards rather than one game.
 
+### Driver identity — built
+
+**One candidate, composed once, driving the whole route.** `candidate.js`
+holds them; `egoFor` is the one place a scene gets its driver, so a junction
+and a segment ask for the same person. Before this the candidate was not
+merely inconsistent, they were FLAWLESS: measured over 320 generated
+junctions, the ego carried no traits at all and committed none of the 143
+faults on offer, while segments took whatever traits their caller felt like
+handing them. The route's turn survived into the composed junction 9 times
+in 120 — about what chance gives — so the examiner was directing a manoeuvre
+the candidate was never making. It is 56/56 now, because a draw whose road
+lacks the leg the route asked for is refused rather than quietly re-seated.
+
+**The trait model already expressed a habit; the WORLD did not.** Nothing
+about a driver trait was per-scenario — it lives on the participant and
+`schedule()` applies it to everyone. So no third word was introduced: a
+trait is the disposition, a SHOWING is one occasion it visibly expressed,
+and a habit is a trait with several showings — a derived property of a
+drive, not a field on anybody, which is what makes it checkable.
+
+**A habit that manifests once is an incident.** For a player to identify a
+tendency they must form a hypothesis and then test it, so
+`SHOWINGS_FOR_A_HABIT` is 3 and it is measured, never tuned to fit. And the
+testing half needs no separate machinery: a left turn is where `cutsCorner`
+would show, so a left turn where nothing happens is evidence AGAINST it.
+Measured per drive: 24 of 25 carried traits identifiable, and 82 rival
+habits given three or more chances they visibly declined.
+
+**Where a habit can show is DERIVED, never tabulated.** `chancesAt(shape)`
+builds the smallest scene with that shape and asks `faultsIn` — a cheaper
+call to the same oracle, not a second oracle. Writing "cutsCorner needs a
+left" down would author the answer and go stale the first time a trait
+changed. It also caught what a table would have frozen in: `creep` reads as
+inert everywhere until the candidate has something to actually be HELD by.
+
+**Recurrence is the accept/reject loop narrowed, not a new mechanism.**
+`mustShow` is `mustFault` asking for THIS driver's habit rather than
+anybody's fault; it subsumes it, shares the one expensive `faultsIn` call,
+and sits where every other guarantee in `compose.js` lives. The fallback
+ladder gains one rung at the top so a habit with nothing to say here cannot
+cost the player a junction. The planner steers WHICH turn, never whether to
+turn — a route still has to read like a route. Persistence alone was most of
+the win (20/25); asking and steering are the finishing 4.
+
+**Two habits that cannot both be true are refused, derived the same way.**
+`wideTurn` and `cutsCorner` both write `turnBias`, so a driver fitted with
+both had one silently overwritten and it derived no fault at all — measured,
+`wideTurn` took 0 showings from 5 chances. A pair is incompatible when
+fitting both hides either, which is the same controlled comparison asked of
+two traits instead of one, so a new trait that writes over an old one is
+caught on its first draw.
+
+**A tell must be true of the car on a road with no line, too.** `overshoot`
+and `slowStart` write `stopBias`/`startDelay`, and `stopBias` shifts the
+origin of the traverse whether or not anyone braked — so on a segment a
+candidate produced 3.8s of markable fault whose tell said they had stopped
+past a line that was not there. Both are now guarded on `p.stops`, the same
+rule `cutsCorner` already lived under. It removed real supply and the supply
+was false: 17 non-stopping actors in 114 composed scenes were carrying one.
+
+Design, findings and the debrief roadmap: `DRIVER-IDENTITY.md`.
+
 ### Still open — and three of these are the maintainer's
 
 - **Does going off course end the drive, or do you re-route?** Real tests
@@ -455,8 +517,27 @@ Three rules make this the system that ties the other three together:
   is a reflex test. The cue has to be the candidate's behaviour beforehand,
   which is the same bar every other tell in this file has to clear.
 - **Content.** 4 of 18 situations carry any driver trait; 6 instances in the
-  whole set. `generate.js` attaches one to 45% of actors from a five-trait
-  pool; `compose.js` attaches none, ever.
+  whole set. `generate.js` attaches one to 45% of actors from a deliberately
+  narrower five-trait pool (it predates `wideTurn` and `cutsCorner`);
+  `compose.js` attaches from all seven, and the CANDIDATE now carries the
+  drive's own persisting traits rather than none at all.
+- **A tile's declared road and the composed junction's road disagree.**
+  `world.js` lays out spacing, runway, links and roadside content from
+  `specFor(tile.character)`, and `compose`'s `roadFor` then draws its own
+  junction kind and ignores it — measured, 15 of 56 match, and 0 of 13 for
+  arterial tiles. Latent rather than live, since no renderer consumes the
+  world yet, but real the moment one draws a drive. Fixing it means first
+  deciding whether a three-lane arterial junction is uncontrolled (as
+  `CHARACTER.arterial.control` says today, which would leave the candidate
+  stopping at nothing) or signalised — a road-design call, not a mechanical
+  one. See `DRIVER-IDENTITY.md` §6.
+- **The post-test debrief is agreed in direction, not built.** The
+  candidate's habits are named and fed back, as the transition out of a test
+  into the next task rather than a score screen. The pieces exist: the
+  marking sheet is what the player recorded, `habitReport` is what was
+  actually true, and the gap between them is what `scoreDetection` already
+  computes. Naming the habits is also what teaches the player what to watch
+  for next time. See `DRIVER-IDENTITY.md` §7.
 
 ### Humour is allowed. The traffic law is not
 
@@ -487,12 +568,15 @@ src/engine/road.js       a junction described: legs, lanes, control per leg
 src/engine/paths.js      path shapes — line, curve, polyline — and no road at all
 src/engine/sight.js      what the driver can see, the examiner's cone, and what creeping costs
 src/engine/faults.js     what the candidate did wrong, derived by controlled comparison
+src/engine/candidate.js  one driver across a whole drive, and where each habit can show
 src/engine/directions.js the instruction you give, and what stacking them costs
 src/engine/belief.js     where you think the traffic is once you stop looking
 src/engine/detect.js     grading the examiner on what they caught and invented
 src/engine/actions.js    manoeuvres: ordered actions, fault tiers, the mark sheet
 src/engine/score.js      grading a press against a derived window
 src/engine/route.js      several intersections in one drive, and continuity
+src/engine/world.js      junctions placed in one coordinate space, and the roads between
+src/engine/tiles.js      road character, the tile library, route planning and pacing
 src/engine/generate.js   seeded scenario generation
 src/engine/compose.js    a brief in, a scene that measurably matches it out
 src/engine/scenarios.js  the set situations, as data
@@ -590,14 +674,32 @@ else the engine refuses to know what things look like. Both are checked in
 `verify-roguelike.mjs`, along with rarer actually being scarcer.
 
 **Driver behaviour is composable traits.** `wander`, `creep`, `overshoot`,
-`slowStart`, `wideTurn`, `cutsCorner`, `lateSignal`. A trait bends how the car actually drives
-and the conflict engine works out the consequences. Never script a trait to
-punish the player directly. Traits divide into two kinds and only one is
-expected to move a window:
+`slowStart`, `wideTurn`, `cutsCorner`, `lateSignal` — and `TRAIT_KEYS` in
+`index.js` is the ONE list of them, because a second copy is how a new trait
+gets forgotten by one generator and not the other. A trait bends how the car
+actually drives and the conflict engine works out the consequences. Never
+script a trait to punish the player directly. Traits divide into two kinds
+and only one is expected to move a window:
 
 - **PATH** traits bend where the car goes, so they must change the window.
 - **INFO** traits change only what can be read in time. `lateSignal` is the
   whole category. A zero delta there is correct, not a dead trait.
+
+**A trait may only fire where its tell is true.** `cutsCorner` is left-only
+because a right has no radius to give away; `overshoot` and `slowStart` are
+guarded on `p.stops` because a driver who never stopped never stopped past a
+line and never had a turn to be slow off. That guard is not cosmetic — before
+it, a candidate on a segment produced 3.8s of derivable, markable fault with
+a tell that was a lie. A trait whose `setup` writes unconditionally is
+claiming a consequence somewhere it does not happen.
+
+**Two traits that write the same field cannot both be fitted.** `wideTurn`
+and `cutsCorner` both write `turnBias`, so one silently overwrites the other
+and then derives NO fault, because `faultWindow` strips one trait at a time
+and stripping the loser changes nothing. `masks(a, b)` in `candidate.js`
+derives this by fitting both and asking, so a new trait that writes over an
+old one is caught on its first draw rather than shipping as a habit that
+never shows.
 
 **Scenario rotation.** A uniform quarter turn preserves both `RIGHT_OF` and
 `OPPOSITE`, so a scenario written for a southern approach is reusable from all
@@ -774,11 +876,14 @@ node tools/verify-faults.mjs       examiner: faults derive from a control, and t
 node tools/verify-directions.mjs   the instruction window, and what stacking costs the candidate
 node tools/verify-belief.mjs       what you still think is true once you look away
 node tools/verify-detect.mjs       grading the examiner: caught, missed, invented, and when
+node tools/verify-tiles.mjs        a declared runway is a promise, held to measured geometry
+node tools/verify-world.mjs        the continuous drive: culling, routes, pacing, segment hazards
+node tools/verify-candidate.mjs    one driver across a drive, and habits that repeat enough to be named
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All twenty must exit 0. Nine things they check are worth understanding:
+All twenty-three must exit 0. Ten things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take
@@ -786,6 +891,16 @@ All twenty must exit 0. Nine things they check are worth understanding:
   come back empty. A fault that survives its own cause being removed was
   never derived from it.
 
+
+- **`verify-candidate.mjs` guards the half of the job that is reading a
+  person.** Its properties are the ones any correct implementation would
+  have to have: one driver at every junction AND every segment; a habit
+  gets enough chances to be told from an incident; its rivals get chances
+  they visibly decline, so a hypothesis can be tested rather than only
+  formed; a tell is true of the car; and a clean driver stays clean. It
+  also measures how far the planner's forecast of what a junction could
+  show strays from what the scene actually offered, rather than assuming a
+  forecast is free.
 
 - **`verify-turns.mjs` exists because a fault got past every other check.**
   Turns cut the corner for the entire life of the project, and nothing in

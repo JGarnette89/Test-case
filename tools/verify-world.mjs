@@ -253,7 +253,7 @@ console.log("\n6. THE DRIVE KEEPS OFFERING SOMETHING TO MARK");
     let since = 0; const fed = []; let e = 0;
     for (let i = 0; i < plan.length; i++) {
       const tile = plan[i].tile;
-      const { scn } = composeForTile(tile, since, (seed * 7919 + i * 104729) >>> 0);
+      const { scn } = composeForTile(tile, since, (seed * 7919 + i * 104729) >>> 0, {});
       if (!scn) e++;
       const legTime = tile.runway / CHARACTER[tile.character].speed + 4;
       const fs = scn ? faultsIn(scn) : [];
@@ -277,9 +277,9 @@ console.log("\n6. THE DRIVE KEEPS OFFERING SOMETHING TO MARK");
   worstFed < 90
     ? ok(`and stays inside the design's 90s failure condition (worst ${worstFed.toFixed(1)}s)`)
     : fail(`a drive went ${worstFed.toFixed(1)}s with nothing to mark`);
-  console.log(`   note: the ${DEAD_AIR_CEILING}s target is NOT met. Junctions are still the only`);
-  console.log("   source of events and a leg takes about 10s, so the budget cannot react");
-  console.log("   faster than a junction arrives. Segment hazards are the next piece.");
+  console.log(`   note: junctions ALONE cannot meet the ${DEAD_AIR_CEILING}s target -- a leg takes about`);
+  console.log("   10s, so a budget with only junctions to spend cannot react faster than one");
+  console.log("   arrives. Sections 7 and 8 measure what the roadside adds.");
 }
 
 /* ---------- 7. segment hazards, and whether 25s is reachable --------- */
@@ -296,7 +296,7 @@ console.log("\n7. THE ROADSIDE IS THE SECOND SOURCE OF EVENTS");
   let hazards = 0, hidden = 0, faults = 0;
   drive.links.forEach((link, i) => {
     const tile = plan[i].tile;
-    for (const h of segmentHazards(tile, link, i * 29 + 1, { candidateTraits: ["wander"] })) {
+    for (const h of segmentHazards(tile, link, i * 29 + 1, { candidate: { traits: ["wander"] } })) {
       hazards++;
       faults += faultsIn(h.scn).length;
       if (h.blockers.length) hidden++;
@@ -329,13 +329,13 @@ console.log("\n8. DEAD AIR: IS THE TARGET REACHABLE?");
     for (let i = 0; i < plan.length; i++) {
       const tile = plan[i].tile;
       const legTime = tile.runway / CHARACTER[tile.character].speed + 4;
-      const { scn } = composeForTile(tile, since, (seed * 7919 + i * 104729) >>> 0, predictive ? legTime : 0);
+      const { scn } = composeForTile(tile, since, (seed * 7919 + i * 104729) >>> 0, { legTime: predictive ? legTime : 0 });
       const fs = scn ? faultsIn(scn) : [];
       since = fs.length ? legTime - Math.min(...fs.map((f) => f.from)) : since + legTime;
       const link = drive.links[i];
       filled.push({
         tile, scn,
-        hazards: segments && link ? segmentHazards(tile, link, seed * 31 + i, { candidateTraits: ["wander"] }) : [],
+        hazards: segments && link ? segmentHazards(tile, link, seed * 31 + i, { candidate: { traits: ["wander"] } }) : [],
       });
     }
     return pacingOf(markableTimeline(filled)).worstGap;

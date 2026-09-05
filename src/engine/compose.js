@@ -18,7 +18,7 @@
    ===================================================================== */
 import {
   simulate, poseAt, conflicts, spanOf, eventsAreReadable, MIN_WARNING, EMERGENCY_LEAD,
-  M, CX, CY, LANE, STEP,
+  M, CX, CY, LANE, STEP, rng,
 } from "./index.js";
 import { whatEgoSees, sightBlockersOf } from "./sight.js";
 import { cameraFor } from "../frame.js";
@@ -29,15 +29,6 @@ import {
 } from "./road.js";
 import { faultsIn } from "./faults.js";
 
-function rng(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 const pick = (r, xs) => xs[Math.floor(r() * xs.length)];
 const span = (r, lo, hi) => Math.round((lo + r() * (hi - lo)) * 10) / 10;
 const within = (range, v) => v >= range[0] && v <= range[1];
@@ -222,7 +213,7 @@ function traitsFor(r, brief) {
   return r() < rate ? { traits: [pick(r, TRAIT_POOL)] } : {};
 }
 
-export function compose(brief, seed) {
+export function compose(brief, seed, { ego: want = null } = {}) {
   const r = rng(seed);
   const { kind, spec } = roadFor(brief, r);
   const traffic = TRAFFIC[brief.traffic ?? "busy"];
@@ -235,7 +226,20 @@ export function compose(brief, seed) {
      a window anybody can take safely. */
   const legs = SIDES.filter((s) => hasLeg(spec, s));
   const controlled = legs.filter((x) => spec.legs[x].control !== "none");
-  const from = pick(r, controlled.length ? controlled : legs);
+  /* The draw happens either way, so supplying a leg changes WHICH leg the
+     candidate is on and nothing else about the scene — every later use of
+     the stream lines up exactly as it did. Overriding by skipping a pick
+     would have shifted every subsequent draw and quietly reshuffled the
+     whole generated corpus. */
+  const drawnFrom = pick(r, controlled.length ? controlled : legs);
+  /* A route asks for a specific leg. If the road this draw happened to
+     land on has no such leg -- a tee is missing one by definition -- the
+     draw is refused rather than quietly re-seated, because a candidate
+     entering from somewhere the route did not send them is a different
+     drive. The search tries another road; measured, 3 junctions in 56
+     used to slide over to the drawn leg instead. */
+  if (want?.from && !hasLeg(spec, want.from)) return null;
+  const from = want?.from ?? drawnFrom;
   const legal = validIntents(spec, from);
   if (!legal.length) return null;
 
@@ -247,7 +251,16 @@ export function compose(brief, seed) {
      driver is already past cannot be read, and building one only to throw
      the whole draw away costs a try for no reason. */
   const egoArrive = span(r, 1.0, 2.2);
-  const egoIntent = pick(r, legal);
+  const drawnIntent = pick(r, legal);
+  /* A route decides where the candidate goes; before this the composer
+     re-decided it and the two disagreed. Measured: the composed junction
+     matched the plan's (entry, intent) 9 times in 120 -- about what chance
+     gives -- so the examiner was directing a turn the candidate was never
+     making. A requested intent the junction cannot offer is refused rather
+     than silently swapped, because a plan built on a turn that does not
+     exist is worse than a draw that fails. */
+  if (want?.intent && !legal.includes(want.intent)) return null;
+  const egoIntent = want?.intent ?? drawnIntent;
   /* Under signals only one pair of legs moves at a time. The ego is held,
      so its own axis is held with it and the crossing axis has the green.
      Letting every other leg roll was the same as giving all four a green
@@ -396,7 +409,15 @@ export function compose(brief, seed) {
     road: spec,
     ...(camera ? { camera } : {}),
     duration: 18,
-    ego: { from, intent: egoIntent, arriveAt: egoArrive, stops: true, colorKey: "blue" },
+    /* Whoever is driving, spread last so a persisting candidate's traits
+       and composure ride into the scene. Absent one this is exactly the
+       flawless blue car it always was -- which was the bug: measured over
+       320 generated junctions, the candidate carried no traits at all and
+       committed none of the 143 faults on offer. */
+    ego: {
+      from, intent: egoIntent, arriveAt: egoArrive, stops: true, colorKey: "blue",
+      ...(want ? { traits: want.traits ?? [], ...(want.skill !== undefined ? { skill: want.skill } : {}), signal: want.signal ?? null } : {}),
+    },
     actors,
   };
 
@@ -469,9 +490,10 @@ function emergencyEarnsItsPlace(scn) {
 
 /* Draw until the measurements agree with the brief. Bounded, and it
    returns nothing rather than something that does not match. */
-export function composeScenario(brief, seed, tries = 90) {
+export function composeScenario(brief, seed, opts = {}) {
+  const { tries = 90, ego = null, mustShow = null } = opts;
   for (let i = 0; i < tries; i++) {
-    const scn = compose(brief, (seed * 2654435761 + i * 40503) >>> 0);
+    const scn = compose(brief, (seed * 2654435761 + i * 40503) >>> 0, { ego });
     if (!scn) continue;
     const m = measure(scn);
     // Unplayable draws go before the brief is even considered.
@@ -491,7 +513,19 @@ export function composeScenario(brief, seed, tries = 90) {
        already lives -- the accept/reject loop -- instead of becoming a
        second mechanism beside it. Checked last, because it is the most
        expensive gate and most candidates never reach it. */
-    if (brief.mustFault && faultsIn(scn).length === 0) continue;
+    /* mustShow is the same gate narrowed: not "somebody erred" but "THIS
+       driver's habit had an occasion to show". A habit that manifests once
+       is an incident, so a drive has to keep asking -- and asking is the
+       accept/reject loop's existing job rather than a new mechanism beside
+       it. Both share one faultsIn call because it is the expensive one. */
+    if (brief.mustFault || (mustShow && mustShow.length)) {
+      const fs = faultsIn(scn);
+      if (brief.mustFault && fs.length === 0) continue;
+      if (mustShow && mustShow.length) {
+        const shown = new Set(fs.filter((f) => f.who === "ego").map((f) => f.trait));
+        if (!mustShow.some((t) => shown.has(t))) continue;
+      }
+    }
 
     scn.title = titleFor(brief);
     scn.brief = describe(brief, m);
