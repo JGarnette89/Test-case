@@ -224,15 +224,105 @@ is exactly the kind of thing this project already verifies.
 
 ---
 
-## 6. Occlusion as standard content
+## 6. Roadside content: liveliness and occlusion are the same thing
 
-Per Jay's ruling, occlusion is core and must be generated as a matter of
-course rather than bolted onto particular situations.
+**The point the tile format should be built around.** The props that make the
+world feel alive are the *same props* that block sightlines. A residential
+street thick with parked cars, hedges and wheelie bins is both the liveliest
+street and the hardest one to examine on. An open dual carriageway is the
+emptiest and the easiest.
 
-`kerbside` on a segment generates blockers along it: parked cars, hedges,
-walls, a delivery van. Character decides density and kind. These become
-ordinary `sightBlockers` — the same data `sightBlockersOf` already reads and
-`visibility` already tests.
+So **environmental density is not decoration. It is the occlusion budget and
+the difficulty dial, and they are one number.** That difference has to fall
+out of a tile's declared content rather than being tuned as a separate
+difficulty setting — if they are two knobs they will drift, and a tile will
+end up looking busy while playing easy, or the reverse.
+
+### 6.1 Roadside content is first-class in the tile format
+
+Not a decoration list the renderer scatters. A declared, parameterised part
+of the tile that the engine reads:
+
+```
+segment: {
+  character,           // residential | collector | arterial | dual
+  lanes, speed, length,
+  kerbside: {
+    density,           // 0..1 — the dial
+    kinds,             // parked, hedge, wall, building, furniture, works
+    activity,          // 0..1 — how much of it is animate
+  }
+}
+```
+
+`density` generates the blockers; `activity` generates the pedestrians,
+cyclists and doors-opening that make the same props *move*. One tile
+declaration produces both the look and the difficulty, because they are the
+same content.
+
+### 6.2 How density varies with character
+
+| Character | Kerbside density | Typical kinds | Effect on examining |
+|---|---|---|---|
+| `residential` | 0.7–0.9 | parked cars both sides, hedges, low walls, bins | Hardest. Sightlines are short, hazards emerge from between parked cars, a junction is blind until you are almost in it. |
+| `collector` | 0.4–0.6 | intermittent parking, shopfronts, street furniture | Middling. Enough cover to hide one thing at a time. |
+| `arterial` | 0.15–0.3 | buildings set back, signage, bus shelters | Easier. Long sightlines; difficulty comes from speed and traffic volume instead. |
+| `dual` | 0.0–0.1 | barriers, gantries | Easiest to see, hardest to react — the difficulty moves entirely into speed. |
+
+The inversion at the bottom of that table is the interesting part: **as
+occlusion falls, speed rises**, so difficulty does not simply decrease along
+the row — it changes *kind*. A residential street is a seeing problem; a dual
+carriageway is a timing problem. That gives the world genuine variety of
+assessment rather than one difficulty slider.
+
+### 6.3 How it feeds `whatEgoSees`
+
+Directly, and with no new mechanism. `kerbside` content is emitted as
+ordinary `sightBlockers` — `{ x, y, rot, hl, hw }` — which is exactly what
+`sightBlockersOf` already reads and `visibility` already tests against.
+
+The cost is the thing to watch, because density is now a dial that a tile can
+turn up. `visibility` tests each target's five sample points against every
+blocker, so cost is linear in blocker count per target and the O(n²) actor
+pass sits on top of it. The §7.4 culling rule therefore has to apply to
+blockers as well as actors: **only blockers within sight range of the eye can
+occlude anything**, and a residential tile at density 0.9 will put a lot of
+them just outside it.
+
+That gives a checkable property for `verify-world.mjs`: culled visibility
+must equal unculled visibility for every target inside sight range, at the
+highest density any tile declares.
+
+### 6.4 Where pedestrians fit, and the blocker that dissolves
+
+Pedestrians were held up on making crossing position **relative to the
+approach** rather than pinned to coordinates. Reading the code, that half is
+already done: `crossingOf(side, spec)` derives the crossing from the actor's
+own leg and from the junction box, with no reference to a fixed north leg —
+which is what already lets `walker` rotate to all four approaches.
+
+What remains is the *same* pin as everything else in §2.2: the crossing is
+built around the module-level `CX`/`CY`. So **the original blocker dissolves
+for exactly the reason the rest of the world work does** — thread the
+junction origin through `crossingOf` alongside `stopFor` and `exitFor`, and a
+crossing is placed wherever its junction is. It is one of the same three
+lines, not separate work.
+
+That makes pedestrians ordinary world content rather than a special case:
+
+- **at junctions** — crossings, derived per leg, placed with the junction
+- **along segments** — from `kerbside.activity`, stepping out between the
+  parked cars that `kerbside.density` put there
+
+The second is the one that matters for assessment, and it is only possible
+because the props and the pedestrians come from the same tile declaration:
+a pedestrian emerging from behind a parked car is a hazard *because* the car
+was there to hide them.
+
+### 6.5 The rest of the occlusion story
+
+These become ordinary `sightBlockers` — the same data `sightBlockersOf`
+already reads and `visibility` already tests.
 
 **The world removes the constraint that made blockers awkward.** Today
 `isRotatable` refuses any scenario with `sightBlockers`, because a blocker is
@@ -341,11 +431,15 @@ three or four blocks. Route assembly from tiles.
 residential and an arterial segment produce measurably different traffic,
 speed and approach requirements.
 
-### Stage W3 — Occlusion as standard content
-`kerbside` generation from character; blockers as ordinary world objects.
+### Stage W3 — Roadside content: liveliness and occlusion together
+`kerbside` generation from character — density, kinds and activity — emitted
+as ordinary world blockers and as pedestrians. Crossings placed with their
+junctions once the origin is threaded (§6.4).
 
-**Provable:** a generated route produces sightline blocking at a target rate,
-and `whatEgoSees` reports genuine occlusion on a route nobody hand-authored.
+**Provable:** density measurably tracks character; a residential tile is
+measurably harder to see out of than an arterial one, through `whatEgoSees`
+rather than through a difficulty setting; and a route nobody hand-authored
+produces genuine occlusion at a target rate.
 
 ### Stage W4 — Pacing
 The planner's pacing budget and `verify-world.mjs`.
@@ -369,12 +463,40 @@ Then, and only then, `EXAMINER-REDESIGN.md` stages 3–5 resume.
 1. **Speed as a segment property moves every generated window.** Deliberate,
    but the shipped scenarios must keep their current speeds or
    `verify-equivalence` will fail. Confirm that split is acceptable.
-2. **Grid or free geometry?** `road.js` is compass-fixed (N/S/E/W), so all
-   roads are axis-aligned and the world is a grid. Bends and diagonal roads
-   would need `LEG` to become continuous rather than four fixed entries. A
-   grid is a real aesthetic choice, not just a limitation — but it is a
-   choice, and it should be made deliberately now rather than discovered.
-3. **How long is a drive?** Sections accumulate indefinitely; something has
+2. **How long is a drive?** Sections accumulate indefinitely; something has
    to end the test. Distance, time, number of junctions, or a scripted route.
-4. **Pacing constants** — the dead-air ceiling and the critical-event floor
+3. **Pacing constants** — the dead-air ceiling and the critical-event floor
    are playtest questions, like section length in the redesign.
+
+---
+
+## 10. Rulings
+
+### 10.1 The grid is chosen, not inherited
+
+**Ruled: the world is an axis-aligned grid, deliberately.** `LEG` stays
+discrete — four fixed compass entries — and there are no continuous bends or
+diagonal roads. This is recorded as a design constraint rather than a
+limitation of `road.js`, so that nobody later "fixes" it.
+
+What follows from it:
+
+- Junction placement is on a lattice, which is what makes tile assembly and
+  the spacing guarantee (§1) trivially checkable.
+- `RIGHT_OF` and `OPPOSITE` stay valid everywhere, so right-of-way
+  resolution needs no generalisation.
+- **Roundabouts will need explicit handling when their turn comes.** They
+  already have their own layout and their own path builder (`raPath`), and
+  they do not fit the lattice — a roundabout is a junction whose exits leave
+  at angles the grid does not have. Not a problem for the world as designed;
+  a known piece of work, flagged now rather than discovered.
+
+### 10.2 Richness goes into the environment, not the topology
+
+**Jay's priority, and it should shape the tile format:** *"as long as we can
+make it feel alive and full on and off the road that's worth more than making
+the road itself complicated."*
+
+Simple roads, dense surroundings. This is not only an art direction, it is
+the load-bearing insight for the whole difficulty model — see §6, which is
+rewritten around it.
