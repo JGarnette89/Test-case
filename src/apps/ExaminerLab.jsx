@@ -170,16 +170,27 @@ export default function ExaminerLab() {
       const o = observe(a, t);
       if (o) beliefs.current.set(a.id, o);
     }
-    /* Tally sight of each fault while it is happening. faultVisibility is
-       reused with a single sample at now, so the instantaneous answer
-       comes from exactly the same rule the whole-fault one uses. */
+    /* Two separate records per fault, because the scorer asks two
+       different questions and conflating them broke marking.
+
+         clear      was anything IN THE WAY — measured with the cone
+                    thrown wide open, so it is about the scenario rather
+                    than about where this player chose to look.
+         lastSeen   the last moment they actually had sight of it, which
+                    is what decides whether a mark is an observation.  */
     for (const f of faults) {
       if (t < f.from || t > f.to) continue;
       const key = `${f.who}/${f.trait}`;
-      const rec = watched.current.get(key) || { seen: 0, total: 0 };
-      rec.total += 1;
+      const rec = watched.current.get(key) || { clear: 0, total: 0, seenTimes: [] };
+      if (!rec.seenTimes) rec.seenTimes = [];
       const now = { ...f, samples: [{ t, x: 0, y: 0, rot: 0 }] };
-      if (faultVisibility(sim, now, { gaze, cone, statics }).seen > 0) rec.seen += 1;
+      rec.total += 1;
+      if (faultVisibility(sim, now, { gaze: 0, cone: 360, statics }).seen > 0) rec.clear += 1;
+      /* A history, not just the latest: the scorer asks "had you seen it
+         when you pressed", and a single advancing lastSeen answers that
+         with a look from AFTER the mark. It kept every correct call from
+         landing once the drive moved on. */
+      if (faultVisibility(sim, now, { gaze, cone, statics }).seen > 0) rec.seenTimes.push(t);
       watched.current.set(key, rec);
     }
   });
@@ -195,9 +206,20 @@ export default function ExaminerLab() {
   const sheet = scoreDetection({
     faults,
     marks,
-    seenShare: (f) => {
+    clearOf: (f) => {
       const r = watched.current.get(`${f.who}/${f.trait}`);
-      return r && r.total ? r.seen / r.total : 0;
+      return r && r.total ? r.clear / r.total : 0;
+    },
+    lastSeenAt: (f, at) => {
+      const r = watched.current.get(`${f.who}/${f.trait}`);
+      if (!r || !r.seenTimes.length) return null;
+      // Latest sight at or before the moment they pressed.
+      let lo = 0, hi = r.seenTimes.length - 1, best = null;
+      while (lo <= hi) {
+        const midx = (lo + hi) >> 1;
+        if (r.seenTimes[midx] <= at) { best = r.seenTimes[midx]; lo = midx + 1; } else hi = midx - 1;
+      }
+      return best;
     },
   });
 

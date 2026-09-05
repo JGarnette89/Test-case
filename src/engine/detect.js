@@ -11,13 +11,18 @@
 
    THREE RULES DO ALL THE WORK.
 
-   1. A fault you could not see is not a fault you missed. Recall is
-      computed only over faults that were genuinely observable — in the
-      cone, not behind a van, for long enough to call. Missing one
-      because a van hid it is the scenario's doing. Missing one because
-      you were looking the other way is yours, and sight.js already tells
-      these apart. Without this rule the game punishes players for its own
-      geometry.
+   1. A fault nothing was hiding is a fault you could have caught. Recall
+      counts every fault that was UNOBSTRUCTED, whether or not the player
+      happened to look at it — because looking away is their decision and
+      has to cost. A fault behind a van is the scenario's doing and is
+      struck off; a fault you turned away from is a miss.
+
+      The mirror of that: whether a given MARK counts asks a different
+      question — were you actually looking at that fault when you called
+      it. Per mark, not per fault. Conflating the two is what broke
+      marking outright, because a player scanning for traffic never
+      accumulated enough sight of any one fault and had every correct
+      call recorded as invented.
 
    2. Marking a fault that did not happen has to cost. Otherwise the
       dominant strategy is to mark constantly, and the whole thing
@@ -39,12 +44,28 @@
 import { REACTION_FLOOR } from "./score.js";
 import { MIN_DURATION } from "./faults.js";
 
-/* How much of a fault has to have been visible before failing to call it
-   counts against you. A glimpse is not an observation: the same standard
-   faults.js applies to a fault's own duration, applied to your sight of
-   it. Below this the fault goes on the sheet as unmarkable rather than
-   missed. */
-export const SEEN_ENOUGH = 0.35;
+/* How much of a fault has to have been UNOBSTRUCTED before failing to
+   call it counts against you.
+
+   Occlusion only, and that distinction is the whole rule. CLAUDE.md:
+   "missing a fault because a van was in the way is the scenario's doing,
+   missing it because you were looking elsewhere is yours". So this gate
+   asks whether an attentive examiner could have seen it at all — it must
+   never read the player's gaze, or their own choice to look away would
+   quietly excuse them from the fault they chose not to watch.
+
+   This was originally computed from where the player was actually
+   looking, which broke marking outright: a player scanning for traffic
+   accumulated 5-24% sight of faults they were staring straight at when
+   they pressed, fell under the threshold, and had every correct call
+   recorded as invented. */
+export const CLEAR_ENOUGH = 0.35;
+
+/* How long after seeing something you can still be said to be marking
+   THAT. You press because you just saw it; a second later you are
+   marking a memory. Short on purpose — it is the difference between
+   calling what you observed and calling what you assume. */
+export const LOOK_MEMORY = 0.8;
 
 /* You cannot call a fault faster than you can register one, so the window
    opens a reaction after it starts. It stays open past the end because
@@ -82,21 +103,33 @@ export function promptness(fault, at) {
      faults      what actually happened, from faultsIn()
      marks       [{ at, what? }] — when the player called, and optionally
                  which fault they thought it was
-     seenShare   (fault) -> 0..1, how much of it they actually saw, from
-                 sight.js's faultVisibility. Injected rather than computed
-                 here, because how much you saw depends on where you were
-                 looking, which is the renderer's record, not the engine's.
+     clearOf     (fault) -> 0..1, how much of it was UNOBSTRUCTED, with no
+                 regard for where the player looked. Decides whether the
+                 fault was ever on offer.
+     lastSeenAt  (fault, at) -> the most recent moment the player actually
+                 had sight of it, or null. Decides whether a given mark is
+                 an observation or a guess.
+
+   Both are injected rather than computed here, because they depend on
+   where the player looked, which is the renderer's record and not the
+   engine's. Their defaults describe a player who saw everything, so a
+   headless caller grading a fault list needs neither.
 
    Each fault is matched by at most one mark and each mark to at most one
    fault, nearest-first, so spraying marks cannot farm a single fault.
    ===================================================================== */
-export function scoreDetection({ faults = [], marks = [], seenShare = () => 1 }) {
+export function scoreDetection({
+  faults = [], marks = [],
+  clearOf = () => 1,
+  lastSeenAt = (f, at) => at,
+}) {
   const markable = [], unmarkable = [];
   for (const f of faults) {
-    const seen = seenShare(f);
-    // Too brief to call, or you never really had sight of it.
-    (f.duration >= MIN_DURATION && seen >= SEEN_ENOUGH ? markable : unmarkable)
-      .push({ fault: f, seen });
+    const clear = clearOf(f);
+    // Too brief to call, or something was in the way for essentially all
+    // of it. Note this asks nothing about where the player was looking.
+    (f.duration >= MIN_DURATION && clear >= CLEAR_ENOUGH ? markable : unmarkable)
+      .push({ fault: f, clear });
   }
 
   /* Pair marks to faults. Best pairing first — the strongest available
@@ -109,6 +142,15 @@ export function scoreDetection({ faults = [], marks = [], seenShare = () => 1 })
       if (value <= 0) continue;
       // A categorised call must name the right fault to count as one.
       if (m.what != null && m.what !== cand.fault.trait) continue;
+      /* And you must have actually been looking at it, recently. This is
+         the only place the player's gaze enters the pairing, and it is
+         per-mark rather than per-fault: looking away for most of a long
+         fault is irrelevant if you were watching when you called it. */
+      const seen = lastSeenAt(cand.fault, m.at);
+      const age = seen == null ? Infinity : m.at - seen;
+      // Not stale, and not from the future either: a mark cannot be
+      // justified by a look that had not happened yet.
+      if (!(age >= 0 && age <= LOOK_MEMORY)) continue;
       pairs.push({ mark: m, cand, value });
     }
   }
@@ -120,7 +162,7 @@ export function scoreDetection({ faults = [], marks = [], seenShare = () => 1 })
     if (usedMarks.has(p.mark) || usedFaults.has(p.cand)) continue;
     usedMarks.add(p.mark);
     usedFaults.add(p.cand);
-    hits.push({ fault: p.cand.fault, at: p.mark.at, value: p.value, seen: p.cand.seen });
+    hits.push({ fault: p.cand.fault, at: p.mark.at, value: p.value, clear: p.cand.clear });
   }
 
   const missed = markable.filter((c) => !usedFaults.has(c)).map((c) => c.fault);

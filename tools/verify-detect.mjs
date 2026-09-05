@@ -13,7 +13,7 @@
  */
 import {
   scoreDetection, promptness, callWindow, summarise,
-  SEEN_ENOUGH, CALL_GRACE, FALSE_COST, LATE_CREDIT,
+  CLEAR_ENOUGH, LOOK_MEMORY, CALL_GRACE, FALSE_COST, LATE_CREDIT,
 } from "../src/engine/detect.js";
 import { faultsIn } from "../src/engine/faults.js";
 import { simulate } from "../src/engine/index.js";
@@ -26,7 +26,7 @@ const fail = (s) => { problems++; console.log(`  FAIL: ${s}`); };
 /* A drive with real, derived faults on it to grade against. */
 const base = SCENARIOS.find((s) => s.id === "creeper");
 const faults = faultsIn(base);
-const allSeen = () => 1;
+const allClear = () => 1;
 const mid = (f) => (f.from + f.to) / 2;
 
 console.log(`Grading against ${faults.length} derived fault(s) in "${base.id}".`);
@@ -34,12 +34,12 @@ console.log(`Grading against ${faults.length} derived fault(s) in "${base.id}".`
 /* ---------- 1. the two ways to be a bad examiner -------------------- */
 console.log("\n1. THE TWO WAYS TO GET IT WRONG BOTH LOSE");
 {
-  const perfect = scoreDetection({ faults, marks: faults.map((f) => ({ at: mid(f) })), seenShare: allSeen });
+  const perfect = scoreDetection({ faults, marks: faults.map((f) => ({ at: mid(f) })), clearOf: allClear });
   perfect.score === 100 && perfect.missed.length === 0 && perfect.invented.length === 0
     ? ok(`catching everything, promptly, scores ${perfect.score}`)
     : fail(`a perfect drive scored ${perfect.score} (${summarise(perfect)})`);
 
-  const silent = scoreDetection({ faults, marks: [], seenShare: allSeen });
+  const silent = scoreDetection({ faults, marks: [], clearOf: allClear });
   silent.score === 0 && silent.recall === 0
     ? ok("marking nothing scores 0 — watching is not optional")
     : fail(`marking nothing scored ${silent.score}`);
@@ -49,7 +49,7 @@ console.log("\n1. THE TWO WAYS TO GET IT WRONG BOTH LOSE");
   const spray = scoreDetection({
     faults,
     marks: Array.from({ length: 40 }, (_, i) => ({ at: i * 0.3 })),
-    seenShare: allSeen,
+    clearOf: allClear,
   });
   spray.score < perfect.score
     ? ok(`spraying 40 marks scores ${spray.score}, well under a real drive's ${perfect.score}`)
@@ -63,7 +63,7 @@ console.log("\n1. THE TWO WAYS TO GET IT WRONG BOTH LOSE");
   const farm = scoreDetection({
     faults: [f0],
     marks: [0, 0.1, 0.2, 0.3].map((d) => ({ at: mid(f0) + d })),
-    seenShare: allSeen,
+    clearOf: allClear,
   });
   farm.hits.length === 1 && farm.invented.length === 3
     ? ok("one fault pays once; the other three calls are recorded as invented")
@@ -73,28 +73,68 @@ console.log("\n1. THE TWO WAYS TO GET IT WRONG BOTH LOSE");
 /* ---------- 2. you are not marked for what you could not see -------- */
 console.log("\n2. A FAULT YOU COULD NOT SEE IS NOT ONE YOU MISSED");
 {
-  const blind = scoreDetection({ faults, marks: [], seenShare: () => 0 });
+  const blind = scoreDetection({ faults, marks: [], clearOf: () => 0 });
   blind.unmarkable.length === faults.length && blind.missed.length === 0
-    ? ok(`with no sight of anything, all ${faults.length} faults report as unmarkable, none as missed`)
+    ? ok(`with everything obstructed, all ${faults.length} faults report as unmarkable, none as missed`)
     : fail(`blind drive reported ${blind.missed.length} missed, ${blind.unmarkable.length} unmarkable`);
   blind.score === 100
     ? ok("and a drive where nothing was observable is a clean sheet, not a failure")
     : fail(`a drive with nothing visible scored ${blind.score}`);
 
   /* The boundary is a real one, not a formality. */
-  const just = scoreDetection({ faults, marks: [], seenShare: () => SEEN_ENOUGH + 0.01 });
-  const under = scoreDetection({ faults, marks: [], seenShare: () => SEEN_ENOUGH - 0.01 });
+  const just = scoreDetection({ faults, marks: [], clearOf: () => CLEAR_ENOUGH + 0.01 });
+  const under = scoreDetection({ faults, marks: [], clearOf: () => CLEAR_ENOUGH - 0.01 });
   just.missed.length > 0 && under.missed.length === 0
-    ? ok(`the ${SEEN_ENOUGH} sight threshold decides missed from unmarkable`)
+    ? ok(`the ${CLEAR_ENOUGH} obstruction threshold decides missed from unmarkable`)
     : fail("the sight threshold does not separate missed from unmarkable");
 
   /* Half-seen faults still count. Seeing most of something is seeing it. */
   const partial = scoreDetection({
-    faults, marks: faults.map((f) => ({ at: mid(f) })), seenShare: () => 0.6,
+    faults, marks: faults.map((f) => ({ at: mid(f) })), clearOf: () => 0.6,
   });
   partial.score === 100
-    ? ok("a fault you half-watched and called correctly still scores full")
-    : fail(`a 60%-seen fault, called correctly, scored ${partial.score}`);
+    ? ok("a fault half-obstructed and called correctly still scores full")
+    : fail(`a 60%-clear fault, called correctly, scored ${partial.score}`);
+}
+
+/* ---------- 2b. THE REGRESSION THIS FIX EXISTS FOR ------------------ */
+console.log("\n2b. LOOKING AWAY MOST OF THE TIME MUST NOT BLOCK A GOOD CALL");
+{
+  /* The bug: markability was decided from the share of a fault the player
+     had WATCHED, so anyone scanning for traffic — which the game asks for
+     — fell under the threshold and had every correct, well-timed call
+     recorded as invented. Measured at 5-24% share on faults they were
+     staring straight at when they pressed.
+
+     The rule now: obstruction decides whether a fault was on offer;
+     whether you were looking decides whether a given mark counts. */
+  const f = faults[0];
+  const at = mid(f);
+  const glance = scoreDetection({
+    faults: [f],
+    marks: [{ at }],
+    clearOf: () => 1,                    // nothing was in the way
+    lastSeenAt: () => at - 0.1,          // and you were looking, just then
+  });
+  glance.hits.length === 1 && glance.invented.length === 0
+    ? ok("a mark lands when you were watching at the moment you called it, however little you watched overall")
+    : fail(`a well-timed call on an unobstructed fault scored ${glance.hits.length} hits`);
+
+  const guess = scoreDetection({
+    faults: [f], marks: [{ at }],
+    clearOf: () => 1,
+    lastSeenAt: () => at - LOOK_MEMORY - 0.5,   // you had not looked in a while
+  });
+  guess.hits.length === 0 && guess.invented.length === 1
+    ? ok(`calling a fault you have not looked at for ${LOOK_MEMORY}s is a guess, not an observation`)
+    : fail("marking without looking still counted as a catch");
+
+  const never = scoreDetection({
+    faults: [f], marks: [], clearOf: () => 1, lastSeenAt: () => null,
+  });
+  never.missed.length === 1 && never.unmarkable.length === 0
+    ? ok("and never looking at an unobstructed fault is a MISS, not an exemption — looking away is your call")
+    : fail(`never looking produced ${never.missed.length} missed, ${never.unmarkable.length} unmarkable`);
 }
 
 /* ---------- 3. prompt beats late beats silent ----------------------- */
@@ -117,8 +157,8 @@ console.log("\n3. PROMPT BEATS LATE, AND LATE BEATS SILENT");
     ? ok(`calling it on the way out still earns ${late.toFixed(2)}, down from ${during}`)
     : fail(`late credit is ${late}, expected between ${LATE_CREDIT} and ${during}`);
 
-  const prompt = scoreDetection({ faults: [f], marks: [{ at: mid(f) }], seenShare: allSeen });
-  const tardy = scoreDetection({ faults: [f], marks: [{ at: f.to + CALL_GRACE * 0.9 }], seenShare: allSeen });
+  const prompt = scoreDetection({ faults: [f], marks: [{ at: mid(f) }], clearOf: allClear });
+  const tardy = scoreDetection({ faults: [f], marks: [{ at: f.to + CALL_GRACE * 0.9 }], clearOf: allClear });
   prompt.score > tardy.score && tardy.score > 0
     ? ok(`so a prompt drive beats a late one (${prompt.score} vs ${tardy.score}), and late still beats nothing`)
     : fail(`prompt ${prompt.score}, late ${tardy.score} — the ordering is wrong`);
@@ -131,7 +171,7 @@ console.log("\n4. CATCHING MORE IS NEVER WORSE");
   const scores = [];
   for (let n = 0; n <= faults.length; n++) {
     const r = scoreDetection({
-      faults, marks: faults.slice(0, n).map((f) => ({ at: mid(f) })), seenShare: allSeen,
+      faults, marks: faults.slice(0, n).map((f) => ({ at: mid(f) })), clearOf: allClear,
     });
     scores.push(r.score);
     if (n && r.score < scores[n - 1]) monotone = false;
@@ -141,9 +181,9 @@ console.log("\n4. CATCHING MORE IS NEVER WORSE");
     : fail(`score went down when more faults were caught: ${scores.join(" -> ")}`);
 
   /* And an invented call always costs, whatever else you did. */
-  const clean = scoreDetection({ faults, marks: faults.map((f) => ({ at: mid(f) })), seenShare: allSeen });
+  const clean = scoreDetection({ faults, marks: faults.map((f) => ({ at: mid(f) })), clearOf: allClear });
   const plusOne = scoreDetection({
-    faults, marks: [...faults.map((f) => ({ at: mid(f) })), { at: 13.7 }], seenShare: allSeen,
+    faults, marks: [...faults.map((f) => ({ at: mid(f) })), { at: 13.7 }], clearOf: allClear,
   });
   plusOne.score < clean.score && plusOne.invented.length === 1
     ? ok(`one invented call on a perfect drive costs ${clean.score - plusOne.score} marks`)
@@ -154,9 +194,9 @@ console.log("\n4. CATCHING MORE IS NEVER WORSE");
 console.log("\n5. NAMING THE FAULT IS OPTIONAL, AND SCORED IF GIVEN");
 {
   const f = faults[0];
-  const right = scoreDetection({ faults: [f], marks: [{ at: mid(f), what: f.trait }], seenShare: allSeen });
-  const wrong = scoreDetection({ faults: [f], marks: [{ at: mid(f), what: "notAThing" }], seenShare: allSeen });
-  const untyped = scoreDetection({ faults: [f], marks: [{ at: mid(f) }], seenShare: allSeen });
+  const right = scoreDetection({ faults: [f], marks: [{ at: mid(f), what: f.trait }], clearOf: allClear });
+  const wrong = scoreDetection({ faults: [f], marks: [{ at: mid(f), what: "notAThing" }], clearOf: allClear });
+  const untyped = scoreDetection({ faults: [f], marks: [{ at: mid(f) }], clearOf: allClear });
 
   right.hits.length === 1 && untyped.hits.length === 1
     ? ok("a call counts whether or not it names the fault")
@@ -173,13 +213,13 @@ console.log("\n6. ACROSS THE SHIPPED SET");
   for (const scn of SCENARIOS) {
     if (scn.layout === "roundabout") continue;
     const fs = faultsIn(scn);
-    const r = scoreDetection({ faults: fs, marks: fs.map((f) => ({ at: mid(f) })), seenShare: allSeen });
+    const r = scoreDetection({ faults: fs, marks: fs.map((f) => ({ at: mid(f) })), clearOf: allClear });
     graded++;
     if (!(r.score >= 0 && r.score <= 100) || Number.isNaN(r.score)) { broke++; fail(`${scn.id}: score ${r.score}`); }
   }
   broke === 0 ? ok(`${graded} situations grade cleanly, faults or none`) : null;
 
-  const empty = scoreDetection({ faults: [], marks: [], seenShare: allSeen });
+  const empty = scoreDetection({ faults: [], marks: [], clearOf: allClear });
   empty.score === 100
     ? ok("a faultless drive, correctly left unmarked, is a clean sheet")
     : fail(`a drive with no faults scored ${empty.score}`);
