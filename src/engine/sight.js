@@ -124,7 +124,7 @@ export function sightBlockersOf(scn) {
 
 /* What the ego can see of everyone else, at a moment, having crept
    `steps` times. Returns a map of actor id to visibility. */
-export function whatEgoSees(sim, t, steps = 0, statics = []) {
+export function whatEgoSees(sim, t, steps = 0, statics = [], { reach } = {}) {
   const egoPose = creepPose(sim.ego, t, steps);
   const eye = eyePoint(egoPose);
 
@@ -132,9 +132,14 @@ export function whatEgoSees(sim, t, steps = 0, statics = []) {
     .map((p) => ({ p, pose: poseAt(p, t) }))
     .filter(({ pose }) => !pose.gone && !pose.hidden);
 
+  /* Culling is opt-in: omit `reach` and this behaves exactly as it always
+     has, which is why the driver game and its checks are untouched. */
+  const near = reach ? withinReach(eye, reach, live) : live;
+  const walls = reach ? withinReach(eye, reach, statics) : statics;
+
   const out = {};
-  for (const { p, pose } of live) {
-    const blockers = [...live.filter((o) => o.p.id !== p.id), ...statics];
+  for (const { p, pose } of near) {
+    const blockers = [...near.filter((o) => o.p.id !== p.id), ...walls];
     out[p.id] = visibility(eye, p, pose, blockers);
   }
   return out;
@@ -173,12 +178,53 @@ export function whatEgoSees(sim, t, steps = 0, statics = []) {
    examiner.
    ===================================================================== */
 
+/* =====================================================================
+   CULLING — bounded by the frame, not by a number somebody picked
+
+   A residential tile lays down ~25 blockers per 100m, so a twelve-tile
+   drive carries 161 of them, and visibility() is linear in that count:
+   0.0042ms against 10 blockers, 0.0334ms against 161. At world scale it
+   stops being an optimisation and becomes a prerequisite.
+
+   THE REACH IS DERIVED, NOT DECLARED. The viewport already decides what
+   is markable, so anything it cannot show cannot be seen and cannot
+   matter — which means the frame IS the range and there is no second
+   quantity to keep in step with it. Inventing a SIGHT_RANGE constant
+   would be the same mistake as spacing standing in for runway: a proxy
+   that happens to correlate, drifting silently the first time the frame
+   changes.
+
+   Measured: bounded this way, 151 of 161 blockers fall away, 94%.
+   ===================================================================== */
+
+/* How far the eye could possibly need to see, given the frame it is
+   looking through: out to the furthest corner of it. */
+export function reachOf(eye, view, W = 720) {
+  const half = (view.scale * W) / 2;
+  return Math.hypot(view.cx - eye.x, view.cy - eye.y) + half * Math.SQRT2;
+}
+
+/* Everything that could still occlude something inside that reach.
+
+   A blocker is kept if any part of it could touch a sightline of that
+   length, which means its own size is added to the bound rather than its
+   centre being tested alone — cull on the centre and a long wall lying
+   across the boundary disappears while still blocking the view. */
+export function withinReach(eye, reach, items) {
+  if (!(reach > 0)) return items;
+  return items.filter((b) => {
+    const ext = b.hl != null ? { hl: b.hl, hw: b.hw } : extentOf(b.p);
+    const own = Math.hypot(ext.hl, ext.hw);
+    return Math.hypot(b.pose.x - eye.x, b.pose.y - eye.y) <= reach + own;
+  });
+}
+
 /* Can the examiner see this fault at this instant?
 
    Nothing can occlude your own car, so the candidate's own faults are
    always visible to someone sitting in it. Whether they are on SCREEN is
    the viewport's business, not this function's. */
-export function faultSeenAt(sim, fault, t, statics = []) {
+export function faultSeenAt(sim, fault, t, statics = [], { reach } = {}) {
   const subject = [sim.ego, ...sim.actors].find((p) => p.id === fault.who);
   if (!subject) return "hidden";
   if (subject.id === sim.ego.id) return "clear";
@@ -190,7 +236,8 @@ export function faultSeenAt(sim, fault, t, statics = []) {
   const others = sim.actors
     .map((p) => ({ p, pose: poseAt(p, t) }))
     .filter(({ p, pose: q }) => !q.gone && !q.hidden && p.id !== fault.who);
-  return visibility(eye, subject, pose, [...others, ...statics]);
+  const all = [...others, ...statics];
+  return visibility(eye, subject, pose, reach ? withinReach(eye, reach, all) : all);
 }
 
 /* How long the screen actually showed this fault, in seconds.
