@@ -132,6 +132,35 @@ function legSpeed(p) {
   return prof.kind === "cruise" ? prof.v : prof.vmax;
 }
 
+/* The frame around a pose travelling at a speed. Factored out of
+   chaseFor because the continuous world frames a candidate whose pose
+   comes from the world rather than from one scenario's ego — and both
+   must frame identically, or the viewport would mean something different
+   inside a junction than on the road between two.
+
+   This is now rules rather than presentation: the viewport decides what
+   is markable, so a renderer may not choose its own extent. See
+   EXAMINER-REDESIGN.md section 3.1. */
+export function frameAround(pose, speed, { lookAhead = LOOK_AHEAD } = {}) {
+  const ahead = Math.max(M(12), lookAhead * speed);
+  const behind = ahead * LOOK_BEHIND_FRACTION;
+  const size = ahead + behind;
+  const half = size / 2;
+  const r = (pose.rot * Math.PI) / 180;
+  const push = half - behind;
+  const cx = pose.x + Math.cos(r) * push;
+  const cy = pose.y + Math.sin(r) * push;
+  return {
+    box: `${cx - half} ${cy - half} ${size} ${size}`,
+    scale: size / W,
+    cx, cy,
+    carX: pose.x, carY: pose.y,
+    rotate: -90 - pose.rot,
+    ahead, behind,
+    seconds: ahead / speed,
+  };
+}
+
 export function chaseFor(spec, sim, t, camera, { lookAhead = LOOK_AHEAD } = {}) {
   const speed = legSpeed(sim.ego);
   const ahead = Math.max(M(12), lookAhead * speed);

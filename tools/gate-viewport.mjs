@@ -10,10 +10,13 @@
  * this to pass before stages 3 to 5 are worth building.
  */
 import { simulate, poseAt, W, CX, CY, M } from "../src/engine/index.js";
+const MW = M, W_ = W;
 import { specOf } from "../src/engine/road.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
 import { faultsIn } from "../src/engine/faults.js";
-import { chaseFor } from "../src/frame.js";
+import { chaseFor, frameAround } from "../src/frame.js";
+import { driveThrough, candidateAt } from "../src/engine/world.js";
+import { runwayNeeded } from "../src/engine/directions.js";
 
 const m = (px) => Math.round((px / 20) * 10) / 10;
 
@@ -101,3 +104,95 @@ for (const id of ["gap", "tee", "arterial", "opposite"]) {
 }
 console.log("\nFor comparison: a turn needs 5.5s of approach to be directable,");
 console.log("which at 41 km/h is about 63m of separation between the two jobs.");
+
+/* =====================================================================
+   W1: THE CONTINUOUS WORLD, MEASURED
+
+   Two junctions, 80m apart, a fault at each. The question the whole
+   redesign waits on: at the moment the instruction for the SECOND
+   junction must be given, can one frame hold both jobs at once?
+
+   Job A — catch faults: watch the candidate and what is around it.
+   Job B — give the direction: read the junction being approached.
+
+   The gate PASSES if it cannot. See WORLD-DESIGN.md section 1.
+   ===================================================================== */
+console.log("\n\n" + "=".repeat(70));
+console.log("W1: TWO JUNCTIONS, 80m APART, A FAULT AT EACH");
+console.log("=".repeat(70));
+{
+  const V = MW(11.5);                          // 41 km/h, V_STRAIGHT
+  const need = runwayNeeded("left");           // 5.5s, derived
+  const gap = need * V;                        // the separation the design targets
+
+  console.log(`\n  A turn needs ${need}s of approach (hear + signal + slow).`);
+  console.log(`  At 41 km/h that is ${(gap / 20).toFixed(1)}m before the junction.\n`);
+
+  const faulty = (id, trait) => {
+    const raw = SCENARIOS.find((s) => s.id === id);
+    return { ...raw, ego: { ...raw.ego, traits: [trait], departAt: simulate(raw).legalAt } };
+  };
+
+  for (const spacingM of [65, 75, 80, 85, 90, 100, 120, 140, 160]) {
+    const spacing = MW(spacingM);
+    /* Leg A is driven straight through, so the candidate travels toward
+       junction B; leg B is the turn that has to be directed, which is
+       what needs the 5.5s of approach in the first place. */
+    const legs = [faulty("opposite", "wander"), faulty("gap", "wideTurn")];
+    const drive = driveThrough({ legs, spacing });
+    const B = drive.junctions[1];
+
+    /* Walk the drive to the moment the candidate is exactly one approach
+       short of junction B — the instruction deadline. */
+    let best = null;
+    for (let t = 0; t <= 40; t += 0.02) {
+      const p = candidateAt(drive, t);
+      if (!p || !Number.isFinite(p.x)) continue;
+      /* The deadline only exists AFTER the first junction is behind us --
+         otherwise the search happily reports a point on the approach to
+         junction A and calls it runway for junction B, which is how a
+         spacing too tight to be directable would look like a pass. */
+      if (p.junction < 1 && p.phase !== "link") continue;
+      const d = Math.hypot(B.at.x - p.x, B.at.y - p.y);
+      if (best == null || Math.abs(d - gap) < Math.abs(best.d - gap)) best = { t, p, d };
+    }
+    if (!best) { console.log(`  spacing ${String(spacingM).padStart(3)}m   no runway exists at all -- not directable`); continue; }
+    const shortfall = gap - best.d;
+    if (shortfall > M(3)) {
+      console.log(
+        `  spacing ${String(spacingM).padStart(3)}m   best runway only ${(best.d / 20).toFixed(0)}m of the ` +
+        `${(gap / 20).toFixed(0)}m needed -- NOT DIRECTABLE`
+      );
+      continue;
+    }
+
+    const view = frameAround(best.p, V, { lookAhead: 4 });
+    const half = (view.scale * W_) / 2;
+    const inFrame = (q) => {
+      const r = (-view.rotate * Math.PI) / 180;
+      const dx = q.x - view.cx, dy = q.y - view.cy;
+      const x = dx * Math.cos(r) - dy * Math.sin(r);
+      const y = dx * Math.sin(r) + dy * Math.cos(r);
+      return Math.abs(x) <= half && Math.abs(y) <= half;
+    };
+
+    /* Job A: the candidate itself, and the nearest fault to it. */
+    const jobA = inFrame({ x: best.p.x, y: best.p.y });
+    /* Job B: the junction that must be read and directed. */
+    const jobB = inFrame(B.at);
+
+    const verdict = jobA && !jobB ? "PASSES  — the jobs are in different places"
+      : jobA && jobB ? "fails   — one frame holds both"
+      : "fails   — the candidate is not even in frame";
+
+    console.log(
+      `  spacing ${String(spacingM).padStart(3)}m   ` +
+      `runway ${(best.d / 20).toFixed(0).padStart(3)}m (${best.p.phase.padEnd(8)})  ` +
+      `frame ${(view.scale * W_ / 20).toFixed(0)}m   ` +
+      `car ${jobA ? "in" : "OUT"}  junction ${jobB ? "in" : "OUT"}   ${verdict}`
+    );
+  }
+
+  console.log("\n  The design band is 65 to 140m. Below it a junction cannot be");
+  console.log("  directed at all; above it the drive is empty road.");
+}

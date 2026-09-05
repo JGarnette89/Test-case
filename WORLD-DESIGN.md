@@ -32,10 +32,14 @@ both ends:
 - **Above ~150 m** the drive is mostly empty road, which fails the assessment
   requirement — nothing to mark for long stretches.
 
-**Target spacing: 65–140 m**, which at 41 km/h is one junction every
-**5.7–12.3 s**. That happens to be ordinary urban block spacing, which is a
-useful sanity check rather than a coincidence: real streets are laid out at
-the scale a driver can be given instructions on.
+**Target spacing: 85–140 m** — corrected from 65–140 m by the W1
+measurement, see §11. At 41 km/h that is one junction every **7.5–12.3 s**,
+still ordinary urban block spacing.
+
+The correction matters and is easy to make again: **centre-to-centre spacing
+is not the runway the candidate gets.** The previous junction's own traverse
+consumes about 22 m reaching its exit, so runway ≈ spacing − 22 m. Designing
+to 63 m of runway means spacing of 85 m, not 65 m.
 
 A layout that does not produce that separation is a layout that does not
 serve the game, and should be rejected by the planner rather than shipped.
@@ -500,3 +504,68 @@ the road itself complicated."*
 Simple roads, dense surroundings. This is not only an art direction, it is
 the load-bearing insight for the whole difficulty model — see §6, which is
 rewritten around it.
+
+---
+
+## 11. W1 result — the gate PASSES, and it corrected the design
+
+Built and measured 2 Sep 2026. `src/engine/world.js`, the junction origin
+threaded through `stopFor` / `exitFor` / `crossingOf`, and `frameAround`
+factored out of `chaseFor` so the world frames a candidate identically
+whether it is inside a junction or on the road between two.
+
+Two junctions, a fault at each, the candidate driven straight through the
+first and directed to turn at the second. At the instruction deadline:
+
+| Spacing | Runway available | Candidate in frame | Junction in frame | Verdict |
+|---|---|---|---|---|
+| 65 m | 43 m | — | — | not directable |
+| 75 m | 53 m | — | — | not directable |
+| 80 m | 58 m | — | — | not directable |
+| **85 m** | **63 m** | yes | **no** | **PASSES** |
+| 100 m | 63 m | yes | no | passes |
+| 140 m | 63 m | yes | no | passes |
+| 160 m | 63 m | yes | no | passes |
+
+**The gate passes from 85 m upward.** The candidate and the junction it must
+be directed through are in different places, and one frame cannot hold both.
+The mechanic the whole redesign rests on exists.
+
+### What the measurement corrected
+
+**Centre-to-centre spacing is not the runway.** §1 originally set the band at
+65–140 m by dividing 63 m of required approach by nothing at all. In fact the
+previous junction's own traverse consumes about **22 m** reaching its exit
+point, so:
+
+> runway ≈ spacing − 22 m
+
+Designing to 63 m of runway therefore needs **85 m** of spacing. The band is
+85–140 m, and a tile library built to the old number would have produced a
+world where no junction could be directed — the failure would have surfaced
+only once directions were wired up, several stages later.
+
+### Two modelling errors the gate caught on the way
+
+Both are recorded because both would have been invisible without a
+measurement aimed at a number.
+
+1. **The link started at the wrong end.** Joining junction A's *stop line* to
+   junction B's left only 22 m of runway out of 80 m, because it placed the
+   candidate 8 m behind a junction it had already driven through. The link
+   must run from A's **exit** to B's entry — which is design assumption
+   §2.3.1 biting exactly where it was predicted to.
+2. **The next junction must be placed along the heading the candidate
+   actually leaves on**, not blindly ahead. Placing a junction north of one
+   where the candidate turns west produces a diagonal link, which the grid
+   (§10.1) does not have. `placeJunctions` now reads each leg's intent.
+
+A third, smaller: `exitPoint` returns a position with no heading, and
+`poseOn` reads `from.rot` for a straight path — so the link produced an
+undefined rotation and every frame built on it came out `NaN`.
+
+### State
+
+Twenty checks passing. `engine-golden.json` untouched — no shipped
+scenario's behaviour changed, which is the evidence that threading the
+junction origin was additive rather than a rewrite.

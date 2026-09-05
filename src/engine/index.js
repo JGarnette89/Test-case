@@ -209,8 +209,19 @@ const STEP = 0.05;
    instead of the only shape there is. A T-junction or a six-lane crossing
    is a different spec, not different code. */
 const DEFAULT_ROAD = crossSpec();
-const stopFor = (spec, side, lane = 0) => stopPoint(spec, side, LANE, SET, lane, CX, CY);
-const exitFor = (side, lane = 0) => exitPoint(side, LANE, lane, CX, CY);
+/* A junction is built around an origin. `at` defaults to the middle of the
+   board, which is where every scenario has always put it, so nothing that
+   omits it moves by a pixel. Passing one places the same junction anywhere
+   — verified translating exactly: the S-leg stop point sits at the same
+   offset from its origin whether that origin is 360,360 or 4000,2500.
+
+   This is what a continuous world needs and very nearly all it needs from
+   the geometry: road.js was already written to take the origin, and only
+   these helpers were holding it fixed. See WORLD-DESIGN.md. */
+const stopFor = (spec, side, lane = 0, at) =>
+  stopPoint(spec, side, LANE, SET, lane, at?.x ?? CX, at?.y ?? CY);
+const exitFor = (side, lane = 0, at) =>
+  exitPoint(side, LANE, lane, at?.x ?? CX, at?.y ?? CY);
 
 const STOPS = Object.fromEntries(SIDES.map((s) => [s, stopFor(DEFAULT_ROAD, s)]));
 const EXITS = Object.fromEntries(
@@ -231,31 +242,32 @@ const EXITS = Object.fromEntries(
 
    Setback and overhang are declared with the rest of the road furniture
    at the top of the file, because the stop line is placed against them. */
-export function crossingOf(side, spec = DEFAULT_ROAD) {
+export function crossingOf(side, spec = DEFAULT_ROAD, at) {
   // Set back from THE BOX (see road.js), not a fixed one-lane guess at
   // it — a crossing on a six-lane arterial sits six lanes further out
   // than one on the default four-way, same as the stop line beside it.
   const { vx, hy } = boxHalf(spec, LANE);
+  const CXa = at?.x ?? CX, CYa = at?.y ?? CY;
   // On the east and west legs the crosswalk runs north-south.
   const vertical = side === "E" || side === "W";
   if (vertical) {
-    const x = side === "W" ? CX - vx - PED_SETBACK : CX + vx + PED_SETBACK;
+    const x = side === "W" ? CXa - vx - PED_SETBACK : CXa + vx + PED_SETBACK;
     return {
-      a: { x, y: CY - hy - PED_OVERHANG },
-      b: { x, y: CY + hy + PED_OVERHANG },
+      a: { x, y: CYa - hy - PED_OVERHANG },
+      b: { x, y: CYa + hy + PED_OVERHANG },
       vertical: true, rot: 90,
     };
   }
-  const y = side === "N" ? CY - hy - PED_SETBACK : CY + hy + PED_SETBACK;
+  const y = side === "N" ? CYa - hy - PED_SETBACK : CYa + hy + PED_SETBACK;
   return {
-    a: { x: CX - vx - PED_OVERHANG, y },
-    b: { x: CX + vx + PED_OVERHANG, y },
+    a: { x: CXa - vx - PED_OVERHANG, y },
+    b: { x: CXa + vx + PED_OVERHANG, y },
     vertical: false, rot: 0,
   };
 }
 
 // Scenarios written before crossings were relative assumed the north leg.
-const crossingFor = (p) => crossingOf(p.from ?? "N", p.road ?? DEFAULT_ROAD);
+const crossingFor = (p) => crossingOf(p.from ?? "N", p.road ?? DEFAULT_ROAD, p.at);
 
 /* --- roundabout path -------------------------------------------------
    Give-way line, round the island, out the chosen exit — sampled as a
@@ -362,8 +374,10 @@ const moveCache = new WeakMap();
    point set off to the side, which is what turnBias widens. */
 function crossMovement(p) {
   const spec = p.road ?? DEFAULT_ROAD;
-  const base = stopFor(spec, p.from, p.lane ?? 0);
-  const exit = exitFor(exitSideFor(p.from, p.intent), p.exitLane ?? p.lane ?? 0);
+  const base = stopFor(spec, p.from, p.lane ?? 0, p.at);
+  const exit = p.exitAt
+    ? p.exitAt
+    : exitFor(exitSideFor(p.from, p.intent), p.exitLane ?? p.lane ?? 0, p.at);
   const rest = { ...advance(base, base.rot, p.stopBias || 0), rot: base.rot };
 
   const motion = motionOf(p);
