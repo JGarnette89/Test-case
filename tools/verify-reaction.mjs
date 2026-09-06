@@ -227,6 +227,64 @@ console.log("\n5. REACTIONS ARE DERIVED INDEPENDENTLY AND APPLIED TOGETHER");
     : fail(`the search says avoided and the applied world hits anyway in ${disagreed} of ${cases} (${(100 * disagreed / cases).toFixed(0)}%)`);
 }
 
+/* ---------- 6. pedestrians give way too, unless authored not to ----- */
+console.log("\n6. A PEDESTRIAN CAN HESITATE, AND SOME DELIBERATELY CANNOT");
+{
+  /* Before this, every contact on a generated drive was with a pedestrian
+     and every one of them was terminal: pedestrian conflicts were the one
+     place with no near-miss band at all. A pedestrian gives way by
+     hesitating rather than braking, which the same yielding profile
+     expresses exactly — they hold at the kerb or stop where they are. */
+  const withPeds = scenes.filter((x) => x.sim.actors.some((a) => a.kind === "ped"));
+  let swept = 0, unreacted = 0, reacted = 0, held = 0;
+  for (const { scn, sim } of withPeds) {
+    const safe = safeAtFor(sim);
+    for (const d of [1.0, 2.0, 3.0]) {
+      const at = clampDepart(sim.ego, Math.max(0, safe - d));
+      swept++;
+      if (contactAfter(withReactions(sim, [], { departAt: at }))) unreacted++;
+      const rx = reactionsFor(sim, { departAt: at });
+      if (rx.some((r) => sim.actors.find((a) => a.id === r.who)?.kind === "ped")) held++;
+      if (contactAfter(withReactions(sim, rx, { departAt: at }))) reacted++;
+    }
+  }
+  withPeds.length > 0 && held > 0
+    ? ok(`across ${swept} pedestrian situations, ${held} had the pedestrian hold back; contacts fell from ${unreacted} to ${reacted}`)
+    : fail("no pedestrian ever gave way, so the near-miss band is still unavailable to them");
+
+  /* And the content lever survives: a pedestrian who does not look is
+     exactly the hazard the game wants, so it stays authorable rather than
+     the engine deciding everybody reacts. */
+  const walker = scenes.find((x) => x.id === "walker");
+  if (!walker) { fail("no pedestrian scenario to test the heedless lever against"); }
+  else {
+    const heedlessScn = {
+      ...walker.scn,
+      actors: walker.scn.actors.map((a) => (a.kind === "ped" ? { ...a, heedless: true } : a)),
+    };
+    const heedless = simulate(heedlessScn);
+    const at = clampDepart(walker.sim.ego, Math.max(0, safeAtFor(walker.sim) - 2.5));
+    const attentiveRx = reactionsFor(walker.sim, { departAt: at });
+    const heedlessRx = reactionsFor(heedless, { departAt: at });
+    const pedOf = (rx, sim) => rx.filter((r) => sim.actors.find((a) => a.id === r.who)?.kind === "ped");
+    const a1 = pedOf(attentiveRx, walker.sim), a2 = pedOf(heedlessRx, heedless);
+    a1.length > 0 && a2.length === 0
+      ? ok(`a heedless pedestrian never gives way (attentive holds ${a1[0].gaveUp.toFixed(2)}s, heedless holds nothing) — the hazard stays authorable`)
+      : fail(`the heedless lever does not change the pedestrian's behaviour (${a1.length} vs ${a2.length} reactions)`);
+    const hit1 = contactAfter(withReactions(walker.sim, attentiveRx, { departAt: at }));
+    const hit2 = contactAfter(withReactions(heedless, heedlessRx, { departAt: at }));
+    !hit1 && hit2
+      ? ok("and it is the difference between a near miss and a collision, at the same departure")
+      : ok(`at this departure both end the same way (attentive ${hit1 ?? "clear"}, heedless ${hit2 ?? "clear"})`);
+  }
+
+  /* The marking is still on the un-reacted world, pedestrians included. */
+  const src = fs.readFileSync("src/engine/clearance.js", "utf8");
+  !/heedless|canGiveWay/.test(src)
+    ? ok("and clearance knows nothing about who does or does not give way, so the fault is unchanged either way")
+    : fail("clearance consults whether somebody reacted");
+}
+
 console.log("\n" + "=".repeat(70));
 if (problems) {
   console.log(`FAILED: ${problems} problem(s).`);

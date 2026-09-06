@@ -112,6 +112,20 @@ function giveNeeded(ego, actor, from, horizon) {
    debrief, and deliberately not used to grade anything. */
 export const timeGivenUp = (give, wait = 0) => yieldingProfile(null, { give, wait }).hold;
 
+/* A pedestrian gives way by hesitating: they notice the car coming and
+   hold at the kerb, or stop where they are. That earns pedestrian
+   conflicts the same graduated near-miss band vehicles have, instead of
+   being all-or-nothing terminal — measured before this, every contact on
+   a generated drive was with a pedestrian and every one of them ended the
+   drive.
+
+   `heedless` is the content lever and it is deliberately kept: a child
+   after a ball, somebody looking at a phone. A pedestrian who does not
+   look is exactly the hazard the game wants, and it stays expressible by
+   saying so on the actor rather than by the engine deciding nobody
+   reacts. Reacting is the default because most people do. */
+export const canGiveWay = (a) => !a.heedless;
+
 /* Who had to give way to this departure, and by how much.
 
    `entitled` defaults to the priors, because giving way is something you
@@ -119,7 +133,7 @@ export const timeGivenUp = (give, wait = 0) => yieldingProfile(null, { give, wai
    to the candidate anyway is not reacting to an intrusion. */
 export function reactionsFor(sim, { departAt = null, horizon = 18 } = {}) {
   const ego = departAt == null ? sim.ego : { ...sim.ego, departAt: clampDepart(sim.ego, departAt) };
-  const entitled = (sim.priors?.length ? sim.priors : sim.actors).filter((a) => a.kind !== "ped");
+  const entitled = (sim.priors?.length ? sim.priors : sim.actors).filter(canGiveWay);
   const out = [];
   for (const a of entitled) {
     const from = Math.max(a.arriveAt ?? 0, (ego.departAt ?? 0) + NOTICE);
@@ -158,6 +172,7 @@ export function withReactions(sim, reactions, { departAt = null } = {}) {
    account? The terminal outcome, and the only thing the reaction is
    allowed to change. */
 export function contactAfter(reacted, { horizon = 18 } = {}) {
+  /* Everyone, including anybody who could not or would not give way. */
   const ego = reacted.ego;
   for (const a of reacted.actors) {
     if (touchesEver(ego, a, { from: ego.departAt ?? 0, horizon })) return a.id;

@@ -733,10 +733,50 @@ pacing and supply by nothing at all — a drawn candidate observes well
 enough that their decision coincides with the engine's — which makes the
 wiring safe and the content thin: 2 encroachments in 112 junctions.
 
-**Pedestrians do not give way**, so a contact with one is terminal with no
-near-miss band. Defensible — `blockUntilClear` governs them by a legal
-rule rather than a following gap — but it means every contact on a
-generated drive is currently with a pedestrian.
+**Pedestrians give way by hesitating**, which the same yielding profile
+expresses: they hold at the kerb or stop where they are. That earns
+pedestrian conflicts the graduated near-miss band vehicles have, instead
+of being all-or-nothing terminal — before it, every contact on a generated
+drive was with a pedestrian and every one ended the drive.
+
+**`heedless` keeps the hazard authorable.** A child after a ball, somebody
+on a phone. Reacting is the default because most people do, but a
+pedestrian who does not look is exactly the hazard the game wants and it
+stays a content decision rather than the engine deciding for everybody.
+Measured: the same departure is a near miss against an attentive
+pedestrian and a collision against a heedless one.
+
+### A candidate has a CHARACTER, and the target is the player's experience
+
+**There is an optimum number of faults, not a direction.** Too few and
+there is nothing to find; too many and ticking everything becomes
+rational, which destroys the false-positive penalty that makes the sheet
+mean anything. And because marking is DEFERRED, a section with fifteen
+faults is not harder in an interesting way, it is a memory test.
+
+So the quantity is **faults per section a competent player could catch and
+recall** — free recall runs out at about four items, so the band is 3-4 —
+and SECTION LENGTH IS DERIVED FROM IT rather than chosen. At the measured
+1.11 candidate faults per junction that puts a section at **2.7-3.6
+junctions**. Cross-checked against `SHOWINGS_FOR_A_HABIT` = 3, derived
+independently: a section inside recall, several per drive, lets a habit
+accumulate its evidence without any one section overflowing.
+
+**Variety over volume.** Three faults across three axes beat six from one,
+because the player is assembling a picture of a person rather than
+counting incidents. So the distribution draws a PROFILE — weak on one or
+two axes, sound on the rest — instead of sampling each axis
+independently, which produced drivers slightly bad at everything and
+identifiable as nothing. Measured: 2.38 distinct axes show per drive, and
+100% of a candidate's non-weak axes carry little deficit.
+
+**The cost of characters is quieter worst cases, and it is not absorbed.**
+Same seeds, only the distribution changed: median dead air 22.3s -> 20.9s
+and drives over the ceiling 9/24 -> 6/24, but the WORST drive went 35.7s
+-> 39.7s. A candidate weak only on knowledge, on a route that does not
+test it, gives you less than a driver who was mildly poor at everything —
+which is the flatter floor the old distribution bought and the ruling
+asked to stop buying.
 
 **Creep is the CANDIDATE's, not the player's.** It was a player input in
 the driver game — edge forward to see past the van — and feeding a player

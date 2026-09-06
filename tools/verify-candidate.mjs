@@ -26,6 +26,7 @@ import {
 } from "../src/engine/candidate.js";
 import {
   AXES, CONFIDENT_ENOUGH, composeDriver, axisEvidence, vocabularyByAxis, ERROR_SCALE,
+  WEAK_AXES, deficitOf, dominantAxis,
 } from "../src/engine/ratings.js";
 import {
   planDrive, driveFromPlan, composeForTile, segmentHazards, CHARACTER,
@@ -518,6 +519,103 @@ console.log("\n8. RATINGS: ERRORS DERIVED FROM WHAT A DRIVER IS BAD AT");
   share > 0.15 && share < 0.85
     ? ok(`a drawn driver errs in ${(share * 100).toFixed(0)}% of ${scenes} scenes, the range the trait model produced`)
     : fail(`a drawn driver errs in ${(share * 100).toFixed(0)}% of scenes, so ERROR_SCALE (${ERROR_SCALE}) has moved the world's supply`);
+}
+
+/* ---------- 9. is this candidate worth examining? ------------------- */
+console.log("\n9. A CANDIDATE HAS A CHARACTER, AND ENOUGH TO FIND WITHOUT TOO MUCH");
+{
+  /* THE TARGET IS THE PLAYER'S EXPERIENCE, not a rating. Too few faults
+     and there is nothing to find; too many and ticking everything becomes
+     rational, which destroys the false-positive penalty that makes the
+     sheet mean anything. And because marking is deferred, a section with
+     fifteen faults is not harder in an interesting way, it is a memory
+     test.
+
+     So the quantity is FAULTS PER SECTION A COMPETENT PLAYER COULD CATCH
+     AND RECALL, and free recall of an unstructured list runs out at about
+     four items. Three or four is the band, and section length is derived
+     from it rather than chosen — see the figure printed below. */
+  const RECALL_BAND = [3, 4];
+
+  /* Character, not uniform badness. A driver bad at everything is as
+     uninformative as one good at everything, and less fun to examine. */
+  const counts = {}, weakSizes = new Set();
+  for (let i = 1; i <= 500; i++) {
+    const d = composeDriver(i * 13);
+    weakSizes.add(d.weakOn.length);
+    for (const a of d.weakOn) counts[a] = (counts[a] || 0) + 1;
+  }
+  const [lo, hi] = WEAK_AXES;
+  [...weakSizes].every((n) => n >= lo && n <= hi)
+    ? ok(`every candidate is weak on ${lo}-${hi} axes, never on all of them and never on none`)
+    : fail(`candidates were drawn weak on ${[...weakSizes].sort().join(",")} axes, outside ${lo}-${hi}`);
+  const share = AXES.map((a) => (counts[a] || 0) / 500);
+  Math.min(...share) > 0.15
+    ? ok(`and no axis is a rarity: weakness lands on each of the five between ${(100 * Math.min(...share)).toFixed(0)}% and ${(100 * Math.max(...share)).toFixed(0)}% of the time`)
+    : fail(`one axis is weak in only ${(100 * Math.min(...share)).toFixed(0)}% of candidates`);
+
+  /* Sound where they are sound. This is what separates a character from a
+     generally poor driver. */
+  let clean = 0, total = 0;
+  for (let i = 1; i <= 200; i++) {
+    const d = composeDriver(i * 13);
+    for (const a of AXES) {
+      if (d.weakOn.includes(a)) continue;
+      total++;
+      const { deficit } = deficitOf(d.ratings, a);
+      if (deficit < 0.3) clean++;
+    }
+  }
+  clean / total > 0.85
+    ? ok(`and where a candidate is sound they are properly sound (${(100 * clean / total).toFixed(0)}% of non-weak axes carry little deficit)`)
+    : fail(`only ${(100 * clean / total).toFixed(0)}% of supposedly sound axes are actually sound, so every driver is a bit bad at everything`);
+
+  /* What that produces on a real drive. */
+  const N = 16;
+  const perJunction = [], axesPerDrive = [];
+  let junctions = 0;
+  for (let seed = 1; seed <= N; seed++) {
+    const cand = { ...composeCandidate(seed * 7 + 3), ...composeDriver(seed * 11) };
+    const { scenes: sc } = drive(seed, { steer: true, candidate: cand });
+    const axes = new Set();
+    for (const s of sc.filter((x) => x.kind === "junction")) {
+      junctions++;
+      const sh = showingsIn(s.scn);
+      perJunction.push(sh.length);
+      for (const f of sh) { const a = dominantAxis(f.trait); if (a) axes.add(a); }
+    }
+    axesPerDrive.push(axes.size);
+  }
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  const density = mean(perJunction);
+  const spread = mean(axesPerDrive);
+  console.log(`\n   ${junctions} junctions over ${N} drives`);
+  console.log(`   markable candidate faults per junction: ${density.toFixed(2)}`);
+  console.log(`   distinct AXES showing per drive:        ${spread.toFixed(2)}`);
+  console.log(`   section length implied by recall:       ${(RECALL_BAND[0] / density).toFixed(1)} to ${(RECALL_BAND[1] / density).toFixed(1)} junctions\n`);
+
+  density > 0.5 && density < 2.5
+    ? ok(`there is something to find at most junctions (${density.toFixed(2)} per junction) without the sheet becoming a memory test`)
+    : fail(`${density.toFixed(2)} faults per junction is ${density <= 0.5 ? "too little to examine" : "more than a player could recall"}`);
+  spread >= 2
+    ? ok(`and a drive shows ${spread.toFixed(2)} distinct axes on average — the player is assembling a picture rather than counting incidents`)
+    : fail(`a drive shows only ${spread.toFixed(2)} axes, so there is no character to read`);
+
+  /* Section length is DERIVED from the two together, and printed rather
+     than fixed, because the renderer has not chosen one yet and this is
+     the number it should choose from. */
+  const lowJ = RECALL_BAND[0] / density, highJ = RECALL_BAND[1] / density;
+  lowJ >= 1.5 && highJ <= 6
+    ? ok(`which puts a section at ${lowJ.toFixed(1)}-${highJ.toFixed(1)} junctions — long enough to hold a habit's worth of evidence, short enough to recall`)
+    : fail(`the implied section is ${lowJ.toFixed(1)}-${highJ.toFixed(1)} junctions, which is not a workable length`);
+
+  /* And a habit still needs its showings, which is the cross-check
+     between the two numbers: a section inside recall, several sections
+     per drive, so a trait gets SHOWINGS_FOR_A_HABIT across the drive
+     without any single section overflowing. */
+  SHOWINGS_FOR_A_HABIT <= RECALL_BAND[1]
+    ? ok(`and a habit's ${SHOWINGS_FOR_A_HABIT} showings still fit inside what a player can hold, so the two numbers are compatible`)
+    : fail(`a habit needs ${SHOWINGS_FOR_A_HABIT} showings but a player can only recall ${RECALL_BAND[1]}`);
 }
 
 console.log("\n" + "=".repeat(70));

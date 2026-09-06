@@ -7,7 +7,8 @@ system."*
 Design, plus the pieces that are built. §0.4 (the drift readout), §7
 (encroachment in seconds), §8 (awareness, and the fifth axis), §9
 (caution, and the risky tail) and §10 (the reaction layer, plus wiring
-departure) ship; everything else is design.
+departure) and §11 (pedestrians giving way, and candidates with a
+character) ship; everything else is design.
 
 ---
 
@@ -851,3 +852,117 @@ pedestrians and entirely terminal, with no near-miss band available.
 
 Whether a pedestrian should be able to check and step back, and what that
 costs the candidate, is a domain question rather than a mechanical one.
+
+---
+
+## 11. Pedestrians give way, and candidates get a character
+
+Two rulings, built together.
+
+### 11.1 A pedestrian hesitates rather than brakes
+
+The same yielding profile expresses it exactly: they hold at the kerb, or
+stop where they are, and resume at a walking pace. So pedestrian conflicts
+now have the graduated near-miss band vehicles have, instead of being
+all-or-nothing terminal — which was the state §10.6 measured, where every
+contact on a generated drive was with a pedestrian and every one ended the
+drive.
+
+Measured across the set: contacts in pedestrian situations fell from **2
+to 0**, with the pedestrian holding back in 2 of 6 swept situations.
+
+**`heedless` is kept as a content lever.** A child after a ball, somebody
+on a phone. Attentive holds 1.78 s at the same departure; heedless holds
+nothing, and it is the difference between a near miss and a collision. The
+hazard stays authorable rather than the engine deciding nobody reacts, and
+reacting is the default because most people do.
+
+The principle is untouched: `clearance.js` knows nothing about who did or
+did not give way, checked at source, so the fault is identical either way.
+
+### 11.2 The target is the player's experience, not a rating
+
+*"The candidates need to present a fun challenge not just drive perfectly
+around. Make them worse."*
+
+There is an **optimum, not a direction**. Too few faults and there is
+nothing to find. Too many and ticking everything becomes rational, which
+destroys the false-positive penalty that makes the sheet mean anything —
+and because marking is deferred, a section with fifteen faults is not
+harder in an interesting way, it is a memory test.
+
+So the quantity is **faults per section a competent player could catch and
+recall**, and free recall of an unstructured list runs out at about four
+items. The band is **3–4**, and section length is *derived* from it rather
+than chosen.
+
+**The cross-check that makes the two numbers one design.**
+`SHOWINGS_FOR_A_HABIT` is 3: a trait needs three showings across a drive
+to read as a tendency rather than an incident. A section inside recall,
+several sections per drive, means a habit accumulates its evidence across
+the drive without any single section overflowing. The two constants were
+derived independently and they are compatible.
+
+### 11.3 Character, not uniform badness
+
+A driver bad at everything is as uninformative as one good at everything,
+and considerably less fun to examine. So the distribution draws a
+**profile** — pick one or two axes to be weak on, then fill in — rather
+than sampling each axis independently, which produced drivers who were
+slightly bad at everything and identifiable as nothing.
+
+| | |
+|---|---|
+| weak on | 1–2 axes, never all, never none |
+| each axis is a weakness | 27–31% of the time |
+| where sound, actually sound | **100%** of non-weak axes carry little deficit |
+
+Weakness on confidence means deviation from the optimum in *either*
+direction, since that axis has no bad end and no good one — so a
+confidence-weak candidate is bold **or** timid, drawn.
+
+### 11.4 What it measures out at
+
+| | |
+|---|---|
+| markable candidate faults per junction | **1.11** |
+| distinct axes showing per drive | **2.38** |
+| **implied section length** | **2.7–3.6 junctions** |
+| encroachments per junction | 0.03 |
+| reactions per junction | 0.02 |
+| contacts per junction | 0.006 |
+
+The middle number is the one the ruling was actually about: a drive shows
+**two and a half different kinds of failing**, so the player is assembling
+a picture rather than counting incidents.
+
+### 11.5 Pacing: better typically, worse at the tail
+
+Controlled — same seeds, same drives, only the distribution changed:
+
+| | dead air worst | median | over 25 s | events/drive | faults/junction |
+|---|---|---|---|---|---|
+| old (independent axes) | 35.7 s | 22.3 s | **9/24** | 8.0 | 0.86 |
+| new (a character) | **39.7 s** | **20.9 s** | **6/24** | 10.9 | 1.14 |
+
+**It did not break the pacing work, and the shape of the change is worth
+stating rather than averaging away.** The median drive improved, the count
+of drives over the ceiling improved by a third, and the *worst* drive got
+4 s worse.
+
+That tail is character doing what character does: a candidate weak only on
+knowledge, on a route that happens not to test it, gives you less to find
+than a driver who was slightly bad at everything. The old distribution
+bought a flatter floor by making every driver mildly poor, which is
+exactly what the ruling asked to stop doing. Naming it rather than
+absorbing it: **the cost of characters is quieter worst cases.**
+
+### 11.6 The thin part, unchanged
+
+Encroachments remain **0.03 per junction**. Observation is a weakness in
+about 30% of candidates now rather than by accident, but a generated
+junction is mostly open — `unseenShare` is zero — so caution never bites
+and registration delays are short against long lead times. The
+awareness-driven side of the model is still waiting on situations with
+something to be blind about, which is the same R2.5 content question, now
+with a number against it.

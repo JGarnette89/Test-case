@@ -441,7 +441,15 @@ function pedMovement(p) {
   const end = p.reverse ? cr.a : cr.b;
   return {
     rest: { x: start.x, y: start.y, rot: cr.rot },
-    traverse: linePath({ ...start, rot: cr.rot }, end, cruiseProfile(WALK)),
+    /* A pedestrian gives way by hesitating rather than by braking, which
+       the same yielding profile expresses exactly: they hold at the kerb,
+       or stop mid-crossing, and their walk resumes at a walking pace.
+       Absent unless the reaction layer handed them one. */
+    traverse: linePath(
+      { ...start, rot: cr.rot },
+      end,
+      p.yielding ? yieldingProfile(cruiseProfile(WALK), p.yielding) : cruiseProfile(WALK)
+    ),
     onFoot: true,
   };
 }
