@@ -549,6 +549,52 @@ them, and the dead-air floor is backstopped by other road users through
 `mustFault`. A player reads WHICH axis fails and how bad each instance is,
 never how often.
 
+### Encroachment is measured in seconds, and the bands are derived
+
+**The standard is intrusion on entitled space, NOT forced evasive action.**
+The maintainer's ruling, and stricter than collision avoidance on purpose:
+turning within a fraction of a second in front of somebody is a failure to
+yield whether or not they had to brake. So **a fault exists independently
+of any reaction**, and `clearance.js` imports nothing that could react —
+checked at source level, because defining the fault in terms of a response
+would mean a scene where nobody happened to react silently contained no
+fault.
+
+**Time, not distance** — a gap in metres means nothing without closing
+speed. The quantity is post-encroachment time: how much time separates the
+candidate's occupancy of a piece of road from the entitled driver's. It is
+what "turning within .3 seconds in front of someone" measures, and it
+degenerates to ordinary following headway when the candidate turns INTO a
+lane rather than across it, so one measure covers both.
+
+**The worst of it over the manoeuvre, never the value at one instant.**
+The candidate accelerates away and the gap recovers — measured, in 18 of
+18 conflicts — so a single reading understates the fault by exactly that
+recovery.
+
+**The bands are NOT invented and NOT a real-world number transplanted.** A
+driver is taught 2-3 seconds and this game's pace does not allow it. But
+`forwardClaim` has granted every moving vehicle `LOOKAHEAD` seconds of
+road ahead since it was written, and `legalAt` refuses to let anybody into
+that space — so the entitled gap was already stated, already in seconds,
+already shipped. `ENTITLED === LOOKAHEAD` is asserted, so changing
+`LOOKAHEAD` moves the bands with it rather than leaving a second opinion
+behind. Real driving's 2:1 split (encroached below 2.0s, inside the other
+driver's reaction envelope below 1.0s) is preserved at 0.9 : 0.45.
+Cross-checked against the game's own behaviour: 95% of legal departures
+measure comfortable, and the one situation authored to be tight — `gap` —
+measures tight at 0.70s.
+
+**Contact stays the engine's own collision predicate**, not a PET that
+rounded to zero, so the terminal outcome is exactly where it always was.
+
+**The mild band's observable is the gap itself**, because there is no
+reaction to notice — which makes the hardest faults to spot the least
+severe ones, correctly. Measured legible: the bands are 22 px apart at the
+10s look-ahead and 56 px at 4s, which is about one car length either way.
+That is how a driver judges it anyway, and it is a second independent
+argument for the shorter look-ahead.
+
 **A FIFTH AXIS, OBSERVATION, is agreed and not built.** It is not a peer
 of the other four: they govern what the candidate DOES, and observation
 governs what they PERCEIVE — it is the parameter that degrades
@@ -636,6 +682,7 @@ src/engine/sight.js      what the driver can see, the examiner's cone, and what 
 src/engine/faults.js     what the candidate did wrong, derived by controlled comparison
 src/engine/candidate.js  one driver across a whole drive, and where each habit can show
 src/engine/ratings.js    a driver as four axes, and the errors that follow from them
+src/engine/clearance.js  how much of somebody else's space the candidate took, in seconds
 src/engine/directions.js the instruction you give, and what stacking them costs
 src/engine/belief.js     where you think the traffic is once you stop looking
 src/engine/detect.js     grading the examiner on what they caught and invented
@@ -950,11 +997,12 @@ node tools/verify-detect.mjs       grading the examiner: caught, missed, invente
 node tools/verify-tiles.mjs        a declared runway is a promise, held to measured geometry
 node tools/verify-world.mjs        the continuous drive: culling, routes, pacing, segment hazards
 node tools/verify-candidate.mjs    one driver across a drive, and habits that repeat enough to be named
+node tools/verify-clearance.mjs    encroachment in seconds, and bands derived from the engine's own claim
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All twenty-three must exit 0. Ten things they check are worth understanding:
+All twenty-four must exit 0. Eleven things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take
@@ -972,6 +1020,16 @@ All twenty-three must exit 0. Ten things they check are worth understanding:
   also measures how far the planner's forecast of what a junction could
   show strays from what the scene actually offered, rather than assuming a
   forecast is free.
+
+- **`verify-clearance.mjs` guards a standard that is stricter than the
+  safety engine.** It checks that the bands are still derived from
+  `LOOKAHEAD` rather than typed in, that severity never improves as the
+  candidate goes earlier, that the gap RECOVERS so a single-instant
+  reading would understate the fault, and — the one that keeps the
+  mechanic honest — that ordinary legal driving is not marked, at 95%
+  comfortable. It also checks the mild band is legible on a phone, because
+  that band has no reaction to notice and the gap itself is all the player
+  has to go on.
 
 - **`verify-turns.mjs` exists because a fault got past every other check.**
   Turns cut the corner for the entire life of the project, and nothing in
