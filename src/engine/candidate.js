@@ -248,7 +248,9 @@ export function chancesIn(scn) {
   const out = [];
   for (const t of TRAIT_KEYS) {
     const trial = { ...scn, ego: { ...scn.ego, traits: [t] } };
-    if (faultsIn(trial, 20).some((f) => f.who === "ego" && f.trait === t)) out.push(t);
+    /* A counterfactual about a TRAIT, so the trait-less faults are not
+       part of the question and there is no reason to pay for them. */
+    if (faultsIn(trial, 20, { encroachment: false }).some((f) => f.who === "ego" && f.trait === t)) out.push(t);
   }
   return out;
 }

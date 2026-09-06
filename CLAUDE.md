@@ -588,6 +588,24 @@ measures tight at 0.70s.
 **Contact stays the engine's own collision predicate**, not a PET that
 rounded to zero, so the terminal outcome is exactly where it always was.
 
+**An encroachment is a fault in `faultsIn`, and it has NO TRAIT.** It is
+not a habit — it is what the candidate did with the gap — so it carries
+`trait: null` and a `band`, and anything reasoning by removing a cause has
+to skip it (`isTraitFault`). Folding it in cost pacing nothing: dead air,
+events per drive and the count over the ceiling are all unmoved, and it
+adds 0.17 encroachments per drive. That is thin, and it is the same
+thinness measured everywhere else — a generated junction is open, and
+`windowIsSafe` rejects draws whose window lands on somebody, so the
+supply is rare by construction. On hand-authored situations it fires
+reliably: `gap` carries one at 0.70s driven exactly as written.
+
+**A clean candidate can still be marked, and that is correct.** Folding
+encroachment in broke "a clean driver commits nothing" in 3 of 59 scenes,
+and the failure was worth having: a situation authored to be tight hands
+an encroachment to whoever drives it. The property is now what it was
+always about — a clean candidate contributes no habit OF THEIR OWN — and
+the situational residual is reported rather than swallowed.
+
 **The mild band's observable is the gap itself**, because there is no
 reaction to notice — which makes the hardest faults to spot the least
 severe ones, correctly. Measured legible: the bands are 22 px apart at the
@@ -1179,11 +1197,12 @@ node tools/verify-candidate.mjs    one driver across a drive, and habits that re
 node tools/verify-clearance.mjs    encroachment in seconds, and bands derived from the engine's own claim
 node tools/verify-awareness.mjs    what the candidate registered, and observation kept off outcome
 node tools/verify-reaction.mjs     the world gives way, and never decides whether a fault happened
+node tools/verify-screens.mjs      every reachable screen actually mounts and draws
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All twenty-six must exit 0. Thirteen things they check are worth understanding:
+All twenty-seven must exit 0. Fourteen things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take
@@ -1191,6 +1210,18 @@ All twenty-six must exit 0. Thirteen things they check are worth understanding:
   come back empty. A fault that survives its own cause being removed was
   never derived from it.
 
+
+- **`verify-screens.mjs` closes the suite's one blind spot, and it cost
+  twenty increments to find.** Every other check is headless, so a React
+  mistake was invisible to all of them — and the Examiner screen threw on
+  mount from the day it was written while twenty increments were verified
+  against it. This bundles each reachable screen with vite's own SSR build
+  and renders it with `react-dom/server`: no DOM, no animation frames, no
+  timers. It asserts NOTHING about what is drawn and cannot — effects do
+  not run under SSR — so a person still has to open the page. It only
+  proves the screen mounts, which is the thing nobody was checking.
+  Verified against the original bug by putting it back: it fails with
+  `watched is not defined`.
 
 - **`verify-candidate.mjs` guards the half of the job that is reading a
   person.** Its properties are the ones any correct implementation would

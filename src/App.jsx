@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  Menu, X, Route, Gauge, Milestone, ChevronRight, Lock, Check,
+  Menu, X, Gauge, Milestone, ChevronRight, Lock, Check,
   CalendarDays, Shuffle, BookOpen, FlaskConical, Dices, Eye } from "lucide-react";
 
 /* DriveDraw is no longer part of this app. Its source is still in
    src/apps/DriveDraw.jsx and still in git history — it is simply not wired
    in. This project is the game now. */
-import RightOfWay from "./apps/RightOfWay.jsx";
 import RightOfWayTiming from "./apps/RightOfWayTiming.jsx";
 import ExaminerLab from "./apps/ExaminerLab.jsx";
 /* A between-stages minigame prototype — not on the home screen or in the
@@ -65,6 +64,7 @@ const MODES = [
 
   {
     id: "timing",
+    legacy: true,
     name: "Timing",
     kicker: "Real time",
     blurb:
@@ -74,17 +74,8 @@ const MODES = [
     Component: RightOfWayTiming,
   },
   {
-    id: "order",
-    name: "Order",
-    kicker: "Judgment",
-    blurb:
-      "No clock. Tap the road users in the order they may legally proceed, and find out which rule you missed.",
-    Icon: Route,
-    accent: C.green,
-    Component: RightOfWay,
-  },
-  {
     id: "daily",
+    legacy: true,
     name: "Today's intersection",
     kicker: "Daily",
     blurb:
@@ -96,6 +87,7 @@ const MODES = [
   },
   {
     id: "endless",
+    legacy: true,
     name: "Endless",
     kicker: "Generated",
     blurb:
@@ -107,6 +99,7 @@ const MODES = [
   },
   {
     id: "roguelike",
+    legacy: true,
     name: "Roguelike",
     kicker: "A driving test, roguelike",
     blurb:
@@ -121,6 +114,7 @@ const MODES = [
      one is an entry in engine/routes.js and nothing here. */
   ...ROUTES.map((r) => ({
     id: `drive-${r.id}`,
+    legacy: true,
     name: r.title,
     kicker: "Drive",
     blurb: r.blurb,
@@ -462,7 +456,7 @@ function SubMenu({ id }) {
   const progress = useProgress();
   const meta = SUBMENUS.find((s) => s.id === id);
   const drives = MODES.filter((m) => m.kicker === "Drive");
-  const singles = MODES.filter((m) => m.kicker === "Real time" || m.kicker === "Judgment");
+  const singles = MODES.filter((m) => m.kicker === "Real time");
 
   const cleared = SCENARIOS.filter((s) => isPassed(progress, s.id));
   const locked = SCENARIOS.length - cleared.length;
@@ -548,9 +542,22 @@ function Sheet({ current, onClose }) {
           </button>
         </div>
 
-        {MODES.map((a) => {
+        {MODES.map((a, i) => {
           const active = current?.id === a.id;
+          /* Everything below the divider is the driver game — the premise
+             this project moved off. Kept because it is shipped, verified
+             code the examiner game is built out of, and because it holds
+             the only renderer there is. Labelled rather than hidden, so
+             the menu says what those entries are instead of presenting
+             them as live modes. */
+          const firstLegacy = a.legacy && !MODES[i - 1]?.legacy;
           return (
+            <React.Fragment key={a.id}>
+            {firstLegacy && (
+              <div style={st.divider}>
+                <span style={st.dividerText}>The driver game · no longer the direction</span>
+              </div>
+            )}
             <button
               key={a.id}
               className="shell-card"
@@ -569,6 +576,7 @@ function Sheet({ current, onClose }) {
               </div>
               {active && <div style={{ ...st.dot, background: a.accent }} />}
             </button>
+            </React.Fragment>
           );
         })}
 
@@ -782,6 +790,14 @@ const st = {
     fontWeight: 700,
     fontSize: 20,
     letterSpacing: 1,
+  },
+  divider: {
+    display: "flex", alignItems: "center", gap: 10,
+    margin: "14px 2px 6px", opacity: 0.75,
+  },
+  dividerText: {
+    fontFamily: FONT_U, fontSize: 11, letterSpacing: "0.08em",
+    textTransform: "uppercase", color: C.dim, whiteSpace: "nowrap",
   },
   row: { padding: 11, borderRadius: 12 },
   rowIcon: {

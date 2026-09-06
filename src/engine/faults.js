@@ -28,6 +28,7 @@
    here — see FAULT_TIER below.
    ===================================================================== */
 import { simulate, poseAt, signalShowing, TRAITS, M, STEP } from "./index.js";
+import { worstEncroachment } from "./clearance.js";
 
 /* How far two versions of the same car have to separate before an
    examiner could honestly be expected to see the difference. Below this
@@ -136,10 +137,62 @@ export function faultWindow(scn, who, trait, horizon = 20) {
   };
 }
 
+/* TAKING SOMEBODY ELSE'S SPACE IS A FAULT LIKE ANY OTHER, and until this
+   it was measurable but inert — displayed on the bench and impossible to
+   mark. It has no trait to strip, because it is not a habit: it is what
+   the candidate did with the gap, derived from where everybody was.
+
+   So it carries `trait: null` and a `band`, and anything that reasons by
+   stripping a cause has to skip it — see FAULT_KINDS below, which is the
+   one place that distinction is stated. Marked on the UNREACTED world,
+   always: whether anybody had to brake is the player's observable and
+   never the definition. */
+export const ENCROACHMENT = "encroachment";
+
+const TELL_FOR = {
+  tight: "Took a gap that was not theirs to take",
+  veryTight: "Cut in so close the other driver had no room left",
+  contact: "Pulled out into somebody",
+};
+
+function encroachmentFault(scn, sim, horizon) {
+  const w = worstEncroachment(sim, { horizon });
+  if (!w || w.band === "comfortable") return null;
+  /* Observable from the moment the candidate commits until they are clear
+     of the road user whose space they took. The worst instant is the one
+     the examiner is actually reading, so the window is centred on it. */
+  const at = w.at ?? sim.ego.departAt ?? 0;
+  const from = Math.max(0, Math.min(at, sim.ego.departAt ?? 0));
+  const to = Math.max(from + MIN_DURATION, at + 1.0);
+  return {
+    who: "ego",
+    trait: null,
+    kind: ENCROACHMENT,
+    band: w.band,
+    pet: w.pet,
+    against: w.who,
+    tell: TELL_FOR[w.band] ?? "Took a gap that was not theirs to take",
+    tier: w.band === "contact" ? "critical" : DEFAULT_TIER,
+    from: Math.round(from * 100) / 100,
+    to: Math.round(to * 100) / 100,
+    duration: Math.round((to - from) * 100) / 100,
+    peakPos: 0,
+    peakRot: 0,
+    channel: "path",
+    samples: [],
+  };
+}
+
 /* Every fault in a scenario, from every participant including the
    candidate. Ordered by when they become observable, because that is the
-   order an examiner meets them in. */
-export function faultsIn(scn, horizon = 20) {
+   order an examiner meets them in.
+
+   `encroachment` is opt-OUT rather than opt-in: it is a fault, so it
+   belongs here by default. The one caller that must switch it off is a
+   counterfactual asking what a TRAIT would have done — an encroachment
+   has no trait, so including it there would answer a question nobody
+   asked. */
+export function faultsIn(scn, horizon = 20, { encroachment = true } = {}) {
   const out = [];
   const ego = { ...scn.ego, id: "ego" };
   for (const p of [ego, ...(scn.actors || [])]) {
@@ -148,8 +201,16 @@ export function faultsIn(scn, horizon = 20) {
       if (w) out.push(w);
     }
   }
+  if (encroachment) {
+    const e = encroachmentFault(scn, simulate(scn), horizon);
+    if (e) out.push(e);
+  }
   return out.sort((x, y) => x.from - y.from || String(x.who).localeCompare(String(y.who)));
 }
+
+/* A fault you can reason about by removing its cause, versus one you
+   cannot. Stated once so nothing has to guess. */
+export const isTraitFault = (f) => Boolean(f?.trait);
 
 /* Where the faulting car is at a given instant, or null if the fault is
    not live then. The renderer and the scorer both need this: one to know

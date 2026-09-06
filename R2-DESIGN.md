@@ -966,3 +966,70 @@ and registration delays are short against long lead times. The
 awareness-driven side of the model is still waiting on situations with
 something to be blind about, which is the same R2.5 content question, now
 with a number against it.
+
+---
+
+## 12. R2.1b — the band becomes markable, and the screen becomes visible
+
+### 12.1 Encroachment is a fault now, and it has no trait
+
+`faultsIn` returns it by default. It carries `trait: null`, a `band` and
+the road user whose space was taken, because it is **not a habit** — it is
+what the candidate did with the gap, derived from where everybody was.
+Anything reasoning by removing a cause skips it (`isTraitFault`), which is
+stated once in `faults.js` rather than guessed at four call sites.
+
+Marked on the **un-reacted** world, always. Whether anybody had to brake
+is the player's observable and never the definition.
+
+### 12.2 What it did to a drive: nothing to pacing, a little to supply
+
+Same seeds, awareness-driven departures, only the fold changed:
+
+| | dead air worst / median | over 25 s | events/drive | candidate faults/drive | encroachments/drive |
+|---|---|---|---|---|---|
+| trait faults only | 39.7 s / 20.6 s | 5/24 | 11.2 | 8.1 | 0.00 |
+| + encroachment | 39.7 s / 20.6 s | 5/24 | 11.2 | **8.3** | **0.17** |
+
+**The pacing budget holds exactly.** Dead air, event count and the count
+over the ceiling are all identical.
+
+**And the supply is thin, which is the same finding as everywhere else.**
+One encroachment every six drives. A generated junction is mostly open,
+and `windowIsSafe` throws away any draw whose window lands on somebody, so
+encroachments are rare *by construction* — the generator was built to
+prevent exactly the situation this fault describes. On hand-authored
+situations it fires reliably: **`gap` carries one at 0.70 s driven exactly
+as written**, 1 of the 18 shipped situations.
+
+That is worth stating plainly: making the band markable was correct and
+free, and it will stay near-invisible until situations exist that are
+*meant* to be tight. R2.5 content, and now the third measurement pointing
+at it.
+
+### 12.3 A failure worth having
+
+Folding it in broke "a clean driver commits nothing" in 3 of 59 scenes. An
+encroachment is not a habit, so a situation authored to be tight hands one
+to whoever drives it, however clean they are.
+
+The property was narrowed to what it was always about — **a clean
+candidate contributes no habit of their own** — and the situational
+residual is now reported rather than swallowed. Sharpening the check was
+the right response; relaxing it would have hidden the distinction that
+makes encroachment a different kind of fault from a trait.
+
+### 12.4 And the screen nobody had looked at
+
+Separately, and the largest single finding of the day: **the Examiner
+screen had thrown on mount since it was written.** Four undeclared
+identifiers — two never declared at all, two left dangling when the gaze
+cone was deleted. Every examiner increment from the flip onward was
+verified headlessly against a screen that produced a blank page.
+
+`verify-screens.mjs` is the cheapest thing that would have caught it:
+vite's own SSR build bundles each reachable screen, `react-dom/server`
+renders it, and it fails if anything throws. It asserts nothing about what
+is drawn and cannot — effects do not run under SSR — so a person still has
+to open the page. Verified against the original bug by putting it back: it
+fails with `watched is not defined`.

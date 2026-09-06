@@ -14,7 +14,7 @@
  * that is verify-camera.mjs's business now.
  */
 import {
-  faultsIn, faultWindow, faultAt, POS_VISIBLE, MIN_DURATION,
+  faultsIn, faultWindow, faultAt, isTraitFault, POS_VISIBLE, MIN_DURATION,
 } from "../src/engine/faults.js";
 import {
   whatEgoSees, faultSeenAt, faultShownFor, sightBlockersOf,
@@ -32,7 +32,10 @@ const fail = (s) => { problems++; console.log(`  FAIL: ${s}`); };
 console.log("1. EVERY DERIVED FAULT IS A REAL ONE");
 {
   const all = [];
-  for (const scn of SCENARIOS) for (const f of faultsIn(scn)) all.push({ scn, f });
+  /* Trait faults only: this section reasons by REMOVING a cause, and an
+     encroachment has no trait to remove. It is a fault, it is just not one
+     this argument can be made about. See isTraitFault in faults.js. */
+  for (const scn of SCENARIOS) for (const f of faultsIn(scn).filter(isTraitFault)) all.push({ scn, f });
 
   all.length
     ? ok(`${all.length} fault(s) derived across ${SCENARIOS.length} situations, none authored`)
@@ -89,7 +92,7 @@ console.log("\n2. THE CANDIDATE FAULTS LIKE ANYONE ELSE");
     ? ok(`all ${traits.length} path traits derive a fault on the candidate's own car`)
     : null;
 
-  const clean = faultsIn(base).filter((f) => f.who === "ego");
+  const clean = faultsIn(base).filter((f) => f.who === "ego" && isTraitFault(f));
   clean.length === 0
     ? ok("a candidate with no traits commits no faults — no false positives")
     : fail(`a clean candidate derived ${clean.length} fault(s)`);
@@ -125,7 +128,7 @@ console.log("\n3. A FAULT BEHIND SOMETHING IS NOT ONE YOU MISSED");
   const own = { ...SCENARIOS.find((x) => x.id === "gap") };
   own.ego = { ...own.ego, traits: ["wander"] };
   const osim = simulate(own);
-  const of_ = faultsIn(own).find((f) => f.who === "ego");
+  const of_ = faultsIn(own).find((f) => f.who === "ego" && isTraitFault(f));
   faultSeenAt(osim, of_, (of_.from + of_.to) / 2, []) === "clear"
     ? ok("the candidate own line is never occluded -- you are sitting in it")
     : fail("something occluded the candidate own car");
