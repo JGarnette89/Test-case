@@ -27,3 +27,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Throwaway measurement probes. The findings belong in tools/verify-*.mjs,
+# never here.
+tools/scratch/

@@ -21,8 +21,8 @@
        than one frame to open, so nothing pops
    ===================================================================== */
 import { SCENARIOS } from "../src/engine/scenarios.js";
-import { simulate, movementOf, poseAt, basePose, M, CX, CY, STEP, W } from "../src/engine/index.js";
-import { specOf } from "../src/engine/road.js";
+import { simulate, movementOf, poseAt, basePose, cleanPose, TRAIT_KEYS, M, CX, CY, STEP, W } from "../src/engine/index.js";
+import { specOf, crossSpec } from "../src/engine/road.js";
 import { rotateScenario } from "../src/engine/route.js";
 
 const QUARTER = { S: "W", W: "N", N: "E", E: "S" };
@@ -399,6 +399,83 @@ console.log("\nTHE CHASE CAMERA RIDES WITH THE CANDIDATE");
   bare === 0
     ? ok("every chase frame, at every rotation, lands inside the drawn world")
     : fail(`${bare} chase frame(s) could show bare ground in a corner`);
+}
+
+/* ---------- drift is measured against a genuinely clean line -------- */
+console.log("\nDRIFT REPORTS THE FAULT, NOT THE CAR AGAINST ITSELF");
+{
+  /* The camera rides basePose, which is smooth and is the right thing to
+     point a viewport with -- but basePose is NOT trait-free. overshoot,
+     slowStart, wideTurn and cutsCorner write stopBias / startDelay /
+     turnBias, which movementOf and schedule then read, so basePose
+     already contains their fault and comparing the car against it asks
+     whether the car deviates from itself.
+
+     Measured before this was corrected: four of the five path-bending
+     faults reported a peak drift of exactly 0.00 m while differing from a
+     clean line by 2.54 m to 12.24 m. Same oracle-knowledge bug cleanPose
+     was introduced into belief.js to fix, left unfixed in frame.js.
+
+     This is the readout a renderer uses to say "there, that is the
+     fault", so a zero here is not a small inaccuracy -- it is the
+     examiner game's central signal reporting nothing. */
+  const spec = crossSpec("stop", 1);
+  const scene = (traits) => ({
+    id: "drift", road: spec, control: "stop", duration: 20,
+    ego: { from: "S", intent: "left", arriveAt: 1.2, stops: true, signal: "left", traits },
+    actors: [
+      { id: "h1", from: "W", intent: "straight", arriveAt: 1.4, stops: false, kind: "car", priority: -3 },
+      { id: "h2", from: "W", intent: "straight", arriveAt: 4.6, stops: false, kind: "car", priority: -2 },
+    ],
+  });
+
+  const rows = [];
+  for (const trait of TRAIT_KEYS) {
+    const sim = simulate(scene([trait]));
+    let drift = 0, truth = 0;
+    for (let t = 0; t <= 16; t += 0.05) {
+      const c = chaseFor(spec, sim, t, null);
+      drift = Math.max(drift, Math.hypot(c.drift.ahead, c.drift.lateral));
+      const real = poseAt(sim.ego, t), clean = cleanPose(sim.ego, t);
+      if (real && clean && !real.hidden && !clean.hidden && !real.gone && !clean.gone) {
+        truth = Math.max(truth, Math.hypot(real.x - clean.x, real.y - clean.y));
+      }
+    }
+    rows.push({ trait, drift, truth });
+  }
+
+  console.log("   trait          drift reported (m)   true offset (m)");
+  console.log("   " + "-".repeat(56));
+  for (const r of rows) {
+    console.log(`   ${r.trait.padEnd(13)} ${(r.drift / M(1)).toFixed(2).padStart(18)} ${(r.truth / M(1)).toFixed(2).padStart(17)}`);
+  }
+
+  const wrong = rows.filter((r) => Math.abs(r.drift - r.truth) > M(0.01));
+  wrong.length === 0
+    ? ok("drift equals the car's real offset from a clean drive, for every trait")
+    : fail(`${wrong.length} trait(s) report a drift that is not the real offset: ${wrong.map((r) => r.trait).join(", ")}`);
+
+  /* And the ones that bend a path have to report something, or the
+     readout is silently useless where it matters most. */
+  const silent = rows.filter((r) => r.truth > M(0.45) && r.drift < M(0.01));
+  silent.length === 0
+    ? ok(`every fault that moves the car by more than POS_VISIBLE shows up in drift (${rows.filter((r) => r.drift > M(0.45)).length} of ${rows.length} traits)`)
+    : fail(`${silent.map((r) => r.trait).join(", ")} move the car but report zero drift`);
+
+  /* The camera itself must NOT have moved with the fix: riding a clean
+     line would slide a slow-starting candidate metres out of frame, which
+     is a legibility decision and not this fix's to make. */
+  const slow = simulate(scene(["slowStart"]));
+  let framedOnBase = true;
+  for (let t = 0; t <= 16; t += 0.25) {
+    const c = chaseFor(spec, slow, t, null);
+    const b = basePose(slow.ego, t);
+    if (!b || b.hidden || b.gone || !Number.isFinite(b.x)) continue;
+    if (Math.abs(c.carX - b.x) > 1e-6 || Math.abs(c.carY - b.y) > 1e-6) framedOnBase = false;
+  }
+  framedOnBase
+    ? ok("and the camera still frames the intended line, so the fix changed the readout and not the view")
+    : fail("the camera's framing moved, which this fix was not supposed to touch");
 }
 
 console.log("\n" + "=".repeat(66));

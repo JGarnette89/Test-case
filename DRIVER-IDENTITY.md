@@ -287,6 +287,13 @@ Four things to settle when it is built, none of them blocking now:
    and the debrief is the obvious place for that voice. The standards they
    are measured against still cannot be funny.
 
+**The line it is aiming at**, once R2's awareness model lands: not "you
+missed a fault" but *"your candidate never saw the van, and neither did
+you."* That is the three layers stated in order, and every term in it is
+derivable — layer 1 says the van was there, layer 2 says the candidate
+never registered it, layer 3 says the player was not looking. Three
+failures, three owners, one sentence. See `R2-DESIGN.md` §6.
+
 ---
 
 ---
@@ -433,6 +440,13 @@ observed frequency carries the pacing budget's signal. The player reads
 someone later makes frequency meaningful, pacing breaks.
 
 ### 8.5 What R2 has to deliver, stated as the gaps
+
+**Superseded in scope by `R2-DESIGN.md`**, which reframes all of this
+around three layers (world / candidate awareness / player perception) and
+a fifth axis, OBSERVATION. The gaps below are still the gaps; the design
+answers them differently and better. In particular, overconfidence stops
+being a dice roll and becomes a consequence of what the candidate
+registered.
 
 Not a list of plausible driving errors — the two holes are specific.
 

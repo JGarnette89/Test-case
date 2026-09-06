@@ -549,7 +549,20 @@ them, and the dead-air floor is backstopped by other road users through
 `mustFault`. A player reads WHICH axis fails and how bad each instance is,
 never how often.
 
-Design, findings and the debrief roadmap: `DRIVER-IDENTITY.md`.
+**A FIFTH AXIS, OBSERVATION, is agreed and not built.** It is not a peer
+of the other four: they govern what the candidate DOES, and observation
+governs what they PERCEIVE — it is the parameter that degrades
+`whatEgoSees` down to what this driver actually registered. Different
+layer, so it does not compete to explain the same fault. The discipline
+that keeps it clean: observation is whether they GATHERED the information,
+confidence is what they did with it or without it. A driver who looked and
+still took a tight gap has a confidence problem; one who never looked and
+got away with it has an observation problem. Never score observation by
+outcome, or it collapses back into confidence.
+
+Design, findings and the debrief roadmap: `DRIVER-IDENTITY.md`. The
+three-layer reframing, the five axes and R2's build order:
+`R2-DESIGN.md`.
 
 ### Still open — and three of these are the maintainer's
 

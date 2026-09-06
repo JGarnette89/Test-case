@@ -22,7 +22,7 @@
    the player needs to be reading it — a problem worth solving once a
    real scenario needs it, not before.
    ===================================================================== */
-import { M, W, CX, CY, movementOf, basePose, poseAt } from "./engine/index.js";
+import { M, W, CX, CY, movementOf, basePose, poseAt, cleanPose } from "./engine/index.js";
 import { speedAt } from "./engine/paths.js";
 import { boxHalf } from "./engine/road.js";
 
@@ -187,7 +187,7 @@ export function chaseFor(spec, sim, t, camera, { lookAhead = LOOK_AHEAD } = {}) 
     seconds: ahead / speed,
     // What the car is actually doing, for a renderer that wants to show
     // the deviation explicitly rather than leave it implicit.
-    drift: driftOf(sim.ego, t, pose),
+    drift: driftOf(sim.ego, t),
   };
 }
 
@@ -200,10 +200,31 @@ function intendedPose(p, t) {
 }
 
 /* How far the car has strayed from where a clean drive would have put it,
-   in world units and degrees. Positive lateral is to the driver's right. */
-function driftOf(p, t, intended) {
+   in world units and degrees. Positive lateral is to the driver's right.
+
+   MEASURED AGAINST cleanPose, NOT AGAINST THE CAMERA'S OWN CENTRE. The
+   camera rides basePose, which is smooth and predictable and is the right
+   thing to point a viewport with — but basePose is NOT trait-free. The
+   traits that rewrite a parameter (overshoot, slowStart, wideTurn,
+   cutsCorner) write stopBias / startDelay / turnBias, which movementOf and
+   schedule then read, so basePose already contains their fault. Comparing
+   the car against it asks whether the car deviates from itself.
+
+   Measured before this was corrected: of the five faults that bend a
+   path, FOUR reported a peak drift of exactly 0.00 m — overshoot,
+   slowStart, wideTurn and cutsCorner — while differing from a genuinely
+   clean line by 2.54 m to 12.24 m. Only wander showed anything. This is
+   the same oracle-knowledge bug cleanPose was introduced into belief.js
+   to fix, left unfixed here.
+
+   The camera's framing is deliberately NOT changed with it: riding the
+   clean line would slide a slow-starting candidate 12 m out of frame,
+   which is a legibility decision rather than a correctness one. */
+function driftOf(p, t) {
   const real = poseAt(p, t);
+  const intended = cleanPose(p, t);
   if (!real || !Number.isFinite(real.x)) return { lateral: 0, ahead: 0, heading: 0 };
+  if (!intended || !Number.isFinite(intended.x)) return { lateral: 0, ahead: 0, heading: 0 };
   const r = (intended.rot * Math.PI) / 180;
   const dx = real.x - intended.x, dy = real.y - intended.y;
   return {
