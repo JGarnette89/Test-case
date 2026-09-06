@@ -1144,3 +1144,85 @@ The registration delay that already separates observation from confidence
 for an encroachment does the same work here, and deceleration supplies
 the second discriminator. Both halves are per-instance facts the model
 would hold, so attribution stays derived rather than tabulated.
+
+---
+
+## 14. An approach is deceleration. Built, and the golden rebaked.
+
+### 14.1 Motion as state, not a curve fitted to endpoints
+
+The instruction was taken as a design constraint rather than a remark:
+**`approachDecel` is the input, speed is its integral, position is
+speed's.** You cannot write 1.84 g by accident because you do not write
+the trajectory at all — and the MANNER of a stop, the maintainer's
+discriminator between a braking fault and a knowledge one, is now a
+quantity that exists (`approachSpeedOf`).
+
+**Closed form rather than stepped state, deliberately.** `poseAt` is pure
+and O(1) and `earliestClear` samples it thousands of times per window, so
+integrating state per frame would be a rewrite of the engine's shape
+rather than a refinement of its physics. What makes it refinable is that
+a, v and x are named quantities related by integration — checked, by
+quartering the deceleration and confirming the room needed goes up 4.00×.
+
+**The deceleration is derived**: the rate bringing a car from the engine's
+own straight cruise to rest in exactly the approach run already in use —
+**2.70 m/s²**, squarely comfortable. The distance was always right; only
+the profile was wrong.
+
+### 14.2 One model for every approach
+
+Come in at the road's speed and shed **only what you do not need**. A car
+that stops sheds all of it; one with priority sheds the difference between
+the road and the corner it is about to take; a straight-through car sheds
+nothing, because **you slow for the corner, not for nothing**.
+
+That last clause was not in the first draft, and the ambulance found it: an
+emergency vehicle whose cruise IS its travel speed was made to brake down
+to it on the way in, which put it further back and it stopped being on
+screen in time to read.
+
+### 14.3 A tell that had been passing on an artifact
+
+`rollingApproach` ran a non-stopping car at the speed it would take the
+**junction** at, for its whole approach. So in `wontstop` a left-turner
+cruised in at 7.2 m/s while a car braking from road speed passed *through*
+7.2 on the way down:
+
+| t | offender (won't stop) | braking twin |
+|---|---|---|
+| 0.0 | 7.20 | **10.73** |
+| 1.0 | 7.20 | **8.03** |
+| 1.5 | 7.20 | 6.68 |
+
+For the first second and a half the car that **was** going to stop was the
+faster of the two. The scenario's whole tell — *that one is not slowing* —
+read backwards exactly when it mattered.
+
+It had been passing only because the old lerp parked braking cars at their
+spawn point until 2.8 s before arrival, so the twin's speed at the read
+point was zero. **The check was reading an artifact rather than a
+behaviour.** Under one unified model the offender holds 12.50 m/s against
+a twin shedding from 10.73 to 0 — a 4.47 m/s gap at the read point,
+against a threshold of 3.
+
+### 14.4 What moved, and the partition that proves it was confined
+
+| | before | after |
+|---|---|---|
+| peak deceleration, 41 approaches | 18.1 m/s² (1.84 g) | **3.70 m/s² (0.38 g)** |
+| peak approach speed | 13.1 m/s (47 km/h) | 12.5 m/s (45 km/h) |
+
+Golden rebaked deliberately. **The only thing that moved was ego position
+during the approach** — all 18 situations, 0° of rotation change, all four
+routes byte-identical, and **not one window moved**. The conflict engine
+only looks from `arriveAt` onward, so a change confined to the run-in
+could not reach it. Same shape of evidence as the turn-geometry fix.
+
+### 14.5 What this unblocks
+
+`approachSpeedOf(p, t)` is the quantity the manner-based attribution
+needs. With controls made perceivable (§13.4) the three-way split can be
+built as described: registered + smooth + wrong place is knowledge,
+registered + abrupt is braking, not registered in time is observation —
+and braking gets its dominant fault kinds back.

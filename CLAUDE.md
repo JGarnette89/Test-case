@@ -896,8 +896,12 @@ three-layer reframing, the five axes and R2's build order:
   `CHARACTER.arterial.control` says today, which would leave the candidate
   stopping at nothing) or signalised — a road-design call, not a mechanical
   one. See `DRIVER-IDENTITY.md` §6.
-- **An APPROACH has no braking physics, and every car in the game stops at
-  1.84g.** Measured across the set: peak deceleration 18.1 m/s^2 on every
+- ~~**An APPROACH has no braking physics.**~~ **FIXED.** See "An approach
+  is deceleration" in the Architecture section. Peak braking across the
+  shipped set went from 18.1 m/s^2 (1.84g) to 3.70 (0.38g), and not one
+  window moved. The old entry read:
+
+  **Every car in the game stops at 1.84g.** Measured across the set: peak deceleration 18.1 m/s^2 on every
   approach, at every road speed, on every road. Comfortable braking is
   2-3, firm is 5, an emergency stop is about 8. `approachPose` is still a
   smoothstep lerp from a fixed 24.5 m run over a fixed 2.8 s, so approach
@@ -1238,6 +1242,52 @@ un-saturate it — 0 of 21 now — so the claim discriminates again.
 
 Do not reintroduce a fixed traversal time. If a scenario needs a different
 window, move the arrival times, exactly as with everything else here.
+
+**An approach is DECELERATION, not an interpolation.** It used to be a
+smoothstep lerp from a spawn point to the line over a fixed 2.8s, in which
+nothing was a physical quantity — so nobody could notice that every car in
+the game braked at 18.1 m/s^2, which is 1.84g, more than twice an
+emergency stop. Approach speed did not follow the road either: a car
+arrived at a residential junction at 47 km/h. Exactly the bug the
+departure side had already fixed, on the other half of the manoeuvre.
+
+**The model is a, then v, then x.** `approachDecel` is the input, speed is
+its integral, position is speed's. You cannot write 1.84g by accident
+because you do not write the trajectory at all — and the MANNER of a stop,
+which is the maintainer's discriminator between a braking fault and a
+knowledge one, is now a quantity that exists (`approachSpeedOf`) rather
+than something to be inferred from a curve. Closed form rather than
+stepped state, deliberately: `poseAt` is pure and O(1) and `earliestClear`
+samples it thousands of times per window, so stepping would be a rewrite
+of the engine's shape rather than a refinement of its physics. What makes
+it refinable is that a, v and x are named quantities related by
+integration.
+
+**The deceleration is derived, not chosen**: the rate that brings a car
+from the engine's own straight cruise to rest in exactly the approach run
+the game already used — 2.70 m/s^2, squarely in the comfortable band. The
+distance was always right; only the profile was wrong.
+
+**ONE MODEL FOR EVERY APPROACH: come in at the road's speed and shed only
+what you do not need.** A car that stops sheds all of it, one with
+priority sheds the difference between the road and the corner it is about
+to take, and a straight-through car sheds nothing — you slow for the
+corner, not for nothing, which is what keeps an emergency vehicle from
+braking to a speed it was never going to lose.
+
+A rolling car used to run its WHOLE approach at the speed it would take
+the junction at, and that inverted `wontstop`'s tell: a left-turner
+cruising in at 7.2 m/s was slower than a car braking from road speed for
+the first second and a half, so "that one is not slowing" read backwards
+exactly when it mattered. The old check passed only because the old lerp
+parked braking cars at their spawn point until 2.8s before arrival — the
+tell was reading an artifact, not a behaviour.
+
+**Rebaked deliberately, and the partition is the evidence.** The only
+thing that moved in the golden was ego position during the approach, in
+all 18 situations, 0 degrees of rotation, and all four routes byte
+identical. NOT ONE WINDOW MOVED: the conflict engine only looks from
+`arriveAt` onward.
 
 **A car steers through a turn; it does not cut the corner.** A turn is a
 circular arc that starts at the car and is tangent to the lane it is

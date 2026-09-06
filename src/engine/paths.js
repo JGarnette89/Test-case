@@ -389,7 +389,78 @@ export function poseOn(path, k) {
    be off screen, and ease to a stop. Eased rather than linear so a car
    arrives as though it braked. */
 export const APPROACH_RUN = 490;
+/* Kept only so nothing that still reads it breaks. The approach is no
+   longer a duration fitted to two endpoints — see brakingApproach. */
 export const APPROACH_TIME = 2.8;
+
+/* =====================================================================
+   THE APPROACH IS DECELERATION, NOT AN INTERPOLATION
+
+   It used to be a smoothstep lerp from a spawn point to the stop line
+   over a fixed 2.8s, and the consequence was never checkable because
+   nothing in it was a physical quantity: measured, EVERY car in the game
+   braked at 18.1 m/s^2 — 1.84g, more than twice an emergency stop, on
+   every road at every speed. Approach speed did not follow the road
+   either, so a car arrived at a residential junction at 47 km/h.
+
+   That is the same bug the departure side already fixed, on the other
+   half of the manoeuvre: a fixed duration instead of a stated
+   acceleration.
+
+   So the model is now a, then v, then x. The DECELERATION is the input;
+   speed is its integral and position is speed's. You cannot write 1.84g
+   by accident, because you do not write the trajectory at all — and the
+   manner of a stop, which is the maintainer's discriminator between a
+   braking fault and a knowledge one, is now a quantity that exists rather
+   than something to be inferred from a curve.
+
+   Closed form rather than a stepped integration, deliberately: poseAt is
+   pure and O(1) and earliestClear samples it thousands of times per
+   window, so stepping state would be a rewrite of the engine's shape
+   rather than a refinement of its physics. What matters for refinement is
+   that a, v and x are named quantities related by integration, which they
+   now are. */
+
+/* Derived, not chosen: the deceleration that brings a car from the
+   engine's own straight cruise to rest in exactly the approach run the
+   game already used. 230^2 / (2 x 490) = 54 px/s^2 = 2.70 m/s^2, which
+   lands squarely in the 2-3 m/s^2 band a real driver finds comfortable.
+   The distance was always right; only the profile was wrong. */
+export const approachDecel = (v, run = APPROACH_RUN) => (v * v) / (2 * run);
+
+/* Where a decelerating car is, `arriveAt - t` seconds before it reaches
+   the line: cruising at `vStart` while it is still far out, then braking
+   at `a` down to `vEnd` — zero for a car that stops, its turning speed for
+   one that is only slowing for the corner.
+
+   ONE MODEL FOR EVERY APPROACH, and that generality is the fix rather
+   than tidiness. A rolling car used to travel its whole approach at the
+   speed it would take the TURN at, which made a left-turner cruise in at
+   7.2 m/s while a car braking from road speed passed through 7.2 on the
+   way down — so for the first second and a half of `wontstop` the car
+   that WAS going to stop was the faster of the two, and its whole tell
+   ("that one is not slowing") read backwards. Everybody approaches at the
+   road's speed now and sheds what they do not need. */
+export function brakingApproach(rest, t, arriveAt, vStart, a, vEnd = 0) {
+  const dt = arriveAt - t;
+  if (dt <= 0) return { x: rest.x, y: rest.y, rot: rest.rot };
+  const tBrake = Math.max(0, vStart - vEnd) / a;
+  const back = dt >= tBrake
+    ? (vStart * vStart - vEnd * vEnd) / (2 * a) + vStart * (dt - tBrake)
+    : vEnd * dt + 0.5 * a * dt * dt;
+  const r = rad(rest.rot);
+  return { x: rest.x - Math.cos(r) * back, y: rest.y - Math.sin(r) * back, rot: rest.rot };
+}
+
+/* How fast they are going on the way in. THE POINT OF THE WHOLE CHANGE:
+   the manner of a stop is a number now, so the maintainer's discriminator
+   between a braking fault and a knowledge one has something to read. */
+export function approachSpeed(t, arriveAt, vStart, a, vEnd = 0) {
+  const dt = arriveAt - t;
+  return dt <= 0 ? vEnd : Math.min(vStart, vEnd + a * dt);
+}
+export const approachDecelAt = (t, arriveAt, vStart, a, vEnd = 0) =>
+  (arriveAt - t) <= 0 || (arriveAt - t) > Math.max(0, vStart - vEnd) / a ? 0 : a;
 
 export function approachFrom(rest, distance = APPROACH_RUN) {
   const r = rad(rest.rot);
@@ -401,26 +472,20 @@ export function pathLength(path) {
   return path.length;
 }
 
+/* rollingApproach lived here: constant speed the whole way in, at
+   whatever speed the car would take the junction at. Gone, because
+   brakingApproach with a non-zero end speed is the same thing done
+   properly — and doing it improperly inverted wontstop's tell. */
 /* Running up to the line WITHOUT stopping: constant speed, no braking
    curve. A car with no reason to stop that visibly slows at the line and
    then accelerates away is unreadable — the player cannot tell whether it
    is yielding, and neither can the rules. */
-export function rollingApproach(rest, t, arriveAt, speed) {
-  const back = Math.max(0, (arriveAt - t) * speed);
-  const r = rad(rest.rot);
-  return {
-    x: rest.x - Math.cos(r) * back,
-    y: rest.y - Math.sin(r) * back,
-    rot: rest.rot,
-  };
-}
 
-/* Progress along the approach at time t, given when the car settles. */
-export function approachPose(spawn, rest, t, arriveAt, time = APPROACH_TIME) {
-  const k = Math.max(0, Math.min(1, (t - (arriveAt - time)) / time));
-  const e = k * k * (3 - 2 * k);
-  return { x: lerp(spawn.x, rest.x, e), y: lerp(spawn.y, rest.y, e), rot: rest.rot };
-}
+/* approachPose lived here: a smoothstep lerp from a spawn point to the
+   line over a fixed duration. It is gone rather than deprecated, because
+   leaving it would invite somebody to reach for a model whose whole
+   problem was that nothing in it was a physical quantity. See
+   brakingApproach above. */
 
 /* Shift a point along a heading — used for stop bias and for creeping. */
 export function advance(pt, rotDeg, distance) {

@@ -22,8 +22,9 @@
    ===================================================================== */
 
 import {
-  linePath, quadPath, polyPath, turnPoints, poseOn, approachFrom, approachPose, advance,
-  pathLength, rollingApproach,
+  linePath, quadPath, polyPath, turnPoints, poseOn, approachFrom, brakingApproach,
+  approachDecel, approachSpeed, advance,
+  pathLength,
   accelProfile, cruiseProfile, yieldingProfile, progressAt, speedAt,
   lerp, angleTo, quadAt as quad,
 } from "./paths.js";
@@ -179,6 +180,40 @@ const V_EMERGENCY = M(10);     // ~36 km/h
    not. A chosen number like LATE_SIGNAL_LEAD, and for the same reason:
    the lesson is "you did not stop", never a gotcha about how slow counts. */
 const V_ROLL = M(3.4);
+
+/* How a car arrives at a line it has to stop at: at the road's speed,
+   braking at a comfortable rate. `approachSpeed` is the road's, and a
+   participant may carry its own so the world can hand down the character
+   of the road it is on — index.js has no idea whether this is a
+   residential street or an arterial, and should not have to guess. */
+const approachOf = (p, mv) => {
+  /* Everybody comes in at the road's speed. What they shed on the way
+     depends on what they are about to do: a car that stops sheds all of
+     it, one that rolls through sheds only the difference between the road
+     and the corner it is about to take. */
+  const end = p.stops === false || p.rolledThrough ? (mv?.traverse?.profile?.v ?? 0) : 0;
+  /* YOU SLOW FOR THE CORNER, NOT FOR NOTHING. A car carrying straight
+     through at its own speed has no reason to shed any, whatever that
+     speed is — which matters for an emergency vehicle, whose cruise is
+     its travel speed rather than a corner it is about to take. Making it
+     brake to that speed on the way in put it further back and it stopped
+     being on screen in time to read. */
+  const v = p.approachSpeed ?? (
+    p.stops === false
+      ? (p.intent === "straight" ? end : V_THROUGH)
+      : V_STRAIGHT
+  );
+  return { v: Math.max(v, end), a: approachDecel(V_STRAIGHT), end };
+};
+
+/* The manner of a stop, as a number. This is what the maintainer's
+   discriminator between a braking fault and a knowledge one reads:
+   controlled-but-misplaced against abrupt. */
+export function approachSpeedOf(p, t) {
+  if (t >= (p.arriveAt ?? 0)) return null;
+  const ap = approachOf(p, movementOf(p));
+  return approachSpeed(t, p.arriveAt ?? 0, ap.v, ap.a, ap.end) / SCALE;
+}
 const WALK = M(1.35);          // a real walking pace, ~4.9 km/h
 
 /* The tightest a passenger car can steer, at full lock. A turn is never
@@ -493,22 +528,19 @@ function basePose(p, t) {
   }
 
   if (t < p.arriveAt) {
-    /* Only a car that is going to stop brakes for the line. One with
-       priority runs up at the speed it will carry through, because a
-       vehicle that slows for no reason is a vehicle the player cannot
-       read — and cannot be expected to predict. */
-    if (p.stops === false) {
-      // Its cruise speed IS the speed it carries through, so the run-up
-      // and the traverse are the same motion rather than two guesses.
-      return { ...rollingApproach(mv.rest, t, p.arriveAt, mv.traverse.profile.v), approaching: true };
-    }
-    if (p.rolledThrough && mv.traverse.profile.v) {
-      /* The tell is an ABSENCE: no deceleration where there should have
-         been one. A clean twin eases to rest over APPROACH_TIME; this car
-         holds its crawl right up to the line. */
-      return { ...rollingApproach(mv.rest, t, p.arriveAt, mv.traverse.profile.v), approaching: true };
-    }
-    return { ...approachPose(mv.spawn, mv.rest, t, p.arriveAt), approaching: true };
+    /* ONE MODEL FOR EVERY APPROACH: come in at the road's speed and shed
+       only what you do not need. A car that stops sheds all of it; one
+       with priority sheds the difference between the road and the corner
+       it is about to take; a rolling stop sheds almost none, which is the
+       ABSENCE that makes it readable before the line as well as after.
+
+       A rolling car used to run the whole way in at the speed it would
+       take the JUNCTION at, which is why wontstop's tell inverted: a
+       left-turner cruising in at 7.2 m/s was slower than a car braking
+       from road speed for the first second and a half, so "that one is
+       not slowing" read backwards exactly when it mattered. */
+    const ap = approachOf(p, mv);
+    return { ...brakingApproach(mv.rest, t, p.arriveAt, ap.v, ap.a, ap.end), approaching: true };
   }
   if (t < p.departAt) return { ...mv.rest, waiting: true };
 

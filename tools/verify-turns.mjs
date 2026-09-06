@@ -18,8 +18,9 @@
  *   4. Bad driving still exists, but only where a scenario asked for it —
  *      and a trait whose tell claims a fault has to actually produce one.
  */
-import { movementOf, applyTraits, TRAITS, M, CX, CY, LANE } from "../src/engine/index.js";
-import { pointOn } from "../src/engine/paths.js";
+import { movementOf, applyTraits, TRAITS, simulate, poseAt, STEP, M, CX, CY, LANE } from "../src/engine/index.js";
+import { pointOn, brakingApproach, approachDecel } from "../src/engine/paths.js";
+import { SCENARIOS } from "../src/engine/scenarios.js";
 import { boxHalf, crossSpec } from "../src/engine/road.js";
 
 const m = (px) => Math.round((px / 20) * 100) / 100;
@@ -153,6 +154,75 @@ console.log("\n3. BAD DRIVING IS DELIBERATE, AND ITS TELL IS TRUE");
   if (wide > clean + LANE / 2 && cut < clean - LANE / 2)
     ok(`the two faults sit on opposite sides of a clean line (${m(cut)}m / ${m(clean)}m / ${m(wide)}m)`);
   else fail("wideTurn and cutsCorner do not straddle the clean line");
+}
+
+/* ---------- the approach is braking, not an interpolation ----------- */
+console.log("\nAN APPROACH IS DECELERATION, AND IT IS A PLAUSIBLE ONE");
+{
+  /* This file was written because turns were the wrong SHAPE and every
+     check that asked about timing was happy. The approach was the same
+     failure on the other half of the manoeuvre: a smoothstep lerp over a
+     fixed duration, in which nothing was a physical quantity, so nobody
+     could notice that every car in the game braked at 18.1 m/s^2 — 1.84g,
+     more than twice an emergency stop. */
+  const speedAt = (p, t) => {
+    const a = poseAt(p, t), b = poseAt(p, t + STEP);
+    if (!a || !b || a.hidden || b.hidden || a.gone || b.gone) return null;
+    return Math.hypot(b.x - a.x, b.y - a.y) / STEP / M(1);
+  };
+  let worstA = 0, worstV = 0, worstWho = null, approaches = 0;
+  for (const scn of SCENARIOS) {
+    const sim = simulate(scn);
+    for (const p of [sim.ego, ...sim.actors]) {
+      if (p.kind === "ped") continue;
+      approaches++;
+      let prev = null;
+      for (let t = 0; t <= (p.arriveAt ?? 0); t += STEP) {
+        const v = speedAt(p, t);
+        if (v == null) continue;
+        worstV = Math.max(worstV, v);
+        if (prev != null) {
+          const a = Math.abs((v - prev) / STEP);
+          if (a > worstA) { worstA = a; worstWho = `${scn.id}/${p.id ?? "ego"}`; }
+        }
+        prev = v;
+      }
+    }
+  }
+  /* A firm stop is about 5 m/s^2 and an emergency about 8. Anything past
+     that is not a car braking, it is a number nobody checked. */
+  worstA < 5
+    ? ok(`peak deceleration across ${approaches} approaches is ${worstA.toFixed(2)} m/s^2 (${(worstA / 9.81).toFixed(2)}g), worst at ${worstWho} — a firm stop, not a crash`)
+    : fail(`peak deceleration is ${worstA.toFixed(2)} m/s^2 (${(worstA / 9.81).toFixed(2)}g) at ${worstWho}, past what a car can do`);
+  worstV <= M(13) / M(1)
+    ? ok(`and nobody approaches faster than they travel (${worstV.toFixed(1)} m/s, ${(worstV * 3.6).toFixed(0)} km/h)`)
+    : fail(`something approaches at ${(worstV * 3.6).toFixed(0)} km/h, faster than any road in the game`);
+
+  /* THE POINT OF THE MODEL: the deceleration is the input, so speed and
+     position are its integrals rather than a curve fitted to endpoints.
+     Halve the braking and the car needs four times the room — which is
+     what makes it a motion model rather than a better-shaped lerp. */
+  const rest = { x: 500, y: 300, rot: 0 };
+  const v = M(11.5);
+  /* Measured at the instant braking BEGINS, which is v/a before arrival —
+     sampling further out only measures the cruise that precedes it. */
+  const room = (a) => {
+    const at = brakingApproach(rest, 0, v / a, v, a, 0);
+    return Math.hypot(at.x - rest.x, at.y - rest.y) / M(1);
+  };
+  const hard = room(approachDecel(v));
+  const soft = room(approachDecel(v) / 4);
+  Math.abs(soft / hard - 4) < 0.05
+    ? ok(`and braking a quarter as hard needs ${(soft / hard).toFixed(2)}x the room (${hard.toFixed(1)}m against ${soft.toFixed(1)}m) — the inverse square law falls out, because position is acceleration integrated rather than a curve drawn to fit`)
+    : fail(`quartering the deceleration changed the room needed by ${(soft / hard).toFixed(2)}x, not 4x — the model is not integrating anything`);
+
+  /* And a car that stops comes to rest exactly at the line, exactly on
+     time — the property a fitted curve gets for free and an integrated
+     one has to earn. */
+  const landed = brakingApproach(rest, 6, 6, M(11.5), approachDecel(M(11.5)), 0);
+  Math.hypot(landed.x - rest.x, landed.y - rest.y) < 1e-9
+    ? ok("and it still arrives exactly at the line at exactly arriveAt")
+    : fail("the braking model does not land on the stop line");
 }
 
 console.log("\n" + "=".repeat(66));
