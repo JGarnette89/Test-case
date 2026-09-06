@@ -23,7 +23,7 @@
 
 import {
   linePath, quadPath, polyPath, turnPoints, poseOn, approachFrom, brakingApproach,
-  approachDecel, approachSpeed, advance,
+  approachDecel, approachSpeed, approachDecelAt, advance,
   pathLength,
   accelProfile, cruiseProfile, yieldingProfile, progressAt, speedAt,
   lerp, angleTo, quadAt as quad,
@@ -203,17 +203,52 @@ const approachOf = (p, mv) => {
       ? (p.intent === "straight" ? end : V_THROUGH)
       : V_STRAIGHT
   );
-  return { v: Math.max(v, end), a: approachDecel(V_STRAIGHT), end };
+  /* How hard they brake is a property of the DRIVER, not of the road.
+     `brakeFactor` is how a braking-control failure expresses: 1 is the
+     comfortable rate the geometry derives, 3 is standing on the pedal. */
+  return { v: Math.max(v, end), a: approachDecel(V_STRAIGHT) * (p.brakeFactor ?? 1), end };
 };
 
-/* The manner of a stop, as a number. This is what the maintainer's
-   discriminator between a braking fault and a knowledge one reads:
-   controlled-but-misplaced against abrupt. */
-export function approachSpeedOf(p, t) {
-  if (t >= (p.arriveAt ?? 0)) return null;
-  const ap = approachOf(p, movementOf(p));
-  return approachSpeed(t, p.arriveAt ?? 0, ap.v, ap.a, ap.end) / SCALE;
+/* HOW FAST IS THIS ROAD USER, AT ANY INSTANT OF ITS JOURNEY. One answer
+   covering all three phases — running in, held at the line, and away —
+   rather than a caller differencing two poses and hoping the join between
+   phases is smooth.
+
+   This is the API the motion model exists to have. Speed was previously
+   recoverable only by finite differences, which is how 1.84g went
+   unnoticed for the life of the project: nothing ever asked a car how
+   fast it was going, so nothing could be surprised by the answer. The
+   manner of a stop, the roughness of a departure, the closing speed
+   behind a fault — all of them read from here.
+
+   Metres per second, because a speed in engine pixels is a number nobody
+   can sanity-check by eye. */
+export function speedOf(p, t) {
+  const mv = movementOf(p);
+  const arriveAt = p.arriveAt ?? 0;
+  if (t < arriveAt) {
+    const ap = approachOf(p, mv);
+    return approachSpeed(t, arriveAt, ap.v, ap.a, ap.end) / SCALE;
+  }
+  if (t < (p.departAt ?? arriveAt)) return 0;          // held at the line
+  const k = progressAt(mv.traverse, t - (p.departAt ?? arriveAt));
+  if (k >= 1) return 0;                                 // gone
+  return speedAt(mv.traverse.profile, t - (p.departAt ?? arriveAt)) / SCALE;
 }
+
+/* How hard they are braking on the way in, in m/s^2. THE POINT OF THE
+   WHOLE MOTION REWRITE: the MANNER of a stop is a quantity now, which is
+   what the maintainer's discriminator between a braking fault and a
+   knowledge one reads — controlled-but-misplaced against abrupt. */
+export function approachDecelOf(p, t) {
+  const arriveAt = p.arriveAt ?? 0;
+  if (t >= arriveAt) return 0;
+  const ap = approachOf(p, movementOf(p));
+  return approachDecelAt(t, arriveAt, ap.v, ap.a, ap.end) / SCALE;
+}
+
+/* Kept as the narrower question, in terms of the general one. */
+export const approachSpeedOf = (p, t) => (t >= (p.arriveAt ?? 0) ? null : speedOf(p, t));
 const WALK = M(1.35);          // a real walking pace, ~4.9 km/h
 
 /* The tightest a passenger car can steer, at full lock. A turn is never
@@ -665,6 +700,30 @@ const TRAITS = {
        them they come to rest like everybody else, which is correct. */
     tell: "Did not stop — carried speed straight through the line",
     setup: (p) => { if (p.stops) p.rolledThrough = true; },
+  },
+  harshStop: {
+    /* THE MANNER OF THE STOP, which is the maintainer's discriminator
+       between a braking fault and a knowledge one. Position is untouched:
+       they arrive exactly where they should, having got there in a way
+       that would put a passenger through the windscreen. This is what the
+       approach rewrite made expressible — before it every car in the game
+       braked at 1.84g, so there was no controlled stop for an abrupt one
+       to be abrupt relative to. */
+    tell: "Braked hard for the line, far harder than the situation asked",
+    setup: (p) => { if (p.stops) p.brakeFactor = 3; },
+  },
+  brakesTooLate: {
+    /* Abrupt AND past the line: they left it far too late, stood on the
+       brakes, and still ended up in the box. Writes stopBias, so it cannot
+       coexist with overshoot — you do not drift past gently and slam past
+       hard at the same time, and masks() derives that rather than being
+       told. */
+    tell: "Left the braking far too late — hard on the anchors and still into the box",
+    setup: (p) => {
+      if (!p.stops) return;
+      p.brakeFactor = 3.2;
+      p.stopBias = STOP_LINE_AT + STOP_GAP - HALF + M(0.5) * severityOf(p);
+    },
   },
   stopsShort: {
     /* The other end of overshoot, and the second thing braking can say.

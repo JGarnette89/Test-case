@@ -16,17 +16,19 @@
  *     the information was gathered, and never by what happened next.
  */
 import fs from "node:fs";
-import { simulate, earliestClear, M } from "../src/engine/index.js";
+import { simulate, earliestClear, approachDecelOf, M } from "../src/engine/index.js";
 import { REACTION_FLOOR } from "../src/engine/score.js";
 import {
   REGISTER_FLOOR, REGISTER_SPAN, JITTER, registrationDelay, sightingsIn,
   registrationsIn, awarenessAt, departureOnAwareness, causeOf,
   unseenShare, cautionOf, marginAt, crossingTimeOf,
+  controlSightingsIn, causeOfStop, ABRUPT_AT,
 } from "../src/engine/awareness.js";
 import { composeDriver, AXES, deficitOf, CONFIDENT_ENOUGH, TAIL } from "../src/engine/ratings.js";
 import { traitsForScene } from "../src/engine/candidate.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
 import { composeScenario } from "../src/engine/compose.js";
+import { crossSpec } from "../src/engine/road.js";
 import { worstEncroachment } from "../src/engine/clearance.js";
 
 let problems = 0;
@@ -71,9 +73,26 @@ console.log("\n1. THE FIFTH AXIS OPERATES ON A DIFFERENT LAYER");
   !imports.some((i) => i.includes("clearance"))
     ? ok(`awareness never imports clearance (${[...new Set(imports)].join(", ")}), so it cannot see the outcome it would be tempted to grade by`)
     : fail("awareness imports clearance — observation could come to be scored by outcome");
-  !/touch|contact|band|collide/i.test(src.split("export function causeOf")[1] ?? "")
-    ? ok("and causeOf consults only whether the information was gathered, never what happened next")
-    : fail("causeOf references the outcome, which collapses observation back into confidence");
+  /* CODE ONLY, COMMENTS STRIPPED, and the function matched by its full
+     signature. The first version of this took "everything after the name"
+     and tested it raw, so it fired on causeOf's own comment saying that
+     contact is NOT consulted — and it only passed at all because the
+     comment happened to sit outside the split. A check that a sibling
+     function can break by existing was not checking what it claimed. */
+  const bodyOf = (name) => {
+    const at = src.indexOf(`export function ${name}(`);
+    if (at < 0) return null;
+    const body = src.slice(at).split(String.fromCharCode(10) + "}")[0];
+    return body.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  };
+  const outcomeWords = /touch|contact|band|collide/i;
+  const peeking = ["causeOf", "causeOfStop"].filter((n) => {
+    const b = bodyOf(n);
+    return b == null || outcomeWords.test(b);
+  });
+  peeking.length === 0
+    ? ok("and neither causeOf nor causeOfStop consults the outcome in code — only whether the information was gathered, and how the stop was made")
+    : fail(`${peeking.join(" and ")} reference the outcome, which collapses observation back into confidence`);
 }
 
 /* ---------- 2. deterministic, once per road user -------------------- */
@@ -430,6 +449,91 @@ console.log("\n8. THE MARGIN YOU LEAVE FOR WHAT YOU CANNOT SEE IS CONFIDENCE");
   hit < conf * 0.15
     ? ok(`contact is now a minority outcome for a drawn driver (${(100 * hit / conf).toFixed(1)}% of conflicting scenes)`)
     : ok(`MEASURED RESIDUAL: contact in ${(100 * hit / conf).toFixed(1)}% of conflicting scenes, ${(100 * zero / Math.max(1, hit)).toFixed(0)}% of it from zero-dwell departures. That is a ROLLING STOP -- a knowledge fault, not a confidence one -- so caution cannot and should not fix it. R2.5.`);
+}
+
+/* ---------- 9. why was the stop wrong: three answers ---------------- */
+console.log("\n9. THE THREE-WAY SPLIT, BOTH DISCRIMINATORS DERIVED");
+{
+  /* The maintainer's ruling: the MANNER of the stop discriminates, not its
+     position. Registered and smooth but in the wrong place is knowledge;
+     registered and abrupt is braking; not registered in time is
+     observation. It needs no rule table, because both discriminators are
+     quantities the model already holds — the registration delay that
+     separates observation from confidence for an encroachment, and the
+     deceleration the approach rewrite made real. */
+  const road = crossSpec("stop", 1);
+  const mk = (traits, arriveAt = 1.6) => ({
+    id: "split", road, control: "stop", duration: 20,
+    ego: { from: "S", intent: "straight", arriveAt, stops: true, traits },
+    actors: [{ id: "far", from: "N", intent: "straight", arriveAt: 16, stops: false, kind: "car" }],
+  });
+  const C = (obs) => ({ creep: 0, ratings: { observation: obs, confidence: CONFIDENT_ENOUGH, steering: 1, braking: 1, knowledge: 1 } });
+
+  const sharp = C(1);
+  const smooth = simulate(mk(["overshoot"]));
+  const abrupt = simulate(mk(["harshStop"]));
+  causeOfStop(smooth, mk(["overshoot"]), sharp, 7) === "knowledge"
+    ? ok("registered the control and stopped smoothly in the wrong place — knowledge")
+    : fail(`a smooth misplaced stop by a sharp observer attributed to ${causeOfStop(smooth, mk(["overshoot"]), sharp, 7)}`);
+  causeOfStop(abrupt, mk(["harshStop"]), sharp, 7) === "braking"
+    ? ok("registered the control and stopped abruptly — braking, at the same position")
+    : fail(`an abrupt stop by a sharp observer attributed to ${causeOfStop(abrupt, mk(["harshStop"]), sharp, 7)}`);
+
+  /* The observation branch, and the property worth having: how much time
+     they had to read the sign matters, and it falls out of the model
+     rather than being coded. */
+  console.log("\n   time to the line   observation 1.00   0.50   0.00   (share attributed to observation, 60 seeds)");
+  console.log("   " + "-".repeat(92));
+  const share = (arriveAt, obs) => {
+    let n = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const scn = mk(["overshoot"], arriveAt);
+      if (causeOfStop(simulate(scn), scn, C(obs), seed) === "observation") n++;
+    }
+    return n / 60;
+  };
+  const rows = [1.0, 1.6, 2.4].map((a) => ({ a, s: [1, 0.5, 0].map((o) => share(a, o)) }));
+  for (const r of rows) {
+    console.log(`   ${r.a.toFixed(1)}s${" ".repeat(16)}${r.s.map((x) => `${(100 * x).toFixed(0)}%`.padStart(8)).join("")}`);
+  }
+  rows.every((r) => r.s[0] === 0)
+    ? ok("a perfect observer never fails to read the sign, at any distance")
+    : fail("a perfect observer was blamed for missing a control it could see");
+  rows[0].s[2] > rows[2].s[2]
+    ? ok(`and the less time they have the likelier they are to miss it (${(100 * rows[0].s[2]).toFixed(0)}% at 1.0s against ${(100 * rows[2].s[2]).toFixed(0)}% at 2.4s) — not coded, it falls out of the registration delay`)
+    : fail("time to the line does not affect whether the control was read");
+
+  /* Same observable, different cause: the position error is IDENTICAL in
+     the smooth and abrupt cases, so only the manner can be doing the work. */
+  const peakOf = (sim) => {
+    let p = 0;
+    for (let t = 0; t <= (sim.ego.arriveAt ?? 0); t += 0.05) p = Math.max(p, approachDecelOf(sim.ego, t));
+    return p;
+  };
+  const smoothPeak = peakOf(smooth), abruptPeak = peakOf(abrupt);
+  smoothPeak < ABRUPT_AT && abruptPeak >= ABRUPT_AT
+    ? ok(`the discriminator is a measured deceleration, not a label: ${smoothPeak.toFixed(2)} against ${abruptPeak.toFixed(2)} m/s^2, either side of ${ABRUPT_AT.toFixed(2)}`)
+    : fail(`the two cases do not straddle the threshold: ${smoothPeak.toFixed(2)} / ${abruptPeak.toFixed(2)} against ${ABRUPT_AT.toFixed(2)}`);
+
+  /* And a control nobody could see is nobody's failing. */
+  const blind = SCENARIOS.find((s) => (s.sightBlockers ?? []).length > 0);
+  if (blind) {
+    const seen = controlSightingsIn(simulate(blind), blind, { candidate: sharp });
+    const hidden = Object.values(seen).filter((c) => c.clearAt == null);
+    hidden.length > 0
+      ? ok(`and a control can be genuinely unreadable: ${hidden.length} hidden behind the obstruction at ${blind.id}, which is the scenario's doing`)
+      : ok(`no control is hidden at ${blind.id} — the obstruction does not fall between the eye and any sign`);
+  }
+
+  /* ELEVATED OBJECTS ARE NOT BLOCKED BY VEHICLES. A sign on a post is
+     visible over a car, and a flat occlusion model must not pretend
+     otherwise — so a control is tested against the standing obstructions
+     alone. Checked at source, because it is a rule rather than a value. */
+  const src = fs.readFileSync("src/engine/awareness.js", "utf8");
+  const body = src.split("export function controlSightingsIn")[1]?.split("\n}")[0] ?? "";
+  /sightBlockersOf/.test(body) && !/sim\.actors/.test(body)
+    ? ok("controls are occluded by walls and hedges and never by traffic — a sign on a post is visible over a car")
+    : fail("control visibility consults road users, so a van would hide a sign a driver would see straight over");
 }
 
 console.log("\n" + "=".repeat(70));

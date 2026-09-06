@@ -624,6 +624,31 @@ deliberately left untuned rather than dialled up to absorb a fault
 belonging elsewhere. The floor is now met: steering 3, knowledge 3,
 braking 2, confidence 2.
 
+### The three-way stop split — built, and both discriminators are derived
+
+    registered the control, stopped smoothly, wrong place -> KNOWLEDGE
+    registered the control, stopped abruptly              -> BRAKING
+    did not register the control in time                  -> OBSERVATION
+
+**No rule table, because both discriminators are quantities the model
+already holds.** The registration delay that separates observation from
+confidence for an encroachment does the same work here, and the approach
+rewrite supplies the second: the manner of a stop is a number now
+(`approachDecelOf`). `ABRUPT_AT` is twice the comfortable rate the
+approach geometry derives — 5.40 m/s^2 — so an ordinary stop is
+controlled by construction and anything at double it is unmistakably not.
+
+**BRAKING IS BACK ABOVE THE FLOOR**, with `harshStop` (abrupt, right
+position) and `brakesTooLate` (abrupt and into the box). Both are manner
+faults, which is what makes them braking where `overshoot` and
+`stopsShort` are knowledge.
+
+**And how much time the candidate had to read the sign matters, without
+anybody coding it.** Measured: a poor observer misses the control 98% of
+the time with 1.0s to the line and 30% with 2.4s, while a perfect observer
+never misses it at any distance. That falls out of the registration delay
+meeting a shorter approach.
+
 **LATE AND MISPLACED STOPS ARE TWO DIFFERENT FAULTS, and the
 discriminator is the MANNER of the stop rather than its position.**
 Maintainer's ruling. A CONTROLLED stop in the wrong place is a KNOWLEDGE
@@ -638,12 +663,13 @@ particularly poorly skilled driver would have to be completely unable to
 make their stop due to lack of control to make this anything other than a
 failure to obey traffic law." Weighted 0.9 knowledge, 0.1 control.
 
-**Applying that ruling took BRAKING from 2 dominant kinds to 0, and the
-regression is reported rather than argued away.** `overshoot` and
-`stopsShort` move the resting point and leave the manner alone, so both
-are the controlled case and both are knowledge now. Attribution got more
-accurate and an axis lost its content; the content comes back when the
-two prerequisites below land.
+**Applying that ruling took BRAKING from 2 dominant kinds to 0**, because
+`overshoot` and `stopsShort` move the resting point and leave the manner
+alone, so both are the controlled case and both are knowledge. It was
+reported rather than argued away, and it came back the moment the approach
+rewrite made an abrupt stop expressible. Attribution getting more accurate
+is allowed to cost an axis its content for as long as it takes to write
+the content properly.
 
 **OBSERVATION is exempt from the trait floor, and that is the point.** It
 does not express through a trait at all — it degrades what the candidate
@@ -664,12 +690,28 @@ held by traffic, they stop like everybody else, which is correct.
 down — `lateSignal+noSignal`. You cannot signal late if you never
 signalled.
 
-**Growing the vocabulary grows the supply, and section length follows.**
-Faults per junction went 1.11 to 1.57, so the section implied by a 3-4
-recall band tightened from 2.7-3.6 junctions to 1.9-2.5. Axes per drive
-rose 2.38 to 2.90. If the density is wanted lower, `ERROR_SCALE` is the
-dial and the candidate distribution is not — the drivers did not get
-worse, the vocabulary got wider.
+**ONE ROLL PER AXIS, NEVER ONE PER FAULT KIND.** Rolling each available
+kind independently made the number of faults a candidate commits a
+function of how many kinds the game has vocabulary for: 1.11 per junction
+at seven kinds, 1.57 at ten, 2.0 at twelve — which took the section
+implied by a 3-4 recall band down to 1.5 junctions, which is not a
+section. The fix was not a smaller `ERROR_SCALE`. A driver's deficit
+decides HOW MUCH they err and the vocabulary decides WHICH WAY, so the
+roll is per axis they could fail on here and the kind is drawn from that
+axis weighted. Density is a property of the driver again, it holds still
+as R2 keeps adding content, and "variety over volume" falls out by
+construction: at most one fault per axis per junction, so two weaknesses
+show at most two things and they are two DIFFERENT things. Measured after:
+1.00 per junction, 2.13 axes per drive, section 3.0-4.0 junctions.
+
+**Identification has saturated, and the levers now earn their place
+elsewhere.** Persistence alone reaches 24/25 identifiable, so `mustShow`
+and the planner's turn-steering add nothing there. They still add to
+DISCONFIRMATION — 149 rivals ruled out becomes 160 — which is the half
+that lets a player test a hypothesis rather than only form one. If that
+stops being true too, they should be removed rather than kept as
+decoration, and `verify-candidate.mjs` asserts the combined picture so
+that it would show.
 
 ### Three layers, and OBSERVATION as the fifth axis — built
 
@@ -926,7 +968,16 @@ three-layer reframing, the five axes and R2's build order:
   `arriveAt`, so `sightingsIn`, belief and the camera all move with it. Its
   own increment, announced.
 
-- **Intersection controls are not perceivable objects.** Awareness tracks
+- ~~**Intersection controls are not perceivable objects.**~~ **BUILT.**
+  `controlsOf` in `road.js` derives a positioned control per controlled leg
+  from the same geometry the stop line comes from, origin-aware, and
+  reproduces the renderer's old table exactly. A sign uses its DRAWN size,
+  because the scorer must never know something the screen did not show.
+  And a control is occluded by walls and hedges but NEVER by vehicles: a
+  sign on a post is visible over a car, and a flat occlusion model must
+  not pretend otherwise. The old entry read:
+
+  **Awareness tracks road users only.** Awareness tracks
   ROAD USERS: `sightingsIn` iterates `sim.actors` and nothing else. A
   control is a string on a leg (`spec.legs[side].control`) with no
   position; the only spatial fact the engine has about one is the stop

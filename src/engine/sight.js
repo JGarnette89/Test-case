@@ -79,8 +79,14 @@ const corners = (pose, hl, hw) => {
   return pts;
 };
 
+/* A control carries its own size, because a sign is drawn as a map symbol
+   rather than at its true 0.75 m face — and the scorer must never know
+   something the screen did not show, so awareness uses the DRAWN size.
+   See SIGN_SIZE in road.js. */
 const extentOf = (p) =>
-  p.kind === "ped" ? { hl: M(0.5), hw: M(0.5) } : { hl: CAR_L / 2, hw: CAR_W / 2 };
+  p.hl != null ? { hl: p.hl, hw: p.hw }
+  : p.kind === "ped" ? { hl: M(0.5), hw: M(0.5) }
+  : { hl: CAR_L / 2, hw: CAR_W / 2 };
 
 /* How much of `target` the viewer can see past `blockers`.
 

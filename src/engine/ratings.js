@@ -133,6 +133,11 @@ export const CAUSES = {
      anything other than a failure to obey traffic law." Overwhelmingly
      knowledge, with control as a rare extreme rather than a partner. */
   rollingStop: { knowledge: 0.9, braking: 0.1 },
+  /* The ABRUPT cases, which the approach rewrite made expressible. Manner
+     rather than position, so these are braking where overshoot and
+     stopsShort are knowledge. */
+  harshStop: { braking: 1 },
+  brakesTooLate: { braking: 0.8, knowledge: 0.2 },
   noSignal: { knowledge: 1 },
   /* The same ruling: stopping short is a stop in the wrong place, and as
      modelled it is a controlled one. Knowledge, with the same small
@@ -231,9 +236,56 @@ export const ERROR_SCALE = 0.85;
 export function rollErrors(ratings, available, seed, { scale = ERROR_SCALE, allow = null } = {}) {
   const r = rng(seed);
   const out = [];
+
+  /* ONE ROLL PER AXIS, NOT ONE PER FAULT KIND, and this is a correctness
+     fix rather than a tuning choice. Rolling each available kind
+     independently made the number of faults a candidate commits a
+     function of HOW MANY KINDS THE GAME HAS VOCABULARY FOR: every kind
+     added to CAUSES raised the density for every driver. Measured across
+     R2.5 — 1.11 faults per junction at seven kinds, 1.57 at ten, 2.0 at
+     twelve, which took the section implied by a 3-4 recall band down to
+     1.5 junctions. That is not a section, and the fix is not a smaller
+     scale.
+
+     A driver's deficit decides HOW MUCH they err; the vocabulary decides
+     WHICH WAY. So the roll is per axis they could fail on here, and the
+     kind is then drawn from that axis weighted by how likely each is.
+     Density becomes a property of the driver, which is what it always
+     claimed to be — and it stays put as R2 keeps adding content.
+
+     It also delivers "variety over volume" by construction: at most one
+     fault per axis per junction, so a candidate weak on two axes shows at
+     most two things here and they are two DIFFERENT things. */
+  const byAxis = new Map();
   for (const kind of available) {
-    const p = likelihoodOf(kind, ratings) * scale;
-    if (r() < p && (!allow || allow(out, kind))) out.push(kind);
+    const like = likelihoodOf(kind, ratings);
+    if (like <= 0) continue;
+    const axis = dominantAxis(kind);
+    if (!axis) continue;
+    if (!byAxis.has(axis)) byAxis.set(axis, []);
+    byAxis.get(axis).push({ kind, like });
+  }
+
+  /* AXES in order, so the draw does not depend on Map insertion order and
+     therefore on which kinds this situation happened to offer. */
+  for (const axis of AXES) {
+    const kinds = byAxis.get(axis);
+    if (!kinds) continue;
+    /* How likely this driver is to fail on this axis at all: the best
+       chance any of its kinds gives them, so adding a kind cannot make a
+       driver worse at an axis they were already going to fail. */
+    const chance = Math.max(...kinds.map((k) => k.like)) * scale;
+    if (r() >= chance) continue;
+    /* Which way it goes, weighted. */
+    const total = kinds.reduce((a, k) => a + k.like, 0);
+    let pick = r() * total;
+    for (const k of kinds) {
+      pick -= k.like;
+      if (pick <= 0) {
+        if (!allow || allow(out, k.kind)) out.push(k.kind);
+        break;
+      }
+    }
   }
   return out;
 }

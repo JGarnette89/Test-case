@@ -178,9 +178,25 @@ console.log("\n3. A HABIT GETS REPEATED CHANCES, AND ITS RIVALS GET REFUSED ONES
   /* Persistence was the big lever and steering is the finishing one.
      Saying which is which matters: it is the difference between a fix and
      a pile of things that were added at the same time. */
-  both.id > plain.id
-    ? ok(`asking and steering add ${both.id - plain.id} identifiable habits over persistence alone (${plain.id} -> ${both.id})`)
-    : fail(`neither asking nor steering improved on persistence alone (${plain.id} vs ${both.id})`);
+  /* IDENTIFICATION HAS SATURATED, so this no longer asks whether the
+     levers add identifiable habits — persistence alone reaches the
+     ceiling now that one roll per axis gives a candidate's weaknesses a
+     clean run at every junction. Asserting an improvement that cannot
+     happen would be asserting nothing.
+
+     What they still earn their place on is the OTHER half: disconfirmation.
+     Steering gives rival habits more chances to visibly decline, which is
+     what lets a player TEST a hypothesis rather than only form one. If
+     that stops being true as well, they should be removed rather than
+     kept as decoration — so the assertion is on the combined picture and
+     the saturation is reported. */
+  const better = (t) => t.id + t.ru;
+  better(both) > better(plain)
+    ? ok(`asking and steering still earn their place: ${plain.id}+${plain.ru} becomes ${both.id}+${both.ru} identified-plus-ruled-out, mostly on disconfirmation`)
+    : fail(`neither asking nor steering improved anything over persistence alone (${better(plain)} vs ${better(both)}) — they are decoration and should go`);
+  both.id === plain.id
+    ? ok(`and IDENTIFICATION has saturated: persistence alone already reaches ${plain.id}/${plain.tr}, so the levers are working on hypothesis-testing rather than on finding the habit`)
+    : ok(`asking and steering add ${both.id - plain.id} identifiable habits over persistence alone`);
   plain.id > 0
     ? ok(`and persistence alone was most of it: ${plain.id}/${plain.tr}, from a baseline where the candidate had no traits at all`)
     : fail("persistence alone produced no identifiable habit, so something upstream is wrong");
@@ -526,7 +542,13 @@ console.log("\n8. RATINGS: ERRORS DERIVED FROM WHAT A DRIVER IS BAD AT");
      That is a floor regression caused by attribution getting MORE
      accurate, and it is reported rather than fixed by weakening the
      ruling. */
-  const BLOCKED = { observation: "expresses through awareness, not traits", braking: "needs approach braking physics" };
+  /* BRAKING IS BACK. It regressed to 0 when the maintainer's attribution
+     ruling landed -- its two kinds were position errors, and a position
+     error at controlled speed is knowledge. The approach rewrite made the
+     MANNER of a stop a real quantity, so the abrupt cases could finally be
+     written: harshStop and brakesTooLate. Observation remains exempt, and
+     by design rather than for want of content. */
+  const BLOCKED = { observation: "expresses through awareness, not traits" };
   const actsOn = vocab.filter((r) => !BLOCKED[r.axis]);
   const thin = actsOn.filter((r) => r.dominates.length < 2);
   thin.length === 0

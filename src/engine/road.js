@@ -113,6 +113,61 @@ export function stopPoint(spec, side, LANE, setback, lane = 0, CX = 360, CY = 36
   };
 }
 
+/* =====================================================================
+   THE CONTROLS, AS THINGS IN THE WORLD
+
+   A control used to be a string on a leg with no position, and the only
+   spatial fact the engine held about one was the stop line. The RENDERER
+   placed signs from its own four-entry table, board-relative and pinned
+   to the middle of the board — so a junction placed anywhere else in the
+   world drew its signs back at the origin, the same class of bug
+   exitPoint had.
+
+   Derived here instead, from the same geometry the stop line comes from,
+   and origin-aware. The renderer draws from this rather than keeping its
+   own copy, which removes the duplicate instead of adding a second.
+
+   It also makes a control something the candidate can FAIL TO REGISTER,
+   which is what the observation branch of the stop-fault split needs.
+   ===================================================================== */
+
+/* How far outside the carriageway a sign stands, and how big it is drawn.
+   THE SIZE IS THE DRAWN SIZE, NOT THE TRUE FACE. A real 0.75 m sign is
+   unreadable at this scale, so the game draws a map symbol — and the
+   scorer must never know something the screen did not show. If the
+   candidate's awareness used the true face while the player sees the
+   symbol, the two views of the world diverge, which is exactly what was
+   ruled out when the gaze cone came off. */
+export const SIGN_OUT = 1.4;
+export const SIGN_SIZE = 1.4;
+
+export function controlsOf(spec, LANE, setback, at = { x: 360, y: 360 }, M = (v) => v * 20) {
+  const out = [];
+  for (const side of SIDES) {
+    if (!hasLeg(spec, side)) continue;
+    const control = controlOf(spec, side);
+    if (control === "none") continue;
+    const leg = LEG[side];
+    /* Level with the stop line, at the roadside: the same reach the line
+       itself uses, pushed clear of the carriageway on the approaching
+       driver's side. */
+    const reach = stopReach(spec, side, LANE, setback);
+    const lateral = roadHalf(spec, leg.axis === "vert" ? "vert" : "horiz", LANE) + M(SIGN_OUT);
+    out.push({
+      id: `ctl-${side}`,
+      side,
+      kind: "control",
+      control,
+      x: at.x + leg.out.x * reach + leg.off.x * lateral,
+      y: at.y + leg.out.y * reach + leg.off.y * lateral,
+      rot: leg.rot,
+      hl: M(SIGN_SIZE) / 2,
+      hw: M(SIGN_SIZE) / 2,
+    });
+  }
+  return out;
+}
+
 /* Where a vehicle leaving by `side` goes: the outbound lane of that leg,
    run off the board. Outbound is the mirror of inbound — the other half
    of the same road. */

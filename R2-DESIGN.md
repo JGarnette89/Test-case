@@ -1226,3 +1226,93 @@ needs. With controls made perceivable (§13.4) the three-way split can be
 built as described: registered + smooth + wrong place is knowledge,
 registered + abrupt is braking, not registered in time is observation —
 and braking gets its dominant fault kinds back.
+
+---
+
+## 15. The three-way split lands, and density stops depending on vocabulary
+
+### 15.1 Controls are things in the world now
+
+`controlsOf` in `road.js` derives a positioned control per controlled leg
+from the same geometry the stop line comes from, origin-aware — and it
+reproduces the renderer's old four-entry table **exactly**, so the picture
+did not change while the duplicate went away.
+
+Both rulings applied. A sign uses its **drawn** size, because the scorer
+must never know something the screen did not show. And a control is
+occluded by walls and hedges but **never by vehicles**: the blocker set is
+the statics alone, checked at source, because a sign on a post is visible
+over a car and a flat occlusion model must not pretend otherwise.
+Measured: `unprotected`'s van genuinely hides one.
+
+### 15.2 The split, with both discriminators derived
+
+| registered the control | manner | cause |
+|---|---|---|
+| yes | smooth, wrong place | **knowledge** |
+| yes | abrupt | **braking** |
+| no / too late | either | **observation** |
+
+No rule table. The registration delay that separates observation from
+confidence for an encroachment does the same work here, and the approach
+rewrite supplies the other: `ABRUPT_AT` is **twice** the comfortable rate
+the geometry derives — 5.40 m/s² — so an ordinary stop is controlled by
+construction and anything at double it is unmistakably not. Measured
+either side: 2.70 against 8.10.
+
+**And how much time the candidate had to read the sign matters, without
+anybody coding it:**
+
+| time to the line | observation 1.00 | 0.50 | 0.00 |
+|---|---|---|---|
+| 1.0 s | 0% | 68% | **98%** |
+| 1.6 s | 0% | 5% | 73% |
+| 2.4 s | 0% | 0% | **30%** |
+
+A perfect observer never misses a control at any distance; a poor one
+misses it three times as often with a second less to read it. That falls
+out of the registration delay meeting a shorter approach.
+
+**Braking is back above the floor** with `harshStop` and `brakesTooLate`,
+both manner faults — which is what makes them braking where `overshoot`
+and `stopsShort` are knowledge.
+
+### 15.3 The measurement that changed direction
+
+Adding those two kinds took faults per junction to **2.0**, and the
+section implied by a 3–4 recall band to **1.5 junctions**. That is not a
+section, it is a junction.
+
+The cause was structural, not a number: `rollErrors` rolled **each
+available kind independently**, so the number of faults a candidate
+commits was a function of *how many kinds the game has vocabulary for*.
+
+> 1.11 per junction at seven kinds · 1.57 at ten · 2.0 at twelve
+
+**The fix was not a smaller `ERROR_SCALE`.** A driver's deficit decides
+how much they err; the vocabulary decides which way. So the roll is now
+**one per axis** they could fail on here, with the kind drawn from that
+axis weighted by likelihood.
+
+| | before | after |
+|---|---|---|
+| faults per junction | 2.0 | **1.00** |
+| implied section | 1.5–1.9 junctions | **3.0–4.0** |
+| axes per drive | — | 2.13 |
+
+Density is a property of the driver again, it holds still as R2 keeps
+adding content, and **"variety over volume" falls out by construction**:
+at most one fault per axis per junction, so a candidate weak on two axes
+shows at most two things and they are two *different* things.
+
+### 15.4 A check that had become vacuous
+
+`mustShow` and the planner's turn-steering no longer add identifiable
+habits, because persistence alone now reaches **24/25**. The assertion
+that they must improve on it was asserting something that cannot happen.
+
+They still add to **disconfirmation** — 149 rivals ruled out becomes 160 —
+which is the half that lets a player *test* a hypothesis rather than only
+form one. The check now measures the combined picture and reports the
+saturation, so if they stop earning their place there too it will show,
+and they should then be removed rather than kept as decoration.

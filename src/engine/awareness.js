@@ -34,11 +34,12 @@
 
    Pure. No React, no DOM, no colour.
    ===================================================================== */
-import { earliestClear, rng, poseAt, extentsFor, M, CX, CY, LANE } from "./index.js";
+import { earliestClear, rng, poseAt, extentsFor, approachDecelOf, M, CX, CY, LANE, SET } from "./index.js";
 import { REACTION_FLOOR } from "./score.js";
-import { whatEgoSees, sightBlockersOf, eyePoint, creepPose, segmentHitsBox } from "./sight.js";
+import { approachDecel } from "./paths.js";
+import { whatEgoSees, sightBlockersOf, eyePoint, creepPose, segmentHitsBox, visibility } from "./sight.js";
 import { deficitOf } from "./ratings.js";
-import { LEG, SIDES, hasLeg, specOf, laneOffset } from "./road.js";
+import { LEG, SIDES, hasLeg, specOf, laneOffset, controlsOf } from "./road.js";
 
 /* Nobody registers anything faster than they can react to it, so the
    floor is the engine's existing REACTION_FLOOR rather than a new
@@ -199,6 +200,41 @@ export function unseenShare(sim, scn, t, candidate = null) {
   return total ? blocked / total : 0;
 }
 
+/* THE CONTROLS ARE THINGS TO BE REGISTERED TOO, and until they were the
+   observation branch of the stop-fault split had nothing to work with:
+   "did not register the control in time" cannot be asked of a string on a
+   leg.
+
+   ELEVATED OBJECTS ARE NOT BLOCKED BY VEHICLES. A sign on a post at two
+   metres is visible straight over a car, and this engine's occlusion is
+   flat — so testing a sign against traffic would systematically claim it
+   hidden when a driver would plainly see it. Walls, hedges and buildings
+   do block it, and those are exactly what sightBlockersOf carries. So the
+   blocker set here is the statics alone, and that difference from road
+   users is the whole rule. */
+export function controlSightingsIn(sim, scn, { horizon = 16, candidate = null, dt = DT } = {}) {
+  const spec = specOf(scn);
+  const controls = controlsOf(spec, LANE, SET, scn.at ?? { x: CX, y: CY }, M);
+  const walls = sightBlockersOf(scn);
+  const steps = creepOf(candidate);
+  const out = {};
+  for (const c of controls) out[c.id] = { clearAt: null, onStageAt: 0, side: c.side, control: c.control };
+  if (!controls.length) return out;
+  for (let t = 0; t <= horizon; t += dt) {
+    const eye = eyePoint(creepPose(sim.ego, t, steps));
+    for (const c of controls) {
+      if (out[c.id].clearAt != null) continue;
+      if (visibility(eye, c, c, walls) === "clear") out[c.id].clearAt = t;
+    }
+  }
+  return out;
+}
+
+/* Which control governs this candidate's own approach — the one they were
+   required to read. */
+export const ownControlOf = (sim, sightings) =>
+  Object.values(sightings).find((c) => c.side === sim.ego.from) ?? null;
+
 /* ---------------------------------------------------------------------
    Layer 2: when this driver actually registered them
    --------------------------------------------------------------------- */
@@ -337,6 +373,53 @@ export function departureOnAwareness(sim, scn, candidate, seed = 1, opts = {}) {
     t = next;
   }
   return t;
+}
+
+/* ---------------------------------------------------------------------
+   Why was the stop wrong?  Three answers, both discriminators derived.
+   --------------------------------------------------------------------- */
+
+/* Where "controlled" stops and "abrupt" begins: twice the comfortable
+   rate the approach geometry derives. Not a number picked to separate the
+   traits that exist — an ordinary stop is at the comfortable rate by
+   construction, and anything at double it is unmistakably not ordinary.
+   Measured: a normal approach peaks at 2.70 m/s^2, harshStop at 8.10. */
+export const ABRUPT_AT = 2 * (approachDecel(M(11.5)) / M(1));
+
+/* THE MAINTAINER'S THREE-WAY SPLIT, and it needs no rule table because
+   both discriminators are quantities the model already holds:
+
+     registered the control, stopped smoothly, wrong place -> KNOWLEDGE
+     registered the control, stopped abruptly              -> BRAKING
+     did not register the control in time                  -> OBSERVATION
+
+   The registration delay that separates observation from confidence for
+   an encroachment does the same work here; the approach rewrite supplies
+   the second discriminator, because the manner of a stop is a number now.
+
+   "In time" means before they reached the line. A driver who only takes
+   in the sign as they arrive at it did not read it in time to act on it,
+   whatever they then did.
+
+   Meaningful only where a stop actually went wrong — this says WHICH axis
+   is answerable, not whether anybody is. */
+export function causeOfStop(sim, scn, candidate, seed = 1, opts = {}) {
+  const ego = sim.ego;
+  if (ego.stops === false) return null;
+  const arriveAt = ego.arriveAt ?? 0;
+
+  const controls = opts.controls ?? controlSightingsIn(sim, scn, { ...opts, candidate });
+  const own = ownControlOf(sim, controls);
+  /* No control on their leg, or one they could never see: neither is the
+     driver's failing. */
+  if (!own || own.clearAt == null) return "unsighted";
+
+  const registered = own.clearAt + registrationDelay(candidate, `ctl-${own.side}`, seed);
+  if (registered > arriveAt) return "observation";
+
+  let peak = 0;
+  for (let t = 0; t <= arriveAt; t += DT) peak = Math.max(peak, approachDecelOf(ego, t));
+  return peak >= ABRUPT_AT ? "braking" : "knowledge";
 }
 
 /* ---------------------------------------------------------------------
