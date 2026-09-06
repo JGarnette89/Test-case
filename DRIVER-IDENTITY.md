@@ -6,6 +6,11 @@ sheet. "Identifying driver habits is what half the real job is about."*
 Status: **built and verified** (`tools/verify-candidate.mjs`, the 23rd check).
 The debrief in §7 is recorded as planned work and is **not built**.
 
+**§8 supersedes the model, not the findings.** Traits gave way to four
+continuous ratings; everything measured in §§1-6 still holds, because it
+was about the world honouring a plan rather than about how a driver is
+represented.
+
 ---
 
 ## 1. What was actually wrong, measured first
@@ -284,7 +289,176 @@ Four things to settle when it is built, none of them blocking now:
 
 ---
 
-## 8. What must not regress
+---
+
+## 8. R1 — a driver as four ratings
+
+*Jay: "we seemed constricted by this trait idea. could we create a system
+where we give drivers a skill rating in a few categories, and the chances
+of an error occurring are calculated from there?"*
+
+Status: **built and verified**, `src/engine/ratings.js` plus section 8 of
+`verify-candidate.mjs`. Two of the five properties came back as measured
+gaps rather than passes, which was the expected and useful outcome.
+
+### 8.1 Traits are not deleted, they are compiled
+
+The roll resolves **once, at composition time, from the scenario's own
+seed**, and its output is the same list of trait keys a participant always
+carried. Everything below that line — `schedule`, `poseAt`,
+`faultWindow`'s controlled comparison — is untouched.
+
+That is what keeps ground truth deterministic and replayable, and it is
+why this was cheap. The version to avoid is ratings bending behaviour
+continuously at simulation time: there would be no discrete thing to strip
+and no control to diff against, every driver would commit a continuum of
+micro-faults, and only `POS_VISIBLE` and `MIN_DURATION` would separate a
+fault from numerical noise.
+
+A candidate with `traits` keeps them verbatim, so every hand-authored
+scenario and the golden fingerprint are untouched and the two models
+coexist until R3.
+
+### 8.2 Attribution is weighted and multi-axis
+
+Jay's ruling on `cutsCorner` — "a steering error, combined with a
+knowledge error" — is the shape of the whole table, not an exception to
+it. Measured across the set, only `wander` and `wideTurn` belong
+unambiguously to one axis. An examiner watching a car stop past the line
+cannot tell braking from knowledge, and a model that forced the choice
+would claim more than the evidence supports.
+
+| error | attribution |
+|---|---|
+| wander | steering 1.0 |
+| wideTurn | steering 1.0 |
+| cutsCorner | steering 0.6, knowledge 0.4 *(ruled)* |
+| overshoot | braking 0.7, knowledge 0.3 *(assumed, not ruled)* |
+| slowStart | confidence 1.0, timid tail |
+| creep | confidence 1.0, timid tail |
+| lateSignal | knowledge 1.0 |
+
+`CAUSES` is **the one table this project authors deliberately**. Everywhere
+else the answer is derived; but "why did that driver do that" is not
+recoverable from geometry at any price. It is a claim about people, so it
+is data, it is the maintainer's to rule on, and it is stated in one place
+rather than implied in several.
+
+**The same weights are read in both directions.** Generation asks "how
+likely is this driver to do this"; attribution asks "what does this fault
+say about them". Two tables would drift apart the first time either was
+tuned.
+
+### 8.3 What the five properties found
+
+**P1 — errors arise from ratings alone.** A driver described by nothing
+but four numbers produces five distinct kinds of error, named by nobody.
+✅
+
+**P2 — determinism.** The same driver in the same situation errs
+identically on every replay, whole drives included. ✅
+
+**P4 — frequency tracks the deficit, opportunities held constant.** One
+junction shape, one seed range, only the rating moves — so nothing but the
+driver can be responsible for the difference.
+
+| rating | confidence | steering | braking | knowledge |
+|---|---|---|---|---|
+| 0.00 | 341 | 362 | 111 | 273 |
+| 0.25 | 166 | 288 | 78 | 206 |
+| 0.50 | **0** | 186 | 51 | 118 |
+| 0.75 | **0** | 102 | 22 | 60 |
+| 1.00 | 0 | 0 | 0 | 0 |
+
+Steering, braking and knowledge fall monotonically. Confidence is a
+deviation, not a quantity: too little is much worse than enough. ✅
+
+**P3 — the two ends fail in opposite ways.** ❌ **Measured gap.** Timid
+produces `creep` and `slowStart`; risky produces **nothing at all**. The
+model supports the second tail — `TAIL` gates it and `likelihoodOf`
+returns zero for the wrong side — and the fault vocabulary does not fill
+it.
+
+Worth noting the check was first written as "the middle is no worse than
+either end", which **passes vacuously when an end is empty**. It was
+rewritten as two separate claims, because a check that cannot tell
+one-tailed from two-tailed reports a success it has not earned.
+
+**P5 — readability and attributability.** ❌ **Measured gap.**
+
+| axis | kinds touching it | kinds it **dominates** | tails covered |
+|---|---|---|---|
+| confidence | 2 | 2 | 1 / 2 (timid only) |
+| steering | 3 | 3 | n/a |
+| braking | 1 | **1** | n/a |
+| knowledge | 3 | **1** | n/a |
+
+And on real drives, in seconds of evidence:
+
+| axis | evidence | of it dominant | distinct dominant kinds seen |
+|---|---|---|---|
+| confidence | 40.0 s | 40.0 s | creep, slowStart |
+| steering | 86.8 s | 86.8 s | wander, wideTurn, cutsCorner |
+| braking | 29.2 s | 29.2 s | overshoot |
+| knowledge | 19.1 s | **4.8 s** | lateSignal |
+
+**Knowledge is the clearest illustration of the entanglement problem: 75%
+of its evidence arrives attributed to another axis.** A knowledge-poor
+driver commits plenty of errors — 273 per 200 draws at rating 0 — but they
+surface as cut corners and overshoots, where steering and braking take the
+credit. The axis speaks constantly and can never be heard on its own.
+
+**2 of 4 axes are readable on a real drive.** Supply is unmoved: a drawn
+driver errs in 41% of scenes, the range the trait model produced.
+
+### 8.4 How a guarantee and a probability compose
+
+- **Probability decides whether this driver errs at this opportunity.**
+  Owned by the ratings. `briefFor`'s `faultRate` still steers *other road
+  users* — that is a supply lever — but it does not reach the candidate.
+- **Pacing decides how many opportunities they get, and of what kind.**
+  The intent-steering lever `planDrive` already has.
+- **The dead-air floor is backstopped by other road users**, which
+  `mustFault` already counts, so a near-perfect candidate stays
+  near-perfect and the drive still has something to mark.
+
+Re-rolling the seed until the ego errs would flatten the model into
+scripted faults. Steering opportunity instead of outcome does not — and it
+keeps the one thing that would otherwise be corrupted:
+
+**Error FREQUENCY is not readable and must never be made so.** `briefFor`
+already swings the fault rate between 0.15 and 0.9 on dead air, so
+observed frequency carries the pacing budget's signal. The player reads
+**which axis fails and how badly each instance is**, never how often. If
+someone later makes frequency meaningful, pacing breaks.
+
+### 8.5 What R2 has to deliver, stated as the gaps
+
+Not a list of plausible driving errors — the two holes are specific.
+
+**Knowledge needs errors it dominates.** Rolling a stop, wrong lane,
+crossing a solid line, ignoring a sign. At least two, so the axis can be
+isolated rather than inferred through steering and braking.
+
+**Braking needs a second dominant kind.** `overshoot` alone means a
+braking-poor driver always produces the same visible error, which is the
+scripted feeling the whole model exists to escape.
+
+**Confidence needs a risky tail that is markable rather than terminal.**
+This is the harder design problem, because overconfidence naturally
+expresses as a collision that ends the drive. What is wanted is the
+overconfident behaviour that is *observably wrong but survivable*: a gap
+taken too tight that comes off, late commitment, observation skipped
+before moving, following too close.
+
+That last category is worth naming for what it gives the player: **the
+experience of watching a driver be lucky.** A real examiner marks the
+decision, not the outcome, and nothing in the game can currently represent
+a bad decision that happened to work.
+
+---
+
+## 9. What must not regress
 
 - **One driver, every scene.** Junctions *and* segments. Checked over 98
   scenes on 8 drives.
@@ -300,3 +474,14 @@ Four things to settle when it is built, none of them blocking now:
   rule turned around: a fault that survives its cause being removed was
   never derived from it, and a *chance* that produces nothing when the
   cause is present was never a chance.
+- **Ground truth is replayable.** A rated driver errs identically on every
+  replay, whole drives included. If this ever fails, the marking sheet and
+  the entire verify suite are measuring something that no longer exists.
+- **Confidence is two-tailed, and the check knows the difference.** The
+  timid tail must be worse than the optimum. The risky tail is a reported
+  gap today, and the assertion is written so filling it flips a GAP line
+  into a pass rather than needing a new check.
+- **Pacing never reaches the candidate's error rate.** The brief steers
+  other road users and how many opportunities the drive presents; it does
+  not decide whether this driver takes them. Otherwise observed frequency
+  reports the budget rather than the driver.

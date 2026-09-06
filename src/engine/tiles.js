@@ -555,7 +555,9 @@ export function composeForTile(tile, sinceLastEvent, seed, opts = {}) {
      SAME driver at every junction -- before this the composer invented a
      flawless ego of its own and re-decided the turn, and the plan's
      (entry, intent) survived 9 times in 120. */
-  const ego = candidate ? egoFor(candidate, { from: at?.from, intent: at?.intent }) : null;
+  /* The scene's own seed compiles the driver's errors, so the same
+     candidate at the same junction errs identically on every replay. */
+  const ego = candidate ? egoFor(candidate, { from: at?.from, intent: at?.intent, seed }) : null;
   const place = at ? { from: at.from, intent: at.intent } : null;
   const driver = ego || place ? { ...(ego || {}), ...(place || {}) } : null;
 
@@ -652,7 +654,7 @@ export function hazardAt(tile, link, person, { candidate = null, seed = 1 } = {}
        whatever traits its caller felt like handing it, which made the
        candidate two different people on one drive. */
     ego: {
-      ...egoFor(candidate, { from: "S", intent: "straight", arriveAt: 0, stops: false }),
+      ...egoFor(candidate, { from: "S", intent: "straight", arriveAt: 0, stops: false, seed }),
       departAt: 0,
     },
     actors: [{

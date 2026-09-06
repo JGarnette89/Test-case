@@ -30,6 +30,7 @@
 import { TRAIT_KEYS, rng } from "./index.js";
 import { faultsIn } from "./faults.js";
 import { crossSpec } from "./road.js";
+import { rollErrors, likelihoodOf } from "./ratings.js";
 
 /* How many showings before a tendency reads as a tendency.
 
@@ -122,12 +123,32 @@ export function composeCandidate(seed = 1, { pool = TRAIT_KEYS, forceTraits = nu
   return { id, traits, skill: 1 };
 }
 
+/* What this driver will carry through THIS scene.
+
+   A candidate defined by ratings has their errors compiled here, once,
+   from the scenario's own seed — so the same driver in the same situation
+   produces the same faults on every replay, which is what the marking
+   sheet's ground truth and the whole verify suite depend on. A candidate
+   defined by traits keeps them verbatim, so every hand-authored scenario
+   and the golden fingerprint are untouched and the two models coexist.
+
+   `prior` is taken to follow `stops`: a driver who stops at a junction
+   generally has somebody to be held by, and one rolling down a segment
+   does not. It is the same assumption the planner makes, and the compiler
+   only PROPOSES — a fault it proposes that the scene has no room for
+   simply never derives. */
+export function traitsForScene(candidate, { intent = "straight", stops = true, seed = 1 } = {}) {
+  if (!candidate?.ratings) return [...(candidate?.traits || [])];
+  const available = chancesAt(shapeOf({ stops, intent, prior: stops }));
+  return rollErrors(candidate.ratings, available, seed, { allow: compatibleWith });
+}
+
 /* The candidate as a participant. Everything the engine needs to drive
    them lives here, so a junction and a segment ask for the SAME driver
    rather than each inventing one — which is what they did before, one by
    composing a flawless ego and the other by taking traits from whoever
    called it. */
-export function egoFor(candidate, { from, intent, arriveAt = 1.6, stops = true, lane = 0 } = {}) {
+export function egoFor(candidate, { from, intent, arriveAt = 1.6, stops = true, lane = 0, seed = 1 } = {}) {
   return {
     from,
     intent,
@@ -135,7 +156,7 @@ export function egoFor(candidate, { from, intent, arriveAt = 1.6, stops = true, 
     stops,
     lane,
     colorKey: "blue",
-    traits: [...(candidate?.traits || [])],
+    traits: traitsForScene(candidate, { intent, stops, seed }),
     ...(candidate?.skill !== undefined && candidate.skill !== 1 ? { skill: candidate.skill } : {}),
     /* A driver signals their own intent. Without one there is no
        indicator for lateSignal to be late with — measured: the trait was
@@ -292,9 +313,21 @@ export function habitReport(candidate, scenes) {
 export function valueOfShape(candidate, shape, sofar = {}) {
   let v = 0;
   for (const t of chancesAt(shape)) {
-    if ((candidate?.traits || []).includes(t)) {
-      const have = sofar[t] || 0;
-      v += have >= SHOWINGS_FOR_A_HABIT ? 0.1 : SHOWINGS_FOR_A_HABIT - have;
+    const have = sofar[t] || 0;
+    const room = have >= SHOWINGS_FOR_A_HABIT ? 0.1 : SHOWINGS_FOR_A_HABIT - have;
+    if (candidate?.ratings) {
+      /* Under ratings nothing is certain, so a shape is worth what this
+         driver is LIKELY to do with it. A junction offering three errors
+         they are each 20% likely to make is worth about as much as one
+         offering a single error they are 60% likely to make, which is the
+         right trade for a planner with one turn to spend.
+
+         Still keyed by error rather than by axis: making an axis readable
+         needs two distinct kinds of error it dominates, and steering for
+         that is only worth doing once those kinds exist. R2. */
+      v += likelihoodOf(t, candidate.ratings) * room + 0.05;
+    } else if ((candidate?.traits || []).includes(t)) {
+      v += room;
     } else {
       v += 0.25;
     }

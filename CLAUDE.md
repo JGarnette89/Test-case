@@ -496,6 +496,59 @@ past a line that was not there. Both are now guarded on `p.stops`, the same
 rule `cutsCorner` already lived under. It removed real supply and the supply
 was false: 17 non-stopping actors in 114 composed scenes were carrying one.
 
+### A driver is four ratings, and traits are what they compile to
+
+**CONFIDENCE, STEERING, BRAKING, KNOWLEDGE** (`ratings.js`). A rating is a
+standing disposition by construction, so identity stops being bolted onto
+the scenario model and becomes the model — and habits emerge instead of
+being scripted, because a weak axis produces the same kind of error again
+and again across situations that look nothing alike.
+
+**Traits are not deleted, they are COMPILED.** The roll resolves once, at
+composition time, from the scenario's own seed, and its output is the same
+trait list a participant always carried — so `schedule`, `poseAt` and
+`faultWindow`'s controlled comparison are untouched, and ground truth
+stays deterministic and replayable. A candidate carrying `traits` instead
+of `ratings` keeps them verbatim, which is why every hand-authored
+scenario and the golden are unmoved. Never resolve the roll at simulation
+or render time: there would be no discrete thing to strip, no control to
+diff against, and only `POS_VISIBLE`/`MIN_DURATION` separating a fault
+from numerical noise.
+
+**Confidence is two-tailed; the other three are monotonic.** Too little
+gives hesitation and refused gaps, too much gives tight gaps and skipped
+observation, and there is no such thing as steering too well. So
+confidence is held as a POSITION with an optimum and measured as deviation
+from it. Two candidates can then fail in opposite directions on one axis,
+which no monotonic rating can express.
+
+**`CAUSES` is the one table this project authors on purpose.** Attribution
+is weighted and multi-axis — `cutsCorner` is the maintainer's ruling,
+"a steering error combined with a knowledge error" — because measured
+across the set only `wander` and `wideTurn` belong unambiguously to one
+axis. Everywhere else the answer is derived, but "why did that driver do
+that" is not recoverable from geometry at any price: it is a claim about
+people, so it is data and it is the maintainer's. The same weights are
+read in both directions, generation and attribution, because two tables
+would drift the first time either was tuned.
+
+**An axis is only readable through errors it DOMINATES.** Entangled
+evidence does not accumulate into an inference. Measured: knowledge has
+19.1s of evidence per drive of which only 4.8s is dominant, so it speaks
+constantly through cut corners and overshoots and can never be heard on
+its own. Braking and knowledge each dominate ONE kind of error, and
+confidence has no risky-tail error at all — three measured content gaps,
+reported by `verify-candidate.mjs` rather than left as a worry, and they
+are what R2 exists to fill.
+
+**Error FREQUENCY is not readable and must never be made so.** `briefFor`
+swings the fault rate between 0.15 and 0.9 on dead air, so frequency
+carries the pacing budget's signal, not the driver's. Pacing owns how many
+opportunities a drive presents; the ratings own whether this driver takes
+them, and the dead-air floor is backstopped by other road users through
+`mustFault`. A player reads WHICH axis fails and how bad each instance is,
+never how often.
+
 Design, findings and the debrief roadmap: `DRIVER-IDENTITY.md`.
 
 ### Still open — and three of these are the maintainer's
@@ -569,6 +622,7 @@ src/engine/paths.js      path shapes — line, curve, polyline — and no road a
 src/engine/sight.js      what the driver can see, the examiner's cone, and what creeping costs
 src/engine/faults.js     what the candidate did wrong, derived by controlled comparison
 src/engine/candidate.js  one driver across a whole drive, and where each habit can show
+src/engine/ratings.js    a driver as four axes, and the errors that follow from them
 src/engine/directions.js the instruction you give, and what stacking them costs
 src/engine/belief.js     where you think the traffic is once you stop looking
 src/engine/detect.js     grading the examiner on what they caught and invented
@@ -639,6 +693,10 @@ and then asks the engine what they mean.
 a situation, a drive, or a trait must be a data entry, not a new component.
 
 **There are two unrelated things called "traits". Know which one you are in.**
+(And a third relationship: a DRIVER trait is now mostly the compiled output
+of `ratings.js`, not something hand-assigned. Hand-assigned driver traits
+survive in `scenarios.js` and `bosses.js` and are not going anywhere until
+every axis can manifest.)
 
 - **Driver traits** — `TRAITS` in `src/engine/index.js`. How an NPC actually
   drives. They belong to a car in a scenario.

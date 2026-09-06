@@ -1,0 +1,275 @@
+/* =====================================================================
+   THE FOUR AXES — a driver as ratings, and errors derived from them
+
+   A trait said WHAT a driver does wrong. A rating says what they are
+   BAD AT, and which errors follow is worked out from that. The difference
+   matters for the game rather than for tidiness: a rating is a standing
+   disposition by construction, so identity stops being bolted onto the
+   scenario model and becomes the model. Habits emerge instead of being
+   scripted — a weak braking rating produces late braking again and again,
+   across situations that look nothing alike, which is precisely the
+   recurrence a player needs to form a hypothesis and then test it.
+
+   TRAITS ARE NOT DELETED, THEY ARE COMPILED. The roll is resolved once,
+   at composition time, from the scenario's own seed, and its output is
+   the same list of trait keys a participant always carried. Everything
+   below that line — schedule, poseAt, faultWindow's controlled comparison
+   — is untouched. That is what keeps ground truth deterministic and
+   replayable, and it is the whole reason this is cheap.
+
+   The alternative, ratings bending behaviour continuously at simulation
+   time, is the version to avoid: there would be no discrete thing to
+   strip and no control to diff against, every driver would commit a
+   continuum of micro-faults, and only POS_VISIBLE and MIN_DURATION would
+   separate a fault from numerical noise.
+
+   Pure. No React, no DOM, no colour.
+   ===================================================================== */
+import { TRAIT_KEYS, rng } from "./index.js";
+
+export const AXES = ["confidence", "steering", "braking", "knowledge"];
+
+/* Confidence is TWO-TAILED and the other three are not, which is the
+   thing that makes a driver read as a person rather than a set of
+   sliders. Too little produces hesitation, refused gaps and over-cautious
+   creeping; too much produces gaps taken too tight, late commitment and
+   observation skipped. Steering, braking and knowledge are monotonic —
+   more is simply better, and there is no such thing as steering too well.
+
+   So confidence is held as a POSITION with an optimum in the middle and
+   measured as deviation from it, never as a quantity. Two candidates can
+   then fail in opposite directions on one axis, which no monotonic rating
+   can express and which two separate traits could only fake. */
+export const CONFIDENT_ENOUGH = 0.5;
+
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+/* How far off the mark this driver is on one axis, and — for confidence
+   only — which side they are off on. `tail` is -1 timid, +1 risky, 0 for
+   an axis that has no sides. */
+export function deficitOf(ratings, axis) {
+  const v = ratings?.[axis];
+  if (v === undefined || v === null) return { deficit: 0, tail: 0 };
+  if (axis !== "confidence") return { deficit: clamp01(1 - v), tail: 0 };
+  const off = v - CONFIDENT_ENOUGH;
+  const span = off < 0 ? CONFIDENT_ENOUGH : 1 - CONFIDENT_ENOUGH;
+  return {
+    deficit: span > 0 ? clamp01(Math.abs(off) / span) : 0,
+    tail: off < 0 ? -1 : off > 0 ? 1 : 0,
+  };
+}
+
+/* ---------------------------------------------------------------------
+   What causes what
+   --------------------------------------------------------------------- */
+
+/* THE ONE TABLE THIS FILE IS ALLOWED TO AUTHOR, and it is worth being
+   explicit about why. Everywhere else the project refuses to write the
+   answer down: a window is simulated, a fault is derived by controlled
+   comparison, where a habit can show is asked of faultsIn rather than
+   listed. But "why did that driver do that" is not recoverable from
+   geometry at any price. It is a claim about people, so it is data, it is
+   the maintainer's to rule on, and it is stated in one place rather than
+   implied in several.
+
+   WEIGHTED AND MULTI-AXIS, not one owner per fault. Measured across the
+   set: only wander and wideTurn belong unambiguously to a single axis.
+   An examiner watching a car stop past the line cannot tell braking from
+   knowledge, and a model that forced the choice would be claiming more
+   than the evidence supports. cutsCorner is the maintainer's own ruling —
+   "a steering error, combined with a knowledge error" — and the shape of
+   that ruling is why the whole table is a distribution.
+
+   The same weights are read in both directions, deliberately. Generation
+   asks "how likely is this driver to do this", attribution asks "what
+   does this fault say about them". Two tables would drift apart the first
+   time either was tuned. */
+export const CAUSES = {
+  wander: { steering: 1 },
+  wideTurn: { steering: 1 },
+  /* Maintainer's ruling: steering combined with knowledge. You placed the
+     car badly AND you did not know how far into the junction a left is
+     supposed to go. */
+  cutsCorner: { steering: 0.6, knowledge: 0.4 },
+  /* Not ruled on. Primarily control — you braked too late — with a
+     knowledge component, since the line is where it is for a reason.
+     Flagged rather than assumed silently. */
+  overshoot: { braking: 0.7, knowledge: 0.3 },
+  slowStart: { confidence: 1 },
+  creep: { confidence: 1 },
+  lateSignal: { knowledge: 1 },
+};
+
+/* Which tail of confidence a fault belongs to, where it has one. Every
+   confidence fault the game can currently derive is on the TIMID side;
+   there is no risky-tail fault at all, which is measured rather than
+   assumed and is the largest content gap in the model. See
+   verify-candidate.mjs section 8. */
+export const TAIL = { slowStart: -1, creep: -1 };
+
+/* How much of a fault each axis is answerable for, normalised. This is
+   what a debrief reads: not "they cut a corner" but "0.6 of that was
+   steering and 0.4 was not knowing where the corner is". */
+export function attributionOf(kind) {
+  const w = CAUSES[kind];
+  if (!w) return {};
+  const total = Object.values(w).reduce((a, b) => a + b, 0) || 1;
+  const out = {};
+  for (const [axis, weight] of Object.entries(w)) out[axis] = weight / total;
+  return out;
+}
+
+/* The axis a fault is mostly about. An axis becomes ATTRIBUTABLE only
+   through faults it dominates: if knowledge never appears except as a
+   junior partner to steering or braking, every knowledge signal arrives
+   entangled and the player can never isolate it, however many faults
+   touch the axis. */
+export function dominantAxis(kind) {
+  const a = attributionOf(kind);
+  let best = null, top = 0;
+  for (const [axis, share] of Object.entries(a)) if (share > top) { top = share; best = axis; }
+  return best;
+}
+
+/* How likely this driver is to commit this error, 0..1, before any
+   situation is considered. A fault draws on the axes that cause it, in
+   proportion — so a driver weak at braking and fine on the rules is
+   fairly likely to overshoot, and one weak at both is likelier still. */
+export function likelihoodOf(kind, ratings) {
+  const w = CAUSES[kind];
+  if (!w) return 0;
+  const need = TAIL[kind];
+  let sum = 0, total = 0;
+  for (const [axis, weight] of Object.entries(w)) {
+    const { deficit, tail } = deficitOf(ratings, axis);
+    /* A timid driver does not commit a risky driver's errors, and the
+       reverse. Being off the optimum in the wrong direction is not a
+       weaker version of this fault, it is a different fault. */
+    if (need && axis === "confidence" && tail !== need) return 0;
+    sum += weight * deficit;
+    total += weight;
+  }
+  return total ? sum / total : 0;
+}
+
+/* ---------------------------------------------------------------------
+   The compiler
+   --------------------------------------------------------------------- */
+
+/* How readily a full deficit becomes an actual error. A driver rated 0 on
+   an axis is not certain to err at every single opportunity — real bad
+   drivers get away with things — so this is under 1 on purpose. It is a
+   rate, calibrated against what the trait model produced so the world's
+   supply does not move underneath the change, and measured rather than
+   asserted in verify-candidate.mjs. */
+export const ERROR_SCALE = 0.85;
+
+/* Ratings plus a situation plus a seed, in; the trait keys the candidate
+   will carry through that scene, out. Pure, total, and resolved ONCE at
+   composition time — never at simulation or render time, or the marking
+   sheet's ground truth would materialise differently on a re-run and take
+   the scoring and the whole verify suite with it.
+
+   `available` is what this situation could show at all, which the caller
+   derives (chancesAt). Rolling only against those means the compiler
+   never proposes an error the junction has no room for; the engine still
+   has the last word on whether what it proposed actually shows. The
+   compiler proposes, faultsIn disposes.
+
+   PACING DELIBERATELY DOES NOT REACH IN HERE. The brief's faultRate still
+   steers other road users, because that is a supply lever. The candidate's
+   own error rate belongs to the candidate, or observed frequency would be
+   reporting the pacing budget rather than the driver — and then a player
+   who counted errors would be reading the wrong thing. Pacing steers how
+   many opportunities the drive presents; it never steers whether this
+   driver takes them. */
+export function rollErrors(ratings, available, seed, { scale = ERROR_SCALE, allow = null } = {}) {
+  const r = rng(seed);
+  const out = [];
+  for (const kind of available) {
+    const p = likelihoodOf(kind, ratings) * scale;
+    if (r() < p && (!allow || allow(out, kind))) out.push(kind);
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------
+   Drawing a driver
+   --------------------------------------------------------------------- */
+
+/* Competent by default, weak somewhere often enough to be worth watching.
+   Monotonic axes sit near 1 with a squared tail toward the bad end, so
+   most drivers are fine at most things and a real deficit is a minority
+   event rather than the norm. Confidence sits near its optimum and errs
+   both ways.
+
+   How many drivers end up with a readable weakness is MEASURED, not set:
+   the trait model had an explicit CLEAN_SHARE knob, and here the same
+   property has to fall out of the distribution instead. */
+export const WEAK_TAIL = 0.75;
+export const CONFIDENCE_SPREAD = 0.9;
+
+export function composeDriver(seed = 1) {
+  const r = rng(seed);
+  const ratings = {};
+  for (const axis of AXES) {
+    if (axis === "confidence") {
+      const off = (r() - 0.5) * CONFIDENCE_SPREAD;
+      ratings[axis] = clamp01(CONFIDENT_ENOUGH + off);
+    } else {
+      ratings[axis] = clamp01(1 - Math.pow(r(), 2) * WEAK_TAIL);
+    }
+  }
+  return { id: `drv-${seed >>> 0}`, ratings, skill: 1 };
+}
+
+/* What a drive's faults said about the driver, per axis: evidence weight,
+   how much of it came from faults the axis DOMINATES, and how many
+   distinct kinds of error it spoke through.
+
+   The last two are the ones that decide whether a player could ever have
+   read the axis. Entangled evidence does not accumulate into an
+   inference — an axis needs faults where it is the primary cause, and at
+   least two distinct kinds of them, or every signal it sends arrives
+   wearing another axis's clothes. */
+export function axisEvidence(faults) {
+  const rows = {};
+  for (const a of AXES) rows[a] = { axis: a, weight: 0, dominant: 0, kinds: new Set(), dominantKinds: new Set() };
+  for (const f of faults) {
+    const share = attributionOf(f.trait);
+    const boss = dominantAxis(f.trait);
+    for (const [axis, s] of Object.entries(share)) {
+      if (!rows[axis]) continue;
+      rows[axis].weight += s * (f.duration ?? 1);
+      rows[axis].kinds.add(f.trait);
+      if (axis === boss) {
+        rows[axis].dominant += s * (f.duration ?? 1);
+        rows[axis].dominantKinds.add(f.trait);
+      }
+    }
+  }
+  return AXES.map((a) => ({
+    ...rows[a],
+    kinds: [...rows[a].kinds],
+    dominantKinds: [...rows[a].dominantKinds],
+  }));
+}
+
+/* Which errors exist for each axis at all, ignoring any driver or any
+   situation. A standing property of the fault vocabulary rather than of a
+   drive, and the thing R2's content work has to move. */
+export function vocabularyByAxis() {
+  const rows = {};
+  for (const a of AXES) rows[a] = { axis: a, kinds: [], dominates: [], tails: new Set() };
+  for (const kind of TRAIT_KEYS) {
+    const share = attributionOf(kind);
+    const boss = dominantAxis(kind);
+    for (const axis of Object.keys(share)) {
+      if (!rows[axis]) continue;
+      rows[axis].kinds.push(kind);
+      if (axis === boss) rows[axis].dominates.push(kind);
+    }
+    if (TAIL[kind] && rows.confidence) rows.confidence.tails.add(TAIL[kind]);
+  }
+  return AXES.map((a) => ({ ...rows[a], tails: [...rows[a].tails] }));
+}

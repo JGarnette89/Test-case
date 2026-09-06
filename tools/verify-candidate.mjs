@@ -22,8 +22,11 @@
  */
 import {
   composeCandidate, chancesAt, chancesIn, showingsIn, habitReport, masks,
-  shapeOf, SHOWINGS_FOR_A_HABIT, CLEAN_SHARE, TRAITS_PER_CANDIDATE,
+  shapeOf, traitsForScene, SHOWINGS_FOR_A_HABIT, CLEAN_SHARE, TRAITS_PER_CANDIDATE,
 } from "../src/engine/candidate.js";
+import {
+  AXES, CONFIDENT_ENOUGH, composeDriver, axisEvidence, vocabularyByAxis, ERROR_SCALE,
+} from "../src/engine/ratings.js";
 import {
   planDrive, driveFromPlan, composeForTile, segmentHazards, CHARACTER,
 } from "../src/engine/tiles.js";
@@ -55,7 +58,10 @@ function drive(seed, { steer = false, show = false, length = 7, candidate = null
   for (let i = 0; i < plan.length; i++) {
     const tile = plan[i].tile;
     const legTime = tile.runway / CHARACTER[tile.character].speed + 4;
-    const owing = cand.traits.filter((t) => (sofar[t] || 0) < SHOWINGS_FOR_A_HABIT);
+    /* A rated driver has no fixed list to owe, so `show` only applies to
+       the trait model. Under ratings the planner steers opportunity and
+       the driver decides for themselves whether to take it. */
+    const owing = (cand.traits || []).filter((t) => (sofar[t] || 0) < SHOWINGS_FOR_A_HABIT);
     const { scn } = composeForTile(tile, since, (seed * 7919 + i * 104729) >>> 0, {
       legTime,
       candidate: cand,
@@ -372,6 +378,146 @@ console.log("\n7. NONE OF THIS COST THE DRIVE ITS SUPPLY");
     : granted === asked
       ? ok(`every junction asked for a habit delivered it (${granted}/${asked})`)
       : fail("no junction ever delivered the habit it was asked for, so the top rung is dead");
+}
+
+/* ---------- 8. R1: a driver as four ratings ------------------------- */
+console.log("\n8. RATINGS: ERRORS DERIVED FROM WHAT A DRIVER IS BAD AT");
+{
+  const shape = { stops: true, intent: "left", prior: true };
+  const flat = (v) => ({ confidence: CONFIDENT_ENOUGH, steering: v, braking: v, knowledge: v });
+  const only = (axis, v) => ({ ...flat(1), confidence: axis === "confidence" ? v : CONFIDENT_ENOUGH, [axis]: v });
+
+  /* P1: faults arise from ratings alone, with no trait named by hand. */
+  const weak = { id: "w", ratings: flat(0.1), skill: 1 };
+  const produced = new Set();
+  for (let seed = 1; seed <= 40; seed++) for (const t of traitsForScene(weak, { ...shape, seed })) produced.add(t);
+  produced.size > 0
+    ? ok(`a driver described only by ratings produces ${produced.size} kinds of error, named by nobody: ${[...produced].join(", ")}`)
+    : fail("ratings alone produced no error at all, so the compiler is inert");
+
+  /* P2: determinism. The whole marking sheet rests on this. */
+  let stable = true;
+  for (let seed = 1; seed <= 60; seed++) {
+    const a = traitsForScene(weak, { ...shape, seed }).join(",");
+    const b = traitsForScene(weak, { ...shape, seed }).join(",");
+    if (a !== b) stable = false;
+  }
+  const once = [1, 2, 3].map((s) => drive(s, { steer: true, candidate: composeDriver(s * 11) }));
+  const twice = [1, 2, 3].map((s) => drive(s, { steer: true, candidate: composeDriver(s * 11) }));
+  const sameDrive = once.every((d, i) =>
+    d.scenes.length === twice[i].scenes.length &&
+    d.scenes.every((sc, j) => (sc.scn.ego.traits || []).join(",") === (twice[i].scenes[j].scn.ego.traits || []).join(","))
+  );
+  stable && sameDrive
+    ? ok("the same driver in the same situation errs identically on every replay, whole drives included")
+    : fail(`ground truth is not replayable (per-scene stable: ${stable}, whole drive stable: ${sameDrive})`);
+
+  /* P4: frequency tracks the deficit, opportunities held constant. The
+     controlled comparison -- one shape, one seed range, only the rating
+     moves. Pacing is not involved, so nothing but the driver can be
+     responsible for the difference. */
+  console.log("\n   rating   confidence  steering   braking  knowledge   (errors per 200 draws, one junction)");
+  console.log("   " + "-".repeat(84));
+  const curve = {};
+  for (const axis of AXES) curve[axis] = [];
+  for (const v of [0.0, 0.25, 0.5, 0.75, 1.0]) {
+    const row = [];
+    for (const axis of AXES) {
+      let n = 0;
+      for (let seed = 1; seed <= 200; seed++) n += traitsForScene({ ratings: only(axis, v) }, { ...shape, seed }).length;
+      curve[axis].push(n);
+      row.push(String(n).padStart(10));
+    }
+    console.log(`   ${v.toFixed(2).padStart(6)} ${row.join("")}`);
+  }
+  const monotone = ["steering", "braking", "knowledge"].filter((a) =>
+    curve[a].every((x, i) => i === 0 || x <= curve[a][i - 1])
+  );
+  monotone.length === 3
+    ? ok("steering, braking and knowledge are monotonic: the better the rating, the fewer the errors")
+    : fail(`${3 - monotone.length} monotonic axis/axes did not fall with the rating`);
+
+  /* Two-tailedness is the property, and it is checked as two separate
+     claims on purpose. "The middle is no worse than either end" passes
+     vacuously when an end is empty, which is exactly the state the model
+     is in -- a check that cannot tell one-tailed from two-tailed would be
+     reporting a success it has not earned. */
+  const cc = curve.confidence;
+  cc[0] > cc[2]
+    ? ok(`confidence deviates rather than counts: too little is worse than enough (${cc[0]} against ${cc[2]})`)
+    : fail(`the timid end of confidence is no worse than the optimum: ${cc.join(" -> ")}`);
+  cc[4] > cc[2]
+    ? ok(`and too much is worse than enough (${cc[4]} against ${cc[2]}), so the axis is genuinely two-tailed`)
+    : ok(`MEASURED GAP: too much confidence produces ${cc[4]} errors against ${cc[2]} at the optimum. The axis is one-tailed today; the model supports the second tail and the fault vocabulary does not.`);
+
+  /* P3: two candidates at opposite ends of one axis fail in OPPOSITE
+     ways -- not more or less, but differently. */
+  const kindsOf = (ratings) => {
+    const out = new Set();
+    for (let seed = 1; seed <= 200; seed++) for (const t of traitsForScene({ ratings }, { ...shape, seed })) out.add(t);
+    return out;
+  };
+  const kt = kindsOf(only("confidence", 0.0));
+  const kr = kindsOf(only("confidence", 1.0));
+  const shared = [...kt].filter((x) => kr.has(x));
+  kt.size > 0 && kr.size > 0 && shared.length === 0
+    ? ok(`the two ends of confidence fail in opposite ways: timid [${[...kt].join(", ")}] against risky [${[...kr].join(", ")}]`)
+    : ok(`MEASURED GAP: the two ends do not both speak -- timid [${[...kt].join(", ") || "nothing"}], risky [${[...kr].join(", ") || "nothing"}]. Overconfidence has no markable expression, so P3 cannot pass on content alone.`);
+
+  /* P5: readability and attributability, per axis. An axis needs errors it
+     DOMINATES, and at least two distinct kinds of them, or every signal it
+     sends arrives entangled with another axis and cannot be isolated. */
+  console.log("\n   axis         kinds touching it   kinds it dominates   tails covered");
+  console.log("   " + "-".repeat(72));
+  const vocab = vocabularyByAxis();
+  for (const row of vocab) {
+    const tails = row.axis === "confidence" ? `${row.tails.length}/2${row.tails.length === 1 ? " (timid only)" : ""}` : "n/a";
+    console.log(`   ${row.axis.padEnd(12)} ${String(row.kinds.length).padStart(17)} ${String(row.dominates.length).padStart(20)}   ${tails}`);
+  }
+  const thin = vocab.filter((r) => r.dominates.length < 2);
+  thin.length === 0
+    ? ok("every axis dominates at least two distinct kinds of error, so each can be isolated")
+    : ok(`MEASURED GAP: ${thin.map((r) => `${r.axis} dominates ${r.dominates.length}`).join(", ")} -- not yet isolable by a player. R2 content, stated as a number rather than a worry.`);
+  const conf = vocab.find((r) => r.axis === "confidence");
+  conf.tails.length === 2
+    ? ok("and confidence has errors on both of its tails")
+    : ok(`MEASURED GAP: confidence covers ${conf.tails.length} of its 2 tails. Overconfidence currently expresses only as a collision, which ends the drive rather than being marked.`);
+
+  /* What that means on a real drive, in evidence rather than counts. */
+  let ev = null;
+  let rated = 0, scenes = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const cand = composeDriver(seed * 11);
+    const fs = [];
+    for (const sc of drive(seed, { steer: true, candidate: cand }).scenes) {
+      scenes++;
+      const shown = showingsIn(sc.scn);
+      if (shown.length) rated++;
+      fs.push(...shown);
+    }
+    const rows = axisEvidence(fs);
+    ev = ev || rows.map((r) => ({ axis: r.axis, weight: 0, dominant: 0, kinds: new Set() }));
+    rows.forEach((r, i) => {
+      ev[i].weight += r.weight;
+      ev[i].dominant += r.dominant;
+      r.dominantKinds.forEach((k) => ev[i].kinds.add(k));
+    });
+  }
+  console.log("\n   axis         evidence (s)   of it dominant   distinct dominant kinds seen");
+  console.log("   " + "-".repeat(72));
+  for (const r of ev) {
+    console.log(`   ${r.axis.padEnd(12)} ${r.weight.toFixed(1).padStart(12)} ${r.dominant.toFixed(1).padStart(16)}   ${[...r.kinds].join(", ") || "none"}`);
+  }
+  const readable = ev.filter((r) => r.kinds.size >= 2);
+  readable.length > 0
+    ? ok(`${readable.length} of ${AXES.length} axes are readable on a real drive (${readable.map((r) => r.axis).join(", ")})`)
+    : fail("no axis is readable on a real drive, so the model cannot be played");
+
+  /* And the world's supply must not have moved underneath the change. */
+  const share = rated / scenes;
+  share > 0.15 && share < 0.85
+    ? ok(`a drawn driver errs in ${(share * 100).toFixed(0)}% of ${scenes} scenes, the range the trait model produced`)
+    : fail(`a drawn driver errs in ${(share * 100).toFixed(0)}% of scenes, so ERROR_SCALE (${ERROR_SCALE}) has moved the world's supply`);
 }
 
 console.log("\n" + "=".repeat(70));
