@@ -237,8 +237,32 @@ export function rollErrors(ratings, available, seed, { scale = ERROR_SCALE, allo
    middle. So a confident-weak candidate is bold or timid, drawn, and the
    other four are simply low. */
 export const WEAK_AXES = [1, 2];
-export const WEAK_RANGE = [0.15, 0.55];
+export const WEAK_RANGE = [0.15, 0.5];
 export const SOUND_RANGE = [0.8, 1.0];
+
+/* EVERY CANDIDATE HAS A REAL STRENGTH AND A REAL WEAKNESS. Maintainer's
+   ruling: "drivers will generally have at least developed skill even if
+   they are desperately lacking in others." True of real learners, and it
+   does work for the game — a strength is the contrast the player reads
+   the weakness against, so "bad at everything" stops being the shape of
+   every difficult drive.
+
+   The converse is enforced too, because a candidate worth examining needs
+   something to FIND as well as something to rule out. A drive where the
+   answer is "nothing" teaches the player only that the answer is
+   sometimes nothing.
+
+   Both fall out of drawing 1-2 weaknesses from five axes, so they held
+   before they were stated. They are named and checked so that a later
+   change to WEAK_AXES or the ranges cannot quietly break them. */
+export const COMPETENT_AT = 0.75;
+export const LACKING_AT = 0.5;
+
+/* How sound this driver is on an axis, 0..1, with confidence's deviation
+   folded in so the five are comparable. */
+export const soundnessOf = (ratings, axis) => 1 - deficitOf(ratings, axis).deficit;
+export const strengthsOf = (d) => AXES.filter((a) => soundnessOf(d?.ratings, a) >= COMPETENT_AT);
+export const lackingIn = (d) => AXES.filter((a) => soundnessOf(d?.ratings, a) <= LACKING_AT);
 /* How far from the optimum confidence sits, as a share of the distance to
    its end, when it is a weakness and when it is not. */
 export const WEAK_DEVIATION = [0.55, 1.0];

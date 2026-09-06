@@ -12,7 +12,7 @@
    renderer this file is scaffolding and should go.
    ===================================================================== */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, Eye, TriangleAlert, Flag } from "lucide-react";
+import { Play, Pause, RotateCcw, Eye, TriangleAlert, Flag, Shuffle, Gauge } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { simulate, poseAt, basePose, CAR_L, CAR_W, PED_R, M, W, CX, CY, STEP } from "../engine/index.js";
 import { specOf } from "../engine/road.js";
@@ -28,6 +28,11 @@ import {
   observe, predictAt, confidenceAt, divergenceAt, BELIEF_SAME,
 } from "../engine/belief.js";
 import { scoreDetection, summarise } from "../engine/detect.js";
+import { composeDriver, AXES, deficitOf } from "../engine/ratings.js";
+import { traitsForScene } from "../engine/candidate.js";
+import { departureOnAwareness, registrationsIn, sightingsIn, unseenShare, marginAt, cautionOf } from "../engine/awareness.js";
+import { worstEncroachment } from "../engine/clearance.js";
+import { reactionsFor, withReactions, contactAfter } from "../engine/reaction.js";
 import { chaseFor, worldHalfFor, frameFor, LOOK_AHEAD } from "../frame.js";
 import { environmentFor, scatter } from "../environments.js";
 import { Road, Environment } from "./RightOfWayTiming.jsx";
@@ -48,7 +53,8 @@ export default function ExaminerLab() {
   const [playing, setPlaying] = useState(true);
   const [lookAhead, setLookAhead] = useState(LOOK_AHEAD);
   const [held, setHeld] = useState(0);
-  const [trait, setTrait] = useState("wander");
+  const [trait, setTrait] = useState("drawn");
+  const [driverSeed, setDriverSeed] = useState(11);
   const [chase, setChase] = useState(true);
   const [reveal, setReveal] = useState(false);
   const [marks, setMarks] = useState([]);
@@ -59,23 +65,52 @@ export default function ExaminerLab() {
      default and their faults come from traits rather than from timing. */
   const built = useMemo(() => {
     const raw = SCENARIOS.find((s) => s.id === scnId) || SCENARIOS[0];
-    const withTrait = trait === "none"
-      ? raw
-      : { ...raw, ego: { ...raw.ego, traits: [...(raw.ego.traits || []), trait] } };
+
+    /* A DRAWN CANDIDATE: five ratings, weak on one or two axes and sound
+       on the rest. Their errors are compiled from those ratings at
+       composition time, so the same driver in the same situation drives
+       identically every replay. "drawn" is the real model; the named
+       traits are kept as an override for looking at one fault at a time. */
+    const driver = composeDriver(driverSeed);
+    const compiled = trait === "drawn"
+      ? traitsForScene(driver, { intent: raw.ego.intent, stops: raw.ego.stops !== false, seed: driverSeed })
+      : trait === "none" ? [] : [trait];
+
+    const withTrait = { ...raw, ego: { ...raw.ego, traits: compiled } };
     const timed = { ...withTrait, ego: { ...withTrait.ego, departAt: simulate(raw).legalAt } };
-    const scn = loadCandidate(timed, { held });
+    const loaded = loadCandidate(timed, { held });
+
+    /* And they decide for themselves when to go, believing only the
+       traffic they have actually registered. That is where an
+       encroachment comes from -- no dice roll for "takes a tight gap". */
+    const probe = simulate(loaded);
+    const decided = trait === "drawn"
+      ? departureOnAwareness(probe, loaded, driver, driverSeed)
+      : null;
+    const scn = decided == null
+      ? loaded
+      : { ...loaded, ego: { ...loaded.ego, departOverride: decided } };
     const sim = simulate(scn);
+
+    /* Two derived worlds. The fault is marked on what the candidate did;
+       the reaction is only what the player sees. */
+    const enc = worstEncroachment(sim, {});
+    const gaveWay = reactionsFor(sim, {});
+    const reacted = withReactions(sim, gaveWay, {});
     return {
-      scn, sim,
+      scn, sim, driver, decided,
+      enc, gaveWay, hit: contactAfter(reacted),
+      sight: sightingsIn(sim, scn, { candidate: driver }),
+      regs: registrationsIn(sim, scn, driver, driverSeed),
       spec: specOf(scn),
       statics: sightBlockersOf(scn),
       faults: faultsIn(scn),
       window: instructionWindow(sim),
       env: environmentFor(scn.id),
     };
-  }, [scnId, trait, held]);
+  }, [scnId, trait, held, driverSeed]);
 
-  const { scn, sim, spec, statics, faults, env } = built;
+  const { scn, sim, spec, statics, faults, env, driver, decided, enc, gaveWay, hit, regs } = built;
 
   const view = useMemo(
     () => (chase
@@ -93,6 +128,16 @@ export default function ExaminerLab() {
     () => scatter(env, scn.id.length * 977, [], { cx: CX, cy: CY, half: worldHalf }),
     [env, scn.id, worldHalf]
   );
+
+  /* What the examiner has seen and believed, carried across frames.
+
+     These were USED and never DECLARED, so this screen threw a
+     ReferenceError the moment it rendered and had done since it was
+     written — the route was first in the menu and produced a blank page.
+     Nothing in the verify suite could catch it: every check is headless,
+     and CLAUDE.md says so in as many words. It took opening the page. */
+  const beliefs = useRef(new Map());
+  const watched = useRef(new Map());
 
   /* Clock. rAF rather than an interval so it tracks real time when a
      frame is dropped instead of drifting. */
@@ -166,12 +211,8 @@ export default function ExaminerLab() {
           viewBox={view.box}
           style={S.svg}
           preserveAspectRatio="xMidYMid meet"
-          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setLooking(true); aim(e); }}
-          onPointerMove={aim}
-          onPointerUp={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); setLooking(false); }}
-          onPointerLeave={() => setLooking(false)}
         >
-          <g ref={worldRef} transform={`rotate(${view.rotate} ${view.cx} ${view.cy})`}>
+          <g transform={`rotate(${view.rotate} ${view.cx} ${view.cy})`}>
             <Environment env={env} seed={scn.id.length * 977} keepOut={[]} worldHalf={worldHalf} />
             <Road control={scn.control} crossings={scn.crossings || []} spec={spec} reach={worldHalf} />
 
@@ -246,11 +287,61 @@ export default function ExaminerLab() {
         <Row>
           <Select label="Situation" value={scnId} onChange={setScnId}
             options={SCENARIOS.filter((s) => s.layout !== "roundabout").map((s) => [s.id, s.id])} />
-          <Select label="Candidate does" value={trait} onChange={setTrait}
-            options={[["none", "nothing wrong"], ["wander", "wander"], ["creep", "creep"],
-              ["overshoot", "overshoot"], ["slowStart", "slowStart"], ["wideTurn", "wideTurn"],
-              ["cutsCorner", "cutsCorner"], ["lateSignal", "lateSignal"]]} />
+          <Select label="Candidate" value={trait} onChange={setTrait}
+            options={[["drawn", "a drawn driver"], ["none", "nothing wrong"], ["wander", "force wander"],
+              ["creep", "force creep"], ["overshoot", "force overshoot"], ["slowStart", "force slowStart"],
+              ["wideTurn", "force wideTurn"], ["cutsCorner", "force cutsCorner"], ["lateSignal", "force lateSignal"]]} />
         </Row>
+
+        <Row>
+          <button className="btn" style={S.btn} onClick={() => setDriverSeed((n) => n + 1)}
+            disabled={trait !== "drawn"} title="Draw another candidate">
+            <Shuffle size={16} />
+          </button>
+          <div style={{ ...S.dim, flex: 1 }}>
+            {trait === "drawn"
+              ? <>candidate #{driverSeed} — weak on <b style={{ color: C.amber }}>{driver.weakOn.join(" and ")}</b></>
+              : "ratings bypassed; one fault forced"}
+          </div>
+        </Row>
+
+        {trait === "drawn" && (
+          <div style={S.section}>
+            <div style={S.sectionHead}><Gauge size={13} /> Who is driving</div>
+            {AXES.map((a) => {
+              const v = driver.ratings[a];
+              const { deficit, tail } = deficitOf(driver.ratings, a);
+              const weak = driver.weakOn.includes(a);
+              return (
+                <div key={a} style={S.axisRow}>
+                  <div style={{ ...S.axisName, color: weak ? C.amber : C.dim }}>
+                    {a}{a === "confidence" && tail ? (tail < 0 ? " (timid)" : " (bold)") : ""}
+                  </div>
+                  <div style={S.axisTrack}>
+                    <div style={{ ...S.axisFill, width: `${(1 - deficit) * 100}%`,
+                      background: weak ? C.amber : C.green }} />
+                  </div>
+                  <div style={S.axisNum}>{v.toFixed(2)}</div>
+                </div>
+              );
+            })}
+            <div style={S.dim}>
+              caution {cautionOf(driver).toFixed(2)}× · cannot see {(100 * unseenShare(sim, scn, sim.ego.departAt ?? 0, driver)).toFixed(0)}% of the approaches ·
+              holds {marginAt(sim, scn, driver, sim.ego.departAt ?? 0).toFixed(2)}s for it
+            </div>
+            <div style={S.dim}>
+              {decided == null ? "" : <>goes at {decided.toFixed(2)}s, engine would say {sim.legalAt.toFixed(2)}s · </>}
+              {enc
+                ? <>closest pass <b style={{ color: enc.band === "comfortable" ? C.green : enc.band === "contact" ? C.red : C.amber }}>{enc.band}</b> ({enc.pet.toFixed(2)}s)</>
+                : "no path conflict"}
+            </div>
+            <div style={S.dim}>
+              {gaveWay.length
+                ? <>{gaveWay[0].name} gives way, slowing to {(100 * (1 - gaveWay[0].give)).toFixed(0)}% for {gaveWay[0].gaveUp.toFixed(2)}s{hit ? ` — and is still hit` : ""}</>
+                : "nobody has to give way"}
+            </div>
+          </div>
+        )}
 
         <Slider label="Look ahead" value={lookAhead} min={2} max={20} step={0.5}
           fmt={(v) => `${v}s · ${m1(view.ahead)}m`} onChange={setLookAhead} disabled={!chase} />
@@ -439,6 +530,13 @@ function Meter({ label, v, colour }) {
 /* ---- styles -------------------------------------------------------- */
 const S = {
   page: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: C.bg },
+  /* The ratings readout: one bar per axis, filled by how sound they are,
+     amber where it is a declared weakness. */
+  axisRow: { display: "flex", alignItems: "center", gap: 8, margin: "3px 0" },
+  axisName: { width: 104, fontFamily: FONT_U, fontSize: 12, textTransform: "capitalize" },
+  axisTrack: { flex: 1, height: 6, borderRadius: 3, background: "rgba(255,255,255,0.08)", overflow: "hidden" },
+  axisFill: { height: "100%", borderRadius: 3 },
+  axisNum: { width: 34, textAlign: "right", fontFamily: FONT_D, fontSize: 12, color: C.dim },
   canvasWrap: { position: "relative", flex: "1 1 auto", minHeight: 0, background: "#0f1115" },
   svg: { width: "100%", height: "100%", display: "block", touchAction: "none" },
   hud: {

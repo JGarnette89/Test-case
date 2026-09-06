@@ -44,16 +44,20 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
 
 /* =====================================================================
    GAME MODES
-   One game, two ways to be asked the same question. A third mode is an
-   entry here, not a change to the shell.
+
+   EXAMINER IS THE LIVE ONE. Everything below it is the driver game — the
+   premise this project moved off in September 2026 — and it is kept
+   because it is shipped, verified, working code that the examiner game is
+   built out of, not because it is where the project is going. See
+   CLAUDE.md. Nothing here is deleted without asking.
    ===================================================================== */
 const MODES = [
   {
     id: "examiner",
-    name: "Examiner lab",
-    kicker: "You are the examiner",
+    name: "Examiner",
+    kicker: "You are the examiner — the live direction",
     blurb:
-      "A bench for the examiner game: the chase camera that rides with the candidate, the gaze cone that decides what you could have seen, every fault the engine derives, and what stacking directions does to the driver. Nothing is scored yet.",
+      "The game this project is now. A candidate drives themselves, drawn with five skill ratings and weak on one or two of them; they register the traffic they happen to notice, decide when to go on that, and the world gives way when they take a gap that was not theirs. The chase camera rides with them, occlusion decides what could have been seen, and every fault is derived rather than scripted. A bench rather than a finished game: it scores your marking, but there is no course, no directions to give and no debrief.",
     Icon: Eye,
     accent: C.blue,
     Component: ExaminerLab,

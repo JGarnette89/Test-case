@@ -1442,6 +1442,15 @@ invisible to the encroachment fault because it only ever watches priors — in
   a cut turn is a domain question, not a mechanical one.
 - **`creep` is masked by `overshoot` in `creeper`.** Accepted — creepers are for
   confusing right of way in busier scenarios than that one.
+- **The Examiner screen had never rendered.** It was first in the mode
+  switcher and threw a `ReferenceError` the instant it mounted: `watched`
+  and `beliefs` were used and never declared, and `aim`/`setLooking`/
+  `worldRef` were left dangling when the gaze cone was deleted from
+  `sight.js`. So every examiner increment from the flip onward was
+  verified headlessly and NEVER LOOKED AT. This file already said the
+  suite "cannot catch a React mistake, so the component still needs eyes
+  on it" — this is what that costs when nobody does. Open the page after
+  touching a component: a build passing is not a screen rendering.
 - The timing renderer is the only one. 3D is the agreed direction, not started.
 
 ## Do not

@@ -26,7 +26,7 @@ import {
 } from "../src/engine/candidate.js";
 import {
   AXES, CONFIDENT_ENOUGH, composeDriver, axisEvidence, vocabularyByAxis, ERROR_SCALE,
-  WEAK_AXES, deficitOf, dominantAxis,
+  WEAK_AXES, deficitOf, dominantAxis, strengthsOf, lackingIn, COMPETENT_AT, LACKING_AT,
 } from "../src/engine/ratings.js";
 import {
   planDrive, driveFromPlan, composeForTile, segmentHazards, CHARACTER,
@@ -553,6 +553,28 @@ console.log("\n9. A CANDIDATE HAS A CHARACTER, AND ENOUGH TO FIND WITHOUT TOO MU
   Math.min(...share) > 0.15
     ? ok(`and no axis is a rarity: weakness lands on each of the five between ${(100 * Math.min(...share)).toFixed(0)}% and ${(100 * Math.max(...share)).toFixed(0)}% of the time`)
     : fail(`one axis is weak in only ${(100 * Math.min(...share)).toFixed(0)}% of candidates`);
+
+  /* EVERY CANDIDATE HAS A REAL STRENGTH AND A REAL WEAKNESS. A driver
+     with a developed skill gives the player a contrast to read the
+     weakness against, so "bad at everything" is not the shape of every
+     difficult drive; and one with no weakness has nothing to find.
+
+     Both already held from drawing 1-2 weaknesses out of five axes. They
+     are asserted so that a later change to the ranges cannot quietly
+     break them, which is the only reason to check something that is true
+     by construction. */
+  let noStrength = 0, noWeakness = 0;
+  for (let i = 1; i <= 2000; i++) {
+    const d = composeDriver(i * 13);
+    if (!strengthsOf(d).length) noStrength++;
+    if (!lackingIn(d).length) noWeakness++;
+  }
+  noStrength === 0
+    ? ok(`every one of 2000 candidates has an axis at or above ${COMPETENT_AT} — however poor the rest, something is developed`)
+    : fail(`${noStrength} candidates have no developed skill at all`);
+  noWeakness === 0
+    ? ok(`and every one has an axis at or below ${LACKING_AT}, so there is always something to find as well as something to rule out`)
+    : fail(`${noWeakness} candidates have nothing genuinely weak, so the drive has no answer`);
 
   /* Sound where they are sound. This is what separates a character from a
      generally poor driver. */
