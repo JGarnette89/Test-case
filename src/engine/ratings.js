@@ -115,6 +115,14 @@ export const CAUSES = {
   slowStart: { confidence: 1 },
   creep: { confidence: 1 },
   lateSignal: { knowledge: 1 },
+  /* R2.5. Three kinds added against MEASURED gaps rather than picked from
+     a list of plausible driving errors: knowledge dominated one fault and
+     braking dominated one, so neither could be isolated by a player, and
+     the rolling stop owned every residual collision the reaction layer
+     could not prevent. */
+  rollingStop: { knowledge: 0.7, braking: 0.3 },
+  noSignal: { knowledge: 1 },
+  stopsShort: { braking: 1 },
 };
 
 /* Which tail of confidence a fault belongs to, where it has one. Every

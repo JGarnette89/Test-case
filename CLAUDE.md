@@ -613,6 +613,43 @@ severe ones, correctly. Measured legible: the bands are 22 px apart at the
 That is how a driver judges it anyway, and it is a second independent
 argument for the shorter look-ahead.
 
+### The fault vocabulary is written against measured gaps
+
+**R2.5 added `rollingStop`, `noSignal` and `stopsShort`, and each answers a
+measurement rather than being a plausible driving error somebody thought
+of.** Knowledge dominated one fault and braking one, so neither axis could
+be isolated by a player; and the rolling stop owned 100% of the residual
+collisions the reaction layer could not prevent, which is why caution was
+deliberately left untuned rather than dialled up to absorb a fault
+belonging elsewhere. The floor is now met: steering 3, knowledge 3,
+braking 2, confidence 2.
+
+**OBSERVATION is exempt from the trait floor, and that is the point.** It
+does not express through a trait at all — it degrades what the candidate
+registers, and its faults surface as an ENCROACHMENT that `causeOf`
+attributes to it. Counting trait kinds is the wrong instrument for that
+axis. Measured: every encroachment on a generated drive attributes to
+observation.
+
+**A rolling stop is modelled as a car that never comes to rest**, not as
+one that leaves early. It holds its crawl through the approach where a
+clean twin decelerates, and carries speed through the line — so the tell
+is an ABSENCE (no deceleration) and it is visible both before the line and
+after it. It only shows where the candidate did not have to wait anyway:
+held by traffic, they stop like everybody else, which is correct.
+
+**The incompatibilities came out derived on first contact**:
+`overshoot+stopsShort`, `cutsCorner+wideTurn`, and — nobody wrote this one
+down — `lateSignal+noSignal`. You cannot signal late if you never
+signalled.
+
+**Growing the vocabulary grows the supply, and section length follows.**
+Faults per junction went 1.11 to 1.57, so the section implied by a 3-4
+recall band tightened from 2.7-3.6 junctions to 1.9-2.5. Axes per drive
+rose 2.38 to 2.90. If the density is wanted lower, `ERROR_SCALE` is the
+dial and the candidate distribution is not — the drivers did not get
+worse, the vocabulary got wider.
+
 ### Three layers, and OBSERVATION as the fifth axis — built
 
 **What happened is layer 1. What the CANDIDATE perceived is layer 2. What
@@ -838,6 +875,37 @@ three-layer reframing, the five axes and R2's build order:
   `CHARACTER.arterial.control` says today, which would leave the candidate
   stopping at nothing) or signalised — a road-design call, not a mechanical
   one. See `DRIVER-IDENTITY.md` §6.
+- **The two games want OPPOSITE things from the same generator, and until
+  that is settled examiner content will stay thin.** `windowIsSafe`
+  discards any draw whose window lands on somebody. That is exactly right
+  for the driver game, where the player needs a gap they can actually
+  take, and it was one of the most valuable checks ever added — it caught
+  1142 unsafe drafts in 4000. But the examiner game wants the opposite: a
+  marginal gap is the whole point, because the candidate's judgment is
+  what is being assessed. So the generator was built to prevent precisely
+  the situation the encroachment fault exists to describe, and
+  encroachments come out at 0.17 per drive rather than being rare by
+  chance. Three separate measurements point here. Options, none chosen —
+  this is the maintainer's:
+
+  1. **A brief flag that permits a marginal window.** Smallest change:
+     `windowIsSafe` stays the default and an examiner brief may ask for a
+     draw whose window is tight rather than safe. Driver-game callers
+     never set it, so nothing there moves. Risk: one predicate now means
+     two things depending on a flag, which is the shape of most of the
+     bugs in this file.
+  2. **A separate acceptance path for examiner content.** `composeScenario`
+     grows a sibling that audits for "markable" rather than "safe" — the
+     same search loop, a different accept test. Keeps the two games'
+     requirements visibly separate. Costs a second path to keep correct.
+  3. **Authored situations carry the load.** The generator stays as it is
+     and tight situations are written by hand, as `gap` already is —
+     measured, it is the only shipped situation carrying an encroachment.
+     Cheapest and safest; caps examiner content at what somebody writes.
+
+  Whichever is chosen, the driver game must keep working: `windowIsSafe`
+  is what makes Endless, Daily and the roguelike safe to play.
+
 - **The post-test debrief is agreed in direction, not built.** The
   candidate's habits are named and fed back, as the transition out of a test
   into the next task rather than a score screen. The pieces exist: the
@@ -845,6 +913,14 @@ three-layer reframing, the five axes and R2's build order:
   actually true, and the gap between them is what `scoreDetection` already
   computes. Naming the habits is also what teaches the player what to watch
   for next time. See `DRIVER-IDENTITY.md` §7.
+
+  **Some of the prose already exists.** The deleted `Order` mode carried
+  eight hand-authored right-of-way puzzles, each with a `rule` and a `why`
+  written by the maintainer — explanations of exactly the kind a debrief
+  needs, since a debrief has to say why something was a fault. They are at
+  commit `63a9c68`, in a static positions-and-answer format the engine
+  cannot simulate, so they are prose to reuse rather than scenarios to
+  restore.
 
 ### Humour is allowed. The traffic law is not
 
@@ -989,7 +1065,8 @@ else the engine refuses to know what things look like. Both are checked in
 `verify-roguelike.mjs`, along with rarer actually being scarcer.
 
 **Driver behaviour is composable traits.** `wander`, `creep`, `overshoot`,
-`slowStart`, `wideTurn`, `cutsCorner`, `lateSignal` — and `TRAIT_KEYS` in
+`slowStart`, `wideTurn`, `cutsCorner`, `lateSignal`, `rollingStop`,
+`stopsShort`, `noSignal` — and `TRAIT_KEYS` in
 `index.js` is the ONE list of them, because a second copy is how a new trait
 gets forgotten by one generator and not the other. A trait bends how the car
 actually drives and the conflict engine works out the consequences. Never

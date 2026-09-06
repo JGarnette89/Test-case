@@ -174,6 +174,11 @@ const V_THROUGH = M(12.5);     // ~45 km/h
    second, which is not something a player could be asked to read. Faster
    than ordinary through traffic, slow enough to see coming. */
 const V_EMERGENCY = M(10);     // ~36 km/h
+/* A rolling stop: not a stop, a crawl. ~12 km/h — slow enough that the
+   driver plainly meant to comply and fast enough that they plainly did
+   not. A chosen number like LATE_SIGNAL_LEAD, and for the same reason:
+   the lesson is "you did not stop", never a gotcha about how slow counts. */
+const V_ROLL = M(3.4);
 const WALK = M(1.35);          // a real walking pace, ~4.9 km/h
 
 /* The tightest a passenger car can steer, at full lock. A turn is never
@@ -196,6 +201,10 @@ const CRUISE = { straight: V_STRAIGHT, left: V_LEFT, right: V_RIGHT };
 function motionOf(p) {
   const v = CRUISE[p.intent] ?? V_STRAIGHT;
   const base = p.emergency ? cruiseProfile(p.intent === "straight" ? V_EMERGENCY : v)
+    /* Required to stop and did not: they carry speed through the line
+       rather than pulling away from rest, which is what makes it visible
+       both before the line and after it. */
+    : p.rolledThrough ? cruiseProfile(V_ROLL)
     : p.stops === false ? cruiseProfile(p.intent === "straight" ? V_THROUGH : v)
     : accelProfile(p.intent === "straight" ? ACCEL : TURN_ACCEL, v);
   /* A road user who had to give way to somebody taking their space. Absent
@@ -493,6 +502,12 @@ function basePose(p, t) {
       // and the traverse are the same motion rather than two guesses.
       return { ...rollingApproach(mv.rest, t, p.arriveAt, mv.traverse.profile.v), approaching: true };
     }
+    if (p.rolledThrough && mv.traverse.profile.v) {
+      /* The tell is an ABSENCE: no deceleration where there should have
+         been one. A clean twin eases to rest over APPROACH_TIME; this car
+         holds its crawl right up to the line. */
+      return { ...rollingApproach(mv.rest, t, p.arriveAt, mv.traverse.profile.v), approaching: true };
+    }
     return { ...approachPose(mv.spawn, mv.rest, t, p.arriveAt), approaching: true };
   }
   if (t < p.departAt) return { ...mv.rest, waiting: true };
@@ -604,6 +619,35 @@ const TRAITS = {
        tell would be claiming a fault nobody could see. */
     tell: "Cut the corner — turned inside the centre of the junction",
     setup: (p) => { if (p.intent === "left") p.turnBias = -M(2.6) * severityOf(p); },
+  },
+  rollingStop: {
+    /* THE ONE THAT OWNED THE RESIDUAL COLLISIONS. Measured: for a blind,
+       bold candidate, 100% of the contacts the reaction layer could not
+       prevent came from a departure with essentially no dwell at the
+       line. That is not overconfidence — it is not stopping — and caution
+       was deliberately left untuned rather than dialled up to absorb a
+       fault belonging to a different axis.
+
+       Only where there was something to stop for. It also only SHOWS
+       where the candidate did not have to wait anyway: if traffic holds
+       them they come to rest like everybody else, which is correct. */
+    tell: "Did not stop — carried speed straight through the line",
+    setup: (p) => { if (p.stops) p.rolledThrough = true; },
+  },
+  stopsShort: {
+    /* The other end of overshoot, and the second thing braking can say.
+       Writes the same stopBias, so a driver cannot be fitted with both —
+       masks() derives that rather than being told. */
+    tell: "Stopped well short of the line, nowhere near a view of the road",
+    setup: (p) => { if (p.stops) p.stopBias = -M(3.2) * severityOf(p); },
+  },
+  noSignal: {
+    /* lateSignal says the indicator came too late to be worth anything.
+       This says it never came at all, which is a different failure and a
+       heavier one: there was nothing to read rather than something read
+       too late. Only where there was a signal owed. */
+    tell: "Turned without signalling at all",
+    setup: (p) => { if (p.intent && p.intent !== "straight") p.signal = null; },
   },
   lateSignal: {
     tell: "Indicated barely before turning — nothing like the 2-3 seconds it owed you",

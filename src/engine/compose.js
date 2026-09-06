@@ -18,7 +18,7 @@
    ===================================================================== */
 import {
   simulate, poseAt, conflicts, spanOf, eventsAreReadable, MIN_WARNING, EMERGENCY_LEAD,
-  M, CX, CY, LANE, STEP, rng,
+  M, CX, CY, LANE, STEP, rng, TRAIT_KEYS,
 } from "./index.js";
 import { whatEgoSees, sightBlockersOf } from "./sight.js";
 import { cameraFor } from "../frame.js";
@@ -205,7 +205,13 @@ function roadFor(brief, r) {
    because hazard supply, occlusion and difficulty must stay one idea
    rather than three. Everything else about how hard a junction is comes
    from the road character that chose the brief in the first place. */
-const TRAIT_POOL = ["wander", "creep", "overshoot", "slowStart", "wideTurn", "cutsCorner", "lateSignal"];
+/* TRAIT_KEYS, not a copy of it. This was a literal list and it was a
+   duplicate of the one in index.js the day it was written — three new
+   fault kinds later it would silently have gone on offering the old
+   seven, which is precisely how a new trait gets forgotten by one
+   generator and not the other. generate.js keeps a deliberate SUBSET; it
+   is the pre-flip driver mode and it says so. */
+const TRAIT_POOL = TRAIT_KEYS;
 const FAULT_RATE = 0.45;
 
 function traitsFor(r, brief) {

@@ -283,7 +283,13 @@ Four things to settle when it is built, none of them blocking now:
 3. **Does a correctly ruled-out rival earn anything?** Deciding a driver
    does *not* cut corners is real observation, and 82 of them per drive are
    already being derived.
-4. **Whose humour is it?** The candidates are sinful drivers in purgatory
+4. **Some of the prose is already written.** The deleted `Order` mode
+   carried eight hand-authored right-of-way puzzles, each with a `rule`
+   and a `why` — explanations of exactly the kind a debrief needs, by the
+   maintainer, an examiner. At commit `63a9c68`. The format is static
+   positions and an answer order the engine cannot simulate, so it is
+   prose to reuse rather than scenarios to restore.
+5. **Whose humour is it?** The candidates are sinful drivers in purgatory
    and the debrief is the obvious place for that voice. The standards they
    are measured against still cannot be funny.
 

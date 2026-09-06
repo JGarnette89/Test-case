@@ -495,10 +495,25 @@ console.log("\n8. RATINGS: ERRORS DERIVED FROM WHAT A DRIVER IS BAD AT");
     const tails = row.axis === "confidence" ? `${row.tails.length}/2${row.tails.length === 1 ? " (timid only)" : ""}` : "n/a";
     console.log(`   ${row.axis.padEnd(12)} ${String(row.kinds.length).padStart(17)} ${String(row.dominates.length).padStart(20)}   ${tails}`);
   }
-  const thin = vocab.filter((r) => r.dominates.length < 2);
+  /* THE ATTRIBUTABILITY FLOOR, now an assertion rather than a report for
+     the four axes that express through traits. R2.5 added rollingStop,
+     noSignal and stopsShort against the gaps this line used to measure:
+     knowledge went from 1 dominant kind to 3, braking from 1 to 2.
+
+     OBSERVATION is exempt, and the exemption is the point rather than a
+     let-off. It does not express through a trait at all -- it degrades
+     what the candidate registers, and its faults surface as an
+     ENCROACHMENT whose cause causeOf attributes to it. Counting trait
+     kinds is the wrong instrument for that axis; verify-awareness.mjs
+     section 4 is the right one. */
+  const actsOn = vocab.filter((r) => r.axis !== "observation");
+  const thin = actsOn.filter((r) => r.dominates.length < 2);
   thin.length === 0
-    ? ok("every axis dominates at least two distinct kinds of error, so each can be isolated")
-    : ok(`MEASURED GAP: ${thin.map((r) => `${r.axis} dominates ${r.dominates.length}`).join(", ")} -- not yet isolable by a player. R2 content, stated as a number rather than a worry.`);
+    ? ok(`every axis that acts through a trait dominates 2+ distinct kinds (${actsOn.map((r) => `${r.axis} ${r.dominates.length}`).join(", ")}), so each can be isolated`)
+    : fail(`${thin.map((r) => `${r.axis} dominates ${r.dominates.length}`).join(", ")} -- not isolable by a player`);
+  vocab.find((r) => r.axis === "observation").dominates.length === 0
+    ? ok("and observation dominates no trait BY DESIGN: it degrades what is registered, and surfaces as an encroachment causeOf attributes to it")
+    : ok("observation now dominates a trait as well as expressing through awareness");
   const conf = vocab.find((r) => r.axis === "confidence");
   conf.tails.length === 2
     ? ok("and confidence has errors on both of its tails")

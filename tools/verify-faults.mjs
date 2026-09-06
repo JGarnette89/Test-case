@@ -20,8 +20,10 @@ import {
   whatEgoSees, faultSeenAt, faultShownFor, sightBlockersOf,
 } from "../src/engine/sight.js";
 import { SHOWN_ENOUGH } from "../src/engine/detect.js";
-import { simulate, poseAt, M } from "../src/engine/index.js";
+import { simulate, poseAt, M, TRAIT_KEYS } from "../src/engine/index.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
+import { crossSpec } from "../src/engine/road.js";
+import { masks } from "../src/engine/candidate.js";
 
 const m = (px) => Math.round((px / 20) * 100) / 100;
 let problems = 0;
@@ -144,6 +146,55 @@ console.log("\n3. A FAULT BEHIND SOMETHING IS NOT ONE YOU MISSED");
 /* Sections 4 and 5 moved to verify-camera.mjs when the cone was removed.
    Rotation invariance is now a property of FRAMING rather than of gaze,
    and "no single view holds everything" is the camera mechanic itself. */
+
+/* ---------- R2.5: the new kinds, and their tells ---------------------- */
+console.log("\nR2.5: THE FAULT VOCABULARY ADDED AGAINST MEASURED GAPS");
+{
+  /* Three kinds added because three measurements asked for them, not
+     because they were plausible driving errors: knowledge dominated one
+     fault and braking one, so neither axis could be isolated by a player,
+     and the rolling stop owned every residual collision the reaction
+     layer could not prevent. */
+  const scene = (traits, intent, stops = true) => ({
+    id: "r25", road: crossSpec("stop", 2), control: "stop", duration: 20,
+    ego: {
+      from: "S", intent, arriveAt: 1.4, stops, traits,
+      signal: intent === "straight" ? null : intent,
+    },
+    actors: [{ id: "far", from: "N", intent: "straight", arriveAt: 16, stops: false, kind: "car" }],
+  });
+  const shows = (traits, intent, stops) =>
+    faultsIn(scene(traits, intent, stops), 20, { encroachment: false }).find((f) => f.who === "ego");
+
+  for (const t of ["rollingStop", "stopsShort", "noSignal"]) {
+    const f = shows([t], "left");
+    f
+      ? ok(`${t} derives: ${f.duration.toFixed(2)}s on the ${f.channel} channel — "${f.tell}"`)
+      : fail(`${t} derives no fault at all`);
+  }
+
+  /* A TELL MUST BE TRUE OF THE CAR. Each of these is guarded, under the
+     same rule cutsCorner has lived under since it was written: a trait
+     may only fire where its tell is true. */
+  !shows(["rollingStop"], "straight", false)
+    ? ok("rollingStop stays silent on a driver with nothing to stop for — you cannot fail to stop where no stop was owed")
+    : fail("rollingStop fires on a driver who was never required to stop");
+  !shows(["stopsShort"], "straight", false)
+    ? ok("and stopsShort likewise: no line, no stopping short of it")
+    : fail("stopsShort fires where there is no line");
+  !shows(["noSignal"], "straight")
+    ? ok("and noSignal stays silent going straight on, where no indicator was owed")
+    : fail("noSignal fires on a driver who owed no signal");
+
+  /* And the new incompatibilities are DERIVED, not listed. lateSignal and
+     noSignal is the one worth pointing at: nobody wrote it down, and you
+     cannot signal late if you never signalled at all. */
+  const pairs = [];
+  for (const a of TRAIT_KEYS) for (const b of TRAIT_KEYS) if (a < b && masks(a, b)) pairs.push(`${a}+${b}`);
+  pairs.includes("lateSignal+noSignal") && pairs.includes("overshoot+stopsShort")
+    ? ok(`incompatible pairs derived on first contact with the new content: ${pairs.join(", ")}`)
+    : fail(`the new content's incompatibilities were not derived: ${pairs.join(", ") || "none"}`);
+}
 
 console.log("\n" + "=".repeat(70));
 console.log(problems === 0 ? "OK: faults derive, and occlusion decides honestly what was markable." : `${problems} PROBLEM(S) FOUND.`);
