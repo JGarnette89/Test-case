@@ -24,7 +24,7 @@
 import {
   linePath, quadPath, polyPath, turnPoints, poseOn, approachFrom, approachPose, advance,
   pathLength, rollingApproach,
-  accelProfile, cruiseProfile, progressAt, speedAt,
+  accelProfile, cruiseProfile, yieldingProfile, progressAt, speedAt,
   lerp, angleTo, quadAt as quad,
 } from "./paths.js";
 import {
@@ -195,9 +195,15 @@ const PED_BUTTON_WAIT = 6.0;
 const CRUISE = { straight: V_STRAIGHT, left: V_LEFT, right: V_RIGHT };
 function motionOf(p) {
   const v = CRUISE[p.intent] ?? V_STRAIGHT;
-  if (p.emergency) return cruiseProfile(p.intent === "straight" ? V_EMERGENCY : v);
-  if (p.stops === false) return cruiseProfile(p.intent === "straight" ? V_THROUGH : v);
-  return accelProfile(p.intent === "straight" ? ACCEL : TURN_ACCEL, v);
+  const base = p.emergency ? cruiseProfile(p.intent === "straight" ? V_EMERGENCY : v)
+    : p.stops === false ? cruiseProfile(p.intent === "straight" ? V_THROUGH : v)
+    : accelProfile(p.intent === "straight" ? ACCEL : TURN_ACCEL, v);
+  /* A road user who had to give way to somebody taking their space. Absent
+     on every participant that has not been handed one, so this is inert
+     for anything the reaction layer has not touched. See reaction.js —
+     and note that the reaction is what the PLAYER sees, never what
+     decides whether a fault happened. */
+  return p.yielding ? yieldingProfile(base, p.yielding) : base;
 }
 
 const STEP = 0.05;
@@ -969,8 +975,16 @@ function schedule(participants) {
 
   const done = [...rolling];
   queued.forEach((p) => {
+    /* `departOverride` is how a driver who decided for themselves gets to
+       act on it: awareness.js works out when this candidate believes the
+       road is clear, and stamps it. Absent on everyone else, so the
+       schedule is exactly what it always was — and it is a REPLACEMENT
+       rather than a floor, because the whole point is that a driver who
+       has not registered the traffic goes EARLY. Resolved once, at
+       composition time, like everything else. */
     // A distracted driver still has the right of way — they just sit on it.
-    p.departAt = earliestClear(p, done, p.arriveAt) + (p.startDelay || 0);
+    const clear = p.departOverride != null ? p.departOverride : earliestClear(p, done, p.arriveAt);
+    p.departAt = Math.max(clear, p.arriveAt ?? 0) + (p.startDelay || 0);
     done.push(p);
   });
   return queued;

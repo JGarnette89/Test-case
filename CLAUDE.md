@@ -659,11 +659,21 @@ routinely tight and occasionally unlucky rather than simply crashing.
 `cautionOf` is the whole of confidence in one number — 1 at the optimum,
 0 maximally bold, 2 maximally timid.
 
-**Caution answers KNOWN unknowns and never inattention**, and that
-asymmetry is what stops observation and confidence collapsing into each
-other. You can see that you cannot see past a van, and wait. You cannot
-know you failed to look. Checked: with nothing hidden the margin is zero
-whatever the confidence.
+**THE ASYMMETRY THAT JUSTIFIES THE WHOLE AXIS STRUCTURE.** Occlusion is
+PERCEPTIBLE, so caution can compensate for it: you can see that you cannot
+see past the van, and wait. Inattention is INVISIBLE FROM THE INSIDE, so
+nothing can compensate for it: you do not know you failed to look, and no
+amount of care will make you account for a car you never registered.
+
+That is why observation and confidence are two axes rather than two names
+for one thing, and it generalises — an axis earns its place when it fails
+in a way the others cannot reach. It was not designed in. It arrived as a
+FAILED derivation: an attempt to set the caution allowance from the gap
+between what a driver knew to be clear and what actually was gave a spread
+of 2.8s to 40.2s, because where little is hidden the shortfall is
+inattention and the ratio explodes. Forcing a constant out of that would
+have buried the finding. Checked directly: with nothing hidden the margin
+is zero whatever the confidence.
 
 **The allowance is the candidate's own crossing time, derived per
 scenario.** The way to be sure an unseen stretch is empty is to watch it
@@ -685,6 +695,48 @@ caution could not remove turned out to be 100% zero-dwell departures for
 the bold-and-blind extreme — the candidate reaching the line and leaving
 in the same instant. That is a ROLLING STOP, a knowledge fault, and R2.5's
 business. Caution cannot fix it and must not be tuned until it appears to.
+
+### The world gives way, and that is the observable rather than the fault
+
+**A road user with priority brakes for a candidate who took their space,
+and THAT is what the player is looking for.** Harder to spot than a
+collision, which is correct, and it rewards watching the whole scene.
+
+**The reaction never decides whether a fault happened.** Encroachment is
+marked on what the candidate did, against road users holding the line they
+planned; `clearance.js` imports nothing from `reaction.js` and never will,
+checked at source. The reason is measured rather than asserted: marking on
+the REACTED world would soften 63% of faults, so a driver who forces
+somebody to stand on the brakes would score BETTER for it. Two derived
+worlds — what the candidate did, which is marked, and what then happened,
+which is drawn and decides whether anybody was hit.
+
+**Derived, not scripted: the least giving way that avoids the collision**,
+found by search, so how hard somebody braked measures how bad the
+intrusion was. The parameter is HOW HARD THEY BRAKE over a fixed ramp, not
+how much time they give up — the first version stretched the ramp to fit
+the time and was therefore NON-MONOTONE in its own parameter, so a bigger
+sacrifice braked more gently and lagged less exactly when it mattered.
+A search cannot bisect that. Giving way also has to include STOPPING:
+slowing alone buys about three seconds, and 30 of 33 residual collisions
+could not be avoided by any amount of it.
+
+**Round a bisection away from the thing it is avoiding.** Rounding to
+three places moved the answer ten times further than the search's own
+precision and put it back on the colliding side — the search said
+"avoided" and the world hit anyway in 13% of scenes.
+
+**`departOverride` in `schedule()` is how a driver acts on their own
+decision.** A replacement rather than a floor, because the point is that a
+driver who has not registered the traffic goes EARLY. Wiring it changed
+pacing and supply by nothing at all — a drawn candidate observes well
+enough that their decision coincides with the engine's — which makes the
+wiring safe and the content thin: 2 encroachments in 112 junctions.
+
+**Pedestrians do not give way**, so a contact with one is terminal with no
+near-miss band. Defensible — `blockUntilClear` governs them by a legal
+rule rather than a following gap — but it means every contact on a
+generated drive is currently with a pedestrian.
 
 **Creep is the CANDIDATE's, not the player's.** It was a player input in
 the driver game — edge forward to see past the van — and feeding a player
@@ -769,6 +821,7 @@ src/engine/candidate.js  one driver across a whole drive, and where each habit c
 src/engine/ratings.js    a driver as four axes, and the errors that follow from them
 src/engine/clearance.js  how much of somebody else's space the candidate took, in seconds
 src/engine/awareness.js  what the candidate registered, and whether they gathered it at all
+src/engine/reaction.js   the traffic giving way to a driver who took its space
 src/engine/directions.js the instruction you give, and what stacking them costs
 src/engine/belief.js     where you think the traffic is once you stop looking
 src/engine/detect.js     grading the examiner on what they caught and invented
@@ -1085,11 +1138,12 @@ node tools/verify-world.mjs        the continuous drive: culling, routes, pacing
 node tools/verify-candidate.mjs    one driver across a drive, and habits that repeat enough to be named
 node tools/verify-clearance.mjs    encroachment in seconds, and bands derived from the engine's own claim
 node tools/verify-awareness.mjs    what the candidate registered, and observation kept off outcome
+node tools/verify-reaction.mjs     the world gives way, and never decides whether a fault happened
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All twenty-five must exit 0. Twelve things they check are worth understanding:
+All twenty-six must exit 0. Thirteen things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take

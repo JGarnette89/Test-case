@@ -112,6 +112,10 @@ function trackOf(p, from, horizon, dt) {
 /* Contact is the engine's own collision test at a single instant, not a
    PET that rounded to nothing. Keeping it separate is what leaves the
    terminal outcome exactly where it already was. */
+export function touchesEver(a, b, { from = 0, horizon = 18, dt = PET_STEP } = {}) {
+  return touchEver(trackOf(a, from, horizon, dt), trackOf(b, 0, horizon, dt), dt) != null;
+}
+
 function touchEver(A, B, dt) {
   const byT = new Map();
   for (const y of B) byT.set(Math.round(y.t / dt), y);
@@ -147,6 +151,15 @@ export function petBetween(a, b, { from = 0, horizon = 18, dt = PET_STEP } = {})
   return { pet: hit != null ? 0 : best, at: hit ?? at, touched: hit != null };
 }
 
+/* You cannot leave before you arrive. A caller sweeping "what if they
+   went N seconds early" will run past the ego's own arrival on a scenario
+   whose window opens soon after it — measured, 4 of the 18 shipped
+   situations at 2s early — and the poses that come back for a car that
+   departed before it got there are not a tighter version of the
+   manoeuvre, they are nonsense. Guarded here rather than in every caller,
+   because it is a fact about the world and not about any one measurement. */
+export const clampDepart = (ego, at) => Math.max(at, ego?.arriveAt ?? 0);
+
 /* What the candidate took from everyone entitled to it.
 
    Entitled means the road users who had priority — `sim.priors` — because
@@ -157,7 +170,7 @@ export function petBetween(a, b, { from = 0, horizon = 18, dt = PET_STEP } = {})
    crossing rather than a following gap, and folding them into a headway
    measure would quietly restate that rule in the wrong currency. */
 export function encroachmentIn(sim, { departAt = null, horizon = 18 } = {}) {
-  const ego = departAt == null ? sim.ego : { ...sim.ego, departAt };
+  const ego = departAt == null ? sim.ego : { ...sim.ego, departAt: clampDepart(sim.ego, departAt) };
   const entitled = (sim.priors?.length ? sim.priors : sim.actors).filter((a) => a.kind !== "ped");
   const out = [];
   for (const a of entitled) {

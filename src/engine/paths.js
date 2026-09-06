@@ -55,9 +55,104 @@ const quadAt = (p0, p1, p2, t) => {
 export function accelProfile(a, vmax) { return { kind: "accel", a, vmax }; }
 export function cruiseProfile(v) { return { kind: "cruise", v }; }
 
+/* =====================================================================
+   YIELDING — a third kind, for a driver who has to give way to somebody
+   who took their space.
+
+   THE REACTION IS THE PLAYER'S OBSERVABLE, NEVER THE DEFINITION OF THE
+   FAULT. Encroachment is marked on what the candidate did, against road
+   users holding their planned line; this profile is what the player SEES
+   when the intrusion was bad enough that somebody had to do something
+   about it. Nothing here may be read back into whether a fault occurred.
+
+   Modelled as RETARDED TIME rather than as a bolted-on deceleration: the
+   yielding driver covers the same path, at a time lagging behind their
+   planned one by up to `hold` seconds. That has three properties worth
+   having for free. Distance stays monotone, so a car can never be made to
+   reverse. The final speed is exactly the planned one, so they resume
+   properly instead of trailing off. And the speed dip is the derivative
+   of the lag, so how hard they braked falls out of how much time they had
+   to give up — a gentle lift for a small hold, very nearly a stop for a
+   large one.
+
+   THE PARAMETER IS HOW HARD THEY BRAKE, NOT HOW MUCH TIME THEY GIVE UP,
+   and that is not a presentational choice. The first version took the
+   time and stretched the ramp to fit it, which made the lag NON-MONOTONE
+   in its own parameter: a bigger sacrifice braked more gently and so
+   lagged less in the moments that mattered. Measured — giving up 4s put
+   the car FURTHER FORWARD at the instant of the collision than giving up
+   2s did, and the search for "the least giving way that works" was
+   bisecting a function that does not increase. Severity over a fixed ramp
+   is monotone at every instant, which is what a search needs.
+
+   `give` is the peak fraction of speed surrendered, so it is also the
+   severity readout the player is reading. Capped below 1 by the shape of
+   the ramp, which is what keeps the car from reversing. */
+export const YIELD_RAMP = 4.0;
+export const MOST_GIVE = 0.8;
+
+/* A trapezoid in the RATE of falling behind: brake in, hold, recover. Its
+   plateau rate is give/(1-FLAT), so a `give` of 0.8 surrenders everything
+   and the car is stopped — at which point it falls behind one second per
+   second, and nothing can reverse because that is the ceiling.
+
+   `wait` extends the plateau. Slowing has a hard limit on how much time it
+   can give up (give x ramp, so 3.2s at most), and a driver being cut up
+   badly enough simply stops and waits instead. Measured before this
+   existed: 30 of 33 residual collisions could not be avoided by ANY amount
+   of slowing, because slowing alone cannot buy more than a few seconds.
+   Both parameters are monotone at every instant, which is what lets the
+   search bisect them one after the other. */
+const FLAT = 0.2;
+const K = 1 / (1 - FLAT);
+
+function phasesOf(profile) {
+  const { give, ramp, wait } = profile;
+  const tIn = FLAT * ramp;
+  const tFlat = (1 - 2 * FLAT) * ramp + wait;
+  return { tIn, tFlat, tOut: FLAT * ramp, peak: K * give };
+}
+
+function lagRateAt(profile, x) {
+  if (x <= 0) return 0;
+  const { tIn, tFlat, tOut, peak } = phasesOf(profile);
+  if (x < tIn) return peak * (x / tIn);
+  if (x < tIn + tFlat) return peak;
+  if (x < tIn + tFlat + tOut) return peak * (1 - (x - tIn - tFlat) / tOut);
+  return 0;
+}
+
+function lagTotal(profile, x) {
+  if (x <= 0) return 0;
+  const { tIn, tFlat, tOut, peak } = phasesOf(profile);
+  if (x < tIn) return (peak * x * x) / (2 * tIn);
+  let acc = (peak * tIn) / 2;
+  if (x < tIn + tFlat) return acc + peak * (x - tIn);
+  acc += peak * tFlat;
+  if (x < tIn + tFlat + tOut) {
+    const y = x - tIn - tFlat;
+    return acc + peak * (y - (y * y) / (2 * tOut));
+  }
+  return acc + (peak * tOut) / 2;
+}
+
+export function yieldingProfile(base, { from = 0, give = 0, wait = 0, ramp = YIELD_RAMP } = {}) {
+  const g = Math.max(0, Math.min(MOST_GIVE, give));
+  const w = Math.max(0, wait);
+  const prof = { kind: "yielding", base, from, give: g, wait: w, ramp };
+  prof.hold = lagTotal(prof, Infinity);
+  return prof;
+}
+
+const lagAt = (profile, t) => lagTotal(profile, t - profile.from);
+const lagRate = (profile, t) => lagRateAt(profile, t - profile.from);
+
 /* Distance covered by `t` seconds in. */
 export function distanceAt(profile, t) {
   if (t <= 0) return 0;
+  if (profile.kind === "yielding") {
+    return distanceAt(profile.base, Math.max(0, t - lagAt(profile, t)));
+  }
   if (profile.kind === "cruise") return profile.v * t;
   const { a, vmax } = profile;
   const tRamp = vmax / a;
@@ -69,6 +164,18 @@ export function distanceAt(profile, t) {
    duration everything downstream can keep asking for. */
 export function timeToCover(profile, d) {
   if (d <= 0) return 0;
+  if (profile.kind === "yielding") {
+    /* Monotone, so bisection is exact enough and this is called once per
+       path rather than per frame. Bounded above by the planned time plus
+       the whole hold, which is what the lag converges to. */
+    let lo = timeToCover(profile.base, d);
+    let hi = lo + profile.hold + profile.ramp + profile.wait;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (distanceAt(profile, mid) < d) lo = mid; else hi = mid;
+    }
+    return hi;
+  }
   if (profile.kind === "cruise") return d / profile.v;
   const { a, vmax } = profile;
   const dRamp = (vmax * vmax) / (2 * a);
@@ -81,6 +188,10 @@ export function timeToCover(profile, d) {
    off the line claims very little, which is correct and was not true
    when everything moved at one speed. */
 export function speedAt(profile, t) {
+  if (profile.kind === "yielding") {
+    const base = speedAt(profile.base, Math.max(0, t - lagAt(profile, t)));
+    return Math.max(0, base * (1 - lagRate(profile, t)));
+  }
   if (profile.kind === "cruise") return profile.v;
   return Math.min(profile.vmax, Math.max(0, profile.a * t));
 }

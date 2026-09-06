@@ -5,8 +5,9 @@ around them. This is what I was trying to emulate with the vision-fade
 system."*
 
 Design, plus the pieces that are built. §0.4 (the drift readout), §7
-(encroachment in seconds), §8 (awareness, and the fifth axis) and §9
-(caution, and the risky tail) ship; everything else is design.
+(encroachment in seconds), §8 (awareness, and the fifth axis), §9
+(caution, and the risky tail) and §10 (the reaction layer, plus wiring
+departure) ship; everything else is design.
 
 ---
 
@@ -327,8 +328,9 @@ both callability floors.
   tail of confidence.** ✅ **Built as one piece** — see §9. Overconfidence
   is now a consequence rather than a roll. Still exposed as a query;
   wiring it into `schedule()` is its own increment.
-- **R2.4 — the second scheduling pass.** Road users decelerate for a
-  candidate who took their gap. The reaction becomes the observable.
+- **R2.4 — the reaction layer.** ✅ **Built** — `src/engine/reaction.js`,
+  the `yielding` profile, `verify-reaction.mjs`, and `departOverride`
+  wired into `schedule()`. See §10.
 - **R2.5 — observation faults, and the five-axis re-map.** Then re-run the
   attributability floor for all five.
 
@@ -649,11 +651,18 @@ view.
 Measured across the set: `signalled` 0%, `opposite` 29%, `arterial` 58%,
 `unprotected` 67%.
 
-**The asymmetry that keeps observation and confidence from collapsing
-into each other.** Occlusion is a *known unknown* and caution answers it —
-you can see that you cannot see. Inattention is an *unknown unknown* and
-no amount of caution helps, because you do not know you failed to look.
-That is true of driving and it is why the axes stay separate. Checked:
+**THE ASYMMETRY, AND IT IS THE JUSTIFICATION FOR THE WHOLE FIVE-AXIS
+STRUCTURE.** Occlusion is **perceptible**, so caution can compensate for
+it — you can see that you cannot see past the van, and wait. Inattention
+is **invisible from the inside**, so nothing can compensate for it — you
+do not know you failed to look, and no amount of care will make you
+account for a car you never registered.
+
+That is what makes observation and confidence two axes rather than two
+names for one thing, and it states the general rule: **an axis earns its
+place when it fails in a way the others cannot reach.** It was not
+designed in — it arrived as a *failed* derivation (§9.3), and forcing a
+constant out of that calibration would have buried it. Checked directly:
 **with nothing hidden the margin is zero whatever the confidence.**
 
 ### 9.3 The allowance is derived, not chosen
@@ -738,3 +747,107 @@ what happens to pacing and supply. The engine-side hook is one line — a
 `departOverride` respected by `schedule()` — and composition would stamp
 it after a first pass, keeping everything resolved once at composition
 time.
+
+---
+
+## 10. R2.4 — the world gives way. Built, and departure wired.
+
+`src/engine/reaction.js`, the `yielding` motion profile in `paths.js`, a
+`departOverride` in `schedule()`, and `tools/verify-reaction.mjs` (the
+26th check).
+
+### 10.1 Ordering: R2.4 before wiring, and the reason is stronger than sequencing
+
+Agreed, and there was no blocking dependency — `departureOnAwareness` was
+already a query, so awareness-driven departures could be constructed for
+measurement without switching anything on.
+
+But R2.4 first also **forces a design decision that would have been much
+harder to unpick later**: whether a fault is measured on the reacted world
+or the unreacted one. Wiring first would have baked an answer into every
+generated drive before the question was asked.
+
+### 10.2 The reaction is the observable, and here is what that is worth
+
+**Measured: marking on the reacted world would soften 63% of faults** —
+`opposite` at 2 s early goes from `contact` to `veryTight` once the Red
+car brakes. A driver who forces somebody to stand on the brakes would
+score **better** for having done it.
+
+So there are two derived worlds: **what the candidate did**, which is what
+is marked, and **what then happened**, which is drawn and decides whether
+anybody was actually hit. `clearance.js` imports nothing but `index.js`,
+checked at source.
+
+### 10.3 Derived, not scripted — and two bugs found getting there
+
+The reaction is the **least giving way that avoids the collision**, found
+by search, so how hard somebody had to brake is a measurement of how bad
+the intrusion was. 7 distinct amounts across the shipped set.
+
+**Bug one, and it cost the most: the search was bisecting a non-monotone
+function.** The first profile took the *time* given up and stretched the
+braking ramp to fit it — so a bigger sacrifice braked more gently and
+lagged **less** in the moments that mattered. Measured: giving up 4 s put
+the car *further forward* at the instant of the collision than giving up
+2 s. Every search fell through to the maximum and avoided nothing.
+
+The parameter is now **how hard they brake** over a fixed ramp, which is
+monotone at every instant — checked over 3094 samples — and is also the
+severity the player reads. A `give` of 0.1 is a lift off the throttle,
+0.8 is a dead stop.
+
+**Slowing has a ceiling, so giving way has to include stopping.** Before
+that: **30 of 33 residual collisions could not be avoided by any amount of
+slowing**, because braking alone cannot buy more than about three seconds.
+A `wait` extends the plateau, monotone in its own right, and the search
+runs the two bisections in order.
+
+**Bug two: rounding the answer undid it.** Bisection leaves an interval of
+about 5e-5; rounding to three places moves the answer by up to 5e-4, ten
+times the precision it just bought — enough to land back on the side that
+collides. The search reported "avoided" and the applied world hit anyway
+in **13% of reacting scenes**. Rounded away from the collision now, so it
+can only ever give slightly more way than needed. **0 of 23 disagree.**
+
+### 10.4 Where giving way cannot help, and why that is right
+
+A blind, bold driver: **9 contacts become 6**. Of what remains across
+drawn drivers, **91% is the candidate driving INTO traffic already at or
+in the junction** when they committed. You cannot reverse out of a
+junction you are already in, so this is geometry rather than a shortcoming
+— and it must not be tuned until it looks like one.
+
+### 10.5 What wiring departure did to pacing and supply: nothing
+
+`schedule()` gained one line — a `departOverride` that replaces
+`earliestClear` when a driver has decided for themselves. Absent on
+everyone else, so the golden is unmoved.
+
+| | dead air worst | median | markable events / drive | candidate faults / drive |
+|---|---|---|---|---|
+| engine-scheduled | 35.7 s | 22.3 s | 8.0 | 5.8 |
+| awareness-driven | 35.7 s | 22.3 s | 7.9 | 5.7 |
+
+**Pacing and supply are untouched**, and the reason is worth stating: a
+drawn candidate observes well enough (median observation 0.84) that their
+own decision *coincides* with the engine's. The mechanism only bites for a
+poor observer, which is exactly what it should do — but it means the
+wiring is safe and boring rather than transformative.
+
+The other side of that coin is thin content: **2 encroachments in 112
+generated junctions**. If awareness-driven driving is to be something the
+player reads, generated drives need to draw poorer observers more often —
+the same content question as everywhere else, now with a number.
+
+### 10.6 A gap worth naming: pedestrians do not give way
+
+**All 4 contacts on generated drives were with pedestrians**, which
+`reactionsFor` excludes. That is defensible — a pedestrian jumping back is
+not the same mechanic as a driver braking, and `blockUntilClear` already
+governs them by a legal rule rather than a following gap — but it means a
+blind candidate's contacts on generated drives are entirely with
+pedestrians and entirely terminal, with no near-miss band available.
+
+Whether a pedestrian should be able to check and step back, and what that
+costs the candidate, is a domain question rather than a mechanical one.
