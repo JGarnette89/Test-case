@@ -39,7 +39,8 @@ const fail = (s) => { problems++; console.log(`  FAIL: ${s}`); };
 /* The screens a player can actually reach. A new one belongs here the day
    it is added to the mode switcher. */
 const SCREENS = [
-  { id: "ExaminerLab", file: "src/apps/ExaminerLab.jsx", why: "the examiner game" },
+  { id: "ExaminerDrive", file: "src/apps/ExaminerDrive.jsx", why: "the playable loop" },
+  { id: "ExaminerLab", file: "src/apps/ExaminerLab.jsx", why: "the bench behind it" },
   { id: "RightOfWayTiming", file: "src/apps/RightOfWayTiming.jsx", why: "the only renderer there is" },
   { id: "MergeRush", file: "src/apps/MergeRush.jsx", why: "unwired, but reachable at #/merge-rush" },
 ];

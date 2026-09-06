@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  Menu, X, Gauge, Milestone, ChevronRight, Lock, Check,
+  Menu, X, Gauge, Milestone, ChevronRight, Lock, Check, ClipboardList,
   CalendarDays, Shuffle, BookOpen, FlaskConical, Dices, Eye } from "lucide-react";
 
 /* DriveDraw is no longer part of this app. Its source is still in
@@ -8,6 +8,7 @@ import {
    in. This project is the game now. */
 import RightOfWayTiming from "./apps/RightOfWayTiming.jsx";
 import ExaminerLab from "./apps/ExaminerLab.jsx";
+import ExaminerDrive from "./apps/ExaminerDrive.jsx";
 /* A between-stages minigame prototype — not on the home screen or in the
    mode switcher yet, deliberately. Reachable directly at #/merge-rush
    while it is still a standalone thing to look at, not a decision to
@@ -52,8 +53,18 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
    ===================================================================== */
 const MODES = [
   {
+    id: "drive",
+    name: "The drive",
+    kicker: "You are the examiner — the game",
+    blurb:
+      "A course of six junctions and one candidate driving it. Watch them, give the directions in time to be followed, and mark what you saw — on a sheet at the end of each section rather than the instant you see it, so the job is memory as well as attention. Directions given early buy back your attention and cost the candidate their concentration; that trade is the game. No intervention yet.",
+    Icon: ClipboardList,
+    accent: C.green,
+    Component: ExaminerDrive,
+  },
+  {
     id: "examiner",
-    name: "Examiner",
+    name: "Examiner lab",
     kicker: "You are the examiner — the live direction",
     blurb:
       "The game this project is now. A candidate drives themselves, drawn with five skill ratings and weak on one or two of them; they register the traffic they happen to notice, decide when to go on that, and the world gives way when they take a gap that was not theirs. The chase camera rides with them, occlusion decides what could have been seen, and every fault is derived rather than scripted. A bench rather than a finished game: it scores your marking, but there is no course, no directions to give and no debrief.",

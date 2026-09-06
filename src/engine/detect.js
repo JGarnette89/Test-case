@@ -39,6 +39,7 @@
    Pure. No React, no DOM, no colour.
    ===================================================================== */
 import { REACTION_FLOOR } from "./score.js";
+import { attribute } from "./directions.js";
 import { MIN_DURATION } from "./faults.js";
 
 /* How long the screen has to have SHOWN a fault before failing to call it
@@ -174,6 +175,60 @@ const round = (v) => Math.round(v * 1000) / 1000;
 /* A plain-language sheet line, the way the mark sheet already reads.
    Nothing here decides pass or fail: that is a road-test standard and it
    belongs with the maintainer, not in a scoring helper. */
+/* =====================================================================
+   THE SECTION SHEET
+
+   What the player recorded against what actually happened, for one
+   section of a drive — the deferred marking sheet, which is the piece
+   that makes the job memory as well as attention.
+
+   Two gradings, kept apart because they are graded against different
+   people. The FAULTS are the candidate's and the player is graded on
+   catching them. The DIRECTIONS are the player's own, and a late one is
+   the examiner's fault rather than the candidate's — which is the
+   interlock the whole design rests on: being busy marking makes you late
+   with an instruction, and the resulting error is then yours and
+   unmarkable.
+
+   Pure, and out of the renderer on purpose: this is the loop's core, and
+   a component is the one place in this project nothing can check.
+   ===================================================================== */
+export function sectionSheet({
+  legs = [],            // [{ faults, window, intent }] for this section
+  marks = [],           // [{ at, junction, what? }]
+  given = {},           // junction -> { at, intent }
+  shownFor = (f) => f.duration,
+  from = 0,
+}) {
+  const faults = [];
+  legs.forEach((leg, i) => {
+    for (const f of leg.faults) faults.push({ ...f, junction: from + i });
+  });
+
+  const result = scoreDetection({ faults, marks, shownFor });
+
+  const calls = legs.map((leg, i) => {
+    const j = from + i;
+    const g = given[j] ?? null;
+    const a = attribute(g ? g.at : null, leg.window);
+    return {
+      junction: j,
+      wanted: leg.intent,
+      said: g?.intent ?? null,
+      verdict: a.verdict,
+      blame: a.blame,
+      /* Silence means straight on, so a direction never given is a missed
+         turn rather than a pause — and one that names the wrong turn is a
+         different failure from one that came too late. */
+      wrongTurn: Boolean(g) && g.intent !== leg.intent,
+      followed: a.followed,
+    };
+  });
+
+  const onYou = calls.filter((c) => c.blame === "examiner" || c.wrongTurn).length;
+  return { from, upTo: from + legs.length, result, calls, directionsOnYou: onYou };
+}
+
 export function summarise(r) {
   const bits = [];
   bits.push(`${r.hits.length} caught`);

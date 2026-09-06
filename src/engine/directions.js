@@ -107,6 +107,25 @@ export function instructionWindow(sim, { legStartsAt = 0 } = {}) {
   };
 }
 
+/* HOW EARLY A LEG HAS TO START, so its instruction can actually be given.
+
+   Not a constant, because the deadline is not: measured across 48
+   generated junctions it runs from 4.50s BEFORE the candidate reaches the
+   line to 8.20s after, depending on what the manoeuvre demands and when.
+   A fixed run-in that suits the median leaves the demanding ones
+   undirectable — 15 of 48 at 3.5s — and a fixed one that suits the worst
+   makes every other junction a wait.
+
+   So a leg starts early enough for its own instruction, floored at the
+   candidate's own approach, which is the least that shows them arriving.
+   The window is then at least FOLLOW_LAG long, on the reasoning that if
+   the candidate needs a second to act on an instruction, the examiner
+   needs at least as long to decide on one. Nothing picked. */
+export function runInFor(sim, { floor = 0 } = {}) {
+  const bare = instructionWindow(sim, { legStartsAt: -Infinity });
+  return Math.max(floor, FOLLOW_LAG - bare.deadline);
+}
+
 /* How much approach a leg must carry before the candidate leaves the
    line, for its instruction to be givable at all. Derived by working
    backwards through what the manoeuvre itself asks for: hear it, then

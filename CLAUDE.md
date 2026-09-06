@@ -399,11 +399,60 @@ failure mode as the ambulance in the void: whatever the camera can reveal
 has to have been drawn. On `gap` the world goes from 360 to 951.
 
 Playable in the **Examiner lab** (`src/apps/ExaminerLab.jsx`, `#/examiner`,
-first entry in the mode switcher): the chase camera, the gaze cone, every
+second entry in the mode switcher): the chase camera, the gaze cone, every
 derived fault with its live visibility, and the stacking meter, all on one
 canvas with the knobs exposed. It is a bench, not a game — it scores
 nothing, and when there is a real examiner renderer it is scaffolding and
 should go.
+
+### The drive — the first playable loop
+
+`src/apps/ExaminerDrive.jsx`, `#/drive`. Six junctions, one candidate, and
+three of the four jobs running together: watch, mark, direct. Intervention
+is absent because what an intervention IS remains the maintainer's call.
+
+**Marking is DEFERRED to a sheet at the end of each section**, which is
+what makes the job memory as well as attention — you cannot mark the
+instant you see. `sectionSheet` in `detect.js` is that sheet, and it lives
+in the engine rather than the component so it can be checked at all: a
+React component is the one place nothing else in this suite can reach.
+
+**A leg starts as early as its own instruction needs, and no constant can
+do that job.** Measured over 48 generated junctions the instruction
+deadline runs from 4.50s BEFORE the candidate reaches the line to 8.20s
+after, because it is derived from what the manoeuvre demands rather than
+from the junction. A fixed 3.5s run-in left 15 of those 48 undirectable;
+6.0s made every other junction a wait. `runInFor(sim, { floor })` in
+`directions.js` gives each leg its own, floored at the candidate's own
+approach so the player always sees them arriving. The shipped drive spans
+1.0s to 9.9s of decision time as a result.
+
+**The stacking trade shipped INERT, and that is worth remembering.** The
+direction buttons wrote `given[at]` — the junction being driven — while
+`held` counts instructions outstanding for junctions BEYOND it. So `held`
+was zero by construction: no pressure, no composure cost, and the
+`"stacked"` verdict could never fire. The one mechanic the screen exists
+to evaluate was the one it could not perform, and every check passed
+because every check was aimed at the engine underneath it.
+
+Two things came out of fixing it. **Stacking only exists at a distance of
+two** — an instruction for the very next junction is discharged the moment
+they arrive, so it never makes them CARRY anything — which is why `AHEAD`
+offers this junction, the next, and the one after. And **load is frozen
+when a leg begins** rather than read per frame: live, it would re-simulate
+the junction underneath the candidate the instant you spoke and the car
+would jump. The cost lands on the driving done while holding it.
+
+Measured through the same derivation the examiner marks: 0 / 0 / 1
+instructions in the air at call-distances 0, 1 and 2, and at that load
+every fault-carrying junction widens — 1.14x the deviation at 34%
+pressure. Checked in `verify-detect.mjs` §10.
+
+**Grade against the deadline the player was SHOWN.** Stacking writes
+`skill`, `skill` scales `startDelay`, `startDelay` moves `departAt`, and
+the deadline is derived from `departAt` — so a window recomputed at
+section close is not the one they were racing. The component records the
+window it displayed and the sheet reads that.
 
 **Reading the candidate's own car is a different act from spotting anyone
 else's, and the geometry says so.** The examiner sits IN that car, about
@@ -1113,6 +1162,8 @@ src/environments.js      city, suburban, rural scenery — renderer side only
 src/frame.js             the camera: frameFor and cameraFor — no React
 src/storage.js           adapter chain: artifact host, localStorage, memory
 src/progress.js          what the player has cleared, and the daily record
+src/apps/ExaminerDrive.jsx     the examiner game: watch, mark, direct, one candidate
+src/apps/ExaminerLab.jsx       the bench behind it — knobs exposed, scores nothing
 src/apps/RightOfWayTiming.jsx  the renderer — every mode is this one component
 src/apps/RoguelikeScreens.jsx  the run's own four screens: branch, draft, both endings
 src/apps/roadArt.jsx     SVG shared by the renderer and those screens
@@ -1481,6 +1532,15 @@ All twenty-seven must exit 0. Fourteen things they check are worth understanding
   proves the screen mounts, which is the thing nobody was checking.
   Verified against the original bug by putting it back: it fails with
   `watched is not defined`.
+
+  It has since caught a second, of a different shape. Deriving each leg's
+  run-in meant the clock could not be known until the leg was composed, so
+  `t` became state initialised to `null` and filled in by an effect —
+  effects do not run under SSR, so `ExaminerDrive` rendered its empty
+  guard and 98 characters of markup. The lesson is a convention rather
+  than a fix: **a screen's first render must already have a time.** The
+  component now holds `elapsed` from zero and derives `t = elapsed -
+  runIn`, so there is no null state and no effect to miss.
 
 - **`verify-candidate.mjs` guards the half of the job that is reading a
   person.** Its properties are the ones any correct implementation would

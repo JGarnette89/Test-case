@@ -15,8 +15,16 @@ import {
   scoreDetection, promptness, callWindow, summarise,
   SHOWN_ENOUGH, CALL_GRACE, FALSE_COST, LATE_CREDIT,
 } from "../src/engine/detect.js";
-import { faultsIn } from "../src/engine/faults.js";
-import { simulate } from "../src/engine/index.js";
+import { faultsIn, MIN_DURATION } from "../src/engine/faults.js";
+import { sectionSheet } from "../src/engine/detect.js";
+import {
+  instructionWindow, runInFor, FOLLOW_LAG, pressureOf, loadCandidate, severityUnder,
+} from "../src/engine/directions.js";
+import { composeCandidate } from "../src/engine/candidate.js";
+import { composeDriver } from "../src/engine/ratings.js";
+import { planDrive, composeForTile, CHARACTER } from "../src/engine/tiles.js";
+import { simulate, M } from "../src/engine/index.js";
+import { approachDecel } from "../src/engine/paths.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
 import { readFileSync } from "node:fs";
 
@@ -225,6 +233,168 @@ console.log("\n6. ACROSS THE SHIPPED SET");
   empty.score === 100
     ? ok("a faultless drive, correctly left unmarked, is a clean sheet")
     : fail(`a drive with no faults scored ${empty.score}`);
+}
+
+/* ---------- 10. the loop: a section produces a sheet ---------------- */
+console.log("\n10. THE LOOP: A DRIVE, A SECTION, AND A SHEET");
+{
+  /* The playable loop's core, out of the component so it can be checked
+     at all — a React component is the one place in this project nothing
+     could reach, which is how the examiner screen threw on mount for
+     twenty increments. */
+  const PER_SECTION = 3;
+  const APPROACH = M(11.5) / approachDecel(M(11.5));
+  const seed = 3;
+  const cand = { ...composeCandidate(seed * 7 + 3), ...composeDriver(seed * 11) };
+  const plan = planDrive({ seed, length: 6, candidate: cand });
+  const legs = [], drawn = [];
+  let since = 0;
+  for (let i = 0; i < plan.length; i++) {
+    const tile = plan[i].tile;
+    const legTime = tile.runway / CHARACTER[tile.character].speed + 4;
+    const { scn } = composeForTile(tile, since, (seed * 7919 + i * 104729) >>> 0, {
+      legTime, candidate: cand, at: { from: plan[i].entry, intent: plan[i].intent },
+    });
+    if (!scn) continue;
+    const sim = simulate(scn);
+    /* Each leg starts early enough for its OWN instruction. A fixed
+       run-in cannot work: measured over 48 junctions the deadline runs
+       from 4.50s before the line to 8.20s after, so one number leaves the
+       demanding legs undirectable and makes the rest a wait. */
+    drawn.push(scn);
+    legs.push({
+      faults: faultsIn(scn),
+      window: instructionWindow(sim, { legStartsAt: -runInFor(sim, { floor: APPROACH }) }),
+      intent: plan[i].intent,
+    });
+    since = faultsIn(scn).length ? 0 : since + legTime;
+  }
+  legs.length >= PER_SECTION
+    ? ok(`a drive composes ${legs.length} junctions for one candidate, weak on ${cand.weakOn.join(" and ")}`)
+    : fail(`only ${legs.length} junctions composed, not enough for a section`);
+
+  /* EVERY INSTRUCTION HAS TO BE GIVEABLE. A window that never opens is a
+     junction the player is asked to direct and cannot — measured before
+     the run-in existed, the window was 1.1s from a standing start, which
+     is not a decision anybody can make. */
+  /* The floor is FOLLOW_LAG rather than a number: if the candidate needs
+     a second to act on an instruction, the examiner needs at least as
+     long to decide on one. */
+  const spanOf = (l) => l.window.deadline - l.window.opensAt;
+  const tight = legs.filter((l) => !l.window.viable || spanOf(l) < FOLLOW_LAG);
+  tight.length === 0
+    ? ok(`every junction gives at least FOLLOW_LAG (${FOLLOW_LAG}s) to direct — shortest ${Math.min(...legs.map(spanOf)).toFixed(1)}s, longest ${Math.max(...legs.map(spanOf)).toFixed(1)}s`)
+    : fail(`${tight.length} junction(s) cannot be directed in the time the leg gives`);
+
+  const section = legs.slice(0, PER_SECTION);
+  const shown = (f) => f.duration;               // a player who watched everything
+
+  /* Marking nothing, marking everything, and marking well. The middle one
+     must lose — that is the false-positive penalty doing its job, and it
+     is what makes the sheet worth anything. */
+  const perfect = [];
+  section.forEach((leg, i) => {
+    for (const f of leg.faults) {
+      if (f.duration >= MIN_DURATION) perfect.push({ at: f.from + 0.1, junction: i });
+    }
+  });
+  const spray = [];
+  for (let i = 0; i < PER_SECTION; i++) for (let k = 0; k < 12; k++) spray.push({ at: k * 0.8, junction: i });
+
+  const given = {};
+  section.forEach((leg, i) => { given[i] = { at: leg.window.deadline - 0.3, intent: leg.intent }; });
+
+  const sheetOf = (marks, g = given) => sectionSheet({ legs: section, marks, given: g, shownFor: shown });
+  const good = sheetOf(perfect), none = sheetOf([]), all = sheetOf(spray);
+  console.log(`\n   marking well ${good.result.score} · marking nothing ${none.result.score} · marking everything ${all.result.score}`);
+  good.result.score > none.result.score && good.result.score > all.result.score
+    ? ok("marking well beats marking nothing and marking everything — the sheet is worth filling in honestly")
+    : fail(`the sheet does not reward honest marking: ${good.result.score} / ${none.result.score} / ${all.result.score}`);
+
+  /* Directions are graded against the EXAMINER. */
+  const late = {};
+  section.forEach((leg, i) => { late[i] = { at: leg.window.deadline + 0.5, intent: leg.intent }; });
+  const onTime = sheetOf(perfect, given), tooLate = sheetOf(perfect, late), silent = sheetOf(perfect, {});
+  onTime.directionsOnYou === 0
+    ? ok("directions given inside the window are nobody's fault")
+    : fail(`${onTime.directionsOnYou} in-window directions were blamed on somebody`);
+  tooLate.directionsOnYou === PER_SECTION && silent.directionsOnYou === PER_SECTION
+    ? ok(`and a late one is the EXAMINER's (${tooLate.directionsOnYou}/${PER_SECTION}), as is never saying anything — the interlock the design rests on`)
+    : fail(`late and absent directions were not attributed to the examiner (${tooLate.directionsOnYou}, ${silent.directionsOnYou})`);
+  const wrong = {};
+  section.forEach((leg, i) => {
+    const other = leg.intent === "left" ? "right" : "left";
+    wrong[i] = { at: leg.window.deadline - 0.3, intent: other };
+  });
+  sheetOf(perfect, wrong).calls.every((c) => c.wrongTurn)
+    ? ok("and naming the wrong turn is a different failure from naming it late")
+    : fail("a wrong turn given in time was not distinguished from a late one");
+
+  /* ================================================================
+     CAN THE PLAYER ACTUALLY STACK? The trade is the whole reason the
+     four systems are one game rather than four scoreboards, and it was
+     UNREACHABLE in the first build of the loop: the buttons only ever
+     wrote given[at], while held counts junctions BEYOND at, so held was
+     0 by construction — no load, no cost, no meter movement, and the
+     "stacked" verdict could never fire. Checked here as the arithmetic
+     the screen actually performs, because a React component is the one
+     place nothing else in this suite can reach.
+     ================================================================ */
+  const AHEAD = [0, 1, 2];
+
+  /* Held at leg k is what was SPOKEN BEFORE leg k began and is still
+     outstanding — so the model needs which leg each instruction was
+     given during, not merely which junction it was about. Collapsing
+     those two is how the first version of this check passed while
+     measuring nothing: a fully populated map of calls looks identical
+     whenever they were actually said. */
+  const heldWhen = (issuedDuring, k) =>
+    Object.keys(issuedDuring).filter((j) => Number(j) > k && issuedDuring[j] < k).length;
+  const spokenAt = (ahead) => {
+    const m = {};
+    section.forEach((_, j) => { m[j] = Math.max(0, j - ahead); });
+    return m;
+  };
+  const loads = (ahead) => Math.max(...section.map((_, k) => heldWhen(spokenAt(ahead), k)));
+  const loadNow = loads(0), loadOne = loads(1), loadTwo = loads(2);
+  loadNow === 0 && loadOne === 0 && loadTwo > 0 && Math.max(...AHEAD) >= 2
+    ? ok(`stacking is reachable and only at a distance of two: ${loadNow} in the air taking them as they come, ${loadOne} calling one ahead — that one is discharged on arrival — and ${loadTwo} calling two`)
+    : fail(`the load model is wrong: ${loadNow} / ${loadOne} / ${loadTwo} in the air at distances 0, 1, 2 — the trade the design rests on is inert or free`);
+
+  /* And it has to be a TRADE, both halves measured. Early is never late. */
+  const calledAhead = {};
+  section.forEach((leg, i) => {
+    calledAhead[i] = i === 0
+      ? { at: leg.window.deadline - 0.3, intent: leg.intent }
+      : { at: leg.window.opensAt - 5, intent: leg.intent, ahead: true };
+  });
+  const aheadSheet = sheetOf(perfect, calledAhead);
+  aheadSheet.directionsOnYou === 0 && aheadSheet.calls.filter((c) => c.verdict === "stacked").length === PER_SECTION - 1
+    ? ok("an instruction called ahead is stacked, not late — nobody's fault, which is what makes it worth doing")
+    : fail(`calling ahead was penalised: ${aheadSheet.directionsOnYou} blamed, ${aheadSheet.calls.filter((c) => c.verdict === "stacked").length} stacked`);
+
+  /* The cost lands on the candidate, and it is measured through the same
+     fault derivation the examiner marks — peakPos, the metres of
+     deviation a fault actually reaches, not a meter reading. */
+  const deviation = (scn) => faultsIn(scn).reduce((a, f) => a + (f.peakPos ?? 0), 0);
+  const worstUnder = drawn.map((scn) => ({
+    free: deviation(scn),
+    loaded: deviation(loadCandidate(scn, { held: loadTwo })),
+  })).filter((d) => d.free > 0);
+  const grew = worstUnder.filter((d) => d.loaded > d.free + 1e-9).length;
+  const ratio = worstUnder.length
+    ? worstUnder.reduce((a, d) => a + d.loaded, 0) / worstUnder.reduce((a, d) => a + d.free, 0)
+    : 1;
+  pressureOf(loadTwo) > 0 && grew === worstUnder.length && ratio > 1
+    ? ok(`and it costs them, on the same derivation the examiner marks: ${(100 * pressureOf(loadTwo)).toFixed(0)}% pressure widens every one of ${worstUnder.length} junctions carrying a fault, ${ratio.toFixed(2)}x the deviation`)
+    : fail(`stacking does not measurably worsen the candidate: ${grew}/${worstUnder.length} junctions grew, ${ratio.toFixed(3)}x deviation at ${(100 * pressureOf(loadTwo)).toFixed(0)}% pressure`);
+
+  /* A fault the screen never showed must not count against the player —
+     the same rule occlusion lives under everywhere else. */
+  const blind = sectionSheet({ legs: section, marks: [], given, shownFor: () => 0 });
+  blind.result.recall === 1 || blind.result.missed.length === 0
+    ? ok("a section where nothing was ever on screen is a clean sheet, not a failure")
+    : fail(`${blind.result.missed.length} faults counted as missed though the screen never showed them`);
 }
 
 console.log("\n" + "=".repeat(70));
