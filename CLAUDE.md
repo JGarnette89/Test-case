@@ -624,6 +624,27 @@ deliberately left untuned rather than dialled up to absorb a fault
 belonging elsewhere. The floor is now met: steering 3, knowledge 3,
 braking 2, confidence 2.
 
+**LATE AND MISPLACED STOPS ARE TWO DIFFERENT FAULTS, and the
+discriminator is the MANNER of the stop rather than its position.**
+Maintainer's ruling. A CONTROLLED stop in the wrong place is a KNOWLEDGE
+gap — not knowing where to stop, or why the stopping point matters. An
+ABRUPT or uncontrolled stop, before or after the line, is BRAKING
+control, or an OBSERVATION failure if the driver did not register the
+controls in time. Same observable position, three causes, and the
+discriminator is a physical quantity rather than a label.
+
+**And a rolling stop is a knowledge fault essentially always**: "a
+particularly poorly skilled driver would have to be completely unable to
+make their stop due to lack of control to make this anything other than a
+failure to obey traffic law." Weighted 0.9 knowledge, 0.1 control.
+
+**Applying that ruling took BRAKING from 2 dominant kinds to 0, and the
+regression is reported rather than argued away.** `overshoot` and
+`stopsShort` move the resting point and leave the manner alone, so both
+are the controlled case and both are knowledge now. Attribution got more
+accurate and an axis lost its content; the content comes back when the
+two prerequisites below land.
+
 **OBSERVATION is exempt from the trait floor, and that is the point.** It
 does not express through a trait at all — it degrades what the candidate
 registers, and its faults surface as an ENCROACHMENT that `causeOf`
@@ -875,6 +896,58 @@ three-layer reframing, the five axes and R2's build order:
   `CHARACTER.arterial.control` says today, which would leave the candidate
   stopping at nothing) or signalised — a road-design call, not a mechanical
   one. See `DRIVER-IDENTITY.md` §6.
+- **An APPROACH has no braking physics, and every car in the game stops at
+  1.84g.** Measured across the set: peak deceleration 18.1 m/s^2 on every
+  approach, at every road speed, on every road. Comfortable braking is
+  2-3, firm is 5, an emergency stop is about 8. `approachPose` is still a
+  smoothstep lerp from a fixed 24.5 m run over a fixed 2.8 s, so approach
+  speed does not follow the road either — cars arrive at a residential
+  junction at 47 km/h.
+
+  **This is the same bug the departure side already fixed, on the other
+  half of the manoeuvre.** CLAUDE.md's own history records replacing a
+  fixed traversal duration with real acceleration; the approach was never
+  given the same treatment.
+
+  It blocks the maintainer's manner-based attribution outright: abrupt
+  versus controlled is a deceleration comparison, and there is currently
+  no controlled stop to compare against. It is also why BRAKING dominates
+  no fault kind.
+
+  Encouragingly the geometry is already about right — a comfortable stop
+  from 11.5 m/s at 2.5 m/s^2 needs 26.5 m, against `APPROACH_RUN`'s
+  24.5 m — so the fix is a real profile rather than new distances. It will
+  move the golden for every scenario, exactly as the turn-geometry fix
+  did, and it changes when a car is visible and where it is before
+  `arriveAt`, so `sightingsIn`, belief and the camera all move with it. Its
+  own increment, announced.
+
+- **Intersection controls are not perceivable objects.** Awareness tracks
+  ROAD USERS: `sightingsIn` iterates `sim.actors` and nothing else. A
+  control is a string on a leg (`spec.legs[side].control`) with no
+  position; the only spatial fact the engine has about one is the stop
+  line. The RENDERER places signs from its own hardcoded four-entry table,
+  board-relative and pinned to `CX`/`CY` — so it does not follow a
+  junction placed elsewhere in the world, which is the same class of bug
+  `exitPoint` had. The signal is worse: one head drawn at one corner
+  regardless of which leg it governs.
+
+  This blocks the OBSERVATION branch of the stop-fault split — "did not
+  register the control in time". What it takes:
+
+  1. `controlsOf(spec, at)` in `road.js`, returning a positioned control
+     per controlled leg, derived the way `stopPoint` already is. The
+     renderer then draws from it instead of its own table, which removes
+     the duplicate rather than adding a second one.
+  2. An extent for a sign, and this needs a ruling: the map symbol is a
+     deliberate exaggeration (~1.4 m drawn for a 0.75 m face), and
+     occlusion against the drawn size would make signs far too easy to see.
+  3. **A rule for elevated objects in a 2D occlusion model.** A sign on a
+     post at 2 m is visible OVER a car; the engine's occlusion is flat, so
+     a van would hide a stop sign you would really see straight over.
+     Probably "signs are occluded by walls, hedges and buildings but not
+     by vehicles" — cheap, and physically right. A domain call.
+
 - **The two games want OPPOSITE things from the same generator, and until
   that is settled examiner content will stay thin.** `windowIsSafe`
   discards any draw whose window lands on somebody. That is exactly right
@@ -914,13 +987,21 @@ three-layer reframing, the five axes and R2's build order:
   computes. Naming the habits is also what teaches the player what to watch
   for next time. See `DRIVER-IDENTITY.md` §7.
 
-  **Some of the prose already exists.** The deleted `Order` mode carried
-  eight hand-authored right-of-way puzzles, each with a `rule` and a `why`
-  written by the maintainer — explanations of exactly the kind a debrief
-  needs, since a debrief has to say why something was a fault. They are at
-  commit `63a9c68`, in a static positions-and-answer format the engine
-  cannot simulate, so they are prose to reuse rather than scenarios to
-  restore.
+  **Some of the prose already exists, and it has a second home.** The
+  deleted `Order` mode carried eight hand-authored right-of-way puzzles,
+  each with a `rule` and a `why` written by the maintainer — explanations
+  of exactly the kind a debrief needs, since a debrief has to say why
+  something was a fault. At commit `63a9c68`, in a static
+  positions-and-answer format the engine cannot simulate, so it is prose
+  to reuse rather than scenarios to restore.
+
+- **A TUTORIAL, framed as job training for a new hire.** Agreed direction,
+  not built. The eight rescued puzzles become an introduction to the core
+  concepts, and the fiction does real work: the player is being trained to
+  examine, which is exactly what the tutorial is for, and it gives the
+  game the onboarding path it currently has none of. The same `rule` and
+  `why` prose serves both this and the debrief — one body of writing, two
+  places it is needed, which is why it was worth rescuing.
 
 ### Humour is allowed. The traffic law is not
 

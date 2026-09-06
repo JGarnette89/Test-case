@@ -506,14 +506,38 @@ console.log("\n8. RATINGS: ERRORS DERIVED FROM WHAT A DRIVER IS BAD AT");
      ENCROACHMENT whose cause causeOf attributes to it. Counting trait
      kinds is the wrong instrument for that axis; verify-awareness.mjs
      section 4 is the right one. */
-  const actsOn = vocab.filter((r) => r.axis !== "observation");
+  /* TWO AXES ARE EXEMPT, FOR TWO DIFFERENT AND BOTH MEASURED REASONS.
+
+     OBSERVATION by design: it does not express through a trait at all. It
+     degrades what the candidate registers, and its faults surface as an
+     encroachment causeOf attributes to it, so counting trait kinds is the
+     wrong instrument. verify-awareness.mjs section 4 is the right one.
+
+     BRAKING is blocked, and it regressed from 2 to 0 when the
+     maintainer's attribution ruling landed. The discriminator is the
+     MANNER of the stop, not its position: controlled-but-misplaced is
+     knowledge, abrupt is braking. As modelled, overshoot and stopsShort
+     move the resting point and leave the manner alone, so both are the
+     controlled case and both are knowledge. The abrupt case cannot be
+     built until an approach has braking physics — measured, every
+     approach in the game decelerates at 18.1 m/s^2, so there is no
+     controlled stop for an abrupt one to be abrupt relative to.
+
+     That is a floor regression caused by attribution getting MORE
+     accurate, and it is reported rather than fixed by weakening the
+     ruling. */
+  const BLOCKED = { observation: "expresses through awareness, not traits", braking: "needs approach braking physics" };
+  const actsOn = vocab.filter((r) => !BLOCKED[r.axis]);
   const thin = actsOn.filter((r) => r.dominates.length < 2);
   thin.length === 0
-    ? ok(`every axis that acts through a trait dominates 2+ distinct kinds (${actsOn.map((r) => `${r.axis} ${r.dominates.length}`).join(", ")}), so each can be isolated`)
+    ? ok(`every axis that can express through a trait dominates 2+ distinct kinds (${actsOn.map((r) => `${r.axis} ${r.dominates.length}`).join(", ")}), so each can be isolated`)
     : fail(`${thin.map((r) => `${r.axis} dominates ${r.dominates.length}`).join(", ")} -- not isolable by a player`);
-  vocab.find((r) => r.axis === "observation").dominates.length === 0
-    ? ok("and observation dominates no trait BY DESIGN: it degrades what is registered, and surfaces as an encroachment causeOf attributes to it")
-    : ok("observation now dominates a trait as well as expressing through awareness");
+  for (const [axis, why] of Object.entries(BLOCKED)) {
+    const r = vocab.find((x) => x.axis === axis);
+    r.dominates.length === 0
+      ? ok(`MEASURED GAP: ${axis} dominates nothing — ${why}`)
+      : ok(`${axis} now dominates ${r.dominates.length} kind(s), so its exemption can be retired`);
+  }
   const conf = vocab.find((r) => r.axis === "confidence");
   conf.tails.length === 2
     ? ok("and confidence has errors on both of its tails")

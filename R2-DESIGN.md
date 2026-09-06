@@ -1033,3 +1033,114 @@ renders it, and it fails if anything throws. It asserts nothing about what
 is drawn and cannot — effects do not run under SSR — so a person still has
 to open the page. Verified against the original bug by putting it back: it
 fails with `watched is not defined`.
+
+---
+
+## 13. R2.5 continued — the attribution ruling, and two prerequisites it exposed
+
+### 13.1 The ruling, applied
+
+**A rolling stop is a knowledge fault essentially always.** Re-weighted
+0.9 knowledge / 0.1 control, against the maintainer's words: a driver
+would have to be *completely unable* to make the stop for it to be
+anything other than a failure to obey traffic law.
+
+**Late and misplaced stops are two different faults, and the
+discriminator is the MANNER of the stop, not its position.** A controlled
+stop in the wrong place is knowledge; an abrupt one, before or after the
+line, is braking control — or observation, if the driver never registered
+the controls in time. Same observable, three causes, discriminated by a
+physical quantity rather than a label.
+
+`overshoot` and `stopsShort` move the resting point and leave the manner
+alone, so as modelled both are the *controlled* case. Both are now
+knowledge-dominant.
+
+### 13.2 What that cost, reported rather than argued away
+
+| axis | dominates before | after |
+|---|---|---|
+| knowledge | 3 | **5** |
+| steering | 3 | 3 |
+| confidence | 2 | 2 |
+| **braking** | **2** | **0** |
+| observation | 0 | 0 |
+
+**Braking regressed to zero because the attribution got more accurate.**
+Its two kinds were the two position errors, and the ruling says a position
+error at controlled speed is knowledge. The abrupt case — the one that
+genuinely is braking — cannot be built yet. That is a floor regression I
+am reporting, not one I fixed by weakening the ruling.
+
+### 13.3 Prerequisite one: an approach has no braking physics
+
+Measured across the set:
+
+> **peak deceleration 18.1 m/s² — 1.84 g — on every approach, at every
+> road speed, on every road.**
+
+Comfortable braking is 2–3 m/s², firm is 5, an emergency stop about 8.
+Every car in this game stops harder than an emergency stop, by a factor of
+two.
+
+`approachPose` is a smoothstep lerp from a fixed 24.5 m run over a fixed
+2.8 s, so approach speed does not follow the road either: cars arrive at a
+residential junction at **47 km/h**.
+
+**It is the same bug the departure side already fixed, on the other half
+of the manoeuvre.** The project replaced a fixed traversal duration with
+real acceleration and never gave the approach the same treatment.
+
+It blocks the ruling outright: *abrupt versus controlled* is a
+deceleration comparison, and there is no controlled stop to compare
+against.
+
+Encouragingly the geometry is already about right — a comfortable stop
+from 11.5 m/s at 2.5 m/s² needs 26.5 m against `APPROACH_RUN`'s 24.5 m —
+so the fix is a real profile rather than new distances. It moves the
+golden for every scenario, exactly as the turn-geometry fix did, and it
+changes when a car is visible and where it is before `arriveAt`, so
+`sightingsIn`, belief and the camera move with it. Its own increment,
+announced.
+
+### 13.4 Prerequisite two: controls are not perceivable objects
+
+Awareness tracks **road users**. `sightingsIn` iterates `sim.actors` and
+nothing else. A control is a string on a leg with no position; the only
+spatial fact the engine holds about one is the stop line.
+
+The **renderer** places signs from its own hardcoded four-entry table,
+board-relative and pinned to `CX`/`CY` — so it does not follow a junction
+placed elsewhere in the world, the same class of bug `exitPoint` had. The
+signal is worse: one head at one corner regardless of which leg it
+governs.
+
+What it takes:
+
+1. **`controlsOf(spec, at)` in `road.js`**, a positioned control per
+   controlled leg, derived the way `stopPoint` already is. The renderer
+   draws from it instead of its own table — removing the duplicate rather
+   than adding a second.
+2. **An extent for a sign**, and this needs a ruling: the map symbol is a
+   deliberate exaggeration (~1.4 m drawn for a 0.75 m face), and occluding
+   against the drawn size would make signs far too easy to see.
+3. **A rule for elevated objects in a 2D occlusion model.** A sign on a
+   post at 2 m is visible *over* a car; the engine's occlusion is flat, so
+   a van would hide a stop sign you would really see straight over.
+   Probably "occluded by walls, hedges and buildings but not by vehicles"
+   — cheap and physically right. A domain call.
+
+### 13.5 The three-way split, once both land
+
+It needs no new rule table — it is the machinery that already exists:
+
+| registered the control | manner of the stop | cause |
+|---|---|---|
+| yes | smooth, wrong place | **knowledge** |
+| yes | abrupt | **braking** |
+| no / too late | either | **observation** |
+
+The registration delay that already separates observation from confidence
+for an encroachment does the same work here, and deceleration supplies
+the second discriminator. Both halves are per-instance facts the model
+would hold, so attribution stays derived rather than tabulated.

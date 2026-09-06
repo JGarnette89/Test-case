@@ -108,10 +108,18 @@ export const CAUSES = {
      car badly AND you did not know how far into the junction a left is
      supposed to go. */
   cutsCorner: { steering: 0.6, knowledge: 0.4 },
-  /* Not ruled on. Primarily control — you braked too late — with a
-     knowledge component, since the line is where it is for a reason.
-     Flagged rather than assumed silently. */
-  overshoot: { braking: 0.7, knowledge: 0.3 },
+  /* RULED, and it flipped. The maintainer's discriminator is the MANNER
+     of the stop, not its position: a CONTROLLED stop in the wrong place
+     is a knowledge gap — not knowing where to stop, or not understanding
+     why the stopping point matters — while an ABRUPT stop, before or
+     after the line, is braking control.
+
+     As modelled, overshoot moves the resting point and leaves the manner
+     alone, so it is the controlled case and it is knowledge-dominant. The
+     abrupt case cannot be built yet: every approach in the game
+     decelerates at 18.1 m/s^2, so there is no controlled stop for an
+     abrupt one to be abrupt relative to. See CLAUDE.md. */
+  overshoot: { knowledge: 0.7, braking: 0.3 },
   slowStart: { confidence: 1 },
   creep: { confidence: 1 },
   lateSignal: { knowledge: 1 },
@@ -120,9 +128,16 @@ export const CAUSES = {
      braking dominated one, so neither could be isolated by a player, and
      the rolling stop owned every residual collision the reaction layer
      could not prevent. */
-  rollingStop: { knowledge: 0.7, braking: 0.3 },
+  /* "A particularly poorly skilled driver would have to be completely
+     unable to make their stop due to lack of control to make this
+     anything other than a failure to obey traffic law." Overwhelmingly
+     knowledge, with control as a rare extreme rather than a partner. */
+  rollingStop: { knowledge: 0.9, braking: 0.1 },
   noSignal: { knowledge: 1 },
-  stopsShort: { braking: 1 },
+  /* The same ruling: stopping short is a stop in the wrong place, and as
+     modelled it is a controlled one. Knowledge, with the same small
+     control share overshoot carries. */
+  stopsShort: { knowledge: 0.7, braking: 0.3 },
 };
 
 /* Which tail of confidence a fault belongs to, where it has one. Every

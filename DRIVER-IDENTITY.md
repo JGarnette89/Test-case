@@ -289,7 +289,13 @@ Four things to settle when it is built, none of them blocking now:
    maintainer, an examiner. At commit `63a9c68`. The format is static
    positions and an answer order the engine cannot simulate, so it is
    prose to reuse rather than scenarios to restore.
-5. **Whose humour is it?** The candidates are sinful drivers in purgatory
+5. **The same prose is also the TUTORIAL.** Agreed direction, not built:
+   the eight rescued puzzles become an introduction to the core concepts,
+   framed as job training for a new hire — the player is being trained to
+   examine, which is what a tutorial is for, and it gives the game an
+   onboarding path it currently lacks. One body of writing, two places it
+   is needed.
+6. **Whose humour is it?** The candidates are sinful drivers in purgatory
    and the debrief is the obvious place for that voice. The standards they
    are measured against still cannot be funny.
 
