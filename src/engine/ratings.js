@@ -1,5 +1,5 @@
 /* =====================================================================
-   THE FOUR AXES — a driver as ratings, and errors derived from them
+   THE FIVE AXES — a driver as ratings, and errors derived from them
 
    A trait said WHAT a driver does wrong. A rating says what they are
    BAD AT, and which errors follow is worked out from that. The difference
@@ -27,7 +27,24 @@
    ===================================================================== */
 import { TRAIT_KEYS, rng } from "./index.js";
 
-export const AXES = ["confidence", "steering", "braking", "knowledge"];
+/* OBSERVATION is not a peer of the other four and the ordering says so.
+   They govern what the candidate DOES with what they perceived; it
+   governs what they perceived at all. Concretely it is the parameter that
+   degrades whatEgoSees down to what this driver actually registered —
+   see awareness.js — and the other four then act on that degraded result.
+
+   Different layer, so it does not compete with them to explain the same
+   fault. The discipline that keeps it clean: observation is whether the
+   information was GATHERED; confidence is what they did with it, or
+   without it. A driver who looked properly and still took a tight gap has
+   a confidence problem; one who never looked and got away with it has an
+   observation problem. Same visible outcome, different cause, and with
+   awareness modelled the model can tell which — see causeOf.
+
+   Never score observation by outcome. The moment "didn't see the van" is
+   graded by whether contact occurred, it collapses back into confidence
+   and the axis stops meaning anything. */
+export const AXES = ["observation", "confidence", "steering", "braking", "knowledge"];
 
 /* Confidence is TWO-TAILED and the other three are not, which is the
    thing that makes a driver read as a person rather than a set of
@@ -104,7 +121,12 @@ export const CAUSES = {
    confidence fault the game can currently derive is on the TIMID side;
    there is no risky-tail fault at all, which is measured rather than
    assumed and is the largest content gap in the model. See
-   verify-candidate.mjs section 8. */
+   verify-candidate.mjs section 8.
+
+   OBSERVATION dominates nothing yet either, and that is honest rather
+   than an oversight: it expresses through awareness rather than through
+   any of the seven path-and-signal traits, so its faults are R2.5 content
+   and it reports as a measured gap until they exist. */
 export const TAIL = { slowStart: -1, creep: -1 };
 
 /* How much of a fault each axis is answerable for, normalised. This is
@@ -213,7 +235,7 @@ export function composeDriver(seed = 1) {
   const r = rng(seed);
   const ratings = {};
   for (const axis of AXES) {
-    if (axis === "confidence") {
+    if (axis === "confidence") {  // the only two-tailed one
       const off = (r() - 0.5) * CONFIDENCE_SPREAD;
       ratings[axis] = clamp01(CONFIDENT_ENOUGH + off);
     } else {

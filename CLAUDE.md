@@ -595,16 +595,62 @@ severe ones, correctly. Measured legible: the bands are 22 px apart at the
 That is how a driver judges it anyway, and it is a second independent
 argument for the shorter look-ahead.
 
-**A FIFTH AXIS, OBSERVATION, is agreed and not built.** It is not a peer
-of the other four: they govern what the candidate DOES, and observation
-governs what they PERCEIVE — it is the parameter that degrades
-`whatEgoSees` down to what this driver actually registered. Different
-layer, so it does not compete to explain the same fault. The discipline
-that keeps it clean: observation is whether they GATHERED the information,
-confidence is what they did with it or without it. A driver who looked and
-still took a tight gap has a confidence problem; one who never looked and
-got away with it has an observation problem. Never score observation by
-outcome, or it collapses back into confidence.
+### Three layers, and OBSERVATION as the fifth axis — built
+
+**What happened is layer 1. What the CANDIDATE perceived is layer 2. What
+the PLAYER noticed is layer 3.** The FAULT lives in the gap between 1 and
+2; the SCORE lives in the gap between 1 and 3. `awareness.js` is layer 2.
+
+The original view cone was the right idea attached to the wrong party. A
+poor driver's defining characteristic is not perceiving the traffic around
+them, so putting the cone on the player asked the PLAYER to be the bad
+driver.
+
+**OBSERVATION is not a peer of the other four axes.** They govern what the
+candidate DOES with what they perceived; it governs what they perceived at
+all — concretely, it is the parameter that degrades `whatEgoSees` down to
+what this driver registered. Different layer, so it does not compete to
+explain the same fault.
+
+**Observation is whether they GATHERED the information; confidence is what
+they did with it, or without it.** With layer 2 modelled this stops being
+an attribution weight and becomes a fact the model holds: a tight gap
+taken having registered the vehicle is confidence, the same gap taken
+without registering it is observation. Measured on identical encroachments
+— same scene, same departure, same band — so only the cause differs.
+
+**NEVER score observation by outcome.** The moment "didn't see the van" is
+graded by whether contact occurred it collapses back into confidence.
+Enforced structurally: `awareness.js` does not import `clearance.js`, and
+`causeOf` is checked at source level for any reference to contact or band.
+The registration span was calibrated on the MISS RATE and deliberately not
+on the contact rate, for the same reason.
+
+**One registration delay per road user, resolved at composition time from
+the seed** — the same rule fault occurrence lives under. A per-frame roll
+would resolve at simulation time and ground truth would move between runs.
+The floor is `REACTION_FLOOR`: nobody registers faster than they can
+react, and a perfect observer takes exactly that with no jitter, because
+consistency is what being good at this means.
+
+**`REGISTER_SPAN` is derived twice over.** It is the p25 of the measured
+lead time from a road user becoming clear to the decision (0.50s min,
+1.60s p25, 3.75s median across 93 road users), and independently it is
+where drawn drivers miss a mean of 5% of visible traffic and the worst
+miss 16% — enough to be a habit, not enough to be a hazard.
+
+**`pose.hidden` conflates occluded with not-yet-on-stage, and they are
+different facts.** Only the first is perceptual; the second is the board
+being finite. Conflating them made a candidate rated 1.0 on observation
+blind to traffic nobody could miss. Measured afterwards: the distinction
+fires only for PEDESTRIANS, because a vehicle is already approaching from
+t=0 — but for them it is real, and before it a candidate simply ignored a
+pedestrian who had not yet stepped off the kerb.
+
+**Creep is the CANDIDATE's, not the player's.** It was a player input in
+the driver game — edge forward to see past the van — and feeding a player
+input into the candidate's awareness would be exactly the contamination
+the three-layer split exists to prevent.
 
 Design, findings and the debrief roadmap: `DRIVER-IDENTITY.md`. The
 three-layer reframing, the five axes and R2's build order:
@@ -683,6 +729,7 @@ src/engine/faults.js     what the candidate did wrong, derived by controlled com
 src/engine/candidate.js  one driver across a whole drive, and where each habit can show
 src/engine/ratings.js    a driver as four axes, and the errors that follow from them
 src/engine/clearance.js  how much of somebody else's space the candidate took, in seconds
+src/engine/awareness.js  what the candidate registered, and whether they gathered it at all
 src/engine/directions.js the instruction you give, and what stacking them costs
 src/engine/belief.js     where you think the traffic is once you stop looking
 src/engine/detect.js     grading the examiner on what they caught and invented
@@ -998,11 +1045,12 @@ node tools/verify-tiles.mjs        a declared runway is a promise, held to measu
 node tools/verify-world.mjs        the continuous drive: culling, routes, pacing, segment hazards
 node tools/verify-candidate.mjs    one driver across a drive, and habits that repeat enough to be named
 node tools/verify-clearance.mjs    encroachment in seconds, and bands derived from the engine's own claim
+node tools/verify-awareness.mjs    what the candidate registered, and observation kept off outcome
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All twenty-four must exit 0. Eleven things they check are worth understanding:
+All twenty-five must exit 0. Twelve things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take

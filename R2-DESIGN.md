@@ -4,8 +4,9 @@
 around them. This is what I was trying to emulate with the vision-fade
 system."*
 
-Design, plus the pieces that are built. §0.4 (the drift readout) and §7
-(encroachment in seconds) ship; everything else is design.
+Design, plus the pieces that are built. §0.4 (the drift readout), §7
+(encroachment in seconds) and §8 (awareness, and the fifth axis) ship;
+everything else is design.
 
 ---
 
@@ -319,9 +320,9 @@ both callability floors.
   post-encroachment time and a signed distance was never needed.
 - **R2.1 — encroachment in seconds, and the bands.** ✅ **Built** —
   `src/engine/clearance.js`, `verify-clearance.mjs`. See §7.
-- **R2.2 — registration delay and candidate awareness.** Opt-in for a
-  rated candidate; `whatEgoSees` filtered by a seeded per-road-user delay.
-  Golden untouched.
+- **R2.2 — registration delay and candidate awareness.** ✅ **Built** —
+  `src/engine/awareness.js`, `verify-awareness.mjs`, OBSERVATION added as
+  the fifth axis. See §8.
 - **R2.3 — the candidate departs on their own awareness.** `earliestClear`
   over registered road users. This is where overconfidence becomes a
   consequence rather than a roll.
@@ -475,3 +476,141 @@ faults per drive does it add, and does the pacing budget still hold. That
 is R2.1b, and it should come after R2.3, because the candidate's own
 awareness is what will produce most of these encroachments rather than an
 artificially early departure.
+
+---
+
+## 8. R2.2 — awareness, and the fifth axis. Built.
+
+`src/engine/awareness.js`, `tools/verify-awareness.mjs` (the 25th check),
+plus OBSERVATION added to `ratings.js`.
+
+### 8.1 Registration delay: one seeded draw per road user
+
+A road user becomes objectively `clear` at some instant; this driver
+registers it `delay` later.
+
+- **Floor `REACTION_FLOOR` (0.35 s)** — nobody registers faster than they
+  can react, so the floor is the engine's own number rather than a new
+  one. A perfect observer takes exactly that, **with no jitter**, because
+  consistency is what being good at this means.
+- **Span 1.6 s**, derived twice over (§8.3).
+- **Jitter ±60%**, seeded per road user, because two cars appearing
+  together are not noticed together.
+
+Deterministic: one draw per road user, from the scenario's seed, resolved
+at composition time exactly as fault occurrence is.
+
+### 8.2 A correction I had to make to my own model
+
+`pose.hidden` covers **two different facts** — "a van is in the way" and
+"this hasn't spawned yet" — and only the first is perceptual. Using it as
+a perceptual gate made a candidate rated **1.0 on observation**, who by
+construction misses nothing, pull out into `gap` and make contact.
+
+`sightingsIn` now returns `clearAt` and `onStageAt` separately, and
+anything not yet on stage counts as known: its absence is a fact about the
+world's extent, not about anybody's eyes.
+
+**And measuring it afterwards corrected my reasoning about it.** I assumed
+this was about vehicles arriving later. It isn't — **vehicles are on stage
+from t = 0**, approaching down the road. The clause fires only for
+**pedestrians**, who don't exist until they step off the kerb: 6 road
+users across 41 scenes. It's still the right rule and still a real change
+— before it, a candidate simply ignored a pedestrian waiting to cross —
+but it is not the fix for the thing that prompted it.
+
+**What `gap` was actually doing is the model being right.** o2 is occluded
+*behind o1*: in a stream of oncoming cars you cannot see the third one. So
+even a perfect observer cannot see the whole stream, and departing on
+"everything I can see is clear" pulls out into it. That is a real driving
+truth and it is **R2.3's question** — how a driver behaves when they can
+tell their own view is incomplete — not a defect to patch here.
+
+### 8.3 The span, derived twice and never from outcome
+
+**Derivation one — how much warning the world gives.** Across 48 scenes
+and 93 road users, the lead from becoming clear to the decision point:
+
+> min **0.50 s** · p25 **1.60 s** · median **3.75 s** · p75 **5.40 s**
+
+Set to the p25, so a hopeless observer still gathers most traffic and
+misses the quarter that gave least warning. Tying it to the median would
+have a bad driver missing half of everything — not a driver, a hazard.
+
+**Derivation two — what it does to gathering.** Share of road users that
+*were* clearly visible before the decision and still weren't registered:
+
+| observation | 1.00 | 0.75 | 0.50 | 0.25 | 0.00 |
+|---|---|---|---|---|---|
+| missed | **0%** | 3% | 11% | 16% | 30% |
+
+Drawn drivers: **mean 5% missed, worst 16%.** Over a seven-junction drive
+that is roughly three missed road users for a poor observer and none for a
+good one — enough to be a habit, not enough to be a hazard.
+
+**Calibrated on the miss rate and deliberately NOT on the contact rate.**
+My first calibration probe swept the span against how often the candidate
+collided. That is scoring observation by outcome — the one thing the axis
+must never do — and I caught it only after building the probe. The
+replacement measures gathering alone, against a fixed reference
+(`legalAt`) so the measurement cannot feed back into itself.
+
+### 8.4 Observation versus confidence, decided mechanically
+
+The centre of the model, and it is no longer a weight in a table:
+
+| candidate took a tight gap… | …having registered the vehicle | attributed to |
+|---|---|---|
+| yes | **yes** | **confidence** — they saw it and went anyway |
+| yes | **no** | **observation** — they never gathered it |
+
+Measured on **identical** encroachments: same scene, same departure, same
+band, so the outcome is held constant by construction and only the cause
+differs. A good observer's is confidence; a poor observer's is
+observation.
+
+Three enforcement points, because this is the property most likely to rot:
+
+1. `awareness.js` **does not import `clearance.js`** — checked at source,
+   so it cannot see the outcome it would be tempted to grade by.
+2. `causeOf`'s body is checked at source for any reference to contact,
+   band or collision.
+3. The span was calibrated on gathering, per §8.3.
+
+### 8.5 Layers 2 and 3 stay independent, and creep changed hands
+
+`whatEgoSees` is pure and was **always** casting from the candidate's eye
+— it was modelling layer 2 all along and being read as layer 3. The two
+share the occlusion term, which is correct rather than contaminating: the
+player watches through roughly the same windscreen. What stays independent
+are the degradations — the observation rating for layer 2, the viewport
+for layer 3.
+
+Measured: **8 road users are on stage before they are clear** (occlusion
+genuinely delays sighting, mostly behind other traffic), and **none of
+them leaked into awareness**. 3 more are never clear at all — the
+scenario's doing, marked against nobody.
+
+**Creep is now the candidate's property.** It was a player input in the
+driver game; feeding a player input into the candidate's awareness would
+be exactly the contamination the three-layer split exists to prevent.
+
+### 8.6 What awareness does to a decision — reported, not wired
+
+`departureOnAwareness` is exposed as a query and deliberately **not**
+wired into `schedule()`. That is R2.3, and it starts from this:
+
+| observation | departs early | bands reached |
+|---|---|---|
+| 1.00 | 2 / 37 | comfortable 19, contact 1, tight 1 |
+| 0.50 | 7 / 37 | comfortable 16, contact 3, tight 2 |
+| 0.00 | 22 / 37 | contact 12, comfortable 7, tight 1, very tight 1 |
+
+**Two things R2.3 has to answer, both visible here.** A driver who departs
+the instant their *known* set is clear has no margin for traffic they
+cannot see — which is why even a perfect observer contacts at `gap`. And
+contact is far too common at low observation: 12 of 37 is a menace, not a
+candidate. Both point the same way: the model needs the driver to *know
+their view is incomplete* and hold for a bigger gap when it is. That is
+caution about unseen traffic, which is a confidence question, and it is
+exactly where the risky tail of confidence should live.
