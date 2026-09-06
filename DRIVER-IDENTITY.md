@@ -380,11 +380,13 @@ driver can be responsible for the difference.
 Steering, braking and knowledge fall monotonically. Confidence is a
 deviation, not a quantity: too little is much worse than enough. ✅
 
-**P3 — the two ends fail in opposite ways.** ❌ **Measured gap.** Timid
-produces `creep` and `slowStart`; risky produces **nothing at all**. The
-model supports the second tail — `TAIL` gates it and `likelihoodOf`
-returns zero for the wrong side — and the fault vocabulary does not fill
-it.
+**P3 — the two ends fail in opposite ways.** ❌ at the time; **CLOSED in
+R2.3.** Timid produced `creep` and `slowStart`; risky produced nothing at
+all. The tail was found where it always belonged — the margin a driver
+leaves for traffic they cannot see — so confidence now has two expressions
+from one parameter, opposite at each end: timid shows `creep`/`slowStart`
+and holds 2.63s past legal, bold shows neither and departs early. See
+`R2-DESIGN.md` §9.
 
 Worth noting the check was first written as "the middle is no worse than
 either end", which **passes vacuously when an end is empty**. It was

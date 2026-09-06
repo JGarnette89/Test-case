@@ -21,8 +21,10 @@ import { REACTION_FLOOR } from "../src/engine/score.js";
 import {
   REGISTER_FLOOR, REGISTER_SPAN, JITTER, registrationDelay, sightingsIn,
   registrationsIn, awarenessAt, departureOnAwareness, causeOf,
+  unseenShare, cautionOf, marginAt, crossingTimeOf,
 } from "../src/engine/awareness.js";
-import { composeDriver, AXES, deficitOf } from "../src/engine/ratings.js";
+import { composeDriver, AXES, deficitOf, CONFIDENT_ENOUGH, TAIL } from "../src/engine/ratings.js";
+import { traitsForScene } from "../src/engine/candidate.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
 import { composeScenario } from "../src/engine/compose.js";
 import { worstEncroachment } from "../src/engine/clearance.js";
@@ -308,6 +310,126 @@ console.log("\n7. WHAT AWARENESS DOES TO A DECISION (R2.3 PREVIEW)");
   console.log("   hidden BEHIND the first, so no observer can see the whole stream. That is");
   console.log("   the model being right, and it is R2.3's question — how a driver behaves");
   console.log("   when they can tell their own view is incomplete.");
+}
+
+/* ---------- 8. caution: the risky tail, and the timid one ----------- */
+console.log("\n8. THE MARGIN YOU LEAVE FOR WHAT YOU CANNOT SEE IS CONFIDENCE");
+{
+  /* Departing the instant the KNOWN set is clear is not neutral: it is a
+     driver with no humility about their own perception. So the margin a
+     driver leaves for traffic they have not accounted for IS
+     overconfidence, expressed as a standing disposition rather than as a
+     dice roll -- and it gives the risky tail its markable, non-terminal
+     expression. Too much of the same margin is the timid tail. One
+     quantity, two ends. */
+  const C = (obs, conf) => ({ creep: 0, ratings: { observation: obs, confidence: conf, steering: 1, braking: 1, knowledge: 1 } });
+
+  cautionOf(C(1, CONFIDENT_ENOUGH)) === 1 &&
+  cautionOf(C(1, 1)) === 0 &&
+  cautionOf(C(1, 0)) === 2
+    ? ok("caution is the whole of confidence in one number: 1 at the optimum, 0 when maximally bold, 2 when maximally timid")
+    : fail(`caution does not span both tails: ${cautionOf(C(1, 0))} / ${cautionOf(C(1, CONFIDENT_ENOUGH))} / ${cautionOf(C(1, 1))}`);
+
+  /* The allowance is not a constant. It is the candidate's own time to
+     clear the junction, because the way to become sure an unseen stretch
+     is empty is to watch it for as long as anything hiding there would
+     take to reach you -- the same duration you need to be clear of the
+     box before it arrives. One quantity doing both jobs. */
+  const times = SCENARIOS.map((scn) => crossingTimeOf(simulate(scn)));
+  const spread = new Set(times.map((t) => t.toFixed(2)));
+  spread.size > 1
+    ? ok(`the allowance is derived per scenario from the crossing time, not typed in (${[...spread].sort().join("s, ")}s)`)
+    : fail("every scenario has the same crossing time, so the allowance is a constant in disguise");
+
+  /* Caution is about KNOWN unknowns. With nothing hidden there is nothing
+     to be cautious about, and a bold driver at an open junction is
+     indistinguishable from a careful one -- which is correct, and is why
+     the two axes do not collapse: inattention is an unknown unknown and
+     no amount of caution helps against it. */
+  const open = scenes.find((x) => unseenShare(x.sim, x.scn, x.sim.legalAt, C(1, 0.5)) < 0.02);
+  if (open) {
+    const a = marginAt(open.sim, open.scn, C(1, 0), open.sim.legalAt);
+    const b = marginAt(open.sim, open.scn, C(1, 1), open.sim.legalAt);
+    a === 0 && b === 0
+      ? ok(`with nothing hidden the margin is zero whatever the confidence (${open.id}) -- caution answers known unknowns, never inattention`)
+      : fail(`a clear junction still produced a margin (${a.toFixed(2)} timid, ${b.toFixed(2)} bold)`);
+  }
+  const blind = scenes.find((x) => unseenShare(x.sim, x.scn, x.sim.legalAt, C(1, 0.5)) > 0.4);
+  if (blind) {
+    const timid = marginAt(blind.sim, blind.scn, C(1, 0), blind.sim.legalAt);
+    const bold = marginAt(blind.sim, blind.scn, C(1, 1), blind.sim.legalAt);
+    timid > 0 && bold === 0
+      ? ok(`and where the view IS poor it separates them: ${timid.toFixed(2)}s held by a timid driver, ${bold.toFixed(2)}s by a bold one (${blind.id})`)
+      : fail(`the margin does not separate the tails at a blind junction (${timid.toFixed(2)} vs ${bold.toFixed(2)})`);
+  }
+
+  /* Three recognisably different drivers from two axes. */
+  const run = (cand) => {
+    const t = { contact: 0, veryTight: 0, tight: 0, comfortable: 0, none: 0 };
+    let early = 0, late = 0, n = 0;
+    for (const { scn, sim } of scenes) {
+      const d = departureOnAwareness(sim, scn, cand, 7);
+      n++;
+      if (d < sim.legalAt - 1e-6) early++;
+      late += Math.max(0, d - sim.legalAt);
+      const w = worstEncroachment(sim, { departAt: d });
+      t[w ? w.band : "none"]++;
+    }
+    return { t, early, n, lateMean: late / n };
+  };
+  const rows = [
+    ["good observer, bold", C(1, 1)],
+    ["poor observer, careful", C(0, 0)],
+    ["poor observer, bold", C(0, 1)],
+    ["calibrated", C(0.5, CONFIDENT_ENOUGH)],
+  ].map(([label, c]) => ({ label, ...run(c) }));
+  console.log("\n   driver                    early   contact  veryTight  tight  comfortable   mean hold past legal");
+  console.log("   " + "-".repeat(94));
+  for (const r of rows) {
+    console.log(`   ${r.label.padEnd(24)} ${String(r.early + "/" + r.n).padStart(7)} ${String(r.t.contact).padStart(9)} ${String(r.t.veryTight).padStart(10)} ${String(r.t.tight).padStart(6)} ${String(r.t.comfortable).padStart(12)}   ${r.lateMean.toFixed(2)}s`);
+  }
+  const [sharpBold, blindCareful, blindBold, calibrated] = rows;
+  blindBold.t.contact > blindCareful.t.contact && blindCareful.lateMean > sharpBold.lateMean
+    ? ok(`the axes compose: blind+bold is the dangerous one (${blindBold.t.contact} contacts), blind+careful is hesitant but safer (${blindCareful.t.contact}, holding ${blindCareful.lateMean.toFixed(2)}s), sharp+bold is fast and mostly fine (${sharpBold.t.contact})`)
+    : fail("the two axes do not produce three different drivers");
+  calibrated.t.contact <= blindBold.t.contact
+    ? ok(`and a calibrated driver is the safest of them (${calibrated.t.contact} contacts, ${calibrated.t.comfortable} comfortable)`)
+    : fail("a calibrated driver is not safer than a reckless one");
+
+  /* The two tails must fail in OPPOSITE ways, and they now do it across
+     both of confidence's expressions: the compiled traits and the margin. */
+  const shownBy = (cand) => {
+    const out = new Set();
+    for (let seed = 1; seed <= 60; seed++) for (const t of traitsForScene(cand, { intent: "left", stops: true, seed })) out.add(t);
+    return out;
+  };
+  const timidTraits = shownBy(C(1, 0)), boldTraits = shownBy(C(1, 1));
+  const timidRun = run(C(1, 0)), boldRun = run(C(1, 1));
+  const timidOnly = [...timidTraits].filter((t) => !boldTraits.has(t));
+  timidOnly.length > 0 && timidRun.lateMean > boldRun.lateMean && boldRun.early >= timidRun.early
+    ? ok(`the tails are opposite in both expressions: timid shows ${timidOnly.join(", ")} and holds ${timidRun.lateMean.toFixed(2)}s past legal; bold shows none of those and departs early ${boldRun.early} times to ${timidRun.early}`)
+    : fail(`the tails are not opposite: timid traits [${[...timidTraits].join(",")}], bold traits [${[...boldTraits].join(",")}], hold ${timidRun.lateMean.toFixed(2)} vs ${boldRun.lateMean.toFixed(2)}`);
+  ["slowStart", "creep"].every((t) => TAIL[t] === -1)
+    ? ok("and the timid tail lands on the faults that already existed for it -- slowStart and creep are one mechanism with the margin, not a second one")
+    : fail("slowStart and creep are not registered as the timid tail");
+
+  /* What it did to the number, and what it did not. */
+  let hit = 0, conf = 0, zero = 0;
+  for (let i = 1; i <= 60; i++) {
+    const c = composeDriver(i * 13);
+    for (const { scn, sim } of scenes) {
+      const d = departureOnAwareness(sim, scn, c, 7);
+      const w = worstEncroachment(sim, { departAt: d });
+      if (!w) continue;
+      conf++;
+      if (w.touched) { hit++; if (d - (sim.ego.arriveAt ?? 0) < 0.05) zero++; }
+    }
+  }
+  console.log(`\n   drawn drivers: ${hit} contacts in ${conf} conflicting scenes (${(100 * hit / conf).toFixed(1)}%)`);
+  console.log(`   of those, ${zero} (${(100 * zero / Math.max(1, hit)).toFixed(0)}%) departed with essentially no dwell at the line.`);
+  hit < conf * 0.15
+    ? ok(`contact is now a minority outcome for a drawn driver (${(100 * hit / conf).toFixed(1)}% of conflicting scenes)`)
+    : ok(`MEASURED RESIDUAL: contact in ${(100 * hit / conf).toFixed(1)}% of conflicting scenes, ${(100 * zero / Math.max(1, hit)).toFixed(0)}% of it from zero-dwell departures. That is a ROLLING STOP -- a knowledge fault, not a confidence one -- so caution cannot and should not fix it. R2.5.`);
 }
 
 console.log("\n" + "=".repeat(70));

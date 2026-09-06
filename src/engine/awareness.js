@@ -34,10 +34,11 @@
 
    Pure. No React, no DOM, no colour.
    ===================================================================== */
-import { earliestClear, rng } from "./index.js";
+import { earliestClear, rng, poseAt, extentsFor, M, CX, CY, LANE } from "./index.js";
 import { REACTION_FLOOR } from "./score.js";
-import { whatEgoSees, sightBlockersOf } from "./sight.js";
+import { whatEgoSees, sightBlockersOf, eyePoint, creepPose, segmentHitsBox } from "./sight.js";
 import { deficitOf } from "./ratings.js";
+import { LEG, SIDES, hasLeg, specOf, laneOffset } from "./road.js";
 
 /* Nobody registers anything faster than they can react to it, so the
    floor is the engine's existing REACTION_FLOOR rather than a new
@@ -133,6 +134,71 @@ export function sightingsIn(sim, scn, { horizon = 16, candidate = null, dt = DT 
   return out;
 }
 
+
+/* =====================================================================
+   HOW MUCH OF THE ROAD THIS DRIVER CANNOT SEE
+
+   A driver cannot know WHAT is in the space they cannot see. They can
+   perfectly well see THAT there is space they cannot see — a van on the
+   corner, a queue of oncoming traffic, a hedge. That self-knowledge is
+   the input to caution, and it is available without a shred of oracle
+   knowledge: it is geometry from the eye, not a fact about who is there.
+
+   Deliberately NOT the same thing as the observation axis. Occlusion is a
+   known unknown and a driver can compensate for it by waiting. Inattention
+   is an unknown unknown and no amount of caution helps, because you do not
+   know you failed to look. That asymmetry is true of driving and it is why
+   the two axes do not collapse into each other.
+   ===================================================================== */
+
+/* Sampled over the approach road the scenario actually contains — from
+   the edge of the junction box out to the edge of the world. That is
+   where a conflicting vehicle can be, so it is the road whose visibility
+   means anything; sampling further would be measuring tarmac nobody can
+   occupy. */
+const SAMPLES = 8;
+
+export function unseenShare(sim, scn, t, candidate = null) {
+  const spec = specOf(scn);
+  const egoPose = creepPose(sim.ego, t, creepOf(candidate));
+  const eye = eyePoint(egoPose);
+  const from = sim.ego.from;
+
+  /* Every leg but the one they are sitting on: those are where a conflict
+     can come from. */
+  const legs = SIDES.filter((sd) => sd !== from && hasLeg(spec, sd));
+  if (!legs.length) return 0;
+
+  /* Physical blockers: the standing obstructions and every other road
+     user. A car you have not registered still blocks your view — the
+     occlusion is a fact about light, not about knowledge. */
+  const blockers = [
+    ...sightBlockersOf(scn).map((b) => ({ pose: b.pose, hl: b.hl, hw: b.hw })),
+    ...sim.actors.map((a) => {
+      const po = poseAt(a, t);
+      if (!po || po.hidden || po.gone) return null;
+      const e = extentsFor(a, po, 0, 0, 0, "hit");
+      return { pose: po, hl: e.hl, hw: e.hw };
+    }).filter(Boolean),
+  ];
+
+  let blocked = 0, total = 0;
+  for (const sd of legs) {
+    const leg = LEG[sd];
+    const off = laneOffset(0, LANE);
+    for (let i = 1; i <= SAMPLES; i++) {
+      const d = M(6) + (i / SAMPLES) * (CX - M(6));
+      const pt = {
+        x: CX + leg.out.x * d - leg.off.x * off,
+        y: CY + leg.out.y * d - leg.off.y * off,
+      };
+      total++;
+      if (blockers.some((b) => segmentHitsBox(eye, pt, b.pose, b.hl, b.hw))) blocked++;
+    }
+  }
+  return total ? blocked / total : 0;
+}
+
 /* ---------------------------------------------------------------------
    Layer 2: when this driver actually registered them
    --------------------------------------------------------------------- */
@@ -164,6 +230,75 @@ export function awarenessAt(sim, scn, candidate, t, seed = 1, opts = {}) {
   });
 }
 
+
+/* =====================================================================
+   CAUTION — the margin you leave for what you cannot see
+
+   THIS IS THE RISKY TAIL OF CONFIDENCE, and it is where it always
+   belonged. Departing the instant your KNOWN set is clear is not neutral
+   behaviour: it is a driver with no humility about their own perception.
+   The margin a driver leaves for traffic they have not accounted for IS
+   overconfidence, expressed as a standing disposition rather than as a
+   dice roll — and it gives the tail the markable, non-terminal expression
+   it was missing. An overconfident driver takes gaps sized only to what
+   they happened to register, so they are routinely tight and occasionally
+   unlucky, rather than simply crashing.
+
+   And it predicts the timid tail from the same parameter: too much
+   caution is refused gaps and over-long waits. One quantity, two ends,
+   which is what "two-tailed" has to mean if it is to mean anything.
+
+   It composes with observation exactly as intended, giving three
+   recognisably different drivers from two axes:
+
+     poor observer, cautious  -> hesitant but safe
+     good observer, bold      -> fast and mostly fine
+     poor observer AND bold   -> the dangerous one
+   ===================================================================== */
+
+/* How long a driver adds for a FULLY blinded approach, and it is not a
+   constant at all — it is the candidate's own time to clear the junction,
+   derived per scenario.
+
+   The reasoning is the only one that does not need a number picked. If
+   you cannot see a stretch of road, the way to become sure it is empty is
+   to watch it for as long as anything hiding in it would take to reach
+   you — and that is the same duration you need to be clear of the box
+   before it arrives. One quantity doing both jobs rather than two that
+   would drift apart.
+
+   Measured across the set: 5.05s for a straight, 5.90s for a left, 7.65s
+   through a roundabout. Nothing typed in. */
+export function crossingTimeOf(sim, horizon = 20) {
+  const d = sim.ego.departAt ?? 0;
+  for (let t = d; t <= d + horizon; t += 0.05) {
+    const po = poseAt(sim.ego, t);
+    if (!po || po.gone) return t - d;
+  }
+  return horizon;
+}
+
+/* 1 at the optimum, 0 when maximally bold, 2 when maximally timid. The
+   whole of confidence, in one number. */
+export function cautionOf(candidate) {
+  const { deficit, tail } = deficitOf(candidate?.ratings, "confidence");
+  if (tail > 0) return Math.max(0, 1 - deficit);   // bold: less margin
+  if (tail < 0) return 1 + deficit;                // timid: more
+  return 1;
+}
+
+/* The extra time this driver holds, at this instant, for road they cannot
+   see. Zero at a junction with a clear view whatever their confidence —
+   caution is about known unknowns, so with nothing hidden there is
+   nothing to be cautious ABOUT, and a bold driver at an open junction is
+   indistinguishable from a careful one. That is correct: overconfidence
+   costs you where your view is poor. */
+export function marginAt(sim, scn, candidate, t, opts = {}) {
+  const allowance = opts.allowance ?? crossingTimeOf(sim);
+  const unseen = unseenShare(sim, scn, t, candidate);
+  return unseen * allowance * cautionOf(candidate);
+}
+
 /* ---------------------------------------------------------------------
    The decision that follows from it
    --------------------------------------------------------------------- */
@@ -191,7 +326,13 @@ export function departureOnAwareness(sim, scn, candidate, seed = 1, opts = {}) {
   let t = ego.arriveAt ?? 0;
   for (let i = 0; i < 8; i++) {
     const known = awarenessAt(sim, scn, candidate, t, seed, { ...opts, sightings: seen, registrations: reg });
-    const next = earliestClear(ego, known, ego.arriveAt ?? 0);
+    /* Clear of what they know, PLUS what they hold back for what they
+       cannot see. The margin is evaluated at the moment they are actually
+       deciding, which is why it lives inside the fixed point rather than
+       being added afterwards: a driver behind a queue sees less at the
+       moment of decision than they did on arrival. */
+    const next = earliestClear(ego, known, ego.arriveAt ?? 0)
+      + marginAt(sim, scn, candidate, t, opts);
     if (next <= t + 1e-9) return t;
     t = next;
   }

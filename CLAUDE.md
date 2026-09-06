@@ -647,6 +647,45 @@ fires only for PEDESTRIANS, because a vehicle is already approaching from
 t=0 — but for them it is real, and before it a candidate simply ignored a
 pedestrian who had not yet stepped off the kerb.
 
+### The margin you leave for what you cannot see IS confidence
+
+**Departing the instant your KNOWN set is clear is not neutral behaviour.**
+It is a driver with no humility about their own perception — so the margin
+a driver leaves for traffic they have not accounted for is overconfidence,
+expressed as a standing disposition rather than a dice roll. That gives
+the risky tail its markable, non-terminal expression: an overconfident
+driver takes gaps sized only to what they registered, so they are
+routinely tight and occasionally unlucky rather than simply crashing.
+`cautionOf` is the whole of confidence in one number — 1 at the optimum,
+0 maximally bold, 2 maximally timid.
+
+**Caution answers KNOWN unknowns and never inattention**, and that
+asymmetry is what stops observation and confidence collapsing into each
+other. You can see that you cannot see past a van, and wait. You cannot
+know you failed to look. Checked: with nothing hidden the margin is zero
+whatever the confidence.
+
+**The allowance is the candidate's own crossing time, derived per
+scenario.** The way to be sure an unseen stretch is empty is to watch it
+for as long as anything hiding there would take to reach you — the same
+duration you need to be clear of the box before it arrives. One quantity
+doing both jobs. 5.05s straight, 5.90s left, 7.65s roundabout, nothing
+typed in.
+
+**Three recognisably different drivers from two axes**, measured: a poor
+observer who is careful is hesitant but safer, a good observer who is bold
+is fast and mostly fine, and the dangerous candidate is both blind and
+bold. And the timid tail shares the mechanism rather than having one
+bolted on — `slowStart` and `creep` were already registered as
+confidence's timid side, so the axis is two-tailed in both of its
+expressions.
+
+**A residual belongs to whichever axis actually caused it.** The contacts
+caution could not remove turned out to be 100% zero-dwell departures for
+the bold-and-blind extreme — the candidate reaching the line and leaving
+in the same instant. That is a ROLLING STOP, a knowledge fault, and R2.5's
+business. Caution cannot fix it and must not be tuned until it appears to.
+
 **Creep is the CANDIDATE's, not the player's.** It was a player input in
 the driver game — edge forward to see past the van — and feeding a player
 input into the candidate's awareness would be exactly the contamination

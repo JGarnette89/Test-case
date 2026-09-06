@@ -5,8 +5,8 @@ around them. This is what I was trying to emulate with the vision-fade
 system."*
 
 Design, plus the pieces that are built. §0.4 (the drift readout), §7
-(encroachment in seconds) and §8 (awareness, and the fifth axis) ship;
-everything else is design.
+(encroachment in seconds), §8 (awareness, and the fifth axis) and §9
+(caution, and the risky tail) ship; everything else is design.
 
 ---
 
@@ -323,9 +323,10 @@ both callability floors.
 - **R2.2 — registration delay and candidate awareness.** ✅ **Built** —
   `src/engine/awareness.js`, `verify-awareness.mjs`, OBSERVATION added as
   the fifth axis. See §8.
-- **R2.3 — the candidate departs on their own awareness.** `earliestClear`
-  over registered road users. This is where overconfidence becomes a
-  consequence rather than a roll.
+- **R2.3 — the candidate departs on their own awareness, plus the risky
+  tail of confidence.** ✅ **Built as one piece** — see §9. Overconfidence
+  is now a consequence rather than a roll. Still exposed as a query;
+  wiring it into `schedule()` is its own increment.
 - **R2.4 — the second scheduling pass.** Road users decelerate for a
   candidate who took their gap. The reaction becomes the observable.
 - **R2.5 — observation faults, and the five-axis re-map.** Then re-run the
@@ -614,3 +615,126 @@ candidate. Both point the same way: the model needs the driver to *know
 their view is incomplete* and hold for a bigger gap when it is. That is
 caution about unseen traffic, which is a confidence question, and it is
 exactly where the risky tail of confidence should live.
+
+---
+
+## 9. R2.3 — caution, and the risky tail of confidence. Built as one piece.
+
+`cautionOf`, `unseenShare`, `marginAt`, `crossingTimeOf` in
+`src/engine/awareness.js`; section 8 of `verify-awareness.mjs`.
+
+### 9.1 The margin for what you cannot see IS confidence
+
+Departing the instant the *known* set is clear is not neutral behaviour —
+it is a driver with no humility about their own perception. So the margin
+a driver leaves for traffic they have not accounted for **is**
+overconfidence, expressed as a standing disposition rather than as a dice
+roll. That gives the risky tail the markable, non-terminal expression it
+was missing: an overconfident driver takes gaps sized only to what they
+happened to register, so they are routinely tight and occasionally
+unlucky rather than simply crashing.
+
+`cautionOf` is **the whole of confidence in one number**: 1 at the
+optimum, 0 when maximally bold, 2 when maximally timid.
+
+### 9.2 Two things a driver can know about their own knowledge
+
+The input is `unseenShare` — the fraction of the approach roads that is
+occluded from the candidate's eye. It uses **no oracle knowledge**: it is
+geometry from the eye, a fact about light rather than about who is there.
+Every other road user is a physical blocker whether or not the candidate
+has registered them, because a car you have not noticed still blocks your
+view.
+
+Measured across the set: `signalled` 0%, `opposite` 29%, `arterial` 58%,
+`unprotected` 67%.
+
+**The asymmetry that keeps observation and confidence from collapsing
+into each other.** Occlusion is a *known unknown* and caution answers it —
+you can see that you cannot see. Inattention is an *unknown unknown* and
+no amount of caution helps, because you do not know you failed to look.
+That is true of driving and it is why the axes stay separate. Checked:
+**with nothing hidden the margin is zero whatever the confidence.**
+
+### 9.3 The allowance is derived, not chosen
+
+Not a constant at all — it is the candidate's **own time to clear the
+junction**, per scenario. The reasoning needs no number picked: the way to
+become sure an unseen stretch is empty is to watch it for as long as
+anything hiding there would take to reach you, and that is the same
+duration you need to be clear of the box before it arrives. One quantity
+doing both jobs rather than two that would drift.
+
+Measured: 5.05 s for a straight, 5.65 s across an arterial, 5.90 s for a
+left, 7.65 s through a roundabout.
+
+An earlier attempt derived it instead from the *shortfall* between what a
+driver knew to be clear and what actually was, divided by the unseen
+share. That gave a spread of 2.8 s to 40.2 s across nine cases, and the
+spread was itself the finding: where the unseen share is small the
+shortfall is caused by inattention, not occlusion, so the ratio explodes.
+Confirming §9.2 rather than yielding a number.
+
+### 9.4 Three recognisably different drivers from two axes
+
+| driver | departs early | contact | tight | comfortable | mean hold past legal |
+|---|---|---|---|---|---|
+| good observer, **bold** | 2 / 37 | 1 | 1 | 19 | 0.11 s |
+| poor observer, **careful** | 13 / 37 | 8 | 0 | 10 | **1.37 s** |
+| poor observer, **bold** | 22 / 37 | **12** | 1 | 7 | 0.00 s |
+| calibrated | 3 / 37 | 2 | 1 | 16 | 1.37 s |
+
+Exactly as predicted: blind + careful is **hesitant but safer**, sharp +
+bold is **fast and mostly fine**, and the dangerous candidate is the one
+who is **both blind and bold**.
+
+### 9.5 The timid tail was already built, and now shares the mechanism
+
+Checked, and the answer is yes: `slowStart` and `creep` are already
+registered as confidence's timid tail in `TAIL`, and `rollErrors` compiles
+them only when the driver is on that side. So confidence now has **two
+expressions from one parameter**, opposite at each end:
+
+- **timid** — shows `creep` and `slowStart`, and holds **2.63 s** past
+  legal;
+- **bold** — shows neither, and departs early.
+
+That is properly two-tailed rather than a tail bolted on, and it closes
+the P3 gap reported in §8.3 of `DRIVER-IDENTITY.md`: the two ends now fail
+in genuinely opposite ways, across both of confidence's expressions.
+
+### 9.6 What it did to the 12-in-37, and what it did not
+
+**It came down where caution can reach, and not where it cannot** — which
+is the model working rather than a clamp.
+
+- poor observer, **careful**: 12 → **8** contacts, holding 1.37 s more.
+- calibrated: 3 → **2**.
+- drawn drivers: **6.7% of conflicting scenes** end in contact (79 in
+  1185), and the worst driver of 200 drawn manages 5 in 21.
+- poor observer, **bold**: **unchanged at 12**, and it must be. Caution is
+  zero for that driver by definition. That combination is also close to
+  unreachable in a draw — observation bottoms out at 0.25 and confidence
+  at about 0.95.
+
+**The residual has a name, and it belongs to a different axis.** For the
+bold-and-blind extreme, **100% of the contacts came from a departure with
+essentially no dwell at the stop line** — the candidate reaching the line
+and leaving in the same instant. That is not overconfidence. It is a
+**rolling stop**, which is a KNOWLEDGE fault, and it is one of the
+knowledge faults R2.5 already needs. Caution cannot fix it and should not
+be asked to.
+
+For *drawn* drivers the zero-dwell share is 23%, so the other 77% is
+genuine misperception — and that is exactly what **R2.4's reaction layer**
+converts from contact into a markable near miss, since the encroachment
+standard already marks it without anybody having to brake.
+
+### 9.7 Not wired into `schedule()` yet
+
+`departureOnAwareness` remains a query. Wiring it in means every generated
+drive changes, so it needs its own increment and its own measurement of
+what happens to pacing and supply. The engine-side hook is one line — a
+`departOverride` respected by `schedule()` — and composition would stamp
+it after a first pass, keeping everything resolved once at composition
+time.
