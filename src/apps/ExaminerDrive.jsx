@@ -159,17 +159,28 @@ export default function ExaminerDrive() {
   useEffect(() => { if (live) shown.current.set(at, live.window); }, [live, at]);
 
   /* Clock. Advances the junction when the candidate is away and clear. */
-  const raf = useRef(0), last = useRef(0);
+  const raf = useRef(0), last = useRef(0), closed = useRef(false);
   useEffect(() => {
     if (!playing || sheet || !live) return;
     last.current = performance.now();
     const end = live.until + live.runIn;
     const tick = (now) => {
-      const dt = Math.min(0.05, (now - last.current) / 1000);
+      /* Clamped at BOTH ends. The ceiling is the familiar one — a
+         backgrounded tab must not teleport the candidate through a
+         junction on the first frame back. The floor is not: the baseline
+         is set from performance.now() while `now` is rAF's own frame
+         timestamp, and a stale frame delivered after a stall made those
+         disagree by 8.96 SECONDS, running the clock backwards to a time
+         before the leg began. Observed, not theorised. */
+      const dt = Math.min(0.05, Math.max(0, (now - last.current) / 1000));
       last.current = now;
       setElapsed((x) => {
         const next = x + dt;
-        if (next >= end) { queueMicrotask(advance); return end; }
+        if (next >= end) {
+          // Once per leg. React may not have committed by the next frame.
+          if (!closed.current) { closed.current = true; queueMicrotask(advance); }
+          return end;
+        }
         return next;
       });
       raf.current = requestAnimationFrame(tick);
@@ -193,6 +204,7 @@ export default function ExaminerDrive() {
   });
 
   function goTo(next) {
+    closed.current = false;
     setAt(next);
     setElapsed(0);
     setTarget(next);
@@ -234,6 +246,7 @@ export default function ExaminerDrive() {
     seed === s ? null : setSeed(s);
     setAt(0); setElapsed(0); setMarks([]); setGiven({}); setSheet(null);
     setHeld(0); setTarget(0);
+    closed.current = false;
     seen.current = new Map();
     shown.current = new Map();
     setPlaying(true);
@@ -377,7 +390,7 @@ const VERDICT = {
   "in-window": "in time",
   stacked: "called early — you traded their concentration for your attention",
   late: "too late to follow — yours, not theirs",
-  "never-given": "never said — they carried straight on",
+  "never-given": "nothing said — they carried straight on",
 };
 
 const phraseOf = (i) => (i === "left" ? "Turn left" : i === "right" ? "Turn right" : "Follow the road ahead");
@@ -417,7 +430,7 @@ function Sheet({ sheet, drive, onNext }) {
           <div key={c.junction} style={S.line}>
             <span style={S.dim}>Junction {c.junction + 1}</span>
             <span style={{ color: c.blame || c.wrongTurn ? C.red : c.verdict === "stacked" ? C.amber : C.green }}>
-              {c.said ? phraseOf(c.said) : "nothing said"} — {VERDICT[c.verdict] ?? c.verdict}
+              {c.said ? `${phraseOf(c.said)} — ` : ""}{VERDICT[c.verdict] ?? c.verdict}
               {c.wrongTurn ? " (they wanted " + phraseOf(c.wanted).toLowerCase() + ")" : ""}
             </span>
           </div>
@@ -427,8 +440,8 @@ function Sheet({ sheet, drive, onNext }) {
         {result.missed.length === 0 && <div style={S.dim}>nothing you could have seen</div>}
         {result.missed.slice(0, 6).map((m, i) => (
           <div key={i} style={S.line}>
-            <span style={S.dim}>{m.fault?.who ?? "ego"}</span>
-            <span>{m.fault?.tell ?? ""}</span>
+            <span style={S.dim}>{m.who === "ego" ? "the candidate" : m.who}</span>
+            <span style={{ textAlign: "right" }}>{m.tell}</span>
           </div>
         ))}
 

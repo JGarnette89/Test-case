@@ -448,6 +448,14 @@ instructions in the air at call-distances 0, 1 and 2, and at that load
 every fault-carrying junction widens — 1.14x the deviation at 34%
 pressure. Checked in `verify-detect.mjs` §10.
 
+**A frame delta is clamped at BOTH ends.** The ceiling is the familiar
+one — a backgrounded tab must not teleport the candidate through a
+junction on the first frame back. The floor is not, and it was observed
+rather than theorised: the baseline is taken from `performance.now()`
+while the tick reads rAF's own frame timestamp, and a stale frame after a
+stall made those disagree by **8.96 seconds**, running the clock backwards
+to before the leg began. A negative delta is now zero.
+
 **Grade against the deadline the player was SHOWN.** Stacking writes
 `skill`, `skill` scales `startDelay`, `startDelay` moves `departAt`, and
 the deadline is derived from `departAt` — so a window recomputed at
