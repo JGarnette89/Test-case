@@ -318,10 +318,11 @@ function Home() {
 
       <div style={st.premise}>
         You sit in the passenger seat while a candidate drives a set course. You
-        hold a field of view and can only mark what you actually{" "}
-        <strong style={{ color: C.green }}>saw</strong>. You give the directions,
-        in time for them to be followed. And you pay for the faults you invent as
-        well as the ones you miss.
+        give the directions, in time for them to be{" "}
+        <strong style={{ color: C.green }}>followed</strong>, and you mark what
+        they got wrong — on a sheet at the end of each section, not the instant
+        you see it. Nothing hidden can be marked, and you pay for the faults you
+        invent as well as the ones you miss.
       </div>
 
       <div style={st.cards}>

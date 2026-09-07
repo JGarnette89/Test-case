@@ -263,22 +263,47 @@ not physically have seen cannot be marked against them.
   fault from every participant with who, what, when, where, how long, and
   which channel it reads on. `MIN_DURATION` is a real gate: `lateflag`'s late
   signal lasts 0.15s and is correctly dropped as uncallable.
-- **The examiner's seat, in `sight.js`** — `examinerEye`, `inCone`,
-  `whatExaminerSees`, `faultVisibility`. The cone is one angular test in front
-  of the occlusion `visibility()` already did; that is the entire engine cost
-  of the headline mechanic.
+- **`src/engine/sight.js`** gives what CAN be seen from the car:
+  `whatEgoSees` for occlusion, `faultSeenAt` and `faultShownFor` for
+  whether a fault was readable, `assessCreep` for what edging forward
+  buys and costs.
 
-**Gaze is relative to the car's heading, never absolute, and that is
-load-bearing.** `route.js` rotates a scenario a quarter turn to reuse it from
-another approach, and the whole reason that is safe is that a rotated scene is
-an identical situation pointing a different way. A gaze held in world degrees
-would break exactly that — the same drive would need a different look from
-each approach. Checked on 9 rotated copies in `verify-faults.mjs`.
+**THE GAZE CONE IS NOT BUILT. It was, and it was deleted.** `examinerEye`,
+`inCone`, `whatExaminerSees`, `faultVisibility` and `OWN_CAR_READ_AT` are
+gone from `sight.js` — the removal is the same one recorded under Known
+work in progress, where it left `aim`/`setLooking`/`worldRef` dangling in
+the lab and the Examiner screen threw on mount. This section described it
+as shipped for far longer than it existed.
 
-**Three visibility states, not two.** `away` is distinct from `hidden` on
-purpose: missing a fault because a van was in the way is the scenario's doing,
-missing it because you were looking elsewhere is yours. Only one of those is
-markable against the player.
+So today **visibility is occlusion only**: a fault is markable if nothing
+was between the eye and it, whatever the player was attending to. And
+`faultSeenAt` returns `"clear"` unconditionally for the ego, so every
+fault the CANDIDATE commits is always fully markable — the entire
+candidate-observation half of the scoring is currently ungated.
+
+That matters because "you hold a field of view and can only mark what you
+actually saw" is the headline mechanic in this file's own description of
+the game. The three-visibility-state design below (`clear` / `partial` /
+`hidden`, with `away` distinct from `hidden`) is still the right design
+and `detect.js` still consumes it — `SEEN_ENOUGH` grades against what was
+shown. What is missing is the half that decides where the player was
+looking. Rebuilding it is one angular test in front of the occlusion
+`visibility()` already does, plus a control on the screen.
+
+**When it is rebuilt, gaze must be relative to the car's heading, never
+absolute.** `route.js` rotates a scenario a quarter turn to reuse it from
+another approach, and the whole reason that is safe is that a rotated
+scene is an identical situation pointing a different way. A gaze held in
+world degrees would break exactly that — the same drive would need a
+different look from each approach.
+
+**And reading the candidate's own car is a different act from spotting
+anyone else's.** The examiner sits IN that car, about a metre from its
+centre, so the bearing to it is meaningless: every fault it commits would
+read as 90 degrees off to the side, and the candidate-observation half
+would score zero. Whatever replaces `faultVisibility` has to judge the ego
+against the road ahead of its own bonnet, with no occlusion, since nothing
+can hide your own car.
 
 ### Detection: grading the examiner — built
 
@@ -461,16 +486,6 @@ to before the leg began. A negative delta is now zero.
 the deadline is derived from `departAt` — so a window recomputed at
 section close is not the one they were racing. The component records the
 window it displayed and the sheet reads that.
-
-**Reading the candidate's own car is a different act from spotting anyone
-else's, and the geometry says so.** The examiner sits IN that car, about
-a metre from its centre, so the bearing to it is meaningless — every fault
-it commits would read as 90 degrees off to the side, and the whole
-candidate-observation half of the game would score zero. `faultVisibility`
-therefore judges the ego against the road ahead of its own bonnet
-(`OWN_CAR_READ_AT`), with no occlusion, since nothing can hide your own
-car. Gaze still matters: looking out of the side window stops you reading
-the line, measured at 100% ahead against 0% aside.
 
 ### Directions — built
 
