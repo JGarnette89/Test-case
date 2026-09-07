@@ -307,6 +307,8 @@ function LinkCard({ item, onClick, note }) {
 }
 
 function Home() {
+  const progress = useProgress();
+  const done = passedCount(progress);   // the footer's Reset progress offer
   return (
     <div style={st.launcher}>
       <div style={st.brand}>

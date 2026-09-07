@@ -39,6 +39,12 @@ const fail = (s) => { problems++; console.log(`  FAIL: ${s}`); };
 /* The screens a player can actually reach. A new one belongs here the day
    it is added to the mode switcher. */
 const SCREENS = [
+  /* App FIRST, because it is the one every player actually loads and it
+     was the blind spot inside the blind spot: this check rendered the
+     mode components directly and never the shell that routes to them, so
+     a mistake in the home screen or the switcher produced a blank page
+     with every other check green. */
+  { id: "App", file: "src/App.jsx", why: "the shell every route goes through" },
   { id: "ExaminerDrive", file: "src/apps/ExaminerDrive.jsx", why: "the playable loop" },
   { id: "ExaminerLab", file: "src/apps/ExaminerLab.jsx", why: "the bench behind it" },
   { id: "RightOfWayTiming", file: "src/apps/RightOfWayTiming.jsx", why: "the only renderer there is" },
@@ -119,6 +125,41 @@ try {
       ? ok(`${s.id} mounts and draws ${html.length} characters of markup (${s.why})`)
       : fail(`${s.id} mounted but produced almost nothing (${html.length} chars)`);
   }
+  /* EVERY ROUTE, not just the default one. App renders whatever the hash
+     names, so rendering it once at "" proves the home screen and nothing
+     else -- and a mode reachable only by typing its hash is exactly the
+     kind of thing that rots unnoticed now that the driver game is
+     unlisted. Each route gets its own module instance, because App reads
+     the hash at module scope through readHash(). */
+  console.log("");
+  const ROUTES = [
+    ["", "home"],
+    ["#/drive", "the examiner drive"],
+    ["#/examiner", "the examiner lab"],
+    ["#/timing", "timing (unlisted)"],
+    ["#/daily", "today's intersection (unlisted)"],
+    ["#/endless", "endless (unlisted)"],
+    ["#/roguelike", "roguelike (unlisted)"],
+    ["#/drives", "the drives submenu (unlisted)"],
+    ["#/tutorial", "the tutorial submenu (unlisted)"],
+    ["#/test", "the test menu"],
+    ["#/merge-rush", "the unwired prototype"],
+    ["#/nonsense", "an unknown route"],
+  ];
+  let routeFails = 0;
+  for (const [hash, why] of ROUTES) {
+    globalThis.window.location.hash = hash;
+    let html = null, err = null;
+    try {
+      const mod = await import(await bundle("src/App.jsx", path.join(tmp, "route" + ROUTES.indexOf(hash === "" ? ROUTES[0] : ROUTES.find((r) => r[0] === hash)))));
+      html = renderToStaticMarkup(createElement(mod.default));
+    } catch (e) { err = e; }
+    if (err) { routeFails++; fail(`${hash || "#/"} (${why}) threw: ${err.message}`); continue; }
+    html.length > 200
+      ? ok(`${(hash || "#/").padEnd(14)} renders ${String(html.length).padStart(7)} chars  ${why}`)
+      : (routeFails++, fail(`${hash || "#/"} (${why}) rendered almost nothing (${html.length} chars)`));
+  }
+  globalThis.window.location.hash = "";
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
