@@ -15,9 +15,8 @@
      2. every critical-tier fault this game defines ends a run, and
         nothing else does — an exhaustive table, not a sample.
      3. every trait in the catalog measurably does something.
-     4. the safety wall holds under the heaviest trait combination,
-        swept across many seeds, checked against an independent
-        re-derivation of windowIsSafe.
+     4. the heaviest trait combination still draws, and still draws
+        within what the accept test promises.
      5. the dependency only ever runs one way: compose.js and
         generate.js never import this system.
      6. Insight — every consumable's own modifier shape is exactly what a
@@ -34,7 +33,8 @@ import {
 } from "../src/engine/roguelike.js";
 import { grade } from "../src/engine/score.js";
 import { FAULT } from "../src/engine/actions.js";
-import { simulate, poseAt, conflicts, spanOf, STEP } from "../src/engine/index.js";
+import { simulate } from "../src/engine/index.js";
+import { worstEncroachment } from "../src/engine/clearance.js";
 import { readFileSync } from "node:fs";
 
 let problems = 0;
@@ -187,46 +187,51 @@ console.log("\n3. EVERY TRAIT MEASURABLY MATTERS");
     : fail(`extended-warranty should set draftEvery to 2, got ${quickRun.mods.draftEvery}`);
 }
 
-/* ---------- 4. the safety wall holds under the heaviest trait combo --
-   Every draw returned to a run, however biased, must still be a
-   scenario that is genuinely safe to depart on — re-derived here
-   independently rather than trusting composeScenario's own internal
-   windowIsSafe call, the same "independent re-derivation" standard the
-   rest of this suite holds new engine logic to. */
-console.log("\n4. THE SAFETY WALL HOLDS UNDER THE HEAVIEST TRAIT COMBINATION");
+/* ---------- 4. the heaviest combination still draws clean ----------
+   WHAT THIS SECTION USED TO CHECK, AND WHY IT NO LONGER DOES.
+
+   It re-derived windowIsSafe independently -- departing on the derived
+   window must not collide -- and swept that over 150 biased draws. It was
+   the driver game's safety wall: the player presses GO, so no combination
+   of fitted upgrades could be allowed to hand them a window that kills
+   them.
+
+   The maintainer has ruled the examiner game the only priority, and the
+   generator no longer promises a safe window to anybody, because a
+   candidate taking a gap that was not theirs is the content. So that
+   assertion is RETIRED DELIBERATELY rather than left to fail against a
+   generator that stopped making the promise. It reported 34 of 150 seeds
+   colliding and every one of them was right.
+
+   THE POINT OF THE SECTION SURVIVES, because it was never really about
+   collisions. What it establishes is that a biased draw passes exactly
+   the audit an unbiased one would -- bias picks the brief, never the
+   verdict -- and that is still checkable against what the accept test
+   promises NOW: it draws at all, the window opens no earlier than the ego
+   arrives, and nobody is hit.                                          */
+console.log("\n4. THE HEAVIEST TRAIT COMBINATION STILL DRAWS, AND DRAWS CLEAN");
 {
   let mods = emptyMods();
   for (const t of TRAIT_CATALOG) mods = t.apply(mods);
   const heavyRun = { mods };
 
-  function collidesAt(sim, depart) {
-    const ego = { ...sim.ego, departAt: depart };
-    for (let t = depart; t <= depart + spanOf(ego) + 0.35; t += STEP) {
-      const mine = poseAt(ego, t);
-      if (mine.gone) break;
-      for (const a of sim.actors) {
-        const theirs = poseAt(a, t);
-        if (theirs.gone || theirs.hidden) continue;
-        if (conflicts(ego, mine, a, theirs, 0, 0, 0, "crash")) return true;
-      }
-    }
-    return false;
-  }
-
-  let checked = 0, unsafe = 0, empty = 0;
+  let checked = 0, empty = 0, early = 0, contact = 0;
   for (let seed = 1; seed <= 150; seed++) {
     const scn = drawForRun(heavyRun, seed, []);
     if (!scn) { empty++; continue; }
     checked++;
     const sim = simulate(scn);
-    if (!(sim.legalAt >= scn.ego.arriveAt)) { unsafe++; fail(`seed ${seed}: window before arrival`); continue; }
-    if (collidesAt(sim, sim.legalAt)) { unsafe++; fail(`seed ${seed}: departing on the derived window collides`); }
+    if (!(sim.legalAt >= scn.ego.arriveAt)) { early++; fail(`seed ${seed}: window before arrival`); continue; }
+    const worst = worstEncroachment(sim, scn);
+    if (worst && worst.band === "contact") { contact++; fail(`seed ${seed}: the draw ends in contact`); }
   }
   empty === 0 ? ok(`every seed produced a scenario (0 of ${checked + empty} empty)`) : fail(`${empty} seed(s) produced nothing at all`);
-  unsafe === 0
-    ? ok(`all ${checked} biased draws are independently confirmed safe to depart on`)
+  early === 0 ? ok(`and no window opens before the ego arrives, across all ${checked}`) : null;
+  contact === 0
+    ? ok(`all ${checked} biased draws pass the same accept test an unbiased one would -- bias picks the brief, never the verdict`)
     : null;
 }
+
 
 /* ---------- 5. the dependency only ever runs one way ---------- */
 console.log("\n5. COMPOSE.JS AND GENERATE.JS NEVER IMPORT THE TRAIT SYSTEM");

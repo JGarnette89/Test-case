@@ -1141,10 +1141,15 @@ three-layer reframing, the five axes and R2's build order:
     With one game left there is no trade, so the gate went rather than
     being kept behind a flag. Proven unused before removal, exactly as
     `RightOfWay.jsx` was.
-  - **Four assertions in `verify-compose.mjs` §5 retired deliberately**,
-    with the reasoning left in place rather than deleted, because they
-    existed only to enforce that gate and would otherwise have failed
-    confusingly later.
+  - **Five assertions retired deliberately**, with the reasoning left in
+    place rather than deleted, because they existed only to enforce that
+    gate and would otherwise have failed confusingly later: four in
+    `verify-compose.mjs` §5, and `verify-roguelike.mjs` §4's independent
+    re-derivation of the same predicate, which correctly reported 34 of
+    150 biased draws colliding. Both sections keep everything that was
+    never about driver-game safety — §4 still establishes that a biased
+    draw passes exactly the audit an unbiased one would, now against what
+    the accept test promises today.
 
   Measured, identical seeds and candidates, 240 generated junctions:
 
