@@ -16,6 +16,7 @@ import { simulate, poseAt, spanOf, conflicts, STEP } from "../src/engine/index.j
 import { specOf, validateRoad } from "../src/engine/road.js";
 import { GRACE } from "../src/engine/score.js";
 import { PULL_STEP } from "../src/engine/sight.js";
+import { worstEncroachment } from "../src/engine/clearance.js";
 
 let problems = 0;
 const fail = (m) => { problems++; console.log("  FAIL: " + m); };
@@ -104,64 +105,67 @@ console.log("4. DETERMINISM");
 
 console.log("");
 console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
+/* WHAT THIS SECTION USED TO CHECK, AND WHY IT NO LONGER DOES.
+
+   Four assertions here enforced `windowIsSafe`: departing on the derived
+   window never collides, nor at any depth of creep, nor anywhere across
+   the grace the scorer still calls good. They were the driver game's
+   safety net -- the player presses GO, so the window handed to them had
+   to be one they could survive taking -- and they were among the most
+   valuable checks this project ever had (1142 unsafe drafts in 4000).
+
+   The maintainer has ruled the examiner game the only priority. In it the
+   CANDIDATE drives, and a candidate taking a gap that was not theirs is
+   the content rather than a defect: the gate was suppressing HALF the
+   supply, 0.47 encroachments per drive against 0.88 ungated. So
+   `windowIsSafe` is gone, and these four are RETIRED DELIBERATELY rather
+   than left to fail confusingly against a generator that no longer
+   promises what they assert.
+
+   `safeAtFor` in index.js states the same idea and is still live and
+   still checked -- verify-clearance, verify-events, verify-playthrough,
+   verify-stages and verify-wontstop all use it, because a hand-authored
+   situation still has to be measured against something.
+
+   What survives here is what was never about the driver game: a scene has
+   to be built out of legs its junction actually has, it must not end in
+   contact, and enough of it has to be tight enough to mark. */
 {
-  let bad = 0, unsafe = 0, illegal = 0, unsafeInGrace = 0, unsafeCreeping = 0;
-  const collidesDepartingAt = (sim, T, creepSteps = 0) => {
-    const ego = { ...sim.ego, departAt: T, stopBias: (sim.ego.stopBias || 0) + creepSteps * PULL_STEP };
-    for (let t = T; t < T + spanOf(ego); t += STEP) {
-      const mine = poseAt(ego, t);
-      if (mine.gone) break;
-      for (const a of sim.actors) {
-        const theirs = poseAt(a, t);
-        if (theirs.gone || theirs.hidden) continue;
-        if (conflicts(ego, mine, a, theirs, 0, 0, 0, "crash")) return true;
-      }
-    }
-    return false;
-  };
-  for (const made of byBrief.values()) {
-    for (const scn of made) {
-      const found = validateRoad(specOf(scn), [{ ...scn.ego, id: "ego" }, ...scn.actors]);
-      if (found.length) { illegal++; if (illegal === 1) fail("uses a leg that is not there: " + found[0]); }
+  let bad = 0;
+  const all = [...byBrief.values()].flat();
 
-      const sim = simulate(scn);
-      if (!(sim.legalAt >= scn.ego.arriveAt)) { bad++; continue; }
-
-      // Departing on the derived window must not collide...
-      if (collidesDepartingAt(sim, sim.legalAt)) unsafe++;
-
-      /* ...and neither must departing anywhere later the scorer still
-         calls "good" — a road user who does not outrank the ego can be
-         mid-arrival when the window opens, scheduled on the assumption
-         the ego leaves promptly. Taking the grace the scorer offers can
-         walk straight into that; windowIsSafe in compose.js now rejects
-         it, and this is the batch-scale check that it actually does. */
-      for (let d = sim.legalAt; d <= sim.legalAt + GRACE + 1e-9; d += STEP * 2) {
-        if (collidesDepartingAt(sim, d)) { unsafeInGrace++; break; }
-      }
-
-      /* ...nor at any depth of PULL UP — encroaches() only watches
-         priors, so creeping toward a road user who does not outrank the
-         ego draws no fault at all before the hit. */
-      outer:
-      for (let steps = 0; steps <= 8; steps++) {
-        for (let d = sim.legalAt; d <= sim.legalAt + GRACE + 1e-9; d += STEP * 2) {
-          if (collidesDepartingAt(sim, d, steps)) { unsafeCreeping++; break outer; }
-        }
-      }
-    }
+  let illegal = 0, firstBad = null;
+  for (const scn of all) {
+    const found = validateRoad(specOf(scn), [{ ...scn.ego, id: "ego" }, ...scn.actors]);
+    if (found.length) { illegal++; firstBad = firstBad ?? found[0]; }
+    const sim = simulate(scn);
+    if (!(sim.legalAt >= scn.ego.arriveAt)) bad++;
   }
   bad === 0 ? ok("every window opens at or after the ego arrives") : fail(bad + " impossible windows");
-  illegal === 0 ? ok("every road user uses a leg its junction actually has") : null;
-  unsafe === 0
-    ? ok("departing on the derived window never collides, across every composed scene")
-    : fail(unsafe + " scene(s) collide when departing exactly on the window");
-  unsafeCreeping === 0
-    ? ok("every composed window stays safe through 8 presses of PULL UP too")
-    : fail(`${unsafeCreeping} scene(s) collide after creeping, with no fault ever flagged first`);
-  unsafeInGrace === 0
-    ? ok(`every composed window stays safe for the full ${GRACE}s the scorer still calls good`)
-    : fail(`${unsafeInGrace} scene(s) collide somewhere the scorer still calls good, after legalAt`);
+  illegal === 0
+    ? ok(`every road user uses a leg its junction actually has (${all.length} scenes)`)
+    : fail(`${illegal} scene(s) use a leg that is not there: ${firstBad}`);
+
+  /* WHAT THE ACCEPT TEST PROMISES NOW. Not a safe window -- a gradeable
+     one. No contact, because intervention is not built and a collision is
+     a state the game cannot answer; and enough tight ones that the
+     encroachment fault has something to describe. */
+  let contact = 0, tight = 0;
+  const band = {};
+  for (const scn of all) {
+    const w = worstEncroachment(simulate(scn), scn);
+    if (!w) continue;
+    band[w.band] = (band[w.band] ?? 0) + 1;
+    if (w.band === "contact") contact++;
+    if (w.band === "tight" || w.band === "veryTight") tight++;
+  }
+  console.log(`  clearance    ${Object.entries(band).map(([k, v]) => `${k} ${v}`).join(" - ")}`);
+  contact === 0
+    ? ok("no composed scene ends in contact, the one thing the accept test still refuses")
+    : fail(`${contact} scene(s) end with the candidate hitting somebody, which this game has no answer to yet`);
+  tight > 0
+    ? ok(`and ${tight} of ${all.length} are tight enough to mark, the supply the old gate threw away`)
+    : fail("no composed scene is tight enough to carry an encroachment, so the examiner has nothing to catch");
 }
 
 /* ---------- 6. pedestrians turn up in Endless too --------------------

@@ -17,17 +17,16 @@
    Pure, and seeded: the same brief and seed give the same scene forever.
    ===================================================================== */
 import {
-  simulate, poseAt, conflicts, spanOf, eventsAreReadable, MIN_WARNING, EMERGENCY_LEAD,
-  M, CX, CY, LANE, STEP, rng, TRAIT_KEYS,
+  simulate, poseAt, eventsAreReadable, MIN_WARNING, EMERGENCY_LEAD,
+  M, CX, CY, LANE, rng, TRAIT_KEYS,
 } from "./index.js";
 import { whatEgoSees, sightBlockersOf } from "./sight.js";
 import { cameraFor } from "../frame.js";
-import { GRACE } from "./score.js";
-import { PULL_STEP } from "./sight.js";
 import {
   crossSpec, teeSpec, validIntents, SIDES, OPPOSITE, RIGHT_OF, roadHalf, hasLeg,
 } from "./road.js";
 import { faultsIn } from "./faults.js";
+import { worstEncroachment } from "./clearance.js";
 
 const pick = (r, xs) => xs[Math.floor(r() * xs.length)];
 const span = (r, lo, hi) => Math.round((lo + r() * (hi - lo)) * 10) / 10;
@@ -101,54 +100,30 @@ export function measure(scn) {
   };
 }
 
-/* Would taking the derived window actually hit somebody?
+/* THE ACCEPT TEST. There used to be two, because one generator served two
+   games wanting opposite things: the driver game needs a gap the player
+   can actually take, the examiner game needs marginal ones, because
+   judgment is the thing being assessed. The maintainer has ruled the
+   examiner game the only priority, so there is no trade left to make and
+   `windowIsSafe` -- the driver-game gate, a creep x grace sweep for a
+   collision -- is gone rather than kept behind a flag. Measured, it was
+   suppressing HALF the supply: 0.47 encroachments per drive against 0.88
+   with nothing at all.
 
-   The window is derived against the road users who OUTRANK the ego —
-   that is what "legally yours" means. But a car that does not outrank you
-   is still a physical object, and a generated scene where the player does
-   everything correctly and is hit anyway is not a fair question, whoever
-   would be at fault in real life. Those draws are thrown away.
+   `safeAtFor` in index.js is the surviving statement of the same idea and
+   is still live, because a hand-authored situation still has to be
+   checked against something.
 
-   This was invisible while the composer handed priority to every car,
-   because then every car was checked. Fixing the priority exposed it.
-
-   Checked across the whole GRACE stretch the scorer still calls "good",
-   not only the instant the window opens: a road user who does not
-   outrank the ego can still be mid-arrival when the window opens, and
-   get scheduled on the assumption the ego leaves promptly. A player who
-   takes the full grace the scorer offers can walk straight into that —
-   which was exactly the failure mode the paragraph above already
-   named, just re-opened by anything later than the first instant. */
-function collidesDepartingAt(sim, T, creepSteps = 0) {
-  const ego = { ...sim.ego, departAt: T, stopBias: (sim.ego.stopBias || 0) + creepSteps * PULL_STEP };
-  for (let t = T; t < T + spanOf(ego); t += STEP) {
-    const mine = poseAt(ego, t);
-    if (mine.gone) break;
-    for (const a of sim.actors) {
-      const theirs = poseAt(a, t);
-      if (theirs.gone || theirs.hidden) continue;
-      if (conflicts(ego, mine, a, theirs, 0, 0, 0, "crash")) return true;
-    }
-  }
-  return false;
-}
-
-/* Matches generate.js's own bound: the encroachment fault only ever
-   watches priors, so it cannot warn about creeping toward a road user
-   who does not outrank the ego — this is the only check standing
-   between that and a silent hit. */
-const CREEP_STEPS_CHECKED = 8;
-
-export function windowIsSafe(scn) {
+   What this one refuses is CONTACT, and that is an examiner-game reason
+   rather than a leftover: an examiner watching a candidate hit somebody
+   is supposed to have taken the wheel, and intervention is not built. A
+   collision is a state this game has no answer to -- 8 in 240 junctions
+   with no gate at all. The line sits exactly where the game's own ability
+   to respond sits, and it moves when intervention lands. */
+export function windowIsMarkable(scn) {
   const sim = simulate(scn);
-  for (let steps = 0; steps <= CREEP_STEPS_CHECKED; steps++) {
-    // +1e-9 guards against float drift silently dropping the sample right
-    // at the boundary — where a narrow unsafe sliver actually hid once.
-    for (let d = sim.legalAt; d <= sim.legalAt + GRACE + 1e-9; d += STEP * 2) {
-      if (collidesDepartingAt(sim, d, steps)) return false;
-    }
-  }
-  return true;
+  const worst = worstEncroachment(sim, scn);
+  return !(worst && worst.band === "contact");
 }
 
 /* Does what was built match what was asked for? Returns the reasons when
@@ -383,10 +358,15 @@ export function compose(brief, seed, { ego: want = null } = {}) {
          asked for and makes the draw far likelier to survive. */
       if (actors.length > 1) actors.pop();
       const lead = span(r, EMERGENCY_LEAD[0] + 0.2, EMERGENCY_LEAD[1] - 0.4);
+      /* Straight where the junction has a straight — an emergency vehicle
+         driving through reads most clearly — but a tee has no opposite leg
+         to go straight to, and validIntents was already being computed and
+         then ignored. That put an ambulance on a leg that does not exist. */
+      const intent = opts.includes("straight") ? "straight" : pick(r, opts);
       actors.push({
         id: "amb",
         from: side,
-        intent: "straight",
+        intent,
         arriveAt: Math.round((egoArrive + lead) * 10) / 10,
         stops: false,
         lane: 0,
@@ -507,7 +487,7 @@ export function composeScenario(brief, seed, opts = {}) {
     if (!eventsAreReadable(scn)) continue;
     if (!framedInTime(scn)) continue;
     if (!emergencyEarnsItsPlace(scn)) continue;
-    if (!windowIsSafe(scn)) continue;
+    if (!windowIsMarkable(scn)) continue;
     if (!meetsBrief(brief, m).ok) continue;
     /* When the drive has gone quiet, a junction is REQUIRED to produce
        something markable rather than merely made likelier to. Nudging the

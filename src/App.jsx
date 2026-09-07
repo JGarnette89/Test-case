@@ -45,11 +45,21 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
 /* =====================================================================
    GAME MODES
 
-   EXAMINER IS THE LIVE ONE. Everything below it is the driver game — the
-   premise this project moved off in September 2026 — and it is kept
-   because it is shipped, verified, working code that the examiner game is
-   built out of, not because it is where the project is going. See
-   CLAUDE.md. Nothing here is deleted without asking.
+   THE EXAMINER GAME IS THE ONLY ONE. Maintainer's ruling: "from now on
+   the examiner game is the only priority, other game modes don't need to
+   be accessible at all."
+
+   So the driver-game entries below carry `legacy: true` and are NOT
+   LISTED anywhere - not on the home screen, not in the switcher. They
+   stay in this array because their hash routes still resolve, which is
+   the same arrangement MergeRush already lives under: kept, reachable if
+   you type it, presented nowhere. The modules behind them stay too, and
+   not out of sentiment - `RightOfWayTiming` holds the only renderer in
+   the project, and the examiner screens import `Road` and `Environment`
+   straight out of it.
+
+   Not accessible is not the same as deletable. Nothing here is removed
+   without proving it unused first.
    ===================================================================== */
 const MODES = [
   {
@@ -135,6 +145,10 @@ const MODES = [
     props: { routeId: r.id },
   })),
 ];
+
+/* What the menus actually offer. Everything else is reachable only by
+   typing its hash. */
+const LIVE = MODES.filter((m) => !m.legacy);
 
 /* --- Routing --------------------------------------------------------
    The hash, not state, is the source of truth: a reload keeps you where
@@ -293,49 +307,26 @@ function LinkCard({ item, onClick, note }) {
 }
 
 function Home() {
-  const progress = useProgress();
-  const byId = (id) => MODES.find((m) => m.id === id);
-  const done = passedCount(progress);
-  const today = dayIndex();
-  const played = dailyResult(progress, today);
-  const streak = dailyStreak(progress, today);
-
   return (
     <div style={st.launcher}>
       <div style={st.brand}>
         <div style={st.brandTitle}>
           RIGHT OF <span style={{ color: C.yellow }}>WAY</span>
         </div>
-        <div style={st.brandSub}>{partOfDay()}. Road rules, under a clock.</div>
+        <div style={st.brandSub}>{partOfDay()}. You are the examiner.</div>
       </div>
 
       <div style={st.premise}>
-        You are one car at an intersection, and the traffic does not wait for you to
-        be sure. Press <strong style={{ color: C.green }}>GO</strong> the moment the
-        road is legally yours — the sooner you read it, the better you score.
-        Going early is a failure to yield. Going late is undue delay, and it is the
-        more common fault.
+        You sit in the passenger seat while a candidate drives a set course. You
+        hold a field of view and can only mark what you actually{" "}
+        <strong style={{ color: C.green }}>saw</strong>. You give the directions,
+        in time for them to be followed. And you pay for the faults you invent as
+        well as the ones you miss.
       </div>
 
       <div style={st.cards}>
-        <LinkCard
-          item={byId("daily")}
-          onClick={() => go("daily")}
-          note={
-            played
-              ? `Done today — you scored ${played.score}${streak > 1 ? `, ${streak} days running` : ""}. Replays are practice.`
-              : byId("daily").blurb
-          }
-        />
-        <LinkCard item={byId("endless")} onClick={() => go("endless")} />
-        <LinkCard item={byId("roguelike")} onClick={() => go("roguelike")} />
-        {SUBMENUS.map((s) => (
-          <LinkCard
-            key={s.id}
-            item={s}
-            onClick={() => go(s.id)}
-            note={s.id === "tutorial" ? `${done} of ${SCENARIOS.length} situations cleared.` : undefined}
-          />
+        {LIVE.map((m) => (
+          <LinkCard key={m.id} item={m} onClick={() => go(m.id)} />
         ))}
       </div>
 
@@ -553,22 +544,10 @@ function Sheet({ current, onClose }) {
           </button>
         </div>
 
-        {MODES.map((a, i) => {
+        {LIVE.map((a) => {
           const active = current?.id === a.id;
-          /* Everything below the divider is the driver game — the premise
-             this project moved off. Kept because it is shipped, verified
-             code the examiner game is built out of, and because it holds
-             the only renderer there is. Labelled rather than hidden, so
-             the menu says what those entries are instead of presenting
-             them as live modes. */
-          const firstLegacy = a.legacy && !MODES[i - 1]?.legacy;
           return (
             <React.Fragment key={a.id}>
-            {firstLegacy && (
-              <div style={st.divider}>
-                <span style={st.dividerText}>The driver game · no longer the direction</span>
-              </div>
-            )}
             <button
               key={a.id}
               className="shell-card"

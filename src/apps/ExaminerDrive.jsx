@@ -58,6 +58,8 @@ const APPROACH = M(11.5) / approachDecel(M(11.5));
    next junction is discharged the moment they arrive there, so it never
    makes them CARRY anything — held counts what is outstanding beyond the
    one being executed. Stacking only exists at a distance of two. */
+const LOOK_SECONDS = 6;
+
 const AHEAD = [0, 1, 2];
 
 const INTENTS = [
@@ -77,7 +79,12 @@ export default function ExaminerDrive() {
      98-character blank past everything except the smoke test. */
   const [elapsed, setElapsed] = useState(0);
   const [playing, setPlaying] = useState(true);
-  const [look, setLook] = useState(6);
+  /* How many seconds of road ahead the view holds. Fixed here, and the
+     choice is NOT settled: 10s reads as anticipation and is too wide to
+     spot a fault by on a phone, 4s reads a fault well and sees nothing
+     coming. 6s is a middle the Examiner lab has on a slider so the
+     question can actually be looked at. No control on this screen yet. */
+  const look = LOOK_SECONDS;
   const [marks, setMarks] = useState([]);     // { at, junction }
   const [given, setGiven] = useState({});     // junction -> { at, intent }
   const [sheet, setSheet] = useState(null);

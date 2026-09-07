@@ -6,9 +6,10 @@ system."*
 
 Design, plus the pieces that are built. §0.4 (the drift readout), §7
 (encroachment in seconds), §8 (awareness, and the fifth axis), §9
-(caution, and the risky tail) and §10 (the reaction layer, plus wiring
-departure) and §11 (pedestrians giving way, and candidates with a
-character) ship; everything else is design.
+(caution, and the risky tail), §10 (the reaction layer, plus wiring
+departure), §11 (pedestrians giving way, and candidates with a character)
+and §16 (the playable loop, and the generator changing sides) ship;
+everything else is design.
 
 ---
 
@@ -1316,3 +1317,119 @@ which is the half that lets a player *test* a hypothesis rather than only
 form one. The check now measures the combined picture and reports the
 saturation, so if they stop earning their place there too it will show,
 and they should then be removed rather than kept as decoration.
+
+---
+
+## 16. The loop becomes playable, and the generator changes sides
+
+Two things landed together, and the second only became answerable because
+the first exists.
+
+### 16.1 The drive
+
+`src/apps/ExaminerDrive.jsx`, `#/drive`. Six junctions, one candidate,
+three of the four jobs at once: watch, mark on a sheet at the end of the
+section, direct. Intervention is absent — see §16.4.
+
+**Three bugs no headless check could have found**, which is the argument
+for building the loop before more engine:
+
+- **The stacking trade shipped inert.** The buttons wrote `given[at]`
+  while `held` counts junctions BEYOND it, so `held` was zero by
+  construction. The one mechanic the screen exists to evaluate was the one
+  it could not perform, and every check passed because every check was
+  aimed at the engine underneath. Fixing it settled that **stacking only
+  exists at a distance of two** — an instruction for the very next
+  junction is discharged on arrival and never carried.
+- **The screen rendered 98 characters.** Deriving each leg's run-in meant
+  the clock was unknown until the leg composed, so `t` became state filled
+  in by an effect, and effects do not run under SSR. The convention: a
+  screen's first render must already have a time.
+- **The clock ran backwards by 8.96 seconds.** The frame delta took its
+  baseline from `performance.now()` and read rAF's own timestamp. Clamped
+  at both ends now.
+
+**A run-in cannot be a constant.** Measured over 48 junctions the
+instruction deadline runs from 4.50s before the line to 8.20s after.
+3.5s left 15 of 48 undirectable; 6.0s made the rest a wait. `runInFor`
+derives it per leg.
+
+### 16.2 A mark belongs to the junction it was made at
+
+Found by playing: a player who marked EVERY fault in a section scored
+zero. `scoreDetection` never compared a mark's junction with the fault's,
+and every leg's clock starts near zero — so a call at 0.4s on one junction
+was indistinguishable from one on another, credited against a fault the
+player never saw, while the real fault read as missed and the mark itself
+as invented. One line, and a perfect sheet went from 42 to **100**.
+
+Latent for as long as the scorer only ever graded one scene at a time.
+
+### 16.3 The generator changes sides
+
+**Maintainer's ruling: the examiner game is the only one that matters.**
+So `windowIsSafe` stops being the default. It asks *could the player take
+this window and live*, which is right for a game where the player presses
+GO. `windowIsMarkable` asks the examiner's question, because the
+CANDIDATE drives and a candidate taking a gap that was not theirs is the
+content.
+
+| accept test | faults/junction | encroachments/drive | drives carrying one | contacts |
+|---|---|---|---|---|
+| `windowIsSafe` | 1.16 | 0.47 | 16/40 | 0 |
+| no gate at all | 1.23 | 0.88 | 26/40 | **8** |
+| `windowIsMarkable` | 1.20 | **0.70** | **22/40** | 0 |
+
+The gate was suppressing half the supply, and faults per junction barely
+move — so this converts comfortable junctions into markable ones rather
+than padding the drive. It produced the first `veryTight` junctions the
+set has contained.
+
+It also surfaced a bug the gate had been hiding: an emergency vehicle
+placed with a hardcoded `intent: "straight"` while the junction's own
+`validIntents` sat computed and unused, so a tee could get an ambulance
+driving to a leg it does not have.
+
+The driver game keeps `windowIsSafe` by asking for `accept: "safe"` by
+name. `verify-compose.mjs` §5 composes a batch each way and checks both
+promises; the driver game's four safety properties are unchanged.
+
+### 16.4 Intervention has a cue, and it is not close
+
+`windowIsMarkable` refuses contact for one reason: an examiner watching a
+candidate hit somebody is supposed to have taken the wheel, and
+intervention is not built. So the question is whether it CAN be.
+
+CLAUDE.md's measurement said the conflict itself cannot trigger it —
+0.45s / 1.10s / 2.30s of warning against a 0.35s floor for noticing
+anything, which is a reflex test. The cue had to be the candidate's
+behaviour beforehand. It is:
+
+| cue | warning before the event |
+|---|---|
+| the conflict itself | 0.45s min, **1.10s median**, 2.30s max |
+| a prior derived fault by the candidate | 1.80s min, **6.30s median**, 10.10s max |
+
+60 drives, 360 junctions, 45 encroachments worse than comfortable. **56%
+are preceded by a fault the candidate visibly committed earlier in the
+same junction**, and 96% of those give more warning than the conflict ever
+gives at its best. The median is 5.7x.
+
+The cues are ordinary and spread across the vocabulary — `wander` 9,
+`harshStop` 4, `wideTurn` 3, `creep` 3, `overshoot` 3, `stopsShort` 3 —
+so no single trait is carrying it.
+
+**What the cue is not**: it does not name the conflict coming. It says
+this candidate is not on top of it, which is how a real examiner's hand
+ends up near the wheel. The uncued 44% is the honest half — a tight
+junction where the candidate did nothing else wrong.
+
+`departureOnAwareness` is still a query rather than wired into
+`schedule()`, so every cue above is a trait fault. Wiring it would add an
+earlier, second class of cue.
+
+**What remains is the domain half, and it is the maintainer's**: what an
+intervention IS, in law and on the sheet. That is now the blocking
+question rather than a distant one — contact is the largest untapped
+supply the generator has, and the accept test refuses it only because the
+game cannot yet respond to a collision.

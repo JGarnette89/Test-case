@@ -16,6 +16,7 @@ import {
   SHOWN_ENOUGH, CALL_GRACE, FALSE_COST, LATE_CREDIT,
 } from "../src/engine/detect.js";
 import { faultsIn, MIN_DURATION } from "../src/engine/faults.js";
+import { REACTION_FLOOR } from "../src/engine/score.js";
 import { sectionSheet } from "../src/engine/detect.js";
 import {
   instructionWindow, runInFor, FOLLOW_LAG, pressureOf, loadCandidate, severityUnder,
@@ -242,9 +243,47 @@ console.log("\n10. THE LOOP: A DRIVE, A SECTION, AND A SHEET");
      at all — a React component is the one place in this project nothing
      could reach, which is how the examiner screen threw on mount for
      twenty increments. */
+function driveFor(seed) {
   const PER_SECTION = 3;
   const APPROACH = M(11.5) / approachDecel(M(11.5));
-  const seed = 3;
+  const cand = { ...composeCandidate(seed * 7 + 3), ...composeDriver(seed * 11) };
+  const plan = planDrive({ seed, length: 6, candidate: cand });
+  const legs = [], drawn = [];
+  let since = 0;
+  for (let i = 0; i < plan.length; i++) {
+    const tile = plan[i].tile;
+    const legTime = tile.runway / CHARACTER[tile.character].speed + 4;
+    const { scn } = composeForTile(tile, since, (seed * 7919 + i * 104729) >>> 0, {
+      legTime, candidate: cand, at: { from: plan[i].entry, intent: plan[i].intent },
+    });
+    if (!scn) continue;
+    const sim = simulate(scn);
+    drawn.push(scn);
+    legs.push({
+      faults: faultsIn(scn),
+      window: instructionWindow(sim, { legStartsAt: -runInFor(sim, { floor: APPROACH }) }),
+      intent: plan[i].intent,
+    });
+    since = faultsIn(scn).length ? 0 : since + legTime;
+  }
+  return { cand, legs, drawn, PER_SECTION };
+}
+
+/* A seed whose first section actually has something to mark. SEARCHED,
+   not assumed: which scenes compose for a given seed moves whenever
+   generation changes, and hardcoding one made this whole section a
+   hostage to a draw nobody chose. */
+const markableSeed = (() => {
+  for (let s = 1; s <= 40; s++) {
+    const d = driveFor(s);
+    if (d.legs.slice(0, 3).some((l) => l.faults.some((f) => f.duration >= MIN_DURATION))) return s;
+  }
+  return 3;
+})();
+
+  const PER_SECTION = 3;
+  const APPROACH = M(11.5) / approachDecel(M(11.5));
+  const seed = markableSeed;
   const cand = { ...composeCandidate(seed * 7 + 3), ...composeDriver(seed * 11) };
   const plan = planDrive({ seed, length: 6, candidate: cand });
   const legs = [], drawn = [];
@@ -295,7 +334,11 @@ console.log("\n10. THE LOOP: A DRIVE, A SECTION, AND A SHEET");
   const perfect = [];
   section.forEach((leg, i) => {
     for (const f of leg.faults) {
-      if (f.duration >= MIN_DURATION) perfect.push({ at: f.from + 0.1, junction: i });
+      /* Marked as soon as anybody COULD: callWindow opens at
+         REACTION_FLOOR, because nobody reacts to a visual cue faster.
+         Calling at +0.1 scored zero on every fault and the "perfect"
+         player only ever hit by accident. */
+      if (f.duration >= MIN_DURATION) perfect.push({ at: f.from + REACTION_FLOOR + 0.05, junction: i });
     }
   });
   const spray = [];
@@ -307,9 +350,16 @@ console.log("\n10. THE LOOP: A DRIVE, A SECTION, AND A SHEET");
   const sheetOf = (marks, g = given) => sectionSheet({ legs: section, marks, given: g, shownFor: shown });
   const good = sheetOf(perfect), none = sheetOf([]), all = sheetOf(spray);
   console.log(`\n   marking well ${good.result.score} · marking nothing ${none.result.score} · marking everything ${all.result.score}`);
-  good.result.score > none.result.score && good.result.score > all.result.score
-    ? ok("marking well beats marking nothing and marking everything — the sheet is worth filling in honestly")
-    : fail(`the sheet does not reward honest marking: ${good.result.score} / ${none.result.score} / ${all.result.score}`);
+  /* Only meaningful where there was something to mark. A section that
+     produced nothing is a clean sheet whatever you do, which is a
+     different property and is checked on its own below. Asserting this
+     one over an empty section made it a hostage to which scenes happened
+     to compose, and it duly broke the moment the generator changed. */
+  perfect.length > 0 && good.result.score > none.result.score && good.result.score > all.result.score
+    ? ok(`marking well beats marking nothing and marking everything (${perfect.length} markable) -- the sheet is worth filling in honestly`)
+    : perfect.length === 0
+      ? fail("this section produced nothing markable, so the sheet cannot be tested on it")
+      : fail(`the sheet does not reward honest marking: ${good.result.score} / ${none.result.score} / ${all.result.score}`);
 
   /* Directions are graded against the EXAMINER. */
   const late = {};
@@ -381,16 +431,33 @@ console.log("\n10. THE LOOP: A DRIVE, A SECTION, AND A SHEET");
     free: deviation(scn),
     loaded: deviation(loadCandidate(scn, { held: loadTwo })),
   })).filter((d) => d.free > 0);
+  /* Never BETTER under load is the property; every one bigger is not.
+     An encroachment is situational rather than a trait, so severity does
+     not scale it -- a junction whose only fault is one stays put, which
+     is correct and made this assertion a hostage to the draw. */
+  const shrank = worstUnder.filter((d) => d.loaded < d.free - 1e-9).length;
   const grew = worstUnder.filter((d) => d.loaded > d.free + 1e-9).length;
   const ratio = worstUnder.length
     ? worstUnder.reduce((a, d) => a + d.loaded, 0) / worstUnder.reduce((a, d) => a + d.free, 0)
     : 1;
-  pressureOf(loadTwo) > 0 && grew === worstUnder.length && ratio > 1
-    ? ok(`and it costs them, on the same derivation the examiner marks: ${(100 * pressureOf(loadTwo)).toFixed(0)}% pressure widens every one of ${worstUnder.length} junctions carrying a fault, ${ratio.toFixed(2)}x the deviation`)
-    : fail(`stacking does not measurably worsen the candidate: ${grew}/${worstUnder.length} junctions grew, ${ratio.toFixed(3)}x deviation at ${(100 * pressureOf(loadTwo)).toFixed(0)}% pressure`);
+  pressureOf(loadTwo) > 0 && shrank === 0 && grew > 0 && ratio > 1
+    ? ok(`and it costs them, on the same derivation the examiner marks: ${(100 * pressureOf(loadTwo)).toFixed(0)}% pressure widens ${grew} of ${worstUnder.length} junctions carrying a fault and improves none, ${ratio.toFixed(2)}x the deviation`)
+    : fail(`stacking does not measurably worsen the candidate: ${grew} grew and ${shrank} SHRANK of ${worstUnder.length}, ${ratio.toFixed(3)}x deviation at ${(100 * pressureOf(loadTwo)).toFixed(0)}% pressure`);
 
   /* A fault the screen never showed must not count against the player —
      the same rule occlusion lives under everywhere else. */
+  /* A MARK BELONGS TO THE JUNCTION IT WAS MADE AT. Every leg's clock
+     starts near zero, so a call at 0.4s on one junction looks exactly
+     like a call at 0.4s on another. Before scoreDetection compared them,
+     a player who correctly marked every fault in a section scored ZERO:
+     marks were credited against faults from junctions they never saw,
+     the real fault read as missed and the mark itself as invented. */
+  const spread = new Set(perfect.map((m) => m.junction)).size > 1;
+  const misplaced = sheetOf(perfect.map((m) => ({ ...m, junction: (m.junction + 1) % PER_SECTION })));
+  !spread || misplaced.result.score < good.result.score
+    ? ok(`marking the right fault at the wrong junction does not score: ${misplaced.result.score} against ${good.result.score} for the same calls placed correctly`)
+    : fail(`a mark is credited regardless of which junction it was made at (${misplaced.result.score} vs ${good.result.score})`);
+
   const blind = sectionSheet({ legs: section, marks: [], given, shownFor: () => 0 });
   blind.result.recall === 1 || blind.result.missed.length === 0
     ? ok("a section where nothing was ever on screen is a clean sheet, not a failure")

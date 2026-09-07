@@ -103,7 +103,9 @@ export function promptness(fault, at) {
                  headless caller grading a fault list need not supply it.
 
    Each fault is matched by at most one mark and each mark to at most one
-   fault, nearest-first, so spraying marks cannot farm a single fault.
+   fault, nearest-first, so spraying marks cannot farm a single fault. A
+   mark only ever pairs with a fault from the same junction, where both
+   say which -- see the note in the pairing loop.
    ===================================================================== */
 export function scoreDetection({
   faults = [], marks = [],
@@ -125,6 +127,14 @@ export function scoreDetection({
   const pairs = [];
   for (const m of marks) {
     for (const cand of markable) {
+      /* A mark belongs to the junction it was made at. Every leg's clock
+         starts near zero, so without this a call at 0.4s on junction 3 is
+         indistinguishable from one on junction 1 and gets credited
+         against whichever fault the sort happens to reach first -- while
+         the fault it was actually for reads as missed and the mark itself
+         as invented. Guarded on both being defined, so a caller grading a
+         single scene needs neither. */
+      if (m.junction != null && cand.fault.junction != null && m.junction !== cand.fault.junction) continue;
       const value = promptness(cand.fault, m.at);
       if (value <= 0) continue;
       // A categorised call must name the right fault to count as one.

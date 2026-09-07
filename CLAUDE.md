@@ -650,11 +650,13 @@ not a habit — it is what the candidate did with the gap — so it carries
 `trait: null` and a `band`, and anything reasoning by removing a cause has
 to skip it (`isTraitFault`). Folding it in cost pacing nothing: dead air,
 events per drive and the count over the ceiling are all unmoved, and it
-adds 0.17 encroachments per drive. That is thin, and it is the same
+adds 0.17 encroachments per drive. That was thin, and it was the same
 thinness measured everywhere else — a generated junction is open, and
-`windowIsSafe` rejects draws whose window lands on somebody, so the
-supply is rare by construction. On hand-authored situations it fires
-reliably: `gap` carries one at 0.70s driven exactly as written.
+`windowIsSafe` rejected draws whose window landed on somebody, so the
+supply was rare by construction. **That gate is no longer the default**
+and the supply is 0.70 per drive; see the ruling above. On hand-authored
+situations it fires reliably: `gap` carries one at 0.70s driven exactly
+as written.
 
 **A clean candidate can still be marked, and that is correct.** Folding
 encroachment in broke "a clean driver commits nothing" in 3 of 59 scenes,
@@ -969,17 +971,55 @@ three-layer reframing, the five axes and R2's build order:
   heading rather than plan the whole course up front.
 - **What is an intervention, in law and on the sheet?** An examiner taking
   control is itself a recorded outcome. Automatic fail for the candidate? Is
-  failing to intervene a fail for the player?
+  failing to intervene a fail for the player? **This is the blocking
+  question now**, not a distant one: the mechanical prerequisite is
+  measured and met (see the warning-time entry below), and the accept test
+  refuses contact solely because a collision is a state the game cannot
+  respond to.
 - **The candidate's observations are not modelled at all.** No head, no
   mirrors, no eyes for anyone — the engine knows where cars are, not where
   drivers are looking. A large share of what a real examiner marks is whether
   the candidate *looked*. This is the biggest gap in the whole design and it
   is new modelling, not reuse.
-- **Intervention cannot be triggered by the conflict.** Measured across ten
-  situations, warning time from first conflict to contact is min 0.45s, median
-  1.10s, max 2.30s — against a 0.35s floor for noticing anything at all. That
-  is a reflex test. The cue has to be the candidate's behaviour beforehand,
-  which is the same bar every other tell in this file has to clear.
+- **Intervention cannot be triggered by the conflict, but the candidate's
+  own driving gives ample warning.** Measured across ten situations,
+  warning from first conflict to contact is min 0.45s, median 1.10s, max
+  2.30s, against a 0.35s floor for noticing anything at all. That is a
+  reflex test, so the cue has to be the candidate's behaviour beforehand.
+
+  **It is, and it clears the bar with room to spare.** Over 60 generated
+  drives and 360 junctions carrying 45 encroachments worse than
+  comfortable:
+
+  | cue | warning before the event |
+  |---|---|
+  | the conflict itself | 0.45s min, **1.10s median**, 2.30s max |
+  | a prior derived fault by the candidate | 1.80s min, **6.30s median**, 10.10s max |
+
+  56% of encroachments are preceded by a fault the candidate visibly
+  committed earlier in the same junction, and 96% of those give more
+  warning than the conflict EVER gives at its best. The median is 5.7x.
+  The cues are ordinary and varied -- `wander` 9, `harshStop` 4,
+  `wideTurn` 3, `creep` 3, `overshoot` 3, `stopsShort` 3 -- so this is not
+  one trait doing all the work.
+
+  Note what the cue is NOT: it does not say which conflict is coming. It
+  says this candidate is not on top of it right now, which is how a real
+  examiner's hand ends up near the wheel. The uncued 44% is the honest
+  half -- a tight junction where the candidate did nothing else wrong,
+  and nobody could have known.
+
+  **`departureOnAwareness` is deliberately still a query rather than
+  wired into `schedule()`**, so observation has no behavioural
+  consequence in a composed drive yet. Every cue above is a trait fault.
+  Wiring it would add a second, earlier class of cue.
+
+  What is still open is the domain half, above: what an intervention IS
+  on the sheet. That question is now on the critical path rather than
+  beside it -- contact is the largest untapped supply the generator has
+  (0.88 encroachments per drive with no gate at all against 0.70), and
+  `windowIsMarkable` refuses it only because the game has no answer to a
+  collision yet.
 - **Content.** 4 of 18 situations carry any driver trait; 6 instances in the
   whole set. `generate.js` attaches one to 45% of actors from a deliberately
   narrower five-trait pool (it predates `wideTurn` and `cutsCorner`);
@@ -1060,36 +1100,68 @@ three-layer reframing, the five axes and R2's build order:
      Probably "signs are occluded by walls, hedges and buildings but not
      by vehicles" — cheap, and physically right. A domain call.
 
-- **The two games want OPPOSITE things from the same generator, and until
-  that is settled examiner content will stay thin.** `windowIsSafe`
-  discards any draw whose window lands on somebody. That is exactly right
-  for the driver game, where the player needs a gap they can actually
-  take, and it was one of the most valuable checks ever added — it caught
-  1142 unsafe drafts in 4000. But the examiner game wants the opposite: a
-  marginal gap is the whole point, because the candidate's judgment is
-  what is being assessed. So the generator was built to prevent precisely
-  the situation the encroachment fault exists to describe, and
-  encroachments come out at 0.17 per drive rather than being rare by
-  chance. Three separate measurements point here. Options, none chosen —
-  this is the maintainer's:
+- **THE EXAMINER GAME IS THE ONLY PRIORITY.** Maintainer's ruling,
+  verbatim: *"from now on the examiner game is the only priority, other
+  game modes don't need to be accessible at all."* The driver game is no
+  longer a product that has to keep working, and where the two conflict
+  the examiner game wins. Do not preserve driver-game playability,
+  balance or experience at the examiner game's expense.
 
-  1. **A brief flag that permits a marginal window.** Smallest change:
-     `windowIsSafe` stays the default and an examiner brief may ask for a
-     draw whose window is tight rather than safe. Driver-game callers
-     never set it, so nothing there moves. Risk: one predicate now means
-     two things depending on a flag, which is the shape of most of the
-     bugs in this file.
-  2. **A separate acceptance path for examiner content.** `composeScenario`
-     grows a sibling that audits for "markable" rather than "safe" — the
-     same search loop, a different accept test. Keeps the two games'
-     requirements visibly separate. Costs a second path to keep correct.
-  3. **Authored situations carry the load.** The generator stays as it is
-     and tight situations are written by hand, as `gap` already is —
-     measured, it is the only shipped situation carrying an encroachment.
-     Cheapest and safest; caps examiner content at what somebody writes.
+  **NOT ACCESSIBLE IS NOT DELETABLE**, and the distinction is
+  load-bearing. `RightOfWayTiming` holds the only renderer in the project,
+  and the examiner screens import `Road` and `Environment` straight out of
+  it. The modules stay. What went is the obligation.
 
-  Whichever is chosen, the driver game must keep working: `windowIsSafe`
-  is what makes Endless, Daily and the roguelike safe to play.
+  What that actually changed:
+
+  - **The menu.** Driver-game entries keep `legacy: true`, are filtered
+    out of every menu by `LIVE` in `App.jsx`, and remain in `MODES` so
+    their hash routes still resolve — the same arrangement MergeRush
+    already lives under. The home screen leads with the examiner premise.
+  - **`windowIsSafe` is gone.** It asked *could the player take this
+    window and live*, which is exactly right for a game where the player
+    presses GO — and it was one of the most valuable checks ever added
+    here (1142 unsafe drafts in 4000). It was also the whole of the
+    tension: one generator serving two games that wanted opposite things.
+    With one game left there is no trade, so the gate went rather than
+    being kept behind a flag. Proven unused before removal, exactly as
+    `RightOfWay.jsx` was.
+  - **Four assertions in `verify-compose.mjs` §5 retired deliberately**,
+    with the reasoning left in place rather than deleted, because they
+    existed only to enforce that gate and would otherwise have failed
+    confusingly later.
+
+  Measured, identical seeds and candidates, 240 generated junctions:
+
+  | | faults/junction | encroachments/drive | drives carrying one | contacts |
+  |---|---|---|---|---|
+  | `windowIsSafe` (before) | 1.16 | 0.47 | 16/40 | 0 |
+  | no gate at all | 1.23 | 0.88 | 26/40 | **8** |
+  | shipped | 1.20 | **0.70** | **22/40** | 0 |
+
+  The gate had been suppressing half the supply, and faults per junction
+  barely move — so this converts comfortable junctions into markable ones
+  rather than padding the drive with noise. It produced the first
+  `veryTight` junctions the set has ever contained.
+
+  **What the accept test still refuses is CONTACT**, and that is an
+  examiner-game reason rather than a leftover: an examiner watching a
+  candidate hit somebody is supposed to have taken the wheel, and
+  intervention is not built. The line sits exactly where the game's own
+  ability to respond sits, **and it moves when intervention lands** — 8
+  in 240 junctions with no gate at all is the supply still waiting on it.
+
+  `safeAtFor` in `index.js` is the surviving statement of the same idea
+  and is still live: `verify-clearance`, `verify-events`,
+  `verify-playthrough`, `verify-stages` and `verify-wontstop` all use it,
+  because a hand-authored situation still has to be measured against
+  something.
+
+  It immediately surfaced a real bug the old gate had been hiding: an
+  emergency vehicle was placed with a hardcoded `intent: "straight"` while
+  the junction's own `validIntents` sat computed and unused, so a tee
+  could get an ambulance driving to a leg it does not have. Those draws
+  had been getting rejected for unrelated reasons.
 
 - **The post-test debrief is agreed in direction, not built.** The
   candidate's habits are named and fed back, as the transition out of a test
@@ -1461,8 +1533,9 @@ This is enforced structurally, not by good intentions:
   and it is `roguelike.js`'s job to turn that into a draw. Checked by a
   source-level grep in `verify-roguelike.mjs`.
 - **Bias picks the brief, never the verdict.** `composeScenario`'s own
-  `windowIsSafe` gate runs unconditionally whatever was asked for, so a
-  biased draw has passed exactly the audit an unbiased one would.
+  accept test runs unconditionally whatever was asked for, so a biased
+  draw has passed exactly the audit an unbiased one would. The roguelike
+  asks for `accept: "safe"` by name, because it is the driver game.
 - **A consumable is shaped like a trait.** Every `CONSUMABLES` entry has the
   same `apply(mods) -> mods` signature as a permanent trait, verified to
   produce the identical key set — so a spend cannot smuggle in a kind of
@@ -1479,8 +1552,8 @@ its four legs (`unprotected`) is manoeuvre-graded, exactly the case the
 narrower check misses. `planRoute`/`currentLeg` are still reused for what they
 are good at: resolving each leg's rotation.
 
-**A hand-authored scenario skips the generator's safety net.** `windowIsSafe`
-lives inside `composeScenario`, so it only ever guards generated draws.
+**A hand-authored scenario skips the generator's safety net.** The accept
+test lives inside `composeScenario`, so it only ever guards generated draws.
 Anything written by hand — every boss, every entry in `scenarios.js` — has to
 be checked against `safeAtFor` directly instead. `verify-stages.mjs` does this
 for the bosses; a new hand-authored situation must not skip it.
@@ -1623,6 +1696,24 @@ All twenty-seven must exit 0. Fourteen things they check are worth understanding
   terminate, throw, miss a collision, or disagree with the scorer. It cannot
   catch a React mistake, so the component still needs eyes on it.
 
+  **AND SCRIPTED PLAYTHROUGHS DO NOT WORK IN THIS ENVIRONMENT. Do not
+  try.** The preview pane delivers ZERO animation frames -- measured, 0 in
+  1.5s with `document.hidden` false -- and clamps timers hard, so an
+  rAF-driven screen simply does not advance. Nothing errors; the page
+  renders, the buttons respond, and the clock sits still.
+
+  The signature is a screen that draws correctly and never moves, or a
+  hand-rolled frame pump that stalls after a burst. Two traps go with it:
+  a pump that yields only on microtasks starves React's scheduler, so the
+  component never re-renders and never re-subscribes to rAF; and the
+  component must already be subscribed BEFORE any pump starts, or nothing
+  is ever there to call.
+
+  This cost real time on four separate occasions before it was written
+  down. Verify a component by reading it, by `verify-screens.mjs`, and by
+  ASKING A PERSON TO OPEN THE PAGE. Their eyes are the better instrument
+  and they are available; a scripted playthrough is neither.
+
 New engine logic gets an independent re-derivation, not a self-check — that is
 why the scoring curve is reimplemented from prose in Python rather than ported
 from the JavaScript.
@@ -1740,7 +1831,7 @@ invisible to the encroachment fault because it only ever watches priors — in
   REPLACES a car rather than joining them, and is kept out of `heavy`
   briefs: it pushes the window past itself, so every extra road user
   still arriving after that is another chance for the window to land on
-  somebody, which `windowIsSafe` then rejects — adding rather than
+  somebody, which the accept test then rejects — adding rather than
   swapping dropped the yield to under 1%. And `framedInTime` is the one
   place composition looks at the 2D frame; it checks a declaration the
   scenario makes, while `eventsAreReadable` states the requirement in
