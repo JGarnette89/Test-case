@@ -162,13 +162,26 @@ export function frameAround(pose, speed, { lookAhead = LOOK_AHEAD } = {}) {
 }
 
 export function chaseFor(spec, sim, t, camera, { lookAhead = LOOK_AHEAD } = {}) {
-  const speed = legSpeed(sim.ego);
+  return chaseOn(intendedPose(sim.ego, t), legSpeed(sim.ego), {
+    lookAhead,
+    drift: driftOf(sim.ego, t),
+  });
+}
+
+/* THE CAMERA IS A FUNCTION OF A POSE, and nothing else. Split out of
+   chaseFor so a drive that spans SEVERAL junctions can point it at the
+   candidate's position in world coordinates rather than at one scenario's
+   ego -- which is what the continuous world needs and what a per-scenario
+   camera could never give, because at a boundary it re-centred on a new
+   scene 70-90m away. That jump is the hard cut.
+
+   chaseFor keeps its exact behaviour by delegating here. */
+export function chaseOn(pose, speed, { lookAhead = LOOK_AHEAD, drift = null } = {}) {
   const ahead = Math.max(M(12), lookAhead * speed);
   const behind = ahead * LOOK_BEHIND_FRACTION;
   const size = ahead + behind;
   const half = size / 2;
 
-  const pose = intendedPose(sim.ego, t);
   /* Sit the car low in the frame so the road ahead gets most of it. The
      centre therefore rides in front of the car, along its heading. */
   const r = (pose.rot * Math.PI) / 180;
@@ -187,7 +200,7 @@ export function chaseFor(spec, sim, t, camera, { lookAhead = LOOK_AHEAD } = {}) 
     seconds: ahead / speed,
     // What the car is actually doing, for a renderer that wants to show
     // the deviation explicitly rather than leave it implicit.
-    drift: driftOf(sim.ego, t),
+    drift,
   };
 }
 

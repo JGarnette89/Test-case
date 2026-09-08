@@ -735,6 +735,69 @@ of the manoeuvre, which screen, which moment, which road width. The four
 checks that asked `wideTurn` for a fault on a single-lane road were all
 correct and all measuring a decline.
 
+### 10.2 THE THIRD BLIND SPOT: what is measurable is not what is felt
+
+Stated as a rule because it has now happened three times, and each time
+the suite was fully green:
+
+  **A NUMBER CAN ONLY TELL YOU ABOUT THE THING IT MEASURES. Whether the
+  game is any good to play is not one of those things, and no check in
+  this repository will ever tell you.**
+
+- **The screens did not render.** Every engine check passed for twenty
+  increments while the Examiner screen threw on mount.
+- **The stacking trade shipped inert.** `held` was zero by construction,
+  so the one mechanic the drive screen exists to evaluate could not fire,
+  and every check passed because every check was aimed at the engine
+  underneath it.
+- **The world is continuous in geometry and DISCONTINUOUS IN
+  EXPERIENCE.** `verify-world.mjs` measures culling, routes, pacing and
+  segment hazards, and all of it is right. The maintainer played it:
+  "it's hard to get a sense of anything else without having an actual
+  seamless world. otherwise it's a series of very quick scenes that don't
+  meaningfully connect to each other."
+
+The third is the sharpest, because the measurements were not merely
+silent — they were POSITIVELY REASSURING. Dead air was green, pacing was
+green, continuity of route and rotation was green. The world was
+continuous by every quantity anybody had thought to measure, and it plays
+as a slideshow.
+
+**So: a measurement is evidence about a question, and the question is
+usually narrower than it sounds.** "Is the drive continuous?" was answered
+by checks that only ever asked whether the ROUTE was continuous. Nobody
+had asked whether the camera cuts, whether any traffic survives a
+boundary, or whether the ground under the candidate is the same ground.
+It is not. See §10.1: the check was looking at the wrong half, again.
+
+**What it took to fix, recorded because the shape repeats.** The drive
+screen never imported `world.js` -- `driveThroughTiles`, `candidateAt`,
+`placeJunctions` and `linkBetween` were built, verified and unused, while
+the screen composed one junction at a time and drew every one of them at
+the board centre. Wiring it up surfaced two engine bugs that could not
+show while everything sat at 360,360:
+
+- **`exitPoint` was half origin-aware.** Lateral coordinate from the
+  junction, along coordinate from the board edge -- so a junction placed
+  at y = -5329 sent its candidate 240 METRES SOUTH to an exit computed at
+  the middle of the board. Now measured from the junction, and provably
+  identical at the default origin, so `engine-golden` is untouched.
+- **`worldExitOf` and `exitPoint` were two implementations of one
+  quantity** (§10): the traverse ended 22m out, the link began 7.6m out,
+  and the road snapped 12m backwards under the candidate at every exit.
+  `worldExitOf` existed only BECAUSE `exitPoint` was board-relative -- its
+  own comment says so -- so fixing the first dissolved the second.
+
+That also corrected a real measurement: **runway was overstated by 14m**,
+because it was measured from a point the candidate had already driven
+past. Three junctions immediately reported less approach than their tile
+promised. True before, and simply not measurable.
+
+**The remedy is not a better check. It is a person playing it**, early
+and often, and treating what they report as data of the same standing as
+a number. Every one of the three was found by eyes and could not have
+been found any other way.
+
 A useful habit: when a check passes, try to make it fail on purpose. Every
 fix in this file that was verified that way — deleting `<Belief>` again,
 putting `watched` back, importing `reaction` into `clearance` — found

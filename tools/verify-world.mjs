@@ -15,6 +15,7 @@ import {
   whatEgoSees, visibility, eyePoint, reachOf, withinReach, sightBlockersOf,
 } from "../src/engine/sight.js";
 import { driveThroughTiles, runwayFor, candidateAt } from "../src/engine/world.js";
+import { chaseOn } from "../src/frame.js";
 import {
   TILES, specFor, kerbsideFor, roadsideLifeFor, CHARACTER,
   planDrive, driveFromPlan, runwayNeededFor, composeForTile,
@@ -392,6 +393,78 @@ console.log("\n8. DEAD AIR: IS THE TARGET REACHABLE?");
   console.log("   The target is reachable typically but not guaranteed: a stretch of");
   console.log("   arterial has activity 0.15 and SHOULD be quiet, so the remaining");
   console.log("   gaps are on roads where dead air is the correct answer.");
+}
+
+console.log("\n9. THE DRIVE IS CONTINUOUS TO WATCH, NOT ONLY TO ROUTE");
+{
+  /* THE THIRD BLIND SPOT, MADE MEASURABLE. Every check in this file
+     passed while the drive played as a slideshow: the maintainer's words
+     were "it's a series of very quick scenes that don't meaningfully
+     connect to each other." Culling was right, pacing was right, route
+     continuity was right -- and nobody had asked whether the VIEW moves
+     or cuts, because "is the drive continuous" had only ever been
+     answered about the route.
+
+     Measured before the fix: the camera jumped 60-90m at every boundary,
+     the candidate teleported 70-90m onto new ground, and 0 of 35-58
+     scenery items survived. Nothing at all persisted.
+
+     So this asks the felt question in the only form a number can take:
+     between two frames a fifth of a second apart, the view may not move
+     further than a car could have driven. */
+  const { drive } = worldOf("res-quiet", 6);
+  const end = drive.exits[drive.exits.length - 1];
+  const STEP_T = 0.2;
+  const v = drive.speed;
+  const allow = v * STEP_T * 3;             // generous: 3x the distance travelled
+
+  let worst = 0, worstAt = null, worstRot = 0, samples = 0;
+  let prev = null;
+  for (let t = 0; t <= end; t += STEP_T) {
+    const p = candidateAt(drive, t);
+    if (!p || !Number.isFinite(p.x)) continue;
+    const cam = chaseOn(p, v, { lookAhead: 6 });
+    samples++;
+    if (prev) {
+      const d = Math.hypot(cam.cx - prev.cx, cam.cy - prev.cy);
+      const dr = Math.abs(((cam.rotate - prev.rotate + 540) % 360) - 180);
+      if (d > worst) { worst = d; worstAt = t; }
+      worstRot = Math.max(worstRot, dr);
+    }
+    prev = cam;
+  }
+  console.log(`   ${samples} frames over ${end.toFixed(0)}s; worst view step ${m(worst)}m at t=${worstAt?.toFixed(1)}s, worst turn ${worstRot.toFixed(0)} deg`);
+  worst <= allow
+    ? ok(`the view never cuts: worst step ${m(worst)}m against ${m(allow)}m of travel -- a boundary is a place you drive to, not a scene change`)
+    : fail(
+        `the view jumps ${m(worst)}m at t=${worstAt?.toFixed(1)}s, which is a CUT rather than a movement.` + String.fromCharCode(10) +
+        `        A cut is the single most destructive thing for a sense of place: the` + String.fromCharCode(10) +
+        `        maintainer played a version that jumped 60-90m at every junction and` + String.fromCharCode(10) +
+        `        reported "a series of very quick scenes that don't meaningfully connect".` + String.fromCharCode(10) +
+        `        Every other check in this file passed throughout. See DECISIONS.md 10.2.`
+      );
+
+  /* And the candidate has to actually TRAVEL between junctions rather
+     than appearing at the next one. */
+  let onLink = 0, atJunction = 0;
+  for (let t = 0; t <= end; t += STEP_T) {
+    const p = candidateAt(drive, t);
+    if (p?.phase === "link") onLink += STEP_T; else atJunction += STEP_T;
+  }
+  onLink > 0
+    ? ok(`and ${onLink.toFixed(0)}s of the ${end.toFixed(0)}s drive is spent driving BETWEEN junctions (${(100 * onLink / end).toFixed(0)}%), which used to be an instant jump`)
+    : fail("the candidate never travels between junctions -- every boundary is still a teleport");
+
+  /* Every junction reached, in order, once. */
+  const seen = [];
+  for (let t = 0; t <= end; t += STEP_T) {
+    const j = candidateAt(drive, t)?.junction;
+    if (j != null && j !== seen[seen.length - 1]) seen.push(j);
+  }
+  const ordered = seen.every((j, k) => j === k) && seen.length === drive.legs.length;
+  ordered
+    ? ok(`and the drive visits all ${seen.length} junctions in order, each exactly once`)
+    : fail(`junction order is ${seen.join(",")}, which is not a drive through ${drive.legs.length} of them`);
 }
 
 console.log("\n" + "=".repeat(70));

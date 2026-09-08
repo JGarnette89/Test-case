@@ -36,8 +36,9 @@ import { sectionSheet, summarise } from "../engine/detect.js";
 import { composeCandidate } from "../engine/candidate.js";
 import { composeDriver, AXES, deficitOf, dominantAxis } from "../engine/ratings.js";
 import { planDrive, composeForTile, CHARACTER } from "../engine/tiles.js";
+import { driveThroughTiles, candidateAt } from "../engine/world.js";
 import { approachDecel } from "../engine/paths.js";
-import { chaseFor, worldHalfFor, LOOK_AHEAD } from "../frame.js";
+import { chaseOn } from "../frame.js";
 import { environmentFor, scatter } from "../environments.js";
 import { Road, Environment } from "./RightOfWayTiming.jsx";
 
@@ -105,7 +106,7 @@ export default function ExaminerDrive() {
   const drive = useMemo(() => {
     const candidate = { ...composeCandidate(seed * 7 + 3), ...composeDriver(seed * 11) };
     const plan = planDrive({ seed, length: JUNCTIONS, candidate });
-    const legs = [];
+    const tiles = [], made = [], intents = [];
     let since = 0;
     for (let i = 0; i < plan.length; i++) {
       const tile = plan[i].tile;
@@ -114,50 +115,89 @@ export default function ExaminerDrive() {
         legTime, candidate, at: { from: plan[i].entry, intent: plan[i].intent },
       });
       if (!scn) continue;
-      const sim = simulate(scn);
-      const runIn = runInFor(sim, { floor: APPROACH });
-      legs.push({
-        scn, intent: plan[i].intent, tile, runIn,
-        window: instructionWindow(sim, { legStartsAt: -runIn }),
-      });
       since = faultsIn(scn).length ? 0 : since + legTime;
+      /* THE TILE'S DECLARED ROAD AND THE COMPOSED JUNCTION'S ROAD
+         DISAGREE -- 15 of 56 match, 0 of 13 for arterial -- and this is
+         the moment CLAUDE.md said that would stop being latent, because
+         a renderer is now consuming the world. The junction the candidate
+         ACTUALLY DRIVES wins: laying the world out from the tile's
+         declared spec would place roads that do not match the ones on
+         screen. It also sidesteps the arterial-control question, which is
+         a road-design call and not one to make in passing. */
+      tiles.push({ ...tile, spec: specOf(scn) });
+      made.push(scn);
+      intents.push(plan[i].intent);
     }
-    return { candidate, legs };
+
+    /* ONE COORDINATE SPACE. Every junction placed where it really is, with
+       real road between them -- which is what world.js has always done and
+       what this screen never called. Before it, each junction was drawn at
+       the board centre and the candidate teleported 70-90m at every
+       boundary onto new ground with every car and every tree replaced.
+       Measured: nothing at all persisted across a boundary. */
+    const world = driveThroughTiles({ tiles, legs: made, speed: M(11.5) });
+
+    const legs = world.legs.map((placed, i) => {
+      const runIn = runInFor(placed.sim, { floor: APPROACH });
+      return {
+        scn: placed.scn, sim: placed.sim, at: placed.junction.at,
+        intent: intents[i], tile: tiles[i], runIn,
+        window: instructionWindow(placed.sim, { legStartsAt: -runIn }),
+        env: environmentFor(placed.scn.id),
+      };
+    });
+    return { candidate, legs, world };
   }, [seed]);
 
   const leg = drive.legs[Math.min(at, drive.legs.length - 1)];
 
+  /* WHERE THE CANDIDATE IS, ACROSS THE WHOLE DRIVE. One clock from zero,
+     one position, and a `phase` that says whether they are at a junction
+     or on the road between two. This is the continuity: the pose never
+     jumps, so the camera that follows it never cuts. */
+  const world = drive.world;
+  const driveEnds = world.exits[world.exits.length - 1] ?? 0;
+  const pose = useMemo(() => candidateAt(world, Math.min(elapsed, driveEnds)), [world, elapsed, driveEnds]);
+  const t = pose.local ?? 0;                 // leg-local, which faults and windows speak
+
   const live = useMemo(() => {
     if (!leg) return null;
+    /* Load is applied to the FAULT DERIVATION, which is what the sheet
+       grades. The rendered path comes from the world, which is built once
+       -- so at held > 0 the drawn drift understates the marked fault by
+       the severity multiplier. Known, and the smallest thing that keeps
+       the world from being rebuilt underneath a moving car. */
     const scn = loadCandidate(leg.scn, { held });
     const sim = simulate(scn);
-    const runIn = runInFor(sim, { floor: APPROACH });
     return {
-      scn, sim,
-      spec: specOf(scn),
-      statics: sightBlockersOf(scn),
+      scn: leg.scn, sim: leg.sim,
+      spec: specOf(leg.scn),
+      statics: sightBlockersOf(leg.scn),
       faults: faultsIn(scn),
-      runIn,
-      window: instructionWindow(sim, { legStartsAt: -runIn }),
-      env: environmentFor(scn.id),
-      until: (sim.ego.departAt ?? sim.legalAt) + TAIL + 4,
+      runIn: leg.runIn,
+      window: leg.window,
+      env: leg.env,
+      until: (leg.sim.ego.departAt ?? leg.sim.legalAt) + TAIL + 4,
     };
   }, [leg, held]);
 
-  const t = live ? elapsed - live.runIn : 0;
-
   const view = useMemo(
-    () => (live ? chaseFor(live.spec, live.sim, t, live.scn.camera, { lookAhead: look }) : null),
-    [live, t, look]
+    () => chaseOn(pose, M(11.5), { lookAhead: look }),
+    [pose, look]
   );
-  const worldHalf = useMemo(
-    () => (live ? worldHalfFor(live.spec, live.sim, live.scn.camera, { chase: true }) : 360),
-    [live]
-  );
-  const scenery = useMemo(
-    () => (live ? scatter(live.env, at * 977 + 13, [], { cx: CX, cy: CY, half: worldHalf }) : []),
-    [live, at, worldHalf]
-  );
+  /* How far each junction's roads reach. Sized so neighbours MEET: the
+     gaps are 53-72m, so anything less leaves the candidate driving over a
+     void between them, which is the same failure as the ambulance in the
+     void -- whatever the camera can reveal has to be drawn. */
+  const reach = useMemo(() => {
+    let widest = 0;
+    for (let i = 0; i + 1 < drive.legs.length; i++) {
+      const a = drive.legs[i].at, b = drive.legs[i + 1].at;
+      widest = Math.max(widest, Math.hypot(b.x - a.x, b.y - a.y));
+    }
+    return Math.max(360, widest / 2 + M(12));
+  }, [drive]);
+
 
   /* GRADE AGAINST THE DEADLINE THEY WERE SHOWN. Stacking writes skill,
      skill scales startDelay, startDelay moves departAt, and departAt is
@@ -170,7 +210,10 @@ export default function ExaminerDrive() {
   useEffect(() => {
     if (!playing || sheet || !live) return;
     last.current = performance.now();
-    const end = live.until + live.runIn;
+    /* ONE CLOCK FOR THE WHOLE DRIVE, not one per leg. The leg boundary
+       stops being a clock event at all -- it is just the moment the
+       candidate's position happens to be inside the next junction. */
+    const end = driveEnds;
     const tick = (now) => {
       /* Clamped at BOTH ends. The ceiling is the familiar one — a
          backgrounded tab must not teleport the candidate through a
@@ -184,8 +227,8 @@ export default function ExaminerDrive() {
       setElapsed((x) => {
         const next = x + dt;
         if (next >= end) {
-          // Once per leg. React may not have committed by the next frame.
-          if (!closed.current) { closed.current = true; queueMicrotask(advance); }
+          // Once per drive. React may not have committed by the next frame.
+          if (!closed.current) { closed.current = true; queueMicrotask(finishDrive); }
           return end;
         }
         return next;
@@ -210,22 +253,25 @@ export default function ExaminerDrive() {
     }
   });
 
-  function goTo(next) {
-    closed.current = false;
-    setAt(next);
-    setElapsed(0);
-    setTarget(next);
-    setHeld(Object.keys(given).filter((k) => Number(k) > next).length);
-  }
-
-  function advance() {
-    const next = at + 1;
-    if (next % PER_SECTION === 0 || next >= drive.legs.length) {
-      setSheet(closeSection(next));
+  /* ARRIVING SOMEWHERE IS NOT A CLOCK EVENT ANY MORE. The candidate
+     drives continuously and simply ends up at the next junction, so this
+     watches their POSITION rather than counting down a per-leg timer. */
+  useEffect(() => {
+    const here = pose.junction ?? 0;
+    if (here === at || sheet) return;
+    if (here % PER_SECTION === 0 && here > 0) {
+      setSheet(closeSection(here));
       setPlaying(false);
       return;
     }
-    goTo(next);
+    setAt(here);
+    setTarget(here);
+    setHeld(Object.keys(given).filter((k) => Number(k) > here).length);
+  }, [pose.junction, at, sheet, given]);
+
+  function finishDrive() {
+    setSheet(closeSection(drive.legs.length));
+    setPlaying(false);
   }
 
   /* THE SHEET. Deferred: everything the section produced, against
@@ -263,8 +309,19 @@ export default function ExaminerDrive() {
 
   const pressure = pressureOf(held);
   const skill = skillUnderPressure(1, pressure);
-  const egoPose = poseAt(live.sim.ego, t);
+  /* The candidate is drawn at their WORLD pose, which is continuous, not
+     at a per-leg one that restarts at every boundary. */
+  const egoPose = pose;
   const sees = whatEgoSees(live.sim, t, 0, live.statics);
+
+  /* Which junctions are close enough to be worth drawing. Culling by
+     distance rather than by "the one we are at": on the road between two
+     junctions BOTH are on screen, which is the entire point -- you watch
+     the next one come to you instead of arriving in it. */
+  const near = drive.legs
+    .map((l, i) => ({ l, i, d: Math.hypot(l.at.x - view.cx, l.at.y - view.cy) }))
+    .filter((x) => x.d < view.ahead + view.behind + reach)
+    .sort((a, b) => b.d - a.d);
   const w = live.window;
   const late = t > w.deadline && !given[at];
   const section = Math.floor(at / PER_SECTION) + 1;
@@ -277,15 +334,35 @@ export default function ExaminerDrive() {
      not grading a number nobody could have produced. */
   const callFor = (j, intent) => (j === at
     ? { at: +t.toFixed(2), intent }
-    : { at: +(drive.legs[j].window.opensAt - (live.until - t)).toFixed(2), intent, ahead: true });
+    : { at: +(drive.legs[j].window.opensAt - Math.max(1, (world.arrivals[j] ?? 0) - elapsed)).toFixed(2), intent, ahead: true });
 
   return (
     <div style={S.page}>
       <div style={S.canvasWrap}>
         <svg viewBox={view.box} style={S.svg} preserveAspectRatio="xMidYMid meet">
           <g transform={`rotate(${view.rotate} ${view.cx} ${view.cy})`}>
-            <Environment env={live.env} seed={at * 977 + 13} keepOut={[]} worldHalf={worldHalf} />
-            <Road control={live.scn.control} crossings={live.scn.crossings || []} spec={live.spec} reach={worldHalf} />
+            {/* Ground first, sized to the frame, so there is never a void
+                under the candidate between two junctions. */}
+            <rect
+              x={view.cx - (view.ahead + view.behind)} y={view.cy - (view.ahead + view.behind)}
+              width={(view.ahead + view.behind) * 2} height={(view.ahead + view.behind) * 2}
+              fill={live.env.ground}
+            />
+            {/* EVERY NEARBY JUNCTION, each at the place it really is.
+                Road and Environment are pinned to the board centre, so
+                they are moved by transform rather than by changing them --
+                the renderer needs no rewrite for the world to be one
+                space. Furthest first, so the near one draws over it. */}
+            {near.map(({ l, i }) => (
+              <g key={i} transform={`translate(${l.at.x - CX} ${l.at.y - CY})`}>
+                <Environment env={l.env} seed={i * 977 + 13} keepOut={[]} worldHalf={reach} />
+                <Road control={l.scn.control} crossings={l.scn.crossings || []} spec={specOf(l.scn)} reach={reach} />
+              </g>
+            ))}
+            {/* Traffic is drawn from the junction being driven. It does
+                not yet persist across a boundary -- the cars at the next
+                junction appear as it is reached. That is the next thing,
+                and it is visible now only because the transit is. */}
             {live.sim.actors.map((a) => {
               const vis = sees[a.id] ?? "hidden";
               if (vis === "hidden") return null;
@@ -387,7 +464,11 @@ export default function ExaminerDrive() {
 
       {sheet && <Sheet sheet={sheet} drive={drive} onNext={() => {
         if (sheet.done) { restart(seed + 1); return; }
-        setSheet(null); goTo(sheet.upTo); setPlaying(true);
+        setSheet(null);
+        setAt(sheet.upTo);
+        setTarget(sheet.upTo);
+        setHeld(Object.keys(given).filter((k) => Number(k) > sheet.upTo).length);
+        setPlaying(true);
       }} />}
     </div>
   );

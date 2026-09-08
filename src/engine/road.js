@@ -171,13 +171,30 @@ export function controlsOf(spec, LANE, setback, at = { x: 360, y: 360 }, M = (v)
 /* Where a vehicle leaving by `side` goes: the outbound lane of that leg,
    run off the board. Outbound is the mirror of inbound — the other half
    of the same road. */
+/* WHERE A LEG LEADS. Measured FROM THE JUNCTION, not from the board.
+
+   This used to take its lateral coordinate from the origin and its along
+   coordinate from the board edge -- `W + beyond` or `-beyond` -- so a
+   junction placed anywhere but the centre exited toward the middle of the
+   board instead of away from itself. Harmless while every scenario was
+   drawn at 360,360, and CLAUDE.md named it as latent: real the moment a
+   renderer draws a placed drive.
+
+   That moment arrived. In a continuous drive the fifth junction sat at
+   y = -5329 and its candidate, having correctly approached from the
+   south, then drove 240 METRES SOUTH to reach an exit computed at the
+   board. It read as the view cutting at every boundary.
+
+   Identical at the default origin by construction: half the board plus
+   `beyond` from 360 is 800 and -80, which is exactly what the old
+   arithmetic produced. So nothing that draws at the centre moves. */
 export function exitPoint(side, LANE, lane = 0, CX = 360, CY = 360, beyond = 80, W = 720, H = 720) {
   const leg = LEG[side];
   const off = laneOffset(lane, LANE);
-  const far = leg.out.x !== 0 ? (leg.out.x > 0 ? W + beyond : -beyond) : (leg.out.y > 0 ? H + beyond : -beyond);
+  const reach = (leg.out.x !== 0 ? W / 2 : H / 2) + beyond;
   return leg.out.x !== 0
-    ? { x: far, y: CY - leg.off.y * off }
-    : { x: CX - leg.off.x * off, y: far };
+    ? { x: CX + leg.out.x * reach, y: CY - leg.off.y * off }
+    : { x: CX - leg.off.x * off, y: CY + leg.out.y * reach };
 }
 
 export { LEG };

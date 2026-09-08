@@ -129,7 +129,20 @@ export function linkBetween(a, b, spec, speed, intent = "straight", fromSpec) {
      leaves only 22m of approach out of 80m of spacing, because the
      candidate is placed 8m behind a junction it has already driven
      through. */
-  const raw = worldExitOf(fromSpec ?? spec, exitSideFor(a.from, intent), a.at);
+  /* WHERE THE TRAVERSE ACTUALLY ENDS, which is exitPoint and not
+     worldExitOf. Those were two implementations of one quantity -- the
+     recurring bug in this project -- and the gap between them, 22m out
+     against 7.6m out, is a 12m BACKWARDS SNAP at every junction exit:
+     the candidate finishes their traverse and the link starts behind
+     them. It read as the view cutting.
+
+     worldExitOf was written because exitPoint was board-relative and
+     could not be moved without disturbing engine-golden. exitPoint is now
+     origin-aware and provably identical at the default origin, so that
+     reason is gone and the two can be one again. worldExitOf stays for
+     spacing, where "just past this junction's box" is the right question
+     and scales with its width. */
+  const raw = exitPoint(exitSideFor(a.from, intent), LANE, 0, a.at.x, a.at.y);
   const to = stopPoint(spec, b.from, LANE, SET, 0, b.at.x, b.at.y);
   /* exitPoint returns a position and no heading, and poseOn reads
      `from.rot` for a straight path -- so without this the candidate drives
@@ -301,8 +314,15 @@ export function exitRunOf(spec, from = "S", intent = "straight") {
    ===================================================================== */
 export function spacingForRunway({ prevSpec, spec, from = "S", intent = "straight", runway }) {
   const at = { x: 0, y: 0 };
-  // What the junction being LEFT consumes, using its own spec.
-  const exit = worldExitOf(prevSpec ?? spec, exitSideFor(from, intent), at);
+  /* What the junction being LEFT consumes, measured to WHERE THE TRAVERSE
+     ACTUALLY ENDS. It used to use worldExitOf, just past the junction box,
+     while the candidate's path ran 14m further to exitPoint -- so runway
+     was measured from a point they had already driven past and was
+     overstated by exactly that. The same two-implementations bug the link
+     had, and fixing the link exposed it: three junctions immediately
+     reported less runway than their tile promised, which was true before
+     and simply not measurable. */
+  const exit = exitPoint(exitSideFor(from, intent), LANE, 0, at.x, at.y);
   const consumed = Math.hypot(exit.x - at.x, exit.y - at.y);
   // How far back the junction being APPROACHED puts its stop line.
   const line = stopPoint(spec, from, LANE, SET, 0, at.x, at.y);
