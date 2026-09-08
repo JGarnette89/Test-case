@@ -708,6 +708,39 @@ Instances, all real:
 The tell is usually a measurement that comes out at exactly zero, or
 exactly saturated, or suspiciously clean.
 
+### 10.1 THE SECOND PATTERN: the check was looking at the wrong half
+
+Distinct from the above, and it has paid out three times in two days.
+Every one of these shipped with a full green suite, because a check that
+inspects the wrong half of a thing passes confidently and forever.
+
+- **`verify-turns` measured only the APPROACH.** `if (along <= hy)
+  continue` skips the junction box and everything past it, so the EXIT
+  side of a turn had never been looked at once. `wideTurn` put a car
+  2.70m past the kerb and nothing noticed until somebody played it.
+- **`verify-screens` rendered the mode COMPONENTS and never `App`** — the
+  shell every route actually goes through. A dangling reference in the
+  home screen served a blank page to every route while the check that
+  exists to catch blank pages stayed green.
+- **`verify-screens` rendered ONE FRAME at t=0.** A component in a branch
+  that only runs under a runtime condition is invisible to it. `<Belief>`
+  renders only when an actor is occluded while still believed in — which
+  is what two cars touching produces — so the lab went black on contact
+  with every check passing.
+
+The lesson is not "write more checks". It is that **a check has a
+BOUNDARY, and the boundary is usually invisible in its output.** When one
+passes on something you suspect, ask what it does not look at: which half
+of the manoeuvre, which screen, which moment, which road width. The four
+checks that asked `wideTurn` for a fault on a single-lane road were all
+correct and all measuring a decline.
+
+A useful habit: when a check passes, try to make it fail on purpose. Every
+fix in this file that was verified that way — deleting `<Belief>` again,
+putting `watched` back, importing `reaction` into `clearance` — found
+something. The `<Belief>` check passed on the first attempt with the
+component deleted, because its own doc comment mentioned the name.
+
 ---
 
 ## 10.5 Where a check protects a decision, its failure says so

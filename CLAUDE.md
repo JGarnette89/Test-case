@@ -20,7 +20,7 @@ is what you must not break.
 **[DRIVE-GUIDE.md](DRIVE-GUIDE.md)** is how to actually operate the game
 at `#/drive`, and what is knowingly missing from it.
 
-Four things to know before your first change:
+Five things to know before your first change:
 
 1. **NEVER AUTHOR THE ANSWER, and never author the fault.** Windows are
    simulated, never typed in. Faults are DERIVED by controlled comparison
@@ -36,13 +36,22 @@ Four things to know before your first change:
    measurement that comes out at exactly zero, or exactly saturated, or
    suspiciously clean.** DECISIONS.md §10 lists them.
 
-3. **THE BUILD PASSING DOES NOT MEAN THE APP RENDERS.** A render-time
+3. **A CHECK HAS A BOUNDARY, AND IT IS INVISIBLE IN ITS OUTPUT.** The
+   second recurring failure, three times in two days: `verify-turns`
+   measured only the approach and never the exit; `verify-screens`
+   rendered the mode components and never the shell every route goes
+   through, then rendered one frame at t=0 and never a branch that only
+   runs under a runtime condition. All shipped green. When a check passes
+   on something you suspect, ask what it does NOT look at — and try to
+   make it fail on purpose. DECISIONS.md §10.1.
+
+4. **THE BUILD PASSING DOES NOT MEAN THE APP RENDERS.** A render-time
    `ReferenceError` is not a build error: `vite build` succeeded while
    `App` threw on mount and every route served a blank page. Run
    `node tools/verify-screens.mjs`, which renders `App` and every route
    under SSR. It still cannot tell you how anything LOOKS.
 
-4. **SCRIPTED PLAYTHROUGHS DO NOT WORK HERE. Do not try.** The preview
+5. **SCRIPTED PLAYTHROUGHS DO NOT WORK HERE. Do not try.** The preview
    pane delivers zero animation frames — measured, 0 in 1.5s with
    `document.hidden` false — and clamps timers, so an rAF-driven screen
    never advances and nothing errors. The signature is a screen that draws
