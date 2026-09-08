@@ -20,6 +20,7 @@ import {
 } from "../src/engine/belief.js";
 import { simulate, poseAt, M } from "../src/engine/index.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
+import { crossSpec } from "../src/engine/road.js";
 
 const m = (px) => Math.round((px / 20) * 100) / 100;
 let problems = 0;
@@ -27,10 +28,16 @@ const ok = (s) => console.log(`  ok   ${s}`);
 const fail = (s) => { problems++; console.log(`  FAIL: ${s}`); };
 
 const base = SCENARIOS.find((s) => s.id === "gap");
-const withTraits = (traits) => {
-  const scn = { ...base, ego: { ...base.ego, traits, departAt: simulate(base).legalAt } };
+/* `lanes` because a trait may only fire where its tell is true, and
+   wideTurn's tell is "across the next lane" -- it declines a road that has
+   no next lane, so asking it for a belief error on one measures the
+   decline rather than the trait. Everything else is unaffected. */
+const withTraits = (traits, lanes = 1) => {
+  const road = lanes === 1 ? base.road : crossSpec(base.control ?? "stop", lanes);
+  const scn = { ...base, ...(road ? { road } : {}), ego: { ...base.ego, traits, departAt: simulate(base).legalAt } };
   return { scn, sim: simulate(scn) };
 };
+const LANES_FOR = { wideTurn: 2 };
 
 /* ---------- 1. a clean car is where you left it -------------------- */
 console.log("1. LOOKING AWAY FROM GOOD DRIVING COSTS NOTHING");
@@ -76,7 +83,7 @@ console.log("\n2. LOOKING AWAY FROM BAD DRIVING COSTS YOU");
   console.log("   " + "-".repeat(64));
   let real = 0;
   for (const trait of ["wander", "creep", "overshoot", "slowStart", "wideTurn", "cutsCorner"]) {
-    const { sim } = withTraits([trait]);
+    const { sim } = withTraits([trait], LANES_FOR[trait] ?? 1);
     const d = deviatesEver(sim.ego, 0, 18);
 
     /* And it has to get worse the longer you leave it, or a single glance
@@ -154,7 +161,7 @@ console.log("\n4. GLANCING AT SOMETHING DOES NOT MAKE IT TELEPORT");
     ? ok("prediction and truth agree exactly at the moment of a look — no snap")
     : fail(`the belief jumps ${m(worstSnap)}m when observed`);
 
-  const { sim: s2 } = withTraits(["wideTurn"]);
+  const { sim: s2 } = withTraits(["wideTurn"], LANES_FOR.wideTurn);
   const o = observe(s2.ego, 3);
   const a = predictAt(s2.ego, o, 3.0), b = predictAt(s2.ego, o, 3.05);
   a && b && Math.hypot(b.x - a.x, b.y - a.y) < M(1.5)

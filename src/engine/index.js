@@ -30,7 +30,7 @@ import {
 } from "./paths.js";
 import {
   SIDES, RIGHT_OF, OPPOSITE, INTENTS, crossSpec, specOf,
-  stopPoint, exitPoint, exitSideFor, boxHalf,
+  stopPoint, exitPoint, exitSideFor, boxHalf, roadHalf,
 } from "./road.js";
 import { GRACE } from "./score.js";
 
@@ -487,7 +487,30 @@ function crossMovement(p) {
      inside it. Floored at what a car can physically steer, however badly
      it is being driven. */
   const toCorner = Math.hypot(corner.x - rest.x, corner.y - rest.y);
-  const radius = Math.max(TURN_R_MIN, toCorner + (p.turnBias || 0));
+
+  /* THE BIAS IS BOUNDED BY THE ROAD IT FINISHES ON. A wide turn swings
+     into the far lane, and on a road with no far lane there is nothing to
+     swing into: wideTurn's flat 4.5m put a car 2.70m PAST THE KERB on a
+     single-lane left, which the maintainer reported as turns going
+     "completely off the roadway". Measured, and it is exactly
+     4.5 - (3.6 - 1.8): the bias was a fixed distance while the room for
+     it is a property of the receiving road.
+
+     So the room is derived the way the radius already is, from the
+     carriageway the car is turning into. A positive bias swings AWAY from
+     the centreline, so the room is what lies between the lane centre and
+     that side's kerb and nothing more -- there is no swinging into
+     oncoming, which is the opposite direction.
+
+     This is a floor under the geometry, not the fix. The fix is that
+     wideTurn declines a road with no next lane at all, below: clamping
+     alone would leave the car finishing exactly on the lane line while
+     its tell claimed it had crossed one. */
+  const exitVert = !vertical;
+  const half = roadHalf(spec, exitVert ? "vert" : "horiz", LANE);
+  const room = Math.max(0, half - LANE / 2);
+  const bias = Math.min(p.turnBias || 0, room);
+  const radius = Math.max(TURN_R_MIN, toCorner + bias);
 
   const pts = turnPoints(rest, corner, exit, radius);
   return { rest, traverse: polyPath(pts, motion, { rot0: base.rot }) };
@@ -621,6 +644,15 @@ const TRAITS = {
     tell: "Drifting inside its lane — never held a steady line",
     pose: (p, t, po) => {
       if (po.hidden) return po;
+      /* A STOPPED CAR CANNOT WEAVE. Maintainer, on seeing it: the car
+         "weaves back and forth in place while stopped, impossible."
+         Drifting inside your lane is a lane-keeping failure and it needs
+         forward motion to exist -- and the tell says as much, so applying
+         it at rest was claiming something to the player that was not
+         happening. The same guard `creep` has always had, for the mirror
+         reason: creep only means anything while waiting, wander only
+         means anything while moving. */
+      if (po.waiting) return po;
       const amp = M(1.15) * severityOf(p), w = 1.75;
       const off = Math.sin(t * w + (p.phase || 0)) * amp;
       const r = (po.rot * Math.PI) / 180;
@@ -667,7 +699,24 @@ const TRAITS = {
   },
   wideTurn: {
     tell: "Swung wide through the turn, across the next lane",
-    setup: (p) => { p.turnBias = M(4.5) * severityOf(p); },
+    /* ONLY WHERE THERE IS A NEXT LANE TO SWING ACROSS. The tell says
+       "across the next lane", and on a single-lane road there is no such
+       lane: a flat 4.5m put the car 2.70m PAST THE KERB, which the
+       maintainer reported as left turns going completely off the roadway.
+       Clamping it to the kerb instead only moved the lie -- the car then
+       finished exactly on the lane line claiming to have crossed it.
+
+       So this declines a narrow road the same way cutsCorner declines a
+       right turn, and for the same stated reason: a trait may only fire
+       where its tell is true. A trait whose setup writes unconditionally
+       is claiming a consequence somewhere it does not happen. */
+    setup: (p) => {
+      const spec = p.road ?? DEFAULT_ROAD;
+      const vertical = p.from === "S" || p.from === "N";
+      const half = roadHalf(spec, vertical ? "horiz" : "vert", LANE);
+      if (half - LANE / 2 < LANE) return;         // no next lane to reach
+      p.turnBias = M(4.5) * severityOf(p);
+    },
   },
   cutsCorner: {
     /* The fault every turn in this game used to commit by accident, back

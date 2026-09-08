@@ -36,8 +36,9 @@ let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);
 const fail = (s) => { problems++; console.log(`  FAIL: ${s}`); };
 
-function pathFor(from, intent, traits = []) {
-  const p = applyTraits({ from, intent, arriveAt: 0, departAt: 0, stops: true, kind: "car", traits });
+function pathFor(from, intent, traits = [], lanes = 1) {
+  const road = crossSpec("stop", lanes);
+  const p = applyTraits({ from, intent, arriveAt: 0, departAt: 0, stops: true, kind: "car", traits, road });
   return movementOf(p).traverse;
 }
 
@@ -97,8 +98,8 @@ console.log("1. A TURN IS STEERABLE, AND STAYS ON ITS OWN SIDE ON THE APPROACH")
    reads the same way for each: + wide, - cut. Measured only once the car
    has straightened onto the exit heading — while it is still mid-arc it
    is not off its lane, it is turning. */
-function finishingError(intent, traits = []) {
-  const path = pathFor("S", intent, traits);
+function finishingError(intent, traits = [], lanes = 1) {
+  const path = pathFor("S", intent, traits, lanes);
   const laneY = intent === "right" ? CY + OFF : CY - OFF;
   const outX = intent === "right" ? 1 : -1;
   let worst = 0;
@@ -121,21 +122,89 @@ for (const intent of ["left", "right"]) {
   else fail(`a clean ${intent} finishes ${m(e)}m off its lane centre`);
 }
 
+console.log("\n2b. AND NOBODY LEAVES THE ROAD ON THE WAY OUT");
+{
+  /* THE GAP THAT LET IT SHIP. Check 1 above stops at the junction box
+     (`if (along <= hy) continue`), so it only ever inspected the
+     APPROACH -- the exit side had never been measured at all. wideTurn
+     put a car 2.70m past the kerb on a single-lane left and every check
+     stayed green until the maintainer saw it: "a lot of left turns go
+     completely off the roadway."
+
+     Bad driving is allowed to be bad. It is not allowed to be off the
+     road, because the road is what the fault is measured against. */
+  let worst = 0, who = null;
+  for (const lanes of [1, 2, 3]) {
+    const { vx, hy } = boxHalf(crossSpec("stop", lanes), LANE);
+    for (const from of ["S", "N", "E", "W"]) {
+      for (const intent of ["left", "right"]) {
+        for (const traits of [[], ["wideTurn"], ["cutsCorner"]]) {
+          const path = pathFor(from, intent, traits, lanes);
+          const vertIn = from === "S" || from === "N";
+          const exitVert = !vertIn;
+          for (let i = 0; i <= 600; i++) {
+            const q = pointOn(path, i / 600);
+            const along = exitVert ? Math.abs(q.y - CY) : Math.abs(q.x - CX);
+            if (along <= (exitVert ? hy : vx)) continue;
+            const lateral = exitVert ? Math.abs(q.x - CX) : Math.abs(q.y - CY);
+            const over = lateral - (exitVert ? vx : hy);
+            if (over > worst) { worst = over; who = `${traits[0] ?? "clean"} ${intent} from ${from}, ${lanes}-lane`; }
+          }
+        }
+      }
+    }
+  }
+  /* The same 10cm tolerance check 1 uses: square kerbs against real
+     rounded ones, so a clean right clips a corner that does not exist. */
+  if (worst <= M(0.1)) ok(`no turn leaves the carriageway on the way OUT either (worst ${m(worst)}m, ${who})`);
+  else fail(`a turn ends up ${m(worst)}m outside the roadway: ${who}`);
+}
+
+console.log("\n2c. A STOPPED CAR DOES NOT WEAVE");
+{
+  /* Maintainer, watching `wanderer`: the car "weaves back and forth in
+     place while stopped, impossible." wander applied its drift
+     unconditionally while creep had always guarded on po.waiting -- the
+     mirror of each other, since creep only means anything while waiting
+     and wander only means anything while moving. The tell says "never
+     held a steady line", which is a lane-keeping failure and needs
+     forward motion to exist at all. */
+  const p = applyTraits({
+    from: "S", intent: "straight", arriveAt: 0, departAt: 6,
+    stops: true, kind: "car", traits: ["wander"],
+  });
+  let frames = 0, moved = 0, swung = 0, ref = null, rot0 = null;
+  for (let t = 0; t < 6; t += STEP) {
+    const q = poseAt(p, t);
+    if (!q || q.hidden || !q.waiting) continue;
+    frames++;
+    if (ref === null) { ref = q; rot0 = q.rot; }
+    moved = Math.max(moved, Math.hypot(q.x - ref.x, q.y - ref.y));
+    swung = Math.max(swung, Math.abs(q.rot - rot0));
+  }
+  /* Reported so this cannot pass by never finding a waiting frame. */
+  if (frames < 10) fail(`only ${frames} waiting frames sampled -- this check would pass vacuously`);
+  else if (moved < M(0.01) && swung < 0.01) ok(`a car held at the line does not move: 0m and 0 degrees across ${frames} waiting frames`);
+  else fail(`a stopped car weaves ${m(moved)}m and swings ${swung.toFixed(1)} degrees in place, which is impossible`);
+}
+
 console.log("\n3. BAD DRIVING IS DELIBERATE, AND ITS TELL IS TRUE");
 {
   /* A trait whose tell describes a fault has to produce that fault, or it
      is lying to the player — the same standard that got wideTurn pulled
      out of `lateflag` when its 1.1m bend was under the resolution floor. */
+  /* wideTurn is checked on a road that HAS a next lane, because that is
+     the only place its tell can be true -- see the decline below. */
   const expect = [
-    { trait: "wideTurn", intent: "left", want: "wide" },
-    { trait: "wideTurn", intent: "right", want: "wide" },
-    { trait: "cutsCorner", intent: "left", want: "cut" },
+    { trait: "wideTurn", intent: "left", want: "wide", lanes: 2 },
+    { trait: "wideTurn", intent: "right", want: "wide", lanes: 2 },
+    { trait: "cutsCorner", intent: "left", want: "cut", lanes: 1 },
   ];
-  for (const { trait, intent, want } of expect) {
-    const e = finishingError(intent, [trait]);
+  for (const { trait, intent, want, lanes } of expect) {
+    const e = finishingError(intent, [trait], lanes);
     const isWide = e > LANE / 2, isCut = e < -LANE / 2;
     const got = isWide ? "wide" : isCut ? "cut" : "in lane";
-    if (got === want) ok(`${trait} on a ${intent}: ${m(e)}m — ${want} of the lane, as its tell says`);
+    if (got === want) ok(`${trait} on a ${intent} (${lanes}-lane): ${m(e)}m — ${want} of the lane, as its tell says`);
     else fail(`${trait} on a ${intent} claims "${TRAITS[trait].tell}" but finishes ${m(e)}m (${got})`);
   }
 
@@ -147,10 +216,20 @@ console.log("\n3. BAD DRIVING IS DELIBERATE, AND ITS TELL IS TRUE");
   if (Math.abs(r) < LANE / 2) ok(`cutsCorner correctly declines a right turn (${m(r)}m, still in lane)`);
   else fail(`cutsCorner moved a right turn ${m(r)}m — it is meant to be left-only`);
 
+  /* AND wideTurn DECLINES A ROAD WITH NO NEXT LANE, for the same reason
+     cutsCorner declines a right: the tell says "across the next lane" and
+     a single-lane road has none. Reported by the maintainer as left turns
+     going completely off the roadway -- a flat 4.5m bias put the car
+     2.70m past the kerb. Clamping to the kerb only moved the lie, leaving
+     it finishing on the lane line claiming to have crossed one. */
+  const narrow = finishingError("left", ["wideTurn"], 1);
+  if (Math.abs(narrow) < LANE / 2) ok(`wideTurn correctly declines a road with no next lane (${m(narrow)}m, still in lane)`);
+  else fail(`wideTurn moved a single-lane left ${m(narrow)}m, where there is no next lane for its tell to be true about`);
+
   /* And the traits must differ from each other, not merely from zero. */
-  const clean = finishingError("left");
-  const wide = finishingError("left", ["wideTurn"]);
-  const cut = finishingError("left", ["cutsCorner"]);
+  const clean = finishingError("left", [], 2);
+  const wide = finishingError("left", ["wideTurn"], 2);
+  const cut = finishingError("left", ["cutsCorner"], 2);
   if (wide > clean + LANE / 2 && cut < clean - LANE / 2)
     ok(`the two faults sit on opposite sides of a clean line (${m(cut)}m / ${m(clean)}m / ${m(wide)}m)`);
   else fail("wideTurn and cutsCorner do not straddle the clean line");

@@ -358,12 +358,121 @@ make each other fail, or they are four scoreboards rather than one game.
 **Silence means straight on.** So a late instruction is a missed turn, not
 a pause.
 
-### 5.8 Partial success is partial marks, like a road test
+### 5.8 A wide turn needs a next lane to be wide INTO
+
+Maintainer's ruling, verbatim: "a wide turn onto a single lane road will
+depend on the road markings, for example if the turn takes you into
+parking spaces or a bike lane. Otherwise it would be either hitting the
+curb or going off road, both still valid possibilites but very rare and
+usually due to accidental acceleration."
+
+So `wideTurn` DECLINES a road with no next lane, the same way `cutsCorner`
+declines a right turn and for the same stated reason: a trait may only
+fire where its tell is true. The off-road case is real but rare, and its
+cause -- accidental acceleration -- is not something this model has, so it
+is not the routine expression of a habitual wide turner.
+
+It reached the maintainer as "a lot of left turns go completely off the
+roadway": a flat 4.5m bias on a road whose room is 1.8m put the car 2.70m
+past the kerb. Clamping the bias to the kerb was tried and only moved the
+lie -- the car then finished exactly on the lane line while its tell
+claimed it had crossed one. The clamp stays as a floor under the geometry;
+the decline is the fix.
+
+**Parking bays and bike lanes are the content this points at.** They would
+give a single-lane road something to swing into, which is what makes a
+wide turn there a real and markable fault rather than a rarity. Road
+markings are not modelled at all today.
+
+### 5.9 Partial success is partial marks, like a road test
 
 Perfection is rewarded, not required. Omitting a step scores nothing for
 that step but does not fail the task; doing the right things in the wrong
 order keeps a little credit, because the player knew to do them — but not
 much, because a signal after the fact informed nobody.
+
+---
+
+## 5.10 INTERVENTION: three outcomes, and one asymmetry that must survive
+
+Maintainer's ruling, verbatim:
+
+  "an intervention is an automatic fail in real life, however we are also
+   taught that an early intervention (at the examiners discretion) can be
+   dismissed from the scoresheet if the intervention was too hasty or
+   'overly' cautious. maybe intervention should be in limited supply and
+   if the user wastes them they can not intervene anymore to prevent just
+   spamming the button."
+
+  "failing to intervene when possible will count against the examiner in
+   some way (in reality it could cost their job if it happens enough)."
+
+Three outcomes, and they mirror the marking sheet's own three, which is
+not a coincidence -- intervening is marking with the wheel instead of the
+pen:
+
+| | what happened | who pays |
+|---|---|---|
+| **CORRECT** | the danger was real and was prevented | AUTOMATIC FAIL for the candidate |
+| **HASTY** | nothing was going to happen; dismissed, drive continues | THE PLAYER, entirely |
+| **MISSED** | contact happened and nobody took the wheel | the player, seriously |
+
+**THE ASYMMETRY IN `HASTY` IS THE POINT AND MUST BE PRESERVED.** A
+candidate is never penalised for the examiner's nerves. Anything that
+quietly moves a hasty intervention onto the candidate's sheet has broken
+the rule rather than tuned it.
+
+**Which of the three happened is DERIVED**, by the same controlled
+comparison as everything else: take the world at the moment the wheel was
+grabbed and ask whether it still ends in contact. If it would have, the
+intervention was correct. If it would not have, it was hasty. Nobody
+writes down "this one was hasty". `outcomeOf` in `src/engine/outcome.js`.
+
+**What it is WORTH is not encoded.** The scoring weights are the
+maintainer's and are deliberately absent rather than guessed at.
+
+**A persistent cost across drives, not a per-drive score.** "It could cost
+their job if it happens enough" points at progression rather than a
+number on one sheet. Noted, not built, and it connects to the purgatory
+framing.
+
+### 5.10.1 The anti-spam problem, measured: attention alone is NOT enough
+
+A hasty intervention is dismissed and the drive continues, so the player
+pays nothing and spamming is rational. Two candidate fixes:
+
+- **A supply cap** (the maintainer's): interventions run out.
+- **An attention cost** (diegetic): an intervention interrupts the drive
+  -- the candidate stops, it is explained, they resume -- and the player
+  sees none of it. Spamming means missing faults, self-limiting without a
+  counter, and it ties intervention into the game's actual currency.
+
+The second is the more elegant idea and it does not work on its own.
+Measured over 240 generated junctions carrying 283 markable faults:
+
+| blind for | faults wholly missed per intervention | share of a junction's faults |
+|---|---|---|
+| 2s | 0.15 | 9.2% |
+| 4s | 0.18 | 11.0% |
+| 6s | 0.19 | 11.8% |
+| 8s | 0.19 | 12.0% |
+
+**The cost is small AND IT SATURATES.** Quadrupling the blind window from
+2s to 8s moves it from 0.15 to 0.19 faults, because faults are sparse and
+short relative to a junction, so a longer interruption mostly runs past
+the end of the junction rather than covering more of it. You cannot fix
+this by making the interruption longer.
+
+Against that, contact was actually coming on **16 of 240 junctions
+(6.7%)** -- so a spammer is hasty 93.3% of the time and pays about a fifth
+of a fault for each one, while a correct intervention is an automatic fail
+for the candidate. That is a cheap lottery ticket.
+
+**So the supply cap is the mechanism and the attention cost is flavour.**
+Both together is the recommendation: the cap does the deterring, the
+interruption makes it feel like a driving test rather than a resource
+meter. If the attention cost is ever asked to carry it alone, this table
+is why it cannot.
 
 ---
 

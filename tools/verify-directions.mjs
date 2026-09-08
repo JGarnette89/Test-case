@@ -17,6 +17,7 @@
  *      carries on straight, because silence means straight on.
  *   4. An unloaded candidate is exactly today's candidate.
  */
+import { crossSpec } from "../src/engine/road.js";
 import {
   instructionWindow, pressureOf, skillUnderPressure, severityUnder,
   loadCandidate, attribute, phraseFor, runwayNeeded, FOLLOW_LAG, DEFAULT_INTENT,
@@ -142,7 +143,17 @@ console.log("\n2. STACKING BUYS YOUR ATTENTION AND SPENDS THEIRS");
       sev: severityUnder(held),
     };
     for (const trait of ["wideTurn", "slowStart"]) {
-      const scn = loadCandidate({ ...base, ego: { ...base.ego, traits: [trait] } }, { held });
+      /* wideTurn declines a road with no next lane -- its tell says
+         "across the next lane" -- so it is asked on a road that has one.
+         See DECISIONS.md 5.8. */
+      /* THREE lanes, not two. The bias is clamped to the room the
+         receiving road actually has, so on a two-lane road a heavily
+         loaded driver hits that ceiling (5.4m) and stops getting worse --
+         correct physics, but then this check measures the road's width
+         rather than what load does. A wider road keeps the clamp out of
+         the way so the thing under test is the only thing moving. */
+      const road = trait === "wideTurn" ? crossSpec(base.control ?? "stop", 3) : base.road;
+      const scn = loadCandidate({ ...base, ...(road ? { road } : {}), ego: { ...base.ego, traits: [trait] } }, { held });
       const f = faultsIn(scn).find((x) => x.who === "ego" && x.trait === trait);
       line[trait] = f ? f.peakPos : 0;
     }

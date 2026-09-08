@@ -1663,6 +1663,7 @@ node tools/verify-faults.mjs       examiner: faults derive from a control, and t
 node tools/verify-directions.mjs   the instruction window, and what stacking costs the candidate
 node tools/verify-belief.mjs       what you still think is true once you look away
 node tools/verify-detect.mjs       grading the examiner: caught, missed, invented, and when
+node tools/verify-outcome.mjs      how a drive ends: contact, and who taking the wheel lands on
 node tools/verify-tiles.mjs        a declared runway is a promise, held to measured geometry
 node tools/verify-world.mjs        the continuous drive: culling, routes, pacing, segment hazards
 node tools/verify-candidate.mjs    one driver across a drive, and habits that repeat enough to be named
@@ -1674,7 +1675,7 @@ node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All twenty-seven must exit 0. Fourteen things they check are worth understanding:
+All twenty-eight must exit 0. Fourteen things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take
@@ -1959,6 +1960,28 @@ invisible to the encroachment fault because it only ever watches priors — in
   genuinely local should be written so it can move into that mode later.
 - T-junctions, uncontrolled intersections and pedestrian crossovers are all
   wanted, behind the above.
+- **A wide turn needs a next lane to be wide INTO, and a stopped car does
+  not weave.** Both reported by the maintainer from play. `wideTurn`'s
+  flat 4.5m bias put a car 2.70m PAST THE KERB on a single-lane left --
+  "a lot of left turns go completely off the roadway" -- because the room
+  a road offers is 1.8m there. Clamping to the kerb only moved the lie
+  (the car finished on the lane line claiming to have crossed it), so the
+  trait now DECLINES a road with no next lane, exactly as `cutsCorner`
+  declines a right. The maintainer's ruling settles it: off-road is real
+  but "very rare and usually due to accidental acceleration", which this
+  model does not have. Parking bays and bike lanes are the content that
+  would make it markable on a narrow road. See DECISIONS.md 5.8.
+
+  `wander` applied its drift unconditionally while `creep` had always
+  guarded on `po.waiting`. They are mirrors -- creep only means anything
+  while waiting, wander only while moving -- and the tell ("never held a
+  steady line") is lane-keeping, which needs motion.
+
+  Both gaps were in the checks as much as the code: `verify-turns.mjs`
+  measured only the APPROACH (`if (along <= hy) continue`), so the exit
+  side had never been looked at at all. It now checks both, plus that a
+  car held at the line does not move.
+
 - **`wideTurn` and `cutsCorner` are real now, and still unused.** `wideTurn`
   used to ride along in `lateflag` — bending the path by 1.1 m for a 0.01s
   effect on the window, under the resolution floor, while its tell claimed a

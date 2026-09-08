@@ -84,8 +84,13 @@ console.log("\n2. THE CANDIDATE FAULTS LIKE ANYONE ELSE");
   const base = SCENARIOS.find((s) => s.id === "gap");
   const traits = ["wander", "creep", "overshoot", "slowStart", "wideTurn", "cutsCorner"];
   let derived = 0;
+  const WIDE_LANES = 2;
   for (const t of traits) {
-    const scn = { ...base, ego: { ...base.ego, traits: [t] } };
+      /* wideTurn declines a road with no next lane -- its tell says
+         "across the next lane" -- so it is asked on a road that has one.
+         See DECISIONS.md 5.8. */
+    const road = t === "wideTurn" ? crossSpec(base.control ?? "stop", WIDE_LANES) : base.road;
+    const scn = { ...base, ...(road ? { road } : {}), ego: { ...base.ego, traits: [t] } };
     const found = faultsIn(scn).filter((f) => f.who === "ego" && f.trait === t);
     if (found.length === 1) derived++;
     else fail(`${t} on the candidate derived ${found.length} fault(s), expected 1`);
