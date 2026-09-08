@@ -100,7 +100,14 @@ console.log("\n2. THE REACTION IS THE OBSERVABLE, NOT THE FAULT");
   const imports = [...src.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
   !imports.some((i) => i.includes("reaction"))
     ? ok(`clearance imports nothing from reaction (${[...new Set(imports)].join(", ")}), so a fault cannot come to depend on a response to it`)
-    : fail("clearance imports reaction");
+    : fail(
+        "clearance.js imports reaction.js, so the FAULT could come to be defined by the RESPONSE to it.\n" +
+        "        The standard is intrusion on entitled space, not forced evasive action: turning\n" +
+        "        within a fraction of a second in front of somebody is a failure to yield whether\n" +
+        "        or not they braked. Measured, marking on the reacted world softens 63% of faults\n" +
+        "        -- a driver who forces somebody to stand on the brakes would score BETTER for it.\n" +
+        "        The reaction is what the PLAYER sees; it never decides what happened.\n" +
+        "        See DECISIONS.md section 7.");
 
   /* And the reason it matters, measured rather than asserted. */
   const order = ["contact", "veryTight", "tight", "comfortable"];

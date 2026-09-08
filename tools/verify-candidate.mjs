@@ -699,7 +699,20 @@ console.log("\n9. A CANDIDATE HAS A CHARACTER, AND ENOUGH TO FIND WITHOUT TOO MU
 
   density > 0.5 && density < 2.5
     ? ok(`there is something to find at most junctions (${density.toFixed(2)} per junction) without the sheet becoming a memory test`)
-    : fail(`${density.toFixed(2)} faults per junction is ${density <= 0.5 ? "too little to examine" : "more than a player could recall"}`);
+    : fail(
+        `${density.toFixed(2)} faults per junction is ${density <= 0.5 ? "too little to examine" : "more than a player could recall"}.
+` +
+        `        If this ROSE after adding a fault kind, the roll has gone back to one per KIND
+` +
+        `        instead of one per AXIS -- density then scales with vocabulary size (measured
+` +
+        `        1.11 at seven kinds, 1.57 at ten, 2.0 at twelve) and the section implied by the
+` +
+        `        recall band collapses. A driver's deficit decides HOW MUCH they err; the
+` +
+        `        vocabulary decides WHICH WAY. Do not fix this with a smaller ERROR_SCALE.
+` +
+        `        See DECISIONS.md 4.7.`);
   spread >= 2
     ? ok(`and a drive shows ${spread.toFixed(2)} distinct axes on average — the player is assembling a picture rather than counting incidents`)
     : fail(`a drive shows only ${spread.toFixed(2)} axes, so there is no character to read`);

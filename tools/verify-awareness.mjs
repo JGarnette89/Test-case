@@ -72,7 +72,13 @@ console.log("\n1. THE FIFTH AXIS OPERATES ON A DIFFERENT LAYER");
   const imports = [...src.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
   !imports.some((i) => i.includes("clearance"))
     ? ok(`awareness never imports clearance (${[...new Set(imports)].join(", ")}), so it cannot see the outcome it would be tempted to grade by`)
-    : fail("awareness imports clearance — observation could come to be scored by outcome");
+    : fail(
+        "awareness.js imports clearance.js, so observation could come to be scored by OUTCOME.\n" +
+        "        The moment 'didn't see the van' is graded by whether contact occurred, the axis\n" +
+        "        collapses back into confidence and stops meaning anything. Observation is whether\n" +
+        "        they GATHERED the information; confidence is what they did with it. REGISTER_SPAN\n" +
+        "        was calibrated on the MISS RATE and never on the contact rate, for this reason.\n" +
+        "        See DECISIONS.md section 4.3.");
   /* CODE ONLY, COMMENTS STRIPPED, and the function matched by its full
      signature. The first version of this took "everything after the name"
      and tested it raw, so it fired on causeOf's own comment saying that

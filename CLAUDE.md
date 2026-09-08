@@ -3,6 +3,60 @@
 Read this before making changes. It encodes decisions that took a long time to
 get right, and several of them are non-obvious.
 
+---
+
+## START HERE IF YOU ARE PICKING THIS UP COLD
+
+More than one agent works in this repository. Anything decided by argument
+and not written down is invisible to every tool that was not part of that
+argument, so the documentation is a CONTRACT rather than a diary.
+
+**Read [DECISIONS.md](DECISIONS.md) before changing anything in
+`src/engine/`.** It is the load-bearing constraints with their reasoning
+attached — the things that have a plausible, well-intentioned "fix" that
+destroys what they protect. This file is the long-form history; that one
+is what you must not break.
+
+**[DRIVE-GUIDE.md](DRIVE-GUIDE.md)** is how to actually operate the game
+at `#/drive`, and what is knowingly missing from it.
+
+Four things to know before your first change:
+
+1. **NEVER AUTHOR THE ANSWER, and never author the fault.** Windows are
+   simulated, never typed in. Faults are DERIVED by controlled comparison
+   — strip the trait, and the fault must vanish. Writing down "at 3.4s
+   this driver swings wide" turns the game into a memory test.
+
+2. **THE RECURRING BUG IS TWO IMPLEMENTATIONS OF ONE QUANTITY**, or a
+   proxy standing in for the quantity that actually matters. It has paid
+   out more than any other heuristic here: `basePose` vs `cleanPose`,
+   `legalAt` vs `safeAtFor`, occluded vs not-yet-on-stage, a fixed
+   traversal time standing in for motion, a smoothstep standing in for
+   braking, observation calibrated against collisions. **The tell is a
+   measurement that comes out at exactly zero, or exactly saturated, or
+   suspiciously clean.** DECISIONS.md §10 lists them.
+
+3. **THE BUILD PASSING DOES NOT MEAN THE APP RENDERS.** A render-time
+   `ReferenceError` is not a build error: `vite build` succeeded while
+   `App` threw on mount and every route served a blank page. Run
+   `node tools/verify-screens.mjs`, which renders `App` and every route
+   under SSR. It still cannot tell you how anything LOOKS.
+
+4. **SCRIPTED PLAYTHROUGHS DO NOT WORK HERE. Do not try.** The preview
+   pane delivers zero animation frames — measured, 0 in 1.5s with
+   `document.hidden` false — and clamps timers, so an rAF-driven screen
+   never advances and nothing errors. The signature is a screen that draws
+   correctly and never moves, or a hand-rolled frame pump that stalls
+   after a burst. Verify by reading, by `verify-screens.mjs`, and by
+   asking a person to open the page. This cost real time four times before
+   it was written down.
+
+**If a change depends on a traffic-law assumption, ASK.** The maintainer
+is a driving examiner; getting a rule wrong teaches somebody something
+false, which is the worst outcome available here.
+
+---
+
 ## What this repo is
 
 **Right of Way** — a real-time judgment game. **You are the examiner.**
@@ -14,6 +68,13 @@ wheel when you have to. And you mark the faults you catch — while paying for
 the ones you invent.
 
 This is the whole game. There are no other modes.
+
+**Two of those four are DESIGN rather than build.** The field of view is not
+implemented — the gaze cone was deleted from `sight.js`, so visibility is
+occlusion only and every fault the candidate's own car commits is always
+markable. Nor is taking the wheel: intervention is unbuilt and is the blocking
+question. Both are in `DECISIONS.md` §12 with what it would take. Do not read
+the paragraph above as a description of the current build.
 
 **It was a driver game until 2 Sep 2026, and most of the code still is.** You
 were one car at an intersection, pressing GO the moment the road became

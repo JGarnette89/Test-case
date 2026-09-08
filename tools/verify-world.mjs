@@ -370,7 +370,16 @@ console.log("\n8. DEAD AIR: IS THE TARGET REACHABLE?");
 
   B.median < DEAD_AIR_CEILING
     ? ok(`a typical drive now meets the ${DEAD_AIR_CEILING}s target (median ${B.median.toFixed(1)}s, average ${B.avg.toFixed(1)}s)`)
-    : fail(`the median drive is ${B.median.toFixed(1)}s, over the ${DEAD_AIR_CEILING}s target`);
+    : fail(
+        `the median drive is ${B.median.toFixed(1)}s of dead air, over the ${DEAD_AIR_CEILING}s target.
+` +
+        `        DO NOT LOWER DEAD_AIR_CEILING. It is a claim about a player's attention,
+` +
+        `        not a knob for making this pass. If dead air is too long the answer is MORE
+` +
+        `        TO LOOK AT -- opening the generator to marginal windows took the worst drive
+` +
+        `        from 39.7s to 22.2s and 6 drives over the target to 0. See DECISIONS.md 8.3.`);
 
   /* The hard requirement, as opposed to the target. */
   const over = both.filter((g) => g > 90).length;
