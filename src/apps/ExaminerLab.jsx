@@ -439,6 +439,48 @@ function IntendedGhost({ p, t }) {
   );
 }
 
+/* WHERE YOU THINK IT IS, once you can no longer see it.
+
+   The other half of the mechanic in belief.js: look away and you carry on
+   believing the car is doing the normal thing, vaguer the longer you
+   leave it. Drawn only while confidence lasts, and drawn as a memory
+   rather than a car -- no fill, no nose, so it never reads as something
+   you can actually see.
+
+   `wrong` is the payoff. Belief and reality diverge exactly where a
+   driver is doing something wrong, so a belief that has gone stale is
+   worth something to notice, and it is coloured to say so.
+
+   THIS COMPONENT WAS USED AND NEVER DEFINED, and it took down the whole
+   app. Same class as `watched` and `beliefs` above -- a dangling
+   reference from when the gaze cone was deleted -- and invisible to every
+   check for the same reason: the branch only renders when an actor is
+   OCCLUDED WHILE STILL BELIEVED IN. Two cars touching is exactly that
+   condition, because each occludes the other from the eye point, so
+   "every time the cars touch, the screen goes black". A screen that
+   mounts is not a screen that survives.
+
+   pose comes from predictAt, which returns null once the car is off the
+   board, so it is guarded here rather than at the call site. */
+function Belief({ p, pose, conf, wrong }) {
+  if (!pose || pose.hidden || pose.gone) return null;
+  if (!Number.isFinite(pose.x) || !Number.isFinite(pose.y)) return null;
+
+  const fill = wrong ? C.amber : "#7b828c";
+  const opacity = 0.14 + 0.34 * Math.max(0, Math.min(1, conf));
+
+  if (p.kind === "ped") {
+    return <circle cx={pose.x} cy={pose.y} r={PED_R} fill="none"
+      stroke={fill} strokeWidth={2} strokeDasharray="4 4" opacity={opacity} />;
+  }
+  return (
+    <g transform={`rotate(${pose.rot} ${pose.x} ${pose.y})`} opacity={opacity}>
+      <rect x={pose.x - CAR_L / 2} y={pose.y - CAR_W / 2} width={CAR_L} height={CAR_W} rx={M(0.3)}
+        fill="none" stroke={fill} strokeWidth={2} strokeDasharray="5 5" />
+    </g>
+  );
+}
+
 /* Four states, drawn four ways, because the difference between them is
    the mechanic rather than a detail:
 

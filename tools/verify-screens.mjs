@@ -164,6 +164,81 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+/* Plain scanning rather than a regex, for the same reason as the counting
+   below: a mangled escape here would silently disable the whole check. */
+function stripComments(src) {
+  let out = "", i = 0;
+  while (i < src.length) {
+    const two = src.slice(i, i + 2);
+    if (two === "/*") { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 2; continue; }
+    if (two === "//" && src[i - 1] !== ":") { const e = src.indexOf("\n", i); i = e < 0 ? src.length : e; continue; }
+    out += src[i++];
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------
+   EVERY COMPONENT A SCREEN RENDERS HAS TO EXIST.
+
+   Mounting is not surviving. A component referenced in a branch that only
+   runs under a runtime condition is invisible to the render above AND to
+   every headless check, and it takes the whole app down when the
+   condition finally arrives.
+
+   Not hypothetical -- it has happened three times. `watched` and
+   `beliefs` were used and never declared. `faultVisibility` was imported
+   after being deleted. And `Belief` was rendered and never defined: its
+   branch runs only when an actor is OCCLUDED WHILE STILL BELIEVED IN,
+   which is exactly what two cars touching produces, so the lab went black
+   every time the candidate turned left into traffic while every check
+   stayed green.
+
+   The rule is deliberately dumb so it cannot itself be subtly wrong: a
+   component name that appears ONLY as a JSX tag, and nowhere else in the
+   file, was never defined or imported. Anything declared, imported or
+   even referenced once outside a tag passes. Static, cheap, and it would
+   have caught all three on the day they were written. It does not replace
+   opening the page.
+   ------------------------------------------------------------------ */
+console.log("");
+{
+  const files = fs.readdirSync("src/apps").filter((f) => f.endsWith(".jsx")).map((f) => "src/apps/" + f);
+  files.push("src/App.jsx");
+  let missing = 0, checked = 0;
+  for (const file of files) {
+    const raw = fs.readFileSync(file, "utf8");
+    /* COMMENTS ARE STRIPPED FIRST. Without this the check is defeated by
+       its own documentation: a doc comment that names the component keeps
+       the bare count above the tag count, so deleting the component still
+       passes. Verified by deleting <Belief> and watching it slip through. */
+    const src = stripComments(raw);
+    // Dotted forms (<a.Icon>) are property access on something in scope.
+      const used = new Set([...src.matchAll(/<([A-Z][A-Za-z0-9_]*)(?=[\s/>])/g)].map((m) => m[1]));
+    for (const name of used) {
+      if (name === "React") continue;
+      checked++;
+      /* No regex: every escaping attempt in this repo has been mangled by a
+         shell heredoc at least once, and a silently wrong pattern here would
+         make the check pass on everything. Plain string counting instead. */
+      const count = (hay, needle) => hay.split(needle).length - 1;
+      const bare = count(src, name);
+      const asTag = count(src, "<" + name) + count(src, "</" + name);
+      if (bare > asTag) continue;                 // mentioned somewhere else too
+      missing++;
+      fail(
+        file + " renders <" + name + "> and never defines or imports it.\n" +
+        "        A component inside a conditional branch is invisible to the mount check\n" +
+        "        above: <Belief> was missing for weeks and only threw once two cars touched,\n" +
+        "        because its branch runs when an actor is occluded while still believed in.\n" +
+        "        MOUNTING IS NOT SURVIVING. See DECISIONS.md section 11.1."
+      );
+    }
+  }
+  missing === 0
+    ? ok("every one of the " + checked + " components these screens render is defined or imported")
+    : null;
+}
+
 console.log("");
 console.log("   This proves the screens mount. It says nothing about whether they");
 console.log("   look right, and it cannot: effects do not run under SSR, so an");
