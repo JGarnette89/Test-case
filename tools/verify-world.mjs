@@ -15,6 +15,8 @@ import {
   whatEgoSees, visibility, eyePoint, reachOf, withinReach, sightBlockersOf,
 } from "../src/engine/sight.js";
 import { driveThroughTiles, runwayFor, candidateAt } from "../src/engine/world.js";
+import { composeCandidate } from "../src/engine/candidate.js";
+import { composeDriver } from "../src/engine/ratings.js";
 import { chaseOn } from "../src/frame.js";
 import {
   TILES, specFor, kerbsideFor, roadsideLifeFor, CHARACTER,
@@ -393,6 +395,70 @@ console.log("\n8. DEAD AIR: IS THE TARGET REACHABLE?");
   console.log("   The target is reachable typically but not guaranteed: a stretch of");
   console.log("   arterial has activity 0.15 and SHOULD be quiet, so the remaining");
   console.log("   gaps are on roads where dead air is the correct answer.");
+}
+
+console.log("\n8b. NOT EVERY JUNCTION IS A TEST");
+{
+  /* THE MAINTAINER'S RULING, after playing: "some intersections will just
+     be driven straight through with no real requirements from the NPC
+     driver."
+
+     WHY IT IS A MECHANIC AND NOT A GARNISH. If every junction produces
+     something, the player learns that junction means fault, and attention
+     stops being a decision -- they simply look at whichever junction is
+     next. Uncertainty is what makes watching necessary. A player who
+     cannot predict which junctions matter has to watch all of them.
+
+     AND IT COMES FROM ROAD HIERARCHY, not from an "empty junction"
+     feature. A through road crossing side streets produces junctions that
+     demand nothing because that is what a through road IS. Before this
+     the composer stopped the candidate at 240 of 240 junctions, including
+     the 87 where their own leg was uncontrolled. */
+  const DRIVES = 25, LEN = 6;
+  let n = 0, free = 0, nothing = 0;
+  const byChar = {};
+  for (let seed = 1; seed <= DRIVES; seed++) {
+    const cand = { ...composeCandidate(seed * 7 + 3), ...composeDriver(seed * 11) };
+    const plan = planDrive({ seed, length: LEN, candidate: cand });
+    let since = 0;
+    for (let i = 0; i < plan.length; i++) {
+      const tile = plan[i].tile;
+      const legTime = tile.runway / CHARACTER[tile.character].speed + 4;
+      const { scn } = composeForTile(tile, since, (seed * 7919 + i * 104729) >>> 0, {
+        legTime, candidate: cand, at: { from: plan[i].entry, intent: plan[i].intent } });
+      if (!scn) continue;
+      n++;
+      const sim = simulate(scn);
+      const fs = faultsIn(scn);
+      const held = (sim.legalAt ?? 0) > (scn.ego.arriveAt ?? 0) + 1e-6;
+      const b = (byChar[tile.character] = byChar[tile.character] || { n: 0, free: 0 });
+      b.n++;
+      if (!scn.ego.stops && !held) { free++; b.free++; if (!fs.length) nothing++; }
+      since = fs.length ? 0 : since + legTime;
+    }
+  }
+  const share = free / n;
+  console.log(`   ${free} of ${n} junctions driven straight through (${(100 * share).toFixed(0)}%), ${nothing} demanding nothing at all`);
+  console.log("   " + Object.entries(byChar).map(([k, v]) => `${k} ${(100 * v.free / v.n).toFixed(0)}%`).join("  ·  "));
+  share > 0.05
+    ? ok(`not every junction is a test: ${(100 * share).toFixed(0)}% are driven straight through`)
+    : fail(
+        `only ${(100 * share).toFixed(0)}% of junctions are driven straight through.` + String.fromCharCode(10) +
+        `        If every junction produces something, the player learns that junction means` + String.fromCharCode(10) +
+        `        fault and attention stops being a decision. Uncertainty is what makes` + String.fromCharCode(10) +
+        `        watching necessary, so an empty junction is not filler -- it is what makes` + String.fromCharCode(10) +
+        `        the core mechanic work. This comes from road hierarchy, not from a feature:` + String.fromCharCode(10) +
+        `        check that the candidate still obeys the control on their OWN leg rather` + String.fromCharCode(10) +
+        `        than stopping everywhere. See DECISIONS.md.`
+      );
+
+  /* And it has to READ as hierarchy: a main road driven through more
+     often than a side street, or the characters are three names for one
+     road. */
+  const art = byChar.arterial, res = byChar.residential;
+  !art || !res || art.free / art.n > res.free / res.n
+    ? ok(`and a main road is driven through more often than a side street (arterial ${(100 * (art?.free ?? 0) / (art?.n || 1)).toFixed(0)}% against residential ${(100 * (res?.free ?? 0) / (res?.n || 1)).toFixed(0)}%)`)
+    : fail("an arterial is no freer to drive than a residential street, so the characters are three names for one road");
 }
 
 console.log("\n9. THE DRIVE IS CONTINUOUS TO WATCH, NOT ONLY TO ROUTE");

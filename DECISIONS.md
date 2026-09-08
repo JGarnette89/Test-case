@@ -595,7 +595,66 @@ Note that a stretch of arterial has activity 0.15 and SHOULD be quiet.
 Some dead air is the correct answer, and driving it to zero would be a
 different mistake.
 
-### 8.4 Longer waits are answered with something to read
+### 8.4 NOT EVERY JUNCTION IS A TEST, and that is a mechanic
+
+Maintainer's ruling, after playing: *"I want to feel like you're driving
+through a section of a larger city, including main roads and side
+streets, and some intersections will just be driven straight through with
+no real requirements from the NPC driver."*
+
+**Why it matters more than it sounds.** If every junction produces
+something, the player learns that junction means fault, and attention
+stops being a decision — they simply look at whichever junction is next.
+**UNCERTAINTY IS WHAT MAKES WATCHING NECESSARY.** A player who cannot
+predict which junctions matter has to watch all of them, which is more
+attention pressure rather than less. An empty junction is not filler; it
+is what makes the core mechanic work.
+
+**It comes from ROAD HIERARCHY, not from an "empty junction" feature.** A
+through road crossing side streets produces junctions that demand nothing
+because that is what a through road IS. If priority is modelled honestly
+the property falls out for free, and anything that adds a separate
+emptiness knob has misunderstood it.
+
+**The bug it corrected: the candidate was the only road user who ignored
+the road.** `compose.js` derived every actor's `stops` from the control on
+their own leg and then hardcoded the ego's to `true` — "the ego always
+holds; what varies is whether anyone else has to". Measured: 240 of 240
+junctions required a stop, while the candidate's own leg was UNCONTROLLED
+on 87 of them.
+
+Measured after, and the hierarchy reads:
+
+| | driven straight through |
+|---|---|
+| arterial | 33% |
+| collector | 28% |
+| residential | 14% |
+| overall | **24%**, of which 12% demand nothing at all |
+
+**Reconciled with the pacing budget, which was the real risk.** The two
+requirements are in genuine tension — the budget guarantees supply, empty
+junctions withhold it — and the budget wins only where it must. It works
+across a WINDOW rather than at every junction: `briefFor` sets
+`mustFault` only when projected dead air passes `DEAD_AIR_CEILING`, and
+otherwise hands back the road character's plain brief. So empty junctions
+are permitted by construction and forced content stays rare.
+
+Measured cost, and it is mild: dead air is UNCHANGED (worst 22.2s, median
+18.8s, 0 of 24 drives over target), and density falls 1.03 → 0.89 faults
+per junction, which lengthens the implied section from 2.9–3.9 to 3.4–4.5
+junctions. Both still inside their bands.
+
+**If allowing empty junctions ever does break the dead-air target, report
+it rather than suppressing them.** The tension is real and which side
+gives is the maintainer's call, not a constant to quietly retune.
+
+`verify-world.mjs` §8b pins both halves: that a meaningful share of
+junctions demand nothing, and that a main road is driven through more
+often than a side street — otherwise the three characters are three names
+for one road.
+
+### 8.5 Longer waits are answered with something to read
 
 Realistic acceleration made every wait about three times what it was, and
 the agreed direction is to FILL that time rather than tune it away: things

@@ -225,8 +225,32 @@ export function compose(brief, seed, { ego: want = null } = {}) {
   if (!legal.length) return null;
 
   const count = Math.round(span(r, traffic.actors[0], traffic.actors[1]));
-  // The ego always holds; what varies is whether anyone else has to.
-  const egoStops = true;
+
+  /* THE CANDIDATE OBEYS THE ROAD, like everybody else on it.
+
+     This used to read "the ego always holds; what varies is whether
+     anyone else has to", and it made EVERY junction a stop -- measured,
+     240 of 240 -- even though the candidate's own leg was uncontrolled on
+     87 of them. The road said drive through and the composer stopped them
+     anyway.
+
+     The maintainer, after playing: "some intersections will just be
+     driven straight through with no real requirements from the NPC
+     driver." And the elegant part is that this needs no "empty junction"
+     feature at all -- it needs main roads that behave like main roads. A
+     through road crossing side streets produces junctions that demand
+     nothing, for free, because that is what a through road IS.
+
+     WHY THAT MATTERS MORE THAN IT SOUNDS: if every junction produces
+     something, the player learns that junction means fault and attention
+     stops being a decision. Uncertainty is what makes watching necessary.
+     An empty junction is not filler; it is what makes the core mechanic
+     work.
+
+     A signal still holds the candidate: the phase is defined against
+     their axis, which is how the actors below are placed. */
+  const egoControl = spec.legs[from].control;
+  const egoStops = egoControl === "stop" || egoControl === "signal";
   /* Decided before the actors rather than after them, because whether a
      pedestrian can be given a push button depends on it: a press the
      driver is already past cannot be read, and building one only to throw
@@ -401,7 +425,7 @@ export function compose(brief, seed, { ego: want = null } = {}) {
        320 generated junctions, the candidate carried no traits at all and
        committed none of the 143 faults on offer. */
     ego: {
-      from, intent: egoIntent, arriveAt: egoArrive, stops: true, colorKey: "blue",
+      from, intent: egoIntent, arriveAt: egoArrive, stops: egoStops, colorKey: "blue",
       ...(want ? { traits: want.traits ?? [], ...(want.skill !== undefined ? { skill: want.skill } : {}), signal: want.signal ?? null } : {}),
     },
     actors,
