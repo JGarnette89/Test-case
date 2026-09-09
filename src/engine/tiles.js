@@ -59,6 +59,10 @@ export const CHARACTER = {
     speed: M(8.3),                       // ~30 km/h
     lanes: 1,
     control: "stop",
+    /* PARKING FOLLOWS THE HIERARCHY, which makes density a difficulty
+       dial and a realism dial at once: a busy residential street is both
+       more alive and harder to examine. */
+    parking: "parallel",
     brief: { traffic: "light", visibility: "restricted" },
     kerbside: {
       density: 0.85,
@@ -70,6 +74,7 @@ export const CHARACTER = {
     speed: M(11.5),                      // ~41 km/h, the engine's V_STRAIGHT
     lanes: 1,
     control: "stop",
+    parking: "parallel",
     brief: { traffic: "busy", visibility: "open" },
     kerbside: {
       density: 0.5,
@@ -81,6 +86,7 @@ export const CHARACTER = {
     speed: M(13.9),                      // ~50 km/h
     lanes: 3,
     control: "none",
+    parking: "none",
     brief: { traffic: "heavy", visibility: "open" },
     kerbside: {
       density: 0.2,
@@ -158,6 +164,60 @@ export const tileById = (id) => TILES.find((t) => t.id === id) || null;
    nothing downstream needs to learn a new shape.
    ===================================================================== */
 
+/* =====================================================================
+   PARKING — the strip beside the traffic lane, and why it is content
+
+   Until now every roadside object sat at `3.6*lanes + 2.0` from the
+   centreline: two metres BEYOND the carriageway edge, politely out of the
+   way. Nothing occupied the space next to the traffic lane, so there was
+   nothing to pass close to, and the whole observation axis had no
+   non-stopping content available to it. A pedestrian who steps off a kerb
+   two metres clear of the road is behind you before they reach it.
+
+   THE MAINTAINER'S RULING: "absolutely we should have a variety of
+   parking situations, along the curb but also in dedicated spots where it
+   makes sense." Parking TYPE is content rather than decoration, because
+   each type produces a different hazard:
+
+     parallel  the carriageway effectively narrows, doors open into the
+               lane, a car can pull out, and pedestrians emerge from
+               BETWEEN vehicles that are genuinely in the way.
+     bay       perpendicular spaces, and the hazard is a car REVERSING
+               OUT. The driver cannot see, and the candidate cannot see
+               them until they move -- a fault purely of anticipation,
+               which is the strongest observation content available.
+
+   WIDTHS ARE REAL, not chosen to fit: a parallel parking lane is 2.4m
+   (8ft) against a 3.6m traffic lane, and a perpendicular bay is a car
+   length plus clearance.
+
+   PARKING IS PROHIBITED NEAR AN INTERSECTION -- 9m in Ontario -- so the
+   strip belongs to the LINK and never to the junction box. That is why
+   this changes no junction geometry: roadHalf, stop lines, exits, runway
+   and spacing are all untouched, and the golden does not move. The rule
+   is the reason, not a convenience. */
+export const PARKING = {
+  none: 0,
+  parallel: M(2.4),
+  bay: M(5.5),
+};
+
+/* How far a parked car's centre sits from the road centreline, and how
+   far out the verge beyond it starts. One derivation, so the props, the
+   people and anything that draws the strip cannot disagree. */
+export function kerbLayout(character) {
+  const c = CHARACTER[character];
+  const laneHalf = M(3.6) * c.lanes;
+  const park = PARKING[c.parking ?? "none"] ?? 0;
+  return {
+    laneEdge: laneHalf,
+    park,
+    parkCentre: laneHalf + park / 2,
+    kerb: laneHalf + park,
+    verge: laneHalf + park + M(1.2),
+  };
+}
+
 const KIND_SIZE = {
   parked: { hl: M(2.3), hw: M(0.9) },
   hedge: { hl: M(3.0), hw: M(0.6) },
@@ -187,12 +247,18 @@ export function kerbsideFor(tile, link, seed = 1) {
   const ux = dx / len, uy = dy / len;          // along the road
   const nx = -uy, ny = ux;                     // across it
 
-  /* One slot per car length; density decides how many are taken. Kerb
-     offset is half the carriageway plus half the prop, so it sits at the
-     edge rather than in the lane. */
+  /* One slot per car length; density decides how many are taken.
+
+     A PARKED CAR SITS IN THE PARKING LANE and everything else behind the
+     kerb. The literal here was already 3.6*lanes + 1.2, which happens to
+     be the centre of a 2.4m parking lane -- correct by accident rather
+     than by derivation, and it disagreed with roadsideLifeFor's own
+     offset two metres further out. One derivation now, so a prop, a
+     person and anything that draws the strip cannot drift apart. */
   const slot = M(6);
   const slots = Math.max(0, Math.floor(len / slot) - 1);
-  const offset = M(3.6) * c.lanes + M(1.2);
+  const lay = kerbLayout(tile.character);
+  const offsetFor = (kind) => (kind === "parked" && lay.park > 0 ? lay.parkCentre : lay.verge);
 
   const out = [];
   for (let i = 1; i <= slots; i++) {
@@ -204,11 +270,13 @@ export function kerbsideFor(tile, link, seed = 1) {
       out.push({
         id: `${tile.id}-${kind}-${i}-${side}`,
         kind,
-        x: link.from.x + ux * d + nx * offset * side,
-        y: link.from.y + uy * d + ny * offset * side,
+        x: link.from.x + ux * d + nx * offsetFor(kind) * side,
+        y: link.from.y + uy * d + ny * offsetFor(kind) * side,
         rot: (Math.atan2(uy, ux) * 180) / Math.PI,
         hl: size.hl,
         hw: size.hw,
+        parked: kind === "parked" && lay.park > 0,
+        side,
       });
     }
   }
@@ -233,7 +301,10 @@ export function roadsideLifeFor(tile, link, seed = 2) {
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len, uy = dy / len;
   const nx = -uy, ny = ux;
-  const offset = M(3.6) * c.lanes + M(2.0);
+  /* People stand on the pavement, BEYOND the parked cars -- which is what
+     makes the cars matter: somebody emerging has to come out from between
+     them, and is hidden until they do. */
+  const offset = kerbLayout(tile.character).verge;
 
   const out = [];
   const chances = Math.max(1, Math.round(len / M(25)));

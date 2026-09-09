@@ -37,7 +37,7 @@ import { composeCandidate } from "../engine/candidate.js";
 import { composeDriver, AXES, deficitOf, dominantAxis } from "../engine/ratings.js";
 import {
   planDrive, composeForTile, CHARACTER, kerbsideFor, roadsideLifeFor, segmentHazards,
-  DEAD_AIR_CEILING,
+  DEAD_AIR_CEILING, kerbLayout,
 } from "../engine/tiles.js";
 import { driveThroughTiles, candidateAt, placeScenario } from "../engine/world.js";
 import { approachDecel } from "../engine/paths.js";
@@ -243,6 +243,34 @@ export default function ExaminerDrive() {
        drawn by nothing: 59 objects and 10 people per drive, none of them
        on screen. The links were 27 seconds of bare tarmac, which is why
        they read as slow at any speed. */
+    /* THE PARKING STRIP ITSELF, or the parked cars sit on grass. Drawn as
+       a quad per side along the link, from the traffic lane's edge out to
+       the kerb -- the same kerbLayout the props are placed from, so the
+       surface and the things on it cannot disagree. Checking what draws a
+       thing is the rule this project has broken four times running. */
+    const strips = [];
+    world.links.forEach((link, i) => {
+      const lay = kerbLayout(tiles[i].character);
+      if (lay.park <= 0) return;
+      const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
+      for (const side of [-1, 1]) {
+        const a = lay.laneEdge * side, b = lay.kerb * side;
+        strips.push({
+          id: `strip-${i}-${side}`,
+          points: [
+            [link.from.x + nx * a, link.from.y + ny * a],
+            [link.to.x + nx * a, link.to.y + ny * a],
+            [link.to.x + nx * b, link.to.y + ny * b],
+            [link.from.x + nx * b, link.from.y + ny * b],
+          ].map(([x, y]) => `${x},${y}`).join(" "),
+          mid: { x: link.from.x + ux * len / 2, y: link.from.y + uy * len / 2 },
+          span: len,
+        });
+      }
+    });
+
     const roadside = [];
     world.links.forEach((link, i) => {
       for (const k of kerbsideFor(tiles[i], link, i * 13 + 1)) roadside.push({ ...k, life: false });
@@ -286,7 +314,7 @@ export default function ExaminerDrive() {
     const markable = legs.reduce(
       (a, l) => a + l.faults.filter((f) => f.duration >= MIN_DURATION).length, 0
     ) / Math.max(1, legs.length);
-    return { candidate, legs, world, roadside, hazards, perSection: sectionLengthFor(markable), markable };
+    return { candidate, legs, world, roadside, strips, hazards, perSection: sectionLengthFor(markable), markable };
   }, [seed]);
 
   const leg = drive.legs[Math.min(at, drive.legs.length - 1)];
@@ -508,6 +536,11 @@ export default function ExaminerDrive() {
                 <Road control={l.scn.control} crossings={l.scn.crossings || []} spec={specOf(l.scn)} reach={reach} />
               </g>
             ))}
+            {/* The parking lane surface, under the cars standing on it. */}
+            {drive.strips.map((st) => {
+              if (Math.hypot(st.mid.x - view.cx, st.mid.y - view.cy) > view.ahead + view.behind + st.span / 2) return null;
+              return <polygon key={st.id} points={st.points} fill="#31353c" stroke="#3c424a" strokeWidth={1} />;
+            })}
             {/* WHAT IS BESIDE THE ROAD, culled to the frame. Static props
                 first, then the people among them, so somebody stepping
                 out reads as coming from behind the car that hid them. */}

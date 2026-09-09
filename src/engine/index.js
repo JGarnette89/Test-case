@@ -516,6 +516,105 @@ function crossMovement(p) {
   return { rest, traverse: polyPath(pts, motion, { rot0: base.rot }) };
 }
 
+/* =====================================================================
+   EMERGING — a road user who starts stationary off the carriageway and
+   joins it. The first genuinely new movement shape this engine has
+   needed: everything else approaches, waits, or traverses, and all of
+   those already existed.
+
+   BUILT AS THE GENERAL CASE ON PURPOSE. A car reversing out of a bay is
+   one instance; so is one pulling out of a parallel space, a delivery van
+   moving off, and a car leaving a driveway. They share every property
+   that makes them worth having:
+
+     - the emerging driver's own view is obstructed
+     - the candidate cannot see them until they MOVE
+     - so the fault is purely one of ANTICIPATION -- did the candidate
+       read the situation before it developed
+
+   That last one is why this is the observation axis's content. Almost
+   every other fault in the game needs a stop in order to happen; this one
+   needs only that somebody was not looking.
+
+   Naming it "the reversing car" would have been the two-implementations
+   bug again, paid for the first time somebody wanted a van.
+
+   THE GEOMETRY IS THE TURN GEOMETRY, not a new kind. An arc tangent to
+   where the car is standing and to the lane it is joining, built around
+   the point where those two headings cross -- exactly `turnPoints`, which
+   is what a junction turn already is. A perpendicular bay and a parallel
+   space differ only in the resting heading.                            */
+function emergeMovement(p) {
+  const rest = { x: p.at?.x ?? CX, y: p.at?.y ?? CY, rot: p.restRot ?? 0 };
+  const into = p.into ?? { x: rest.x, y: rest.y - M(20), rot: rest.rot };
+
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  /* REVERSING IS A DIRECTION OF TRAVEL, NOT A DIFFERENT SHAPE. A car
+     nose-in to a bay leaves it going BACKWARDS: the path runs opposite
+     the way the car is pointing, and the car keeps pointing at the bay
+     until it has swung round. Without this the arc is built forwards --
+     into the kerb -- and comes out crossing the centreline, which is what
+     the first version did.
+
+     It is also exactly why this hazard is worth having: a driver reversing
+     cannot see, and neither can the candidate until the car moves. */
+  const back = p.reversing ? -1 : 1;
+  const inDir = { x: back * Math.cos(toRad(rest.rot)), y: back * Math.sin(toRad(rest.rot)) };
+  const outDir = { x: Math.cos(toRad(into.rot)), y: Math.sin(toRad(into.rot)) };
+  /* Where the two headings cross. Parallel headings have no corner, and
+     the arc degenerates to the straight line turnPoints already returns. */
+  const den = inDir.x * outDir.y - inDir.y * outDir.x;
+  const corner = Math.abs(den) < 1e-6
+    ? { x: (rest.x + into.x) / 2, y: (rest.y + into.y) / 2 }
+    : (() => {
+        const t = ((into.x - rest.x) * outDir.y - (into.y - rest.y) * outDir.x) / den;
+        return { x: rest.x + inDir.x * t, y: rest.y + inDir.y * t };
+      })();
+
+  /* STRAIGHT OUT FIRST, THEN TURN, because a car cannot do it in one arc
+     and pretending otherwise put it on the wrong side of the road.
+     TURN_R_MIN is 5.5m -- a passenger car at full lock -- while a bay sits
+     about 3m from the lane, so a single arc from a perpendicular space
+     overshoots the centreline by 0.69m no matter where it is aimed. That
+     is not a bug in the arc; it is why reversing out of a bay is a
+     multi-point manoeuvre in life.
+
+     So the emerging car clears its space along its own heading first, and
+     only then swings into the lane. `clearBy` is the depth it has to get
+     out of -- zero for a parallel space, where you simply pull forward. */
+  const clearBy = p.clearBy ?? 0;
+  const from = clearBy > 0
+    ? { x: rest.x + inDir.x * clearBy, y: rest.y + inDir.y * clearBy, rot: rest.rot }
+    : rest;
+  const den2 = inDir.x * outDir.y - inDir.y * outDir.x;
+  const corner2 = Math.abs(den2) < 1e-6
+    ? { x: (from.x + into.x) / 2, y: (from.y + into.y) / 2 }
+    : (() => {
+        const t = ((into.x - from.x) * outDir.y - (into.y - from.y) * outDir.x) / den2;
+        return { x: from.x + inDir.x * t, y: from.y + inDir.y * t };
+      })();
+  const radius = Math.max(TURN_R_MIN, Math.hypot(corner2.x - from.x, corner2.y - from.y));
+  const pts = clearBy > 0
+    ? [rest, ...turnPoints(from, corner2, into, radius)]
+    : turnPoints(from, corner2, into, radius);
+  /* Drawn facing the way the car is pointing rather than the way it is
+     going, for as long as it is going backwards. */
+  /* Slow. Somebody easing out of a space is not accelerating like traffic,
+     and the speed is what gives the candidate time to have noticed. */
+  const motion = accelProfile(EMERGE_ACCEL, p.speed ?? EMERGE_SPEED);
+  return {
+    rest,
+    traverse: polyPath(pts, motion, { rot0: rest.rot }),
+    reversing: Boolean(p.reversing),
+  };
+}
+
+/* How briskly somebody eases out of a space. Deliberately well under the
+   2.4 m/s^2 a car pulls away from a stop line at: they are looking over a
+   shoulder, and the whole point is that the candidate had time. */
+const EMERGE_ACCEL = M(1.2);
+const EMERGE_SPEED = M(4.0);
+
 /* The roundabout, whose path was already a sampled polyline walked at a
    constant speed — the shape everything else is now expressed in. */
 function roundaboutMovement(p) {
@@ -560,6 +659,7 @@ export function movementOf(p) {
   const hit = moveCache.get(p);
   if (hit) return hit;
   const mv = p.kind === "ped" ? pedMovement(p)
+    : p.emerges ? emergeMovement(p)
     : p.layout === "roundabout" ? roundaboutMovement(p)
     : crossMovement(p);
   mv.spawn = mv.onFoot ? null : approachFrom(mv.rest);
@@ -603,7 +703,14 @@ function basePose(p, t) {
   if (t < p.departAt) return { ...mv.rest, waiting: true };
 
   const k = progressAt(mv.traverse, t - p.departAt);
-  return { ...poseOn(mv.traverse, k), gone: k >= 1, moving: true };
+  const on = poseOn(mv.traverse, k);
+  /* A reversing car points opposite its travel, until it is round. */
+  return {
+    ...on,
+    ...(mv.reversing && k < 1 ? { rot: on.rot + 180 } : {}),
+    gone: k >= 1,
+    moving: true,
+  };
 }
 
 /* ---------------- footprint overlap ----------------
