@@ -25,7 +25,7 @@
 
    Pure. No React, no DOM, no colour.
    ===================================================================== */
-import { M, rng } from "./index.js";
+import { M, rng, CAR_L} from "./index.js";
 import { crossSpec, validIntents, exitSideFor } from "./road.js";
 import { runwayNeeded } from "./directions.js";
 import { driveThroughTiles } from "./world.js";
@@ -630,7 +630,37 @@ export function straightSpecFor(character) {
    The candidate meets them at whatever time their distance along the link
    implies, so the hazard's own clock is the drive's clock offset -- the
    same relationship a junction has to the drive. */
-export function hazardAt(tile, link, person, { candidate = null, seed = 1 } = {}) {
+/* A HAZARD AND AN OBSTRUCTION ARE NOT THE SAME THING, and conflating
+   them is what put frequency and pace in direct conflict: every piece of
+   street life stopped the car, so a lively street was an obstacle course
+   and the only lever was to have less of it.
+
+   Separated, the conflict dissolves.
+
+     BLOCKING      somebody steps out in front of the candidate and the
+                   road is legally theirs until they are past the near
+                   half. Costs a real ~6s hold, so these stay rare and
+                   strictly gated by the pacing budget, and are genuinely
+                   alarming when they happen.
+
+     NON-BLOCKING  somebody steps off the kerb as the car clears them,
+                   or is simply standing at the edge of it. No legal
+                   hold, no stop, and the candidate drives on either way.
+                   These can be frequent and cost nothing.
+
+   WHAT MAKES A NON-BLOCKING HAZARD MARKABLE is the only question it
+   asks: did the driver notice. That is clearance — how much room they
+   left somebody entitled to it — which `clearance.js` already measures
+   in seconds, and which `causeOf` attributes to OBSERVATION or
+   CONFIDENCE by whether the candidate had registered them.
+
+   That axis has had the least expression available to it, because
+   almost every other fault needs a stop in order to happen. This is the
+   class of content that does not.
+
+   The distinction is a PROPERTY OF THE HAZARD, not a second generator:
+   same roadsideLifeFor placing the same people, same scenario shape. */
+export function hazardAt(tile, link, person, { candidate = null, seed = 1, blocking = true } = {}) {
   const spec = straightSpecFor(tile.character);
   const speed = CHARACTER[tile.character].speed;
 
@@ -663,16 +693,26 @@ export function hazardAt(tile, link, person, { candidate = null, seed = 1 } = {}
       intent: "straight",
       /* Timed so they are stepping out as the candidate arrives, which is
          what makes the parked cars matter: seen early it is nothing, seen
-         late it is everything. */
-      arriveAt: 0.8,
+         late it is everything.
+
+         A NON-BLOCKING ONE STEPS OFF AS THE CAR CLEARS THEM, and the lead
+         is derived rather than picked: one car length at this road's
+         speed is exactly how long the candidate takes to go past. So the
+         gap they are given follows from the geometry, and lands wherever
+         the clearance bands say it lands. */
+      arriveAt: blocking ? 0.8 : 0.8 + CAR_L / speed,
       stops: false,
       kind: "ped",
       colorKey: "pale",
       name: "Pedestrian",
       priority: -1,
-      blockUntilClear: true,
+      /* The legal hold is what makes a hazard an obstruction. Without it
+         the candidate has no duty to stop and the only question left is
+         how much room they left, which is the point. */
+      ...(blocking ? { blockUntilClear: true } : {}),
       reverse: person.side < 0,
     }],
+    blocking,
   };
 }
 
@@ -684,10 +724,17 @@ export function hazardAt(tile, link, person, { candidate = null, seed = 1 } = {}
 export function segmentHazards(tile, link, seed = 1, { candidate = null } = {}) {
   const people = roadsideLifeFor(tile, link, seed);
   const blockers = kerbsideFor(tile, link, seed);
+  /* EVERY person beside the road is a hazard; `mayEmerge` decides only
+     which KIND. The ones who might step out in front are blocking and
+     the pacing budget gates them; everybody else is somebody you pass
+     close to, which costs nothing and still has to be noticed. A street
+     where every pedestrian forces an emergency stop is an obstacle
+     course; one full of people who mostly do not step out, but might, is
+     a place. */
   return people
-    .filter((p) => p.mayEmerge)
     .map((p) => ({
-      scn: hazardAt(tile, link, p, { candidate, seed }),
+      blocking: Boolean(p.mayEmerge),
+      scn: hazardAt(tile, link, p, { candidate, seed, blocking: Boolean(p.mayEmerge) }),
       person: p,
       /* The props near them, as ordinary sightBlockers -- the same shape
          sightBlockersOf reads, so the hazard occludes without anything

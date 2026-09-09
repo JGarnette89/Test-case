@@ -193,7 +193,11 @@ export default function ExaminerDrive() {
         .map((h) => {
           const scn = placeScenario(h.scn, h.scn.at);
           const sim = simulate(scn);
-          return { ...h, scn, sim, link: i, reaches: h.scn.reachesAt ?? 0, stepsAt: scn.actors[0]?.arriveAt ?? 0 };
+          return {
+            ...h, scn, sim, link: i,
+            reaches: h.scn.reachesAt ?? 0,
+            stepsAt: scn.actors[0]?.arriveAt ?? 0,
+          };
         });
       /* `mayEmerge` MEANS "SOMEBODY IS THERE WHO COULD", NOT "THEY DO" --
          roadsideLifeFor says so in as many words, and leaving the decision
@@ -211,7 +215,14 @@ export default function ExaminerDrive() {
          arrives, so every one that fires costs a real ~6s hold. The road
          feels alive from the people who are simply there -- 10 a drive,
          drawn and costing nothing -- not from stopping for all of them. */
-      const fires = sinceEvent >= DEAD_AIR_CEILING ? found.slice(0, 1) : [];
+      /* NON-BLOCKING ONES ALWAYS HAPPEN and cost nothing -- somebody
+         stepping off the kerb as the car clears them is street life, and
+         the only question it asks is whether the driver noticed. Only
+         the BLOCKING ones are gated, because only they stop the car. */
+      const loose = found.filter((h) => !h.blocking);
+      const blockers = found.filter((h) => h.blocking);
+      const fires = sinceEvent >= DEAD_AIR_CEILING ? blockers.slice(0, 1) : [];
+      for (const h of loose) hazards.push(h);
       for (const h of fires) hazards.push(h);
       if (!fires.length) return null;
       sinceEvent = 0;

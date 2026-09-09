@@ -164,14 +164,25 @@ export const clampDepart = (ego, at) => Math.max(at, ego?.arriveAt ?? 0);
 
    Entitled means the road users who had priority — `sim.priors` — because
    the fault is failing to yield space that was somebody else's, not
-   passing close to somebody who was yielding to you. Pedestrians are
-   excluded here and not because they do not matter: a pedestrian on a
-   crossing is governed by blockUntilClear, a legal rule about the whole
-   crossing rather than a following gap, and folding them into a headway
-   measure would quietly restate that rule in the wrong currency. */
+   passing close to somebody who was yielding to you.
+
+   PEDESTRIANS GOVERNED BY `blockUntilClear` ARE EXCLUDED, and the reason
+   is precise rather than categorical: one on a crossing is governed by a
+   legal rule about the whole crossing rather than a following gap, so
+   folding them into a headway measure would restate that rule in the
+   wrong currency.
+
+   It used to exclude ALL pedestrians, which was the same reasoning
+   applied one step too widely. Somebody standing at a kerb is not on a
+   crossing and no legal hold covers them — passing them at a third of a
+   second IS a following-gap question, and it is the only clearance
+   question a non-blocking hazard can ask. Narrowed to the rule's own
+   stated scope; every pedestrian shipped or generated today carries
+   `blockUntilClear`, so nothing that exists moves. */
 export function encroachmentIn(sim, { departAt = null, horizon = 18 } = {}) {
   const ego = departAt == null ? sim.ego : { ...sim.ego, departAt: clampDepart(sim.ego, departAt) };
-  const entitled = (sim.priors?.length ? sim.priors : sim.actors).filter((a) => a.kind !== "ped");
+  const entitled = (sim.priors?.length ? sim.priors : sim.actors)
+    .filter((a) => !(a.kind === "ped" && a.blockUntilClear));
   const out = [];
   for (const a of entitled) {
     const r = petBetween(ego, a, { from: ego.departAt ?? 0, horizon });
