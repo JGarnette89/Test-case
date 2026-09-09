@@ -227,11 +227,42 @@ export function describeOutcome(o) {
    reaction.js stamps on a road user giving way, so the candidate slows by
    the identical mechanism rather than a second one. */
 export function avoidableFrom(sim, at, { horizon = null } = {}) {
-  const from = Math.max(0, at - (sim.ego.departAt ?? 0));
+  const arriveAt = sim.ego.arriveAt ?? 0;
+  const departAt = sim.ego.departAt ?? 0;
+
+  /* SLOWING ON THE TRAVERSE. `yielding` is the field reaction.js already
+     stamps on a road user giving way, so the candidate brakes by the
+     identical mechanism rather than a second one. */
+  const from = Math.max(0, at - departAt);
   for (const give of [0.4, MOST_GIVEN]) {
     for (const wait of [0, MOST_WAIT / 2, MOST_WAIT]) {
       const braked = { ...sim, ego: { ...sim.ego, yielding: { from, give, wait } } };
       if (!contactIn(braked, { horizon })) return { give, wait };
+    }
+  }
+
+  /* AND EASING OFF ON THE APPROACH, which `yielding` cannot express: it
+     wraps the traverse profile, while the approach is a fixed
+     deceleration to the line. So a conflict arising BEFORE departAt was
+     unavoidable by construction -- not because a driver could not have
+     braked, but because the model had no way to say so. Measured, that
+     put every roadside hazard beyond reach: they all happen while the
+     candidate is approaching.
+
+     Arriving later IS easing off: the same distance over more time. It is
+     asked here rather than in basePose because `yielding` never appears
+     in a normal simulate() path -- only the lab and this probe set it --
+     so nothing shipped moves and the golden cannot.
+
+     A response only counts if there was TIME for it: they must have been
+     able to react before they arrived. */
+  if (at + REACTION_FLOOR <= arriveAt) {
+    for (const delay of [0.5, 1.0, 2.0, 4.0]) {
+      const eased = {
+        ...sim,
+        ego: { ...sim.ego, arriveAt: arriveAt + delay, departAt: departAt + delay },
+      };
+      if (!contactIn(eased, { horizon })) return { easedBy: delay };
     }
   }
   return null;
@@ -314,10 +345,31 @@ export function unavoided(sim, scn, candidate, seed = 1, opts = {}) {
 
   /* Never registered them at all, yet braking from the moment they became
      perceivable would have worked: the only thing missing was looking. */
-  /* Registered the developing danger in time and carried on: confidence.
-     Did not, though it was there to be read: observation. The
-     maintainer's manner-and-registration rule, unchanged. */
-  const axis = sawAt == null || sawAt > hit.at ? "observation" : "confidence";
+  /* THE MAINTAINER'S THREE-WAY RULE, all three branches.
+
+       did not register the developing danger  -> OBSERVATION
+       registered it, and only a hard response
+         would have saved it -- so they left it
+         too late                              -> BRAKING
+       registered it in time and pressed on    -> CONFIDENCE
+
+     The middle branch was missing, and without it everything that was not
+     observation fell to confidence by default -- which is not the rule,
+     it is the absence of one. The discriminator is the same MANNER
+     question the stop-fault split already uses: a response that needs the
+     hardest braking available is one that was left too late. */
+  /* What THIS candidate would have needed from the moment THEY noticed --
+     a different question from whether anybody could have avoided it, and
+     the one that separates leaving it late from pressing on. Asking only
+     the competent-observer question left the braking branch dead, because
+     avoidableFrom returns the FIRST response that works and that is
+     always the gentlest one. */
+  const theirs = sawAt == null ? null : avoidableFrom(sim, sawAt, opts);
+  const tooLate = sawAt != null && (theirs == null || (theirs.give ?? 0) >= MOST_GIVEN);
+
+  const axis = sawAt == null || sawAt > hit.at
+    ? "observation"
+    : tooLate ? "braking" : "confidence";
 
   return {
     kind: "unavoided",
@@ -334,7 +386,9 @@ export function unavoided(sim, scn, candidate, seed = 1, opts = {}) {
     tell: couldHave
       ? (axis === "observation"
         ? "Never saw it coming — it was there to be seen"
-        : "Saw it and carried on anyway")
+        : axis === "braking"
+          ? "Saw it, but left the braking too late"
+          : "Saw it and carried on anyway")
       : null,
   };
 }

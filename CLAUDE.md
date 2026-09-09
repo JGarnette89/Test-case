@@ -829,8 +829,22 @@ the content properly.
 does not express through a trait at all — it degrades what the candidate
 registers, and its faults surface as an ENCROACHMENT that `causeOf`
 attributes to it. Counting trait kinds is the wrong instrument for that
-axis. Measured: every encroachment on a generated drive attributes to
-observation.
+axis.
+
+**STALE CLAIM CORRECTED, and the correction matters more than the claim
+did.** This used to read "every encroachment on a generated drive
+attributes to observation". Re-measured over 25 drives, every one of them
+attributes to **`unsighted`**, which is NOT the same thing and must never
+be counted as it: `causeOf` returns `unsighted` when the road user was
+genuinely not in view when the candidate committed -- the scenario's
+doing -- and `observation` only when they were in view and the candidate
+registered them too late, which is the driver's failing.
+
+Folding the two together would clear the attributability floor on paper
+while destroying the asymmetry the whole five-axis structure rests on:
+occlusion is PERCEPTIBLE and caution can compensate for it, inattention is
+not and nothing can. See DECISIONS.md 4.4. Leave them separate and leave
+the floor unmet until real content meets it.
 
 **A rolling stop is modelled as a car that never comes to rest**, not as
 one that leaves early. It holds its crawl through the approach where a

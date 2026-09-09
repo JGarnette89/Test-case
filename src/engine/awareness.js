@@ -36,7 +36,7 @@
    ===================================================================== */
 import { earliestClear, rng, poseAt, extentsFor, approachDecelOf, M, CX, CY, LANE, SET } from "./index.js";
 import { REACTION_FLOOR } from "./score.js";
-import { approachDecel } from "./paths.js";
+import { approachDecel, MOST_GIVE } from "./paths.js";
 import { whatEgoSees, sightBlockersOf, eyePoint, creepPose, segmentHitsBox, visibility } from "./sight.js";
 import { deficitOf } from "./ratings.js";
 import { LEG, SIDES, hasLeg, specOf, laneOffset, controlsOf } from "./road.js";
@@ -355,6 +355,59 @@ export function marginAt(sim, scn, candidate, t, opts = {}) {
    separate: this file computes what the driver believes, and changing
    what the world does about it is a different change with its own
    measurement. */
+/* =====================================================================
+   RESPONDING WHILE TRAVELLING, not only at a decision point
+
+   THE GAP THIS FILLS. Awareness governed the DEPARTURE decision and
+   nothing else, so the candidate was a decision-maker at an intersection
+   and a passive mover in between. On a link there was no mechanism by
+   which a good observer drove differently from a poor one -- which means
+   anticipation could not be demonstrated at all, which is why the
+   avoidability fault class could not go live.
+
+   THE RESPONSE IS DERIVED FROM THE SAME TWO THINGS AS THE DEPARTURE:
+   what they have registered, and their ratings. A candidate who has
+   registered a road user entering their path eases off from the moment
+   they registered it; one who has not, does not. Nothing is scripted --
+   whether they respond at all is decided by whether the danger ever
+   reached them.
+
+   HOW MUCH they ease is `cautionOf`, which is the whole of confidence in
+   one number and already means "the margin this driver leaves". A bold
+   driver eases nothing, the optimum eases moderately, a timid one eases
+   hard. So the same axis that decides how big a gap they take decides how
+   readily they lift off, which is what makes them one person.
+
+   Resolved from the seed at composition time, like everything else, so
+   ground truth stays replayable. */
+export function responseOnAwareness(sim, scn, candidate, seed = 1, opts = {}) {
+  const ego = sim.ego;
+  const reg = opts.registrations ?? registrationsIn(sim, scn, candidate, seed, opts);
+
+  /* The danger is a road user that was stationary and begins to move --
+     the thing that has to be ANTICIPATED. One already travelling is
+     ordinary traffic and the departure decision already covers it. */
+  let soonest = null;
+  for (const a of sim.actors) {
+    if (!(a.emerges || a.stops)) continue;
+    const at = reg[a.id];
+    if (at == null) continue;                       // never registered: no response
+    const onset = a.departAt ?? 0;
+    const noticed = Math.max(at, onset + registrationDelay(candidate, a.id, seed));
+    if (soonest == null || noticed < soonest) soonest = noticed;
+  }
+  if (soonest == null) return null;
+
+  const eases = Math.max(0, Math.min(1, cautionOf(candidate) / 2));
+  if (eases <= 0) return null;                      // bold enough to press on
+  return {
+    from: Math.max(0, soonest - (ego.departAt ?? 0)),
+    give: MOST_GIVE * eases,
+    wait: 0,
+    noticedAt: soonest,
+  };
+}
+
 export function departureOnAwareness(sim, scn, candidate, seed = 1, opts = {}) {
   const seen = opts.sightings ?? sightingsIn(sim, scn, { ...opts, candidate });
   const reg = opts.registrations ?? registrationsIn(sim, scn, candidate, seed, { ...opts, sightings: seen });

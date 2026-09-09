@@ -584,7 +584,8 @@ up the road, at that road's speed. Contacts went from **95 of 111 to 9 of
 
 ### 5.11.3 A CANDIDATE CANNOT BE MODELLED BRAKING DURING THEIR APPROACH
 
-**A live engine limitation, found by this work and not yet fixed.**
+**Found by this work. Worked around in the probe, not fixed in the
+engine, and the distinction matters.**
 
 `yielding` shapes the TRAVERSE profile. The approach is `brakingApproach`,
 a fixed deceleration to the line. So there is no way to express a
@@ -598,10 +599,58 @@ precisely because that is where a traverse exists. It cannot fire on a
 LINK at all, because there the candidate is always approaching, and that
 is exactly where the roadside hazard content lives.
 
-Until that is fixed, observation gets nothing from this content and the
-attributability floor stays at zero for that axis. The emerging hazard is
-held behind `LIVE = false` in `segmentHazards` rather than shipped,
-because as timed it produced unavoidable collisions at 3.5 per drive.
+**The workaround: arriving later IS easing off** -- the same distance over
+more time. `avoidableFrom` asks that as well as asking whether braking on
+the traverse would have worked, and it is asked in the PROBE rather than
+in `basePose` because `yielding` never appears in a normal `simulate()`
+path -- only the lab and this probe set it -- so nothing shipped moves and
+the golden cannot. A response only counts if there was time for it: the
+candidate must have been able to react before they arrived.
+
+That unblocked it completely: **avoidable went from 0 of 9 to 12 of 12.**
+
+### 5.11.4 THE OCCLUSION IS THE HAZARD, and leaving it out made the axis unreachable
+
+The emerging car carried no `sightBlockers`, so it was in plain sight from
+the first frame. The candidate therefore always registered the danger in
+time and the fault could only ever be CONFIDENCE -- measured, 9 of 9.
+
+The whole property that makes this hazard worth having is that the
+driver's view is obstructed and **the candidate cannot see them until they
+move**. `curbsideFor` already emits the `{ x, y, rot, hl, hw }` shape
+`sightBlockersOf` reads, so the row of parked cars becomes occlusion
+without anything downstream learning a new type.
+
+With it: **observation fires for the first time in the project** -- 4 of
+12 avoidable contacts attribute to it, 8 to confidence.
+
+### 5.11.5 OBSERVATION STILL DOES NOT CLEAR THE ATTRIBUTABILITY FLOOR
+
+Stated plainly rather than counted generously. Measured over 25 drives:
+
+| fault kind | attribution | dominant |
+|---|---|---|
+| `encroachment` | unsighted 20 | **unsighted** |
+| `unavoided` | confidence 8, observation 4 | **confidence** |
+
+**Observation dominates ZERO distinct fault kinds.** It now fires, which
+it never did before, but it does not dominate: confidence owns `unavoided`
+two to one.
+
+Note `unsighted` is not `observation` and must not be counted as it.
+`causeOf` returns it when the road user was genuinely not in view when the
+candidate committed -- the scenario's doing, not the driver's failing.
+Anything that folds the two together would clear the floor on paper while
+meaning nothing.
+
+**AND THE CONTENT IS STILL NOT LIVE.** `LIVE = false` in `segmentHazards`.
+The collisions are avoidable now, but the modelled candidate never avoids
+them, because a candidate's behaviour does not yet depend on what they
+perceived on a link -- `departureOnAwareness` is a query and applies to a
+departure, not to a cruise. So every avoidable collision is still taken,
+and at roughly 0.47 per drive that would end half of them. The fault class
+is correct and the content is waiting on the candidate being able to act
+on what they see.
 
 ---
 
@@ -930,6 +979,13 @@ no screen at all:
 - **The roadside was never drawn.** 59 props, 10 people and 6 hazards per
   drive, all produced by `tiles.js`, all checked in `verify-world`, and
   none of them on screen — 27 seconds of bare tarmac per drive.
+
+- **The emerging car carried no sight blockers.** Its entire value was
+  that the driver's view is obstructed and the candidate cannot see them
+  until they move -- and there was no occlusion at all, so it was in plain
+  sight from the first frame and could only ever produce a confidence
+  fault. Correct in every measurable respect, missing the one property
+  that made it content.
 
 **A check that an engine function returns the right thing says nothing
 about whether anything shows it.** `verify-world` was measuring

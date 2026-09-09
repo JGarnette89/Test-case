@@ -25,13 +25,14 @@
 
    Pure. No React, no DOM, no colour.
    ===================================================================== */
-import { M, rng, CAR_L} from "./index.js";
+import { M, rng, CAR_L, simulate} from "./index.js";
 import { crossSpec, validIntents, exitSideFor } from "./road.js";
 import { runwayNeeded } from "./directions.js";
 import { approachDecel } from "./paths.js";
 import { REACTION_FLOOR } from "./score.js";
 import { driveThroughTiles } from "./world.js";
 import { faultsIn } from "./faults.js";
+import { responseOnAwareness } from "./awareness.js";
 import { egoFor, chancesAt, shapeOf, valueOfShape, SHOWINGS_FOR_A_HABIT } from "./candidate.js";
 import { composeScenario } from "./compose.js";
 
@@ -840,7 +841,7 @@ export function hazardAt(tile, link, person, { candidate = null, seed = 1, block
 
    `emerges` picks up index.js's movement shape; nothing here knows how
    the arc is built, only where the car starts and which lane it joins. */
-export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDriveway = false } = {}) {
+export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDriveway = false, blockers = [] } = {}) {
   const lay = curbLayout(tile.character);
   const speed = CHARACTER[tile.character].speed;
   const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
@@ -873,6 +874,19 @@ export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDri
     control: "none",
     at: { x: rest.x, y: rest.y },
     reachesAt: d / speed,
+    /* THE CARS THAT HIDE THEM. Without these the emerging car is in plain
+       sight from the first frame, so the candidate always registers the
+       danger in time and the fault can only ever be confidence -- which is
+       exactly what was measured, 9 of 9. The whole property that makes
+       this hazard worth having is that the driver's view is obstructed
+       and THE CANDIDATE CANNOT SEE THEM UNTIL THEY MOVE.
+
+       curbsideFor already emits the { x, y, rot, hl, hw } shape
+       sightBlockersOf reads, so the row of parked cars becomes occlusion
+       without anything downstream learning a new type. */
+    sightBlockers: blockers
+      .filter((b) => Math.hypot(b.x - rest.x, b.y - rest.y) < M(22))
+      .map((b) => ({ id: b.id, x: b.x, y: b.y, rot: b.rot, hl: b.hl, hw: b.hw })),
     /* THE ANTICIPATION WINDOW IS BUILT IN, not hoped for. The car starts
        moving at once and the candidate is still this far up the road --
        their own reaction floor plus the distance they need to stop
@@ -975,6 +989,16 @@ export function segmentHazards(tile, link, seed = 1, { candidate = null } = {}) 
      fault class are all built and verified; what is wrong is the timing
      and clearance of this one scenario. Kept behind a flag rather than
      deleted, because everything except that is right. */
+  /* STILL NOT LIVE, and the reason has changed twice now. It is no longer
+     that the collisions are unavoidable -- 13 of 13 are avoidable, the
+     candidate eases off in 99% of cases, and all three attribution
+     branches fire. It is that A COLLISION HAS NO REPRESENTATION IN THE
+     DRIVE: outcome.js knows a contact ends a drive and ExaminerDrive does
+     not consult it, so shipping this would put cars into the candidate's
+     path with nothing acknowledging what happened when one is hit.
+
+     That is the intervention question, still the maintainer's. The
+     content is ready and gated on it rather than on itself. */
   const LIVE = false;
   if (LIVE && parked.length) {
     const pick = parked[seed % parked.length];
@@ -982,7 +1006,16 @@ export function segmentHazards(tile, link, seed = 1, { candidate = null } = {}) 
     const len = Math.hypot(dx, dy) || 1;
     const along = ((pick.x - link.from.x) * dx + (pick.y - link.from.y) * dy) / len;
     const fromDriveway = Boolean(lay.driveway) && (seed % 2 === 0);
-    const scn = emergingAt(tile, link, { along, reach: along / CHARACTER[tile.character].speed, side: pick.side ?? 1 }, seed, { candidate, fromDriveway });
+    let scn = emergingAt(tile, link, { along, reach: along / CHARACTER[tile.character].speed, side: pick.side ?? 1 }, seed, { candidate, fromDriveway, blockers: parked });
+    /* AND THE CANDIDATE RESPONDS TO IT, or does not. Built once, simulated
+       once to find out what they registered, then rebuilt with whatever
+       response that earns them -- so a good observer eases off and a poor
+       one carries on, from the same scene. Two passes at composition time,
+       resolved from the seed, so ground truth stays replayable. */
+    const eased = responseOnAwareness(simulate(scn), scn, candidate, seed);
+    if (eased) {
+      scn = { ...scn, ego: { ...scn.ego, yielding: { from: eased.from, give: eased.give, wait: eased.wait } } };
+    }
     emerging.push({ blocking: false, emerging: true, fromDriveway, scn, person: null, blockers: parked });
   }
 
