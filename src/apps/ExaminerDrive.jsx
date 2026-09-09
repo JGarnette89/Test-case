@@ -176,7 +176,7 @@ export default function ExaminerDrive() {
 
        A SECTION IS A CONTINUOUS STRETCH OF THE DRIVE, so a link belongs to
        the junction it DEPARTS FROM -- which is what candidateAt already
-       reports during a link, `junction: i` with a clock in leg i's frame.
+       reports during a link, `intersection: i` with a clock in leg i's frame.
        A link crossing a section boundary therefore lands in the earlier
        section, where the player was when they saw it. */
     const hazards = [];
@@ -193,11 +193,20 @@ export default function ExaminerDrive() {
         .map((h) => {
           const scn = placeScenario(h.scn, h.scn.at);
           const sim = simulate(scn);
-          return {
-            ...h, scn, sim, link: i,
-            reaches: h.scn.reachesAt ?? 0,
-            stepsAt: scn.actors[0]?.arriveAt ?? 0,
-          };
+          /* WHEN THE CANDIDATE PASSES THIS SPOT, in the hazard's own
+             clock -- measured rather than assumed. It used to be the
+             actor's arriveAt, which is only right for a pedestrian
+             `hazardAt` times to 0.8; a car leaving a space has arriveAt 0
+             and pulls out on a startDelay, so the two scenes' clocks
+             would have been aligned on different things. */
+          let passAt = 0, best = Infinity;
+          for (let t = 0; t <= 8; t += 0.05) {
+            const q = poseAt(sim.ego, t);
+            if (!q || q.gone) break;
+            const dd = Math.hypot(q.x - scn.at.x, q.y - scn.at.y);
+            if (dd < best) { best = dd; passAt = t; }
+          }
+          return { ...h, scn, sim, link: i, reaches: h.scn.reachesAt ?? 0, stepsAt: passAt };
         });
       /* `mayEmerge` MEANS "SOMEBODY IS THERE WHO COULD", NOT "THEY DO" --
          roadsideLifeFor says so in as many words, and leaving the decision
@@ -466,7 +475,7 @@ export default function ExaminerDrive() {
     const sheet = sectionSheet({
       legs, from, given,
       marks: marks.filter((m) => m.junction >= from && m.junction < upTo),
-      shownFor: (f) => seen.current.get(`${f.junction}/${f.who}/${f.trait ?? f.kind}`) ?? 0,
+      shownFor: (f) => seen.current.get(`${f.intersection}/${f.who}/${f.trait ?? f.kind}`) ?? 0,
     });
     return { ...sheet, done: upTo >= drive.legs.length, perSection: drive.perSection };
   }
@@ -569,7 +578,12 @@ export default function ExaminerDrive() {
                 const q = poseAt(a, tau);
                 if (!q || q.gone || q.hidden || !Number.isFinite(q.x)) return null;
                 if (Math.hypot(q.x - view.cx, q.y - view.cy) > view.ahead + view.behind) return null;
-                return <circle key={`${k}-${a.id}`} cx={q.x} cy={q.y} r={PED_R} fill={C.yellow} />;
+                /* A CAR IS DRAWN AS A CAR. Every hazard actor used to be
+                   a pedestrian circle, so a car leaving a parking space
+                   would have rendered as a small yellow dot. */
+                return a.kind === "ped"
+                  ? <circle key={`${k}-${a.id}`} cx={q.x} cy={q.y} r={PED_R} fill={C.yellow} />
+                  : <Car key={`${k}-${a.id}`} p={a} pose={q} />;
               });
             })}
             {/* Traffic is drawn from the junction being driven. It does
@@ -592,7 +606,7 @@ export default function ExaminerDrive() {
         </svg>
 
         <div style={S.hud}>
-          <span style={S.hudT}>Junction {at + 1}/{drive.legs.length}</span>
+          <span style={S.hudT}>Intersection {at + 1}/{drive.legs.length}</span>
           <span style={S.hudDim}>Section {section}</span>
           <span style={S.hudDim}>{view.seconds.toFixed(0)}s of road</span>
           {held > 0 && <span style={{ ...S.hudDim, color: C.amber }}>{held} stacked</span>}
@@ -631,7 +645,7 @@ export default function ExaminerDrive() {
                 borderColor: target === j ? C.blue : "rgba(255,255,255,0.12)",
                 color: given[j] ? C.green : target === j ? C.white : C.dim,
               }} onClick={() => setTarget(j)}>
-                {d === 0 ? "This one" : `Junction ${j + 1}`}{given[j] ? " ✓" : ""}
+                {d === 0 ? "This one" : `Intersection ${j + 1}`}{given[j] ? " ✓" : ""}
               </button>
             );
           })}
@@ -729,7 +743,7 @@ function Sheet({ sheet, drive, onNext }) {
         <div style={S.sheetSection}>Directions</div>
         {calls.map((c) => (
           <div key={c.junction} style={S.line}>
-            <span style={S.dim}>Junction {c.junction + 1}</span>
+            <span style={S.dim}>Intersection {c.junction + 1}</span>
             <span style={{ color: c.blame || c.wrongTurn ? C.red : c.verdict === "stacked" ? C.amber : C.green }}>
               {c.said ? `${phraseOf(c.said)} — ` : ""}{VERDICT[c.verdict] ?? c.verdict}
               {c.wrongTurn ? " (they wanted " + phraseOf(c.wanted).toLowerCase() + ")" : ""}

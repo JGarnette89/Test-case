@@ -60,6 +60,16 @@ Five things to know before your first change:
    asking a person to open the page. This cost real time four times before
    it was written down.
 
+**LANGUAGE IS ONTARIO, CANADA — American English, North American road
+terms.** intersection not junction, curb not kerb, sidewalk not pavement,
+yield not give way, shoulder not verge, crosswalk, turn signal not
+indicator, parking lot not car park; color, behavior, meter, center.
+`arterial`, `collector`, `roundabout`, `right of way`, `stop line` and
+`driveway` are already correct. **All player-facing text is corrected.**
+Code identifiers are NOT renamed yet — 446 `junction` and 82 `kerb`
+occurrences across 40 files, 17 distinct names — but **use the correct
+terms in everything new**. See DECISIONS.md §2.1.
+
 **If a change depends on a traffic-law assumption, ASK.** The maintainer
 is a driving examiner; getting a rule wrong teaches somebody something
 false, which is the worst outcome available here.

@@ -28,6 +28,8 @@
 import { M, rng, CAR_L} from "./index.js";
 import { crossSpec, validIntents, exitSideFor } from "./road.js";
 import { runwayNeeded } from "./directions.js";
+import { approachDecel } from "./paths.js";
+import { REACTION_FLOOR } from "./score.js";
 import { driveThroughTiles } from "./world.js";
 import { faultsIn } from "./faults.js";
 import { egoFor, chancesAt, shapeOf, valueOfShape, SHOWINGS_FOR_A_HABIT } from "./candidate.js";
@@ -63,6 +65,9 @@ export const CHARACTER = {
        dial and a realism dial at once: a busy residential street is both
        more alive and harder to examine. */
     parking: "parallel",
+    /* Residential streets get courts; an arterial never does and a
+       collector rarely warrants one. */
+    driveways: true,
     brief: { traffic: "light", visibility: "restricted" },
     kerbside: {
       density: 0.85,
@@ -127,7 +132,7 @@ export const TILES = [
     id: "res-quiet",
     character: "residential",
     runway: M(55),
-    note: "Parked both sides. You cannot see the junction until you are nearly in it.",
+    note: "Parked both sides. You cannot see the intersection until you are nearly in it.",
   },
   {
     id: "res-busy",
@@ -139,7 +144,7 @@ export const TILES = [
     id: "coll-standard",
     character: "collector",
     runway: M(72),
-    note: "Through road. Enough sightline to read the junction, enough traffic to fill it.",
+    note: "Through road. Enough sightline to read the intersection, enough traffic to fill it.",
   },
   {
     id: "art-main",
@@ -199,7 +204,7 @@ export const tileById = (id) => TILES.find((t) => t.id === id) || null;
 export const PARKING = {
   none: 0,
   parallel: M(2.4),
-  bay: M(5.5),
+  /* No perpendicular parking on the road -- see kerbLayout. */
 };
 
 /* How far a parked car's centre sits from the road centreline, and how
@@ -209,12 +214,46 @@ export function kerbLayout(character) {
   const c = CHARACTER[character];
   const laneHalf = M(3.6) * c.lanes;
   const park = PARKING[c.parking ?? "none"] ?? 0;
+  const kerb = laneHalf + park;
+  /* A BAY IS A LAY-BY THAT WIDENS THE VERGE, never the carriageway --
+     maintainer's ruling, and it is what actually exists: shop-front
+     parking, a bay set back from the road, a residential court. It also
+     keeps the junction rule intact, since nothing about the road's own
+     width changes.
+
+     The court is a bay deep plus an aisle to manoeuvre in, and the aisle
+     is what makes the car able to LEAVE FORWARDS. Without it a car
+     reversing straight out of a perpendicular space onto a single traffic
+     lane cannot align without occupying the oncoming one -- measured,
+     3.2m over the centreline -- because a 5.5m turning circle does not
+     fit in 3m of road. That is why real perpendicular parking has an
+     aisle, and modelling it without one would have been teaching the
+     manoeuvre wrong. */
+  /* NO PERPENDICULAR PARKING ON THE CARRIAGEWAY. Maintainer's ruling:
+     "there is almost never a case where a car is parked perpendicular
+     along the road, these cars would be parked straight along the road."
+     Both the aisle-court and the reverse-across-the-lane versions are
+     gone; cars park parallel, full stop.
+
+     THE REVERSING CASE IS DRIVEWAYS, and it is hierarchy-bound: "we could
+     exemplify this by having cars reverse out of their driveways in
+     residential streets, but you'd never see this type of parking along a
+     major road." A driveway is perpendicular to the road and the car
+     emerges across the parking lane into the traffic lane, which is
+     exactly the movement shape already built. */
+  const drive = c.driveways ? M(6.0) : 0;
   return {
     laneEdge: laneHalf,
     park,
     parkCentre: laneHalf + park / 2,
-    kerb: laneHalf + park,
-    verge: laneHalf + park + M(1.2),
+    kerb,
+    verge: kerb + M(1.2),
+    /* The court sits beyond the pavement, so a car in it is hidden by
+       whatever is at the kerb until it reaches the mouth. */
+    /* Where a driveway runs back from, and how deep. A car sits in it
+       nose-in, so it comes out backwards -- the driver looking over a
+       shoulder past the cars parked either side of the entrance. */
+    driveway: c.driveways ? { mouth: kerb, depth: drive, back: kerb + drive } : null,
   };
 }
 
@@ -787,6 +826,121 @@ export function hazardAt(tile, link, person, { candidate = null, seed = 1, block
   };
 }
 
+/* A CAR JOINING THE ROAD FROM A SPACE BESIDE IT.
+
+   The observation axis's content, and the reason is that the fault is
+   purely one of ANTICIPATION: the emerging driver's view is obstructed,
+   the candidate cannot see them until they move, and nothing about it
+   requires anybody to stop. Almost every other fault in this game needs a
+   stop in order to happen.
+
+   Placed at the mouth of a court where the tile has one, and in a
+   parallel space otherwise -- the same layout the props are drawn from,
+   so the car is standing where a car would be standing.
+
+   `emerges` picks up index.js's movement shape; nothing here knows how
+   the arc is built, only where the car starts and which lane it joins. */
+export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDriveway = false } = {}) {
+  const lay = kerbLayout(tile.character);
+  const speed = CHARACTER[tile.character].speed;
+  const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const nx = -uy, ny = ux;
+  const along = Math.atan2(uy, ux) * 180 / Math.PI;
+
+  const side = at.side ?? 1;
+  const reachAt = at.reach ?? 0;
+  const out = fromDriveway && lay.driveway
+    ? lay.driveway.mouth + lay.driveway.depth / 2
+    : lay.parkCentre;
+  const d = at.along;
+
+  const rest = {
+    x: link.from.x + ux * d + nx * out * side,
+    y: link.from.y + uy * d + ny * out * side,
+  };
+  /* Nose-in to a driveway, so it comes out BACKWARDS across the parking
+     lane; alongside the kerb in a parallel space, so it pulls out
+     forwards. Same movement shape, different resting heading. */
+  const restRot = fromDriveway ? along + 90 * side : along;
+  const lane = lay.laneEdge / 2;
+  const join = M(18);
+
+  return {
+    id: `emerge-${tile.id}-${Math.round(d)}-${side}`,
+    road: straightSpecFor(tile.character),
+    control: "none",
+    at: { x: rest.x, y: rest.y },
+    reachesAt: d / speed,
+    /* THE ANTICIPATION WINDOW IS BUILT IN, not hoped for. The car starts
+       moving at once and the candidate is still this far up the road --
+       their own reaction floor plus the distance they need to stop
+       comfortably at this road's speed. So a response always exists from
+       the moment the danger begins, which is what makes it a test of
+       reading the situation rather than a trap.
+
+       Without it the emergence was unavoidable in 31 of 36 cases, and an
+       unavoidable collision fails a candidate who could not have done
+       anything -- exactly the unfairness the whole redesign has been
+       avoiding. The rule is "failing to prevent a collision WHEN YOU
+       OTHERWISE COULD"; if they could not, there is no fault. */
+    ego: {
+      ...egoFor(candidate, {
+        from: "S", intent: "straight",
+        arriveAt: REACTION_FLOOR + speed / approachDecel(speed),
+        stops: false, seed,
+      }),
+    },
+    actors: [{
+      id: `em-${Math.round(d)}-${side}`,
+      kind: "car",
+      colorKey: "amber",
+      name: "Car leaving a driveway",
+      emerges: true,
+      at: { x: rest.x, y: rest.y },
+      restRot,
+      /* Where they are going: the near lane, a short way up the road. */
+      into: {
+        x: link.from.x + ux * (d + join) + nx * lane * side,
+        y: link.from.y + uy * (d + join) + ny * lane * side,
+        rot: along,
+      },
+      reversing: fromDriveway,
+      clearBy: fromDriveway ? lay.driveway.depth : 0,
+      /* THEY ARE ALREADY THERE, so arriveAt is zero and the moment they
+         pull out is a startDelay -- which is the knob schedule() actually
+         honours for a rolling car (departAt = arriveAt + startDelay). A
+         departAt written here is overwritten, which cost a measurement
+         that came back identical at every value.
+
+         WHEN THEY GO IS PLACED AT THE BOUNDARY OF AVOIDABILITY, and that
+         is a design statement rather than a fitted number.
+
+         An emerging driver commits when the road looks clear as far as
+         they can see, and from a driveway between parked cars that is not
+         far. Set too late, the collision is unavoidable however alert the
+         candidate is -- measured, 95 contacts in 111 with NOT ONE
+         avoidable, which by the maintainer's own rule is nobody's fault
+         and therefore not content at all. Set too early and nothing ever
+         happens.
+
+         So it is derived from the CANDIDATE'S OWN STOPPING PHYSICS: the
+         car pulls out as the candidate reaches the distance they need to
+         stop comfortably from this road's speed, plus the time to react.
+         An alert candidate stops; an inattentive one does not. Attention
+         is then the only thing that decides the outcome, which is exactly
+         what a hazard of anticipation should test. */
+      arriveAt: 0,
+      /* They go at once; the window is the candidate's approach above. */
+      startDelay: 0,
+      stops: false,
+      speed: M(4.0),
+    }],
+    emerging: true,
+  };
+}
+
 /* Every hazard along one link, and the blockers that hide them.
 
    Only the people roadsideLifeFor marked as `mayEmerge` become hazards;
@@ -802,7 +956,37 @@ export function segmentHazards(tile, link, seed = 1, { candidate = null } = {}) 
      where every pedestrian forces an emergency stop is an obstacle
      course; one full of people who mostly do not step out, but might, is
      a place. */
-  return people
+  /* A CAR JOINING FROM A SPACE, one per link where the road has parking.
+     Non-blocking by nature: nobody has to stop, the only question is
+     whether the candidate saw it coming. Placed where a parked car
+     actually is, so it emerges from a row rather than from nowhere. */
+  const parked = blockers.filter((b) => b.parked);
+  const lay = kerbLayout(tile.character);
+  const emerging = [];
+  /* NOT LIVE YET, and deliberately so. As timed, a car leaving a space
+     collides with the candidate in 95 of 111 cases and NOT ONE of those
+     is avoidable even from a competent observer's reaction floor -- it
+     sits across the candidate's path with no escape. That is broken
+     content rather than a hard hazard: an unavoidable collision is, by
+     the maintainer's own rule, nobody's fault, and at 3.5 per drive it
+     would end almost every drive.
+
+     The movement shape, the placement, the drawing and the avoidability
+     fault class are all built and verified; what is wrong is the timing
+     and clearance of this one scenario. Kept behind a flag rather than
+     deleted, because everything except that is right. */
+  const LIVE = false;
+  if (LIVE && parked.length) {
+    const pick = parked[seed % parked.length];
+    const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const along = ((pick.x - link.from.x) * dx + (pick.y - link.from.y) * dy) / len;
+    const fromDriveway = Boolean(lay.driveway) && (seed % 2 === 0);
+    const scn = emergingAt(tile, link, { along, reach: along / CHARACTER[tile.character].speed, side: pick.side ?? 1 }, seed, { candidate, fromDriveway });
+    emerging.push({ blocking: false, emerging: true, fromDriveway, scn, person: null, blockers: parked });
+  }
+
+  return emerging.concat(people
     .map((p) => ({
       blocking: Boolean(p.mayEmerge),
       scn: hazardAt(tile, link, p, { candidate, seed, blocking: Boolean(p.mayEmerge) }),
@@ -813,5 +997,5 @@ export function segmentHazards(tile, link, seed = 1, { candidate = null } = {}) 
       blockers: blockers.filter(
         (b) => Math.hypot(b.x - p.x, b.y - p.y) < M(18)
       ),
-    }));
+    })));
 }

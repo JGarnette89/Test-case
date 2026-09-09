@@ -167,7 +167,7 @@ export const TRAIT_CATALOG = [
     name: "Backroad Routing",
     category: "routing",
     rarity: "rare",
-    description: "It prefers the shortcut every time. Expect tighter, blinder junctions — which pay the most Insight of anything on the road.",
+    description: "It prefers the shortcut every time. Expect tighter, blinder intersections — which pay the most Insight of anything on the road.",
     apply: (mods) => ({ ...mods, visibilityBias: "restricted" }),
   },
 

@@ -94,6 +94,54 @@ something a fault, and how bad a fault it is, still has to be true.
 
 ---
 
+---
+
+## 2.1 LANGUAGE: Ontario, Canada. American English, North American road terms.
+
+Maintainer's ruling. A lot of this project's vocabulary is British and it
+reads wrong to the audience.
+
+| use | not |
+|---|---|
+| intersection | junction |
+| curb (note the spelling) | kerb |
+| sidewalk | pavement |
+| yield | give way |
+| shoulder | verge |
+| crosswalk | pedestrian crossing, zebra crossing |
+| turn signal, signal | indicator |
+| parking lot | car park |
+| lane change, median, traffic light | — |
+| color, behavior, meter, center | colour, behaviour, metre, centre |
+
+`arterial` and `collector` are correct North American road classifications
+and stay. `roundabout` is used in Ontario and is fine. `right of way`,
+`stop line` and `driveway` were already right.
+
+**ALL PLAYER-FACING TEXT IS ALREADY CORRECTED** — UI, the marking sheet,
+fault tells, scenario prose, DRIVE-GUIDE.md. That is where it matters.
+
+**CODE IDENTIFIERS ARE NOT RENAMED YET, deliberately.** `junction` and
+`kerb` are pervasive and a sweeping rename moves nothing functionally
+while touching everything — exactly the shape of change that produces the
+two-implementations divergence this file keeps warning about. Measured, so
+the decision can be made on a number rather than a feeling:
+
+| | occurrences | distinct identifiers | files |
+|---|---|---|---|
+| `junction` / `Junction` | 446 | 11 | 37 |
+| `kerb` | 82 | 6 | 19 |
+
+Seventeen distinct names is small and none of them collide with a partial
+word, so a full rename is mechanical rather than delicate, and nothing
+named here appears in `engine-golden.json` — no baseline would move. It is
+a big diff and a small risk. The maintainer's call whether it earns its
+own increment.
+
+**In the meantime: USE THE CORRECT TERMS IN ALL NEW CODE AND
+DOCUMENTATION.** Do not add another `kerbFoo`. Mixed vocabulary is the
+cost of deferring, and it gets worse if new code makes it worse.
+
 ## 3. THREE LAYERS. Get these straight before touching anything perceptual.
 
     layer 1   what actually happened            the world
@@ -473,6 +521,87 @@ Both together is the recommendation: the cap does the deterring, the
 interruption makes it feel like a driving test rather than a resource
 meter. If the attention cost is ever asked to carry it alone, this table
 is why it cannot.
+
+---
+
+## 5.11 FAILING TO AVOID SOMEBODY ELSE'S MISTAKE
+
+Maintainer's ruling: *"failing to prevent a collision when you otherwise
+could, even if you're not strictly at 'fault', is a fail on the test."*
+
+So a candidate is assessed on AVOIDING OTHER PEOPLE'S MISTAKES, not only
+on committing none of their own. Every other fault in this engine derives
+from the candidate's own ratings and actions; this one derives from what
+they did about somebody else's.
+
+**IT IS THE EXAMINER'S OWN DUTY TO INTERVENE, ONE LEVEL DOWN.** A
+candidate who fails to prevent an avoidable collision fails; an examiner
+who fails to prevent one is penalised. The same principle applied to both
+people in the car, which is why `unavoided` has `judgeIntervention`'s
+shape: take the world at a moment and ask whether a different action
+changes the ending.
+
+**AVOIDABILITY IS DERIVED, NEVER AUTHORED.** No list of avoidable
+situations. It is a search over the one response a driver has, using the
+same `yielding` field `reaction.js` stamps on a road user giving way --
+the candidate slows by the identical mechanism rather than a second one.
+
+**AND THE QUESTION IS NOT WHETHER *THIS* CANDIDATE COULD HAVE AVOIDED
+IT.** That is circular: a candidate who noticed too late can never avoid
+anything, so their own inattention would make every collision
+"unavoidable" and therefore nobody's fault. Measured, it did exactly
+that -- 95 contacts, 87 with the danger unregistered in time, and not one
+counted as avoidable. The standard is a COMPETENT OBSERVER: the danger's
+onset plus the floor nobody reacts faster than. Whether this candidate
+could is the answer, not the question, and it is what the axis records.
+
+**AN UNAVOIDABLE COLLISION IS NOT A FAULT AND MUST NEVER BE SCORED AS
+ONE.** It fails a candidate who could not have done anything, which is
+the unfairness the whole redesign has been avoiding since the vision cone
+came off the player.
+
+### 5.11.1 THE ONSET IS WHEN THEY START MOVING, not when belief diverges
+
+`belief.js` predicts "they carry on driving properly", and for a car whose
+whole movement IS to pull out of a space, driving properly is pulling out.
+Belief never diverges. Measured: **onset undetected on 36 of 36.**
+
+A car leaving a driveway is not misbehaving. It is doing an ordinary thing
+that has to be ANTICIPATED, which is a different question from being
+caught out by somebody driving badly -- and `belief.js` answers only the
+second. Use the start of movement for a road user that was stationary.
+
+### 5.11.2 THE ANTICIPATION WINDOW MUST BE BUILT IN, or there is no content
+
+The gap between when a danger becomes perceivable and when it becomes
+unavoidable IS the anticipation window. If it is zero there is nothing to
+test: the collision just happens.
+
+So it is derived rather than hoped for -- the emerging car starts moving
+while the candidate is still a full reaction floor plus stopping distance
+up the road, at that road's speed. Contacts went from **95 of 111 to 9 of
+70** when this was put in.
+
+### 5.11.3 A CANDIDATE CANNOT BE MODELLED BRAKING DURING THEIR APPROACH
+
+**A live engine limitation, found by this work and not yet fixed.**
+
+`yielding` shapes the TRAVERSE profile. The approach is `brakingApproach`,
+a fixed deceleration to the line. So there is no way to express a
+candidate braking before `departAt` -- and any conflict occurring then is
+unavoidable BY CONSTRUCTION, not because a driver could not have braked
+but because the model cannot represent it.
+
+Consequence: **the avoidability fault class can only fire during a
+traverse.** It works at intersections -- 11 of 32 contacts avoidable --
+precisely because that is where a traverse exists. It cannot fire on a
+LINK at all, because there the candidate is always approaching, and that
+is exactly where the roadside hazard content lives.
+
+Until that is fixed, observation gets nothing from this content and the
+attributability floor stays at zero for that axis. The emerging hazard is
+held behind `LIVE = false` in `segmentHazards` rather than shipped,
+because as timed it produced unavoidable collisions at 3.5 per drive.
 
 ---
 

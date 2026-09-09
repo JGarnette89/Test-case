@@ -662,7 +662,10 @@ export function movementOf(p) {
     : p.emerges ? emergeMovement(p)
     : p.layout === "roundabout" ? roundaboutMovement(p)
     : crossMovement(p);
-  mv.spawn = mv.onFoot ? null : approachFrom(mv.rest);
+  /* An emerging car is ALREADY THERE -- parked. It has no approach to
+     spawn from, and giving it one would have it drive in off-board to its
+     own space first. */
+  mv.spawn = mv.onFoot || p.emerges ? null : approachFrom(mv.rest);
   moveCache.set(p, mv);
   return mv;
 }
@@ -840,7 +843,7 @@ const TRAITS = {
        close to TURN_R_MIN: cutting it is not a bad habit, it is a steering
        lock the car does not have, so the floor absorbs the bias and the
        tell would be claiming a fault nobody could see. */
-    tell: "Cut the corner — turned inside the centre of the junction",
+    tell: "Cut the corner — turned inside the center of the intersection",
     setup: (p) => { if (p.intent === "left") p.turnBias = -M(2.6) * severityOf(p); },
   },
   rollingStop: {

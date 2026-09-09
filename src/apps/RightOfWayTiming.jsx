@@ -1048,7 +1048,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
           <div style={st.hint}>
             You are the outlined car
             {sim.ego.intent !== "straight" && (
-              <>, and <strong style={{ color: C.signal }}>your indicator</strong> shows where you are going</>
+              <>, and <strong style={{ color: C.signal }}>your turn signal</strong> shows where you are going</>
             )}
             . Press <strong style={{ color: C.green }}>GO</strong> as soon as your path is clear — you are
             waiting for the cars that cross you, not for the intersection to empty.
@@ -1269,7 +1269,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
               <button className="btn" style={{ padding: 9, minHeight: 38 }} onClick={() => setHelpOpen(false)}><X size={16} /></button>
             </div>
             <p style={st.p}>You are the outlined car. Press GO when your path is clear.</p>
-            <p style={st.p}><strong style={{ color: C.signal }}>Your own indicator tells you where you are going.</strong> No indicator means straight through. You read your task off the car exactly the way you read everyone else's.</p>
+            <p style={st.p}><strong style={{ color: C.signal }}>Your own turn signal tells you where you are going.</strong> No signal means straight through. You read your task off the car exactly the way you read everyone else's.</p>
             <p style={st.p}><strong style={{ color: C.yellow }}>Clear means your path, not the whole intersection.</strong> A car crossing in front of you blocks you. A car passing on its own side, going the other way, does not.</p>
             <p style={st.p}>That makes their intent the thing to read. Indicators tell you where a car is going — when the driver uses them, and when they mean it. Confirm against the wheels before you commit.</p>
             <p style={st.p}>Some drivers give themselves away — drifting inside the lane, rolling through the stop, sitting there when it is plainly their turn. Those are the ones to leave room for.</p>

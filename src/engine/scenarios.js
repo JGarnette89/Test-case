@@ -25,7 +25,7 @@ const SCENARIOS = [
   },
   {
     id: "signalled",
-    title: "Reading the indicator",
+    title: "Reading the turn signal",
     brief: "Four-way stop. The car opposite got there first.",
     control: "stop",
     duration: 12,
@@ -33,31 +33,31 @@ const SCENARIOS = [
     actors: [
       S({ id: "n", from: "N", intent: "right", arriveAt: 1.0, color: C.red, name: "Red car", signal: "right" }),
     ],
-    lesson: "The red car is indicating right, and it turns right — away from your path entirely. Nothing crosses you, so you go almost as soon as you have stopped. Reading the indicator is what buys you those seconds.",
+    lesson: "The red car is signaling right, and it turns right — away from your path entirely. Nothing crosses you, so you go almost as soon as you have stopped. Reading the turn signal is what buys you those seconds.",
   },
   {
     id: "liar",
-    title: "The indicator that lied",
-    brief: "Four-way stop. The car on your right is indicating right.",
+    title: "The turn signal that lied",
+    brief: "Four-way stop. The car on your right is signaling right.",
     control: "stop",
     duration: 13,
     ego: { from: "S", intent: "straight", arriveAt: 1.5, stops: true, color: C.blue },
     actors: [
       S({ id: "e", from: "E", intent: "left", arriveAt: 0.9, color: C.red, name: "Red car", signal: "right" }),
     ],
-    lesson: "It indicated right, which would have tucked it away down the side road in under a second. It swung left across the whole intersection instead — the longest path there is, straight through where you were going. An indicator is a statement of intent, not a commitment: confirm it against the wheels before you move.",
+    lesson: "It signaled right, which would have tucked it away down the side road in under a second. It swung left across the whole intersection instead — the longest path there is, straight through where you were going. An turn signal is a statement of intent, not a commitment: confirm it against the wheels before you move.",
   },
   {
     id: "silent",
     title: "The long way round",
-    brief: "Four-way stop. The car on your right arrived first and is indicating left.",
+    brief: "Four-way stop. The car on your right arrived first and is signaling left.",
     control: "stop",
     duration: 13,
     ego: { from: "S", intent: "straight", arriveAt: 1.7, stops: true, color: C.blue },
     actors: [
       S({ id: "e", from: "E", intent: "left", arriveAt: 1.1, color: C.red, name: "Red car", signal: "left" }),
     ],
-    lesson: "A left turn is the longest path through an intersection and the one that keeps your lane blocked longest. Reading that indicator tells you this is a wait, not a glance — and roughly how long a wait it is going to be.",
+    lesson: "A left turn is the longest path through an intersection and the one that keeps your lane blocked longest. Reading that turn signal tells you this is a wait, not a glance — and roughly how long a wait it is going to be.",
   },
   {
     id: "gap",
@@ -71,7 +71,7 @@ const SCENARIOS = [
       S({ id: "o2", from: "N", intent: "straight", arriveAt: 3.2, stops: false, color: C.green, name: "Second car", priority: -2 }),
       S({ id: "o3", from: "N", intent: "right", arriveAt: 5.0, stops: false, color: C.amber, name: "Third car", signal: "right", priority: -1 }),
     ],
-    lesson: "The third car is indicating right, which takes it off into the side road before it ever reaches you. Once you have read that, the gap you need arrives sooner than it looks — you are only waiting for the two that are actually coming through.",
+    lesson: "The third car is signaling right, which takes it off into the side road before it ever reaches you. Once you have read that, the gap you need arrives sooner than it looks — you are only waiting for the two that are actually coming through.",
   },
   {
     id: "walker",
@@ -95,7 +95,7 @@ const SCENARIOS = [
     actors: [
       S({ id: "n", from: "N", intent: "straight", arriveAt: 1.1, color: C.red, name: "Red car", traits: ["wander"], phase: 0.6 }),
     ],
-    lesson: "A car coming straight at you on its own side cannot touch you — that was the first thing you learned here, and it holds right up until the driver stops holding their lane. This one is drifting the better part of a metre either side of centre. Watch how a car is being driven, not just where it is going.",
+    lesson: "A car coming straight at you on its own side cannot touch you — that was the first thing you learned here, and it holds right up until the driver stops holding their lane. This one is drifting the better part of a meter either side of center. Watch how a car is being driven, not just where it is going.",
   },
   {
     id: "sleeper",
@@ -131,7 +131,7 @@ const SCENARIOS = [
     actors: [
       S({ id: "e", from: "E", intent: "left", arriveAt: 1.0, color: C.red, name: "Red car", signal: "left", traits: ["lateSignal"] }),
     ],
-    lesson: "No indicator until it was already turning. By the time that signal appeared it told you nothing you could still act on. Where there is no information to read, the answer is always to wait for the wheels.",
+    lesson: "No turn signal until it was already turning. By the time that signal appeared it told you nothing you could still act on. Where there is no information to read, the answer is always to wait for the wheels.",
   },
   {
     id: "wontstop",
@@ -160,7 +160,7 @@ const SCENARIOS = [
   },
   {
     id: "circle-leaving",
-    title: "It never indicated",
+    title: "It never signaled",
     brief: "Roundabout. A car is coming round from your left, showing nothing.",
     control: "yield",
     layout: "roundabout",
@@ -182,12 +182,12 @@ const SCENARIOS = [
          post-mortem. */
       S({ id: "n", from: "N", intent: "right", arriveAt: 0.6, color: C.red, name: "Red car", signal: null }),
     ],
-    lesson: "It never indicated, and most drivers never do. What it did was drift to the outside of the circulating lane on the approach to the west exit, and a car moving out is a car leaving. It was gone one exit before yours, so nothing ever crossed you and your window opened the moment you stopped. Had it held the inner line it was coming all the way round to your leg and you would have sat there for seconds. Read the line, not the lamp: wheels commit, indicators only promise.",
+    lesson: "It never signaled, and most drivers never do. What it did was drift to the outside of the circulating lane on the approach to the west exit, and a car moving out is a car leaving. It was gone one exit before yours, so nothing ever crossed you and your window opened the moment you stopped. Had it held the inner line it was coming all the way round to your leg and you would have sat there for seconds. Read the line, not the lamp: wheels commit, turn signals only promise.",
   },
   {
     id: "tee",
     title: "Out of the side road",
-    brief: "T-junction. You are on the stem, and the road you are joining does not stop.",
+    brief: "T-intersection. You are on the stem, and the road you are joining does not stop.",
     control: "stop",
     /* The ordinary T: a stop on the minor leg only, and no north leg at
        all, so "straight" is not a thing you can do from here. */

@@ -1,7 +1,7 @@
 # The drive — how to operate it
 
-`#/drive`. Six junctions, one candidate, a marking sheet after junction 3
-and again after junction 6. Then a new candidate.
+`#/drive`. Six intersections, one candidate, a marking sheet after intersection 3
+and again after intersection 6. Then a new candidate.
 
 **Read "What is missing" at the bottom first.** Three fairly central
 things are absent and you will otherwise spend the first drive looking for
@@ -28,7 +28,7 @@ You are the examiner. The candidate drives; you do three jobs at once:
 so their straight-ahead always draws upward.
 
 > The camera follows their **intended** line, not their actual one. So
-> when the car sits off-centre or crooked in the frame, **that offset is
+> when the car sits off-center or crooked in the frame, **that offset is
 > the fault**. It is not the camera wobbling. A wandering driver drifts
 > across the frame; a wide turn swings out of it.
 
@@ -43,7 +43,7 @@ so their straight-ahead always draws upward.
 
 **Top left**, four readouts:
 
-- `Junction 3/6` — where you are in the course.
+- `Intersection 3/6` — where you are in the course.
 - `Section 1` — which sheet you are working toward.
 - `6s of road` — how much road ahead the view holds.
 - `2 stacked` — in amber, and only when you are holding instructions.
@@ -61,18 +61,18 @@ so their straight-ahead always draws upward.
 
 Three rows under the road.
 
-**Row 1 — which junction you are directing.**
-`This one` · `Junction 4` · `Junction 5`. A ✓ means that one has been
+**Row 1 — which intersection you are directing.**
+`This one` · `Intersection 4` · `Intersection 5`. A ✓ means that one has been
 given. Tapping a chip just changes what the direction buttons will do.
 
 **Row 2 — the instruction.**
 `Turn left` · `Follow the road` · `Turn right`. Speaks it for whichever
-junction is selected, then snaps the selection back to the current one so
-you cannot leave it pointed at the wrong junction by accident.
+intersection is selected, then snaps the selection back to the current one so
+you cannot leave it pointed at the wrong intersection by accident.
 
 **Row 3 — everything else.**
 `Mark a fault` records a call at the current instant on the current
-junction. Then pause/play, and the circular arrow, which **restarts with
+intersection. Then pause/play, and the circular arrow, which **restarts with
 a new candidate**.
 
 **The meter** shows their composure, and the line beside it says how many
@@ -82,20 +82,20 @@ marks you have made here and whether anything is in the air.
 
 ## What to actually try
 
-**First drive: just direct them.** Take each junction as you reach it.
+**First drive: just direct them.** Take each intersection as you reach it.
 That is correct play and it costs nothing. Get a feel for how much warning
 the deadline gives — it varies a lot, from about 1 second to about 10,
 because it is derived from what each manoeuvre demands rather than being a
 fixed number.
 
-**Second drive: mark as well.** Watch the blue car against the centre of
+**Second drive: mark as well.** Watch the blue car against the center of
 the frame. Marking well scores 100; marking nothing scores 0; marking
 everything also scores 0, because inventing a fault costs.
 
 **Third drive: stack.** This is the thing I would most like your read on.
-Select `Junction 5` while driving junction 3 and give that instruction
+Select `Intersection 5` while driving intersection 3 and give that instruction
 early. You will see `1 stacked` appear, composure drop, and their faults
-get measurably wider at the next junction.
+get measurably wider at the next intersection.
 
 > Calling **one** ahead is free — they arrive and discharge it
 > immediately, so they never actually *carry* anything. Only calling
@@ -112,10 +112,10 @@ answer.**
 
 ## The sheet
 
-Appears after junction 3 and after junction 6.
+Appears after intersection 3 and after intersection 6.
 
 - A score out of 100, then `precision · recall · timeliness`.
-- **Directions** — every junction, what you said, and whose fault it was.
+- **Directions** — every intersection, what you said, and whose fault it was.
   "Called early" is amber, not red: it is a trade you chose.
 - **What you missed** — faults that were on screen and went uncalled.
 - After the final section, **your candidate**, and which axes they were
@@ -133,7 +133,7 @@ Appears after junction 3 and after junction 6.
 - Every fault is **derived**, never scripted — strip the cause and the
   fault disappears.
 - Traffic hidden behind something is **not drawn and cannot be marked**.
-- Other road users **give way** when the candidate takes their space, and
+- Other road users **yield** when the candidate takes their space, and
   how hard they brake measures how bad the intrusion was.
 - Instruction deadlines are **derived per leg**, not a constant.
 - Marking is deferred, scored on precision and recall, with a real cost
@@ -143,7 +143,7 @@ Appears after junction 3 and after junction 6.
 
 Please do not judge it for these — they are known.
 
-- **No intervention.** The fourth job is absent, so a tight junction just
+- **No intervention.** The fourth job is absent, so a tight intersection just
   happens and you watch it. What an intervention *is*, on the sheet, is
   the open question I need from you.
 - **No field of view.** You cannot mark what is hidden, but nothing models

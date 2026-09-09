@@ -50,7 +50,11 @@
 
    Pure. No React, no DOM, no colour.
    ===================================================================== */
-import { poseAt, conflicts, spanOf, STEP } from "./index.js";
+import { poseAt, conflicts, spanOf, STEP, M } from "./index.js";
+import { registrationsIn, registrationDelay } from "./awareness.js";
+import { observe, divergenceAt, BELIEF_SAME } from "./belief.js";
+import { REACTION_FLOOR } from "./score.js";
+import { MOST_GIVEN, MOST_WAIT } from "./reaction.js";
 
 export const OUTCOME = {
   COMPLETED: "completed",
@@ -188,4 +192,149 @@ export function describeOutcome(o) {
       : `You took the wheel at ${o.at?.toFixed(1)}s. Nothing was going to happen — dismissed, and it cost you the drive you were watching.`;
   }
   return "Drive completed.";
+}
+
+
+/* =====================================================================
+   FAILING TO AVOID SOMEBODY ELSE'S MISTAKE
+
+   The maintainer's ruling, and it is a general principle rather than
+   content for one hazard: "failing to prevent a collision when you
+   otherwise could, even if you're not strictly at 'fault', is a fail on
+   the test."
+
+   So a candidate is assessed on AVOIDING OTHER PEOPLE'S MISTAKES, not
+   only on committing none of their own. Every fault before this derives
+   from the candidate's own ratings and actions; this one derives from
+   what they did about somebody else's.
+
+   IT IS THE SAME RULE AS THE EXAMINER'S OWN DUTY TO INTERVENE, one level
+   down. A candidate who fails to prevent an avoidable collision fails; an
+   examiner who fails to prevent one is penalised. Same principle applied
+   to both people in the car, which is why the shape here is
+   `judgeIntervention`'s shape: take the world at a moment and ask whether
+   a different action changes the ending.
+
+   AVOIDABILITY IS DERIVED, NEVER AUTHORED. There is no list of avoidable
+   situations. "Could otherwise have prevented" means there existed a
+   response, available in time, given what the candidate could actually
+   see -- so it is a search over the one response a driver has, exactly as
+   `giveNeeded` searches for the least giving way that avoids a collision.
+   The difference is only which participant is doing the giving.
+   ===================================================================== */
+
+/* Would braking from `at` have avoided it? `yielding` is the same field
+   reaction.js stamps on a road user giving way, so the candidate slows by
+   the identical mechanism rather than a second one. */
+export function avoidableFrom(sim, at, { horizon = null } = {}) {
+  const from = Math.max(0, at - (sim.ego.departAt ?? 0));
+  for (const give of [0.4, MOST_GIVEN]) {
+    for (const wait of [0, MOST_WAIT / 2, MOST_WAIT]) {
+      const braked = { ...sim, ego: { ...sim.ego, yielding: { from, give, wait } } };
+      if (!contactIn(braked, { horizon })) return { give, wait };
+    }
+  }
+  return null;
+}
+
+/* Was this collision one the candidate could have prevented, and if so
+   what does it say about them?
+
+   THE EXISTING DISCRIMINATOR APPLIES UNCHANGED -- the maintainer's
+   manner-and-registration rule already decides the axis:
+
+     did not register the danger developing   -> OBSERVATION
+     registered it and braked too late/hard   -> BRAKING
+     registered it and pressed on anyway      -> CONFIDENCE
+
+   No new attribution machinery, and no new axis. */
+export function unavoided(sim, scn, candidate, seed = 1, opts = {}) {
+  const hit = contactIn(sim, opts);
+  if (!hit) return null;
+
+  /* WHEN THE DANGER BECAME PERCEIVABLE, which is NOT when the other party
+     became visible. A car parked at a kerb is in plain sight the whole
+     time; what has to be noticed is that it STARTED MOVING. Registering
+     an object and registering a developing danger are different
+     questions, and using the first put every emerging car down as
+     "registered" -- 0 observation faults from 95 collisions.
+
+     belief.js already answers the second: belief and reality diverge
+     exactly where somebody is doing something you would not have
+     predicted. So the onset is where the candidate's belief about that
+     road user stops being true, and the candidate then needs their own
+     registration delay on top. */
+  const other = sim.actors.find((a) => a.id === hit.who);
+  const regs = opts.registrations ?? registrationsIn(sim, scn, candidate, seed, opts);
+  const visibleAt = regs?.[hit.who] ?? null;
+
+  /* THE ONSET IS WHEN THEY START MOVING, and belief divergence is the
+     wrong instrument for it. belief.js predicts "they carry on driving
+     properly" -- and for a car whose whole movement IS to pull out of a
+     space, driving properly is pulling out, so belief never diverges.
+     Measured: onset undetected on 36 of 36. A car leaving a driveway is
+     not misbehaving; it is doing an ordinary thing that has to be
+     ANTICIPATED, which is a different question from being caught out by
+     somebody driving badly.
+
+     So the danger begins when the other party's behaviour begins. For a
+     car that was stationary that is exactly its departure; for one
+     already moving there is nothing to anticipate beyond seeing it, and
+     the visible moment stands. */
+  let onset = null;
+  if (other) {
+    const wasStill = other.emerges || other.stops;
+    onset = wasStill ? (other.departAt ?? null) : null;
+    if (onset == null) {
+      const obs = observe(other, 0);
+      for (let t = 0; t <= hit.at; t += STEP) {
+        if (divergenceAt(other, obs, t) > BELIEF_SAME) { onset = t; break; }
+      }
+    }
+  }
+  /* Nothing diverged, so the danger was simply where it always was and
+     seeing the object was seeing the danger. */
+  const dangerAt = onset == null ? visibleAt : onset + registrationDelay(candidate, hit.who, seed);
+  const sawAt = dangerAt == null ? null
+    : (visibleAt == null ? dangerAt : Math.max(dangerAt, visibleAt));
+
+  /* COULD ANYBODY HAVE AVOIDED IT -- not could THIS candidate, from the
+     moment they happened to notice. That question is circular: a
+     candidate who noticed too late can never avoid anything, so their own
+     inattention would make every collision "unavoidable" and therefore
+     nobody's fault. Measured, it did exactly that: 95 contacts, 87 with
+     the danger unregistered in time, and NOT ONE counted as avoidable.
+
+     So the standard is a COMPETENT OBSERVER: the danger's onset plus the
+     floor nobody reacts faster than. If braking from there would have
+     worked, the collision was preventable and "failing to prevent it when
+     you otherwise could" applies. Whether THIS candidate could is not the
+     question -- it is the answer, and it is what the axis records. */
+  const couldHave = avoidableFrom(sim, (onset ?? 0) + REACTION_FLOOR, opts);
+
+  /* Never registered them at all, yet braking from the moment they became
+     perceivable would have worked: the only thing missing was looking. */
+  /* Registered the developing danger in time and carried on: confidence.
+     Did not, though it was there to be read: observation. The
+     maintainer's manner-and-registration rule, unchanged. */
+  const axis = sawAt == null || sawAt > hit.at ? "observation" : "confidence";
+
+  return {
+    kind: "unavoided",
+    at: hit.at,
+    who: hit.who,
+    name: hit.name,
+    perceivedAt: sawAt,
+    avoidable: Boolean(couldHave),
+    response: couldHave,
+    axis: couldHave ? axis : null,
+    /* Not avoidable is not a fault. Somebody else's mistake that nobody
+       could have done anything about is exactly the case this rule is NOT
+       about, and counting it would punish the candidate for the world. */
+    tell: couldHave
+      ? (axis === "observation"
+        ? "Never saw it coming — it was there to be seen"
+        : "Saw it and carried on anyway")
+      : null,
+  };
 }

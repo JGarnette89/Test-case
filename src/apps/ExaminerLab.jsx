@@ -338,7 +338,7 @@ export default function ExaminerLab() {
             <div style={S.dim}>
               {gaveWay.length
                 ? <>{gaveWay[0].name} gives way, slowing to {(100 * (1 - gaveWay[0].give)).toFixed(0)}% for {gaveWay[0].gaveUp.toFixed(2)}s{hit ? ` — and is still hit` : ""}</>
-                : "nobody has to give way"}
+                : "nobody has to yield"}
             </div>
           </div>
         )}

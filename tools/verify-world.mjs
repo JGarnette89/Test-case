@@ -317,10 +317,24 @@ console.log("\n7. THE ROADSIDE IS THE SECOND SOURCE OF EVENTS");
   const link = drive.links[0];
   const people = roadsideLifeFor(plan[0].tile, link, 29);
   const hz = segmentHazards(plan[0].tile, link, 29, {});
-  const fromPeople = hz.every((h) => people.some((p) => p.id === h.person.id));
-  fromPeople
-    ? ok("every hazard comes from a person roadsideLifeFor already placed")
-    : fail("a hazard appeared somewhere roadsideLifeFor did not put anybody");
+  /* A HAZARD IS EITHER A PERSON OR A CAR LEAVING A SPACE, and both have
+     to come from somewhere the tile already declared -- the person from
+     roadsideLifeFor, the car from a space kerbsideFor actually placed. A
+     third notion of where roadside things are would show up here. */
+  const props = kerbsideFor(plan[0].tile, link, 29);
+  const placed = hz.every((h) => (h.person
+    ? people.some((p) => p.id === h.person.id)
+    : h.emerging && props.some((b) => b.parked)));
+  placed
+    ? ok(`every hazard comes from something the tile already placed (${hz.filter((h) => h.person).length} people, ${hz.filter((h) => h.emerging).length} leaving a space)`)
+    : fail("a hazard appeared somewhere the tile did not put anything");
+
+  /* And the two kinds are distinguishable, because the pacing budget gates
+     the blocking ones and must ignore the rest. */
+  const blocking = hz.filter((h) => h.blocking).length;
+  hz.every((h) => typeof h.blocking === "boolean")
+    ? ok(`blocking and non-blocking are distinguishable in the data (${blocking} of ${hz.length} block)`)
+    : fail("a hazard does not say whether it blocks, so pacing cannot gate the ones that cost time");
 }
 
 console.log("\n8. DEAD AIR: IS THE TARGET REACHABLE?");

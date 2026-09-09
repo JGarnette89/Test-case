@@ -67,7 +67,7 @@ const MODES = [
     name: "The drive",
     kicker: "You are the examiner — the game",
     blurb:
-      "A course of six junctions and one candidate driving it. Watch them, give the directions in time to be followed, and mark what you saw — on a sheet at the end of each section rather than the instant you see it, so the job is memory as well as attention. Directions given early buy back your attention and cost the candidate their concentration; that trade is the game. No intervention yet.",
+      "A course of six intersections and one candidate driving it. Watch them, give the directions in time to be followed, and mark what you saw — on a sheet at the end of each section rather than the instant you see it, so the job is memory as well as attention. Directions given early buy back your attention and cost the candidate their concentration; that trade is the game. No intervention yet.",
     Icon: ClipboardList,
     accent: C.green,
     Component: ExaminerDrive,
@@ -77,7 +77,7 @@ const MODES = [
     name: "Examiner lab",
     kicker: "You are the examiner — the live direction",
     blurb:
-      "The game this project is now. A candidate drives themselves, drawn with five skill ratings and weak on one or two of them; they register the traffic they happen to notice, decide when to go on that, and the world gives way when they take a gap that was not theirs. The chase camera rides with them, occlusion decides what could have been seen, and every fault is derived rather than scripted. A bench rather than a finished game: it scores your marking, but there is no course, no directions to give and no debrief.",
+      "The game this project is now. A candidate drives themselves, drawn with five skill ratings and weak on one or two of them; they register the traffic they happen to notice, decide when to go on that, and the world yields when they take a gap that was not theirs. The chase camera rides with them, occlusion decides what could have been seen, and every fault is derived rather than scripted. A bench rather than a finished game: it scores your marking, but there is no course, no directions to give and no debrief.",
     Icon: Eye,
     accent: C.blue,
     Component: ExaminerLab,
