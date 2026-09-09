@@ -25,11 +25,15 @@
    is any good to play.
    ===================================================================== */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, Flag, CornerUpLeft, CornerUpRight, ArrowUp, ClipboardList } from "lucide-react";
+import { Play, Pause, RotateCcw, Flag, CornerUpLeft, CornerUpRight, ArrowUp, ClipboardList, Hand } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { simulate, poseAt, CAR_L, CAR_W, PED_R, M, CX, CY, STEP } from "../engine/index.js";
 import { specOf } from "../engine/road.js";
 import { faultsIn, MIN_DURATION } from "../engine/faults.js";
+import {
+  contactsAcross, driveOutcome, describeDrive, judgeGrab, graspHorizon,
+  OUTCOME, INTERVENTION,
+} from "../engine/outcome.js";
 import { whatEgoSees, faultSeenAt, sightBlockersOf } from "../engine/sight.js";
 import { instructionWindow, runInFor, pressureOf, skillUnderPressure, loadCandidate } from "../engine/directions.js";
 import { sectionSheet, summarise } from "../engine/detect.js";
@@ -121,6 +125,10 @@ export default function ExaminerDrive() {
      frame. Live, it would re-simulate the intersection underneath them the
      instant you spoke, and the car would jump. Load lands on the driving
      done while holding it, which is the next leg onward. */
+  /* WHEN THE PLAYER TOOK THE WHEEL, in drive time. A list rather than a
+     flag because a hasty grab ends nothing and the drive carries on, so
+     there can be more than one, and every one of them is a cost. */
+  const [grabs, setGrabs] = useState([]);
   const [held, setHeld] = useState(0);
   const [target, setTarget] = useState(0);    // which intersection the buttons address
   const seen = useRef(new Map());             // fault key -> seconds on screen
@@ -320,6 +328,29 @@ export default function ExaminerDrive() {
       }
     });
 
+    /* EVERY CONTACT ON THE DRIVE, in the drive's own clock.
+
+       A drive is intersections and the links between them, each its own
+       little simulation with its own clock, so "how did this drive end"
+       is not a question any single scene can answer. Assembled here
+       because only this screen knows how its drive was laid out, and
+       ANSWERED in outcome.js because a React component is the one place
+       nothing else in this suite can reach.
+
+       The offsets are the same two mappings hazard faults already use --
+       one more consumer of them rather than a second notion of when
+       things happen. */
+    const contacts = contactsAcross([
+      ...world.legs.map((placed, i) => ({
+        id: `intersection-${i}`, sim: placed.sim, where: "intersection",
+        offset: world.arrivals[i] - (placed.scn.ego.arriveAt ?? 0),
+      })),
+      ...hazards.map((h, k) => ({
+        id: `hazard-${k}`, sim: h.sim, where: "link",
+        offset: world.exits[h.link] + h.reaches - h.stepsAt,
+      })),
+    ]).filter((c) => c.at >= 0);
+
     const legs = world.legs.map((placed, i) => {
       const runIn = runInFor(placed.sim, { floor: APPROACH });
       return {
@@ -336,7 +367,8 @@ export default function ExaminerDrive() {
     const markable = legs.reduce(
       (a, l) => a + l.faults.filter((f) => f.duration >= MIN_DURATION).length, 0
     ) / Math.max(1, legs.length);
-    return { candidate, legs, world, roadside, strips, hazards, perSection: sectionLengthFor(markable), markable };
+    return { candidate, legs, world, roadside, strips, hazards, contacts,
+             perSection: sectionLengthFor(markable), markable };
   }, [seed]);
 
   const leg = drive.legs[Math.min(at, drive.legs.length - 1)];
@@ -346,7 +378,25 @@ export default function ExaminerDrive() {
      or on the road between two. This is the continuity: the pose never
      jumps, so the camera that follows it never cuts. */
   const world = drive.world;
-  const driveEnds = world.exits[world.exits.length - 1] ?? 0;
+  const courseEnds = world.exits[world.exits.length - 1] ?? 0;
+
+  /* HOW THIS DRIVE ENDS, and the clock stops there.
+
+     A collision was a state the game could not represent: outcome.js has
+     known contact ends a drive since it was written and this screen never
+     asked it, so two cars drove through each other and the candidate
+     carried on to the next intersection. Measured before this: 63% of
+     drives already contained a contact and every one of them was drawn
+     as nothing at all.
+
+     A justified grab ends the drive too -- taking the wheel IS the
+     outcome, and it is an automatic fail for the candidate. A hasty one
+     ends nothing. */
+  const outcome = useMemo(
+    () => driveOutcome(drive.contacts, grabs, { speed: M(11.5), completedAt: courseEnds }),
+    [drive, grabs, courseEnds]
+  );
+  const driveEnds = outcome.ends ? Math.min(courseEnds, outcome.at) : courseEnds;
   const pose = useMemo(() => candidateAt(world, Math.min(elapsed, driveEnds)), [world, elapsed, driveEnds]);
   const t = pose.local ?? 0;                 // leg-local, which faults and windows speak
 
@@ -457,7 +507,9 @@ export default function ExaminerDrive() {
      watches their POSITION rather than counting down a per-leg timer. */
   useEffect(() => {
     const here = pose.intersection ?? 0;
-    if (here === at || sheet) return;
+    /* A drive that has ENDED does not advance to the next section. The
+       terminal outcome closes it, once, in the clock above. */
+    if (here === at || sheet || (outcome.ends && elapsed >= driveEnds)) return;
     if (here % drive.perSection === 0 && here > 0) {
       setSheet(closeSection(here));
       setPlaying(false);
@@ -469,7 +521,11 @@ export default function ExaminerDrive() {
   }, [pose.intersection, at, sheet, given]);
 
   function finishDrive() {
-    setSheet(closeSection(drive.legs.length));
+    /* THE SECTION THE DRIVE ENDED IN, not the whole course. A drive cut
+       short at intersection 2 grades the section it was in, because that is
+       what the player was actually watching. */
+    const here = Math.min(drive.legs.length, (pose.intersection ?? 0) + 1);
+    setSheet({ ...closeSection(outcome.ends ? here : drive.legs.length), outcome });
     setPlaying(false);
   }
 
@@ -490,14 +546,15 @@ export default function ExaminerDrive() {
       marks: marks.filter((m) => m.intersection >= from && m.intersection < upTo),
       shownFor: (f) => seen.current.get(`${f.intersection}/${f.who}/${f.trait ?? f.kind}`) ?? 0,
     });
-    return { ...sheet, done: upTo >= drive.legs.length, perSection: drive.perSection };
+    return { ...sheet, done: upTo >= drive.legs.length || outcome.ends,
+             perSection: drive.perSection, upTo };
   }
 
 
   const restart = (s = seed) => {
     seed === s ? null : setSeed(s);
     setAt(0); setElapsed(0); setMarks([]); setGiven({}); setSheet(null);
-    setHeld(0); setTarget(0);
+    setHeld(0); setTarget(0); setGrabs([]);
     closed.current = false;
     seen.current = new Map();
     shown.current = new Map();
@@ -505,6 +562,27 @@ export default function ExaminerDrive() {
   };
 
   if (!live || !view) return <div style={S.page} />;
+
+  /* HOW MANY TIMES YOU MAY TAKE THE WHEEL, and it is derived from the
+     drive rather than picked: ONE PER SECTION.
+
+     A section is already the unit this game thinks in -- it is what the
+     marking sheet covers and it is derived from what a player can
+     actually recall -- so an intervention being a once-a-section decision
+     makes the trade local instead of a global budget nobody can feel.
+
+     It also has to COVER what a drive can require of you, or the game is
+     unwinnable through no fault of the player: measured over 30 drives,
+     contacts per drive run 0 / median 1 / max 2, and a six-intersection
+     drive is two sections. The derivation and the requirement agree,
+     which is the only reason this number is allowed to stand.
+
+     The fiction is that interrupting costs you attention. The CAP is the
+     mechanism -- measured, attention alone saturates and cannot do the
+     job (DECISIONS.md 5.10.1). */
+  const wheelSupply = Math.max(1, Math.round(drive.legs.length / drive.perSection));
+  const wheelLeft = wheelSupply - grabs.length;
+  const ended = outcome.ends && elapsed >= driveEnds - 1e-6;
 
   const pressure = pressureOf(held);
   const skill = skillUnderPressure(1, pressure);
@@ -610,6 +688,17 @@ export default function ExaminerDrive() {
               return <Car key={a.id} p={a} pose={poseAt(a, t)} dim={vis === "partial"} />;
             })}
             <Car p={live.sim.ego} pose={egoPose} candidate />
+            {/* WHERE IT HAPPENED. The drive stops with the two cars
+                touching, so the marker sits on top of them rather than
+                explaining an empty stretch of road. */}
+            {ended && outcome.kind === OUTCOME.COLLISION && outcome.contact && (
+              <g>
+                <circle cx={outcome.contact.x} cy={outcome.contact.y} r={M(3.2)}
+                  fill="none" stroke={C.red} strokeWidth={3} opacity={0.9} />
+                <circle cx={outcome.contact.x} cy={outcome.contact.y} r={M(1.4)}
+                  fill={C.red} opacity={0.35} />
+              </g>
+            )}
             {live.statics.map((b, i) => (
               <rect key={i} x={b.pose.x - b.hl} y={b.pose.y - b.hw}
                 width={b.hl * 2} height={b.hw * 2}
@@ -618,6 +707,13 @@ export default function ExaminerDrive() {
             ))}
           </g>
         </svg>
+
+        {/* AND IT SAYS SO. A drive that simply stopped dead would be
+            indistinguishable from the clock breaking, which is what it
+            looked like before anything consulted outcome.js at all. */}
+        {ended && (
+          <div style={S.ended}>{describeDrive(outcome)}</div>
+        )}
 
         <div style={S.hud}>
           <span style={S.hudT}>Intersection {at + 1}/{drive.legs.length}</span>
@@ -686,6 +782,17 @@ export default function ExaminerDrive() {
             onClick={() => setMarks((m) => [...m, { at: +t.toFixed(2), intersection: at }])}>
             <Flag size={15} /> Mark a fault
           </button>
+          {/* TAKE THE WHEEL. The fourth job, and the one the drive has
+              never had. Whether it was justified is DERIVED -- the world
+              already knows whether it was still going to hurt somebody --
+              so this button decides nothing except when. */}
+          <button className="btn" style={{
+            ...S.wheel,
+            opacity: wheelLeft > 0 && !ended ? 1 : 0.4,
+          }} disabled={wheelLeft <= 0 || ended}
+            onClick={() => setGrabs((g) => [...g, { at: +elapsed.toFixed(2) }])}>
+            <Hand size={15} /> Take the wheel{wheelSupply > 1 ? ` (${wheelLeft})` : ""}
+          </button>
           <button className="btn" style={S.btn} onClick={() => setPlaying((p) => !p)}>
             {playing ? <Pause size={16} /> : <Play size={16} />}
           </button>
@@ -748,6 +855,13 @@ function Sheet({ sheet, drive, onNext }) {
     <div style={S.sheetWrap}>
       <div style={S.sheet}>
         <div style={S.sheetHead}><ClipboardList size={16} /> Section {Math.floor(sheet.from / sheet.perSection) + 1}</div>
+        {/* HOW THE DRIVE ENDED, above the score, because a drive that ended
+            in contact is not a drive with a score on it -- it is a drive
+            that ended. The wording comes from the engine so a screen never
+            decides who a thing lands on. */}
+        {sheet.outcome && sheet.outcome.kind !== OUTCOME.COMPLETED && (
+          <div style={S.outcome}>{describeDrive(sheet.outcome)}</div>
+        )}
         <div style={S.big}>{result.score}</div>
         <div style={S.dim}>{summarise(result) || "nothing called, nothing happened"}</div>
         <div style={S.dim}>
@@ -834,10 +948,26 @@ const S = {
     background: "rgba(240,169,60,0.10)", border: `1px solid ${C.amber}`, borderRadius: 10,
     color: C.amber, fontFamily: FONT_D, fontSize: 15, cursor: "pointer",
   },
+  wheel: {
+    flex: 1, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+    background: "rgba(224,82,82,0.10)", border: `1px solid ${C.red}`, borderRadius: 10,
+    color: C.red, fontFamily: FONT_D, fontSize: 15, cursor: "pointer",
+  },
+  /* Above the instruction callout, which owns the bottom of the canvas. */
+  ended: {
+    position: "absolute", left: 10, right: 10, top: 44, padding: "10px 12px",
+    background: "rgba(224,82,82,0.92)", border: `1px solid ${C.red}`, borderRadius: 10,
+    color: C.white, fontFamily: FONT_D, fontSize: 14, textAlign: "center",
+  },
   btn: {
     minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center",
     background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)",
     borderRadius: 10, color: C.text, cursor: "pointer",
+  },
+  outcome: {
+    margin: "8px 0", padding: "10px 12px", borderRadius: 10,
+    background: "rgba(224,82,82,0.14)", border: `1px solid ${C.red}`,
+    color: C.white, fontFamily: FONT_U, fontSize: 13, lineHeight: 1.45,
   },
   meterRow: { display: "flex", gap: 10, alignItems: "center" },
   meterLabel: { fontFamily: FONT_U, fontSize: 10, color: C.dim, textTransform: "uppercase", letterSpacing: "0.06em" },

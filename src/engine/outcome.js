@@ -55,6 +55,7 @@ import { registrationsIn, registrationDelay } from "./awareness.js";
 import { observe, divergenceAt, BELIEF_SAME } from "./belief.js";
 import { REACTION_FLOOR } from "./score.js";
 import { MOST_GIVEN, MOST_WAIT } from "./reaction.js";
+import { approachDecel } from "./paths.js";
 
 export const OUTCOME = {
   COMPLETED: "completed",
@@ -103,6 +104,121 @@ export function contactIn(sim, { from = null, horizon = null } = {}) {
     }
   }
   return null;
+}
+
+
+/* =====================================================================
+   A WHOLE DRIVE, NOT ONE SCENE
+
+   A drive is intersections and the links between them, each its own
+   little simulation with its own clock. Contact can happen in any of
+   them and a drive ends at the FIRST one, so "how did this drive end"
+   is not a question any single scene can answer.
+
+   This lives in the engine rather than being assembled in the component,
+   for exactly the reason `sectionSheet` does: a React component is the
+   one place nothing else in this suite can reach, and the outcome of a
+   drive is the last thing that should be unverifiable.
+
+   A scene is `{ id, sim, offset }`. `offset` maps that scene's own clock
+   onto the drive's, and the caller owns it because only the caller knows
+   how its drive was laid out.
+   ===================================================================== */
+
+export function contactsAcross(scenes, opts = {}) {
+  const out = [];
+  for (const s of scenes) {
+    const hit = contactIn(s.sim, opts);
+    if (!hit) continue;
+    out.push({
+      ...hit,
+      local: hit.at,
+      at: Math.round((hit.at + (s.offset ?? 0)) * 100) / 100,
+      scene: s.id,
+      where: s.where ?? null,
+    });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
+
+/* HOW LONG A GRAB CAN PLAUSIBLY BE PREVENTING SOMETHING, and it is
+   derived rather than picked: the examiner's own reaction plus the time
+   to bring the car to rest at this road's speed. It is the same quantity
+   the anticipation window is built from, which is the point -- one
+   statement of "how long it takes to stop something", read in both
+   directions.
+
+   Without a horizon every grab is CORRECT, because a drive that ends in
+   contact at all ends in contact at some point after any given instant.
+   Taking the wheel for something further away than you could have
+   stopped for is not preventing it; it is not having waited. */
+export const graspHorizon = (v) => REACTION_FLOOR + v / approachDecel(v);
+
+/* Judge one grab against everything the drive was going to do. Same
+   derivation as `judgeIntervention` -- ask the world whether it was still
+   going to hurt somebody -- lifted to the drive's clock. */
+export function judgeGrab(contacts, at, speed) {
+  const prevented = contacts.find((c) => c.at >= at && c.at <= at + graspHorizon(speed)) ?? null;
+  return {
+    at,
+    verdict: prevented ? INTERVENTION.CORRECT : INTERVENTION.HASTY,
+    prevented,
+    /* The asymmetry, and it is the whole ruling: a correct grab is an
+       automatic fail for the CANDIDATE, a hasty one is dismissed and
+       costs the EXAMINER alone. */
+    on: prevented ? ON.CANDIDATE : ON.EXAMINER,
+    endsDrive: Boolean(prevented),
+  };
+}
+
+/* What ended this drive, and who it lands on.
+
+   The drive ends at whichever comes first: a grab that turned out to be
+   justified, or a contact nobody stopped. A hasty grab ends nothing --
+   the candidate is not failed and play continues -- but it is still
+   reported, because it is the player's cost and the sheet is where they
+   pay it. */
+export function driveOutcome(contacts, grabs = [], { speed = M(11.5), completedAt = null } = {}) {
+  const judged = grabs.map((g) => judgeGrab(contacts, g.at ?? g, speed)).sort((a, b) => a.at - b.at);
+  const hasty = judged.filter((j) => j.verdict === INTERVENTION.HASTY);
+  const correct = judged.find((j) => j.verdict === INTERVENTION.CORRECT) ?? null;
+  const hit = contacts[0] ?? null;
+
+  if (correct && (!hit || correct.at <= hit.at)) {
+    return {
+      kind: OUTCOME.INTERVENTION, verdict: INTERVENTION.CORRECT,
+      at: correct.at, on: ON.CANDIDATE, prevented: correct.prevented,
+      ends: true, candidateFailed: true, hasty,
+    };
+  }
+  if (hit) {
+    return {
+      kind: OUTCOME.COLLISION, verdict: INTERVENTION.MISSED,
+      at: hit.at, on: ON.EXAMINER, contact: hit,
+      ends: true, candidateFailed: true, hasty,
+    };
+  }
+  return {
+    kind: OUTCOME.COMPLETED, verdict: null, at: completedAt, on: ON.NOBODY,
+    ends: false, candidateFailed: false, hasty,
+  };
+}
+
+/* One line a screen can print without deciding anything itself. */
+export function describeDrive(o) {
+  if (!o) return "";
+  const tail = o.hasty?.length
+    ? ` You took the wheel ${o.hasty.length === 1 ? "once" : `${o.hasty.length} times`} when nothing was coming.`
+    : "";
+  if (o.kind === OUTCOME.COLLISION) {
+    return `Contact with ${o.contact?.name ?? "another road user"} at ${o.at?.toFixed(1)}s.`
+      + ` You did not take the wheel, and stopping that was your job.${tail}`;
+  }
+  if (o.kind === OUTCOME.INTERVENTION) {
+    return `You took the wheel at ${o.at?.toFixed(1)}s, and ${o.prevented?.name ?? "somebody"} would have been hit.`
+      + ` The candidate fails, which is what an intervention is.${tail}`;
+  }
+  return `Drive completed with nobody hurt.${tail}`;
 }
 
 /* =====================================================================

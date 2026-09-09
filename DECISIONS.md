@@ -48,6 +48,17 @@ it by stripping the trait and requiring the fault to disappear.
 A fault that survives its own cause being removed was never derived from
 it.
 
+**AND ITS MIRROR IMAGE: A STATE THE ENGINE CAN PRODUCE AND THE RENDERER
+CANNOT EXPRESS IS NOT A MISSING FEATURE. IT IS A LIE ABOUT WHAT
+HAPPENED.** Not authoring the answer is half of it; not silently
+discarding it is the other half, and this project only learned the second
+half after `outcome.js` had known that contact ends a drive for its whole
+life while `ExaminerDrive` never asked. 63% of drives already ended in
+contact and the screen drew nothing, so the maintainer played it for
+weeks and never saw one. When you add a state, ask what draws it. When
+you find a state nothing draws, that is not a backlog item -- it is the
+game telling players something untrue. Section 5.12.
+
 ---
 
 ## 1. What the game is
@@ -732,6 +743,236 @@ counting from, which is one expression in `awareness.js`.
 
 ---
 
+## 5.12 A COLLISION HAD NO REPRESENTATION, AND THAT WAS NOT A GATE ON FUTURE CONTENT
+
+**The maintainer has played this game and has never seen a collision,
+because there was nothing to see.** `outcome.js` has known that contact
+ends a drive since the day it was written, and `ExaminerDrive` never
+consulted it. So two cars drove through each other, the clock carried on,
+and the candidate arrived at the next intersection.
+
+Measured before anything was built: **19 of 30 drives (63%) already
+contained a contact.** The first one lands at a median 49% of the way
+through an 80-second course. This was never a gate holding back content
+that had not shipped yet -- it was silently swallowing the most severe
+thing the game can produce, every second drive, in the build that is on
+screen today.
+
+That is the general lesson and it is worth more than the fix. **A state
+the engine can produce and the renderer cannot express is not a missing
+feature; it is a lie about what happened.** Everything else in this file
+is about not authoring the answer. This is about not silently discarding
+it.
+
+### 5.12.1 The drive's outcome lives in the engine
+
+For the same reason `sectionSheet` does: **a React component is the one
+place nothing else in this suite can reach**, and it has now cost three
+separate bugs -- the Examiner screen that threw on mount for twenty
+increments, the stacking trade that shipped inert, and this.
+
+A drive is intersections and the links between them, each its own little
+simulation with its own clock, so "how did this drive end" is not a
+question any single scene can answer. `contactsAcross(scenes)` asks it,
+where a scene is `{ id, sim, offset }` and the caller owns the offset
+because only the caller knows how its drive was laid out. The offsets are
+the same two mappings hazard faults already use -- one more consumer of
+them, not a second notion of when things happen.
+
+### 5.12.2 THE GRASP HORIZON, and why there has to be one
+
+`graspHorizon(v) = REACTION_FLOOR + v / approachDecel(v)`.
+
+**Without a horizon every grab is CORRECT, because a drive that ends in
+contact ends in contact at some point after any given instant.** Taking
+the wheel for something you could not yet have stopped for is not
+prevention; it is not having waited.
+
+So the horizon is the examiner's own reaction plus the time to bring the
+car to rest at this road's speed -- **the same quantity the anticipation
+window is derived from**, read in the other direction. One statement of
+"how long it takes to stop something", not two. At 8.3 m/s both come out
+at 6.25s, and both move together if either changes.
+
+### 5.12.3 The supply cap is ONE PER SECTION, and it is derived
+
+Two constraints, and they pin it from both sides:
+
+- It must **cover what a drive can genuinely require** of you, or the game
+  is unwinnable through no fault of the player.
+- It must sit **as close to that as possible**, or intervention is free and
+  the decision is not a decision.
+
+A section is already the unit this game thinks in -- it is what the
+marking sheet covers and it is derived from what a player can actually
+recall -- so one per section makes the trade local rather than a global
+budget nobody can feel, and it scales with the drive on its own. Measured
+over 30 drives, contacts per drive run 0 / median 1 / max 2, and a
+six-intersection drive is two sections. **The derivation and the
+requirement agree, which is the only reason the number is allowed to
+stand.**
+
+The fiction is that interrupting costs you attention. The CAP is the
+mechanism: measured, attention alone saturates and cannot do the job
+(section 5.10.1).
+
+### 5.12.4 AND 63% IS AN ARTIFACT, NOT THE CANDIDATE'S DRIVING
+
+This mattered enough to settle before anything was built on top of it,
+because the two possible answers lead in opposite directions. If the
+candidate's own driving caused it, 63% is a statement about how badly the
+generated drivers drive and the distribution has drifted well past
+"presents a fun challenge". If it is not, it is a bug and a more urgent
+one.
+
+Controlled comparison, same composed scenes re-timed rather than redrawn,
+24 drives and 144 legs:
+
+| | contacts | drives |
+|---|---|---|
+| as shipped | 22 | 15/24 |
+| candidate carries no traits | 19 | 14/24 |
+| **nobody carries any traits at all** | **19** | 14/24 |
+| other drivers stripped, candidate intact | 22 | 15/24 |
+
+**A flawless candidate in a world of flawless drivers crashes just as
+often.** The entire trait contribution is `wander` 2, `slowStart` 1,
+`cutsCorner` 1. So it is the second case, and it is in SCHEDULING rather
+than in the conflict predicate -- which was checked independently by
+walking `conflicts` by hand, 9 of 9.
+
+Localised, by dumping one concrete case rather than reasoning about it,
+to **two things that are both "nothing keeps cars off each other unless
+they stop"**:
+
+- **12 of 22 -- THE OTHER CAR IS ON THE CANDIDATE'S OWN LEG.** Two road
+  users queueing at one stop line have INDEPENDENT APPROACHES: each is
+  built by `approachFrom` over `APPROACH_RUN` from its own `arriveAt`, so
+  two cars arriving two seconds apart occupy the same 24.5m of road at
+  overlapping times and the follower drives through the leader's tail.
+  There is no car-following in the model at all. 8 of the 22 contacts
+  happen while the other car is still on its approach, which is the
+  signature.
+
+  Seed 3, dumped: candidate from N turning left, departs 1.40 the instant
+  it arrives; a second car from N going straight arrives 3.40; contact at
+  1.60, with the two of them 4.5m apart centre to centre on a road where a
+  car is 4.5m long.
+
+- **10 of 22 -- A ROLLING NON-PRIOR NEVER YIELDS.** 9 from the opposite
+  leg, 1 crossing. `priority: -1` says this actor gives way to the
+  candidate, and `outranks` honours it when ORDERING the queue -- but a
+  participant with `stops !== true` never enters the queue. `schedule()`
+  hands them `departAt = arriveAt + startDelay` and no clearance check at
+  all, so they drive through the intersection while the candidate is
+  turning across them.
+
+  This is a direct consequence of section 8.4: uncontrolled legs made
+  road users `stops: false`, and before that change everybody stopped, so
+  `earliestClear` always ran.
+
+**THE FIX THAT SUGGESTS ITSELF IS `windowIsSafe` COMING BACK, AIMED AT
+THE CANDIDATE INSTEAD OF THE PLAYER.** It asked "could the player take
+this window and live", and it was retired because there is no player
+pressing GO any more (section 9.1). But the question is still exactly
+right about the CANDIDATE: a scene where a CLEAN TWIN of this candidate
+collides is a scene the generator should not have shipped, because the
+resulting collision is attributable to nobody -- and attributability is
+the whole basis on which an intervention can be fair. Contact caused by
+the candidate's own driving stays, and is the content.
+
+**Measured before adopting, over 144 composed legs:**
+
+| | |
+|---|---|
+| legs where a clean twin also collides -- the gate would reject | **19 (13%)** |
+| contacts as shipped | 22 |
+| of those, the CANDIDATE'S OWN DOING (the twin survives) | **3** |
+| markable faults in the rejected scenes | 25 of 154 (16%) |
+
+So it removes 19 of the 22 and leaves 3 -- 0.125 per drive, every one of
+them attributable to the candidate. The 13% rejection is mild against the
+29% the old `windowIsSafe` ran at, and the 16% supply figure is an UPPER
+BOUND rather than a cost: the gate belongs inside `composeScenario`'s
+accept/reject loop next to `windowIsMarkable`, where a refused draw is
+redrawn rather than lost.
+
+**THE TWIN IS TRAIT-FREE, NOT CAREFUL.** It departs on `earliestClear`
+like anybody else, so this refuses scenes where doing the legally correct
+thing kills you -- not scenes that are merely demanding.
+
+All 22 have the candidate departing **before `safeAt` by a median of
+5.85s**, and 21 of 22 are with a **NON-PRIOR** -- somebody who should have
+been waiting for them. That is the `legalAt` / `safeAtFor` split, which is
+the first entry in section 10's list, reaching the candidate's own
+departure rather than only the scorer's grading.
+
+Two supporting findings, both of the built-and-drawn-by-nothing family:
+**`reaction.js` is imported by `ExaminerLab` and by nothing else**, so no
+road user has ever given way in the actual game; and `departOverride` is
+likewise set only in the lab, so the candidate's awareness has no effect
+on their departure in a composed drive either. Neither is the cause here
+-- only 1 leg in 144 has anybody who needs to give way, and applying
+reactions removes 1 contact of 22 -- but both are wiring that the design
+assumes is in place.
+
+### 5.12.5 TWO OPEN MODELLING GAPS. THE FILTER IS A STOPGAP, NOT THE FIX.
+
+**`sceneIsSurvivable` discards scenes in which the model misbehaves. It
+does not make the model behave.** Both of the things below are real holes
+and both are still open, and a world that only works because the
+impossible scenes are thrown away is fragile in a way that will not
+announce itself: it will bite again the first time new content puts two
+moving cars near each other, which is most of what this project still
+wants to build.
+
+**GAP 1: THERE IS NO CAR-FOLLOWING.** Every approach is built
+independently by `approachFrom` over `APPROACH_RUN` from that car's own
+`arriveAt`, so two road users on one leg arriving two seconds apart
+occupy the same 24.5m of road at overlapping times and the follower
+drives through the leader's tail. Nothing in the model says a car keeps a
+gap to the car in front.
+
+**And this is not only a correctness matter.** Traffic that maintains
+gaps reads as DRIVERS; traffic that interpenetrates reads as SPRITES. The
+whole direction of this project is a world that feels inhabited -- one
+continuous space rather than a series of slides -- and cars behaving like
+cars is a large part of that. The real fix has value well beyond
+suppressing false contacts, which is the argument for doing it rather
+than filtering forever.
+
+What it needs: a queue position per (leg, lane), and a stopping point
+that sits a car length plus a gap behind whoever is already there. That
+is derivable from geometry the engine already has -- `stopPoint` and
+`CAR_L` -- rather than new physics. The harder half is that a following
+car's approach must then be shaped by the leader's, which is the first
+thing in this engine that would make one road user's motion depend on
+another's.
+
+**GAP 2: A ROLLING NON-PRIOR NEVER YIELDS.** `priority: -1` says an actor
+gives way to the candidate, and `outranks` honours it when ORDERING the
+queue -- but a participant with `stops !== true` never enters the queue at
+all. `schedule()` hands them `departAt = arriveAt + startDelay` and no
+clearance check, so they drive through the intersection while the
+candidate is crossing it.
+
+Two candidate fixes and neither is obviously right yet. Either rolling
+participants get scheduled against those who outrank them -- which means
+deciding what "waiting" is for a car that does not stop, since the honest
+answer is that they slow rather than wait -- or `reaction.js` grows the
+other direction, since it already models giving way and currently only
+computes it for PRIORS braking for an intruding candidate, never for a
+non-prior giving way to a candidate who is entitled.
+
+**Both were exposed rather than caused by section 8.4.** Uncontrolled
+legs made road users `stops: false`; before that everybody stopped, so
+`earliestClear` always ran and neither hole was reachable. A correct
+change surfacing something nothing was checking is the good case, and it
+is why the filter must not be allowed to close the file on them.
+
+
+---
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately
@@ -1407,12 +1648,25 @@ are available.
    act**: the examiner sits IN it, so the bearing is meaningless; judge it
    against the road ahead of its own bonnet with no occlusion.
 
-3. **The post-test debrief.** The pieces exist — the sheet is what the
+3. **THE TWO MODELLING GAPS `sceneIsSurvivable` IS PAPERING OVER**
+   (§5.12.5), and they are ahead of the debrief because every future
+   piece of content that puts two moving cars near each other lands on
+   them. **There is no car-following** — every approach is built
+   independently, so two cars on one leg drive through each other — and
+   **a rolling non-prior never yields**, because a participant who does
+   not stop never enters the queue that `priority` orders. The filter
+   throws those scenes away; it does not make the model behave.
+
+   Car-following is also the one on the list with a look as well as a
+   correctness argument: traffic that keeps gaps reads as drivers,
+   traffic that interpenetrates reads as sprites.
+
+4. **The post-test debrief.** The pieces exist — the sheet is what the
    player recorded, `habitReport` is what was true, `scoreDetection`
    computes the gap. Naming the habits is what teaches the player what to
    watch for next time.
 
-4. **The candidate's observations are not modelled at all.** No head, no
+5. **The candidate's observations are not modelled at all.** No head, no
    mirrors, no eyes. A large share of what a real examiner marks is
    whether the candidate *looked*. Biggest gap in the design; new
    modelling, not reuse.

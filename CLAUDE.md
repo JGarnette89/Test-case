@@ -20,7 +20,7 @@ is what you must not break.
 **[DRIVE-GUIDE.md](DRIVE-GUIDE.md)** is how to actually operate the game
 at `#/drive`, and what is knowingly missing from it.
 
-Five things to know before your first change:
+Six things to know before your first change:
 
 1. **NEVER AUTHOR THE ANSWER, and never author the fault.** Windows are
    simulated, never typed in. Faults are DERIVED by controlled comparison
@@ -51,7 +51,18 @@ Five things to know before your first change:
    `node tools/verify-screens.mjs`, which renders `App` and every route
    under SSR. It still cannot tell you how anything LOOKS.
 
-5. **SCRIPTED PLAYTHROUGHS DO NOT WORK HERE. Do not try.** The preview
+5. **A STATE THE ENGINE CAN PRODUCE AND THE RENDERER CANNOT EXPRESS IS
+   NOT A MISSING FEATURE. IT IS A LIE ABOUT WHAT HAPPENED.** Everything
+   else in this file is about not authoring the answer; this is about not
+   silently discarding it. `outcome.js` knew contact ends a drive from
+   the day it was written and `ExaminerDrive` never asked it, so two cars
+   drove through each other and play carried on — in **63% of drives**,
+   in the build the maintainer was playing. They have never seen a collision
+   in this game because there was nothing to see. When you add a state,
+   ask what draws it; when you find one that nothing draws, that is not a
+   backlog item. DECISIONS.md §5.12.
+
+6. **SCRIPTED PLAYTHROUGHS DO NOT WORK HERE. Do not try.** The preview
    pane delivers zero animation frames — measured, 0 in 1.5s with
    `document.hidden` false — and clamps timers, so an rAF-driven screen
    never advances and nothing errors. The signature is a screen that draws
@@ -2056,6 +2067,36 @@ invisible to the encroachment fault because it only ever watches priors — in
   **not one of 73 emergences ever made contact.** Controlled comparison
   after: 33 of 33 driveway emergences hit a candidate who does nothing,
   3 of 33 hit one responding as composed.
+
+- **NOTHING KEEPS CARS OFF EACH OTHER UNLESS THEY STOP.** Two open
+  modelling gaps, found because the drive was ending in contact 63% of
+  the time and a controlled comparison said it was not the candidate's
+  driving — 22 contacts as shipped, **19 with nobody carrying any traits
+  at all.**
+
+  **There is no car-following.** Every approach is built independently by
+  `approachFrom` over `APPROACH_RUN` from that car's own `arriveAt`, so
+  two road users on one leg arriving two seconds apart occupy the same
+  24.5m of road at overlapping times and the follower drives through the
+  leader's tail. 12 of the 22 contacts were this.
+
+  **A rolling non-prior never yields.** `priority: -1` says an actor gives
+  way to the candidate and `outranks` honours it when ORDERING the queue,
+  but a participant with `stops !== true` never enters the queue at all:
+  `schedule()` gives them `departAt = arriveAt + startDelay` and no
+  clearance check. 10 of the 22.
+
+  Both were EXPOSED rather than caused by "not every intersection is a
+  test" — before uncontrolled legs existed everybody stopped, so
+  `earliestClear` always ran and neither hole was reachable.
+
+  `sceneIsSurvivable` is a STOPGAP and must not be read as the fix: it
+  refuses scenes where a clean twin of the candidate collides, so it
+  throws the impossible ones away rather than making the model behave.
+  Car-following in particular is worth building on its own merits —
+  traffic that keeps gaps reads as drivers, traffic that interpenetrates
+  reads as sprites, and an inhabited world is the whole direction.
+  DECISIONS.md 5.12.5.
 
 - **A driveway is the BREAK in the parked row, not a thing beside it.**
   The car that reverses out was being placed at a parked car's own slot,

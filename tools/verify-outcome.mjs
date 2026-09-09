@@ -16,6 +16,7 @@ import { simulate, poseAt, conflicts, spanOf, STEP, M } from "../src/engine/inde
 import {
   OUTCOME, INTERVENTION, ON, contactIn, judgeIntervention, wasPreventable,
   outcomeOf, describeOutcome,
+  contactsAcross, driveOutcome, describeDrive, judgeGrab, graspHorizon,
 } from "../src/engine/outcome.js";
 import { faultsIn } from "../src/engine/faults.js";
 import { planDrive, composeForTile, CHARACTER } from "../src/engine/tiles.js";
@@ -177,6 +178,76 @@ console.log("\n3. THE LOOP SURVIVES A COLLISION");
   bad === 0
     ? ok(`and every one of the ${SCENARIOS.length} shipped situations produces an outcome without throwing`)
     : fail(`${bad} shipped situation(s) threw while working out how they end`);
+}
+
+console.log("\n4. A WHOLE DRIVE, NOT ONE SCENE");
+{
+  /* A drive is intersections and the links between them, each its own
+     simulation with its own clock, so "how did this drive end" is not a
+     question any single scene can answer. It was not being asked at all:
+     outcome.js has known contact ends a drive since it was written and
+     ExaminerDrive never consulted it, so two cars drove through each
+     other and the candidate carried on to the next intersection.
+
+     These are the properties any correct implementation would have to
+     have, and the asymmetry is again the one that matters most. */
+  const scenes = legs.slice(0, 40).map((l, i) => ({ id: `s${i}`, sim: l.sim, offset: i * 100 }));
+  const all = contactsAcross(scenes);
+  all.every((c, i) => i === 0 || all[i - 1].at <= c.at)
+    ? ok(`contacts across ${scenes.length} scenes come back in the drive's own clock, in order (${all.length} of them)`)
+    : fail("contacts across a drive are not ordered by when they happen");
+  all.every((c) => Math.abs(c.at - (c.local + scenes.find((s) => s.id === c.scene).offset)) < 1e-6)
+    ? ok("and each one keeps both clocks -- its own and the drive's")
+    : fail("a contact's drive time does not agree with its scene's own time plus that scene's offset");
+
+  /* THE HORIZON IS DERIVED, and it is the same quantity the anticipation
+     window is built from: reaction plus the time to stop at this road's
+     speed. Without one every grab is CORRECT, because a drive that ends
+     in contact ends in contact at SOME point after any given instant. */
+  const v = M(8.3);
+  const h = graspHorizon(v);
+  Math.abs(h - (0.35 + v / approachDecel(v))) < 1e-9
+    ? ok(`the grasp horizon is reaction plus stopping time, not a number somebody picked (${h.toFixed(2)}s at ${(v / 20).toFixed(1)} m/s)`)
+    : fail("graspHorizon is not derived from the road's own stopping physics");
+  graspHorizon(M(13.9)) < h
+    ? ok("and it shortens on a faster road, because you cannot stop for something as far off")
+    : fail("the grasp horizon does not follow the road's speed");
+
+  const two = [{ at: 10, name: "Green car", who: "a" }, { at: 40, name: "Red car", who: "b" }];
+  judgeGrab(two, 6, v).verdict === INTERVENTION.CORRECT
+    ? ok("taking the wheel inside that horizon of a real collision is CORRECT")
+    : fail("a justified grab was not judged correct");
+  judgeGrab(two, 1, v).verdict === INTERVENTION.HASTY
+    ? ok("and taking it for something you could still have waited out is HASTY")
+    : fail("a grab outside the horizon was still judged correct -- the horizon is doing nothing");
+
+  const good = driveOutcome(two, [{ at: 6 }], { speed: v, completedAt: 60 });
+  good.kind === OUTCOME.INTERVENTION && good.ends && good.candidateFailed && good.on === ON.CANDIDATE
+    ? ok("a correct grab ends the drive and fails the candidate, as it does in life")
+    : fail("a correct grab did not end the drive as an automatic fail");
+
+  const quiet = driveOutcome([], [{ at: 1 }], { speed: v, completedAt: 60 });
+  !quiet.ends && !quiet.candidateFailed && quiet.kind === OUTCOME.COMPLETED && quiet.hasty.length === 1
+    ? ok("a hasty grab ends nothing, fails nobody, and is still recorded against the player")
+    : fail(
+        "a hasty grab ended the drive or was charged to the candidate.\n" +
+        "        The maintainer's ruling: an early intervention is dismissed at the\n" +
+        "        examiner's discretion, the candidate is NOT failed, and the drive\n" +
+        "        continues. The cost falls ENTIRELY on the player. See DECISIONS.md 5.10."
+      );
+
+  const late = driveOutcome(two, [{ at: 1 }], { speed: v, completedAt: 60 });
+  late.kind === OUTCOME.COLLISION && late.on === ON.EXAMINER && late.hasty.length === 1
+    ? ok("spending a grab early and then missing the real one costs both -- the supply cap doing its work")
+    : fail("a wasted grab followed by a real collision did not report both");
+
+  driveOutcome([], [], { speed: v, completedAt: 60 }).kind === OUTCOME.COMPLETED
+    ? ok("and a drive that hurt nobody completes")
+    : fail("a quiet drive reported an outcome it did not have");
+
+  [good, quiet, late].every((o) => describeDrive(o).length > 0)
+    ? ok("every outcome can say what it was without the screen deciding anything")
+    : fail("an outcome has no description, so a drive would stop dead with no explanation");
 }
 
 console.log("\n" + "=".repeat(70));
