@@ -2,7 +2,7 @@
    PATHS
    Where a road user goes, as data rather than as a branch in basePose.
 
-   The whole point of moving to this: a intersection is currently a pair of
+   The whole point of moving to this: an intersection is currently a pair of
    lookup tables that assume a symmetric four-way with one lane each way.
    A path knows nothing about intersections. It is a shape and a duration, so
    a merge, a parking entrance, a skewed T and a six-lane crossroad are

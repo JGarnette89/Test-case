@@ -433,7 +433,7 @@ const markableSeed = (() => {
   })).filter((d) => d.free > 0);
   /* Never BETTER under load is the property; every one bigger is not.
      An encroachment is situational rather than a trait, so severity does
-     not scale it -- a intersection whose only fault is one stays put, which
+     not scale it -- an intersection whose only fault is one stays put, which
      is correct and made this assertion a hostage to the draw. */
   const shrank = worstUnder.filter((d) => d.loaded < d.free - 1e-9).length;
   const grew = worstUnder.filter((d) => d.loaded > d.free + 1e-9).length;

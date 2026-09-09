@@ -62,7 +62,7 @@ export const SHOWN_ENOUGH = REACTION_FLOOR;
 
 /* You cannot call a fault faster than you can register one, so the window
    opens a reaction after it starts. It stays open past the end because
-   marking on the way out of a intersection is still marking. */
+   marking on the way out of an intersection is still marking. */
 export const CALL_GRACE = 2.0;
 
 /* What inventing a fault costs, as a fraction of what catching one earns.

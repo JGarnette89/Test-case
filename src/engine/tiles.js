@@ -26,7 +26,7 @@
    Pure. No React, no DOM, no colour.
    ===================================================================== */
 import { M, rng, CAR_L, simulate} from "./index.js";
-import { crossSpec, validIntents, exitSideFor } from "./road.js";
+import { crossSpec, validIntents, exitSideFor, OPPOSITE } from "./road.js";
 import { runwayNeeded } from "./directions.js";
 import { approachDecel } from "./paths.js";
 import { REACTION_FLOOR } from "./score.js";
@@ -121,7 +121,7 @@ export const specFor = (character) =>
    Each tile declares the runway it delivers. The declaration is a
    promise, and verify-tiles.mjs holds it to it against measured geometry
    for every tile that could precede it — so a tile that cannot deliver
-   what it claims fails at authoring time rather than becoming a intersection
+   what it claims fails at authoring time rather than becoming an intersection
    nobody can direct, several stages later.
 
    Runways here are declared with headroom over the minimum rather than
@@ -271,15 +271,38 @@ const KIND_SIZE = {
 
 /* mulberry32, as everywhere else that needs a reproducible draw. */
 
-/* Blockers along one link, both curbs, spaced by the tile's density.
+/* HOW MUCH ROAD A DRIVEWAY TAKES OUT OF THE PARKED ROW, derived from the
+   two cars rather than picked. An emerging car turns within its own
+   footprint, so the furthest any part of it reaches from the driveway
+   centre is its half-diagonal; a parked car reaches its own half-length
+   toward it. Closer than the sum and they occupy the same tarmac.
+
+   Measured against the manoeuvre emergeMovement actually builds: it
+   sweeps 3.27m of the parking lane and reaches 1.92m from the centre of
+   the mouth, inside the 2.42m half-diagonal this bounds it by. So the
+   bound holds without being fitted to it, and it moves on its own if
+   either car ever changes size. */
+const SWEPT = Math.hypot(M(2.25), M(0.9));
+export const DRIVEWAY_CLEAR = SWEPT + M(2.3);
+/* And the mouth is that swept radius either side of the centre — one
+   quantity, two uses, so a wider car widens the driveway AND pushes the
+   parking further back rather than only one of the two. */
+export const DRIVEWAY_MOUTH = 2 * SWEPT;
+
+/* The strip beside one link: what stands on it, and where it is broken.
+
+   ONE PASS, because a driveway and a parking space are the same slot
+   asking two questions. Two functions replaying one rng would drift the
+   first time either drew a number the other did not, and the drift would
+   surface as a car parked across a driveway — which is what it was.
 
    `along` is the link path's own from/to, so the content follows the road
    rather than being scattered on a board — which is what lets a tile be
    placed anywhere the planner puts it. */
-export function curbsideFor(tile, link, seed = 1) {
+function stripFor(tile, link, seed = 1) {
   const c = CHARACTER[tile.character];
   const { density, kinds } = c.curbside;
-  if (density <= 0) return [];
+  if (density <= 0) return { props: [], driveways: [] };
 
   const r = rng(seed);
   const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
@@ -300,10 +323,43 @@ export function curbsideFor(tile, link, seed = 1) {
   const lay = curbLayout(tile.character);
   const offsetFor = (kind) => (kind === "parked" && lay.park > 0 ? lay.parkCentre : lay.verge);
 
-  const out = [];
+  const out = [], drives = [];
   for (let i = 1; i <= slots; i++) {
     for (const side of [-1, 1]) {
-      if (r() > density) continue;
+      if (r() > density) {
+        /* A DRIVEWAY IS THE BREAK IN THE ROW, not a thing placed beside
+           it. The gaps were already here — density says what share of
+           the frontage is parked, so what is left is what a house is
+           using — and reading them as driveways introduces no second
+           rate to keep in step with the first. It also explains the gap
+           rather than leaving it as bare curb.
+
+           The empty slot is the whole of the guarantee: nothing was
+           placed here, so nothing can be parked across the mouth, and
+           the neighbours sit a slot away. */
+        if (lay.driveway) {
+          /* THE SAME { x, y, rot, hl, hw } SHAPE EVERY OTHER ROADSIDE
+             THING USES, so the renderer draws it with the code it already
+             has and there is no second notion of where a driveway is.
+             The surface runs from the traffic lane's edge back past the
+             curb: it crosses the parking lane too, which is exactly why
+             nothing is parked on it. */
+          const mid = (lay.laneEdge + lay.driveway.back) / 2;
+          drives.push({
+            id: `${tile.id}-drive-${i}-${side}`,
+            kind: "driveway",
+            along: i * slot,
+            side,
+            x: link.from.x + ux * (i * slot) + nx * mid * side,
+            y: link.from.y + uy * (i * slot) + ny * mid * side,
+            rot: (Math.atan2(uy, ux) * 180) / Math.PI,
+            hl: DRIVEWAY_MOUTH / 2,
+            hw: (lay.driveway.back - lay.laneEdge) / 2,
+            depth: lay.driveway.depth,
+          });
+        }
+        continue;
+      }
       const kind = kinds[Math.floor(r() * kinds.length) % kinds.length];
       const size = KIND_SIZE[kind] ?? KIND_SIZE.parked;
       const d = i * slot + (r() - 0.5) * M(1.0);
@@ -320,7 +376,18 @@ export function curbsideFor(tile, link, seed = 1) {
       });
     }
   }
-  return out;
+  return { props: out, driveways: drives };
+}
+
+/* What stands beside the road. */
+export function curbsideFor(tile, link, seed = 1) {
+  return stripFor(tile, link, seed).props;
+}
+
+/* Where the row is broken for a house. Only on a character that has them
+   — "you would never see this type of parking along a major road". */
+export function drivewaysFor(tile, link, seed = 1) {
+  return stripFor(tile, link, seed).driveways;
 }
 
 /* People, drawn from the same declaration that placed the props — which
@@ -475,7 +542,7 @@ export function planDrive({
 
     credit(intent);
     plan.push({ tile, spec, intent, entry, index: i });
-    entry = OPPOSITE_SIDE[exitSideFor(entry, intent)];
+    entry = OPPOSITE[exitSideFor(entry, intent)];
   }
 
   /* A route of nothing but straight-ahead intersections asks the examiner for
@@ -492,12 +559,12 @@ export function planDrive({
       const drawn = turns[Math.floor(r() * turns.length) % turns.length];
       plan[at].intent = candidate && turns.length > 1 ? bestTurn(candidate, turns, owed) : drawn;
       // Everything after that intersection now enters from a different side.
-      let e = OPPOSITE_SIDE[exitSideFor(plan[at].entry, plan[at].intent)];
+      let e = OPPOSITE[exitSideFor(plan[at].entry, plan[at].intent)];
       for (let i = at + 1; i < plan.length; i++) {
         plan[i].entry = e;
         const legal = validIntents(plan[i].spec, e);
         if (!legal.includes(plan[i].intent)) plan[i].intent = legal.includes("straight") ? "straight" : legal[0];
-        e = OPPOSITE_SIDE[exitSideFor(e, plan[i].intent)];
+        e = OPPOSITE[exitSideFor(e, plan[i].intent)];
       }
     }
   }
@@ -512,10 +579,6 @@ function pickTile(r, library, plan) {
   const pool = fresh.length ? fresh : library;
   return pool[Math.floor(r() * pool.length) % pool.length];
 }
-
-/* Leaving by the north leg means arriving at the next intersection from its
-   south. Mirrors world.js, which needs the same fact for placement. */
-const OPPOSITE_SIDE = { N: "S", S: "N", E: "W", W: "E" };
 
 /* Turn a plan into a drive the world can measure: each intersection placed at
    the spacing its tile's declared runway requires, with the scenario that
@@ -564,7 +627,7 @@ export function driveFromPlan(plan, { legFor, speed } = {}) {
    33.0s with segment hazards alone, 32.1s with a predictive budget alone,
    26.6s with both. The budget had to become predictive because asking
    "has the gap exceeded the ceiling" reacts a whole leg late: the earliest
-   a intersection can answer is when the candidate reaches it, which put the
+   an intersection can answer is when the candidate reaches it, which put the
    worst case at ceiling plus one leg.
 
    The remaining gaps are on arterial stretches, and they are CORRECT. An
@@ -584,13 +647,13 @@ export const EVENT_FLOOR = 4;
 export const HUNGRY_FAULT_RATE = 0.9;
 export const SATED_FAULT_RATE = 0.15;
 
-/* What a intersection is asked for, given how long it has been since anything
+/* What an intersection is asked for, given how long it has been since anything
    was worth marking. Everything except the fault rate comes from the
    tile's own character, untouched. */
 export function briefFor(tile, sinceLastEvent, legTime = 0) {
   const brief = { ...CHARACTER[tile.character].brief };
   /* PREDICTIVE, not reactive. Asking "has the gap exceeded the ceiling"
-     reacts a whole leg late, because the earliest a intersection can answer is
+     reacts a whole leg late, because the earliest an intersection can answer is
      when the candidate reaches it -- measured, that put the worst dead
      stretch at ceiling plus one leg, 33s against a 25s target. Asking
      "will it have, by the time we get there" spends the same budget one
@@ -725,22 +788,89 @@ export function composeForTile(tile, sinceLastEvent, seed, opts = {}) {
    simulate, faultsIn, whatEgoSees, the whole fault derivation -- works on
    it unchanged. Verified before it was designed: a two-leg spec
    simulates, the candidate drives through it, and faultsIn derives from
-   it exactly as at a intersection.
+   it exactly as at an intersection.
    ===================================================================== */
 
-/* A straight road of the character's own width. `control: "none"` because
-   there is nothing here to stop for -- the hazard is the point, not a
-   right-of-way puzzle. */
-export function straightSpecFor(character) {
+/* =====================================================================
+   WHICH WAY A HAZARD SCENE POINTS
+
+   A hazard is a little scenario placed at a point on a link, and it was
+   only ever PLACED -- never turned. The spec was fixed N-S and the ego
+   always entered from "S", so on a link running any other way the
+   notional candidate drove ACROSS the road they were supposed to be on.
+   Measured before the fix: 29 of 70 hazard scenes pointed the right way,
+   35 were at right angles and 6 were backwards. A pedestrian stepping
+   off the curb walked along the carriageway; a car leaving a driveway
+   pulled out sideways across the street.
+
+   Everything derived from that scene inherited the error -- what the
+   candidate could see, when they registered it, whether they could have
+   avoided it -- so every measurement of the segment-hazard system was
+   taken through a scene half of which was sideways.
+
+   THIS IS route.js's PROBLEM ONE LEVEL DOWN, and route.js already solved
+   it: a scenario carries an orientation as well as a position, and a
+   rotated scene is the same situation pointing a different way. Hazards
+   never used that machinery, and `isRotatable` would have refused them
+   anyway because they carry sightBlockers with fixed coordinates.
+
+   So the scene is BUILT facing the right way rather than rotated
+   afterwards, which is cheaper and removes the blocker problem: pick the
+   leg whose local travel direction already equals the link's world
+   direction, and the two frames then differ by a TRANSLATION alone.
+   Nothing has to be spun, and a blocker's coordinates carry across
+   unchanged. World links run on a grid, so such a leg always exists.
+
+   The invariant that makes it work, checked in verify-world: the
+   candidate is always on the side `n = (-uy, ux)` points to -- the right
+   of travel, in every one of the four directions -- so `side: +1` is the
+   near curb whichever way the road runs.
+   ===================================================================== */
+
+/* Which leg the candidate enters by, so that driving straight through
+   takes them the way the link actually goes. */
+export function entryForLink(link) {
+  const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "W" : "E";
+  return dy >= 0 ? "N" : "S";
+}
+
+/* A straight road of the character's own width, on the axis the entry leg
+   implies. `control: "none"` because there is nothing here to stop for --
+   the hazard is the point, not a right-of-way puzzle. */
+export function straightSpecFor(character, from = "S") {
   const lanes = CHARACTER[character].lanes;
-  return { legs: { S: { lanes, control: "none" }, N: { lanes, control: "none" } } };
+  const leg = { lanes, control: "none" };
+  return from === "E" || from === "W"
+    ? { legs: { E: leg, W: leg } }
+    : { legs: { N: leg, S: leg } };
+}
+
+/* The scene's own frame: the local travel direction and the offset to its
+   right, matching the link's by construction. */
+function frameOf(from) {
+  const u = from === "S" ? { x: 0, y: -1 }
+    : from === "N" ? { x: 0, y: 1 }
+    : from === "W" ? { x: 1, y: 0 }
+    : { x: -1, y: 0 };
+  return { u, n: { x: -u.y, y: u.x } };
+}
+
+/* An OFFSET from the scene's own centre: so far along the road, so far to
+   the right of it. Kept as an offset rather than a coordinate because
+   placeScenario moves the scene by handing every participant the scene's
+   placement, and a participant holding an absolute position would be
+   built in one frame and drawn in another. */
+function offsetInScene(from, dAlong, across) {
+  const { u, n } = frameOf(from);
+  return { x: u.x * dAlong + n.x * across, y: u.y * dAlong + n.y * across };
 }
 
 /* One hazard, placed where the roadside life already put somebody.
 
    The candidate meets them at whatever time their distance along the link
    implies, so the hazard's own clock is the drive's clock offset -- the
-   same relationship a intersection has to the drive. */
+   same relationship an intersection has to the drive. */
 /* A HAZARD AND AN OBSTRUCTION ARE NOT THE SAME THING, and conflating
    them is what put frequency and pace in direct conflict: every piece of
    street life stopped the car, so a lively street was an obstacle course
@@ -772,7 +902,8 @@ export function straightSpecFor(character) {
    The distinction is a PROPERTY OF THE HAZARD, not a second generator:
    same roadsideLifeFor placing the same people, same scenario shape. */
 export function hazardAt(tile, link, person, { candidate = null, seed = 1, blocking = true } = {}) {
-  const spec = straightSpecFor(tile.character);
+  const entry = entryForLink(link);
+  const spec = straightSpecFor(tile.character, entry);
   const speed = CHARACTER[tile.character].speed;
 
   const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
@@ -782,21 +913,33 @@ export function hazardAt(tile, link, person, { candidate = null, seed = 1, block
 
   /* The person crosses from the curb they are standing on. `side` came
      from roadsideLifeFor, so which way they step is decided once, where
-     they were placed, rather than again here. */
-  const from = person.side < 0 ? "S" : "N";
+     they were placed, rather than again here.
+
+     Their leg is the candidate's own approach or the far one -- near or
+     far along the road -- and it has to be on the SAME AXIS as the
+     candidate's, or they cross a road nobody is driving on. */
+  const from = person.side < 0 ? entry : OPPOSITE[entry];
 
   return {
     id: `haz-${person.id}`,
     road: spec,
     control: "none",
-    at: { x: person.x, y: person.y },
+    /* THE SCENE SITS ON THE ROAD'S CENTRELINE, not on the person. `at` is
+       where the scene's own centre lands in the world, and putting the
+       person there shifted the whole road sideways by however far from
+       the curb they were standing. */
+    at: {
+      x: link.from.x + (dx / len) * along,
+      y: link.from.y + (dy / len) * along,
+    },
     reachesAt,
     /* The same driver who is at the intersections. A segment used to take
        whatever traits its caller felt like handing it, which made the
        candidate two different people on one drive. */
     ego: {
-      ...egoFor(candidate, { from: "S", intent: "straight", arriveAt: 0, stops: false, seed }),
+      ...egoFor(candidate, { from: entry, intent: "straight", arriveAt: 0, stops: false, seed }),
       departAt: 0,
+      cruise: speed,
     },
     actors: [{
       id: person.id,
@@ -847,32 +990,40 @@ export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDri
   const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len, uy = dy / len;
-  const nx = -uy, ny = ux;
-  const along = Math.atan2(uy, ux) * 180 / Math.PI;
+
+  /* THE SCENE FACES THE WAY THE ROAD GOES, and everything in it is built
+     in the scene's own frame rather than the world's. It used to be built
+     in world coordinates and then handed to placeScenario, which stamps
+     the scene's placement onto every participant -- so the car's resting
+     place and the candidate's road were two different notions of where
+     this hazard is, agreeing only on links that happened to run north. */
+  const entry = entryForLink(link);
+  const heading = Math.atan2(frameOf(entry).u.y, frameOf(entry).u.x) * 180 / Math.PI;
 
   const side = at.side ?? 1;
-  const reachAt = at.reach ?? 0;
   const out = fromDriveway && lay.driveway
     ? lay.driveway.mouth + lay.driveway.depth / 2
     : lay.parkCentre;
   const d = at.along;
 
-  const rest = {
-    x: link.from.x + ux * d + nx * out * side,
-    y: link.from.y + uy * d + ny * out * side,
-  };
+  const rest = offsetInScene(entry, 0, out * side);
   /* Nose-in to a driveway, so it comes out BACKWARDS across the parking
      lane; alongside the curb in a parallel space, so it pulls out
      forwards. Same movement shape, different resting heading. */
-  const restRot = fromDriveway ? along + 90 * side : along;
+  const restRot = fromDriveway ? heading + 90 * side : heading;
   const lane = lay.laneEdge / 2;
   const join = M(18);
 
   return {
     id: `emerge-${tile.id}-${Math.round(d)}-${side}`,
-    road: straightSpecFor(tile.character),
+    road: straightSpecFor(tile.character, entry),
     control: "none",
-    at: { x: rest.x, y: rest.y },
+    /* The scene's centre on the road's centreline, at this point along the
+       link -- so placeScenario drops the whole thing where it belongs. */
+    at: {
+      x: link.from.x + ux * d,
+      y: link.from.y + uy * d,
+    },
     reachesAt: d / speed,
     /* THE CARS THAT HIDE THEM. Without these the emerging car is in plain
        sight from the first frame, so the candidate always registers the
@@ -884,8 +1035,17 @@ export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDri
        curbsideFor already emits the { x, y, rot, hl, hw } shape
        sightBlockersOf reads, so the row of parked cars becomes occlusion
        without anything downstream learning a new type. */
+    /* THE ONE THING THAT STAYS IN WORLD COORDINATES, and it has to.
+       sightBlockers are read straight off the scenario and tested against
+       poses that placeScenario has already moved into the world, so a
+       blocker written in the scene's frame would sit hundreds of metres
+       from the sightline it is supposed to interrupt.
+
+       Filtered by distance ALONG the road rather than straight-line, so
+       the same stretch of curb is considered whichever way the link
+       runs. */
     sightBlockers: blockers
-      .filter((b) => Math.hypot(b.x - rest.x, b.y - rest.y) < M(22))
+      .filter((b) => Math.abs((b.x - link.from.x) * ux + (b.y - link.from.y) * uy - d) < M(22))
       .map((b) => ({ id: b.id, x: b.x, y: b.y, rot: b.rot, hl: b.hl, hw: b.hw })),
     /* THE ANTICIPATION WINDOW IS BUILT IN, not hoped for. The car starts
        moving at once and the candidate is still this far up the road --
@@ -901,10 +1061,11 @@ export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDri
        OTHERWISE COULD"; if they could not, there is no fault. */
     ego: {
       ...egoFor(candidate, {
-        from: "S", intent: "straight",
+        from: entry, intent: "straight",
         arriveAt: REACTION_FLOOR + speed / approachDecel(speed),
         stops: false, seed,
       }),
+      cruise: speed,
     },
     actors: [{
       id: `em-${Math.round(d)}-${side}`,
@@ -912,14 +1073,18 @@ export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDri
       colorKey: "amber",
       name: "Car leaving a driveway",
       emerges: true,
-      at: { x: rest.x, y: rest.y },
+      /* Its own place in the scene, kept out of `at` because
+         placeScenario overwrites `at` with the scene's placement -- the
+         two were one field doing two jobs, which is what put the car and
+         the road it was leaving in different frames. */
+      rest: { x: rest.x, y: rest.y },
       restRot,
       /* Where they are going: the near lane, a short way up the road. */
-      into: {
-        x: link.from.x + ux * (d + join) + nx * lane * side,
-        y: link.from.y + uy * (d + join) + ny * lane * side,
-        rot: along,
-      },
+      into: { ...offsetInScene(entry, join, lane * side), rot: heading },
+      /* AND ON UP THE ROAD THEY HAVE JOINED. Not a distance somebody
+         picked: it is the rest of this link, because that is how much road
+         there is to be traffic on. */
+      onward: offsetInScene(entry, Math.max(join + M(4), len - d), lane * side),
       reversing: fromDriveway,
       clearBy: fromDriveway ? lay.driveway.depth : 0,
       /* THEY ARE ALREADY THERE, so arriveAt is zero and the moment they
@@ -1000,12 +1165,34 @@ export function segmentHazards(tile, link, seed = 1, { candidate = null } = {}) 
      That is the intervention question, still the maintainer's. The
      content is ready and gated on it rather than on itself. */
   const LIVE = false;
-  if (LIVE && parked.length) {
-    const pick = parked[seed % parked.length];
+  const drives = drivewaysFor(tile, link, seed);
+  /* WHERE THE CAR LEAVING FROM IS, and the two cases are different
+     places rather than the same place with a flag on it. A car reversing
+     out comes from a DRIVEWAY — a break in the row — and a car pulling
+     forward out comes from a PARKING SPACE, which is a car that is
+     really there.
+
+     Before this both came from a parked car's own slot, so the reversing
+     car was standing exactly where a parked car was standing: it would
+     have driven through it, and that car was then handed back as one of
+     its own sight blockers, which is what kept it invisible until it
+     moved. */
+  /* ON THE CANDIDATE'S OWN SIDE, because a car pulling out on the far
+     curb joins the opposite lane and never crosses their path -- it is
+     street life, not a hazard, and counting it as one was inflating the
+     supply with scenes nobody could interact with. `side: +1` is the near
+     curb whichever way the road runs; see entryForLink. */
+  const near = (x) => (x.side ?? 1) > 0;
+  const drivesNear = drives.filter(near), parkedNear = parked.filter(near);
+  const fromDriveway = drivesNear.length > 0 && seed % 2 === 0;
+  const pool = fromDriveway ? drivesNear : parkedNear;
+  const pick = pool.length ? pool[seed % pool.length] : null;
+  if (LIVE && pick) {
     const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
     const len = Math.hypot(dx, dy) || 1;
-    const along = ((pick.x - link.from.x) * dx + (pick.y - link.from.y) * dy) / len;
-    const fromDriveway = Boolean(lay.driveway) && (seed % 2 === 0);
+    const along = fromDriveway
+      ? pick.along
+      : ((pick.x - link.from.x) * dx + (pick.y - link.from.y) * dy) / len;
     let scn = emergingAt(tile, link, { along, reach: along / CHARACTER[tile.character].speed, side: pick.side ?? 1 }, seed, { candidate, fromDriveway, blockers: parked });
     /* AND THE CANDIDATE RESPONDS TO IT, or does not. Built once, simulated
        once to find out what they registered, then rebuilt with whatever

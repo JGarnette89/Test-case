@@ -237,7 +237,7 @@ const SCENARIOS = [
     duration: 18,
     ego: { from: "S", intent: "straight", arriveAt: 1.2, stops: true, color: C.blue },
     /* A standing obstruction on the corner, not a road user. This is what
-       actually blinds a driver at a intersection — a parked van, a hedge, a
+       actually blinds a driver at an intersection — a parked van, a hedge, a
        hoarding — rather than another car in the road. */
     sightBlockers: [
       { id: "van", x: 268, y: 452, rot: 0, hl: M(2.8), hw: M(1.15) },

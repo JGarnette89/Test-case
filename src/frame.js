@@ -136,7 +136,7 @@ function legSpeed(p) {
    chaseFor because the continuous world frames a candidate whose pose
    comes from the world rather than from one scenario's ego — and both
    must frame identically, or the viewport would mean something different
-   inside a intersection than on the road between two.
+   inside an intersection than on the road between two.
 
    This is now rules rather than presentation: the viewport decides what
    is markable, so a renderer may not choose its own extent. See

@@ -231,8 +231,8 @@ console.log("\n4. WHERE A HABIT CAN SHOW IS DERIVED, AND THE FORECAST'S ERROR IS
     ? ok("cutsCorner needs a LEFT, derived — the engine's own left-only rule surfacing here rather than being restated")
     : fail("cutsCorner's derived shape does not match the left-only rule it is written under");
   shown["roll/straight"].length < shown["stop/straight"].length
-    ? ok("a segment shows less than a intersection, so segments cannot carry a drive's whole character")
-    : fail("a segment shows as much as a intersection, which would make intersections redundant");
+    ? ok("a segment shows less than an intersection, so segments cannot carry a drive's whole character")
+    : fail("a segment shows as much as an intersection, which would make intersections redundant");
 
   /* The forecast is used by the planner, which has no scene yet. Where it
      strays from the truth is a number, not a shrug. */

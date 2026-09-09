@@ -37,7 +37,7 @@ import { composeCandidate } from "../engine/candidate.js";
 import { composeDriver, AXES, deficitOf, dominantAxis } from "../engine/ratings.js";
 import {
   planDrive, composeForTile, CHARACTER, curbsideFor, roadsideLifeFor, segmentHazards,
-  DEAD_AIR_CEILING, curbLayout,
+  DEAD_AIR_CEILING, curbLayout, drivewaysFor,
 } from "../engine/tiles.js";
 import { driveThroughTiles, candidateAt, placeScenario } from "../engine/world.js";
 import { approachDecel } from "../engine/paths.js";
@@ -82,6 +82,10 @@ const ROADSIDE_FILL = {
   shopfront: "#5c5148",
   shelter: "#4e5560",
   signage: "#6b7280",
+  /* Tarmac, not an object: a driveway is a surface the row is broken for,
+     so it reads a shade off the parking lane rather than as a thing
+     standing on it. */
+  driveway: "#3a3f47",
 };
 
 const AHEAD = [0, 1, 2];
@@ -282,6 +286,15 @@ export default function ExaminerDrive() {
 
     const roadside = [];
     world.links.forEach((link, i) => {
+      /* THE BREAKS IN THE PARKED ROW, drawn first so everything stands on
+         them. A driveway is where the row stops, and drawing it is what
+         makes that gap read as a driveway rather than as a stretch nobody
+         happened to park on -- which matters, because the car that
+         reverses out of one comes from exactly there. Same drivewaysFor
+         the hazard is placed from, in the same { x, y, rot, hl, hw } shape
+         as every other roadside object, so the apron and the car that
+         uses it cannot end up in different places. */
+      for (const d of drivewaysFor(tiles[i], link, i * 13 + 1)) roadside.push({ ...d, life: false });
       for (const k of curbsideFor(tiles[i], link, i * 13 + 1)) roadside.push({ ...k, life: false });
       for (const p of roadsideLifeFor(tiles[i], link, i * 13 + 1)) roadside.push({ ...p, life: true });
     });
@@ -329,7 +342,7 @@ export default function ExaminerDrive() {
   const leg = drive.legs[Math.min(at, drive.legs.length - 1)];
 
   /* WHERE THE CANDIDATE IS, ACROSS THE WHOLE DRIVE. One clock from zero,
-     one position, and a `phase` that says whether they are at a intersection
+     one position, and a `phase` that says whether they are at an intersection
      or on the road between two. This is the continuity: the pose never
      jumps, so the camera that follows it never cuts. */
   const world = drive.world;
@@ -512,7 +525,7 @@ export default function ExaminerDrive() {
   const late = t > w.deadline && !given[at];
   const section = Math.floor(at / drive.perSection) + 1;
 
-  /* An instruction for a intersection they have not reached is given before
+  /* An instruction for an intersection they have not reached is given before
      that leg's window opens, which is what makes it STACKED rather than
      late — allowed, sometimes right, and paid for in their concentration
      instead of your mark. Recorded as a real lead: at the very least the
@@ -564,7 +577,8 @@ export default function ExaminerDrive() {
                 <rect key={o.id} x={o.x - o.hl} y={o.y - o.hw} width={o.hl * 2} height={o.hw * 2}
                   rx={o.kind === "parked" ? M(0.3) : 0}
                   transform={`rotate(${o.rot} ${o.x} ${o.y})`}
-                  fill={fill} stroke="#12151a" strokeWidth={o.kind === "parked" ? 2 : 1}
+                  fill={fill} stroke={o.kind === "driveway" ? "#3c424a" : "#12151a"}
+                  strokeWidth={o.kind === "parked" ? 2 : 1}
                   opacity={0.92} />
               );
             })}

@@ -14,12 +14,13 @@ import { simulate, poseAt, M, W } from "../src/engine/index.js";
 import {
   whatEgoSees, visibility, eyePoint, reachOf, withinReach, sightBlockersOf,
 } from "../src/engine/sight.js";
-import { driveThroughTiles, runwayFor, candidateAt } from "../src/engine/world.js";
+import { driveThroughTiles, runwayFor, candidateAt, placeScenario } from "../src/engine/world.js";
 import { composeCandidate } from "../src/engine/candidate.js";
 import { composeDriver } from "../src/engine/ratings.js";
 import { chaseOn } from "../src/frame.js";
 import {
-  TILES, specFor, curbsideFor, roadsideLifeFor, CHARACTER,
+  TILES, specFor, curbsideFor, roadsideLifeFor, CHARACTER, drivewaysFor,
+  curbLayout, emergingAt, entryForLink, DRIVEWAY_CLEAR,
   planDrive, driveFromPlan, runwayNeededFor, composeForTile,
   markableTimeline, pacingOf, DEAD_AIR_CEILING, segmentHazards,
 } from "../src/engine/tiles.js";
@@ -27,6 +28,7 @@ import { composeScenario } from "../src/engine/compose.js";
 import { faultsIn } from "../src/engine/faults.js";
 import { frameAround } from "../src/frame.js";
 import { SCENARIOS } from "../src/engine/scenarios.js";
+import { readFileSync } from "node:fs";
 
 const m = (px) => Math.round((px / 20) * 10) / 10;
 let problems = 0;
@@ -289,7 +291,7 @@ console.log("\n6. THE DRIVE KEEPS OFFERING SOMETHING TO MARK");
 console.log("\n7. THE ROADSIDE IS THE SECOND SOURCE OF EVENTS");
 {
   /* Intersections were the only source, and a leg takes about ten seconds, so
-     no budget could react faster than a intersection arrived. Segment hazards
+     no budget could react faster than an intersection arrived. Segment hazards
      are built from the roadside content that already exists -- the same
      roadsideLifeFor that places the people and the same curbsideFor that
      places the props -- so liveliness and hazard supply are one piece of
@@ -545,6 +547,166 @@ console.log("\n9. THE DRIVE IS CONTINUOUS TO WATCH, NOT ONLY TO ROUTE");
   ordered
     ? ok(`and the drive visits all ${seen.length} intersections in order, each exactly once`)
     : fail(`intersection order is ${seen.join(",")}, which is not a drive through ${drive.legs.length} of them`);
+}
+
+console.log("\n10. A HAZARD IS ON THE ROAD IT IS ON");
+{
+  /* A hazard is a little scenario placed at a point on a link, and for a
+     long time it was only ever PLACED -- the spec was fixed north-south
+     and the notional candidate always entered from "S", so on a link
+     running any other way they drove ACROSS the road they were supposed
+     to be on. Measured before the fix: 29 of 70 scenes pointed the right
+     way, 35 were at right angles and 6 were backwards.
+
+     Everything derived from a hazard scene inherited that -- what the
+     candidate could see, when they registered it, whether they could have
+     avoided it -- so this is the check that keeps the whole segment layer
+     honest rather than a detail of placement. */
+  const norm = (a) => ((a % 360) + 540) % 360 - 180;
+  const legFor2 = () => ({ from: "S", intent: "straight" });
+  let scenes = 0, aligned = 0, nearSide = 0, sided = 0;
+  for (let seed = 1; seed <= 8; seed++) {
+    const plan = planDrive({ seed, length: 6 });
+    const drive = driveFromPlan(plan, { legFor: legFor2 });
+    drive.links.forEach((link, i) => {
+      const tile = plan[i]?.tile;
+      if (!tile) return;
+      const roadDeg = Math.atan2(link.to.y - link.from.y, link.to.x - link.from.x) * 180 / Math.PI;
+      for (const h of segmentHazards(tile, link, i * 13 + 1, { candidate: null })) {
+        const sim = simulate(placeScenario(h.scn, h.scn.at));
+        const p0 = poseAt(sim.ego, 0), p1 = poseAt(sim.ego, 1);
+        const deg = Math.atan2(p1.y - p0.y, p1.x - p0.x) * 180 / Math.PI;
+        scenes++;
+        if (Math.abs(norm(deg - roadDeg)) < 5) aligned++;
+      }
+      /* AND `side: +1` IS THE NEAR CURB WHICHEVER WAY THE ROAD RUNS.
+         That is what lets a hazard be restricted to the candidate's own
+         side without a per-direction special case, and it is a property
+         of the frame rather than of any one link. */
+      const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      if (curbLayout(tile.character).park <= 0) return;
+      const scn = emergingAt(tile, link, { along: len / 2, reach: 0, side: 1 }, 1, { blockers: [] });
+      const ego = poseAt(simulate(placeScenario(scn, scn.at)).ego, 0);
+      const q = (ego.x - scn.at.x) * nx + (ego.y - scn.at.y) * ny;
+      sided++;
+      if (q > 0) nearSide++;
+    });
+  }
+  aligned === scenes
+    ? ok(`all ${scenes} hazard scenes face the way their road goes (was 29 of 70)`)
+    : fail(
+        `${scenes - aligned} of ${scenes} hazard scenes are built at an angle to their own road.
+        A hazard scenario carries an ORIENTATION as well as a position, and
+        placeScenario only ever carried the position. Pick the entry leg whose local
+        travel direction already equals the link's, so the two frames differ by a
+        translation -- do not rotate afterwards, because sightBlockers have fixed
+        coordinates and route.js's isRotatable refuses a scene carrying them.
+        See tiles.js, entryForLink.`
+      );
+  nearSide === sided
+    ? ok(`and side +1 is the candidate's own curb on all ${sided} links, whichever way they run`)
+    : fail(`${sided - nearSide} links put the candidate on the far side of what side +1 means`);
+
+  /* NOTHING IS PARKED ACROSS A DRIVEWAY. It is illegal, it is physically
+     impossible -- the car coming out would hit it -- and it is what kept
+     the emerging car invisible until it moved, because that same parked
+     car was handed back as one of its own sight blockers. */
+  let mouths = 0, worst = Infinity, blocked = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const plan = planDrive({ seed, length: 6 });
+    const drive = driveFromPlan(plan, { legFor: () => ({ from: "S", intent: "straight" }) });
+    drive.links.forEach((link, i) => {
+      const tile = plan[i]?.tile;
+      if (!tile || !curbLayout(tile.character).driveway) return;
+      const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const alongOf = (o) => ((o.x - link.from.x) * dx + (o.y - link.from.y) * dy) / len;
+      const parked = curbsideFor(tile, link, i * 13 + 1).filter((b) => b.parked);
+      for (const d of drivewaysFor(tile, link, i * 13 + 1)) {
+        mouths++;
+        for (const b of parked) {
+          if ((b.side ?? 1) !== d.side) continue;
+          const gap = Math.abs(alongOf(b) - d.along);
+          if (gap < worst) worst = gap;
+          if (gap < DRIVEWAY_CLEAR) blocked++;
+        }
+      }
+    });
+  }
+  blocked === 0 && mouths > 0
+    ? ok(`nothing parked across any of ${mouths} driveways -- closest is ${(worst / 20).toFixed(2)}m against the ${(DRIVEWAY_CLEAR / 20).toFixed(2)}m the manoeuvre needs`)
+    : fail(
+        `${blocked} parked car(s) stand across a driveway mouth (${mouths} mouths seen).
+        DRIVEWAY_CLEAR is derived from the two cars rather than picked: the emerging
+        car turns within its own footprint, so it reaches its half-diagonal from the
+        mouth, and a parked car reaches its own half-length toward it. Closer than
+        the sum and they are on the same tarmac. Do not shrink it to make this pass
+        -- the reason it holds is that a driveway IS the empty slot, so nothing was
+        ever placed there.`
+      );
+}
+
+console.log("\n11. WHATEVER YOU ADD, SOMETHING HAS TO DRAW IT");
+{
+  /* Four times running, roadside content was built, measured and verified
+     while NOTHING PUT IT ON SCREEN: the props and people (59 objects and
+     10 people per drive), the parking strip under them, the hazard cars
+     drawn as pedestrian dots, and the driveways. Every headless check
+     passed each time, because every headless check was aimed at the
+     engine underneath.
+
+     So this one reads the renderer as SOURCE. It is the same technique
+     verify-roguelike uses for the one-way dependency and verify-clearance
+     for the reaction import -- cheap, and it fails on the thing that
+     actually keeps going wrong rather than on a proxy for it. */
+  const src = readFileSync(new URL("../src/apps/ExaminerDrive.jsx", import.meta.url), "utf8");
+
+  /* Every kind of roadside object the engine can emit, gathered from the
+     engine rather than listed here -- a list would go stale exactly the
+     way the drawing did. */
+  const kinds = new Set();
+  const legFor3 = () => ({ from: "S", intent: "straight" });
+  for (let seed = 1; seed <= 10; seed++) {
+    const plan = planDrive({ seed, length: 6 });
+    const drive = driveFromPlan(plan, { legFor: legFor3 });
+    drive.links.forEach((link, i) => {
+      const tile = plan[i]?.tile;
+      if (!tile) return;
+      for (const o of curbsideFor(tile, link, i * 13 + 1)) kinds.add(o.kind);
+      for (const o of drivewaysFor(tile, link, i * 13 + 1)) kinds.add(o.kind);
+    });
+  }
+  const table = src.slice(src.indexOf("const ROADSIDE_FILL"), src.indexOf("};", src.indexOf("const ROADSIDE_FILL")));
+  const missing = [...kinds].filter((k) => !table.includes(`${k}:`));
+  missing.length === 0
+    ? ok(`all ${kinds.size} kinds of roadside object the engine emits have a colour to be drawn in (${[...kinds].sort().join(", ")})`)
+    : fail(
+        `${missing.join(", ")} is emitted by the engine and the renderer has no colour for it.
+        This is the fourth time roadside content has been built, measured and
+        verified while nothing put it on screen. The rule is: whatever you add,
+        check what draws it. Add it to ROADSIDE_FILL in ExaminerDrive.jsx, or
+        say out loud that it is deliberately invisible.`
+      );
+  /* And the drawing has to be given something it can draw: the renderer
+     reads x, y, rot, hl, hw off every one of them. */
+  let malformed = 0, seen = 0;
+  for (let seed = 1; seed <= 10; seed++) {
+    const plan = planDrive({ seed, length: 6 });
+    const drive = driveFromPlan(plan, { legFor: legFor3 });
+    drive.links.forEach((link, i) => {
+      const tile = plan[i]?.tile;
+      if (!tile) return;
+      for (const o of drivewaysFor(tile, link, i * 13 + 1)) {
+        seen++;
+        if (!["x", "y", "rot", "hl", "hw"].every((k) => Number.isFinite(o[k]))) malformed++;
+      }
+    });
+  }
+  malformed === 0 && seen > 0
+    ? ok(`and all ${seen} driveways carry the same { x, y, rot, hl, hw } shape every other roadside object does`)
+    : fail(`${malformed} of ${seen} driveways cannot be drawn by the code that draws everything else beside the road`);
 }
 
 console.log("\n" + "=".repeat(70));

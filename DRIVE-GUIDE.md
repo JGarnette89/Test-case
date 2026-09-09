@@ -32,6 +32,12 @@ so their straight-ahead always draws upward.
 > the fault**. It is not the camera wobbling. A wandering driver drifts
 > across the frame; a wide turn swings out of it.
 
+**The roadside.** A darker strip along each curb is the parking lane, and
+the parked cars sit in it. The lighter panels crossing that strip are
+**driveways** — they are why the row of parked cars has gaps in it, and
+you cannot park across one. Nothing comes out of them yet; see What is
+missing.
+
 **The cars.**
 
 | | |
@@ -146,6 +152,10 @@ Please do not judge it for these — they are known.
 - **No intervention.** The fourth job is absent, so a tight intersection just
   happens and you watch it. What an intervention *is*, on the sheet, is
   the open question I need from you.
+- **Nothing reverses out of a driveway yet.** The hazard is built,
+  measured and gated off, and what it is waiting on is the line above: a
+  car pulling out in front of the candidate can end in contact, and a
+  collision is a thing the drive currently has no way to acknowledge.
 - **No field of view.** You cannot mark what is hidden, but nothing models
   where you were *looking* — and every fault the candidate's own car
   commits is always fully markable. The gaze cone was deleted from the

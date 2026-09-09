@@ -21,15 +21,15 @@
    Pure. No React, no DOM, no colour.
    ===================================================================== */
 import { M, CX, CY, LANE, SET, simulate, poseAt, basePose } from "./index.js";
-import { crossSpec, stopPoint, exitPoint, exitSideFor, boxHalf, laneOffset, LEG } from "./road.js";
+import { crossSpec, stopPoint, exitPoint, exitSideFor, boxHalf, laneOffset, LEG, OPPOSITE } from "./road.js";
 import {
   linePath, pathLength, poseOn, progressAt, cruiseProfile, yieldingProfile, MOST_GIVE,
 } from "./paths.js";
 
-/* Where a intersection's exit actually is, in the world.
+/* Where an intersection's exit actually is, in the world.
 
    road.js's exitPoint puts it at the edge of a 720x720 BOARD, which does
-   not translate with the intersection origin — a intersection placed elsewhere
+   not translate with the intersection origin — an intersection placed elsewhere
    gets an exit in the wrong place entirely. That is fine for scenario
    play, where there is only ever one intersection and it sits at the board
    centre, and it is the design's own assumption 2.3.1: exits lead
@@ -65,7 +65,7 @@ const HEADING_VEC = {
    is travelling. The lattice in its simplest form: one road, N intersections.
 
    Spacing is the whole design variable — see WORLD-DESIGN.md section 1.
-   Below about 63m a intersection cannot be directed at all; above about 140m
+   Below about 63m an intersection cannot be directed at all; above about 140m
    the drive is empty road. */
 export function placeIntersections({ from = "S", spacing = M(80), count = 2, origin, intents = [] } = {}) {
   const start = origin ?? { x: CX, y: CY };
@@ -75,22 +75,18 @@ export function placeIntersections({ from = "S", spacing = M(80), count = 2, ori
     out.push({ index: i, at: { ...at }, from: entry });
     /* The next intersection sits along the road the candidate actually LEAVES
        on, which is decided by its intent here -- not blindly ahead. Place
-       a intersection north of one the candidate turns west at and the link
+       an intersection north of one the candidate turns west at and the link
        becomes a diagonal the grid does not have. */
     const intent = intents[i] ?? "straight";
     const leaving = exitSideFor(entry, intent);
-    const dir = HEADING_VEC[OPPOSITE_SIDE[leaving]];
+    const dir = HEADING_VEC[OPPOSITE[leaving]];
     at = { x: at.x + dir.x * spacing, y: at.y + dir.y * spacing };
-    entry = OPPOSITE_SIDE[leaving];
+    entry = OPPOSITE[leaving];
   }
   return out;
 }
 
-/* Leaving by the north leg means arriving at the next intersection from ITS
-   south. */
-const OPPOSITE_SIDE = { N: "S", S: "N", E: "W", W: "E" };
-
-/* Stamp a intersection origin onto every participant in a scenario, so that
+/* Stamp an intersection origin onto every participant in a scenario, so that
    movementOf builds this intersection wherever it has been placed. Nothing
    about the scenario itself changes — it is still leg, intent and time,
    which is exactly why this works at all. */
@@ -129,7 +125,7 @@ export function linkBetween(a, b, spec, speed, intent = "straight", fromSpec, pr
      called out -- exits lead off-board rather than to the next intersection --
      and it costs the whole runway: measured, a link begun at the stop line
      leaves only 22m of approach out of 80m of spacing, because the
-     candidate is placed 8m behind a intersection it has already driven
+     candidate is placed 8m behind an intersection it has already driven
      through. */
   /* WHERE THE TRAVERSE ACTUALLY ENDS, which is exitPoint and not
      worldExitOf. Those were two implementations of one quantity -- the
@@ -227,7 +223,7 @@ function spanOfTraverse(p) {
   return hi;
 }
 
-/* Where the candidate is in the world at time t: inside a intersection if it
+/* Where the candidate is in the world at time t: inside an intersection if it
    is between that intersection's arrival and its exit, otherwise on the link
    between two of them. */
 export function candidateAt(drive, t) {
@@ -257,7 +253,7 @@ export function candidateAt(drive, t) {
 /* =====================================================================
    RUNWAY — the quantity the game actually depends on
 
-   How much approach the candidate gets before a intersection: the distance
+   How much approach the candidate gets before an intersection: the distance
    from clearing the previous intersection to reaching this one's line.
 
    NOT the spacing between intersection centres, and the difference is the
@@ -298,7 +294,7 @@ export function runwayFor(drive, index) {
   return most;
 }
 
-/* What a intersection of this shape consumes on the way out — the gap between
+/* What an intersection of this shape consumes on the way out — the gap between
    spacing and runway, measured rather than assumed, because it grows with
    the width of the road. */
 export function exitRunOf(spec, from = "S", intent = "straight") {
@@ -353,7 +349,7 @@ export function driveThroughTiles({ tiles, legs, speed, holdFor = null }) {
       prevSpec: specs[i - 1], spec: specs[i], from: entry, intent, runway: tiles[i].runway,
     });
     const leaving = exitSideFor(entry, intent);
-    const next = OPPOSITE_SIDE[leaving];
+    const next = OPPOSITE[leaving];
     const dir = HEADING_VEC[next];
     here = { x: here.x + dir.x * gap, y: here.y + dir.y * gap };
     js.push({ index: i, at: { ...here }, from: next });

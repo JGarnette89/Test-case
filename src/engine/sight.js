@@ -114,7 +114,7 @@ export function visibility(eye, target, targetPose, blockers) {
 
 /* Standing obstructions — a parked van on the curb, a hedge on the corner.
    Declared per scenario as plain data, because most of what actually
-   blocks a driver's view at a intersection is not another car in the road.
+   blocks a driver's view at an intersection is not another car in the road.
    The engine has no idea what the renderer draws there, so a scenario
    that wants a blind corner has to say so.
 

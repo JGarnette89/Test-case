@@ -13,7 +13,7 @@
  * geometry, for every tile that could precede it — because what the
  * previous intersection consumes on the way out depends on ITS width, not on
  * the tile making the promise. A tile that cannot deliver what it claims
- * fails here, at authoring time, rather than becoming a intersection nobody
+ * fails here, at authoring time, rather than becoming an intersection nobody
  * can direct several stages later.
  */
 import { TILES, CHARACTER, CHARACTERS, specFor, runwayNeededFor, curbsideFor, roadsideLifeFor } from "../src/engine/tiles.js";

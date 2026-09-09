@@ -90,7 +90,7 @@ Identical offsets, identical rotation. The fixed origin is **three lines in
 ### 2.3 Three assumptions that DO have to break
 
 1. **Exits go off-board, not to the next intersection.** `exitPoint('N', …)` from
-   a intersection at 360,360 returns **396, −80** on a 720×720 board. In a world
+   an intersection at 360,360 returns **396, −80** on a 720×720 board. In a world
    an exit is an entry to the next intersection, or the start of a link segment.
    This is the single biggest change to existing geometry.
 
@@ -203,7 +203,7 @@ failure modes, both real, and the design has to exclude both:
 
 ### 5.1 The supply, counted
 
-At 65–140 m spacing the car meets a intersection every **5.7–12.3 s**. If every
+At 65–140 m spacing the car meets an intersection every **5.7–12.3 s**. If every
 intersection carries a composed situation, that alone is one assessable event
 every dozen seconds at worst. Between intersections, segment hazards drawn from
 `curbside` and `character` fill the gaps.
@@ -273,7 +273,7 @@ same content.
 
 | Character | Curbside density | Typical kinds | Effect on examining |
 |---|---|---|---|
-| `residential` | 0.7–0.9 | parked cars both sides, hedges, low walls, bins | Hardest. Sightlines are short, hazards emerge from between parked cars, a intersection is blind until you are almost in it. |
+| `residential` | 0.7–0.9 | parked cars both sides, hedges, low walls, bins | Hardest. Sightlines are short, hazards emerge from between parked cars, an intersection is blind until you are almost in it. |
 | `collector` | 0.4–0.6 | intermittent parking, shopfronts, street furniture | Middling. Enough cover to hide one thing at a time. |
 | `arterial` | 0.15–0.3 | buildings set back, signage, bus shelters | Easier. Long sightlines; difficulty comes from speed and traffic volume instead. |
 | `dual` | 0.0–0.1 | barriers, gantries | Easiest to see, hardest to react — the difficulty moves entirely into speed. |
@@ -391,7 +391,7 @@ starting near zero; a world needs a global clock with intersection-local offsets
 | 120 | 3.302 ms | 19.8% |
 
 It is O(n²) — every actor is tested against every other as a potential
-blocker. Fine for a intersection, not for a world.
+blocker. Fine for an intersection, not for a world.
 
 **Fix: cull by distance before the visibility pass.** An actor beyond sight
 range cannot be seen and cannot block anything relevant. Culling to the
@@ -418,7 +418,7 @@ range is identical, which makes it verifiable against the unculled result.
 
 The smallest thing that can make `gate-viewport.mjs` pass.
 
-- Thread a intersection origin through `stopFor` / `exitFor` / `crossingOf` so a
+- Thread an intersection origin through `stopFor` / `exitFor` / `crossingOf` so a
   intersection can be built anywhere (three lines, already proven translatable).
 - Make an exit lead to the next intersection rather than off-board.
 - Place exactly two intersections **~80 m apart** on one straight road, with the
@@ -496,7 +496,7 @@ What follows from it:
   resolution needs no generalisation.
 - **Roundabouts will need explicit handling when their turn comes.** They
   already have their own layout and their own path builder (`raPath`), and
-  they do not fit the lattice — a roundabout is a intersection whose exits leave
+  they do not fit the lattice — a roundabout is an intersection whose exits leave
   at angles the grid does not have. Not a problem for the world as designed;
   a known piece of work, flagged now rather than discovered.
 
@@ -517,7 +517,7 @@ rewritten around it.
 Built and measured 2 Sep 2026. `src/engine/world.js`, the intersection origin
 threaded through `stopFor` / `exitFor` / `crossingOf`, and `frameAround`
 factored out of `chaseFor` so the world frames a candidate identically
-whether it is inside a intersection or on the road between two.
+whether it is inside an intersection or on the road between two.
 
 Two intersections, a fault at each, the candidate driven straight through the
 first and directed to turn at the second. At the instruction deadline:
@@ -557,11 +557,11 @@ measurement aimed at a number.
 
 1. **The link started at the wrong end.** Joining intersection A's *stop line* to
    intersection B's left only 22 m of runway out of 80 m, because it placed the
-   candidate 8 m behind a intersection it had already driven through. The link
+   candidate 8 m behind an intersection it had already driven through. The link
    must run from A's **exit** to B's entry — which is design assumption
    §2.3.1 biting exactly where it was predicted to.
 2. **The next intersection must be placed along the heading the candidate
-   actually leaves on**, not blindly ahead. Placing a intersection north of one
+   actually leaves on**, not blindly ahead. Placing an intersection north of one
    where the candidate turns west produces a diagonal link, which the grid
    (§10.1) does not have. `placeIntersections` now reads each leg's intent.
 
@@ -632,7 +632,7 @@ the quantity that matters — and none would have been visible without a
 measurement aimed at a number.
 
 1. **`exitPoint` does not translate.** It computes its far edge from the
-   720×720 *board*, not from the intersection origin, so a intersection placed
+   720×720 *board*, not from the intersection origin, so an intersection placed
    anywhere but the board centre gets an exit in the wrong place entirely.
    W1 passed only because its first intersection sat at the centre. Fixed with
    `worldExitOf`, which is intersection-relative and scales with the intersection's

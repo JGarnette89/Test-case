@@ -324,7 +324,7 @@ export function cautionOf(candidate) {
 }
 
 /* The extra time this driver holds, at this instant, for road they cannot
-   see. Zero at a intersection with a clear view whatever their confidence —
+   see. Zero at an intersection with a clear view whatever their confidence —
    caution is about known unknowns, so with nothing hidden there is
    nothing to be cautious ABOUT, and a bold driver at an open intersection is
    indistinguishable from a careful one. That is correct: overconfidence

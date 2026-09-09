@@ -132,7 +132,7 @@ export function composeCandidate(seed = 1, { pool = TRAIT_KEYS, forceTraits = nu
    defined by traits keeps them verbatim, so every hand-authored scenario
    and the golden fingerprint are untouched and the two models coexist.
 
-   `prior` is taken to follow `stops`: a driver who stops at a intersection
+   `prior` is taken to follow `stops`: a driver who stops at an intersection
    generally has somebody to be held by, and one rolling down a segment
    does not. It is the same assumption the planner makes, and the compiler
    only PROPOSES — a fault it proposes that the scene has no room for
@@ -144,7 +144,7 @@ export function traitsForScene(candidate, { intent = "straight", stops = true, s
 }
 
 /* The candidate as a participant. Everything the engine needs to drive
-   them lives here, so a intersection and a segment ask for the SAME driver
+   them lives here, so an intersection and a segment ask for the SAME driver
    rather than each inventing one — which is what they did before, one by
    composing a flawless ego and the other by taking traits from whoever
    called it. */
@@ -171,7 +171,7 @@ export function egoFor(candidate, { from, intent, arriveAt = 1.6, stops = true, 
 
 /* A SHAPE is the little that decides whether a trait has anything to say:
    does the driver stop, which way do they go, and is there anyone with
-   priority to hold them. Nothing else about a intersection changes the
+   priority to hold them. Nothing else about an intersection changes the
    answer, which is why this is cheap enough to ask per plan step.
 
    Deliberately NOT a table. Writing down "cutsCorner needs a left" would

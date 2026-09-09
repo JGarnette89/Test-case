@@ -7,7 +7,7 @@
    across two lookup tables and it is what blocks T-intersections, multi-lane
    roads, and eventually a slip road.
 
-   So a intersection is now data. Which legs exist, how many lanes each
+   So an intersection is now data. Which legs exist, how many lanes each
    carries, and what controls each one — because control is per leg and
    always was. A stop sign on the minor leg of a T is the ordinary case,
    and "all-way stop" is just four legs that happen to agree.
@@ -119,7 +119,7 @@ export function stopPoint(spec, side, LANE, setback, lane = 0, CX = 360, CY = 36
    A control used to be a string on a leg with no position, and the only
    spatial fact the engine held about one was the stop line. The RENDERER
    placed signs from its own four-entry table, board-relative and pinned
-   to the middle of the board — so a intersection placed anywhere else in the
+   to the middle of the board — so an intersection placed anywhere else in the
    world drew its signs back at the origin, the same class of bug
    exitPoint had.
 

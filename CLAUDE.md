@@ -61,14 +61,20 @@ Five things to know before your first change:
    it was written down.
 
 **LANGUAGE IS ONTARIO, CANADA — American English, North American road
-terms.** intersection not intersection, curb not curb, sidewalk not pavement,
-yield not give way, shoulder not verge, crosswalk, turn signal not
-indicator, parking lot not car park; color, behavior, meter, center.
-`arterial`, `collector`, `roundabout`, `right of way`, `stop line` and
-`driveway` are already correct. **All player-facing text is corrected.**
-Code identifiers are NOT renamed yet — 446 `intersection` and 82 `curb`
-occurrences across 40 files, 17 distinct names — but **use the correct
-terms in everything new**. See DECISIONS.md §2.1.
+terms.** intersection not junction, curb not kerb, sidewalk not pavement,
+yield not give way, shoulder not verge, crosswalk not zebra crossing, turn
+signal not indicator, parking lot not car park; color, behavior, meter,
+center. `arterial`, `collector`, `roundabout`, `right of way`, `stop line`
+and `driveway` were already correct. **Player-facing text and code
+identifiers are both done** — 446 `junction` and 82 `kerb` occurrences,
+17 distinct names, renamed as their own pass.
+
+**The sweep damaged the prose around it and this paragraph was part of the
+damage**, which is the lesson worth keeping: it read "intersection not
+intersection, curb not curb" for two increments, because the rename
+rewrote the sentence that documented the rename. It also left 48
+instances of "a intersection". Re-read the thing that documents a sweep,
+after the sweep. See DECISIONS.md §2.1.
 
 **If a change depends on a traffic-law assumption, ASK.** The maintainer
 is a driving examiner; getting a rule wrong teaches somebody something
@@ -407,7 +413,7 @@ Three rules carry it:
   marks on it are recorded as invented.
 - **Prompt beats late beats silent.** Full credit while the fault is
   happening, easing to `LATE_CREDIT` by the end of `CALL_GRACE`, because
-  noticing on the way out of a intersection is still noticing.
+  noticing on the way out of an intersection is still noticing.
 
 **Whether a mark carries a category is deliberately left open**, because
 it is the maintainer's call whether a player picks one one-thumbed
@@ -591,7 +597,7 @@ Three rules make this the system that ties the other three together:
 ### Driver identity — built
 
 **One candidate, composed once, driving the whole route.** `candidate.js`
-holds them; `egoFor` is the one place a scene gets its driver, so a intersection
+holds them; `egoFor` is the one place a scene gets its driver, so an intersection
 and a segment ask for the same person. Before this the candidate was not
 merely inconsistent, they were FLAWLESS: measured over 320 generated
 intersections, the ego carried no traits at all and committed none of the 143
@@ -628,7 +634,7 @@ inert everywhere until the candidate has something to actually be HELD by.
 anybody's fault; it subsumes it, shares the one expensive `faultsIn` call,
 and sits where every other guarantee in `compose.js` lives. The fallback
 ladder gains one rung at the top so a habit with nothing to say here cannot
-cost the player a intersection. The planner steers WHICH turn, never whether to
+cost the player an intersection. The planner steers WHICH turn, never whether to
 turn — a route still has to read like a route. Persistence alone was most of
 the win (20/25); asking and steering are the finishing 4.
 
@@ -1326,7 +1332,7 @@ direction, 2D now, 3D later, so do not put anything visual into the engine.
 
 ```
 src/engine/index.js      the conflict rules, driver traits, and what is where at time t
-src/engine/road.js       a intersection described: legs, lanes, control per leg
+src/engine/road.js       an intersection described: legs, lanes, control per leg
 src/engine/paths.js      path shapes — line, curve, polyline — and no road at all
 src/engine/sight.js      what the driver can see, the examiner's cone, and what creeping costs
 src/engine/faults.js     what the candidate did wrong, derived by controlled comparison
@@ -1698,7 +1704,7 @@ node tools/verify-belief.mjs       what you still think is true once you look aw
 node tools/verify-detect.mjs       grading the examiner: caught, missed, invented, and when
 node tools/verify-outcome.mjs      how a drive ends: contact, and who taking the wheel lands on
 node tools/verify-tiles.mjs        a declared runway is a promise, held to measured geometry
-node tools/verify-world.mjs        the continuous drive: culling, routes, pacing, segment hazards
+node tools/verify-world.mjs        the continuous drive: culling, routes, pacing, hazards, and what draws them
 node tools/verify-candidate.mjs    one driver across a drive, and habits that repeat enough to be named
 node tools/verify-clearance.mjs    encroachment in seconds, and bands derived from the engine's own claim
 node tools/verify-awareness.mjs    what the candidate registered, and observation kept off outcome
@@ -1744,7 +1750,7 @@ All twenty-eight must exit 0. Fourteen things they check are worth understanding
   gets enough chances to be told from an incident; its rivals get chances
   they visibly decline, so a hypothesis can be tested rather than only
   formed; a tell is true of the car; and a clean driver stays clean. It
-  also measures how far the planner's forecast of what a intersection could
+  also measures how far the planner's forecast of what an intersection could
   show strays from what the scene actually offered, rather than assuming a
   forecast is free.
 
@@ -2014,6 +2020,75 @@ invisible to the encroachment fault because it only ever watches priors — in
   measured only the APPROACH (`if (along <= hy) continue`), so the exit
   side had never been looked at at all. It now checks both, plus that a
   car held at the line does not move.
+
+- **HALF THE SEGMENT HAZARDS WERE BUILT SIDEWAYS ON THE ROAD.** A hazard
+  is a small scenario placed at a point on a link, and it was only ever
+  PLACED — built against a fixed north-south road with the notional
+  candidate entering from `"S"`, then dropped at a world point. Measured
+  across 70 hazard scenes: 29 pointed the right way, **35 were at right
+  angles to their own road and 6 were backwards.** A pedestrian stepping
+  off the curb walked up the carriageway; a car leaving a driveway pulled
+  out sideways across the street.
+
+  Everything derived from those scenes inherited it, so **no number
+  previously reported about the segment-hazard layer is trustworthy** —
+  contacts, ease-off rates and the fault attribution split in particular.
+
+  This is `route.js`'s problem one level down and `route.js` already solved
+  it: a scenario carries an orientation as well as a position. Hazards
+  never used `rotateScenario`, and `isRotatable` would have refused them
+  because they carry `sightBlockers` with fixed coordinates. So the scene
+  is now BUILT facing the right way — `entryForLink` picks the leg whose
+  local travel direction already equals the link's, leaving the two frames
+  a translation apart, with nothing to spin and no blocker to misplace. A
+  third kind of hazard must go through it. `verify-world.mjs` §10.
+
+  Three more of the same shape came out with it. `p.at` was doing two jobs
+  on an emerging car — where the SCENE stands in the world and where the
+  CAR stands in the scene — so `placeScenario` teleported it onto the
+  scene's own centre; `rest`/`into`/`onward` are offsets now. The notional
+  candidate drove the engine's 45 km/h on a 30 km/h street while the
+  hazard's timing was derived from the street's speed, which is the same
+  disagreement `driveThroughTiles` had before it read `tiles[i].speed`;
+  `cruise` on a participant fixes it and is absent everywhere else. And
+  the emerging car's path stopped at the merge point, so a car that pulled
+  out in front of the candidate ceased to exist a few car lengths later —
+  **not one of 73 emergences ever made contact.** Controlled comparison
+  after: 33 of 33 driveway emergences hit a candidate who does nothing,
+  3 of 33 hit one responding as composed.
+
+- **A driveway is the BREAK in the parked row, not a thing beside it.**
+  The car that reverses out was being placed at a parked car's own slot,
+  and that same car was then handed back as one of its own sight blockers
+  — which is exactly what kept it invisible until it moved, and why the
+  anticipation window fell short. You cannot park across a driveway.
+
+  `curbsideFor` and `drivewaysFor` are now one pass over one slot grid, so
+  the two cannot disagree, and **a driveway is a slot the density roll
+  left empty** — the gaps were already there, density already says what
+  share of the frontage is parked, and reading the remainder as driveways
+  introduces no second rate to keep in step with the first. 3.5 per link,
+  a driveway roughly every 34m of frontage per side.
+
+  `DRIVEWAY_CLEAR` is derived from the two cars rather than picked: the
+  emerging car turns within its own footprint, so it reaches its
+  half-diagonal from the mouth, and a parked car reaches its own
+  half-length toward it. 4.72m, against a measured worst case of 4.17m for
+  the manoeuvre `emergeMovement` actually builds — so the bound holds
+  without being fitted to it. Nothing is parked inside it: closest is
+  5.50m. The same swept radius sets the mouth width, so a wider car
+  widens the driveway AND pushes the parking back rather than one of the
+  two.
+
+  The apron is drawn from `drivewaysFor`, so the surface and the car that
+  comes out of it cannot end up in different places.
+
+  What it bought: **28 of 33 driveway emergences are now fully visible
+  BEFORE the car moves**, against 0 of 40 for a car in a parallel space,
+  which is correct — a car in a row of parked cars is hidden by them.
+  The anticipation window (from perceptible to the candidate's arrival)
+  meets its derived requirement of reaction plus braking time in 28 of 33
+  driveway cases and 0 of 40 parallel ones.
 
 - **`wideTurn` and `cutsCorner` are real now, and still unused.** `wideTurn`
   used to ride along in `lateflag` — bending the path by 1.1 m for a 0.01s

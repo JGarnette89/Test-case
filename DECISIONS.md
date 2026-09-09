@@ -103,8 +103,8 @@ reads wrong to the audience.
 
 | use | not |
 |---|---|
-| intersection | intersection |
-| curb (note the spelling) | curb |
+| intersection | junction |
+| curb (note the spelling) | kerb |
 | sidewalk | pavement |
 | yield | give way |
 | shoulder | verge |
@@ -121,22 +121,23 @@ and stay. `roundabout` is used in Ontario and is fine. `right of way`,
 **ALL PLAYER-FACING TEXT IS ALREADY CORRECTED** — UI, the marking sheet,
 fault tells, scenario prose, DRIVE-GUIDE.md. That is where it matters.
 
-**CODE IDENTIFIERS ARE NOT RENAMED YET, deliberately.** `intersection` and
-`curb` are pervasive and a sweeping rename moves nothing functionally
-while touching everything — exactly the shape of change that produces the
-two-implementations divergence this file keeps warning about. Measured, so
-the decision can be made on a number rather than a feeling:
+**CODE IDENTIFIERS ARE RENAMED**, as its own pass, approved after the
+measurement below was reported: 446 occurrences of `junction`/`Junction`
+across 11 distinct identifiers in 37 files, and 82 of `kerb` across 6 in
+19. Seventeen distinct names, none colliding with a partial word, and
+nothing named in `engine-golden.json` — a big diff and a small risk, which
+is what made it worth doing in one go rather than drifting.
 
-| | occurrences | distinct identifiers | files |
-|---|---|---|---|
-| `intersection` / `Intersection` | 446 | 11 | 37 |
-| `curb` | 82 | 6 | 19 |
+**THE NEAR-MISSES ARE WHAT COST, exactly as warned.** A mechanical
+`junction` → `intersection` leaves grammar behind it: **48 instances of
+"a intersection" in comments and prose**, across 20 files, every one of
+them a sentence that used to read correctly. And this very table was
+corrupted by its own rule — the "not" column was rewritten too, so it read
+"use intersection, not intersection" and "use curb, not curb", which is
+the document destroying the only record of what it was for.
 
-Seventeen distinct names is small and none of them collide with a partial
-word, so a full rename is mechanical rather than delicate, and nothing
-named here appears in `engine-golden.json` — no baseline would move. It is
-a big diff and a small risk. The maintainer's call whether it earns its
-own increment.
+So: after any sweep of prose, **re-read the thing that documents the
+sweep.** A rename that edits its own specification has no witness.
 
 **In the meantime: USE THE CORRECT TERMS IN ALL NEW CODE AND
 DOCUMENTATION.** Do not add another `curbFoo`. Mixed vocabulary is the
@@ -498,7 +499,7 @@ pays nothing and spamming is rational. Two candidate fixes:
 The second is the more elegant idea and it does not work on its own.
 Measured over 240 generated intersections carrying 283 markable faults:
 
-| blind for | faults wholly missed per intervention | share of a intersection's faults |
+| blind for | faults wholly missed per intervention | share of an intersection's faults |
 |---|---|---|
 | 2s | 0.15 | 9.2% |
 | 4s | 0.18 | 11.0% |
@@ -507,7 +508,7 @@ Measured over 240 generated intersections carrying 283 markable faults:
 
 **The cost is small AND IT SATURATES.** Quadrupling the blind window from
 2s to 8s moves it from 0.15 to 0.19 faults, because faults are sparse and
-short relative to a intersection, so a longer interruption mostly runs past
+short relative to an intersection, so a longer interruption mostly runs past
 the end of the intersection rather than covering more of it. You cannot fix
 this by making the interruption longer.
 
@@ -573,6 +574,8 @@ second. Use the start of movement for a road user that was stationary.
 
 ### 5.11.2 THE ANTICIPATION WINDOW MUST BE BUILT IN, or there is no content
 
+**The figures below were measured in the wrong frame -- see §5.11.6.**
+
 The gap between when a danger becomes perceivable and when it becomes
 unavoidable IS the anticipation window. If it is zero there is nothing to
 test: the collision just happens.
@@ -611,6 +614,8 @@ That unblocked it completely: **avoidable went from 0 of 9 to 12 of 12.**
 
 ### 5.11.4 THE OCCLUSION IS THE HAZARD, and leaving it out made the axis unreachable
 
+**The figures below were measured in the wrong frame -- see §5.11.6.**
+
 The emerging car carried no `sightBlockers`, so it was in plain sight from
 the first frame. The candidate therefore always registered the danger in
 time and the fault could only ever be CONFIDENCE -- measured, 9 of 9.
@@ -625,6 +630,9 @@ With it: **observation fires for the first time in the project** -- 4 of
 12 avoidable contacts attribute to it, 8 to confidence.
 
 ### 5.11.5 OBSERVATION STILL DOES NOT CLEAR THE ATTRIBUTABILITY FLOOR
+
+**The `unavoided` row below was measured in the wrong frame -- see §5.11.6.
+The conclusion is unchanged and the correction makes it worse, not better.**
 
 Stated plainly rather than counted generously. Measured over 25 drives:
 
@@ -643,14 +651,84 @@ candidate committed -- the scenario's doing, not the driver's failing.
 Anything that folds the two together would clear the floor on paper while
 meaning nothing.
 
-**AND THE CONTENT IS STILL NOT LIVE.** `LIVE = false` in `segmentHazards`.
-The collisions are avoidable now, but the modelled candidate never avoids
-them, because a candidate's behaviour does not yet depend on what they
-perceived on a link -- `departureOnAwareness` is a query and applies to a
-departure, not to a cruise. So every avoidable collision is still taken,
-and at roughly 0.47 per drive that would end half of them. The fault class
-is correct and the content is waiting on the candidate being able to act
-on what they see.
+**AND THE CONTENT IS STILL NOT LIVE**, but the reason has now changed
+three times, which is worth recording because each change was progress
+rather than an excuse.
+
+1. *The collisions were unavoidable.* Fixed: the anticipation window is
+   built in (§5.11.2).
+2. *The candidate could not act on what they perceived while travelling.*
+   Fixed: `responseOnAwareness`, and the controlled comparison in §5.11.6
+   shows it preventing 30 of 33 collisions.
+3. *A collision has no representation in the drive.* `outcome.js` knows
+   contact ends one; `ExaminerDrive` never consults it. This is the
+   intervention question, and it is the maintainer's.
+
+The content is gated on (3) and on nothing about itself.
+
+### 5.11.6 EVERY NUMBER IN 5.11.2, 5.11.4 AND 5.11.5 WAS MEASURED IN THE WRONG FRAME
+
+**Superseding correction, not a refinement.** The scenes those sections
+were measured on had the notional candidate driving across the road the
+hazard was on — see §10.6. So the contact counts, the ease-off rate and
+the attribution split above are artifacts of a geometry error and must not
+be cited. What survives is the reasoning; what does not is every figure.
+
+Re-measured in the corrected frame, over 20 drives, 73 emergences:
+
+| | driveway (reverses out) | parallel space (pulls forward) |
+|---|---|---|
+| scenes | 33 | 40 |
+| fully visible BEFORE it moves | **28** | **0** |
+| anticipation window, median | 6.25s | 2.55s |
+| required (reaction + braking at the road's speed) | 6.25s | 6.25s |
+| meets it | 28 | 0 |
+| contacts if the candidate does nothing | **33** | 0 |
+| contacts as composed | **3** | 0 |
+| of those, avoidable | 3 | — |
+| attribution | confidence 3 | — |
+
+Five things follow, and the fourth is the one that hurts.
+
+**The reversing car is the hazard and the parallel one is not.** A car
+pulling forward out of a space accelerates away in the candidate's own
+direction and is never caught; a car reversing out crosses the lane
+slowly. That is exactly the maintainer's ruling — *"we could exemplify
+this by having cars reverse out of their driveways in residential
+streets"* — arrived at from the geometry rather than applied to it.
+
+**The anticipation window is met when, and only when, the car is visible
+before it moves.** The requirement is reaction plus braking time from the
+moment the danger is perceptible, and the candidate's arrival is set to
+exactly that from the moment the car goes — so any delay in perceiving it
+comes straight off the window. That is why §10.6's driveway work is what
+fixed this and no amount of retiming would have.
+
+**`responseOnAwareness` is doing real work.** Controlled comparison, same
+scenes: 33 of 33 driveway emergences hit a candidate who does nothing,
+3 of 33 hit one responding as composed.
+
+**OBSERVATION NOW GETS NOTHING FROM THIS HAZARD.** §5.11.4 reported it
+firing for the first time, 4 of 12 — that was the broken frame. In the
+corrected one all three avoidable contacts attribute to **confidence**.
+The attributability floor is further from being cleared than it was
+reported to be, not closer. Do not fold `unsighted` in to fix it (§4.5,
+§5.11.5).
+
+**OPEN, AND THE MAINTAINER'S: is a parked car in a driveway a cue?**
+Being able to see a car sitting in a driveway is not the same fact as
+perceiving that it is about to move. **The model currently treats
+REGISTRATION OF THE CAR as the onset of anticipation**, which assumes an
+examiner expects a candidate to ease off for a stationary car in a
+driveway. That is a judgment about practice, not geometry, and it is
+stated here as an assumption rather than left implicit in the code.
+
+If the ruling is no, the onset has to be something the car DOES before it
+moves — reversing lamps, a head turning — and that is content the model
+does not have. **Do not build it speculatively.** Everything downstream
+holds either way; what changes is only where `responseOnAwareness` starts
+counting from, which is one expression in `awareness.js`.
+
 
 ---
 
@@ -908,7 +986,37 @@ quantity that actually matters.** This has paid out more than any other
 heuristic in the project. When something is subtly wrong, look for it
 first.
 
-Instances, all real:
+### 10.0 THE FIRST SIGNAL IS THAT THE NUMBERS LOOK TOO CLEAN
+
+Before the pattern, the tell. **A measurement that comes out at exactly
+zero, exactly saturated, or suspiciously round is evidence about the
+MEASUREMENT, not about the thing measured.** Reality is untidy. A clean
+number means something upstream is not varying when it should be.
+
+It is the cheapest instrument in this project and it has found almost
+every entry in the list below:
+
+| what was seen | what it actually was |
+|---|---|
+| belief error of **exactly 0.00 m** for four traits | predicting from `basePose`, which already contained the fault |
+| `wideTurn` took **0 showings from 5 chances** | two traits writing one field, one silently overwriting the other |
+| `MAX_CLAIM` pegged for **18 of 21** road users | a fixed traversal time, so everything saturated the speed claim |
+| peak braking **18.1 m/s² on every approach, every road** | a smoothstep lerp standing in for deceleration |
+| `held` **always zero** | the buttons wrote the intersection being driven, not the ones ahead |
+| a measurement **identical at every value** of `departAt` | `schedule()` overwrites it; `startDelay` is the knob |
+| **240 of 240** intersections requiring a stop | the ego hardcoded `stops: true` while 87 legs were uncontrolled |
+| **0 contacts**, `clearAt` at exactly 0.00 or exactly 3.60, a window whose median was exactly the requirement | half the hazard scenes built at right angles to their own road (§10.6) |
+
+The last row is the one to learn from, because there were **three clean
+numbers at once** and the increment carried on regardless for two turns.
+Three is not a coincidence; it is a shared cause.
+
+**What to do with it:** do not explain a clean number, reproduce it. Change
+one input that ought to move it and check that it does. If it will not
+move, the quantity you are reading is not the quantity you think.
+
+
+Instances of the pattern itself, all real:
 
 - **`basePose` vs `cleanPose`.** `basePose` already CONTAINS the faults
   written by `setup` traits (`overshoot`, `slowStart`, `wideTurn`,
@@ -927,7 +1035,7 @@ Instances, all real:
 - **`TRAIT_KEYS` is the ONE list of driver traits**, because a second copy
   is how a new trait gets forgotten by one generator and not the other.
 - **The renderer's own sign table** duplicated geometry `road.js` already
-  derived, and did not follow a intersection placed elsewhere in the world.
+  derived, and did not follow an intersection placed elsewhere in the world.
 - **A fixed traversal time standing in for real motion.** It made a wider
   road move traffic FASTER — the six-lane arterial was crossed at 89 km/h
   — and pegged `MAX_CLAIM` for 18 of 21 road users, disabling the
@@ -941,6 +1049,38 @@ Instances, all real:
   zero.
 - **Calibrating observation against the collision rate** — a proxy for
   "did they gather the information", and the wrong one (§4.3).
+- **A hazard scene's PLACEMENT carried and its ORIENTATION did not.** The
+  biggest instance so far. `hazardAt` and `emergingAt` built a little
+  scenario in a fixed north-south frame and `placeScenario` dropped it at
+  a point on the link — so on a link running any other way the notional
+  candidate drove ACROSS the road they were on. Measured: 29 of 70 hazard
+  scenes pointed the right way, 35 were at right angles and 6 were
+  backwards. Everything derived from those scenes inherited it. See §10.6.
+- **`at` doing two jobs on an emerging car.** `p.at` is where the SCENE
+  stands in the world; `emergeMovement` also read it as where the CAR
+  stands in the scene. `placeScenario` stamps `at` onto every participant,
+  so placing a scene teleported the parked car onto the scene's own
+  centre. Now `rest`/`into`/`onward` are offsets and `at` is the placement.
+- **The road's speed against the engine's cruise, in a hazard scene.** The
+  emergence was timed from `speed / approachDecel(speed)` at the tile's
+  30 km/h while the notional candidate drove the engine's 45 — so the
+  stopping distance the scene was built around and the speed it was driven
+  at were two different numbers. Exactly the bug `driveThroughTiles`
+  already had and fixed by reading `tiles[i].speed`.
+- **A driveway placed at a parking space.** The car that reverses out was
+  put where a parked car already was, and that same car was then handed
+  back as one of its own sight blockers — which is what kept it invisible
+  until it moved. A driveway is the BREAK in the row, not a thing beside
+  it.
+- **The emerging car's path stopping at the merge point.** A car that
+  pulled out in front of the candidate ceased to exist a few car lengths
+  later, so not one of 73 emergences ever made contact. Somebody pulling
+  out in front of you is a hazard precisely because you are then behind
+  them.
+- **`OPPOSITE_SIDE` in `tiles.js` AND in `world.js`, against `OPPOSITE` in
+  `road.js`** — three literal copies of a four-entry table, each with its
+  own comment explaining that it mirrors one of the others. Harmless so
+  far, and exactly how the harmful ones start. Both copies removed.
 
 The tell is usually a measurement that comes out at exactly zero, or
 exactly saturated, or suspiciously clean.
@@ -1047,7 +1187,7 @@ the board centre. Wiring it up surfaced two engine bugs that could not
 show while everything sat at 360,360:
 
 - **`exitPoint` was half origin-aware.** Lateral coordinate from the
-  intersection, along coordinate from the board edge -- so a intersection placed
+  intersection, along coordinate from the board edge -- so an intersection placed
   at y = -5329 sent its candidate 240 METRES SOUTH to an exit computed at
   the middle of the board. Now measured from the intersection, and provably
   identical at the default origin, so `engine-golden` is untouched.
@@ -1091,6 +1231,69 @@ telling you what would break:
 
 Each names the measurement behind it and points back here. **When you add
 a check that protects a decision, write the message the same way.**
+
+---
+
+## 10.6 A SCENE HAS AN ORIENTATION AS WELL AS A POSITION
+
+The largest instance of §10 found so far, and it invalidated every
+measurement of the segment-hazard layer that had ever been taken.
+
+A segment hazard is a little scenario placed at a point on a link.
+`hazardAt` and `emergingAt` built it against a fixed north-south road with
+the notional candidate entering from `"S"`, and `placeScenario` then
+dropped it at a world point. Placement was carried; **orientation was
+not.** On a link running east, the candidate drove across the road they
+were supposed to be driving along.
+
+Measured over 70 hazard scenes on eight drives:
+
+| the notional candidate drives | scenes |
+|---|---|
+| the same way as the road | 29 |
+| at right angles to it | 35 |
+| backwards along it | 6 |
+
+A pedestrian "stepping off the curb" walked up the carriageway. A car
+"leaving a driveway" pulled out sideways across the street. And because
+awareness, occlusion, registration, avoidability and attribution are all
+derived from that scene, **every number ever reported about segment
+hazards was taken through a scene half of which was sideways** — the
+95-to-13 contact reduction, the 99% ease-off rate and the confidence 8 /
+observation 4 / braking 1 attribution split in particular. Do not cite
+those; they are superseded.
+
+**The tells were all present and all ignored.** Contacts at exactly zero.
+`clearAt` coming out at exactly 0.00 or exactly 3.60 across two dozen
+independent scenes. An anticipation window whose median was exactly the
+requirement. §10's own warning says the tell is "a measurement that comes
+out at exactly zero, or exactly saturated, or suspiciously clean", and
+there were three of them at once.
+
+**This is `route.js`'s problem one level down, and `route.js` solved it
+back in the driver game**: `rotateScenario` exists precisely because a
+scenario carries an orientation, and a rotated scene is the same situation
+pointing a different way. Hazards never used it — and `isRotatable` would
+have refused them anyway, because it rejects any scene carrying
+`sightBlockers`, which have fixed coordinates and no `from` to spin.
+
+**So the scene is BUILT facing the right way rather than rotated
+afterwards.** Pick the entry leg whose local travel direction already
+equals the link's world direction, and the two frames then differ by a
+translation alone: nothing has to be spun and a blocker's coordinates
+carry across unchanged. World links run on a grid, so such a leg always
+exists. `entryForLink` in `tiles.js`.
+
+Two invariants hold it up, both checked in `verify-world.mjs` §10:
+
+- **Every hazard scene faces the way its road goes.** 70 of 70.
+- **`side: +1` is the candidate's own curb whichever way the road runs.**
+  `n = (-uy, ux)` is the right of travel in all four directions, so a
+  hazard can be restricted to the near side with no per-direction case.
+
+**If you add a third kind of hazard, it goes through `entryForLink`.** A
+scene that picks its own `from` is the same bug again, and it will pass
+every other check in the suite.
 
 ---
 
@@ -1180,6 +1383,13 @@ are available.
    candidate? Is failing to intervene a fail for the player? Until that is
    answered, contact stays refused by the accept test and 0.88−0.70
    encroachments per drive stay locked behind it.
+
+   The three outcomes are ruled on and built (§5.10); the supply cap is
+   not, and neither is what an intervention IS on the sheet. **A second
+   piece of content is now waiting on the same answer**: the driveway
+   emergence (§5.11.6) is correct, measured and gated off solely because
+   a collision has no representation in `ExaminerDrive`. So this question
+   now blocks two things rather than one.
 
 2. **THE GAZE CONE, which is NOT BUILT.** `examinerEye`, `inCone`,
    `whatExaminerSees`, `faultVisibility` and `OWN_CAR_READ_AT` were

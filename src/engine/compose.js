@@ -178,7 +178,7 @@ function roadFor(brief, r) {
 
    The RATE is the one thing pacing is allowed to steer, via the brief —
    because hazard supply, occlusion and difficulty must stay one idea
-   rather than three. Everything else about how hard a intersection is comes
+   rather than three. Everything else about how hard an intersection is comes
    from the road character that chose the brief in the first place. */
 /* TRAIT_KEYS, not a copy of it. This was a literal list and it was a
    duplicate of the one in index.js the day it was written — three new
@@ -513,7 +513,7 @@ export function composeScenario(brief, seed, opts = {}) {
     if (!emergencyEarnsItsPlace(scn)) continue;
     if (!windowIsMarkable(scn)) continue;
     if (!meetsBrief(brief, m).ok) continue;
-    /* When the drive has gone quiet, a intersection is REQUIRED to produce
+    /* When the drive has gone quiet, an intersection is REQUIRED to produce
        something markable rather than merely made likelier to. Nudging the
        fault rate moved the worst dead stretch from 83.3s to 52.1s and the
        average not at all, because a trait is not a fault: the driver has

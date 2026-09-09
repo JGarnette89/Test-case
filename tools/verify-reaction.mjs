@@ -182,7 +182,7 @@ console.log("\n4. CONTACT BECOMES A NEAR MISS WHERE ANYBODY COULD HAVE AVOIDED I
     : fail(`the reaction layer did not reduce contacts for a blind bold driver (${bold.raw} -> ${bold.after})`);
 
   /* And where it cannot help, the reason is geometric rather than a
-     shortcoming of the model: you cannot reverse out of a intersection you
+     shortcoming of the model: you cannot reverse out of an intersection you
      are already in. */
   let tot = 0, inBox = 0, approaching = 0;
   for (let i = 1; i <= 20; i++) {

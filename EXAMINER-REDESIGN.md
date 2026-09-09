@@ -303,7 +303,7 @@ snaps the view closed.
 
 ### 4.2 Sections, derived from scenario state
 
-Sections must end at natural breaks — a completed manoeuvre, a intersection
+Sections must end at natural breaks — a completed manoeuvre, an intersection
 cleared — never on a timer.
 
 The engine already produces the signal: `poseAt(ego, t).gone` is `k >= 1`,
@@ -434,7 +434,7 @@ usable:
 
 The reason is not tuning, it is content scale. **The widest separation
 between two simultaneous faults anywhere in the set is 35.8 m**, and a 4 s
-look-ahead already frames 57.5 m across. Faults happen at a intersection, the
+look-ahead already frames 57.5 m across. Faults happen at an intersection, the
 intersection box is 7.2 m, and everything worth watching sits inside a few tens
 of metres. To make the viewport scarce you would have to shrink it below
 ~36 m, at which point the candidate's car fills a third of the screen and
@@ -509,7 +509,7 @@ Only after stage 4 has been played. Needs its own design pass first (§4.5).
   scarce, because the widest gap between two faults (35.8 m) is smaller than
   any usable frame (57.5 m at a 4 s look-ahead). Scarcity needs the two jobs
   to be far apart, and that needs road between them.
-- Stage 4 in its full form. Reading a intersection *before the car arrives*
+- Stage 4 in its full form. Reading an intersection *before the car arrives*
   needs road ahead of the current intersection to exist and be framable.
 - Sections at genuinely natural breaks across a long drive. Today a "natural
   break" is the end of a situation, which is a boundary the scenario format

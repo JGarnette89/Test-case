@@ -86,7 +86,7 @@ Three things fall out of that table rather than being designed into it:
   a real lever for the planner.
 - **`cutsCorner` needs a left** — the engine's own left-only rule surfacing
   here, not restated here.
-- **A segment shows less than a intersection.** A road with no line can only
+- **A segment shows less than an intersection.** A road with no line can only
   betray `wander`, so segments can never carry a drive's whole character.
   Intersections are where a driver is read.
 
@@ -181,7 +181,7 @@ declined.
 
 Dead air is a supply question and identity is a *whose* question; they are
 not the same quantity and must not become one dial. `mustShow` narrows what
-counts as supply at a intersection pacing has already decided to make hungry.
+counts as supply at an intersection pacing has already decided to make hungry.
 `verify-world.mjs` still passes, worst dead air unchanged at 26.6 s.
 
 ---

@@ -157,7 +157,7 @@ const TIE = 0.35;
    accelerates; a car that never stopped is already at speed.
 
    ACCEL is a brisk-but-ordinary pull-away. The cruise figures are what a
-   vehicle actually settles at through a intersection, not what it would do
+   vehicle actually settles at through an intersection, not what it would do
    on the open road — you are through the box long before an urban limit
    is reached, and a turn is taken slower than a straight-through.       */
 const ACCEL = M(2.4);          // ~2.4 m/s^2 away from a stop
@@ -169,7 +169,7 @@ const V_RIGHT = M(6.2);        // ~22 km/h through a tighter right
    through. Through traffic on a road with no sign for it runs faster
    than anything pulling away from a line ever reaches. */
 const V_THROUGH = M(12.5);     // ~45 km/h
-/* Running to a call, but through a intersection it still has to clear as it
+/* Running to a call, but through an intersection it still has to clear as it
    comes — real crews slow hard for one rather than trusting the siren, and
    a vehicle doing 54 km/h past a stop line is on screen for well under a
    second, which is not something a player could be asked to read. Faster
@@ -269,13 +269,24 @@ const PED_BUTTON_WAIT = 6.0;
    turn is slower than a straight both ways. */
 const CRUISE = { straight: V_STRAIGHT, left: V_LEFT, right: V_RIGHT };
 function motionOf(p) {
-  const v = CRUISE[p.intent] ?? V_STRAIGHT;
+  /* THE ROAD'S OWN SPEED WHERE IT SAYS SO. A segment hazard sits on a
+     residential street doing 30 km/h and its notional candidate was
+     driving the engine's 45, so the stopping distance the scene was built
+     around and the speed it was driven at were two different numbers --
+     the same disagreement `driveThroughTiles` had before it read
+     `tiles[i].speed`. Absent everywhere else, so nothing at an
+     intersection moves. */
+  const v = p.cruise ?? CRUISE[p.intent] ?? V_STRAIGHT;
+  /* A car that never stopped carries the through speed, unless the road
+     it is on has said what its speed is -- in which case that IS the
+     through speed and V_THROUGH is the wrong number for it. */
+  const through = p.cruise ?? (p.intent === "straight" ? V_THROUGH : v);
   const base = p.emergency ? cruiseProfile(p.intent === "straight" ? V_EMERGENCY : v)
     /* Required to stop and did not: they carry speed through the line
        rather than pulling away from rest, which is what makes it visible
        both before the line and after it. */
     : p.rolledThrough ? cruiseProfile(V_ROLL)
-    : p.stops === false ? cruiseProfile(p.intent === "straight" ? V_THROUGH : v)
+    : p.stops === false ? cruiseProfile(through)
     : accelProfile(p.intent === "straight" ? ACCEL : TURN_ACCEL, v);
   /* A road user who had to give way to somebody taking their space. Absent
      on every participant that has not been handed one, so this is inert
@@ -542,11 +553,19 @@ function crossMovement(p) {
    THE GEOMETRY IS THE TURN GEOMETRY, not a new kind. An arc tangent to
    where the car is standing and to the lane it is joining, built around
    the point where those two headings cross -- exactly `turnPoints`, which
-   is what a intersection turn already is. A perpendicular bay and a parallel
+   is what an intersection turn already is. A perpendicular bay and a parallel
    space differ only in the resting heading.                            */
 function emergeMovement(p) {
-  const rest = { x: p.at?.x ?? CX, y: p.at?.y ?? CY, rot: p.restRot ?? 0 };
-  const into = p.into ?? { x: rest.x, y: rest.y - M(20), rot: rest.rot };
+  /* `rest`, `into` and `onward` are OFFSETS within the scene; `at` is
+     where the scene stands in the world, and placeScenario stamps it onto
+     every participant. Reading the rest position out of `at` itself made
+     those one field doing two jobs, so placing a scene moved the parked
+     car onto the scene's own centre and the car and the road it was
+     leaving only ever agreed on links that happened to run north. */
+  const org = { x: p.at?.x ?? CX, y: p.at?.y ?? CY };
+  const off = (q, dflt) => (q ? { ...q, x: org.x + q.x, y: org.y + q.y } : dflt);
+  const rest = { ...off(p.rest, org), rot: p.restRot ?? 0 };
+  const into = off(p.into, { x: rest.x, y: rest.y - M(20), rot: rest.rot });
 
   const toRad = (deg) => (deg * Math.PI) / 180;
   /* REVERSING IS A DIRECTION OF TRAVEL, NOT A DIFFERENT SHAPE. A car
@@ -594,9 +613,18 @@ function emergeMovement(p) {
         return { x: from.x + inDir.x * t, y: from.y + inDir.y * t };
       })();
   const radius = Math.max(TURN_R_MIN, Math.hypot(corner2.x - from.x, corner2.y - from.y));
-  const pts = clearBy > 0
-    ? [rest, ...turnPoints(from, corner2, into, radius)]
-    : turnPoints(from, corner2, into, radius);
+  /* AND THEN THEY ARE TRAFFIC. The path used to stop at the merge point,
+     so a car that pulled out in front of the candidate ceased to exist a
+     few car lengths later -- measured, not one of 73 emergences ever made
+     contact, because the thing that had joined the road was gone before
+     anybody caught up with it. Somebody pulling out in front of you is a
+     hazard precisely because you are now behind them. */
+  const onward = off(p.onward, null);
+  const pts = [
+    ...(clearBy > 0 ? [rest] : []),
+    ...turnPoints(from, corner2, into, radius),
+    ...(onward ? [onward] : []),
+  ];
   /* Drawn facing the way the car is pointing rather than the way it is
      going, for as long as it is going backwards. */
   /* Slow. Somebody easing out of a space is not accelerating like traffic,

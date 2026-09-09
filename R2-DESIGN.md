@@ -1111,7 +1111,7 @@ nothing else. A control is a string on a leg with no position; the only
 spatial fact the engine holds about one is the stop line.
 
 The **renderer** places signs from its own hardcoded four-entry table,
-board-relative and pinned to `CX`/`CY` — so it does not follow a intersection
+board-relative and pinned to `CX`/`CY` — so it does not follow an intersection
 placed elsewhere in the world, the same class of bug `exitPoint` had. The
 signal is worse: one head at one corner regardless of which leg it
 governs.
@@ -1282,7 +1282,7 @@ and `stopsShort` are knowledge.
 
 Adding those two kinds took faults per intersection to **2.0**, and the
 section implied by a 3–4 recall band to **1.5 intersections**. That is not a
-section, it is a intersection.
+section, it is an intersection.
 
 The cause was structural, not a number: `rollErrors` rolled **each
 available kind independently**, so the number of faults a candidate
