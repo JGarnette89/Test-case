@@ -2,9 +2,9 @@
    PATHS
    Where a road user goes, as data rather than as a branch in basePose.
 
-   The whole point of moving to this: a junction is currently a pair of
+   The whole point of moving to this: a intersection is currently a pair of
    lookup tables that assume a symmetric four-way with one lane each way.
-   A path knows nothing about junctions. It is a shape and a duration, so
+   A path knows nothing about intersections. It is a shape and a duration, so
    a merge, a parking entrance, a skewed T and a six-lane crossroad are
    all the same kind of thing — different paths, same engine.
 
@@ -276,7 +276,7 @@ export function polyPath(points, profile, opts = {}) {
    legs were wildly unequal (2.7m against 20m on a right turn) the curve
    did nearly all its bending in the first couple of metres: cars began
    steering while still on the approach, left turns crossed onto the
-   oncoming side 3.3m BEFORE reaching the junction, and right turns ran
+   oncoming side 3.3m BEFORE reaching the intersection, and right turns ran
    at a 3.4m radius — tighter than any car can physically steer.
 
    `radius` is not a picked number. The caller derives it from where the
@@ -293,7 +293,7 @@ const norm = (v) => { const d = Math.hypot(v.x, v.y) || 1; return { x: v.x / d, 
 
    Which is what makes `radius` the whole model for how well the turn is
    driven. Larger than that distance and the car finishes wide of its
-   lane; smaller and it finishes inside — over the kerb on a right, across
+   lane; smaller and it finishes inside — over the curb on a right, across
    the centreline on a left. The straight run out to `end` then brings it
    back, gradually, exactly as a driver recovers from a bad line. So the
    caller says how tightly this driver turns, and the fault falls out of
@@ -401,7 +401,7 @@ export const APPROACH_TIME = 2.8;
    nothing in it was a physical quantity: measured, EVERY car in the game
    braked at 18.1 m/s^2 — 1.84g, more than twice an emergency stop, on
    every road at every speed. Approach speed did not follow the road
-   either, so a car arrived at a residential junction at 47 km/h.
+   either, so a car arrived at a residential intersection at 47 km/h.
 
    That is the same bug the departure side already fixed, on the other
    half of the manoeuvre: a fixed duration instead of a stated
@@ -473,7 +473,7 @@ export function pathLength(path) {
 }
 
 /* rollingApproach lived here: constant speed the whole way in, at
-   whatever speed the car would take the junction at. Gone, because
+   whatever speed the car would take the intersection at. Gone, because
    brakingApproach with a non-zero end speed is the same thing done
    properly — and doing it improperly inverted wontstop's tell. */
 /* Running up to the line WITHOUT stopping: constant speed, no braking

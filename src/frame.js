@@ -10,14 +10,14 @@
    fits inside it.
 
    A merge or a long lane change will not: the car worth reading is
-   further out than the junction board reaches, and it has to be visible
+   further out than the intersection board reaches, and it has to be visible
    before the decision, not at it. cameraFor lets a scenario name which
    actors the camera should ease out to cover. How far is read off that
    actor's own spawn point — the engine already knows how far back its
    approach starts — never a picked pixel value. When is read off its
    arriveAt, the same clock everything else in the engine runs on.
 
-   Pure zoom: the junction stays centred, only the extent grows. A frame
+   Pure zoom: the intersection stays centred, only the extent grows. A frame
    that also panned could slide the intersection off-centre right when
    the player needs to be reading it — a problem worth solving once a
    real scenario needs it, not before.
@@ -28,7 +28,7 @@ import { boxHalf } from "./engine/road.js";
 
 export function frameFor(spec) {
   const { vx, hy } = boxHalf(spec, M(3.6));
-  // Enough road either side of the junction to read an approach.
+  // Enough road either side of the intersection to read an approach.
   const wanted = 2 * Math.max(vx, hy) + M(26);
   const size = Math.max(W, wanted);
   const half = size / 2;
@@ -76,7 +76,7 @@ export function cameraFor(spec, sim, t, camera) {
    THE CHASE CAMERA — riding with the candidate
 
    The examiner sits in the car, so the view goes with the car: centred on
-   it and turning alongside it, rather than hanging over a fixed junction.
+   it and turning alongside it, rather than hanging over a fixed intersection.
 
    IT FOLLOWS THE INTENDED POSE, NOT THE ACTUAL ONE, and that is the whole
    design rather than an implementation detail. Lock the camera to
@@ -136,7 +136,7 @@ function legSpeed(p) {
    chaseFor because the continuous world frames a candidate whose pose
    comes from the world rather than from one scenario's ego — and both
    must frame identically, or the viewport would mean something different
-   inside a junction than on the road between two.
+   inside a intersection than on the road between two.
 
    This is now rules rather than presentation: the viewport decides what
    is markable, so a renderer may not choose its own extent. See
@@ -169,7 +169,7 @@ export function chaseFor(spec, sim, t, camera, { lookAhead = LOOK_AHEAD } = {}) 
 }
 
 /* THE CAMERA IS A FUNCTION OF A POSE, and nothing else. Split out of
-   chaseFor so a drive that spans SEVERAL junctions can point it at the
+   chaseFor so a drive that spans SEVERAL intersections can point it at the
    candidate's position in world coordinates rather than at one scenario's
    ego -- which is what the continuous world needs and what a per-scenario
    camera could never give, because at a boundary it re-centred on a new

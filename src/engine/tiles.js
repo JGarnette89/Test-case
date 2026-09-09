@@ -1,17 +1,17 @@
 /* =====================================================================
    TILES — the world as data
 
-   A tile is one junction and the road leading into it. It declares the
+   A tile is one intersection and the road leading into it. It declares the
    RUNWAY it provides — the approach the candidate actually gets before
-   that junction — and never the spacing between junction centres.
+   that intersection — and never the spacing between intersection centres.
 
    THAT DISTINCTION IS THE WHOLE POINT, and it is the same lesson twice
    over. Spacing is a proxy that happens to correlate; runway is the thing
    the game depends on. Measured:
 
-     - the previous junction's traverse consumes ~22m reaching its exit,
+     - the previous intersection's traverse consumes ~22m reaching its exit,
        so runway is always less than spacing
-     - a wider junction's stop line sits further back, so the same 100m
+     - a wider intersection's stop line sits further back, so the same 100m
        spacing delivers 69.9m of runway on one lane and 62.7m on three
      - and a faster road NEEDS more: 46m residential, 63m collector, 76m
        arterial, because runwayNeeded is in seconds and distance is
@@ -20,7 +20,7 @@
    So an arterial is squeezed from both ends — it needs the most approach
    and gets the least per metre of spacing. A single spacing band could
    never express that, and a tile library built on one would have
-   contained junctions nobody could direct. Declaring runway makes the
+   contained intersections nobody could direct. Declaring runway makes the
    claim checkable at authoring time: see verify-tiles.mjs.
 
    Pure. No React, no DOM, no colour.
@@ -44,9 +44,9 @@ import { composeScenario } from "./compose.js";
 
      speed      -> what the road carries, and therefore how much runway a
                    turn off it needs
-     junction   -> lanes and control at the far end
+     intersection   -> lanes and control at the far end
      brief      -> what the generator is asked for
-     kerbside   -> what stands at the roadside, which is both the scenery
+     curbside   -> what stands at the roadside, which is both the scenery
                    and the occlusion
 
    THE INVERSION IS DELIBERATE. Density falls as speed rises, so
@@ -69,7 +69,7 @@ export const CHARACTER = {
        collector rarely warrants one. */
     driveways: true,
     brief: { traffic: "light", visibility: "restricted" },
-    kerbside: {
+    curbside: {
       density: 0.85,
       kinds: ["parked", "hedge", "wall", "bins"],
       activity: 0.7,                     // people about: doors, driveways, kids
@@ -81,7 +81,7 @@ export const CHARACTER = {
     control: "stop",
     parking: "parallel",
     brief: { traffic: "busy", visibility: "open" },
-    kerbside: {
+    curbside: {
       density: 0.5,
       kinds: ["parked", "furniture", "shopfront"],
       activity: 0.45,
@@ -93,7 +93,7 @@ export const CHARACTER = {
     control: "none",
     parking: "none",
     brief: { traffic: "heavy", visibility: "open" },
-    kerbside: {
+    curbside: {
       density: 0.2,
       kinds: ["furniture", "shelter", "signage"],
       activity: 0.15,
@@ -120,7 +120,7 @@ export const specFor = (character) =>
    Each tile declares the runway it delivers. The declaration is a
    promise, and verify-tiles.mjs holds it to it against measured geometry
    for every tile that could precede it — so a tile that cannot deliver
-   what it claims fails at authoring time rather than becoming a junction
+   what it claims fails at authoring time rather than becoming a intersection
    nobody can direct, several stages later.
 
    Runways here are declared with headroom over the minimum rather than
@@ -176,7 +176,7 @@ export const tileById = (id) => TILES.find((t) => t.id === id) || null;
    centreline: two metres BEYOND the carriageway edge, politely out of the
    way. Nothing occupied the space next to the traffic lane, so there was
    nothing to pass close to, and the whole observation axis had no
-   non-stopping content available to it. A pedestrian who steps off a kerb
+   non-stopping content available to it. A pedestrian who steps off a curb
    two metres clear of the road is behind you before they reach it.
 
    THE MAINTAINER'S RULING: "absolutely we should have a variety of
@@ -197,28 +197,28 @@ export const tileById = (id) => TILES.find((t) => t.id === id) || null;
    length plus clearance.
 
    PARKING IS PROHIBITED NEAR AN INTERSECTION -- 9m in Ontario -- so the
-   strip belongs to the LINK and never to the junction box. That is why
-   this changes no junction geometry: roadHalf, stop lines, exits, runway
+   strip belongs to the LINK and never to the intersection box. That is why
+   this changes no intersection geometry: roadHalf, stop lines, exits, runway
    and spacing are all untouched, and the golden does not move. The rule
    is the reason, not a convenience. */
 export const PARKING = {
   none: 0,
   parallel: M(2.4),
-  /* No perpendicular parking on the road -- see kerbLayout. */
+  /* No perpendicular parking on the road -- see curbLayout. */
 };
 
 /* How far a parked car's centre sits from the road centreline, and how
    far out the verge beyond it starts. One derivation, so the props, the
    people and anything that draws the strip cannot disagree. */
-export function kerbLayout(character) {
+export function curbLayout(character) {
   const c = CHARACTER[character];
   const laneHalf = M(3.6) * c.lanes;
   const park = PARKING[c.parking ?? "none"] ?? 0;
-  const kerb = laneHalf + park;
+  const curb = laneHalf + park;
   /* A BAY IS A LAY-BY THAT WIDENS THE VERGE, never the carriageway --
      maintainer's ruling, and it is what actually exists: shop-front
      parking, a bay set back from the road, a residential court. It also
-     keeps the junction rule intact, since nothing about the road's own
+     keeps the intersection rule intact, since nothing about the road's own
      width changes.
 
      The court is a bay deep plus an aisle to manoeuvre in, and the aisle
@@ -246,14 +246,14 @@ export function kerbLayout(character) {
     laneEdge: laneHalf,
     park,
     parkCentre: laneHalf + park / 2,
-    kerb,
-    verge: kerb + M(1.2),
+    curb,
+    verge: curb + M(1.2),
     /* The court sits beyond the pavement, so a car in it is hidden by
-       whatever is at the kerb until it reaches the mouth. */
+       whatever is at the curb until it reaches the mouth. */
     /* Where a driveway runs back from, and how deep. A car sits in it
        nose-in, so it comes out backwards -- the driver looking over a
        shoulder past the cars parked either side of the entrance. */
-    driveway: c.driveways ? { mouth: kerb, depth: drive, back: kerb + drive } : null,
+    driveway: c.driveways ? { mouth: curb, depth: drive, back: curb + drive } : null,
   };
 }
 
@@ -270,14 +270,14 @@ const KIND_SIZE = {
 
 /* mulberry32, as everywhere else that needs a reproducible draw. */
 
-/* Blockers along one link, both kerbs, spaced by the tile's density.
+/* Blockers along one link, both curbs, spaced by the tile's density.
 
    `along` is the link path's own from/to, so the content follows the road
    rather than being scattered on a board — which is what lets a tile be
    placed anywhere the planner puts it. */
-export function kerbsideFor(tile, link, seed = 1) {
+export function curbsideFor(tile, link, seed = 1) {
   const c = CHARACTER[tile.character];
-  const { density, kinds } = c.kerbside;
+  const { density, kinds } = c.curbside;
   if (density <= 0) return [];
 
   const r = rng(seed);
@@ -289,14 +289,14 @@ export function kerbsideFor(tile, link, seed = 1) {
   /* One slot per car length; density decides how many are taken.
 
      A PARKED CAR SITS IN THE PARKING LANE and everything else behind the
-     kerb. The literal here was already 3.6*lanes + 1.2, which happens to
+     curb. The literal here was already 3.6*lanes + 1.2, which happens to
      be the centre of a 2.4m parking lane -- correct by accident rather
      than by derivation, and it disagreed with roadsideLifeFor's own
      offset two metres further out. One derivation now, so a prop, a
      person and anything that draws the strip cannot drift apart. */
   const slot = M(6);
   const slots = Math.max(0, Math.floor(len / slot) - 1);
-  const lay = kerbLayout(tile.character);
+  const lay = curbLayout(tile.character);
   const offsetFor = (kind) => (kind === "parked" && lay.park > 0 ? lay.parkCentre : lay.verge);
 
   const out = [];
@@ -332,7 +332,7 @@ export function kerbsideFor(tile, link, seed = 1) {
    and this file only says where the life is. */
 export function roadsideLifeFor(tile, link, seed = 2) {
   const c = CHARACTER[tile.character];
-  const activity = c.kerbside.activity;
+  const activity = c.curbside.activity;
   if (activity <= 0) return [];
 
   const r = rng(seed);
@@ -343,7 +343,7 @@ export function roadsideLifeFor(tile, link, seed = 2) {
   /* People stand on the pavement, BEYOND the parked cars -- which is what
      makes the cars matter: somebody emerging has to come out from between
      them, and is hidden until they do. */
-  const offset = kerbLayout(tile.character).verge;
+  const offset = curbLayout(tile.character).verge;
 
   const out = [];
   const chances = Math.max(1, Math.round(len / M(25)));
@@ -384,32 +384,32 @@ export function roadsideLifeFor(tile, link, seed = 2) {
    is missing downstream rather than an invitation to reimplement it here.
 
    The one thing genuinely decided here is the SHAPE of the drive: which
-   tiles in which order, and which way to turn at each junction.
+   tiles in which order, and which way to turn at each intersection.
    ===================================================================== */
 
 /* A drive that turns. Silence means straight on, so a route of nothing
-   but straight-ahead junctions asks the examiner for no instructions at
+   but straight-ahead intersections asks the examiner for no instructions at
    all and the directing task disappears — which makes "does this route
    present real decisions" a property worth planning for rather than
    hoping for. */
 export const TURN_SHARE = 0.55;
 
-/* A junction's shape, for planning. The candidate always stops at one --
+/* A intersection's shape, for planning. The candidate always stops at one --
    compose() puts them on a controlled leg and holds them -- so the only
    thing a plan gets to choose is which way they go. `prior` is assumed
    rather than known, because whether the traffic that turns up outranks
    them is decided by the draw and not by the route; how far that
    assumption strays from the scenes actually produced is measured in
    verify-candidate.mjs rather than waved through. */
-const junctionShape = (intent) => shapeOf({ stops: true, intent, prior: true });
+const intersectionShape = (intent) => shapeOf({ stops: true, intent, prior: true });
 
 /* Which of the turns on offer is worth most to this driver, given what
    the route has already promised their other habits. */
 const bestTurn = (candidate, turns, owed) =>
   turns.reduce(
     (best, x) =>
-      valueOfShape(candidate, junctionShape(x), owed) >
-      valueOfShape(candidate, junctionShape(best), owed)
+      valueOfShape(candidate, intersectionShape(x), owed) >
+      valueOfShape(candidate, intersectionShape(best), owed)
         ? x
         : best,
     turns[0]
@@ -430,7 +430,7 @@ export function planDrive({
      not a tally of showings -- the scenes do not exist yet. */
   const owed = {};
   const credit = (intent) => {
-    for (const t of chancesAt(junctionShape(intent))) owed[t] = (owed[t] || 0) + 1;
+    for (const t of chancesAt(intersectionShape(intent))) owed[t] = (owed[t] || 0) + 1;
   };
 
   for (let i = 0; i < length; i++) {
@@ -442,7 +442,7 @@ export function planDrive({
     const legal = validIntents(spec, entry);
     if (!legal.length) break;
 
-    /* The last junction is always straight on: there is nothing after it
+    /* The last intersection is always straight on: there is nothing after it
        to turn into, and directing a candidate off the end of the world
        is not a decision. */
     const last = i === length - 1;
@@ -450,7 +450,7 @@ export function planDrive({
     /* Whether to turn is left exactly as it was -- a route still has to
        read like a route, not like a trait-delivery mechanism. What the
        candidate gets to influence is WHICH turn, and only among turns the
-       junction was going to offer anyway.
+       intersection was going to offer anyway.
 
        A left is where cutsCorner shows and a right is not, so a driver who
        cuts corners on a route that only ever turns right has had their
@@ -477,7 +477,7 @@ export function planDrive({
     entry = OPPOSITE_SIDE[exitSideFor(entry, intent)];
   }
 
-  /* A route of nothing but straight-ahead junctions asks the examiner for
+  /* A route of nothing but straight-ahead intersections asks the examiner for
      no instruction at all, so the directing task disappears. turnShare is
      a probability and a probability can come up all-straight -- measured,
      1 route in 25 did. So the turn is GUARANTEED here rather than left to
@@ -490,7 +490,7 @@ export function planDrive({
     if (turns.length) {
       const drawn = turns[Math.floor(r() * turns.length) % turns.length];
       plan[at].intent = candidate && turns.length > 1 ? bestTurn(candidate, turns, owed) : drawn;
-      // Everything after that junction now enters from a different side.
+      // Everything after that intersection now enters from a different side.
       let e = OPPOSITE_SIDE[exitSideFor(plan[at].entry, plan[at].intent)];
       for (let i = at + 1; i < plan.length; i++) {
         plan[i].entry = e;
@@ -512,13 +512,13 @@ function pickTile(r, library, plan) {
   return pool[Math.floor(r() * pool.length) % pool.length];
 }
 
-/* Leaving by the north leg means arriving at the next junction from its
+/* Leaving by the north leg means arriving at the next intersection from its
    south. Mirrors world.js, which needs the same fact for placement. */
 const OPPOSITE_SIDE = { N: "S", S: "N", E: "W", W: "E" };
 
-/* Turn a plan into a drive the world can measure: each junction placed at
+/* Turn a plan into a drive the world can measure: each intersection placed at
    the spacing its tile's declared runway requires, with the scenario that
-   populates it carrying that junction's own intent. */
+   populates it carrying that intersection's own intent. */
 export function driveFromPlan(plan, { legFor, speed } = {}) {
   const tiles = plan.map((p) => ({ ...p.tile, spec: p.spec }));
   const legs = plan.map((p) => {
@@ -538,10 +538,10 @@ export function driveFromPlan(plan, { legFor, speed } = {}) {
 
    ONE QUANTITY, NOT THREE. Hazard supply, occlusion and difficulty are
    three names for the same thing here and must stay that way. Occlusion
-   comes from the tile's kerbside density; the traffic comes from the
+   comes from the tile's curbside density; the traffic comes from the
    brief its character chose; and what is actually markable comes from
    faultsIn, the same derivation the scorer grades against. So pacing
-   steers WHICH JUNCTION COMES NEXT and how often its drivers err — it
+   steers WHICH INTERSECTION COMES NEXT and how often its drivers err — it
    never adds a difficulty multiplier of its own, because a second dial
    would drift away from the first the moment either was tuned.
 
@@ -549,7 +549,7 @@ export function driveFromPlan(plan, { legFor, speed } = {}) {
    because compose.js attached no driver traits at all. Supply was not
    thin, it was absent. With traits attached the longest dead stretch across
    eight drives fell to 42.5s, average 34.1s — real, but uneven enough that
-   two or three junctions in six still offer nothing.
+   two or three intersections in six still offer nothing.
    ===================================================================== */
 
 /* The dead-air ceiling: longer than this with nothing to mark and the
@@ -563,11 +563,11 @@ export function driveFromPlan(plan, { legFor, speed } = {}) {
    33.0s with segment hazards alone, 32.1s with a predictive budget alone,
    26.6s with both. The budget had to become predictive because asking
    "has the gap exceeded the ceiling" reacts a whole leg late: the earliest
-   a junction can answer is when the candidate reaches it, which put the
+   a intersection can answer is when the candidate reaches it, which put the
    worst case at ceiling plus one leg.
 
    The remaining gaps are on arterial stretches, and they are CORRECT. An
-   arterial has a kerbside activity of 0.15 because a fast open road
+   arterial has a curbside activity of 0.15 because a fast open road
    should not have people stepping out of it; its difficulty is timing
    rather than seeing. Forcing 25s everywhere would mean putting
    pedestrians where they do not belong, which is why the constant stays
@@ -583,19 +583,19 @@ export const EVENT_FLOOR = 4;
 export const HUNGRY_FAULT_RATE = 0.9;
 export const SATED_FAULT_RATE = 0.15;
 
-/* What a junction is asked for, given how long it has been since anything
+/* What a intersection is asked for, given how long it has been since anything
    was worth marking. Everything except the fault rate comes from the
    tile's own character, untouched. */
 export function briefFor(tile, sinceLastEvent, legTime = 0) {
   const brief = { ...CHARACTER[tile.character].brief };
   /* PREDICTIVE, not reactive. Asking "has the gap exceeded the ceiling"
-     reacts a whole leg late, because the earliest a junction can answer is
+     reacts a whole leg late, because the earliest a intersection can answer is
      when the candidate reaches it -- measured, that put the worst dead
      stretch at ceiling plus one leg, 33s against a 25s target. Asking
      "will it have, by the time we get there" spends the same budget one
-     junction earlier. */
+     intersection earlier. */
   const projected = sinceLastEvent + legTime;
-  /* Past the ceiling the junction must produce something markable, not
+  /* Past the ceiling the intersection must produce something markable, not
      merely be likelier to. compose.js enforces that in the same
      accept/reject loop as every other guarantee it makes. */
   if (projected >= DEAD_AIR_CEILING) {
@@ -617,7 +617,7 @@ export function markableTimeline(filled) {
   for (const { tile, scn, hazards } of filled) {
     const speed = CHARACTER[tile.character].speed;
     const legTime = tile.runway / speed + 4;
-    /* Junction faults and segment faults land on ONE timeline, because
+    /* Intersection faults and segment faults land on ONE timeline, because
        "something worth marking happened" is one idea. A separate segment
        clock would be a second notion of the same thing, and this stage
        has been a catalogue of what that costs. */
@@ -644,11 +644,11 @@ export function pacingOf({ events, duration }) {
   return { worstGap: worst, count: events.length, tightest, duration };
 }
 
-/* Populating one junction, with somewhere to fall back to.
+/* Populating one intersection, with somewhere to fall back to.
 
    Demanding a fault makes the search fail more often -- composeScenario
    already returns nothing on about a fifth of heavy briefs, and an extra
-   condition tightens that. An empty junction is the worst possible answer
+   condition tightens that. An empty intersection is the worst possible answer
    to "the drive has gone quiet", so the ask is relaxed in steps rather
    than abandoned: insist on a fault, then merely lean toward one, then
    take whatever the road character would have given anyway.
@@ -662,11 +662,11 @@ export function composeForTile(tile, sinceLastEvent, seed, opts = {}) {
   const plain = CHARACTER[tile.character].brief;
 
   /* Who is driving, and which way the route says they go. Both are the
-     SAME driver at every junction -- before this the composer invented a
+     SAME driver at every intersection -- before this the composer invented a
      flawless ego of its own and re-decided the turn, and the plan's
      (entry, intent) survived 9 times in 120. */
   /* The scene's own seed compiles the driver's errors, so the same
-     candidate at the same junction errs identically on every replay. */
+     candidate at the same intersection errs identically on every replay. */
   const ego = candidate ? egoFor(candidate, { from: at?.from, intent: at?.intent, seed }) : null;
   const place = at ? { from: at.from, intent: at.intent } : null;
   const driver = ego || place ? { ...(ego || {}), ...(place || {}) } : null;
@@ -676,7 +676,7 @@ export function composeForTile(tile, sinceLastEvent, seed, opts = {}) {
      showing by the candidate is a fault -- so the strictest rung is the
      new one, and everything below it is the chain that already existed.
 
-     A habit that cannot show at this junction must not cost the junction:
+     A habit that cannot show at this intersection must not cost the intersection:
      rung 1 drops the demand rather than the draw. */
   const ladder = [
     show && show.length ? { brief: wanted, show } : null,
@@ -704,13 +704,13 @@ export function composeForTile(tile, sinceLastEvent, seed, opts = {}) {
 /* =====================================================================
    SEGMENT HAZARDS
 
-   Junctions were the only source of markable events, and a leg takes
+   Intersections were the only source of markable events, and a leg takes
    about ten seconds, so no amount of pacing could react faster than a
-   junction arrived. That is what structurally capped dead air at ~40s
+   intersection arrived. That is what structurally capped dead air at ~40s
    against a 25s target. This is the piece that lifts it.
 
    BUILT FROM THE ROADSIDE CONTENT THAT ALREADY EXISTS. roadsideLifeFor
-   decides where the people are and kerbsideFor decides where the props
+   decides where the people are and curbsideFor decides where the props
    are; a hazard is those same two answers turned into a situation. There
    is no second notion of where anything stands at the roadside, because a
    second notion is how every error this stage produced began.
@@ -724,7 +724,7 @@ export function composeForTile(tile, sinceLastEvent, seed, opts = {}) {
    simulate, faultsIn, whatEgoSees, the whole fault derivation -- works on
    it unchanged. Verified before it was designed: a two-leg spec
    simulates, the candidate drives through it, and faultsIn derives from
-   it exactly as at a junction.
+   it exactly as at a intersection.
    ===================================================================== */
 
 /* A straight road of the character's own width. `control: "none"` because
@@ -739,7 +739,7 @@ export function straightSpecFor(character) {
 
    The candidate meets them at whatever time their distance along the link
    implies, so the hazard's own clock is the drive's clock offset -- the
-   same relationship a junction has to the drive. */
+   same relationship a intersection has to the drive. */
 /* A HAZARD AND AN OBSTRUCTION ARE NOT THE SAME THING, and conflating
    them is what put frequency and pace in direct conflict: every piece of
    street life stopped the car, so a lively street was an obstacle course
@@ -753,7 +753,7 @@ export function straightSpecFor(character) {
                    strictly gated by the pacing budget, and are genuinely
                    alarming when they happen.
 
-     NON-BLOCKING  somebody steps off the kerb as the car clears them,
+     NON-BLOCKING  somebody steps off the curb as the car clears them,
                    or is simply standing at the edge of it. No legal
                    hold, no stop, and the candidate drives on either way.
                    These can be frequent and cost nothing.
@@ -779,7 +779,7 @@ export function hazardAt(tile, link, person, { candidate = null, seed = 1, block
   const along = ((person.x - link.from.x) * dx + (person.y - link.from.y) * dy) / len;
   const reachesAt = along / speed;
 
-  /* The person crosses from the kerb they are standing on. `side` came
+  /* The person crosses from the curb they are standing on. `side` came
      from roadsideLifeFor, so which way they step is decided once, where
      they were placed, rather than again here. */
   const from = person.side < 0 ? "S" : "N";
@@ -790,7 +790,7 @@ export function hazardAt(tile, link, person, { candidate = null, seed = 1, block
     control: "none",
     at: { x: person.x, y: person.y },
     reachesAt,
-    /* The same driver who is at the junctions. A segment used to take
+    /* The same driver who is at the intersections. A segment used to take
        whatever traits its caller felt like handing it, which made the
        candidate two different people on one drive. */
     ego: {
@@ -841,7 +841,7 @@ export function hazardAt(tile, link, person, { candidate = null, seed = 1, block
    `emerges` picks up index.js's movement shape; nothing here knows how
    the arc is built, only where the car starts and which lane it joins. */
 export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDriveway = false } = {}) {
-  const lay = kerbLayout(tile.character);
+  const lay = curbLayout(tile.character);
   const speed = CHARACTER[tile.character].speed;
   const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -861,7 +861,7 @@ export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDri
     y: link.from.y + uy * d + ny * out * side,
   };
   /* Nose-in to a driveway, so it comes out BACKWARDS across the parking
-     lane; alongside the kerb in a parallel space, so it pulls out
+     lane; alongside the curb in a parallel space, so it pulls out
      forwards. Same movement shape, different resting heading. */
   const restRot = fromDriveway ? along + 90 * side : along;
   const lane = lay.laneEdge / 2;
@@ -948,7 +948,7 @@ export function emergingAt(tile, link, at, seed = 1, { candidate = null, fromDri
    busy and a street that is dangerous. */
 export function segmentHazards(tile, link, seed = 1, { candidate = null } = {}) {
   const people = roadsideLifeFor(tile, link, seed);
-  const blockers = kerbsideFor(tile, link, seed);
+  const blockers = curbsideFor(tile, link, seed);
   /* EVERY person beside the road is a hazard; `mayEmerge` decides only
      which KIND. The ones who might step out in front are blocking and
      the pacing budget gates them; everybody else is somebody you pass
@@ -961,7 +961,7 @@ export function segmentHazards(tile, link, seed = 1, { candidate = null } = {}) 
      whether the candidate saw it coming. Placed where a parked car
      actually is, so it emerges from a row rather than from nowhere. */
   const parked = blockers.filter((b) => b.parked);
-  const lay = kerbLayout(tile.character);
+  const lay = curbLayout(tile.character);
   const emerging = [];
   /* NOT LIVE YET, and deliberately so. As timed, a car leaving a space
      collides with the candidate in 95 of 111 cases and NOT ONE of those

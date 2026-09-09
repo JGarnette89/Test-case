@@ -129,7 +129,7 @@ function touchEver(A, B, dt) {
 
 /* The smallest time separation at which these two ever want the same
    space, and when. Infinity if their paths never conflict at all — which
-   is a real answer, not a failure: most road users at most junctions are
+   is a real answer, not a failure: most road users at most intersections are
    simply nothing to do with each other.
 
    Returns `touched` when they want it at the same instant, which is the
@@ -173,7 +173,7 @@ export const clampDepart = (ego, at) => Math.max(at, ego?.arriveAt ?? 0);
    wrong currency.
 
    It used to exclude ALL pedestrians, which was the same reasoning
-   applied one step too widely. Somebody standing at a kerb is not on a
+   applied one step too widely. Somebody standing at a curb is not on a
    crossing and no legal hold covers them — passing them at a third of a
    second IS a following-gap question, and it is the only clearance
    question a non-blocking hazard can ask. Narrowed to the rule's own

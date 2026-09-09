@@ -14,7 +14,7 @@ exist.
 
 The view cone stops deciding whether a fault counts. **The viewport does.**
 The camera is deliberately smaller than the situation, so where you point it
-is a real choice, and the two examiner jobs — reading the junction ahead to
+is a real choice, and the two examiner jobs — reading the intersection ahead to
 give a direction, and watching the car to catch faults — pull it to different
 places. Marking moves off the live clock: the drive is cut into sections and
 you fill in a sheet at the end of each. Scoring gains a third and fourth
@@ -282,7 +282,7 @@ fixed number:
 
 - take the road users that matter — those with priority over the candidate,
   those the candidate's path conflicts with, and the candidate itself
-- frame their bounding extent, plus the junction being approached
+- frame their bounding extent, plus the intersection being approached
 - clamp to a minimum (never so tight the car fills the screen) and a
   maximum (never so wide that everything fits, or the mechanic is gone)
 
@@ -303,19 +303,19 @@ snaps the view closed.
 
 ### 4.2 Sections, derived from scenario state
 
-Sections must end at natural breaks — a completed manoeuvre, a junction
+Sections must end at natural breaks — a completed manoeuvre, a intersection
 cleared — never on a timer.
 
 The engine already produces the signal: `poseAt(ego, t).gone` is `k >= 1`,
 i.e. the candidate has completed its traverse of the current leg. That is
-derived, not authored, and it is exactly "the junction is behind us".
+derived, not authored, and it is exactly "the intersection is behind us".
 
 Two cases:
 
 - **Multi-leg drives** (`route.js`): a section *is* a leg. `planRoute`
   already sequences them, `currentLeg`/`recordLeg` already step them, and
   `entrySideAfter` already derives continuity. Almost free.
-- **Single-junction situations**: one section per situation. Also free, and
+- **Single-intersection situations**: one section per situation. Also free, and
   it means the first playable version needs no new sectioning code at all.
 
 Fault-to-section assignment needs one rule, and I propose: **a fault belongs
@@ -393,7 +393,7 @@ rather than signal.
 Every other constant in this project was either derived or measured against a
 controlled comparison. This one cannot be. It is a playtest question, it is
 Jay's to answer, and the honest thing is to build the shortest defensible
-version first (one section per junction) and lengthen only if it feels
+version first (one section per intersection) and lengthen only if it feels
 trivial.
 
 Secondary risk, same character: the camera's maximum extent. Too wide and
@@ -434,20 +434,20 @@ usable:
 
 The reason is not tuning, it is content scale. **The widest separation
 between two simultaneous faults anywhere in the set is 35.8 m**, and a 4 s
-look-ahead already frames 57.5 m across. Faults happen at a junction, the
-junction box is 7.2 m, and everything worth watching sits inside a few tens
+look-ahead already frames 57.5 m across. Faults happen at a intersection, the
+intersection box is 7.2 m, and everything worth watching sits inside a few tens
 of metres. To make the viewport scarce you would have to shrink it below
 ~36 m, at which point the candidate's car fills a third of the screen and
-the junction cannot be read at all — the "fighting the camera" failure mode
+the intersection cannot be read at all — the "fighting the camera" failure mode
 flagged in §5.
 
 **What this does and does not invalidate.** It does not kill the design. It
 identifies that fault-versus-fault separation is the wrong source of
-scarcity: two faults at one junction will always be close together. The
+scarcity: two faults at one intersection will always be close together. The
 scarcity the design actually wants is **job versus job** — reading the
-junction ahead against watching the car — and those are genuinely far apart:
+intersection ahead against watching the car — and those are genuinely far apart:
 
-| Situation | Candidate → junction at t=0 | at departure |
+| Situation | Candidate → intersection at t=0 | at departure |
 |---|---|---|
 | `gap` | 15.3 m | 8.3 m |
 | `tee` | 19.1 m | 8.3 m |
@@ -487,7 +487,7 @@ section end in the lab.
 invention and below a catch; the four buckets are exhaustive and disjoint.
 
 ### Stage 4 — The two jobs compete
-Wire directions into the same viewport, so reading the junction ahead and
+Wire directions into the same viewport, so reading the intersection ahead and
 watching the car are different framings. This is the stage that makes it a
 game rather than a marking exercise.
 
@@ -505,12 +505,12 @@ Only after stage 4 has been played. Needs its own design pass first (§4.5).
 **Depends on it:**
 
 - **Stage 2, the camera-as-constraint mechanic itself.** Corrected after the
-  gate measurement above: on single-junction content the viewport cannot be
+  gate measurement above: on single-intersection content the viewport cannot be
   scarce, because the widest gap between two faults (35.8 m) is smaller than
   any usable frame (57.5 m at a 4 s look-ahead). Scarcity needs the two jobs
   to be far apart, and that needs road between them.
-- Stage 4 in its full form. Reading a junction *before the car arrives*
-  needs road ahead of the current junction to exist and be framable.
+- Stage 4 in its full form. Reading a intersection *before the car arrives*
+  needs road ahead of the current intersection to exist and be framable.
 - Sections at genuinely natural breaks across a long drive. Today a "natural
   break" is the end of a situation, which is a boundary the scenario format
   hands us for free.

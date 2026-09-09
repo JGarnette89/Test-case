@@ -94,7 +94,7 @@ console.log(`\n2. A TRACKED ACTOR OPENS THE FRAME TO ITS OWN SPAWN REACH  (${tra
     ? ok("once fully open, the frame reaches at least as far as the actor's spawn point")
     : fail(`frame opened to ${halfOf(late.box)}, short of the ${reach} the actor's spawn needs`);
   isSquareCentred(late.box)
-    ? ok("the open frame is still square and centred on the junction — a zoom, not a pan")
+    ? ok("the open frame is still square and centred on the intersection — a zoom, not a pan")
     : fail(`frame is not square/centred: ${late.box}`);
 }
 

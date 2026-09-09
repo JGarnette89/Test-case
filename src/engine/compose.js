@@ -44,7 +44,7 @@ export const VISIBILITY = {
   open: { blindness: [0, 0.05] },
   restricted: { blindness: [0.2, 1] },
 };
-export const JUNCTIONS = ["cross", "tee", "arterial"];
+export const INTERSECTIONS = ["cross", "tee", "arterial"];
 
 /* Where a standing obstruction can plausibly go: off the carriageway, on
    one of the four corners, near or a little further back. */
@@ -117,7 +117,7 @@ export function measure(scn) {
    What this one refuses is CONTACT, and that is an examiner-game reason
    rather than a leftover: an examiner watching a candidate hit somebody
    is supposed to have taken the wheel, and intervention is not built. A
-   collision is a state this game has no answer to -- 8 in 240 junctions
+   collision is a state this game has no answer to -- 8 in 240 intersections
    with no gate at all. The line sits exactly where the game's own ability
    to respond sits, and it moves when intervention lands. */
 export function windowIsMarkable(scn) {
@@ -143,7 +143,7 @@ export function meetsBrief(brief, m) {
 
 /* --- composing ------------------------------------------------------- */
 function roadFor(brief, r) {
-  const kind = brief.junction ?? pick(r, JUNCTIONS);
+  const kind = brief.intersection ?? pick(r, INTERSECTIONS);
   if (kind === "tee") {
     const missing = pick(r, SIDES);
     const stem = pick(r, SIDES.filter((s) => s !== missing && s !== OPPOSITE[missing]));
@@ -164,7 +164,7 @@ function roadFor(brief, r) {
 /* What a driver does wrong, if anything.
 
    Endless produced no markable behaviour AT ALL before this: every
-   composed junction came back with zero traits and therefore zero faults,
+   composed intersection came back with zero traits and therefore zero faults,
    so a whole generated drive offered nothing to assess. For a game whose
    world exists to present a continuous stream of markable situations,
    that is the supply being zero rather than thin.
@@ -172,13 +172,13 @@ function roadFor(brief, r) {
    generate.js has attached traits to 45% of actors since the Daily mode
    was built; this is the same idea with the pool widened to the traits
    that actually produce a derivable, watchable fault. wideTurn and
-   cutsCorner bend the line through the junction, which is exactly what an
+   cutsCorner bend the line through the intersection, which is exactly what an
    examiner reads, and neither was in the original pool because neither
    existed when it was written.
 
    The RATE is the one thing pacing is allowed to steer, via the brief —
    because hazard supply, occlusion and difficulty must stay one idea
-   rather than three. Everything else about how hard a junction is comes
+   rather than three. Everything else about how hard a intersection is comes
    from the road character that chose the brief in the first place. */
 /* TRAIT_KEYS, not a copy of it. This was a literal list and it was a
    duplicate of the one in index.js the day it was written — three new
@@ -217,7 +217,7 @@ export function compose(brief, seed, { ego: want = null } = {}) {
      land on has no such leg -- a tee is missing one by definition -- the
      draw is refused rather than quietly re-seated, because a candidate
      entering from somewhere the route did not send them is a different
-     drive. The search tries another road; measured, 3 junctions in 56
+     drive. The search tries another road; measured, 3 intersections in 56
      used to slide over to the drawn leg instead. */
   if (want?.from && !hasLeg(spec, want.from)) return null;
   const from = want?.from ?? drawnFrom;
@@ -229,22 +229,22 @@ export function compose(brief, seed, { ego: want = null } = {}) {
   /* THE CANDIDATE OBEYS THE ROAD, like everybody else on it.
 
      This used to read "the ego always holds; what varies is whether
-     anyone else has to", and it made EVERY junction a stop -- measured,
+     anyone else has to", and it made EVERY intersection a stop -- measured,
      240 of 240 -- even though the candidate's own leg was uncontrolled on
      87 of them. The road said drive through and the composer stopped them
      anyway.
 
      The maintainer, after playing: "some intersections will just be
      driven straight through with no real requirements from the NPC
-     driver." And the elegant part is that this needs no "empty junction"
+     driver." And the elegant part is that this needs no "empty intersection"
      feature at all -- it needs main roads that behave like main roads. A
-     through road crossing side streets produces junctions that demand
+     through road crossing side streets produces intersections that demand
      nothing, for free, because that is what a through road IS.
 
-     WHY THAT MATTERS MORE THAN IT SOUNDS: if every junction produces
-     something, the player learns that junction means fault and attention
+     WHY THAT MATTERS MORE THAN IT SOUNDS: if every intersection produces
+     something, the player learns that intersection means fault and attention
      stops being a decision. Uncertainty is what makes watching necessary.
-     An empty junction is not filler; it is what makes the core mechanic
+     An empty intersection is not filler; it is what makes the core mechanic
      work.
 
      A signal still holds the candidate: the phase is defined against
@@ -258,10 +258,10 @@ export function compose(brief, seed, { ego: want = null } = {}) {
   const egoArrive = span(r, 1.0, 2.2);
   const drawnIntent = pick(r, legal);
   /* A route decides where the candidate goes; before this the composer
-     re-decided it and the two disagreed. Measured: the composed junction
+     re-decided it and the two disagreed. Measured: the composed intersection
      matched the plan's (entry, intent) 9 times in 120 -- about what chance
      gives -- so the examiner was directing a turn the candidate was never
-     making. A requested intent the junction cannot offer is refused rather
+     making. A requested intent the intersection cannot offer is refused rather
      than silently swapped, because a plan built on a turn that does not
      exist is worse than a draw that fails. */
   if (want?.intent && !legal.includes(want.intent)) return null;
@@ -282,7 +282,7 @@ export function compose(brief, seed, { ego: want = null } = {}) {
        generate.js's own comment describes, just narrower than it used to
        be. Their crossing has to be on a leg the ego actually meets, or it
        is scenery instead of a decision — and, unlike a plain four-way,
-       has to be a leg this junction actually has. */
+       has to be a leg this intersection actually has. */
     if (r() < 0.22) {
       const pedLegs = [from, OPPOSITE[from], RIGHT_OF[from]].filter((s) => s && hasLeg(spec, s));
       if (pedLegs.length) {
@@ -354,7 +354,7 @@ export function compose(brief, seed, { ego: want = null } = {}) {
   if (!actors.length) return null;
 
   /* Occasionally one of them is on a call. Rare on purpose — an emergency
-     vehicle that turns up every third junction stops being the thing that
+     vehicle that turns up every third intersection stops being the thing that
      rearranges the right of way and becomes just another car with lights.
 
      Added after the ordinary traffic rather than inside the loop, because
@@ -368,7 +368,7 @@ export function compose(brief, seed, { ego: want = null } = {}) {
      arriving next — which windowIsSafe then rightly rejects, so a heavy
      brief mostly burns tries producing draws it will throw away. It also
      does not need the company: the ambulance IS the event, and a quieter
-     junction is where "the road was yours and it still is not" reads
+     intersection is where "the road was yours and it still is not" reads
      most clearly. */
   if ((brief.traffic ?? "busy") !== "heavy" && r() < 0.2) {
     const side = pick(r, legs.filter((s) => s !== from));
@@ -378,11 +378,11 @@ export function compose(brief, seed, { ego: want = null } = {}) {
          pushes the ego's window past itself, and every extra road user
          still arriving after that is another chance for the window to
          land on somebody — which windowIsSafe then rejects. Swapping
-         rather than adding keeps the junction about as busy as the brief
+         rather than adding keeps the intersection about as busy as the brief
          asked for and makes the draw far likelier to survive. */
       if (actors.length > 1) actors.pop();
       const lead = span(r, EMERGENCY_LEAD[0] + 0.2, EMERGENCY_LEAD[1] - 0.4);
-      /* Straight where the junction has a straight — an emergency vehicle
+      /* Straight where the intersection has a straight — an emergency vehicle
          driving through reads most clearly — but a tee has no opposite leg
          to go straight to, and validIntents was already being computed and
          then ignored. That put an ambulance on a leg that does not exist. */
@@ -402,7 +402,7 @@ export function compose(brief, seed, { ego: want = null } = {}) {
       });
       /* Declared so the renderer widens to bring it into shot before the
          decision. Whether that actually worked is measured below rather
-         than assumed — the frame depends on how wide this junction is. */
+         than assumed — the frame depends on how wide this intersection is. */
       camera = { track: [{ id: "amb", revealBy: lead + 2.2, rampFor: 2.5, pad: 30 }] };
     }
   }
@@ -412,7 +412,7 @@ export function compose(brief, seed, { ego: want = null } = {}) {
     generated: true,
     composed: true,
     seed,
-    conditions: { ...brief, junction: kind },
+    conditions: { ...brief, intersection: kind },
     title: "Generated situation",
     brief: "",
     control: spec.legs[from].control === "signal" ? "signal" : "stop",
@@ -422,7 +422,7 @@ export function compose(brief, seed, { ego: want = null } = {}) {
     /* Whoever is driving, spread last so a persisting candidate's traits
        and composure ride into the scene. Absent one this is exactly the
        flawless blue car it always was -- which was the bug: measured over
-       320 generated junctions, the candidate carried no traits at all and
+       320 generated intersections, the candidate carried no traits at all and
        committed none of the 143 faults on offer. */
     ego: {
       from, intent: egoIntent, arriveAt: egoArrive, stops: egoStops, colorKey: "blue",
@@ -448,7 +448,7 @@ export function compose(brief, seed, { ego: want = null } = {}) {
 
 /* Did the camera this scene declared actually get its actor into shot
    before the decision? Measured, not assumed — how much road fits on
-   screen depends on how wide the junction turned out to be, and a wide
+   screen depends on how wide the intersection turned out to be, and a wide
    arterial frames very differently from a two-lane cross. A draw whose
    emergency vehicle is still off screen when the player has to commit
    would mark them for not seeing something invisible, so it is thrown
@@ -483,7 +483,7 @@ function framedInTime(scn) {
 
 /* An emergency vehicle that changes nothing is decoration, and worse than
    decoration: it teaches that they can be ignored. One crossing the far
-   side of the junction on its own path genuinely costs a driver nothing —
+   side of the intersection on its own path genuinely costs a driver nothing —
    which is correct, and is exactly why the draw has to be checked rather
    than assumed. Controlled comparison, the same shape every other tell in
    this game is held to: the identical scene with the call switched off. */
@@ -513,7 +513,7 @@ export function composeScenario(brief, seed, opts = {}) {
     if (!emergencyEarnsItsPlace(scn)) continue;
     if (!windowIsMarkable(scn)) continue;
     if (!meetsBrief(brief, m).ok) continue;
-    /* When the drive has gone quiet, a junction is REQUIRED to produce
+    /* When the drive has gone quiet, a intersection is REQUIRED to produce
        something markable rather than merely made likelier to. Nudging the
        fault rate moved the worst dead stretch from 83.3s to 52.1s and the
        average not at all, because a trait is not a fault: the driver has

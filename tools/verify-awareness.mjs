@@ -153,8 +153,8 @@ console.log("\n3. OCCLUDED AND NOT-YET-ON-STAGE ARE DIFFERENT THINGS");
 
      Measured, and it corrected my own assumption: VEHICLES are on stage
      from t=0 — they are approaching down the road, not spawning at the
-     junction — so this clause fires only for PEDESTRIANS, who do not
-     exist until they step off the kerb. 4 road users in 69. It is still
+     intersection — so this clause fires only for PEDESTRIANS, who do not
+     exist until they step off the curb. 4 road users in 69. It is still
      the right rule, and it is a real behaviour change: before it, a
      candidate simply ignored a pedestrian who had not started crossing. */
   let offStage = 0, knownAnyway = 0;
@@ -356,7 +356,7 @@ console.log("\n8. THE MARGIN YOU LEAVE FOR WHAT YOU CANNOT SEE IS CONFIDENCE");
     : fail(`caution does not span both tails: ${cautionOf(C(1, 0))} / ${cautionOf(C(1, CONFIDENT_ENOUGH))} / ${cautionOf(C(1, 1))}`);
 
   /* The allowance is not a constant. It is the candidate's own time to
-     clear the junction, because the way to become sure an unseen stretch
+     clear the intersection, because the way to become sure an unseen stretch
      is empty is to watch it for as long as anything hiding there would
      take to reach you -- the same duration you need to be clear of the
      box before it arrives. One quantity doing both jobs. */
@@ -367,7 +367,7 @@ console.log("\n8. THE MARGIN YOU LEAVE FOR WHAT YOU CANNOT SEE IS CONFIDENCE");
     : fail("every scenario has the same crossing time, so the allowance is a constant in disguise");
 
   /* Caution is about KNOWN unknowns. With nothing hidden there is nothing
-     to be cautious about, and a bold driver at an open junction is
+     to be cautious about, and a bold driver at an open intersection is
      indistinguishable from a careful one -- which is correct, and is why
      the two axes do not collapse: inattention is an unknown unknown and
      no amount of caution helps against it. */
@@ -377,7 +377,7 @@ console.log("\n8. THE MARGIN YOU LEAVE FOR WHAT YOU CANNOT SEE IS CONFIDENCE");
     const b = marginAt(open.sim, open.scn, C(1, 1), open.sim.legalAt);
     a === 0 && b === 0
       ? ok(`with nothing hidden the margin is zero whatever the confidence (${open.id}) -- caution answers known unknowns, never inattention`)
-      : fail(`a clear junction still produced a margin (${a.toFixed(2)} timid, ${b.toFixed(2)} bold)`);
+      : fail(`a clear intersection still produced a margin (${a.toFixed(2)} timid, ${b.toFixed(2)} bold)`);
   }
   const blind = scenes.find((x) => unseenShare(x.sim, x.scn, x.sim.legalAt, C(1, 0.5)) > 0.4);
   if (blind) {
@@ -385,7 +385,7 @@ console.log("\n8. THE MARGIN YOU LEAVE FOR WHAT YOU CANNOT SEE IS CONFIDENCE");
     const bold = marginAt(blind.sim, blind.scn, C(1, 1), blind.sim.legalAt);
     timid > 0 && bold === 0
       ? ok(`and where the view IS poor it separates them: ${timid.toFixed(2)}s held by a timid driver, ${bold.toFixed(2)}s by a bold one (${blind.id})`)
-      : fail(`the margin does not separate the tails at a blind junction (${timid.toFixed(2)} vs ${bold.toFixed(2)})`);
+      : fail(`the margin does not separate the tails at a blind intersection (${timid.toFixed(2)} vs ${bold.toFixed(2)})`);
   }
 
   /* Three recognisably different drivers from two axes. */

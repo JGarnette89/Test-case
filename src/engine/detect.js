@@ -28,7 +28,7 @@
 
    3. Late is worth less than prompt, but not nothing. You are marking
       what you observe as you observe it; noticing on the way out of the
-      junction is still noticing.
+      intersection is still noticing.
 
    WHAT A MARK IS is deliberately left open. Pass a `what` and it is
    scored as a categorised call; leave it out and only the timing is
@@ -62,7 +62,7 @@ export const SHOWN_ENOUGH = REACTION_FLOOR;
 
 /* You cannot call a fault faster than you can register one, so the window
    opens a reaction after it starts. It stays open past the end because
-   marking on the way out of a junction is still marking. */
+   marking on the way out of a intersection is still marking. */
 export const CALL_GRACE = 2.0;
 
 /* What inventing a fault costs, as a fraction of what catching one earns.
@@ -104,7 +104,7 @@ export function promptness(fault, at) {
 
    Each fault is matched by at most one mark and each mark to at most one
    fault, nearest-first, so spraying marks cannot farm a single fault. A
-   mark only ever pairs with a fault from the same junction, where both
+   mark only ever pairs with a fault from the same intersection, where both
    say which -- see the note in the pairing loop.
    ===================================================================== */
 export function scoreDetection({
@@ -127,14 +127,14 @@ export function scoreDetection({
   const pairs = [];
   for (const m of marks) {
     for (const cand of markable) {
-      /* A mark belongs to the junction it was made at. Every leg's clock
-         starts near zero, so without this a call at 0.4s on junction 3 is
-         indistinguishable from one on junction 1 and gets credited
+      /* A mark belongs to the intersection it was made at. Every leg's clock
+         starts near zero, so without this a call at 0.4s on intersection 3 is
+         indistinguishable from one on intersection 1 and gets credited
          against whichever fault the sort happens to reach first -- while
          the fault it was actually for reads as missed and the mark itself
          as invented. Guarded on both being defined, so a caller grading a
          single scene needs neither. */
-      if (m.junction != null && cand.fault.junction != null && m.junction !== cand.fault.junction) continue;
+      if (m.intersection != null && cand.fault.intersection != null && m.intersection !== cand.fault.intersection) continue;
       const value = promptness(cand.fault, m.at);
       if (value <= 0) continue;
       // A categorised call must name the right fault to count as one.
@@ -205,14 +205,14 @@ const round = (v) => Math.round(v * 1000) / 1000;
    ===================================================================== */
 export function sectionSheet({
   legs = [],            // [{ faults, window, intent }] for this section
-  marks = [],           // [{ at, junction, what? }]
-  given = {},           // junction -> { at, intent }
+  marks = [],           // [{ at, intersection, what? }]
+  given = {},           // intersection -> { at, intent }
   shownFor = (f) => f.duration,
   from = 0,
 }) {
   const faults = [];
   legs.forEach((leg, i) => {
-    for (const f of leg.faults) faults.push({ ...f, junction: from + i });
+    for (const f of leg.faults) faults.push({ ...f, intersection: from + i });
   });
 
   const result = scoreDetection({ faults, marks, shownFor });
@@ -222,7 +222,7 @@ export function sectionSheet({
     const g = given[j] ?? null;
     const a = attribute(g ? g.at : null, leg.window);
     return {
-      junction: j,
+      intersection: j,
       wanted: leg.intent,
       said: g?.intent ?? null,
       verdict: a.verdict,

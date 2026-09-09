@@ -182,7 +182,7 @@ console.log("\n4. CONTACT BECOMES A NEAR MISS WHERE ANYBODY COULD HAVE AVOIDED I
     : fail(`the reaction layer did not reduce contacts for a blind bold driver (${bold.raw} -> ${bold.after})`);
 
   /* And where it cannot help, the reason is geometric rather than a
-     shortcoming of the model: you cannot reverse out of a junction you
+     shortcoming of the model: you cannot reverse out of a intersection you
      are already in. */
   let tot = 0, inBox = 0, approaching = 0;
   for (let i = 1; i <= 20; i++) {
@@ -200,7 +200,7 @@ console.log("\n4. CONTACT BECOMES A NEAR MISS WHERE ANYBODY COULD HAVE AVOIDED I
     }
   }
   console.log(`   residual contacts across 20 drawn drivers: ${tot}`);
-  console.log(`     other car already at or in the junction when the candidate committed: ${inBox}`);
+  console.log(`     other car already at or in the intersection when the candidate committed: ${inBox}`);
   console.log(`     other car still approaching:                                          ${approaching}`);
   inBox > approaching
     ? ok(`${(100 * inBox / Math.max(1, tot)).toFixed(0)}% of what is left is the candidate driving INTO traffic that is already committed — giving way cannot undo that, and should not be tuned until it appears to`)
@@ -241,7 +241,7 @@ console.log("\n6. A PEDESTRIAN CAN HESITATE, AND SOME DELIBERATELY CANNOT");
      and every one of them was terminal: pedestrian conflicts were the one
      place with no near-miss band at all. A pedestrian gives way by
      hesitating rather than braking, which the same yielding profile
-     expresses exactly — they hold at the kerb or stop where they are. */
+     expresses exactly — they hold at the curb or stop where they are. */
   const withPeds = scenes.filter((x) => x.sim.actors.some((a) => a.kind === "ped"));
   let swept = 0, unreacted = 0, reacted = 0, held = 0;
   for (const { scn, sim } of withPeds) {

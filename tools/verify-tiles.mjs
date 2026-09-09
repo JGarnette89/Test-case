@@ -3,20 +3,20 @@
  * The lesson that produced this check, twice over: measure the quantity
  * the game depends on, not a proxy that happens to correlate.
  *
- *   - spacing between junction centres looked like approach, and was not.
+ *   - spacing between intersection centres looked like approach, and was not.
  *     Designing to it gave a band 20m too generous.
- *   - distance to the junction CENTRE looked like runway, and was not.
+ *   - distance to the intersection CENTRE looked like runway, and was not.
  *     The candidate has to have acted by the stop line, which sits further
  *     back on a wider road.
  *
  * So a tile declares RUNWAY and this file verifies it against measured
  * geometry, for every tile that could precede it — because what the
- * previous junction consumes on the way out depends on ITS width, not on
+ * previous intersection consumes on the way out depends on ITS width, not on
  * the tile making the promise. A tile that cannot deliver what it claims
- * fails here, at authoring time, rather than becoming a junction nobody
+ * fails here, at authoring time, rather than becoming a intersection nobody
  * can direct several stages later.
  */
-import { TILES, CHARACTER, CHARACTERS, specFor, runwayNeededFor, kerbsideFor, roadsideLifeFor } from "../src/engine/tiles.js";
+import { TILES, CHARACTER, CHARACTERS, specFor, runwayNeededFor, curbsideFor, roadsideLifeFor } from "../src/engine/tiles.js";
 import { driveThroughTiles, runwayFor, linkBetween, spacingForRunway } from "../src/engine/world.js";
 import { simulate, poseAt, M } from "../src/engine/index.js";
 import { whatEgoSees, visibility, eyePoint } from "../src/engine/sight.js";
@@ -105,11 +105,11 @@ console.log("\n3. AS OCCLUSION FALLS, SPEED RISES");
      it, it changes KIND. A residential street is a seeing problem; an
      arterial is a timing problem. An author could quietly break that by
      making a fast road cluttered, so it is asserted rather than assumed. */
-  console.log("\n   character      speed    kerbside density   activity");
+  console.log("\n   character      speed    curbside density   activity");
   console.log("   " + "-".repeat(58));
   const bySpeed = [...CHARACTERS].sort((a, b) => CHARACTER[a].speed - CHARACTER[b].speed);
   for (const c of bySpeed) {
-    const k = CHARACTER[c].kerbside;
+    const k = CHARACTER[c].curbside;
     console.log(
       `   ${c.padEnd(14)} ${String(Math.round((CHARACTER[c].speed / 20) * 3.6)).padStart(3)} km/h ` +
       `${k.density.toFixed(2).padStart(14)} ${k.activity.toFixed(2).padStart(10)}`
@@ -117,7 +117,7 @@ console.log("\n3. AS OCCLUSION FALLS, SPEED RISES");
   }
   let falling = true;
   for (let i = 1; i < bySpeed.length; i++) {
-    if (!(CHARACTER[bySpeed[i]].kerbside.density < CHARACTER[bySpeed[i - 1]].kerbside.density)) falling = false;
+    if (!(CHARACTER[bySpeed[i]].curbside.density < CHARACTER[bySpeed[i - 1]].curbside.density)) falling = false;
   }
   falling
     ? ok("density falls as speed rises, so difficulty changes kind rather than degree")
@@ -134,7 +134,7 @@ console.log("\n4. THE PROPS ARE THE OCCLUSION");
     const tile = withSpec(t);
     const drive = driveThroughTiles({ tiles: [tile, tile], legs: [legFor(tile.spec), legFor(tile.spec)] });
     const link = drive.links[0];
-    const blockers = kerbsideFor(tile, link, 11);
+    const blockers = curbsideFor(tile, link, 11);
     const people = roadsideLifeFor(tile, link, 12);
     const per100 = (blockers.length / (link.length / 20)) * 100;
     counts[t.id] = { blockers: blockers.length, per100, character: t.character };
@@ -172,15 +172,15 @@ console.log("\n5. DENSITY IS THE DIFFICULTY DIAL, MEASURED THROUGH SIGHT");
        on whichever handful of people one draw happened to place. */
     let blocked = 0, total = 0;
     for (let seed = 1; seed <= 40; seed++) {
-    const blockers = kerbsideFor(tile, link, seed * 37).map((b) => ({
+    const blockers = curbsideFor(tile, link, seed * 37).map((b) => ({
       p: { id: b.id, kind: "static" }, pose: { x: b.x, y: b.y, rot: b.rot }, hl: b.hl, hw: b.hw,
     }));
-    /* Look from the road at the people standing AT THE KERB further up
+    /* Look from the road at the people standing AT THE CURB further up
        it — which is where roadsideLifeFor puts them, and where the parked
        cars are. That is the case the whole design turns on: a pedestrian
        is hidden precisely because the props that make the street feel
        lived-in are between you and them. Sighting along the centreline
-       would never cross the kerb and would measure nothing. */
+       would never cross the curb and would measure nothing. */
     const people = roadsideLifeFor(tile, link, seed * 91);
     const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
     const len = Math.hypot(dx, dy) || 1;

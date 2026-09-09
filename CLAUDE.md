@@ -61,12 +61,12 @@ Five things to know before your first change:
    it was written down.
 
 **LANGUAGE IS ONTARIO, CANADA — American English, North American road
-terms.** intersection not junction, curb not kerb, sidewalk not pavement,
+terms.** intersection not intersection, curb not curb, sidewalk not pavement,
 yield not give way, shoulder not verge, crosswalk, turn signal not
 indicator, parking lot not car park; color, behavior, meter, center.
 `arterial`, `collector`, `roundabout`, `right of way`, `stop line` and
 `driveway` are already correct. **All player-facing text is corrected.**
-Code identifiers are NOT renamed yet — 446 `junction` and 82 `kerb`
+Code identifiers are NOT renamed yet — 446 `intersection` and 82 `curb`
 occurrences across 40 files, 17 distinct names — but **use the correct
 terms in everything new**. See DECISIONS.md §2.1.
 
@@ -184,7 +184,7 @@ move into that mode rather than being baked into the default.
   on the road. Ontario also holds that a vehicle waiting to turn left must not
   cross the stop line while a car ahead of it is already waiting in the
   intersection; that is a scenario waiting to be written.
-- **A T-junction defaults to a stop on the minor leg only**, with the through
+- **A T-intersection defaults to a stop on the minor leg only**, with the through
   road running uninterrupted. Any other configuration must remain expressible —
   control is per leg in `road.js`, and an all-way stop is simply four legs that
   agree.
@@ -210,7 +210,7 @@ move into that mode rather than being baked into the default.
   specifically asking.** The maintainer's practice, verbatim: "I will ask the
   applicant to 'turn right at the first street' more or less as soon as that
   statement is true to where our route takes us." So the instruction window
-  OPENS when the phrase stops being ambiguous — when the junction ahead is the
+  OPENS when the phrase stops being ambiguous — when the intersection ahead is the
   one the phrase points at — and CLOSES when the candidate must already be
   acting on it. Neither edge is a number anybody picked; both are derived in
   `directions.js`.
@@ -407,7 +407,7 @@ Three rules carry it:
   marks on it are recorded as invented.
 - **Prompt beats late beats silent.** Full credit while the fault is
   happening, easing to `LATE_CREDIT` by the end of `CALL_GRACE`, because
-  noticing on the way out of a junction is still noticing.
+  noticing on the way out of a intersection is still noticing.
 
 **Whether a mark carries a category is deliberately left open**, because
 it is the maintainer's call whether a player picks one one-thumbed
@@ -512,7 +512,7 @@ should go.
 
 ### The drive — the first playable loop
 
-`src/apps/ExaminerDrive.jsx`, `#/drive`. Six junctions, one candidate, and
+`src/apps/ExaminerDrive.jsx`, `#/drive`. Six intersections, one candidate, and
 three of the four jobs running together: watch, mark, direct. Intervention
 is absent because what an intervention IS remains the maintainer's call.
 
@@ -523,39 +523,39 @@ in the engine rather than the component so it can be checked at all: a
 React component is the one place nothing else in this suite can reach.
 
 **A leg starts as early as its own instruction needs, and no constant can
-do that job.** Measured over 48 generated junctions the instruction
+do that job.** Measured over 48 generated intersections the instruction
 deadline runs from 4.50s BEFORE the candidate reaches the line to 8.20s
 after, because it is derived from what the manoeuvre demands rather than
-from the junction. A fixed 3.5s run-in left 15 of those 48 undirectable;
-6.0s made every other junction a wait. `runInFor(sim, { floor })` in
+from the intersection. A fixed 3.5s run-in left 15 of those 48 undirectable;
+6.0s made every other intersection a wait. `runInFor(sim, { floor })` in
 `directions.js` gives each leg its own, floored at the candidate's own
 approach so the player always sees them arriving. The shipped drive spans
 1.0s to 9.9s of decision time as a result.
 
 **The stacking trade shipped INERT, and that is worth remembering.** The
-direction buttons wrote `given[at]` — the junction being driven — while
-`held` counts instructions outstanding for junctions BEYOND it. So `held`
+direction buttons wrote `given[at]` — the intersection being driven — while
+`held` counts instructions outstanding for intersections BEYOND it. So `held`
 was zero by construction: no pressure, no composure cost, and the
 `"stacked"` verdict could never fire. The one mechanic the screen exists
 to evaluate was the one it could not perform, and every check passed
 because every check was aimed at the engine underneath it.
 
 Two things came out of fixing it. **Stacking only exists at a distance of
-two** — an instruction for the very next junction is discharged the moment
+two** — an instruction for the very next intersection is discharged the moment
 they arrive, so it never makes them CARRY anything — which is why `AHEAD`
-offers this junction, the next, and the one after. And **load is frozen
+offers this intersection, the next, and the one after. And **load is frozen
 when a leg begins** rather than read per frame: live, it would re-simulate
-the junction underneath the candidate the instant you spoke and the car
+the intersection underneath the candidate the instant you spoke and the car
 would jump. The cost lands on the driving done while holding it.
 
 Measured through the same derivation the examiner marks: 0 / 0 / 1
 instructions in the air at call-distances 0, 1 and 2, and at that load
-every fault-carrying junction widens — 1.14x the deviation at 34%
+every fault-carrying intersection widens — 1.14x the deviation at 34%
 pressure. Checked in `verify-detect.mjs` §10.
 
 **A frame delta is clamped at BOTH ends.** The ceiling is the familiar
 one — a backgrounded tab must not teleport the candidate through a
-junction on the first frame back. The floor is not, and it was observed
+intersection on the first frame back. The floor is not, and it was observed
 rather than theorised: the baseline is taken from `performance.now()`
 while the tick reads rAF's own frame timestamp, and a stale frame after a
 stall made those disagree by **8.96 seconds**, running the clock backwards
@@ -570,7 +570,7 @@ window it displayed and the sheet reads that.
 ### Directions — built
 
 **A set course is a route.** `route.js` already sequences intersections and
-keeps continuity, and the instruction to give at each junction is simply that
+keeps continuity, and the instruction to give at each intersection is simply that
 leg's `ego.intent`. `exitHeading` and `entrySideAfter` already derive where the
 candidate ends up **from their actual intent**, which is exactly what going
 off course needs.
@@ -591,12 +591,12 @@ Three rules make this the system that ties the other three together:
 ### Driver identity — built
 
 **One candidate, composed once, driving the whole route.** `candidate.js`
-holds them; `egoFor` is the one place a scene gets its driver, so a junction
+holds them; `egoFor` is the one place a scene gets its driver, so a intersection
 and a segment ask for the same person. Before this the candidate was not
 merely inconsistent, they were FLAWLESS: measured over 320 generated
-junctions, the ego carried no traits at all and committed none of the 143
+intersections, the ego carried no traits at all and committed none of the 143
 faults on offer, while segments took whatever traits their caller felt like
-handing them. The route's turn survived into the composed junction 9 times
+handing them. The route's turn survived into the composed intersection 9 times
 in 120 — about what chance gives — so the examiner was directing a manoeuvre
 the candidate was never making. It is 56/56 now, because a draw whose road
 lacks the leg the route asked for is refused rather than quietly re-seated.
@@ -628,7 +628,7 @@ inert everywhere until the candidate has something to actually be HELD by.
 anybody's fault; it subsumes it, shares the one expensive `faultsIn` call,
 and sits where every other guarantee in `compose.js` lives. The fallback
 ladder gains one rung at the top so a habit with nothing to say here cannot
-cost the player a junction. The planner steers WHICH turn, never whether to
+cost the player a intersection. The planner steers WHICH turn, never whether to
 turn — a route still has to read like a route. Persistence alone was most of
 the win (20/25); asking and steering are the finishing 4.
 
@@ -746,7 +746,7 @@ not a habit — it is what the candidate did with the gap — so it carries
 to skip it (`isTraitFault`). Folding it in cost pacing nothing: dead air,
 events per drive and the count over the ceiling are all unmoved, and it
 adds 0.17 encroachments per drive. That was thin, and it was the same
-thinness measured everywhere else — a generated junction is open, and
+thinness measured everywhere else — a generated intersection is open, and
 `windowIsSafe` rejected draws whose window landed on somebody, so the
 supply was rare by construction. **That gate is no longer the default**
 and the supply is 0.70 per drive; see the ruling above. On hand-authored
@@ -846,17 +846,17 @@ signalled.
 
 **ONE ROLL PER AXIS, NEVER ONE PER FAULT KIND.** Rolling each available
 kind independently made the number of faults a candidate commits a
-function of how many kinds the game has vocabulary for: 1.11 per junction
+function of how many kinds the game has vocabulary for: 1.11 per intersection
 at seven kinds, 1.57 at ten, 2.0 at twelve — which took the section
-implied by a 3-4 recall band down to 1.5 junctions, which is not a
+implied by a 3-4 recall band down to 1.5 intersections, which is not a
 section. The fix was not a smaller `ERROR_SCALE`. A driver's deficit
 decides HOW MUCH they err and the vocabulary decides WHICH WAY, so the
 roll is per axis they could fail on here and the kind is drawn from that
 axis weighted. Density is a property of the driver again, it holds still
 as R2 keeps adding content, and "variety over volume" falls out by
-construction: at most one fault per axis per junction, so two weaknesses
+construction: at most one fault per axis per intersection, so two weaknesses
 show at most two things and they are two DIFFERENT things. Measured after:
-1.00 per junction, 2.13 axes per drive, section 3.0-4.0 junctions.
+1.00 per intersection, 2.13 axes per drive, section 3.0-4.0 intersections.
 
 **Identification has saturated, and the levers now earn their place
 elsewhere.** Persistence alone reaches 24/25 identifiable, so `mustShow`
@@ -917,7 +917,7 @@ being finite. Conflating them made a candidate rated 1.0 on observation
 blind to traffic nobody could miss. Measured afterwards: the distinction
 fires only for PEDESTRIANS, because a vehicle is already approaching from
 t=0 — but for them it is real, and before it a candidate simply ignored a
-pedestrian who had not yet stepped off the kerb.
+pedestrian who had not yet stepped off the curb.
 
 ### The margin you leave for what you cannot see IS confidence
 
@@ -1003,10 +1003,10 @@ decision.** A replacement rather than a floor, because the point is that a
 driver who has not registered the traffic goes EARLY. Wiring it changed
 pacing and supply by nothing at all — a drawn candidate observes well
 enough that their decision coincides with the engine's — which makes the
-wiring safe and the content thin: 2 encroachments in 112 junctions.
+wiring safe and the content thin: 2 encroachments in 112 intersections.
 
 **Pedestrians give way by hesitating**, which the same yielding profile
-expresses: they hold at the kerb or stop where they are. That earns
+expresses: they hold at the curb or stop where they are. That earns
 pedestrian conflicts the graduated near-miss band vehicles have, instead
 of being all-or-nothing terminal — before it, every contact on a generated
 drive was with a pedestrian and every one ended the drive.
@@ -1029,8 +1029,8 @@ faults is not harder in an interesting way, it is a memory test.
 So the quantity is **faults per section a competent player could catch and
 recall** — free recall runs out at about four items, so the band is 3-4 —
 and SECTION LENGTH IS DERIVED FROM IT rather than chosen. At the measured
-1.11 candidate faults per junction that puts a section at **2.7-3.6
-junctions**. Cross-checked against `SHOWINGS_FOR_A_HABIT` = 3, derived
+1.11 candidate faults per intersection that puts a section at **2.7-3.6
+intersections**. Cross-checked against `SHOWINGS_FOR_A_HABIT` = 3, derived
 independently: a section inside recall, several per drive, lets a habit
 accumulate its evidence without any one section overflowing.
 
@@ -1083,7 +1083,7 @@ three-layer reframing, the five axes and R2's build order:
   reflex test, so the cue has to be the candidate's behaviour beforehand.
 
   **It is, and it clears the bar with room to spare.** Over 60 generated
-  drives and 360 junctions carrying 45 encroachments worse than
+  drives and 360 intersections carrying 45 encroachments worse than
   comfortable:
 
   | cue | warning before the event |
@@ -1092,7 +1092,7 @@ three-layer reframing, the five axes and R2's build order:
   | a prior derived fault by the candidate | 1.80s min, **6.30s median**, 10.10s max |
 
   56% of encroachments are preceded by a fault the candidate visibly
-  committed earlier in the same junction, and 96% of those give more
+  committed earlier in the same intersection, and 96% of those give more
   warning than the conflict EVER gives at its best. The median is 5.7x.
   The cues are ordinary and varied -- `wander` 9, `harshStop` 4,
   `wideTurn` 3, `creep` 3, `overshoot` 3, `stopsShort` 3 -- so this is not
@@ -1101,7 +1101,7 @@ three-layer reframing, the five axes and R2's build order:
   Note what the cue is NOT: it does not say which conflict is coming. It
   says this candidate is not on top of it right now, which is how a real
   examiner's hand ends up near the wheel. The uncued 44% is the honest
-  half -- a tight junction where the candidate did nothing else wrong,
+  half -- a tight intersection where the candidate did nothing else wrong,
   and nobody could have known.
 
   **`departureOnAwareness` is deliberately still a query rather than
@@ -1120,13 +1120,13 @@ three-layer reframing, the five axes and R2's build order:
   narrower five-trait pool (it predates `wideTurn` and `cutsCorner`);
   `compose.js` attaches from all seven, and the CANDIDATE now carries the
   drive's own persisting traits rather than none at all.
-- **A tile's declared road and the composed junction's road disagree.**
+- **A tile's declared road and the composed intersection's road disagree.**
   `world.js` lays out spacing, runway, links and roadside content from
   `specFor(tile.character)`, and `compose`'s `roadFor` then draws its own
-  junction kind and ignores it — measured, 15 of 56 match, and 0 of 13 for
+  intersection kind and ignores it — measured, 15 of 56 match, and 0 of 13 for
   arterial tiles. Latent rather than live, since no renderer consumes the
   world yet, but real the moment one draws a drive. Fixing it means first
-  deciding whether a three-lane arterial junction is uncontrolled (as
+  deciding whether a three-lane arterial intersection is uncontrolled (as
   `CHARACTER.arterial.control` says today, which would leave the candidate
   stopping at nothing) or signalised — a road-design call, not a mechanical
   one. See `DRIVER-IDENTITY.md` §6.
@@ -1140,7 +1140,7 @@ three-layer reframing, the five axes and R2's build order:
   2-3, firm is 5, an emergency stop is about 8. `approachPose` is still a
   smoothstep lerp from a fixed 24.5 m run over a fixed 2.8 s, so approach
   speed does not follow the road either — cars arrive at a residential
-  junction at 47 km/h.
+  intersection at 47 km/h.
 
   **This is the same bug the departure side already fixed, on the other
   half of the manoeuvre.** CLAUDE.md's own history records replacing a
@@ -1175,7 +1175,7 @@ three-layer reframing, the five axes and R2's build order:
   position; the only spatial fact the engine has about one is the stop
   line. The RENDERER places signs from its own hardcoded four-entry table,
   board-relative and pinned to `CX`/`CY` — so it does not follow a
-  junction placed elsewhere in the world, which is the same class of bug
+  intersection placed elsewhere in the world, which is the same class of bug
   `exitPoint` had. The signal is worse: one head drawn at one corner
   regardless of which leg it governs.
 
@@ -1231,25 +1231,25 @@ three-layer reframing, the five axes and R2's build order:
     draw passes exactly the audit an unbiased one would, now against what
     the accept test promises today.
 
-  Measured, identical seeds and candidates, 240 generated junctions:
+  Measured, identical seeds and candidates, 240 generated intersections:
 
-  | | faults/junction | encroachments/drive | drives carrying one | contacts |
+  | | faults/intersection | encroachments/drive | drives carrying one | contacts |
   |---|---|---|---|---|
   | `windowIsSafe` (before) | 1.16 | 0.47 | 16/40 | 0 |
   | no gate at all | 1.23 | 0.88 | 26/40 | **8** |
   | shipped | 1.20 | **0.70** | **22/40** | 0 |
 
-  The gate had been suppressing half the supply, and faults per junction
-  barely move — so this converts comfortable junctions into markable ones
+  The gate had been suppressing half the supply, and faults per intersection
+  barely move — so this converts comfortable intersections into markable ones
   rather than padding the drive with noise. It produced the first
-  `veryTight` junctions the set has ever contained.
+  `veryTight` intersections the set has ever contained.
 
   **What the accept test still refuses is CONTACT**, and that is an
   examiner-game reason rather than a leftover: an examiner watching a
   candidate hit somebody is supposed to have taken the wheel, and
   intervention is not built. The line sits exactly where the game's own
   ability to respond sits, **and it moves when intervention lands** — 8
-  in 240 junctions with no gate at all is the supply still waiting on it.
+  in 240 intersections with no gate at all is the supply still waiting on it.
 
   `safeAtFor` in `index.js` is the surviving statement of the same idea
   and is still live: `verify-clearance`, `verify-events`,
@@ -1259,7 +1259,7 @@ three-layer reframing, the five axes and R2's build order:
 
   It immediately surfaced a real bug the old gate had been hiding: an
   emergency vehicle was placed with a hardcoded `intent: "straight"` while
-  the junction's own `validIntents` sat computed and unused, so a tee
+  the intersection's own `validIntents` sat computed and unused, so a tee
   could get an ambulance driving to a leg it does not have. Those draws
   had been getting rejected for unrelated reasons.
 
@@ -1312,7 +1312,7 @@ direction, 2D now, 3D later, so do not put anything visual into the engine.
 
 ```
 src/engine/index.js      the conflict rules, driver traits, and what is where at time t
-src/engine/road.js       a junction described: legs, lanes, control per leg
+src/engine/road.js       a intersection described: legs, lanes, control per leg
 src/engine/paths.js      path shapes — line, curve, polyline — and no road at all
 src/engine/sight.js      what the driver can see, the examiner's cone, and what creeping costs
 src/engine/faults.js     what the candidate did wrong, derived by controlled comparison
@@ -1327,7 +1327,7 @@ src/engine/detect.js     grading the examiner on what they caught and invented
 src/engine/actions.js    manoeuvres: ordered actions, fault tiers, the mark sheet
 src/engine/score.js      grading a press against a derived window
 src/engine/route.js      several intersections in one drive, and continuity
-src/engine/world.js      junctions placed in one coordinate space, and the roads between
+src/engine/world.js      intersections placed in one coordinate space, and the roads between
 src/engine/tiles.js      road character, the tile library, route planning and pacing
 src/engine/generate.js   seeded scenario generation
 src/engine/compose.js    a brief in, a scene that measurably matches it out
@@ -1504,7 +1504,7 @@ knows its own length; how long it takes comes from a motion profile in
 `paths.js`. A vehicle that stopped accelerates away at ~2.4 m/s² and levels
 off (41 km/h straight, 26 through a left, 22 through a right); one that
 never stopped cruises at the speed it carries through (45 km/h); a
-pedestrian walks at 1.35 m/s. Crossing a stop-controlled junction therefore
+pedestrian walks at 1.35 m/s. Crossing a stop-controlled intersection therefore
 takes about five seconds, not one and a half.
 
 The version this replaced set a fixed duration per manoeuvre, and it was
@@ -1530,7 +1530,7 @@ smoothstep lerp from a spawn point to the line over a fixed 2.8s, in which
 nothing was a physical quantity — so nobody could notice that every car in
 the game braked at 18.1 m/s^2, which is 1.84g, more than twice an
 emergency stop. Approach speed did not follow the road either: a car
-arrived at a residential junction at 47 km/h. Exactly the bug the
+arrived at a residential intersection at 47 km/h. Exactly the bug the
 departure side had already fixed, on the other half of the manoeuvre.
 
 **The model is a, then v, then x.** `approachDecel` is the input, speed is
@@ -1558,7 +1558,7 @@ corner, not for nothing, which is what keeps an emergency vehicle from
 braking to a speed it was never going to lose.
 
 A rolling car used to run its WHOLE approach at the speed it would take
-the junction at, and that inverted `wontstop`'s tell: a left-turner
+the intersection at, and that inverted `wontstop`'s tell: a left-turner
 cruising in at 7.2 m/s was slower than a car braking from road speed for
 the first second and a half, so "that one is not slowing" read backwards
 exactly when it mattered. The old check passed only because the old lerp
@@ -1578,7 +1578,7 @@ the wheel. `turnPoints` in `paths.js` builds it, and the radius is derived
 rather than chosen: it is the distance from the car to where the two
 centrelines cross, floored at `TURN_R_MIN` (5.5 m, a passenger car at full
 lock). A wider road, whose stop line sits further back, therefore turns
-wider on its own, and a left — whose corner is across the junction — comes
+wider on its own, and a left — whose corner is across the intersection — comes
 out wider than a right. Nothing about the shape is authored.
 
 The version this replaced was one quadratic Bezier from the stop line to an
@@ -1586,7 +1586,7 @@ off-board exit with its control point at the corner: legs of 2.7 m against
 20 m, so all the bending happened at the stop line and none at the corner.
 Measured, every turn in the game was committing two real faults. A left
 crossed onto the oncoming side of its own approach while still 3.3 m short
-of the junction. A right left the carriageway — 4 m from the centreline
+of the intersection. A right left the carriageway — 4 m from the centreline
 against a 3.6 m road edge — at a 3.4 m radius, tighter than a car can
 physically steer. That was reported by eye before it was ever measured,
 which is why `verify-turns.mjs` now exists.
@@ -1604,8 +1604,8 @@ badly a driver takes the corner, in metres of finishing error: positive
 swings wide, negative cuts inside. `wideTurn` (+4.5 m) finishes in the far
 lane of the road it turned into. `cutsCorner` (-2.6 m) is **left only**, and
 that is a real rule rather than a shortcut — a left turns around a corner
-across the junction, so there is radius to give away, while a right turns
-around the near kerb where the clean radius is already close to
+across the intersection, so there is radius to give away, while a right turns
+around the near curb where the clean radius is already close to
 `TURN_R_MIN`, so the floor absorbs the bias and the tell would be claiming a
 fault nobody could see. `verify-turns.mjs` checks each tell against the path
 actually built.
@@ -1726,11 +1726,11 @@ All twenty-eight must exit 0. Fourteen things they check are worth understanding
 
 - **`verify-candidate.mjs` guards the half of the job that is reading a
   person.** Its properties are the ones any correct implementation would
-  have to have: one driver at every junction AND every segment; a habit
+  have to have: one driver at every intersection AND every segment; a habit
   gets enough chances to be told from an incident; its rivals get chances
   they visibly decline, so a hypothesis can be tested rather than only
   formed; a tell is true of the car; and a clean driver stays clean. It
-  also measures how far the planner's forecast of what a junction could
+  also measures how far the planner's forecast of what a intersection could
   show strays from what the scene actually offered, rather than assuming a
   forecast is free.
 
@@ -1767,7 +1767,7 @@ All twenty-eight must exit 0. Fourteen things they check are worth understanding
   a free action and everyone holds it down; if it only costs, it is a trap.
   `verify-sight.mjs` measures both, and also measures whether there is *room*
   to creep: `PULL_STEP` is sized against the ~2 m between the stop line and
-  the junction, because a step that fits into that band only once makes the
+  the intersection, because a step that fits into that band only once makes the
   mechanic a switch rather than a judgment.
 
 - **A path trait that moves no window teaches nothing.** Compare a
@@ -1925,7 +1925,7 @@ invisible to the encroachment fault because it only ever watches priors — in
   declares (`framedInTime`); and it actually moves the window
   (`emergencyEarnsItsPlace`, a controlled comparison against the same
   scene with the call switched off — one crossing the far side of a
-  junction genuinely costs nothing, which is correct and is exactly why
+  intersection genuinely costs nothing, which is correct and is exactly why
   it has to be checked).
 
   Two things worth knowing if these get tuned. The emergency vehicle
@@ -1940,7 +1940,7 @@ invisible to the encroachment fault because it only ever watches priors — in
 - **Pedestrians in generation: done.** They rotate correctly (`crossingOf`
   is relative to the actor's own leg), and both generators place one now —
   `generate.js` (Daily) on 22% of draws, `compose.js` (Endless, ported from
-  it) at a similar rate, on any leg the junction actually has, multi-lane
+  it) at a similar rate, on any leg the intersection actually has, multi-lane
   included. Cyclists are not agreed — they would need a ruling on how a
   bicycle claims road compared with a car.
 - **Composition is a search, not a sampler.** `compose.js` takes a brief —
@@ -1977,13 +1977,13 @@ invisible to the encroachment fault because it only ever watches priors — in
   differences are the point rather than a trap — the thing traffic enthusiasts
   would come for. Until then the default is North American, and anything
   genuinely local should be written so it can move into that mode later.
-- T-junctions, uncontrolled intersections and pedestrian crossovers are all
+- T-intersections, uncontrolled intersections and pedestrian crossovers are all
   wanted, behind the above.
 - **A wide turn needs a next lane to be wide INTO, and a stopped car does
   not weave.** Both reported by the maintainer from play. `wideTurn`'s
-  flat 4.5m bias put a car 2.70m PAST THE KERB on a single-lane left --
+  flat 4.5m bias put a car 2.70m PAST THE CURB on a single-lane left --
   "a lot of left turns go completely off the roadway" -- because the room
-  a road offers is 1.8m there. Clamping to the kerb only moved the lie
+  a road offers is 1.8m there. Clamping to the curb only moved the lie
   (the car finished on the lane line claiming to have crossed it), so the
   trait now DECLINES a road with no next lane, exactly as `cutsCorner`
   declines a right. The maintainer's ruling settles it: off-road is real

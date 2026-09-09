@@ -105,7 +105,7 @@ export const CAUSES = {
   wander: { steering: 1 },
   wideTurn: { steering: 1 },
   /* Maintainer's ruling: steering combined with knowledge. You placed the
-     car badly AND you did not know how far into the junction a left is
+     car badly AND you did not know how far into the intersection a left is
      supposed to go. */
   cutsCorner: { steering: 0.6, knowledge: 0.4 },
   /* RULED, and it flipped. The maintainer's discriminator is the MANNER
@@ -222,7 +222,7 @@ export const ERROR_SCALE = 0.85;
 
    `available` is what this situation could show at all, which the caller
    derives (chancesAt). Rolling only against those means the compiler
-   never proposes an error the junction has no room for; the engine still
+   never proposes an error the intersection has no room for; the engine still
    has the last word on whether what it proposed actually shows. The
    compiler proposes, faultsIn disposes.
 
@@ -242,9 +242,9 @@ export function rollErrors(ratings, available, seed, { scale = ERROR_SCALE, allo
      independently made the number of faults a candidate commits a
      function of HOW MANY KINDS THE GAME HAS VOCABULARY FOR: every kind
      added to CAUSES raised the density for every driver. Measured across
-     R2.5 — 1.11 faults per junction at seven kinds, 1.57 at ten, 2.0 at
+     R2.5 — 1.11 faults per intersection at seven kinds, 1.57 at ten, 2.0 at
      twelve, which took the section implied by a 3-4 recall band down to
-     1.5 junctions. That is not a section, and the fix is not a smaller
+     1.5 intersections. That is not a section, and the fix is not a smaller
      scale.
 
      A driver's deficit decides HOW MUCH they err; the vocabulary decides
@@ -254,7 +254,7 @@ export function rollErrors(ratings, available, seed, { scale = ERROR_SCALE, allo
      claimed to be — and it stays put as R2 keeps adding content.
 
      It also delivers "variety over volume" by construction: at most one
-     fault per axis per junction, so a candidate weak on two axes shows at
+     fault per axis per intersection, so a candidate weak on two axes shows at
      most two things here and they are two DIFFERENT things. */
   const byAxis = new Map();
   for (const kind of available) {

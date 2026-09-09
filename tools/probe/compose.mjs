@@ -9,13 +9,13 @@ const briefs = [
 ];
 
 for (const b of briefs) {
-  let made = 0, sigs = new Set(), priors = [], blind = [], junctions = new Set();
+  let made = 0, sigs = new Set(), priors = [], blind = [], intersections = new Set();
   for (let s = 1; s <= 40; s++) {
     const scn = composeScenario(b, s);
     if (!scn) continue;
     made++;
     sigs.add(signatureOf(scn));
-    junctions.add(scn.conditions.junction);
+    intersections.add(scn.conditions.intersection);
     priors.push(scn.measured.priors);
     blind.push(scn.measured.blindness);
   }
@@ -23,6 +23,6 @@ for (const b of briefs) {
   console.log(
     `${b.traffic.padEnd(6)}/${b.visibility.padEnd(11)} made ${String(made).padStart(2)}/40  ` +
     `distinct ${String(sigs.size).padStart(2)}  priors~${avg(priors)}  blindness~${avg(blind)}  ` +
-    `junctions: ${[...junctions].join(',')}`
+    `intersections: ${[...intersections].join(',')}`
   );
 }

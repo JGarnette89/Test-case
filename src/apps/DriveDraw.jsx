@@ -241,9 +241,9 @@ const APPROACH = (() => {
   const xc = 457;                     // centreline
   return {
     xc,
-    left: xc - LP,                    // 371 – far kerb
+    left: xc - LP,                    // 371 – far curb
     mid: xc + LP,                     // 543 – line between the two near lanes
-    right: xc + LP * 2,               // 630 – near kerb at full width
+    right: xc + LP * 2,               // 630 – near curb at full width
     crossB: 236,                      // where the cross road ends
     taperTop: 430, taperBot: 520,
     stopY: 312, walkY: 240,
@@ -336,8 +336,8 @@ const TEMPLATES = {
     ],
   },
 
-  tjunction: {
-    label: "T-Junction", group: "Intersections",
+  tintersection: {
+    label: "T-Intersection", group: "Intersections",
     surface: [rect(CX - H2, 0, H2 * 2, 640), rect(CX + H2, CY - H2, 1000 - CX - H2, H2 * 2)],
     marks: [
       line([CX, 0], [CX, 640], "centre"),
@@ -572,7 +572,7 @@ function isEndpoint(seg, pt, tol = 14) {
   return Math.hypot(pt.x - a.x, pt.y - a.y) < tol || Math.hypot(pt.x - b.x, pt.y - b.y) < tol;
 }
 
-function computeJunctions(segments) {
+function computeIntersections(segments) {
   const out = {};
   segments.forEach((s) => { out[s.id] = []; });
   for (let i = 0; i < segments.length; i++) {
@@ -780,13 +780,13 @@ function RoadMarkings({ seg, maskId }) {
   );
 }
 
-function CustomRoads({ segments, junctions, onSegmentPointerDown, interactive }) {
+function CustomRoads({ segments, intersections, onSegmentPointerDown, interactive }) {
   if (!segments.length) return null;
   return (
     <g>
       <defs>
         {segments.map((s) => {
-          const js = junctions[s.id] || [];
+          const js = intersections[s.id] || [];
           if (!js.length) return null;
           return (
             <mask key={s.id} id={`dd-jm-${s.id}`} maskUnits="userSpaceOnUse">
@@ -808,7 +808,7 @@ function CustomRoads({ segments, junctions, onSegmentPointerDown, interactive })
       ))}
       {segments.map((s) => (
         <RoadMarkings key={"m" + s.id} seg={s}
-          maskId={(junctions[s.id] || []).length ? `dd-jm-${s.id}` : null} />
+          maskId={(intersections[s.id] || []).length ? `dd-jm-${s.id}` : null} />
       ))}
     </g>
   );
@@ -1827,7 +1827,7 @@ export default function DriveDraw() {
     setSelected(null);
   }
 
-  const junctions = React.useMemo(() => computeJunctions(roadSegments), [roadSegments]);
+  const intersections = React.useMemo(() => computeIntersections(roadSegments), [roadSegments]);
   const nameTaken = savedList.includes(saveName.trim()) && saveName.trim().length > 0;
 
   const groupStyle = { display: "flex", gap: 6, flexWrap: narrow ? "nowrap" : "wrap", alignItems: "center" };
@@ -2183,7 +2183,7 @@ export default function DriveDraw() {
               <TemplateLayer tpl={TEMPLATES[roadTemplate]} />
               <CustomRoads
                 segments={roadSegments}
-                junctions={junctions}
+                intersections={intersections}
                 interactive={tool === "select" || tool === "erase"}
                 onSegmentPointerDown={(e, s) => startItemDrag(e, s, "road")}
               />

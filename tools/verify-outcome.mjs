@@ -35,7 +35,7 @@ console.log("\n" + "=".repeat(70));
 console.log("OUTCOME: how a drive ends, and who it lands on");
 console.log("=".repeat(70));
 
-/* Collect real colliding junctions out of the generator, since contact is
+/* Collect real colliding intersections out of the generator, since contact is
    a reachable state now rather than a hypothetical one. */
 const legs = [], colliding = [];
 for (let seed = 1; seed <= 40; seed++) {
@@ -59,8 +59,8 @@ for (let seed = 1; seed <= 40; seed++) {
 console.log("\n1. CONTACT IS A STATE THE GAME CAN NOW REPRESENT");
 {
   colliding.length > 0
-    ? ok(`${colliding.length} of ${legs.length} generated junctions end in contact -- reachable, not hypothetical`)
-    : fail("no generated junction collides, so nothing here is being exercised");
+    ? ok(`${colliding.length} of ${legs.length} generated intersections end in contact -- reachable, not hypothetical`)
+    : fail("no generated intersection collides, so nothing here is being exercised");
 
   /* Independently re-derived rather than trusting contactIn against
      itself: the same predicate the conflict engine uses, walked by hand. */
@@ -155,7 +155,7 @@ console.log("\n3. THE LOOP SURVIVES A COLLISION");
       const hit = contactIn(sim);
       const sheet = sectionSheet({
         legs: [{ faults, window, intent: scn.ego.intent }],
-        marks: [{ at: hit.at, junction: 0 }],
+        marks: [{ at: hit.at, intersection: 0 }],
         given: { 0: { at: window.deadline - 0.3, intent: scn.ego.intent } },
         shownFor: (f) => f.duration,
         from: 0,

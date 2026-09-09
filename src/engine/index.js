@@ -49,12 +49,12 @@ const PED_R = M(0.5);
 
    Setback is how far outside the box the crossing sits; overhang is how
    far past the road edge it runs, since a crossing does not stop at the
-   kerb. BAR_HALF is half the depth of one painted bar.                  */
+   curb. BAR_HALF is half the depth of one painted bar.                  */
 const PED_SETBACK = M(0.95);
 const PED_OVERHANG = 30;
 const BAR_HALF = M(0.75);
 /* The line sits just outside the crossing and hard against the edge of the
-   junction — that is where a driver actually meets it, level with the sign
+   intersection — that is where a driver actually meets it, level with the sign
    rather than a car length before it. Everything else is measured off it:
    the sign stands at it, and SET puts a bumper behind it. */
 const STOP_LINE_AT = HALF + PED_SETBACK + BAR_HALF + M(0.35);
@@ -157,7 +157,7 @@ const TIE = 0.35;
    accelerates; a car that never stopped is already at speed.
 
    ACCEL is a brisk-but-ordinary pull-away. The cruise figures are what a
-   vehicle actually settles at through a junction, not what it would do
+   vehicle actually settles at through a intersection, not what it would do
    on the open road — you are through the box long before an urban limit
    is reached, and a turn is taken slower than a straight-through.       */
 const ACCEL = M(2.4);          // ~2.4 m/s^2 away from a stop
@@ -169,7 +169,7 @@ const V_RIGHT = M(6.2);        // ~22 km/h through a tighter right
    through. Through traffic on a road with no sign for it runs faster
    than anything pulling away from a line ever reaches. */
 const V_THROUGH = M(12.5);     // ~45 km/h
-/* Running to a call, but through a junction it still has to clear as it
+/* Running to a call, but through a intersection it still has to clear as it
    comes — real crews slow hard for one rather than trusting the siren, and
    a vehicle doing 54 km/h past a stop line is on screen for well under a
    second, which is not something a player could be asked to read. Faster
@@ -291,12 +291,12 @@ const STEP = 0.05;
 /* The default four-way, derived from a road spec rather than stated. The
    numbers are identical — checked against the old tables in
    tools/probe/road.mjs — but it is now one instance of a general shape
-   instead of the only shape there is. A T-junction or a six-lane crossing
+   instead of the only shape there is. A T-intersection or a six-lane crossing
    is a different spec, not different code. */
 const DEFAULT_ROAD = crossSpec();
-/* A junction is built around an origin. `at` defaults to the middle of the
+/* A intersection is built around an origin. `at` defaults to the middle of the
    board, which is where every scenario has always put it, so nothing that
-   omits it moves by a pixel. Passing one places the same junction anywhere
+   omits it moves by a pixel. Passing one places the same intersection anywhere
    — verified translating exactly: the S-leg stop point sits at the same
    offset from its origin whether that origin is 360,360 or 4000,2500.
 
@@ -389,7 +389,7 @@ function raPath(p) {
   const joinAt = enter - RA_BLEND;        // where you actually meet the lane
   const leaveAt = exitAngle + RA_BLEND;   // where you start peeling off
 
-  /* Curve in and out rather than turning a corner at the kerb. A corner
+  /* Curve in and out rather than turning a corner at the curb. A corner
      would make the measured speed dip across the join, and forwardClaim
      reads speed to decide how much road a car is claiming — so a fake
      slowdown at the mouth would quietly shrink its claim. */
@@ -450,7 +450,7 @@ export function spanOf(p) {
 
    This is the seam. Everything downstream — conflicts, windows, sight,
    scoring, the renderer — only ever asks where somebody is at time t. So
-   a new junction type is a new builder here and nothing else: the rules
+   a new intersection type is a new builder here and nothing else: the rules
    layer never learns what shape the road was.
    ===================================================================== */
 const moveCache = new WeakMap();
@@ -480,7 +480,7 @@ function crossMovement(p) {
      those centrelines cross: turn on that and the arc finishes on the
      receiving lane. So a wider road, whose stop line sits further back,
      turns wider on its own, and a left — whose corner is across the
-     junction — comes out wider than a right. Nothing here is picked.
+     intersection — comes out wider than a right. Nothing here is picked.
 
      `turnBias` is then how badly this driver takes it, in metres of
      finishing error: positive swings wide of the lane, negative cuts
@@ -490,7 +490,7 @@ function crossMovement(p) {
 
   /* THE BIAS IS BOUNDED BY THE ROAD IT FINISHES ON. A wide turn swings
      into the far lane, and on a road with no far lane there is nothing to
-     swing into: wideTurn's flat 4.5m put a car 2.70m PAST THE KERB on a
+     swing into: wideTurn's flat 4.5m put a car 2.70m PAST THE CURB on a
      single-lane left, which the maintainer reported as turns going
      "completely off the roadway". Measured, and it is exactly
      4.5 - (3.6 - 1.8): the bias was a fixed distance while the room for
@@ -499,7 +499,7 @@ function crossMovement(p) {
      So the room is derived the way the radius already is, from the
      carriageway the car is turning into. A positive bias swings AWAY from
      the centreline, so the room is what lies between the lane centre and
-     that side's kerb and nothing more -- there is no swinging into
+     that side's curb and nothing more -- there is no swinging into
      oncoming, which is the opposite direction.
 
      This is a floor under the geometry, not the fix. The fix is that
@@ -542,7 +542,7 @@ function crossMovement(p) {
    THE GEOMETRY IS THE TURN GEOMETRY, not a new kind. An arc tangent to
    where the car is standing and to the lane it is joining, built around
    the point where those two headings cross -- exactly `turnPoints`, which
-   is what a junction turn already is. A perpendicular bay and a parallel
+   is what a intersection turn already is. A perpendicular bay and a parallel
    space differ only in the resting heading.                            */
 function emergeMovement(p) {
   const rest = { x: p.at?.x ?? CX, y: p.at?.y ?? CY, rot: p.restRot ?? 0 };
@@ -553,7 +553,7 @@ function emergeMovement(p) {
      nose-in to a bay leaves it going BACKWARDS: the path runs opposite
      the way the car is pointing, and the car keeps pointing at the bay
      until it has swung round. Without this the arc is built forwards --
-     into the kerb -- and comes out crossing the centreline, which is what
+     into the curb -- and comes out crossing the centreline, which is what
      the first version did.
 
      It is also exactly why this hazard is worth having: a driver reversing
@@ -643,7 +643,7 @@ function pedMovement(p) {
   return {
     rest: { x: start.x, y: start.y, rot: cr.rot },
     /* A pedestrian gives way by hesitating rather than by braking, which
-       the same yielding profile expresses exactly: they hold at the kerb,
+       the same yielding profile expresses exactly: they hold at the curb,
        or stop mid-crossing, and their walk resumes at a walking pace.
        Absent unless the reaction layer handed them one. */
     traverse: linePath(
@@ -677,7 +677,7 @@ function basePose(p, t) {
   if (mv.onFoot) {
     if (t < p.departAt) {
       // `pressed` is what the renderer lights the button on: they have
-      // reached the kerb and pushed it, and are now waiting for the walk
+      // reached the curb and pushed it, and are now waiting for the walk
       // signal. Before arriveAt they are still walking up to it.
       return {
         ...mv.rest, hidden: t < p.arriveAt - 1.2, waiting: true, progress: 0,
@@ -696,7 +696,7 @@ function basePose(p, t) {
        ABSENCE that makes it readable before the line as well as after.
 
        A rolling car used to run the whole way in at the speed it would
-       take the JUNCTION at, which is why wontstop's tell inverted: a
+       take the INTERSECTION at, which is why wontstop's tell inverted: a
        left-turner cruising in at 7.2 m/s was slower than a car braking
        from road speed for the first second and a half, so "that one is
        not slowing" read backwards exactly when it mattered. */
@@ -811,9 +811,9 @@ const TRAITS = {
     tell: "Swung wide through the turn, across the next lane",
     /* ONLY WHERE THERE IS A NEXT LANE TO SWING ACROSS. The tell says
        "across the next lane", and on a single-lane road there is no such
-       lane: a flat 4.5m put the car 2.70m PAST THE KERB, which the
+       lane: a flat 4.5m put the car 2.70m PAST THE CURB, which the
        maintainer reported as left turns going completely off the roadway.
-       Clamping it to the kerb instead only moved the lie -- the car then
+       Clamping it to the curb instead only moved the lie -- the car then
        finished exactly on the lane line claiming to have crossed it.
 
        So this declines a narrow road the same way cutsCorner declines a
@@ -833,13 +833,13 @@ const TRAITS = {
        when a turn was one Bezier that did all its bending at the stop
        line. Now it only happens where a scenario asks for it, and the
        driver it belongs to is the one who does not go far enough into the
-       junction before turning.
+       intersection before turning.
 
        Left only, and that is the real rule rather than a shortcut. A left
-       turns around a corner across the junction, so there is a lot of
+       turns around a corner across the intersection, so there is a lot of
        radius to give away and the car ends up inside the receiving lane,
        over the centre it should have gone around — measured at 2.8 m. A
-       right turns around the near kerb, where the clean radius is already
+       right turns around the near curb, where the clean radius is already
        close to TURN_R_MIN: cutting it is not a bad habit, it is a steering
        lock the car does not have, so the floor absorbs the bias and the
        tell would be claiming a fault nobody could see. */
@@ -980,7 +980,7 @@ export function raExitTime(p) {
    and works the same on a wide crossing as a narrow one. */
 const PED_HOLDS_UNTIL = 0.5;
 
-/* Somebody standing at the kerb with the button pressed is NOT on the
+/* Somebody standing at the curb with the button pressed is NOT on the
    crossing, and holds none of it. The signal has not changed yet; traffic
    keeps moving, which is exactly what happens at a real push-button
    crossing and exactly what makes the press worth reading — it is a
@@ -1263,7 +1263,7 @@ export function cleanPose(p, t) {
 function schedule(participants) {
   participants.forEach(applyTraits);
   const rolling = participants.filter((p) => !p.stops);
-  /* A pedestrian at a push button reaches the kerb, presses, and then
+  /* A pedestrian at a push button reaches the curb, presses, and then
      waits for the signal. The wait is the readable part — see
      PED_BUTTON_WAIT — so it belongs in the schedule rather than being
      faked by moving their arrival later, which would hide the press. */

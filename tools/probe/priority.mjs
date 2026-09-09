@@ -5,17 +5,17 @@ for (const brief of [{traffic:'busy',visibility:'open'},{traffic:'heavy',visibil
     const scn = composeScenario(brief, s);
     if (!scn) continue;
     checked++;
-    const kind = scn.conditions.junction;
+    const kind = scn.conditions.intersection;
     byKind[kind] = byKind[kind] || 0;
     for (const a of scn.actors) {
       const egoCtl = scn.road.legs[scn.ego.from].control;
       const aCtl = scn.road.legs[a.from].control;
       // Unfair = handed priority while ALSO being required to stop, or
-      // outranking an ego that arrived first at an equal-control junction.
+      // outranking an ego that arrived first at an equal-control intersection.
       if (a.priority != null && a.stops) { unfair++; byKind[kind]++; }
       if (a.priority != null && egoCtl === aCtl && egoCtl === 'stop') { unfair++; byKind[kind]++; }
     }
   }
 }
 console.log('checked ' + checked + ' scenes; unfair priority grants: ' + unfair);
-console.log('by junction:', JSON.stringify(byKind));
+console.log('by intersection:', JSON.stringify(byKind));

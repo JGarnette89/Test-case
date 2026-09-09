@@ -208,7 +208,7 @@ const SCENARIOS = [
     brief: "Stop sign, and the road you are crossing has three lanes each way.",
     control: "stop",
     /* The minor road is one lane; the arterial is three each way. The
-       junction is wider, so the stop line sits further back and the view
+       intersection is wider, so the stop line sits further back and the view
        pulls out to fit — both derived, neither typed. */
     road: {
       legs: {
@@ -237,7 +237,7 @@ const SCENARIOS = [
     duration: 18,
     ego: { from: "S", intent: "straight", arriveAt: 1.2, stops: true, color: C.blue },
     /* A standing obstruction on the corner, not a road user. This is what
-       actually blinds a driver at a junction — a parked van, a hedge, a
+       actually blinds a driver at a intersection — a parked van, a hedge, a
        hoarding — rather than another car in the road. */
     sightBlockers: [
       { id: "van", x: 268, y: 452, rot: 0, hl: M(2.8), hw: M(1.15) },

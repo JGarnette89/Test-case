@@ -3,7 +3,7 @@
 
    Half the real job is identifying a driver's habits, and until now the
    game made that impossible in the most basic way. Measured across 320
-   generated junctions: the candidate carried no traits at all and
+   generated intersections: the candidate carried no traits at all and
    committed zero faults. All 143 faults on offer belonged to some other
    road user. There was no driver to read.
 
@@ -22,7 +22,7 @@
    they visibly decline to take. Both fall out of one fact and need no
    separate machinery: a left turn is where cutsCorner would show, so a
    left turn where nothing happens is evidence AGAINST cutsCorner. One
-   junction speaks to every hypothesis it has the shape to speak to. See
+   intersection speaks to every hypothesis it has the shape to speak to. See
    chancesAt and habitReport.
 
    Pure. No React, no DOM, no colour.
@@ -102,7 +102,7 @@ export const compatibleWith = (traits, t) => !traits.some((x) => masks(x, t));
 /* One driver, decided once, for the whole drive. `skill` is their
    composure right now — the dial directions.js already turns when the
    examiner stacks instructions — carried here so a drive has ONE thing to
-   turn rather than a fresh ego per junction to chase. */
+   turn rather than a fresh ego per intersection to chase. */
 export function composeCandidate(seed = 1, { pool = TRAIT_KEYS, forceTraits = null } = {}) {
   const id = `cand-${seed >>> 0}`;
   if (forceTraits) return { id, traits: [...forceTraits], skill: 1 };
@@ -132,7 +132,7 @@ export function composeCandidate(seed = 1, { pool = TRAIT_KEYS, forceTraits = nu
    defined by traits keeps them verbatim, so every hand-authored scenario
    and the golden fingerprint are untouched and the two models coexist.
 
-   `prior` is taken to follow `stops`: a driver who stops at a junction
+   `prior` is taken to follow `stops`: a driver who stops at a intersection
    generally has somebody to be held by, and one rolling down a segment
    does not. It is the same assumption the planner makes, and the compiler
    only PROPOSES — a fault it proposes that the scene has no room for
@@ -144,7 +144,7 @@ export function traitsForScene(candidate, { intent = "straight", stops = true, s
 }
 
 /* The candidate as a participant. Everything the engine needs to drive
-   them lives here, so a junction and a segment ask for the SAME driver
+   them lives here, so a intersection and a segment ask for the SAME driver
    rather than each inventing one — which is what they did before, one by
    composing a flawless ego and the other by taking traits from whoever
    called it. */
@@ -171,7 +171,7 @@ export function egoFor(candidate, { from, intent, arriveAt = 1.6, stops = true, 
 
 /* A SHAPE is the little that decides whether a trait has anything to say:
    does the driver stop, which way do they go, and is there anyone with
-   priority to hold them. Nothing else about a junction changes the
+   priority to hold them. Nothing else about a intersection changes the
    answer, which is why this is cheap enough to ask per plan step.
 
    Deliberately NOT a table. Writing down "cutsCorner needs a left" would
@@ -212,7 +212,7 @@ export const shapeOf = ({ stops = true, intent = "straight", prior = true } = {}
 
 /* Every trait this shape could show, whoever is driving. The full set
    matters as much as the candidate's own: these are the hypotheses this
-   junction can speak to, and the ones it declines are the ones it rules
+   intersection can speak to, and the ones it declines are the ones it rules
    out. */
 export function chancesAt(shape) {
   const key = `${shape.stops ? 1 : 0}${shape.prior ? 1 : 0}${shape.intent}`;
@@ -234,7 +234,7 @@ export function chancesAt(shape) {
 
 /* What THIS scene could have shown, whoever was driving it: put each
    trait on the ego in turn and ask whether it visibly expresses. A
-   counterfactual on the real junction, not a forecast of one.
+   counterfactual on the real intersection, not a forecast of one.
 
    TWO FUNCTIONS, TWO QUESTIONS -- not two answers to one. chancesAt is
    asked before a scene exists, by a planner choosing an intent, and can
@@ -265,7 +265,7 @@ export function showingsIn(scn) {
    and -- the half that makes a hypothesis testable -- chances a trait had
    and visibly did not take.
 
-   `scenes` is what the drive actually presented, in order. Junctions and
+   `scenes` is what the drive actually presented, in order. Intersections and
    segments both: a habit does not care which it turns up in and neither
    does the player. */
 export function habitReport(candidate, scenes) {
@@ -319,7 +319,7 @@ export function valueOfShape(candidate, shape, sofar = {}) {
     const room = have >= SHOWINGS_FOR_A_HABIT ? 0.1 : SHOWINGS_FOR_A_HABIT - have;
     if (candidate?.ratings) {
       /* Under ratings nothing is certain, so a shape is worth what this
-         driver is LIKELY to do with it. A junction offering three errors
+         driver is LIKELY to do with it. A intersection offering three errors
          they are each 20% likely to make is worth about as much as one
          offering a single error they are 60% likely to make, which is the
          right trade for a planner with one turn to spend.

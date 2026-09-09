@@ -80,7 +80,7 @@ for (const s of SCENARIOS) {
 }
 
 /* ---------- 1b. a rotated scenario is still a valid scenario ----------
-   Comparing windows is not enough. Spin a T-junction and leave its road
+   Comparing windows is not enough. Spin a T-intersection and leave its road
    where it was and the cars end up entering by legs that do not exist —
    the window is unchanged, everything still draws, and the situation is
    nonsense. A four-way is symmetric enough to hide this; a T is not. */

@@ -2,7 +2,7 @@
    THE EXAMINER DRIVE — the first playable loop
 
    Everything built for the examiner flip has been machinery for a game
-   nobody could play. This is the loop: a course of junctions, one
+   nobody could play. This is the loop: a course of intersections, one
    candidate driving it, and three of the four jobs running at once.
 
      OBSERVE   the candidate drives; you watch.
@@ -36,8 +36,8 @@ import { sectionSheet, summarise } from "../engine/detect.js";
 import { composeCandidate } from "../engine/candidate.js";
 import { composeDriver, AXES, deficitOf, dominantAxis } from "../engine/ratings.js";
 import {
-  planDrive, composeForTile, CHARACTER, kerbsideFor, roadsideLifeFor, segmentHazards,
-  DEAD_AIR_CEILING, kerbLayout,
+  planDrive, composeForTile, CHARACTER, curbsideFor, roadsideLifeFor, segmentHazards,
+  DEAD_AIR_CEILING, curbLayout,
 } from "../engine/tiles.js";
 import { driveThroughTiles, candidateAt, placeScenario } from "../engine/world.js";
 import { approachDecel } from "../engine/paths.js";
@@ -45,27 +45,27 @@ import { chaseOn } from "../frame.js";
 import { environmentFor, scatter } from "../environments.js";
 import { Road, Environment } from "./RightOfWayTiming.jsx";
 
-const JUNCTIONS = 6;
+const INTERSECTIONS = 6;
 /* THE RECALL BAND, which is the quantity that is actually known: free
    recall runs out at about four items, so a section should carry three or
    four faults. SECTION LENGTH IS DERIVED FROM THAT AND THE DRIVE'S OWN
    DENSITY -- it is not a constant, and every time it was one it drifted:
-   3 was right at 1.11 faults per junction, wrong at 0.89 when
-   straight-through junctions arrived, and wrong again as soon as the
+   3 was right at 1.11 faults per intersection, wrong at 0.89 when
+   straight-through intersections arrived, and wrong again as soon as the
    links started carrying content. Derived here, it cannot drift. */
 const RECALL_BAND = [3, 4];
-const sectionLengthFor = (perJunction) =>
-  Math.max(2, Math.min(4, Math.round(((RECALL_BAND[0] + RECALL_BAND[1]) / 2) / Math.max(0.3, perJunction))));
+const sectionLengthFor = (perIntersection) =>
+  Math.max(2, Math.min(4, Math.round(((RECALL_BAND[0] + RECALL_BAND[1]) / 2) / Math.max(0.3, perIntersection))));
 const TAIL = 1.2;                       // beat after the candidate clears
 /* The least run-in that always shows the candidate arriving: their own
    approach, cruise over comfortable braking. Each leg then starts at
    whichever is greater, this or the time its own instruction needs — see
    runInFor, because the deadline is not a constant and a fixed run-in
-   left 15 junctions in 48 undirectable. */
+   left 15 intersections in 48 undirectable. */
 const APPROACH = M(11.5) / approachDecel(M(11.5));
 
 /* How far ahead you may call. Two, not one: an instruction for the very
-   next junction is discharged the moment they arrive there, so it never
+   next intersection is discharged the moment they arrive there, so it never
    makes them CARRY anything — held counts what is outstanding beyond the
    one being executed. Stacking only exists at a distance of two. */
 const LOOK_SECONDS = 6;
@@ -94,7 +94,7 @@ const INTENTS = [
 
 export default function ExaminerDrive() {
   const [seed, setSeed] = useState(3);
-  const [at, setAt] = useState(0);            // which junction
+  const [at, setAt] = useState(0);            // which intersection
   /* Time within the leg, from zero. NOT the clock: the clock is
      -runIn + elapsed, because each leg starts as far back as its own
      instruction needs. Kept this way round so the first render already
@@ -109,26 +109,26 @@ export default function ExaminerDrive() {
      coming. 6s is a middle the Examiner lab has on a slider so the
      question can actually be looked at. No control on this screen yet. */
   const look = LOOK_SECONDS;
-  const [marks, setMarks] = useState([]);     // { at, junction }
-  const [given, setGiven] = useState({});     // junction -> { at, intent }
+  const [marks, setMarks] = useState([]);     // { at, intersection }
+  const [given, setGiven] = useState({});     // intersection -> { at, intent }
   const [sheet, setSheet] = useState(null);
   /* How many instructions the candidate is carrying BEYOND the one they
      are executing — frozen when the leg begins rather than read per
-     frame. Live, it would re-simulate the junction underneath them the
+     frame. Live, it would re-simulate the intersection underneath them the
      instant you spoke, and the car would jump. Load lands on the driving
      done while holding it, which is the next leg onward. */
   const [held, setHeld] = useState(0);
-  const [target, setTarget] = useState(0);    // which junction the buttons address
+  const [target, setTarget] = useState(0);    // which intersection the buttons address
   const seen = useRef(new Map());             // fault key -> seconds on screen
-  const shown = useRef(new Map());            // junction -> the window actually displayed
+  const shown = useRef(new Map());            // intersection -> the window actually displayed
 
   /* The drive: one candidate, a planned course, composed once. The
      candidate is drawn from ratings and carries their weaknesses through
-     every junction — that is the whole of driver identity, and it is what
+     every intersection — that is the whole of driver identity, and it is what
      makes a habit something a player can find rather than an incident. */
   const drive = useMemo(() => {
     const candidate = { ...composeCandidate(seed * 7 + 3), ...composeDriver(seed * 11) };
-    const plan = planDrive({ seed, length: JUNCTIONS, candidate });
+    const plan = planDrive({ seed, length: INTERSECTIONS, candidate });
     const tiles = [], made = [], intents = [], legTimes = [];
     let since = 0;
     for (let i = 0; i < plan.length; i++) {
@@ -140,10 +140,10 @@ export default function ExaminerDrive() {
       if (!scn) continue;
       legTimes.push(legTime);
       since = faultsIn(scn).length ? 0 : since + legTime;
-      /* THE TILE'S DECLARED ROAD AND THE COMPOSED JUNCTION'S ROAD
+      /* THE TILE'S DECLARED ROAD AND THE COMPOSED INTERSECTION'S ROAD
          DISAGREE -- 15 of 56 match, 0 of 13 for arterial -- and this is
          the moment CLAUDE.md said that would stop being latent, because
-         a renderer is now consuming the world. The junction the candidate
+         a renderer is now consuming the world. The intersection the candidate
          ACTUALLY DRIVES wins: laying the world out from the tile's
          declared spec would place roads that do not match the ones on
          screen. It also sidesteps the arterial-control question, which is
@@ -151,7 +151,7 @@ export default function ExaminerDrive() {
       /* The tile declares its own speed and the drive was ignoring it --
          one flat 11.5 m/s for every link, so a residential street ran at
          41 km/h where the road says 30 and an arterial at 41 where it
-         says 50. The hierarchy stopped at the junction and never reached
+         says 50. The hierarchy stopped at the intersection and never reached
          the straight, which is the half of the drive you spend most of
          your time in. Another two-implementations-of-one-quantity. */
       tiles.push({ ...tile, spec: specOf(scn), speed: CHARACTER[tile.character].speed });
@@ -159,15 +159,15 @@ export default function ExaminerDrive() {
       intents.push(plan[i].intent);
     }
 
-    /* ONE COORDINATE SPACE. Every junction placed where it really is, with
+    /* ONE COORDINATE SPACE. Every intersection placed where it really is, with
        real road between them -- which is what world.js has always done and
-       what this screen never called. Before it, each junction was drawn at
+       what this screen never called. Before it, each intersection was drawn at
        the board centre and the candidate teleported 70-90m at every
        boundary onto new ground with every car and every tree replaced.
        Measured: nothing at all persisted across a boundary. */
-    /* WHAT HAPPENS ON THE ROAD BETWEEN JUNCTIONS. Somebody steps out from
+    /* WHAT HAPPENS ON THE ROAD BETWEEN INTERSECTIONS. Somebody steps out from
        behind a parked car that is really there -- roadsideLifeFor and
-       kerbsideFor come from the same tile declaration, which is what makes
+       curbsideFor come from the same tile declaration, which is what makes
        the car the reason you did not see them.
 
        These were built, verified in verify-world, and drawn by nothing:
@@ -175,18 +175,18 @@ export default function ExaminerDrive() {
        markable fault. The links were 27 seconds of bare tarmac.
 
        A SECTION IS A CONTINUOUS STRETCH OF THE DRIVE, so a link belongs to
-       the junction it DEPARTS FROM -- which is what candidateAt already
+       the intersection it DEPARTS FROM -- which is what candidateAt already
        reports during a link, `intersection: i` with a clock in leg i's frame.
        A link crossing a section boundary therefore lands in the earlier
        section, where the player was when they saw it. */
     const hazards = [];
-    /* Dead air carried across junctions AND links, because a section is
+    /* Dead air carried across intersections AND links, because a section is
        one continuous stretch and the budget has to see all of it. It has
        to ACCUMULATE, not merely reset: a version that zeroed on the first
        hazard and never grew again fired 8 in 30 drives. */
     let sinceEvent = 0;
     const holdFor = (i, link) => {
-      /* The junction just left, then the road leaving it. */
+      /* The intersection just left, then the road leaving it. */
       sinceEvent = faultsIn(made[i]).length ? 0 : sinceEvent + legTimes[i];
       sinceEvent += link.length / (tiles[i].speed ?? M(11.5));
       const found = segmentHazards(tiles[i], link, i * 13 + 1, { candidate })
@@ -213,7 +213,7 @@ export default function ExaminerDrive() {
          to it fired one on 67% of links for a mean 6.8s hold, which would
          have roughly doubled the time on the straights. Whether they
          actually step out is the segment's business, so it is decided
-         here, and by the same budget junctions use: AT MOST ONE PER LINK,
+         here, and by the same budget intersections use: AT MOST ONE PER LINK,
          and only when the drive would otherwise go quiet past the
          ceiling. Exactly briefFor's predictive rule, on the other half of
          the drive -- no new constant, and dead air is precisely what a
@@ -225,7 +225,7 @@ export default function ExaminerDrive() {
          feels alive from the people who are simply there -- 10 a drive,
          drawn and costing nothing -- not from stopping for all of them. */
       /* NON-BLOCKING ONES ALWAYS HAPPEN and cost nothing -- somebody
-         stepping off the kerb as the car clears them is street life, and
+         stepping off the curb as the car clears them is street life, and
          the only question it asks is whether the driver noticed. Only
          the BLOCKING ones are gated, because only they stop the car. */
       const loose = found.filter((h) => !h.blocking);
@@ -254,18 +254,18 @@ export default function ExaminerDrive() {
        they read as slow at any speed. */
     /* THE PARKING STRIP ITSELF, or the parked cars sit on grass. Drawn as
        a quad per side along the link, from the traffic lane's edge out to
-       the kerb -- the same kerbLayout the props are placed from, so the
+       the curb -- the same curbLayout the props are placed from, so the
        surface and the things on it cannot disagree. Checking what draws a
        thing is the rule this project has broken four times running. */
     const strips = [];
     world.links.forEach((link, i) => {
-      const lay = kerbLayout(tiles[i].character);
+      const lay = curbLayout(tiles[i].character);
       if (lay.park <= 0) return;
       const dx = link.to.x - link.from.x, dy = link.to.y - link.from.y;
       const len = Math.hypot(dx, dy) || 1;
       const ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
       for (const side of [-1, 1]) {
-        const a = lay.laneEdge * side, b = lay.kerb * side;
+        const a = lay.laneEdge * side, b = lay.curb * side;
         strips.push({
           id: `strip-${i}-${side}`,
           points: [
@@ -282,12 +282,12 @@ export default function ExaminerDrive() {
 
     const roadside = [];
     world.links.forEach((link, i) => {
-      for (const k of kerbsideFor(tiles[i], link, i * 13 + 1)) roadside.push({ ...k, life: false });
+      for (const k of curbsideFor(tiles[i], link, i * 13 + 1)) roadside.push({ ...k, life: false });
       for (const p of roadsideLifeFor(tiles[i], link, i * 13 + 1)) roadside.push({ ...p, life: true });
     });
 
     /* Hazard faults, moved into the frame the section sheet speaks:
-         hazard-local  ->  drive time  ->  leg-local for the junction it
+         hazard-local  ->  drive time  ->  leg-local for the intersection it
          departs from. Marks made during a link are recorded in exactly
          that frame by candidateAt, so the two agree by construction. */
     const hazardFaults = world.legs.map(() => []);
@@ -310,7 +310,7 @@ export default function ExaminerDrive() {
     const legs = world.legs.map((placed, i) => {
       const runIn = runInFor(placed.sim, { floor: APPROACH });
       return {
-        scn: placed.scn, sim: placed.sim, at: placed.junction.at,
+        scn: placed.scn, sim: placed.sim, at: placed.intersection.at,
         intent: intents[i], tile: tiles[i], runIn,
         window: instructionWindow(placed.sim, { legStartsAt: -runIn }),
         env: environmentFor(placed.scn.id),
@@ -329,7 +329,7 @@ export default function ExaminerDrive() {
   const leg = drive.legs[Math.min(at, drive.legs.length - 1)];
 
   /* WHERE THE CANDIDATE IS, ACROSS THE WHOLE DRIVE. One clock from zero,
-     one position, and a `phase` that says whether they are at a junction
+     one position, and a `phase` that says whether they are at a intersection
      or on the road between two. This is the continuity: the pose never
      jumps, so the camera that follows it never cuts. */
   const world = drive.world;
@@ -350,9 +350,9 @@ export default function ExaminerDrive() {
       scn: leg.scn, sim: leg.sim,
       spec: specOf(leg.scn),
       statics: sightBlockersOf(leg.scn),
-      /* The junction's own faults AND whatever happened on the road
+      /* The intersection's own faults AND whatever happened on the road
          leading away from it -- one list, because a section is a
-         continuous stretch of the drive rather than a set of junctions. */
+         continuous stretch of the drive rather than a set of intersections. */
       faults: [...faultsIn(scn), ...(leg.hazardFaults ?? [])],
       runIn: leg.runIn,
       window: leg.window,
@@ -365,7 +365,7 @@ export default function ExaminerDrive() {
     () => chaseOn(pose, leg ? CHARACTER[leg.tile.character].speed : M(11.5), { lookAhead: look }),
     [pose, look, leg]
   );
-  /* How far each junction's roads reach. Sized so neighbours MEET: the
+  /* How far each intersection's roads reach. Sized so neighbours MEET: the
      gaps are 53-72m, so anything less leaves the candidate driving over a
      void between them, which is the same failure as the ambulance in the
      void -- whatever the camera can reveal has to be drawn. */
@@ -385,19 +385,19 @@ export default function ExaminerDrive() {
      close is not the one the player was racing. */
   useEffect(() => { if (live) shown.current.set(at, live.window); }, [live, at]);
 
-  /* Clock. Advances the junction when the candidate is away and clear. */
+  /* Clock. Advances the intersection when the candidate is away and clear. */
   const raf = useRef(0), last = useRef(0), closed = useRef(false);
   useEffect(() => {
     if (!playing || sheet || !live) return;
     last.current = performance.now();
     /* ONE CLOCK FOR THE WHOLE DRIVE, not one per leg. The leg boundary
        stops being a clock event at all -- it is just the moment the
-       candidate's position happens to be inside the next junction. */
+       candidate's position happens to be inside the next intersection. */
     const end = driveEnds;
     const tick = (now) => {
       /* Clamped at BOTH ends. The ceiling is the familiar one — a
          backgrounded tab must not teleport the candidate through a
-         junction on the first frame back. The floor is not: the baseline
+         intersection on the first frame back. The floor is not: the baseline
          is set from performance.now() while `now` is rAF's own frame
          timestamp, and a stale frame delivered after a stall made those
          disagree by 8.96 SECONDS, running the clock backwards to a time
@@ -440,10 +440,10 @@ export default function ExaminerDrive() {
   });
 
   /* ARRIVING SOMEWHERE IS NOT A CLOCK EVENT ANY MORE. The candidate
-     drives continuously and simply ends up at the next junction, so this
+     drives continuously and simply ends up at the next intersection, so this
      watches their POSITION rather than counting down a per-leg timer. */
   useEffect(() => {
-    const here = pose.junction ?? 0;
+    const here = pose.intersection ?? 0;
     if (here === at || sheet) return;
     if (here % drive.perSection === 0 && here > 0) {
       setSheet(closeSection(here));
@@ -453,7 +453,7 @@ export default function ExaminerDrive() {
     setAt(here);
     setTarget(here);
     setHeld(Object.keys(given).filter((k) => Number(k) > here).length);
-  }, [pose.junction, at, sheet, given]);
+  }, [pose.intersection, at, sheet, given]);
 
   function finishDrive() {
     setSheet(closeSection(drive.legs.length));
@@ -474,7 +474,7 @@ export default function ExaminerDrive() {
     }
     const sheet = sectionSheet({
       legs, from, given,
-      marks: marks.filter((m) => m.junction >= from && m.junction < upTo),
+      marks: marks.filter((m) => m.intersection >= from && m.intersection < upTo),
       shownFor: (f) => seen.current.get(`${f.intersection}/${f.who}/${f.trait ?? f.kind}`) ?? 0,
     });
     return { ...sheet, done: upTo >= drive.legs.length, perSection: drive.perSection };
@@ -500,9 +500,9 @@ export default function ExaminerDrive() {
   const egoPose = pose;
   const sees = whatEgoSees(live.sim, t, 0, live.statics);
 
-  /* Which junctions are close enough to be worth drawing. Culling by
+  /* Which intersections are close enough to be worth drawing. Culling by
      distance rather than by "the one we are at": on the road between two
-     junctions BOTH are on screen, which is the entire point -- you watch
+     intersections BOTH are on screen, which is the entire point -- you watch
      the next one come to you instead of arriving in it. */
   const near = drive.legs
     .map((l, i) => ({ l, i, d: Math.hypot(l.at.x - view.cx, l.at.y - view.cy) }))
@@ -512,7 +512,7 @@ export default function ExaminerDrive() {
   const late = t > w.deadline && !given[at];
   const section = Math.floor(at / drive.perSection) + 1;
 
-  /* An instruction for a junction they have not reached is given before
+  /* An instruction for a intersection they have not reached is given before
      that leg's window opens, which is what makes it STACKED rather than
      late — allowed, sometimes right, and paid for in their concentration
      instead of your mark. Recorded as a real lead: at the very least the
@@ -528,13 +528,13 @@ export default function ExaminerDrive() {
         <svg viewBox={view.box} style={S.svg} preserveAspectRatio="xMidYMid meet">
           <g transform={`rotate(${view.rotate} ${view.cx} ${view.cy})`}>
             {/* Ground first, sized to the frame, so there is never a void
-                under the candidate between two junctions. */}
+                under the candidate between two intersections. */}
             <rect
               x={view.cx - (view.ahead + view.behind)} y={view.cy - (view.ahead + view.behind)}
               width={(view.ahead + view.behind) * 2} height={(view.ahead + view.behind) * 2}
               fill={live.env.ground}
             />
-            {/* EVERY NEARBY JUNCTION, each at the place it really is.
+            {/* EVERY NEARBY INTERSECTION, each at the place it really is.
                 Road and Environment are pinned to the board centre, so
                 they are moved by transform rather than by changing them --
                 the renderer needs no rewrite for the world to be one
@@ -586,9 +586,9 @@ export default function ExaminerDrive() {
                   : <Car key={`${k}-${a.id}`} p={a} pose={q} />;
               });
             })}
-            {/* Traffic is drawn from the junction being driven. It does
+            {/* Traffic is drawn from the intersection being driven. It does
                 not yet persist across a boundary -- the cars at the next
-                junction appear as it is reached. That is the next thing,
+                intersection appear as it is reached. That is the next thing,
                 and it is visible now only because the transit is. */}
             {live.sim.actors.map((a) => {
               const vis = sees[a.id] ?? "hidden";
@@ -631,7 +631,7 @@ export default function ExaminerDrive() {
       </div>
 
       <div style={S.panel}>
-        {/* WHICH junction you are directing. Calling ahead is the trade the
+        {/* WHICH intersection you are directing. Calling ahead is the trade the
             whole design rests on: an instruction given early can never be
             given late, and it buys your attention back for watching — at
             the cost of a driver carrying more than one thing at once. */}
@@ -669,7 +669,7 @@ export default function ExaminerDrive() {
 
         <div style={S.row}>
           <button className="btn" style={{ ...S.mark }}
-            onClick={() => setMarks((m) => [...m, { at: +t.toFixed(2), junction: at }])}>
+            onClick={() => setMarks((m) => [...m, { at: +t.toFixed(2), intersection: at }])}>
             <Flag size={15} /> Mark a fault
           </button>
           <button className="btn" style={S.btn} onClick={() => setPlaying((p) => !p)}>
@@ -681,7 +681,7 @@ export default function ExaminerDrive() {
         <div style={S.meterRow}>
           <Meter label="Their composure" v={skill} colour={skill > 0.7 ? C.green : C.amber} />
           <div style={S.note}>
-            {marks.filter((m) => m.junction === at).length} called here ·
+            {marks.filter((m) => m.intersection === at).length} called here ·
             {" "}{held
               ? `${held} still in the air — a loaded driver is a worse driver`
               : "nothing in the air"}
@@ -742,8 +742,8 @@ function Sheet({ sheet, drive, onNext }) {
 
         <div style={S.sheetSection}>Directions</div>
         {calls.map((c) => (
-          <div key={c.junction} style={S.line}>
-            <span style={S.dim}>Intersection {c.junction + 1}</span>
+          <div key={c.intersection} style={S.line}>
+            <span style={S.dim}>Intersection {c.intersection + 1}</span>
             <span style={{ color: c.blame || c.wrongTurn ? C.red : c.verdict === "stacked" ? C.amber : C.green }}>
               {c.said ? `${phraseOf(c.said)} — ` : ""}{VERDICT[c.verdict] ?? c.verdict}
               {c.wrongTurn ? " (they wanted " + phraseOf(c.wanted).toLowerCase() + ")" : ""}

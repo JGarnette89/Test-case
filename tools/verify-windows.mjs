@@ -45,7 +45,7 @@ for (const s of SCENARIOS) {
 }
 
 /* ---------- 1b. every scenario fits the road it is on ----------
-   A three-legged junction has intents that lead nowhere: from the stem of
+   A three-legged intersection has intents that lead nowhere: from the stem of
    a T, "straight" exits the leg that is not there. The car would drive off
    into open ground and it would look almost right, so it is checked rather
    than eyeballed. */

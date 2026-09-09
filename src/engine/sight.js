@@ -27,7 +27,7 @@ export const EYE_BACK = M(1.0);
 
 /* One press of PULL UP. Sized against the space it has rather than picked:
    there are about two metres between the stop line and the edge of the
-   junction, and a step that only fits into it once makes creeping a switch
+   intersection, and a step that only fits into it once makes creeping a switch
    instead of a judgment. At 0.9 m there are two presses of genuine
    hesitation before the nose is in the box, which is the decision the
    mechanic exists to pose. Checked in verify-sight.mjs. */
@@ -112,9 +112,9 @@ export function visibility(eye, target, targetPose, blockers) {
   return "clear";
 }
 
-/* Standing obstructions — a parked van on the kerb, a hedge on the corner.
+/* Standing obstructions — a parked van on the curb, a hedge on the corner.
    Declared per scenario as plain data, because most of what actually
-   blocks a driver's view at a junction is not another car in the road.
+   blocks a driver's view at a intersection is not another car in the road.
    The engine has no idea what the renderer draws there, so a scenario
    that wants a blind corner has to say so.
 
@@ -283,13 +283,13 @@ export function creepPose(ego, t, steps = 0) {
   };
 }
 
-/* How far the ego's nose is short of the middle of the junction, measured
+/* How far the ego's nose is short of the middle of the intersection, measured
    along its own approach. Below STOP_LINE_AT it has crossed the line;
    below zero it is through the middle and out the other side.
 
    Signed on purpose. Straight-line distance cannot tell approaching from
    departed, so a car that has driven clean through reads the same as one
-   still short of the line — which made a creep past the junction look
+   still short of the line — which made a creep past the intersection look
    like a creep up to it. */
 export function noseOut(pose) {
   const r = rad(pose.rot);
@@ -329,7 +329,7 @@ export function encroaches(sim, t, steps, until = null) {
 
 /* Ontario: a vehicle waiting to turn left must not cross the stop line
    while a car ahead of it is already waiting in the intersection. Two
-   cars stacked in the box is how the junction ends up blocked when the
+   cars stacked in the box is how the intersection ends up blocked when the
    light changes.
 
    "Already waiting in the intersection" means inside the box and not
@@ -338,7 +338,7 @@ export function encroaches(sim, t, steps, until = null) {
    THE BOX, not a one-lane guess at it: a car sitting in the outer lane
    of a six-lane arterial is still in the box, and a circle drawn at
    one-lane radius from the centre would miss it. Every participant
-   carries the same road spec the junction was built from, so the box is
+   carries the same road spec the intersection was built from, so the box is
    read off that, not off a fixed number — see road.js. */
 export function carWaitingInBox(sim, t, exclude = "ego") {
   const { vx, hy } = boxHalf(sim.ego.road, LANE);

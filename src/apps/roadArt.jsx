@@ -49,7 +49,7 @@ export function Roundabout({ island = C.grass, reach = W / 2 }) {
 
       {/* The circulating carriageway, painted over the approach stubs. */}
       <circle cx={CX} cy={CY} r={RA_OUTER} fill={C.asphalt} stroke={C.line} strokeWidth={M(0.15)} />
-      {/* Central island, kerbed. */}
+      {/* Central island, curbed. */}
       <circle cx={CX} cy={CY} r={RA_ISLAND} fill={island} stroke={C.line} strokeWidth={M(0.3)} />
       <circle cx={CX} cy={CY} r={RA_ISLAND - M(0.9)} fill={shade(island, 0.06)} />
 

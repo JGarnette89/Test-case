@@ -3,16 +3,16 @@
  *
  * Half the real job is identifying a driver's tendencies, and the game
  * made that impossible in the most basic way. Measured before any of this
- * existed, over 320 generated junctions: the candidate carried no traits
+ * existed, over 320 generated intersections: the candidate carried no traits
  * at all and committed none of the 143 faults on offer. Every one belonged
  * to some other road user, and the plan's turn survived into the composed
- * junction 9 times in 120 — so the examiner was directing a manoeuvre the
+ * intersection 9 times in 120 — so the examiner was directing a manoeuvre the
  * candidate was never making.
  *
  * What is checked here is deliberately not "the code does what it says".
  * It is the properties a correct implementation would have to have:
  *
- *   - one driver, at every junction AND every segment;
+ *   - one driver, at every intersection AND every segment;
  *   - a habit gets repeated chances, so it can be told from an incident;
  *   - the rival habits get chances they visibly decline, so a hypothesis
  *     can be tested rather than merely formed;
@@ -47,7 +47,7 @@ const legFor = (spec) => ({
 });
 
 /* One drive, end to end, exactly the way the world builds one: a driver
-   composed once, a planned route, junctions and segments in order. */
+   composed once, a planned route, intersections and segments in order. */
 function drive(seed, { steer = false, show = false, length = 7, candidate = null } = {}) {
   const cand = candidate || composeCandidate(seed * 7 + 3);
   const plan = planDrive({ seed, length, candidate: steer ? cand : null });
@@ -70,7 +70,7 @@ function drive(seed, { steer = false, show = false, length = 7, candidate = null
       show: show && owing.length ? owing : null,
     });
     if (scn) {
-      scenes.push({ scn, kind: "junction", plan: plan[i] });
+      scenes.push({ scn, kind: "intersection", plan: plan[i] });
       for (const f of showingsIn(scn)) sofar[f.trait] = (sofar[f.trait] || 0) + 1;
     }
     const link = laid.links[i];
@@ -92,14 +92,14 @@ console.log("=".repeat(70));
 /* ---------- 1. one driver ------------------------------------------- */
 console.log("\n1. THE SAME PERSON IS DRIVING THE WHOLE WAY");
 {
-  let drives = 0, scenes = 0, mismatched = 0, junctions = 0, segments = 0;
+  let drives = 0, scenes = 0, mismatched = 0, intersections = 0, segments = 0;
   for (let seed = 1; seed <= 8; seed++) {
     const { cand, scenes: sc } = drive(seed, { steer: true, show: true });
     drives++;
     const want = [...cand.traits].sort().join(",");
     for (const s of sc) {
       scenes++;
-      if (s.kind === "junction") junctions++; else segments++;
+      if (s.kind === "intersection") intersections++; else segments++;
       const got = [...(s.scn.ego.traits || [])].sort().join(",");
       if (got !== want) {
         mismatched++;
@@ -108,27 +108,27 @@ console.log("\n1. THE SAME PERSON IS DRIVING THE WHOLE WAY");
     }
   }
   mismatched === 0
-    ? ok(`one driver across ${scenes} scenes on ${drives} drives (${junctions} junctions, ${segments} segments)`)
+    ? ok(`one driver across ${scenes} scenes on ${drives} drives (${intersections} intersections, ${segments} segments)`)
     : null;
-  segments > 0 && junctions > 0
+  segments > 0 && intersections > 0
     ? ok("and the identity spans both kinds of scene, which is where it used to split")
     : fail("the drives produced only one kind of scene, so persistence across kinds is untested");
 }
 
 /* ---------- 2. the route is the route -------------------------------- */
-console.log("\n2. THE JUNCTION IS THE ONE THE ROUTE ASKED FOR");
+console.log("\n2. THE INTERSECTION IS THE ONE THE ROUTE ASKED FOR");
 {
   let total = 0, matched = 0;
   for (let seed = 1; seed <= 8; seed++) {
     const { scenes } = drive(seed, { steer: true, show: true });
-    for (const s of scenes.filter((x) => x.kind === "junction")) {
+    for (const s of scenes.filter((x) => x.kind === "intersection")) {
       total++;
       if (s.scn.ego.from === s.plan.entry && s.scn.ego.intent === s.plan.intent) matched++;
     }
   }
   matched === total
-    ? ok(`the composed junction matches the plan's (entry, intent) ${matched}/${total} times, against 9/120 before`)
-    : fail(`${total - matched} of ${total} junctions were composed for a different manoeuvre than the route directs`);
+    ? ok(`the composed intersection matches the plan's (entry, intent) ${matched}/${total} times, against 9/120 before`)
+    : fail(`${total - matched} of ${total} intersections were composed for a different manoeuvre than the route directs`);
 }
 
 /* ---------- 3. a habit is not an incident ---------------------------- */
@@ -181,7 +181,7 @@ console.log("\n3. A HABIT GETS REPEATED CHANCES, AND ITS RIVALS GET REFUSED ONES
   /* IDENTIFICATION HAS SATURATED, so this no longer asks whether the
      levers add identifiable habits — persistence alone reaches the
      ceiling now that one roll per axis gives a candidate's weaknesses a
-     clean run at every junction. Asserting an improvement that cannot
+     clean run at every intersection. Asserting an improvement that cannot
      happen would be asserting nothing.
 
      What they still earn their place on is the OTHER half: disconfirmation.
@@ -201,7 +201,7 @@ console.log("\n3. A HABIT GETS REPEATED CHANCES, AND ITS RIVALS GET REFUSED ONES
     ? ok(`and persistence alone was most of it: ${plain.id}/${plain.tr}, from a baseline where the candidate had no traits at all`)
     : fail("persistence alone produced no identifiable habit, so something upstream is wrong");
 
-  /* Forming a hypothesis is half of it. Testing one needs junctions where
+  /* Forming a hypothesis is half of it. Testing one needs intersections where
      a rival habit had every opportunity and did nothing. */
   both.ru >= both.tr
     ? ok(`and ${both.ru} rival habits were given ${SHOWINGS_FOR_A_HABIT}+ chances they visibly declined, so a hypothesis can be tested`)
@@ -231,8 +231,8 @@ console.log("\n4. WHERE A HABIT CAN SHOW IS DERIVED, AND THE FORECAST'S ERROR IS
     ? ok("cutsCorner needs a LEFT, derived — the engine's own left-only rule surfacing here rather than being restated")
     : fail("cutsCorner's derived shape does not match the left-only rule it is written under");
   shown["roll/straight"].length < shown["stop/straight"].length
-    ? ok("a segment shows less than a junction, so segments cannot carry a drive's whole character")
-    : fail("a segment shows as much as a junction, which would make junctions redundant");
+    ? ok("a segment shows less than a intersection, so segments cannot carry a drive's whole character")
+    : fail("a segment shows as much as a intersection, which would make intersections redundant");
 
   /* The forecast is used by the planner, which has no scene yet. Where it
      strays from the truth is a number, not a shrug. */
@@ -240,7 +240,7 @@ console.log("\n4. WHERE A HABIT CAN SHOW IS DERIVED, AND THE FORECAST'S ERROR IS
   for (let seed = 1; seed <= 6; seed++) {
     for (const s of drive(seed, { steer: true, show: true }).scenes) {
       const forecast = new Set(chancesAt(shapeOf({
-        stops: s.scn.ego.stops !== false, intent: s.scn.ego.intent, prior: s.kind === "junction",
+        stops: s.scn.ego.stops !== false, intent: s.scn.ego.intent, prior: s.kind === "intersection",
       })));
       const truth = new Set(chancesIn(s.scn));
       n++;
@@ -385,10 +385,10 @@ console.log("\n6. SOME CANDIDATES ARE CLEAN, AND STAY CLEAN");
 /* ---------- 7. the drive still works --------------------------------- */
 console.log("\n7. NONE OF THIS COST THE DRIVE ITS SUPPLY");
 {
-  /* A junction that cannot satisfy the demand must relax it rather than
+  /* A intersection that cannot satisfy the demand must relax it rather than
      come back empty — a habit that has nothing to say here must not cost
-     the player a whole junction. */
-  let empty = 0, junctions = 0, asked = 0, granted = 0;
+     the player a whole intersection. */
+  let empty = 0, intersections = 0, asked = 0, granted = 0;
   for (let seed = 1; seed <= 8; seed++) {
     const cand = composeCandidate(seed * 7 + 3);
     const plan = planDrive({ seed, length: 7, candidate: cand });
@@ -401,20 +401,20 @@ console.log("\n7. NONE OF THIS COST THE DRIVE ITS SUPPLY");
         legTime, candidate: cand, at: { from: plan[i].entry, intent: plan[i].intent },
         show: want.length ? want : null,
       });
-      junctions++;
+      intersections++;
       if (!res.scn) empty++;
       if (want.length) { asked++; if (res.asked) granted++; }
       since = res.scn && showingsIn(res.scn).length ? 0 : since + legTime;
     }
   }
   empty === 0
-    ? ok(`the ladder still fills every junction (${junctions} composed, none empty)`)
-    : fail(`${empty} of ${junctions} junctions came back with nothing at all`);
+    ? ok(`the ladder still fills every intersection (${intersections} composed, none empty)`)
+    : fail(`${empty} of ${intersections} intersections came back with nothing at all`);
   granted > 0 && granted < asked
-    ? ok(`and the demand is real but not absolute: ${granted} of ${asked} junctions delivered the habit asked for, the rest relaxed`)
+    ? ok(`and the demand is real but not absolute: ${granted} of ${asked} intersections delivered the habit asked for, the rest relaxed`)
     : granted === asked
-      ? ok(`every junction asked for a habit delivered it (${granted}/${asked})`)
-      : fail("no junction ever delivered the habit it was asked for, so the top rung is dead");
+      ? ok(`every intersection asked for a habit delivered it (${granted}/${asked})`)
+      : fail("no intersection ever delivered the habit it was asked for, so the top rung is dead");
 }
 
 /* ---------- 8. R1: a driver as four ratings ------------------------- */
@@ -453,7 +453,7 @@ console.log("\n8. RATINGS: ERRORS DERIVED FROM WHAT A DRIVER IS BAD AT");
      controlled comparison -- one shape, one seed range, only the rating
      moves. Pacing is not involved, so nothing but the driver can be
      responsible for the difference. */
-  console.log("\n   rating   confidence  steering   braking  knowledge   (errors per 200 draws, one junction)");
+  console.log("\n   rating   confidence  steering   braking  knowledge   (errors per 200 draws, one intersection)");
   console.log("   " + "-".repeat(84));
   const curve = {};
   for (const axis of AXES) curve[axis] = [];
@@ -675,32 +675,32 @@ console.log("\n9. A CANDIDATE HAS A CHARACTER, AND ENOUGH TO FIND WITHOUT TOO MU
 
   /* What that produces on a real drive. */
   const N = 16;
-  const perJunction = [], axesPerDrive = [];
-  let junctions = 0;
+  const perIntersection = [], axesPerDrive = [];
+  let intersections = 0;
   for (let seed = 1; seed <= N; seed++) {
     const cand = { ...composeCandidate(seed * 7 + 3), ...composeDriver(seed * 11) };
     const { scenes: sc } = drive(seed, { steer: true, candidate: cand });
     const axes = new Set();
-    for (const s of sc.filter((x) => x.kind === "junction")) {
-      junctions++;
+    for (const s of sc.filter((x) => x.kind === "intersection")) {
+      intersections++;
       const sh = showingsIn(s.scn);
-      perJunction.push(sh.length);
+      perIntersection.push(sh.length);
       for (const f of sh) { const a = dominantAxis(f.trait); if (a) axes.add(a); }
     }
     axesPerDrive.push(axes.size);
   }
   const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
-  const density = mean(perJunction);
+  const density = mean(perIntersection);
   const spread = mean(axesPerDrive);
-  console.log(`\n   ${junctions} junctions over ${N} drives`);
-  console.log(`   markable candidate faults per junction: ${density.toFixed(2)}`);
+  console.log(`\n   ${intersections} intersections over ${N} drives`);
+  console.log(`   markable candidate faults per intersection: ${density.toFixed(2)}`);
   console.log(`   distinct AXES showing per drive:        ${spread.toFixed(2)}`);
-  console.log(`   section length implied by recall:       ${(RECALL_BAND[0] / density).toFixed(1)} to ${(RECALL_BAND[1] / density).toFixed(1)} junctions\n`);
+  console.log(`   section length implied by recall:       ${(RECALL_BAND[0] / density).toFixed(1)} to ${(RECALL_BAND[1] / density).toFixed(1)} intersections\n`);
 
   density > 0.5 && density < 2.5
-    ? ok(`there is something to find at most junctions (${density.toFixed(2)} per junction) without the sheet becoming a memory test`)
+    ? ok(`there is something to find at most intersections (${density.toFixed(2)} per intersection) without the sheet becoming a memory test`)
     : fail(
-        `${density.toFixed(2)} faults per junction is ${density <= 0.5 ? "too little to examine" : "more than a player could recall"}.
+        `${density.toFixed(2)} faults per intersection is ${density <= 0.5 ? "too little to examine" : "more than a player could recall"}.
 ` +
         `        If this ROSE after adding a fault kind, the roll has gone back to one per KIND
 ` +
@@ -722,8 +722,8 @@ console.log("\n9. A CANDIDATE HAS A CHARACTER, AND ENOUGH TO FIND WITHOUT TOO MU
      the number it should choose from. */
   const lowJ = RECALL_BAND[0] / density, highJ = RECALL_BAND[1] / density;
   lowJ >= 1.5 && highJ <= 6
-    ? ok(`which puts a section at ${lowJ.toFixed(1)}-${highJ.toFixed(1)} junctions — long enough to hold a habit's worth of evidence, short enough to recall`)
-    : fail(`the implied section is ${lowJ.toFixed(1)}-${highJ.toFixed(1)} junctions, which is not a workable length`);
+    ? ok(`which puts a section at ${lowJ.toFixed(1)}-${highJ.toFixed(1)} intersections — long enough to hold a habit's worth of evidence, short enough to recall`)
+    : fail(`the implied section is ${lowJ.toFixed(1)}-${highJ.toFixed(1)} intersections, which is not a workable length`);
 
   /* And a habit still needs its showings, which is the cross-check
      between the two numbers: a section inside recall, several sections

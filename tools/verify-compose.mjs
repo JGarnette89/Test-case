@@ -86,11 +86,11 @@ for (const b of BRIEFS) {
     : fail(label + "only " + sigs.size + " distinct shapes from " + made.length + " — repeating itself");
 }
 {
-  const junctions = new Set();
-  for (const made of byBrief.values()) for (const s of made) junctions.add(s.conditions.junction);
-  junctions.size >= 3
-    ? ok("all junction kinds appear: " + [...junctions].join(", "))
-    : fail("only produced: " + [...junctions].join(", "));
+  const intersections = new Set();
+  for (const made of byBrief.values()) for (const s of made) intersections.add(s.conditions.intersection);
+  intersections.size >= 3
+    ? ok("all intersection kinds appear: " + [...intersections].join(", "))
+    : fail("only produced: " + [...intersections].join(", "));
 }
 
 console.log("");
@@ -128,7 +128,7 @@ console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
    situation still has to be measured against something.
 
    What survives here is what was never about the driver game: a scene has
-   to be built out of legs its junction actually has, it must not end in
+   to be built out of legs its intersection actually has, it must not end in
    contact, and enough of it has to be tight enough to mark. */
 {
   let bad = 0;
@@ -143,7 +143,7 @@ console.log("5. EVERY COMPOSED SCENE IS ACTUALLY PLAYABLE");
   }
   bad === 0 ? ok("every window opens at or after the ego arrives") : fail(bad + " impossible windows");
   illegal === 0
-    ? ok(`every road user uses a leg its junction actually has (${all.length} scenes)`)
+    ? ok(`every road user uses a leg its intersection actually has (${all.length} scenes)`)
     : fail(`${illegal} scene(s) use a leg that is not there: ${firstBad}`);
 
   /* WHAT THE ACCEPT TEST PROMISES NOW. Not a safe window -- a gradeable

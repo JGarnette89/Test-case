@@ -13,7 +13,7 @@
       true to where our route takes us."
 
    So the window is DERIVED, not tuned. It opens the moment the phrase
-   stops being ambiguous — the moment the junction ahead is the one the
+   stops being ambiguous — the moment the intersection ahead is the one the
    phrase points at — and it closes when the candidate must already be
    acting on it. Neither edge is a number somebody picked.
 
@@ -39,7 +39,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 /* How long between hearing an instruction and being able to start acting
    on it. Slower than reading a light — REACTION_FLOOR is 0.35s for a
-   visual cue, and this is language: hear it, resolve which junction it
+   visual cue, and this is language: hear it, resolve which intersection it
    means, decide. Named and tunable rather than buried, and it is the one
    number here that is a judgment rather than a derivation. */
 export const FOLLOW_LAG = 1.0;
@@ -70,9 +70,9 @@ export function phraseFor(intent) {
    The window
 
    opensAt — when the phrase becomes unambiguous. "The first street" means
-   the junction being approached only once the previous one is behind you,
-   which for a single-junction leg is the moment the leg begins. A leg
-   that ever contains two junctions would move this, which is why it is
+   the intersection being approached only once the previous one is behind you,
+   which for a single-intersection leg is the moment the leg begins. A leg
+   that ever contains two intersections would move this, which is why it is
    derived from the leg rather than hardcoded to zero elsewhere.
 
    deadline — the candidate has to KNOW before they have to ACT. The
@@ -86,7 +86,7 @@ export function instructionWindow(sim, { legStartsAt = 0 } = {}) {
   const intent = ego.intent ?? DEFAULT_INTENT;
   const sequence = sequenceFor(MANOEUVRE_OF[intent] ?? "straight");
 
-  /* The manoeuvre is the departure: at a stop-controlled junction the
+  /* The manoeuvre is the departure: at a stop-controlled intersection the
      candidate is already stationary, so leaving the line IS the act. */
   const manoeuvreAt = ego.departAt ?? sim.legalAt;
   const windows = deriveWindows(sequence, { manoeuvreAt, legalAt: sim.legalAt });
@@ -110,11 +110,11 @@ export function instructionWindow(sim, { legStartsAt = 0 } = {}) {
 /* HOW EARLY A LEG HAS TO START, so its instruction can actually be given.
 
    Not a constant, because the deadline is not: measured across 48
-   generated junctions it runs from 4.50s BEFORE the candidate reaches the
+   generated intersections it runs from 4.50s BEFORE the candidate reaches the
    line to 8.20s after, depending on what the manoeuvre demands and when.
    A fixed run-in that suits the median leaves the demanding ones
    undirectable — 15 of 48 at 3.5s — and a fixed one that suits the worst
-   makes every other junction a wait.
+   makes every other intersection a wait.
 
    So a leg starts early enough for its own instruction, floored at the
    candidate's own approach, which is the least that shows them arriving.

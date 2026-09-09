@@ -19,7 +19,7 @@ import { composeCandidate } from "../src/engine/candidate.js";
 import { composeDriver } from "../src/engine/ratings.js";
 import { chaseOn } from "../src/frame.js";
 import {
-  TILES, specFor, kerbsideFor, roadsideLifeFor, CHARACTER,
+  TILES, specFor, curbsideFor, roadsideLifeFor, CHARACTER,
   planDrive, driveFromPlan, runwayNeededFor, composeForTile,
   markableTimeline, pacingOf, DEAD_AIR_CEILING, segmentHazards,
 } from "../src/engine/tiles.js";
@@ -48,7 +48,7 @@ function worldOf(tileId, n = 10) {
   const drive = driveThroughTiles({ tiles, legs: tiles.map(() => legFor(tile.spec)) });
   const blockers = [];
   drive.links.forEach((link, i) => {
-    for (const b of kerbsideFor(tile, link, i * 13 + 1)) {
+    for (const b of curbsideFor(tile, link, i * 13 + 1)) {
       blockers.push({ p: { id: b.id, kind: "static" }, pose: { x: b.x, y: b.y, rot: b.rot }, hl: b.hl, hw: b.hw });
     }
   });
@@ -191,7 +191,7 @@ console.log("\n4. OMITTING THE REACH LEAVES EVERYTHING AS IT WAS");
 /* ---------- 5. routes are directable, and present decisions ---------- */
 console.log("\n5. EVERY PLANNED ROUTE IS DIRECTABLE, AND ASKS FOR DECISIONS");
 {
-  let short = 0, straightOnly = 0, routes = 0, junctions = 0;
+  let short = 0, straightOnly = 0, routes = 0, intersections = 0;
   const characters = new Set();
   for (let seed = 1; seed <= 25; seed++) {
     const plan = planDrive({ seed, length: 6 });
@@ -200,21 +200,21 @@ console.log("\n5. EVERY PLANNED ROUTE IS DIRECTABLE, AND ASKS FOR DECISIONS");
     for (const p of plan) characters.add(p.tile.character);
 
     for (let i = 1; i < drive.legs.length; i++) {
-      junctions++;
+      intersections++;
       const delivered = runwayFor(drive, i);
       const needed = runwayNeededFor(plan[i].tile.character);
       if (delivered + M(0.6) < needed) {
         short++;
-        if (short <= 3) fail(`seed ${seed} junction ${i} (${plan[i].tile.character}): ${m(delivered)}m runway, needs ${m(needed)}m`);
+        if (short <= 3) fail(`seed ${seed} intersection ${i} (${plan[i].tile.character}): ${m(delivered)}m runway, needs ${m(needed)}m`);
       }
     }
     /* Silence means straight on, so a route of nothing but straight-ahead
-       junctions never asks the examiner for an instruction at all and the
+       intersections never asks the examiner for an instruction at all and the
        directing task quietly disappears. */
     if (!plan.slice(0, -1).some((p) => p.intent !== "straight")) straightOnly++;
   }
   short === 0
-    ? ok(`all ${junctions} junctions across ${routes} routes deliver the runway their character needs`)
+    ? ok(`all ${intersections} intersections across ${routes} routes deliver the runway their character needs`)
     : null;
   straightOnly === 0
     ? ok("every route turns somewhere, so the directing task always has something to ask")
@@ -238,8 +238,8 @@ console.log("\n6. THE DRIVE KEEPS OFFERING SOMETHING TO MARK");
     if (faultsIn(scn).length) anyFault++;
   }
   anyFault > 0
-    ? ok(`generated junctions produce markable behaviour (${anyFault} of ${tries} draws)`)
-    : fail("no generated junction produced a derivable fault -- the world offers nothing to assess");
+    ? ok(`generated intersections produce markable behaviour (${anyFault} of ${tries} draws)`)
+    : fail("no generated intersection produced a derivable fault -- the world offers nothing to assess");
 
   console.log("\n   seed   unsteered   steered   events   empty");
   console.log("   " + "-".repeat(50));
@@ -272,26 +272,26 @@ console.log("\n6. THE DRIVE KEEPS OFFERING SOMETHING TO MARK");
   }
   const worstPlain = Math.max(...plainGaps), worstFed = Math.max(...fedGaps);
   empties === 0
-    ? ok("the fallback ladder means no junction is ever left empty")
-    : fail(`${empties} junction(s) came back with nothing at all`);
+    ? ok("the fallback ladder means no intersection is ever left empty")
+    : fail(`${empties} intersection(s) came back with nothing at all`);
   worstFed < worstPlain
     ? ok(`steering cuts the worst dead stretch from ${worstPlain.toFixed(1)}s to ${worstFed.toFixed(1)}s`)
     : fail(`steering did not improve the worst dead stretch (${worstPlain.toFixed(1)}s vs ${worstFed.toFixed(1)}s)`);
   worstFed < 90
     ? ok(`and stays inside the design's 90s failure condition (worst ${worstFed.toFixed(1)}s)`)
     : fail(`a drive went ${worstFed.toFixed(1)}s with nothing to mark`);
-  console.log(`   note: junctions ALONE cannot meet the ${DEAD_AIR_CEILING}s target -- a leg takes about`);
-  console.log("   10s, so a budget with only junctions to spend cannot react faster than one");
+  console.log(`   note: intersections ALONE cannot meet the ${DEAD_AIR_CEILING}s target -- a leg takes about`);
+  console.log("   10s, so a budget with only intersections to spend cannot react faster than one");
   console.log("   arrives. Sections 7 and 8 measure what the roadside adds.");
 }
 
 /* ---------- 7. segment hazards, and whether 25s is reachable --------- */
 console.log("\n7. THE ROADSIDE IS THE SECOND SOURCE OF EVENTS");
 {
-  /* Junctions were the only source, and a leg takes about ten seconds, so
-     no budget could react faster than a junction arrived. Segment hazards
+  /* Intersections were the only source, and a leg takes about ten seconds, so
+     no budget could react faster than a intersection arrived. Segment hazards
      are built from the roadside content that already exists -- the same
-     roadsideLifeFor that places the people and the same kerbsideFor that
+     roadsideLifeFor that places the people and the same curbsideFor that
      places the props -- so liveliness and hazard supply are one piece of
      work rather than two systems. */
   const plan = planDrive({ seed: 1, length: 6 });
@@ -319,9 +319,9 @@ console.log("\n7. THE ROADSIDE IS THE SECOND SOURCE OF EVENTS");
   const hz = segmentHazards(plan[0].tile, link, 29, {});
   /* A HAZARD IS EITHER A PERSON OR A CAR LEAVING A SPACE, and both have
      to come from somewhere the tile already declared -- the person from
-     roadsideLifeFor, the car from a space kerbsideFor actually placed. A
+     roadsideLifeFor, the car from a space curbsideFor actually placed. A
      third notion of where roadside things are would show up here. */
-  const props = kerbsideFor(plan[0].tile, link, 29);
+  const props = curbsideFor(plan[0].tile, link, 29);
   const placed = hz.every((h) => (h.person
     ? people.some((p) => p.id === h.person.id)
     : h.emerging && props.some((b) => b.parked)));
@@ -411,22 +411,22 @@ console.log("\n8. DEAD AIR: IS THE TARGET REACHABLE?");
   console.log("   gaps are on roads where dead air is the correct answer.");
 }
 
-console.log("\n8b. NOT EVERY JUNCTION IS A TEST");
+console.log("\n8b. NOT EVERY INTERSECTION IS A TEST");
 {
   /* THE MAINTAINER'S RULING, after playing: "some intersections will just
      be driven straight through with no real requirements from the NPC
      driver."
 
-     WHY IT IS A MECHANIC AND NOT A GARNISH. If every junction produces
-     something, the player learns that junction means fault, and attention
-     stops being a decision -- they simply look at whichever junction is
+     WHY IT IS A MECHANIC AND NOT A GARNISH. If every intersection produces
+     something, the player learns that intersection means fault, and attention
+     stops being a decision -- they simply look at whichever intersection is
      next. Uncertainty is what makes watching necessary. A player who
-     cannot predict which junctions matter has to watch all of them.
+     cannot predict which intersections matter has to watch all of them.
 
-     AND IT COMES FROM ROAD HIERARCHY, not from an "empty junction"
-     feature. A through road crossing side streets produces junctions that
+     AND IT COMES FROM ROAD HIERARCHY, not from an "empty intersection"
+     feature. A through road crossing side streets produces intersections that
      demand nothing because that is what a through road IS. Before this
-     the composer stopped the candidate at 240 of 240 junctions, including
+     the composer stopped the candidate at 240 of 240 intersections, including
      the 87 where their own leg was uncontrolled. */
   const DRIVES = 25, LEN = 6;
   let n = 0, free = 0, nothing = 0;
@@ -452,15 +452,15 @@ console.log("\n8b. NOT EVERY JUNCTION IS A TEST");
     }
   }
   const share = free / n;
-  console.log(`   ${free} of ${n} junctions driven straight through (${(100 * share).toFixed(0)}%), ${nothing} demanding nothing at all`);
+  console.log(`   ${free} of ${n} intersections driven straight through (${(100 * share).toFixed(0)}%), ${nothing} demanding nothing at all`);
   console.log("   " + Object.entries(byChar).map(([k, v]) => `${k} ${(100 * v.free / v.n).toFixed(0)}%`).join("  ·  "));
   share > 0.05
-    ? ok(`not every junction is a test: ${(100 * share).toFixed(0)}% are driven straight through`)
+    ? ok(`not every intersection is a test: ${(100 * share).toFixed(0)}% are driven straight through`)
     : fail(
-        `only ${(100 * share).toFixed(0)}% of junctions are driven straight through.` + String.fromCharCode(10) +
-        `        If every junction produces something, the player learns that junction means` + String.fromCharCode(10) +
+        `only ${(100 * share).toFixed(0)}% of intersections are driven straight through.` + String.fromCharCode(10) +
+        `        If every intersection produces something, the player learns that intersection means` + String.fromCharCode(10) +
         `        fault and attention stops being a decision. Uncertainty is what makes` + String.fromCharCode(10) +
-        `        watching necessary, so an empty junction is not filler -- it is what makes` + String.fromCharCode(10) +
+        `        watching necessary, so an empty intersection is not filler -- it is what makes` + String.fromCharCode(10) +
         `        the core mechanic work. This comes from road hierarchy, not from a feature:` + String.fromCharCode(10) +
         `        check that the candidate still obeys the control on their OWN leg rather` + String.fromCharCode(10) +
         `        than stopping everywhere. See DECISIONS.md.`
@@ -519,32 +519,32 @@ console.log("\n9. THE DRIVE IS CONTINUOUS TO WATCH, NOT ONLY TO ROUTE");
     : fail(
         `the view jumps ${m(worst)}m at t=${worstAt?.toFixed(1)}s, which is a CUT rather than a movement.` + String.fromCharCode(10) +
         `        A cut is the single most destructive thing for a sense of place: the` + String.fromCharCode(10) +
-        `        maintainer played a version that jumped 60-90m at every junction and` + String.fromCharCode(10) +
+        `        maintainer played a version that jumped 60-90m at every intersection and` + String.fromCharCode(10) +
         `        reported "a series of very quick scenes that don't meaningfully connect".` + String.fromCharCode(10) +
         `        Every other check in this file passed throughout. See DECISIONS.md 10.2.`
       );
 
-  /* And the candidate has to actually TRAVEL between junctions rather
+  /* And the candidate has to actually TRAVEL between intersections rather
      than appearing at the next one. */
-  let onLink = 0, atJunction = 0;
+  let onLink = 0, atIntersection = 0;
   for (let t = 0; t <= end; t += STEP_T) {
     const p = candidateAt(drive, t);
-    if (p?.phase === "link") onLink += STEP_T; else atJunction += STEP_T;
+    if (p?.phase === "link") onLink += STEP_T; else atIntersection += STEP_T;
   }
   onLink > 0
-    ? ok(`and ${onLink.toFixed(0)}s of the ${end.toFixed(0)}s drive is spent driving BETWEEN junctions (${(100 * onLink / end).toFixed(0)}%), which used to be an instant jump`)
-    : fail("the candidate never travels between junctions -- every boundary is still a teleport");
+    ? ok(`and ${onLink.toFixed(0)}s of the ${end.toFixed(0)}s drive is spent driving BETWEEN intersections (${(100 * onLink / end).toFixed(0)}%), which used to be an instant jump`)
+    : fail("the candidate never travels between intersections -- every boundary is still a teleport");
 
-  /* Every junction reached, in order, once. */
+  /* Every intersection reached, in order, once. */
   const seen = [];
   for (let t = 0; t <= end; t += STEP_T) {
-    const j = candidateAt(drive, t)?.junction;
+    const j = candidateAt(drive, t)?.intersection;
     if (j != null && j !== seen[seen.length - 1]) seen.push(j);
   }
   const ordered = seen.every((j, k) => j === k) && seen.length === drive.legs.length;
   ordered
-    ? ok(`and the drive visits all ${seen.length} junctions in order, each exactly once`)
-    : fail(`junction order is ${seen.join(",")}, which is not a drive through ${drive.legs.length} of them`);
+    ? ok(`and the drive visits all ${seen.length} intersections in order, each exactly once`)
+    : fail(`intersection order is ${seen.join(",")}, which is not a drive through ${drive.legs.length} of them`);
 }
 
 console.log("\n" + "=".repeat(70));

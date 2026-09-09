@@ -3,7 +3,7 @@ import { crossSpec, teeSpec, stopPoint, exitPoint, exitSideFor, roadHalf, hasLeg
 
 const m = (px) => Math.round(px / 20 * 100) / 100;
 
-console.log('T-JUNCTION  (no north leg; stem is the south, stop-controlled)');
+console.log('T-INTERSECTION  (no north leg; stem is the south, stop-controlled)');
 const tee = teeSpec({ missing: 'N', stem: 'S' });
 for (const s of SIDES) {
   if (!hasLeg(tee, s)) { console.log(`  ${s}: absent`); continue; }

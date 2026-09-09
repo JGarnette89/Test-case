@@ -6,12 +6,12 @@
  *
  * Two halves, and they answer opposite ways, which is the point.
  *
- * On SINGLE-JUNCTION content it fails, and always will: everything worth
+ * On SINGLE-INTERSECTION content it fails, and always will: everything worth
  * watching sits within 35.8m while any usable frame is 57m wide, so the
  * viewport cannot be scarce. That is what sent the work to the world.
  *
  * On the CONTINUOUS WORLD it passes from 78m of spacing upward, because
- * the two examiner jobs -- read the junction ahead, watch the car here --
+ * the two examiner jobs -- read the intersection ahead, watch the car here --
  * are then genuinely in different places. See WORLD-DESIGN.md.
  */
 import { simulate, poseAt, W, CX, CY, M } from "../src/engine/index.js";
@@ -95,9 +95,9 @@ console.log(`\nWidest anywhere: ${m(bestSep)}m (${bestWho}).`);
 console.log(`A 4s look-ahead frames about ${m(chaseFor(specOf(SCENARIOS[0]), simulate(SCENARIOS[0]), 2, undefined, { lookAhead: 4 }).scale * W)}m across.`);
 
 /* If faults cannot be separated, can the two JOBS be? The design's real
-   scarcity is "read the junction ahead" vs "watch the car" — different
+   scarcity is "read the intersection ahead" vs "watch the car" — different
    places on the map. How far apart are they today? */
-console.log("\nDistance from the candidate to the junction it must be directed through:");
+console.log("\nDistance from the candidate to the intersection it must be directed through:");
 for (const id of ["gap", "tee", "arterial", "opposite"]) {
   const { sim } = build(id, null);
   let atStart = null, atDepart = null;
@@ -105,7 +105,7 @@ for (const id of ["gap", "tee", "arterial", "opposite"]) {
   if (p0 && !p0.hidden) atStart = Math.hypot(p0.x - CX, p0.y - CY);
   const pd = poseAt(sim.ego, sim.legalAt);
   if (pd && !pd.hidden) atDepart = Math.hypot(pd.x - CX, pd.y - CY);
-  console.log(`  ${id.padEnd(10)} at t=0: ${m(atStart)}m from the junction, at departure: ${m(atDepart)}m`);
+  console.log(`  ${id.padEnd(10)} at t=0: ${m(atStart)}m from the intersection, at departure: ${m(atDepart)}m`);
 }
 console.log("\nFor comparison: a turn needs 5.5s of approach to be directable,");
 console.log("which at 41 km/h is about 63m of separation between the two jobs.");
@@ -113,17 +113,17 @@ console.log("which at 41 km/h is about 63m of separation between the two jobs.")
 /* =====================================================================
    W1: THE CONTINUOUS WORLD, MEASURED
 
-   Two junctions, 80m apart, a fault at each. The question the whole
+   Two intersections, 80m apart, a fault at each. The question the whole
    redesign waits on: at the moment the instruction for the SECOND
-   junction must be given, can one frame hold both jobs at once?
+   intersection must be given, can one frame hold both jobs at once?
 
    Job A — catch faults: watch the candidate and what is around it.
-   Job B — give the direction: read the junction being approached.
+   Job B — give the direction: read the intersection being approached.
 
    The gate PASSES if it cannot. See WORLD-DESIGN.md section 1.
    ===================================================================== */
 console.log("\n\n" + "=".repeat(70));
-console.log("W1: TWO JUNCTIONS, 80m APART, A FAULT AT EACH");
+console.log("W1: TWO INTERSECTIONS, 80m APART, A FAULT AT EACH");
 console.log("=".repeat(70));
 {
   const V = MW(11.5);                          // 41 km/h, V_STRAIGHT
@@ -131,7 +131,7 @@ console.log("=".repeat(70));
   const gap = need * V;                        // the separation the design targets
 
   console.log(`\n  A turn needs ${need}s of approach (hear + signal + slow).`);
-  console.log(`  At 41 km/h that is ${(gap / 20).toFixed(1)}m before the junction.\n`);
+  console.log(`  At 41 km/h that is ${(gap / 20).toFixed(1)}m before the intersection.\n`);
 
   const faulty = (id, trait) => {
     const raw = SCENARIOS.find((s) => s.id === id);
@@ -141,11 +141,11 @@ console.log("=".repeat(70));
   for (const spacingM of [70, 72, 74, 76, 78, 80, 100, 140]) {
     const spacing = MW(spacingM);
     /* Leg A is driven straight through, so the candidate travels toward
-       junction B; leg B is the turn that has to be directed, which is
+       intersection B; leg B is the turn that has to be directed, which is
        what needs the 5.5s of approach in the first place. */
     const legs = [faulty("opposite", "wander"), faulty("gap", "wideTurn")];
     const drive = driveThrough({ legs, spacing });
-    const B = drive.junctions[1];
+    const B = drive.intersections[1];
 
     /* Runway comes from runwayFor -- the same implementation the tile
        check uses. Two measurements of one quantity is exactly the drift
@@ -181,7 +181,7 @@ console.log("=".repeat(70));
 
     /* Job A: the candidate itself, and the nearest fault to it. */
     const jobA = inFrame({ x: best.p.x, y: best.p.y });
-    /* Job B: the junction that must be read and directed. */
+    /* Job B: the intersection that must be read and directed. */
     const jobB = inFrame(B.at);
 
     const verdict = jobA && !jobB ? "PASSES  — the jobs are in different places"
@@ -192,14 +192,14 @@ console.log("=".repeat(70));
       `  spacing ${String(spacingM).padStart(3)}m   ` +
       `runway ${(best.d / 20).toFixed(0).padStart(3)}m (${best.p.phase.padEnd(8)})  ` +
       `frame ${(view.scale * W_ / 20).toFixed(0)}m   ` +
-      `car ${jobA ? "in" : "OUT"}  junction ${jobB ? "in" : "OUT"}   ${verdict}`
+      `car ${jobA ? "in" : "OUT"}  intersection ${jobB ? "in" : "OUT"}   ${verdict}`
     );
   }
 
   console.log("\n  MEASURED: 78m is the minimum spacing that delivers the 63m of runway");
   console.log("  a turn needs on a one-lane road. Runway is spacing minus what the");
-  console.log("  junction being LEFT consumes on the way out, minus how far back the");
-  console.log("  junction being APPROACHED puts its stop line. Both scale with road");
+  console.log("  intersection being LEFT consumes on the way out, minus how far back the");
+  console.log("  intersection being APPROACHED puts its stop line. Both scale with road");
   console.log("  width, which is why a tile declares RUNWAY and the planner derives");
   console.log("  the spacing. See WORLD-DESIGN.md and verify-tiles.mjs.");
 }

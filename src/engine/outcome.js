@@ -253,7 +253,7 @@ export function unavoided(sim, scn, candidate, seed = 1, opts = {}) {
   if (!hit) return null;
 
   /* WHEN THE DANGER BECAME PERCEIVABLE, which is NOT when the other party
-     became visible. A car parked at a kerb is in plain sight the whole
+     became visible. A car parked at a curb is in plain sight the whole
      time; what has to be noticed is that it STARTED MOVING. Registering
      an object and registering a developing danger are different
      questions, and using the first put every emerging car down as

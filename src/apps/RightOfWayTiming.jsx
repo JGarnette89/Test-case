@@ -193,15 +193,15 @@ function StopLines({ spec = null }) {
 }
 
 /* Each leg drawn only if the spec says it exists. Where one does not, the
-   junction gets a kerb across the gap instead — that closed edge is the
+   intersection gets a curb across the gap instead — that closed edge is the
    whole visual difference between a T and a crossroads, and drawing the
    road anyway would show a leg the engine will not let anyone use. */
-/* How far past the kerb the stop line is painted. Constant, so it holds
+/* How far past the curb the stop line is painted. Constant, so it holds
    whatever the road is: the line moves out with the edge, not with a
    number typed for one lane each way. */
 const LINE_BEYOND_EDGE = STOP_LINE_AT - HALF;
 
-/* `reach` is how far from the junction the road has to be drawn: the
+/* `reach` is how far from the intersection the road has to be drawn: the
    widest this scenario's camera ever opens to (see worldHalfFor in
    ../frame.js), not the fixed 720x720 board. A camera that opens further
    than the board used to leave the legs ending in mid-air, and a tracked
@@ -244,7 +244,7 @@ export function Road({ control, crossings = ["N"], spec = null, reach = W / 2 })
     .map((s) => SIGN_AT[s]);
   return (
     <>
-      {/* the junction itself, then whichever legs run off it */}
+      {/* the intersection itself, then whichever legs run off it */}
       <rect x={CX - vx} y={CY - hy} width={vx * 2} height={hy * 2} fill={C.asphalt} />
       {["N", "S", "E", "W"].filter(has).map((side) => {
         const r = LEG_RECT[side];
@@ -824,7 +824,7 @@ export default function RightOfWayTiming({ routeId = null, scenarioId = null, so
      The renderer is what knows where the road is, so it is what tells the
      scatterer where scenery may not go — clear of the carriageway and of
      the crosswalk overhang either side of it. */
-  // Pull back far enough that the widest road on this junction fits, then
+  // Pull back far enough that the widest road on this intersection fits, then
   // ease out further still for anything the scenario asks the camera to
   // track (see ../frame.js) — recomputed every frame, since that reach
   // changes with the clock for a tracked scenario and must not for any

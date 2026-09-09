@@ -15,20 +15,20 @@ represented.
 
 ## 1. What was actually wrong, measured first
 
-The brief assumed each junction composed a fresh ego. It was worse than that.
+The brief assumed each intersection composed a fresh ego. It was worse than that.
 
 | Measured, before any change | Result |
 |---|---|
-| Generated junctions sampled | 320 |
+| Generated intersections sampled | 320 |
 | ...where the candidate carried **any** trait | **0** |
 | Faults committed by the candidate | **0** |
 | Faults committed by other road users | 143 |
-| Composed junctions matching the route's `(entry, intent)` | **9 of 120** |
+| Composed intersections matching the route's `(entry, intent)` | **9 of 120** |
 
 So the candidate was not an inconsistent driver — the candidate was a
-**flawless** driver, at every generated junction, with nothing to examine.
+**flawless** driver, at every generated intersection, with nothing to examine.
 Everything markable belonged to somebody else's car. And the route's
-direction survived into the composed junction about as often as chance
+direction survived into the composed intersection about as often as chance
 would give, so the examiner was directing a turn the candidate was never
 making.
 
@@ -86,9 +86,9 @@ Three things fall out of that table rather than being designed into it:
   a real lever for the planner.
 - **`cutsCorner` needs a left** — the engine's own left-only rule surfacing
   here, not restated here.
-- **A segment shows less than a junction.** A road with no line can only
+- **A segment shows less than a intersection.** A road with no line can only
   betray `wander`, so segments can never carry a drive's whole character.
-  Junctions are where a driver is read.
+  Intersections are where a driver is read.
 
 `creep` looked inert in every shape until the probe gave the candidate
 something to actually be **held** by. That is precisely the class of wrong
@@ -114,7 +114,7 @@ optimistic, which costs the planner and not the player.
 ### The accept/reject loop carries it, unchanged in shape
 
 `composeScenario` already had `mustFault`: when the drive has gone quiet, a
-junction is *required* to produce something markable rather than merely
+intersection is *required* to produce something markable rather than merely
 made likelier to. Recurrence is that same gate **narrowed** — not "somebody
 erred" but "*this* driver's habit had an occasion to show":
 
@@ -127,8 +127,8 @@ shares the one expensive `faultsIn` call, and it sits in the loop where
 every other guarantee in that file already lives. **No new mechanism.**
 
 The fallback ladder gains one rung at the top and keeps the rest, because a
-habit that has nothing to say at this junction must not cost the player the
-junction:
+habit that has nothing to say at this intersection must not cost the player the
+intersection:
 
 1. the brief **+ a showing of the habits still owed**  ← new
 2. the brief as pacing asked for it
@@ -136,14 +136,14 @@ junction:
 4. the road character's plain brief
 5. plain, light traffic
 
-Measured: 48 of 49 junctions asked for a habit delivered it; the ladder
-still fills every junction, none empty.
+Measured: 48 of 49 intersections asked for a habit delivered it; the ladder
+still fills every intersection, none empty.
 
 ### The planner steers *which* turn, not whether to turn
 
 `planDrive` keeps its own turn/straight decision exactly as it was — a
 route still has to read like a route, not like a trait-delivery mechanism.
-What the candidate influences is **which** turn, among turns the junction
+What the candidate influences is **which** turn, among turns the intersection
 was going to offer anyway, weighted by what each habit is still owed.
 
 The random draw happens whether or not it is used, so a steered plan and an
@@ -168,10 +168,10 @@ steering are the finishing 4.
 
 ### Testing a hypothesis needs no separate machinery
 
-Forming a hypothesis is half the job; testing one needs junctions where a
+Forming a hypothesis is half the job; testing one needs intersections where a
 rival habit had every opportunity and did nothing. That falls out of the
 same fact — a left turn is where `cutsCorner` *would* show, so a left turn
-where nothing happens is evidence **against** it. One junction speaks to
+where nothing happens is evidence **against** it. One intersection speaks to
 every hypothesis it has the shape to speak to.
 
 Measured: **82 rival habits** were given three or more chances they visibly
@@ -181,7 +181,7 @@ declined.
 
 Dead air is a supply question and identity is a *whose* question; they are
 not the same quantity and must not become one dial. `mustShow` narrows what
-counts as supply at a junction pacing has already decided to make hungry.
+counts as supply at a intersection pacing has already decided to make hungry.
 `verify-world.mjs` still passes, worst dead air unchanged at 26.6 s.
 
 ---
@@ -227,18 +227,18 @@ an old one is caught on its first draw. Today: exactly one pair.
 
 ## 6. Open finding, deliberately not fixed in this pass
 
-**The tile's declared road and the composed junction's road disagree.**
+**The tile's declared road and the composed intersection's road disagree.**
 `world.js` lays out spacing, runway, links and roadside content from
 `specFor(tile.character)`; `compose`'s `roadFor` then draws its own
-junction kind and ignores it.
+intersection kind and ignores it.
 
-Measured across 56 composed junctions: **15 match**, and for arterial
+Measured across 56 composed intersections: **15 match**, and for arterial
 tiles, **0 of 13**. This is pre-existing W2 work surfaced by the route-match
 check, and it is latent rather than live — no renderer consumes the world
 yet — but it becomes a real defect the moment one draws a drive.
 
 It is not folded in here because fixing it properly means deciding whether
-a three-lane arterial junction is uncontrolled (`CHARACTER.arterial.control`
+a three-lane arterial intersection is uncontrolled (`CHARACTER.arterial.control`
 is `"none"` today, which would leave the candidate stopping at nothing) or
 signalised. That is a road-design call worth stating on its own rather than
 smuggling into an identity change.
@@ -263,7 +263,7 @@ It fits the architecture exactly as it stands:
   holds marks, with timing and category;
 - **the debrief is what was actually true** — `habitReport(candidate,
   scenes)` already returns `identifiable`, `glimpsed`, `hidden` and
-  `ruledOut`, per trait, with the junctions each showing landed at;
+  `ruledOut`, per trait, with the intersections each showing landed at;
 - **the gap between them is the score** — which is what `scoreDetection`
   already computes.
 
@@ -378,7 +378,7 @@ but four numbers produces five distinct kinds of error, named by nobody.
 identically on every replay, whole drives included. ✅
 
 **P4 — frequency tracks the deficit, opportunities held constant.** One
-junction shape, one seed range, only the rating moves — so nothing but the
+intersection shape, one seed range, only the rating moves — so nothing but the
 driver can be responsible for the difference.
 
 | rating | confidence | steering | braking | knowledge |
@@ -488,9 +488,9 @@ a bad decision that happened to work.
 
 ## 9. What must not regress
 
-- **One driver, every scene.** Junctions *and* segments. Checked over 98
+- **One driver, every scene.** Intersections *and* segments. Checked over 98
   scenes on 8 drives.
-- **The route is the route.** The composed junction matches the plan's
+- **The route is the route.** The composed intersection matches the plan's
   `(entry, intent)`, 56/56.
 - **A tell is true of the car.** `overshoot` and `slowStart` stay silent on
   a driver who never stops, and still show on one who does.

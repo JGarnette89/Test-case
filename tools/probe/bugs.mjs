@@ -23,7 +23,7 @@ console.log('A. DOES A NON-STOPPING CAR SLOW DOWN ANYWAY?');
 console.log('');
 console.log('B. WHO DOES THE COMPOSER GIVE PRIORITY TO?');
 {
-  const scn = composeScenario({ traffic: 'busy', visibility: 'open', junction: 'cross' }, 11);
+  const scn = composeScenario({ traffic: 'busy', visibility: 'open', intersection: 'cross' }, 11);
   const sim = simulate(scn);
   console.log('   ego on leg', scn.ego.from, 'control =', scn.road.legs[scn.ego.from].control,
               '| arrives', scn.ego.arriveAt);

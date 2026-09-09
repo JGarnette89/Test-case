@@ -238,7 +238,7 @@ console.log("\n6. THE EXIT TELL IS READABLE WITHOUT AN INDICATOR");
       : fail(`the drift shows at ${r2(tellShowsAt)}s but the ego decides at ${decideAt}s — unreadable in time`);
   }
 
-  // The drift must stay on the carriageway rather than clipping the kerb.
+  // The drift must stay on the carriageway rather than clipping the curb.
   // Only while circulating: the approach and the exit are outside by design.
   let worstOut = 0;
   for (let t = 0.4; t < peel; t += 0.05) {

@@ -153,7 +153,7 @@ export function sightingsIn(sim, scn, { horizon = 16, candidate = null, dt = DT 
    ===================================================================== */
 
 /* Sampled over the approach road the scenario actually contains — from
-   the edge of the junction box out to the edge of the world. That is
+   the edge of the intersection box out to the edge of the world. That is
    where a conflicting vehicle can be, so it is the road whose visibility
    means anything; sampling further would be measuring tarmac nobody can
    occupy. */
@@ -293,7 +293,7 @@ export function awarenessAt(sim, scn, candidate, t, seed = 1, opts = {}) {
    ===================================================================== */
 
 /* How long a driver adds for a FULLY blinded approach, and it is not a
-   constant at all — it is the candidate's own time to clear the junction,
+   constant at all — it is the candidate's own time to clear the intersection,
    derived per scenario.
 
    The reasoning is the only one that does not need a number picked. If
@@ -324,9 +324,9 @@ export function cautionOf(candidate) {
 }
 
 /* The extra time this driver holds, at this instant, for road they cannot
-   see. Zero at a junction with a clear view whatever their confidence —
+   see. Zero at a intersection with a clear view whatever their confidence —
    caution is about known unknowns, so with nothing hidden there is
-   nothing to be cautious ABOUT, and a bold driver at an open junction is
+   nothing to be cautious ABOUT, and a bold driver at an open intersection is
    indistinguishable from a careful one. That is correct: overconfidence
    costs you where your view is poor. */
 export function marginAt(sim, scn, candidate, t, opts = {}) {

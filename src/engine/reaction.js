@@ -113,7 +113,7 @@ function giveNeeded(ego, actor, from, horizon) {
 export const timeGivenUp = (give, wait = 0) => yieldingProfile(null, { give, wait }).hold;
 
 /* A pedestrian gives way by hesitating: they notice the car coming and
-   hold at the kerb, or stop where they are. That earns pedestrian
+   hold at the curb, or stop where they are. That earns pedestrian
    conflicts the same graduated near-miss band vehicles have, instead of
    being all-or-nothing terminal — measured before this, every contact on
    a generated drive was with a pedestrian and every one of them ended the

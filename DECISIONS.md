@@ -103,8 +103,8 @@ reads wrong to the audience.
 
 | use | not |
 |---|---|
-| intersection | junction |
-| curb (note the spelling) | kerb |
+| intersection | intersection |
+| curb (note the spelling) | curb |
 | sidewalk | pavement |
 | yield | give way |
 | shoulder | verge |
@@ -121,16 +121,16 @@ and stay. `roundabout` is used in Ontario and is fine. `right of way`,
 **ALL PLAYER-FACING TEXT IS ALREADY CORRECTED** — UI, the marking sheet,
 fault tells, scenario prose, DRIVE-GUIDE.md. That is where it matters.
 
-**CODE IDENTIFIERS ARE NOT RENAMED YET, deliberately.** `junction` and
-`kerb` are pervasive and a sweeping rename moves nothing functionally
+**CODE IDENTIFIERS ARE NOT RENAMED YET, deliberately.** `intersection` and
+`curb` are pervasive and a sweeping rename moves nothing functionally
 while touching everything — exactly the shape of change that produces the
 two-implementations divergence this file keeps warning about. Measured, so
 the decision can be made on a number rather than a feeling:
 
 | | occurrences | distinct identifiers | files |
 |---|---|---|---|
-| `junction` / `Junction` | 446 | 11 | 37 |
-| `kerb` | 82 | 6 | 19 |
+| `intersection` / `Intersection` | 446 | 11 | 37 |
+| `curb` | 82 | 6 | 19 |
 
 Seventeen distinct names is small and none of them collide with a partial
 word, so a full rename is mechanical rather than delicate, and nothing
@@ -139,7 +139,7 @@ a big diff and a small risk. The maintainer's call whether it earns its
 own increment.
 
 **In the meantime: USE THE CORRECT TERMS IN ALL NEW CODE AND
-DOCUMENTATION.** Do not add another `kerbFoo`. Mixed vocabulary is the
+DOCUMENTATION.** Do not add another `curbFoo`. Mixed vocabulary is the
 cost of deferring, and it gets worse if new code makes it worse.
 
 ## 3. THREE LAYERS. Get these straight before touching anything perceptual.
@@ -275,8 +275,8 @@ reach you.
 
 Rolling each available kind independently made the number of faults a
 candidate commits a function of how many kinds the game has vocabulary
-for: **1.11 per junction at seven kinds, 1.57 at ten, 2.0 at twelve** —
-which took the section implied by a 3–4 recall band down to 1.5 junctions,
+for: **1.11 per intersection at seven kinds, 1.57 at ten, 2.0 at twelve** —
+which took the section implied by a 3–4 recall band down to 1.5 intersections,
 which is not a section.
 
 The fix was not a smaller `ERROR_SCALE`. **A driver's deficit decides HOW
@@ -285,11 +285,11 @@ they could fail on here, and the kind is drawn from that axis weighted.
 
 Density is a property of the driver again, it holds still as content is
 added, and "variety over volume" falls out by construction: at most one
-fault per axis per junction, so two weaknesses show at most two things and
+fault per axis per intersection, so two weaknesses show at most two things and
 they are two DIFFERENT things.
 
 Measured, and still holding after the generator was opened up: **1.03
-markable candidate faults per junction, 2.13 axes per drive.**
+markable candidate faults per intersection, 2.13 axes per drive.**
 
 ### 4.8 `CAUSES` is the one table this project authors on purpose
 
@@ -422,7 +422,7 @@ is not the routine expression of a habitual wide turner.
 
 It reached the maintainer as "a lot of left turns go completely off the
 roadway": a flat 4.5m bias on a road whose room is 1.8m put the car 2.70m
-past the kerb. Clamping the bias to the kerb was tried and only moved the
+past the curb. Clamping the bias to the curb was tried and only moved the
 lie -- the car then finished exactly on the lane line while its tell
 claimed it had crossed one. The clamp stays as a floor under the geometry;
 the decline is the fix.
@@ -496,9 +496,9 @@ pays nothing and spamming is rational. Two candidate fixes:
   counter, and it ties intervention into the game's actual currency.
 
 The second is the more elegant idea and it does not work on its own.
-Measured over 240 generated junctions carrying 283 markable faults:
+Measured over 240 generated intersections carrying 283 markable faults:
 
-| blind for | faults wholly missed per intervention | share of a junction's faults |
+| blind for | faults wholly missed per intervention | share of a intersection's faults |
 |---|---|---|
 | 2s | 0.15 | 9.2% |
 | 4s | 0.18 | 11.0% |
@@ -507,11 +507,11 @@ Measured over 240 generated junctions carrying 283 markable faults:
 
 **The cost is small AND IT SATURATES.** Quadrupling the blind window from
 2s to 8s moves it from 0.15 to 0.19 faults, because faults are sparse and
-short relative to a junction, so a longer interruption mostly runs past
-the end of the junction rather than covering more of it. You cannot fix
+short relative to a intersection, so a longer interruption mostly runs past
+the end of the intersection rather than covering more of it. You cannot fix
 this by making the interruption longer.
 
-Against that, contact was actually coming on **16 of 240 junctions
+Against that, contact was actually coming on **16 of 240 intersections
 (6.7%)** -- so a spammer is hasty 93.3% of the time and pays about a fifth
 of a fault for each one, while a correct intervention is an automatic fail
 for the candidate. That is a cheap lottery ticket.
@@ -691,7 +691,7 @@ fifteen faults is not harder in an interesting way — it is a memory test.
 So the quantity is **faults per section a competent player could catch and
 recall**. Free recall runs out at about four items, so the band is 3–4,
 and **SECTION LENGTH IS DERIVED FROM IT** rather than chosen. At the
-measured 1.03 per junction that puts a section at 2.9–3.9 junctions.
+measured 1.03 per intersection that puts a section at 2.9–3.9 intersections.
 
 Cross-checked against `SHOWINGS_FOR_A_HABIT` = 3, derived independently: a
 section inside recall, several per drive, lets a habit accumulate its
@@ -724,23 +724,23 @@ Note that a stretch of arterial has activity 0.15 and SHOULD be quiet.
 Some dead air is the correct answer, and driving it to zero would be a
 different mistake.
 
-### 8.4 NOT EVERY JUNCTION IS A TEST, and that is a mechanic
+### 8.4 NOT EVERY INTERSECTION IS A TEST, and that is a mechanic
 
 Maintainer's ruling, after playing: *"I want to feel like you're driving
 through a section of a larger city, including main roads and side
 streets, and some intersections will just be driven straight through with
 no real requirements from the NPC driver."*
 
-**Why it matters more than it sounds.** If every junction produces
-something, the player learns that junction means fault, and attention
-stops being a decision — they simply look at whichever junction is next.
+**Why it matters more than it sounds.** If every intersection produces
+something, the player learns that intersection means fault, and attention
+stops being a decision — they simply look at whichever intersection is next.
 **UNCERTAINTY IS WHAT MAKES WATCHING NECESSARY.** A player who cannot
-predict which junctions matter has to watch all of them, which is more
-attention pressure rather than less. An empty junction is not filler; it
+predict which intersections matter has to watch all of them, which is more
+attention pressure rather than less. An empty intersection is not filler; it
 is what makes the core mechanic work.
 
-**It comes from ROAD HIERARCHY, not from an "empty junction" feature.** A
-through road crossing side streets produces junctions that demand nothing
+**It comes from ROAD HIERARCHY, not from an "empty intersection" feature.** A
+through road crossing side streets produces intersections that demand nothing
 because that is what a through road IS. If priority is modelled honestly
 the property falls out for free, and anything that adds a separate
 emptiness knob has misunderstood it.
@@ -749,7 +749,7 @@ emptiness knob has misunderstood it.
 the road.** `compose.js` derived every actor's `stops` from the control on
 their own leg and then hardcoded the ego's to `true` — "the ego always
 holds; what varies is whether anyone else has to". Measured: 240 of 240
-junctions required a stop, while the candidate's own leg was UNCONTROLLED
+intersections required a stop, while the candidate's own leg was UNCONTROLLED
 on 87 of them.
 
 Measured after, and the hierarchy reads:
@@ -763,23 +763,23 @@ Measured after, and the hierarchy reads:
 
 **Reconciled with the pacing budget, which was the real risk.** The two
 requirements are in genuine tension — the budget guarantees supply, empty
-junctions withhold it — and the budget wins only where it must. It works
-across a WINDOW rather than at every junction: `briefFor` sets
+intersections withhold it — and the budget wins only where it must. It works
+across a WINDOW rather than at every intersection: `briefFor` sets
 `mustFault` only when projected dead air passes `DEAD_AIR_CEILING`, and
-otherwise hands back the road character's plain brief. So empty junctions
+otherwise hands back the road character's plain brief. So empty intersections
 are permitted by construction and forced content stays rare.
 
 Measured cost, and it is mild: dead air is UNCHANGED (worst 22.2s, median
 18.8s, 0 of 24 drives over target), and density falls 1.03 → 0.89 faults
-per junction, which lengthens the implied section from 2.9–3.9 to 3.4–4.5
-junctions. Both still inside their bands.
+per intersection, which lengthens the implied section from 2.9–3.9 to 3.4–4.5
+intersections. Both still inside their bands.
 
-**If allowing empty junctions ever does break the dead-air target, report
+**If allowing empty intersections ever does break the dead-air target, report
 it rather than suppressing them.** The tension is real and which side
 gives is the maintainer's call, not a constant to quietly retune.
 
 `verify-world.mjs` §8b pins both halves: that a meaningful share of
-junctions demand nothing, and that a main road is driven through more
+intersections demand nothing, and that a main road is driven through more
 often than a side street — otherwise the three characters are three names
 for one road.
 
@@ -805,16 +805,16 @@ assessed. **The maintainer has ruled the examiner game the only priority,
 so there is no trade left and the gate is removed rather than kept behind
 a flag.**
 
-Measured, identical seeds and candidates over 240 junctions:
+Measured, identical seeds and candidates over 240 intersections:
 
-| accept test | faults/junction | encroachments/drive | drives carrying one | contacts |
+| accept test | faults/intersection | encroachments/drive | drives carrying one | contacts |
 |---|---|---|---|---|
 | `windowIsSafe` | 1.16 | 0.47 | 16/40 | 0 |
 | no gate at all | 1.23 | 0.88 | 26/40 | **8** |
 | `windowIsMarkable` | 1.20 | **0.70** | **22/40** | 0 |
 
-The gate had been suppressing half the supply. Faults per junction barely
-move, so this converts comfortable junctions into markable ones rather
+The gate had been suppressing half the supply. Faults per intersection barely
+move, so this converts comfortable intersections into markable ones rather
 than padding drives with noise.
 
 **What it still refuses is CONTACT**, and that is an examiner-game reason,
@@ -878,7 +878,7 @@ Instances, all real:
 - **`TRAIT_KEYS` is the ONE list of driver traits**, because a second copy
   is how a new trait gets forgotten by one generator and not the other.
 - **The renderer's own sign table** duplicated geometry `road.js` already
-  derived, and did not follow a junction placed elsewhere in the world.
+  derived, and did not follow a intersection placed elsewhere in the world.
 - **A fixed traversal time standing in for real motion.** It made a wider
   road move traffic FASTER — the six-lane arterial was crossed at 89 km/h
   — and pegged `MAX_CLAIM` for 18 of 21 road users, disabling the
@@ -886,9 +886,9 @@ Instances, all real:
 - **A smoothstep lerp standing in for braking.** Every car in the game
   decelerated at 18.1 m/s² (1.84g) and nobody could notice, because
   nothing in the model was a physical quantity.
-- **`shownFor` keyed without the junction.** Every leg's clock starts near
+- **`shownFor` keyed without the intersection.** Every leg's clock starts near
   zero, so `scoreDetection` credited a mark against a fault from a
-  junction the player never saw. A player who marked EVERY fault scored
+  intersection the player never saw. A player who marked EVERY fault scored
   zero.
 - **Calibrating observation against the collision rate** — a proxy for
   "did they gather the information", and the wrong one (§4.3).
@@ -903,9 +903,9 @@ Every one of these shipped with a full green suite, because a check that
 inspects the wrong half of a thing passes confidently and forever.
 
 - **`verify-turns` measured only the APPROACH.** `if (along <= hy)
-  continue` skips the junction box and everything past it, so the EXIT
+  continue` skips the intersection box and everything past it, so the EXIT
   side of a turn had never been looked at once. `wideTurn` put a car
-  2.70m past the kerb and nothing noticed until somebody played it.
+  2.70m past the curb and nothing noticed until somebody played it.
 - **`verify-screens` rendered the mode COMPONENTS and never `App`** — the
   shell every route actually goes through. A dangling reference in the
   home screen served a blank page to every route while the check that
@@ -933,7 +933,7 @@ no screen at all:
 
 **A check that an engine function returns the right thing says nothing
 about whether anything shows it.** `verify-world` was measuring
-`kerbsideFor`'s output the whole time. The output was right. The renderer
+`curbsideFor`'s output the whole time. The output was right. The renderer
 had never called it.
 
 So when adding engine content, the question is not "is it correct" but
@@ -985,15 +985,15 @@ It is not. See §10.1: the check was looking at the wrong half, again.
 
 **What it took to fix, recorded because the shape repeats.** The drive
 screen never imported `world.js` -- `driveThroughTiles`, `candidateAt`,
-`placeJunctions` and `linkBetween` were built, verified and unused, while
-the screen composed one junction at a time and drew every one of them at
+`placeIntersections` and `linkBetween` were built, verified and unused, while
+the screen composed one intersection at a time and drew every one of them at
 the board centre. Wiring it up surfaced two engine bugs that could not
 show while everything sat at 360,360:
 
 - **`exitPoint` was half origin-aware.** Lateral coordinate from the
-  junction, along coordinate from the board edge -- so a junction placed
+  intersection, along coordinate from the board edge -- so a intersection placed
   at y = -5329 sent its candidate 240 METRES SOUTH to an exit computed at
-  the middle of the board. Now measured from the junction, and provably
+  the middle of the board. Now measured from the intersection, and provably
   identical at the default origin, so `engine-golden` is untouched.
 - **`worldExitOf` and `exitPoint` were two implementations of one
   quantity** (§10): the traverse ended 22m out, the link began 7.6m out,
@@ -1003,7 +1003,7 @@ show while everything sat at 360,360:
 
 That also corrected a real measurement: **runway was overstated by 14m**,
 because it was measured from a point the candidate had already driven
-past. Three junctions immediately reported less approach than their tile
+past. Three intersections immediately reported less approach than their tile
 promised. True before, and simply not measurable.
 
 **The remedy is not a better check. It is a person playing it**, early
@@ -1159,7 +1159,7 @@ are available.
   changes how every candidate drives.
 - **Going off course.** Real tests re-route; `planRoute` plans the whole
   course up front. Maintainer's call whether it ends the drive.
-- **A tile's declared road and the composed junction's road disagree** —
+- **A tile's declared road and the composed intersection's road disagree** —
   15 of 56 match, 0 of 13 for arterial. Latent until a renderer draws the
   world. Fixing it needs a road-design call first.
 - **The tutorial**, framed as job training for a new hire, reusing eight

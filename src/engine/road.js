@@ -1,13 +1,13 @@
 /* =====================================================================
    ROAD SPEC
-   A junction described, rather than assumed.
+   A intersection described, rather than assumed.
 
    Everything so far has hardcoded one shape: four legs, one lane each
    way, one control for the whole intersection. That assumption is spread
-   across two lookup tables and it is what blocks T-junctions, multi-lane
+   across two lookup tables and it is what blocks T-intersections, multi-lane
    roads, and eventually a slip road.
 
-   So a junction is now data. Which legs exist, how many lanes each
+   So a intersection is now data. Which legs exist, how many lanes each
    carries, and what controls each one — because control is per leg and
    always was. A stop sign on the minor leg of a T is the ordinary case,
    and "all-way stop" is just four legs that happen to agree.
@@ -34,7 +34,7 @@ export const OPPOSITE = { S: "N", N: "S", E: "W", W: "E" };
 
 /* Where an intent takes you. Right is the leg on your right; left is the
    one opposite that; straight is the leg opposite you. Derived so a
-   three-legged junction cannot end up with an exit that is not there. */
+   three-legged intersection cannot end up with an exit that is not there. */
 export function exitSideFor(from, intent) {
   if (intent === "right") return RIGHT_OF[from];
   if (intent === "left") return OPPOSITE[RIGHT_OF[from]];
@@ -70,7 +70,7 @@ export const controlOf = (spec, side) => legOf(spec, side).control;
 
 /* --- widths ----------------------------------------------------------
    A road's half-width is however many lanes it carries each way. The
-   junction box is bounded by the two roads that cross in it, so a leg
+   intersection box is bounded by the two roads that cross in it, so a leg
    running north-south stops just outside the width of the east-west road
    — not its own. Getting that backwards is invisible at one lane each
    way, because both are the same number.                                */
@@ -80,7 +80,7 @@ export function roadHalf(spec, axis, LANE) {
   return (lanes.length ? Math.max(...lanes) : 1) * LANE;
 }
 
-/* THE BOX. Every junction has one, painted or not — it is just the
+/* THE BOX. Every intersection has one, painted or not — it is just the
    rectangle the two crossing roads bound, and it is the same rectangle
    whether a scenario draws a line through it or not. Named once so
    nothing downstream reinvents it at the wrong width: a car "waiting in
@@ -119,7 +119,7 @@ export function stopPoint(spec, side, LANE, setback, lane = 0, CX = 360, CY = 36
    A control used to be a string on a leg with no position, and the only
    spatial fact the engine held about one was the stop line. The RENDERER
    placed signs from its own four-entry table, board-relative and pinned
-   to the middle of the board — so a junction placed anywhere else in the
+   to the middle of the board — so a intersection placed anywhere else in the
    world drew its signs back at the origin, the same class of bug
    exitPoint had.
 
@@ -171,16 +171,16 @@ export function controlsOf(spec, LANE, setback, at = { x: 360, y: 360 }, M = (v)
 /* Where a vehicle leaving by `side` goes: the outbound lane of that leg,
    run off the board. Outbound is the mirror of inbound — the other half
    of the same road. */
-/* WHERE A LEG LEADS. Measured FROM THE JUNCTION, not from the board.
+/* WHERE A LEG LEADS. Measured FROM THE INTERSECTION, not from the board.
 
    This used to take its lateral coordinate from the origin and its along
    coordinate from the board edge -- `W + beyond` or `-beyond` -- so a
-   junction placed anywhere but the centre exited toward the middle of the
+   intersection placed anywhere but the centre exited toward the middle of the
    board instead of away from itself. Harmless while every scenario was
    drawn at 360,360, and CLAUDE.md named it as latent: real the moment a
    renderer draws a placed drive.
 
-   That moment arrived. In a continuous drive the fifth junction sat at
+   That moment arrived. In a continuous drive the fifth intersection sat at
    y = -5329 and its candidate, having correctly approached from the
    south, then drove 240 METRES SOUTH to reach an exit computed at the
    board. It read as the view cutting at every boundary.
@@ -201,7 +201,7 @@ export { LEG };
 
 /* =====================================================================
    Validity
-   A three-legged junction has intents that lead nowhere: from the stem of
+   A three-legged intersection has intents that lead nowhere: from the stem of
    a T, "straight" exits the leg that is missing. Nothing in the geometry
    stops that — a car would simply drive off into a road that is not
    there, and it would look almost right.

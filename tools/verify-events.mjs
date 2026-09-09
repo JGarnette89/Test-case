@@ -14,7 +14,7 @@
                 changed — has to show it is worth real seconds
 
    And both have a rule underneath that is checked as a rule, not as an
-   emergent property of the footprints: somebody waiting at a kerb holds
+   emergent property of the footprints: somebody waiting at a curb holds
    none of the crossing, and an emergency vehicle outranks everybody
    whatever the arrival order says.
    ===================================================================== */

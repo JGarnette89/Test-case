@@ -519,7 +519,7 @@ world's extent, not about anybody's eyes.
 **And measuring it afterwards corrected my reasoning about it.** I assumed
 this was about vehicles arriving later. It isn't — **vehicles are on stage
 from t = 0**, approaching down the road. The clause fires only for
-**pedestrians**, who don't exist until they step off the kerb: 6 road
+**pedestrians**, who don't exist until they step off the curb: 6 road
 users across 41 scenes. It's still the right rule and still a real change
 — before it, a candidate simply ignored a pedestrian waiting to cross —
 but it is not the fix for the thing that prompted it.
@@ -549,7 +549,7 @@ have a bad driver missing half of everything — not a driver, a hazard.
 |---|---|---|---|---|---|
 | missed | **0%** | 3% | 11% | 16% | 30% |
 
-Drawn drivers: **mean 5% missed, worst 16%.** Over a seven-junction drive
+Drawn drivers: **mean 5% missed, worst 16%.** Over a seven-intersection drive
 that is roughly three missed road users for a poor observer and none for a
 good one — enough to be a habit, not enough to be a hazard.
 
@@ -670,7 +670,7 @@ constant out of that calibration would have buried it. Checked directly:
 ### 9.3 The allowance is derived, not chosen
 
 Not a constant at all — it is the candidate's **own time to clear the
-junction**, per scenario. The reasoning needs no number picked: the way to
+intersection**, per scenario. The reasoning needs no number picked: the way to
 become sure an unseen stretch is empty is to watch it for as long as
 anything hiding there would take to reach you, and that is the same
 duration you need to be clear of the box before it arrives. One quantity
@@ -816,8 +816,8 @@ can only ever give slightly more way than needed. **0 of 23 disagree.**
 
 A blind, bold driver: **9 contacts become 6**. Of what remains across
 drawn drivers, **91% is the candidate driving INTO traffic already at or
-in the junction** when they committed. You cannot reverse out of a
-junction you are already in, so this is geometry rather than a shortcoming
+in the intersection** when they committed. You cannot reverse out of a
+intersection you are already in, so this is geometry rather than a shortcoming
 — and it must not be tuned until it looks like one.
 
 ### 10.5 What wiring departure did to pacing and supply: nothing
@@ -838,7 +838,7 @@ poor observer, which is exactly what it should do — but it means the
 wiring is safe and boring rather than transformative.
 
 The other side of that coin is thin content: **2 encroachments in 112
-generated junctions**. If awareness-driven driving is to be something the
+generated intersections**. If awareness-driven driving is to be something the
 player reads, generated drives need to draw poorer observers more often —
 the same content question as everywhere else, now with a number.
 
@@ -862,7 +862,7 @@ Two rulings, built together.
 
 ### 11.1 A pedestrian hesitates rather than brakes
 
-The same yielding profile expresses it exactly: they hold at the kerb, or
+The same yielding profile expresses it exactly: they hold at the curb, or
 stop where they are, and resume at a walking pace. So pedestrian conflicts
 now have the graduated near-miss band vehicles have, instead of being
 all-or-nothing terminal — which was the state §10.6 measured, where every
@@ -926,12 +926,12 @@ confidence-weak candidate is bold **or** timid, drawn.
 
 | | |
 |---|---|
-| markable candidate faults per junction | **1.11** |
+| markable candidate faults per intersection | **1.11** |
 | distinct axes showing per drive | **2.38** |
-| **implied section length** | **2.7–3.6 junctions** |
-| encroachments per junction | 0.03 |
-| reactions per junction | 0.02 |
-| contacts per junction | 0.006 |
+| **implied section length** | **2.7–3.6 intersections** |
+| encroachments per intersection | 0.03 |
+| reactions per intersection | 0.02 |
+| contacts per intersection | 0.006 |
 
 The middle number is the one the ruling was actually about: a drive shows
 **two and a half different kinds of failing**, so the player is assembling
@@ -941,7 +941,7 @@ a picture rather than counting incidents.
 
 Controlled — same seeds, same drives, only the distribution changed:
 
-| | dead air worst | median | over 25 s | events/drive | faults/junction |
+| | dead air worst | median | over 25 s | events/drive | faults/intersection |
 |---|---|---|---|---|---|
 | old (independent axes) | 35.7 s | 22.3 s | **9/24** | 8.0 | 0.86 |
 | new (a character) | **39.7 s** | **20.9 s** | **6/24** | 10.9 | 1.14 |
@@ -960,9 +960,9 @@ absorbing it: **the cost of characters is quieter worst cases.**
 
 ### 11.6 The thin part, unchanged
 
-Encroachments remain **0.03 per junction**. Observation is a weakness in
+Encroachments remain **0.03 per intersection**. Observation is a weakness in
 about 30% of candidates now rather than by accident, but a generated
-junction is mostly open — `unseenShare` is zero — so caution never bites
+intersection is mostly open — `unseenShare` is zero — so caution never bites
 and registration delays are short against long lead times. The
 awareness-driven side of the model is still waiting on situations with
 something to be blind about, which is the same R2.5 content question, now
@@ -996,7 +996,7 @@ Same seeds, awareness-driven departures, only the fold changed:
 over the ceiling are all identical.
 
 **And the supply is thin, which is the same finding as everywhere else.**
-One encroachment every six drives. A generated junction is mostly open,
+One encroachment every six drives. A generated intersection is mostly open,
 and `windowIsSafe` throws away any draw whose window lands on somebody, so
 encroachments are rare *by construction* — the generator was built to
 prevent exactly the situation this fault describes. On hand-authored
@@ -1086,7 +1086,7 @@ two.
 
 `approachPose` is a smoothstep lerp from a fixed 24.5 m run over a fixed
 2.8 s, so approach speed does not follow the road either: cars arrive at a
-residential junction at **47 km/h**.
+residential intersection at **47 km/h**.
 
 **It is the same bug the departure side already fixed, on the other half
 of the manoeuvre.** The project replaced a fixed traversal duration with
@@ -1111,7 +1111,7 @@ nothing else. A control is a string on a leg with no position; the only
 spatial fact the engine holds about one is the stop line.
 
 The **renderer** places signs from its own hardcoded four-entry table,
-board-relative and pinned to `CX`/`CY` — so it does not follow a junction
+board-relative and pinned to `CX`/`CY` — so it does not follow a intersection
 placed elsewhere in the world, the same class of bug `exitPoint` had. The
 signal is worse: one head at one corner regardless of which leg it
 governs.
@@ -1186,7 +1186,7 @@ screen in time to read.
 ### 14.3 A tell that had been passing on an artifact
 
 `rollingApproach` ran a non-stopping car at the speed it would take the
-**junction** at, for its whole approach. So in `wontstop` a left-turner
+**intersection** at, for its whole approach. So in `wontstop` a left-turner
 cruised in at 7.2 m/s while a car braking from road speed passed *through*
 7.2 on the way down:
 
@@ -1280,15 +1280,15 @@ and `stopsShort` are knowledge.
 
 ### 15.3 The measurement that changed direction
 
-Adding those two kinds took faults per junction to **2.0**, and the
-section implied by a 3–4 recall band to **1.5 junctions**. That is not a
-section, it is a junction.
+Adding those two kinds took faults per intersection to **2.0**, and the
+section implied by a 3–4 recall band to **1.5 intersections**. That is not a
+section, it is a intersection.
 
 The cause was structural, not a number: `rollErrors` rolled **each
 available kind independently**, so the number of faults a candidate
 commits was a function of *how many kinds the game has vocabulary for*.
 
-> 1.11 per junction at seven kinds · 1.57 at ten · 2.0 at twelve
+> 1.11 per intersection at seven kinds · 1.57 at ten · 2.0 at twelve
 
 **The fix was not a smaller `ERROR_SCALE`.** A driver's deficit decides
 how much they err; the vocabulary decides which way. So the roll is now
@@ -1297,13 +1297,13 @@ axis weighted by likelihood.
 
 | | before | after |
 |---|---|---|
-| faults per junction | 2.0 | **1.00** |
-| implied section | 1.5–1.9 junctions | **3.0–4.0** |
+| faults per intersection | 2.0 | **1.00** |
+| implied section | 1.5–1.9 intersections | **3.0–4.0** |
 | axes per drive | — | 2.13 |
 
 Density is a property of the driver again, it holds still as R2 keeps
 adding content, and **"variety over volume" falls out by construction**:
-at most one fault per axis per junction, so a candidate weak on two axes
+at most one fault per axis per intersection, so a candidate weak on two axes
 shows at most two things and they are two *different* things.
 
 ### 15.4 A check that had become vacuous
@@ -1327,7 +1327,7 @@ the first exists.
 
 ### 16.1 The drive
 
-`src/apps/ExaminerDrive.jsx`, `#/drive`. Six junctions, one candidate,
+`src/apps/ExaminerDrive.jsx`, `#/drive`. Six intersections, one candidate,
 three of the four jobs at once: watch, mark on a sheet at the end of the
 section, direct. Intervention is absent — see §16.4.
 
@@ -1335,12 +1335,12 @@ section, direct. Intervention is absent — see §16.4.
 for building the loop before more engine:
 
 - **The stacking trade shipped inert.** The buttons wrote `given[at]`
-  while `held` counts junctions BEYOND it, so `held` was zero by
+  while `held` counts intersections BEYOND it, so `held` was zero by
   construction. The one mechanic the screen exists to evaluate was the one
   it could not perform, and every check passed because every check was
   aimed at the engine underneath. Fixing it settled that **stacking only
   exists at a distance of two** — an instruction for the very next
-  junction is discharged on arrival and never carried.
+  intersection is discharged on arrival and never carried.
 - **The screen rendered 98 characters.** Deriving each leg's run-in meant
   the clock was unknown until the leg composed, so `t` became state filled
   in by an effect, and effects do not run under SSR. The convention: a
@@ -1349,16 +1349,16 @@ for building the loop before more engine:
   baseline from `performance.now()` and read rAF's own timestamp. Clamped
   at both ends now.
 
-**A run-in cannot be a constant.** Measured over 48 junctions the
+**A run-in cannot be a constant.** Measured over 48 intersections the
 instruction deadline runs from 4.50s before the line to 8.20s after.
 3.5s left 15 of 48 undirectable; 6.0s made the rest a wait. `runInFor`
 derives it per leg.
 
-### 16.2 A mark belongs to the junction it was made at
+### 16.2 A mark belongs to the intersection it was made at
 
 Found by playing: a player who marked EVERY fault in a section scored
-zero. `scoreDetection` never compared a mark's junction with the fault's,
-and every leg's clock starts near zero — so a call at 0.4s on one junction
+zero. `scoreDetection` never compared a mark's intersection with the fault's,
+and every leg's clock starts near zero — so a call at 0.4s on one intersection
 was indistinguishable from one on another, credited against a fault the
 player never saw, while the real fault read as missed and the mark itself
 as invented. One line, and a perfect sheet went from 42 to **100**.
@@ -1374,19 +1374,19 @@ GO. `windowIsMarkable` asks the examiner's question, because the
 CANDIDATE drives and a candidate taking a gap that was not theirs is the
 content.
 
-| accept test | faults/junction | encroachments/drive | drives carrying one | contacts |
+| accept test | faults/intersection | encroachments/drive | drives carrying one | contacts |
 |---|---|---|---|---|
 | `windowIsSafe` | 1.16 | 0.47 | 16/40 | 0 |
 | no gate at all | 1.23 | 0.88 | 26/40 | **8** |
 | `windowIsMarkable` | 1.20 | **0.70** | **22/40** | 0 |
 
-The gate was suppressing half the supply, and faults per junction barely
-move — so this converts comfortable junctions into markable ones rather
-than padding the drive. It produced the first `veryTight` junctions the
+The gate was suppressing half the supply, and faults per intersection barely
+move — so this converts comfortable intersections into markable ones rather
+than padding the drive. It produced the first `veryTight` intersections the
 set has contained.
 
 It also surfaced a bug the gate had been hiding: an emergency vehicle
-placed with a hardcoded `intent: "straight"` while the junction's own
+placed with a hardcoded `intent: "straight"` while the intersection's own
 `validIntents` sat computed and unused, so a tee could get an ambulance
 driving to a leg it does not have.
 
@@ -1410,9 +1410,9 @@ behaviour beforehand. It is:
 | the conflict itself | 0.45s min, **1.10s median**, 2.30s max |
 | a prior derived fault by the candidate | 1.80s min, **6.30s median**, 10.10s max |
 
-60 drives, 360 junctions, 45 encroachments worse than comfortable. **56%
+60 drives, 360 intersections, 45 encroachments worse than comfortable. **56%
 are preceded by a fault the candidate visibly committed earlier in the
-same junction**, and 96% of those give more warning than the conflict ever
+same intersection**, and 96% of those give more warning than the conflict ever
 gives at its best. The median is 5.7x.
 
 The cues are ordinary and spread across the vocabulary — `wander` 9,
@@ -1422,7 +1422,7 @@ so no single trait is carrying it.
 **What the cue is not**: it does not name the conflict coming. It says
 this candidate is not on top of it, which is how a real examiner's hand
 ends up near the wheel. The uncued 44% is the honest half — a tight
-junction where the candidate did nothing else wrong.
+intersection where the candidate did nothing else wrong.
 
 `departureOnAwareness` is still a query rather than wired into
 `schedule()`, so every cue above is a trait fault. Wiring it would add an

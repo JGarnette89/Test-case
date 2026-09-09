@@ -297,7 +297,7 @@ const markableSeed = (() => {
     if (!scn) continue;
     const sim = simulate(scn);
     /* Each leg starts early enough for its OWN instruction. A fixed
-       run-in cannot work: measured over 48 junctions the deadline runs
+       run-in cannot work: measured over 48 intersections the deadline runs
        from 4.50s before the line to 8.20s after, so one number leaves the
        demanding legs undirectable and makes the rest a wait. */
     drawn.push(scn);
@@ -309,11 +309,11 @@ const markableSeed = (() => {
     since = faultsIn(scn).length ? 0 : since + legTime;
   }
   legs.length >= PER_SECTION
-    ? ok(`a drive composes ${legs.length} junctions for one candidate, weak on ${cand.weakOn.join(" and ")}`)
-    : fail(`only ${legs.length} junctions composed, not enough for a section`);
+    ? ok(`a drive composes ${legs.length} intersections for one candidate, weak on ${cand.weakOn.join(" and ")}`)
+    : fail(`only ${legs.length} intersections composed, not enough for a section`);
 
   /* EVERY INSTRUCTION HAS TO BE GIVEABLE. A window that never opens is a
-     junction the player is asked to direct and cannot — measured before
+     intersection the player is asked to direct and cannot — measured before
      the run-in existed, the window was 1.1s from a standing start, which
      is not a decision anybody can make. */
   /* The floor is FOLLOW_LAG rather than a number: if the candidate needs
@@ -322,8 +322,8 @@ const markableSeed = (() => {
   const spanOf = (l) => l.window.deadline - l.window.opensAt;
   const tight = legs.filter((l) => !l.window.viable || spanOf(l) < FOLLOW_LAG);
   tight.length === 0
-    ? ok(`every junction gives at least FOLLOW_LAG (${FOLLOW_LAG}s) to direct — shortest ${Math.min(...legs.map(spanOf)).toFixed(1)}s, longest ${Math.max(...legs.map(spanOf)).toFixed(1)}s`)
-    : fail(`${tight.length} junction(s) cannot be directed in the time the leg gives`);
+    ? ok(`every intersection gives at least FOLLOW_LAG (${FOLLOW_LAG}s) to direct — shortest ${Math.min(...legs.map(spanOf)).toFixed(1)}s, longest ${Math.max(...legs.map(spanOf)).toFixed(1)}s`)
+    : fail(`${tight.length} intersection(s) cannot be directed in the time the leg gives`);
 
   const section = legs.slice(0, PER_SECTION);
   const shown = (f) => f.duration;               // a player who watched everything
@@ -338,11 +338,11 @@ const markableSeed = (() => {
          REACTION_FLOOR, because nobody reacts to a visual cue faster.
          Calling at +0.1 scored zero on every fault and the "perfect"
          player only ever hit by accident. */
-      if (f.duration >= MIN_DURATION) perfect.push({ at: f.from + REACTION_FLOOR + 0.05, junction: i });
+      if (f.duration >= MIN_DURATION) perfect.push({ at: f.from + REACTION_FLOOR + 0.05, intersection: i });
     }
   });
   const spray = [];
-  for (let i = 0; i < PER_SECTION; i++) for (let k = 0; k < 12; k++) spray.push({ at: k * 0.8, junction: i });
+  for (let i = 0; i < PER_SECTION; i++) for (let k = 0; k < 12; k++) spray.push({ at: k * 0.8, intersection: i });
 
   const given = {};
   section.forEach((leg, i) => { given[i] = { at: leg.window.deadline - 0.3, intent: leg.intent }; });
@@ -384,7 +384,7 @@ const markableSeed = (() => {
      CAN THE PLAYER ACTUALLY STACK? The trade is the whole reason the
      four systems are one game rather than four scoreboards, and it was
      UNREACHABLE in the first build of the loop: the buttons only ever
-     wrote given[at], while held counts junctions BEYOND at, so held was
+     wrote given[at], while held counts intersections BEYOND at, so held was
      0 by construction — no load, no cost, no meter movement, and the
      "stacked" verdict could never fire. Checked here as the arithmetic
      the screen actually performs, because a React component is the one
@@ -394,7 +394,7 @@ const markableSeed = (() => {
 
   /* Held at leg k is what was SPOKEN BEFORE leg k began and is still
      outstanding — so the model needs which leg each instruction was
-     given during, not merely which junction it was about. Collapsing
+     given during, not merely which intersection it was about. Collapsing
      those two is how the first version of this check passed while
      measuring nothing: a fully populated map of calls looks identical
      whenever they were actually said. */
@@ -433,7 +433,7 @@ const markableSeed = (() => {
   })).filter((d) => d.free > 0);
   /* Never BETTER under load is the property; every one bigger is not.
      An encroachment is situational rather than a trait, so severity does
-     not scale it -- a junction whose only fault is one stays put, which
+     not scale it -- a intersection whose only fault is one stays put, which
      is correct and made this assertion a hostage to the draw. */
   const shrank = worstUnder.filter((d) => d.loaded < d.free - 1e-9).length;
   const grew = worstUnder.filter((d) => d.loaded > d.free + 1e-9).length;
@@ -441,22 +441,22 @@ const markableSeed = (() => {
     ? worstUnder.reduce((a, d) => a + d.loaded, 0) / worstUnder.reduce((a, d) => a + d.free, 0)
     : 1;
   pressureOf(loadTwo) > 0 && shrank === 0 && grew > 0 && ratio > 1
-    ? ok(`and it costs them, on the same derivation the examiner marks: ${(100 * pressureOf(loadTwo)).toFixed(0)}% pressure widens ${grew} of ${worstUnder.length} junctions carrying a fault and improves none, ${ratio.toFixed(2)}x the deviation`)
+    ? ok(`and it costs them, on the same derivation the examiner marks: ${(100 * pressureOf(loadTwo)).toFixed(0)}% pressure widens ${grew} of ${worstUnder.length} intersections carrying a fault and improves none, ${ratio.toFixed(2)}x the deviation`)
     : fail(`stacking does not measurably worsen the candidate: ${grew} grew and ${shrank} SHRANK of ${worstUnder.length}, ${ratio.toFixed(3)}x deviation at ${(100 * pressureOf(loadTwo)).toFixed(0)}% pressure`);
 
   /* A fault the screen never showed must not count against the player —
      the same rule occlusion lives under everywhere else. */
-  /* A MARK BELONGS TO THE JUNCTION IT WAS MADE AT. Every leg's clock
-     starts near zero, so a call at 0.4s on one junction looks exactly
+  /* A MARK BELONGS TO THE INTERSECTION IT WAS MADE AT. Every leg's clock
+     starts near zero, so a call at 0.4s on one intersection looks exactly
      like a call at 0.4s on another. Before scoreDetection compared them,
      a player who correctly marked every fault in a section scored ZERO:
-     marks were credited against faults from junctions they never saw,
+     marks were credited against faults from intersections they never saw,
      the real fault read as missed and the mark itself as invented. */
-  const spread = new Set(perfect.map((m) => m.junction)).size > 1;
-  const misplaced = sheetOf(perfect.map((m) => ({ ...m, junction: (m.junction + 1) % PER_SECTION })));
+  const spread = new Set(perfect.map((m) => m.intersection)).size > 1;
+  const misplaced = sheetOf(perfect.map((m) => ({ ...m, intersection: (m.intersection + 1) % PER_SECTION })));
   !spread || misplaced.result.score < good.result.score
-    ? ok(`marking the right fault at the wrong junction does not score: ${misplaced.result.score} against ${good.result.score} for the same calls placed correctly`)
-    : fail(`a mark is credited regardless of which junction it was made at (${misplaced.result.score} vs ${good.result.score})`);
+    ? ok(`marking the right fault at the wrong intersection does not score: ${misplaced.result.score} against ${good.result.score} for the same calls placed correctly`)
+    : fail(`a mark is credited regardless of which intersection it was made at (${misplaced.result.score} vs ${good.result.score})`);
 
   const blind = sectionSheet({ legs: section, marks: [], given, shownFor: () => 0 });
   blind.result.recall === 1 || blind.result.missed.length === 0

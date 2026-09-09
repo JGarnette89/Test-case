@@ -83,7 +83,7 @@ export function rotateScenario(scn, turns) {
     for (let i = 0; i < n; i++) s = QUARTER[s];
     return s;
   };
-  /* The road turns with the traffic. Spin the cars and leave the junction
+  /* The road turns with the traffic. Spin the cars and leave the intersection
      where it was and they end up entering by legs that do not exist — the
      window still computes, everything still draws, and the situation is
      nonsense. A T is the case that exposes it; a four-way is symmetric

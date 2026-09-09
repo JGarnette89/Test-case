@@ -12,7 +12,7 @@
  *
  *   1. Nobody steers tighter than a car physically can.
  *   2. Nobody is on the wrong side of the road while still on the approach.
- *      (Inside the junction box, crossing the centreline extension is what
+ *      (Inside the intersection box, crossing the centreline extension is what
  *      turning left IS, so the box is excluded rather than forgiven.)
  *   3. Everybody finishes in the lane they turned into.
  *   4. Bad driving still exists, but only where a scenario asked for it —
@@ -77,8 +77,8 @@ console.log("1. A TURN IS STEERABLE, AND STAYS ON ITS OWN SIDE ON THE APPROACH")
         if (lateral < 0) breach = Math.max(breach, -lateral);
         if (lateral > vx) over = Math.max(over, lateral - vx);
       }
-      /* A 10cm tolerance on the carriageway edge: the junction is modelled
-         with square 90-degree kerbs and real ones are rounded, so a clean
+      /* A 10cm tolerance on the carriageway edge: the intersection is modelled
+         with square 90-degree curbs and real ones are rounded, so a clean
          right clips the corner of a shape that does not exist. */
       if (breach > 1) breaches++;
       if (over > M(0.1)) offRoad++;
@@ -124,10 +124,10 @@ for (const intent of ["left", "right"]) {
 
 console.log("\n2b. AND NOBODY LEAVES THE ROAD ON THE WAY OUT");
 {
-  /* THE GAP THAT LET IT SHIP. Check 1 above stops at the junction box
+  /* THE GAP THAT LET IT SHIP. Check 1 above stops at the intersection box
      (`if (along <= hy) continue`), so it only ever inspected the
      APPROACH -- the exit side had never been measured at all. wideTurn
-     put a car 2.70m past the kerb on a single-lane left and every check
+     put a car 2.70m past the curb on a single-lane left and every check
      stayed green until the maintainer saw it: "a lot of left turns go
      completely off the roadway."
 
@@ -154,7 +154,7 @@ console.log("\n2b. AND NOBODY LEAVES THE ROAD ON THE WAY OUT");
       }
     }
   }
-  /* The same 10cm tolerance check 1 uses: square kerbs against real
+  /* The same 10cm tolerance check 1 uses: square curbs against real
      rounded ones, so a clean right clips a corner that does not exist. */
   if (worst <= M(0.1)) ok(`no turn leaves the carriageway on the way OUT either (worst ${m(worst)}m, ${who})`);
   else fail(`a turn ends up ${m(worst)}m outside the roadway: ${who}`);
@@ -209,7 +209,7 @@ console.log("\n3. BAD DRIVING IS DELIBERATE, AND ITS TELL IS TRUE");
   }
 
   /* cutsCorner is left-only by design, and this is the reason rather than
-     a shortcut: a right turns around the near kerb where the clean radius
+     a shortcut: a right turns around the near curb where the clean radius
      is already near the steering lock, so the floor absorbs the bias and
      the tell would claim a fault nobody could see. */
   const r = finishingError("right", ["cutsCorner"]);
@@ -220,7 +220,7 @@ console.log("\n3. BAD DRIVING IS DELIBERATE, AND ITS TELL IS TRUE");
      cutsCorner declines a right: the tell says "across the next lane" and
      a single-lane road has none. Reported by the maintainer as left turns
      going completely off the roadway -- a flat 4.5m bias put the car
-     2.70m past the kerb. Clamping to the kerb only moved the lie, leaving
+     2.70m past the curb. Clamping to the curb only moved the lie, leaving
      it finishing on the lane line claiming to have crossed one. */
   const narrow = finishingError("left", ["wideTurn"], 1);
   if (Math.abs(narrow) < LANE / 2) ok(`wideTurn correctly declines a road with no next lane (${m(narrow)}m, still in lane)`);

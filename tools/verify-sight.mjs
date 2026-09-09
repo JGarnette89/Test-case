@@ -6,7 +6,7 @@
    to buy sight, and it has to cost safety. If it only buys sight it is a
    free action and everyone presses it to the floor. If it only costs, it
    is a trap. So the table below is the check — visibility improving down
-   one column while the nose marches into the junction down another.
+   one column while the nose marches into the intersection down another.
 
    Occlusion is also checked on its own, with poses placed by hand, so a
    failure here says which of the two is broken.
@@ -115,7 +115,7 @@ console.log("\n3. CREEPING BUYS SIGHT AND SPENDS SAFETY");
     : ok(`sight comes before the line at ${m(noseOut(atSight))}m — a free look, which is fine`);
 
   /* Is there room to creep at all? Between the stop line and the edge of
-     the junction there is a band where you have committed but are not yet
+     the intersection there is a band where you have committed but are not yet
      in the box. One press wide is not a decision, it is a switch. */
   let band = 0;
   for (let n = 1; n <= 8; n++) {
@@ -123,10 +123,10 @@ console.log("\n3. CREEPING BUYS SIGHT AND SPENDS SAFETY");
     const out = noseOut(at);
     if (out < STOP_LINE_AT && out > HALF) band++;
   }
-  console.log(`  room between the line (${m(STOP_LINE_AT)}m) and the junction (${m(HALF)}m): ` +
+  console.log(`  room between the line (${m(STOP_LINE_AT)}m) and the intersection (${m(HALF)}m): ` +
     `${m(STOP_LINE_AT - HALF)}m, ${band} press${band === 1 ? "" : "es"} of ${m(PULL_STEP)}m`);
   band >= 2
-    ? ok("there is a real band to creep into before entering the junction")
+    ? ok("there is a real band to creep into before entering the intersection")
     : fail(`only ${band} press fits before the box — PULL_STEP is too coarse for the space, ` +
            `so creeping is a switch rather than a judgment`);
 }
@@ -170,7 +170,7 @@ console.log("\n5. A CAR ALREADY WAITING IN THE INTERSECTION");
     actors: [
       /* Far enough forward to be sitting in the box, and held there —
          without the delay it departs the moment it arrives and there is
-         nothing waiting in the junction to detect. */
+         nothing waiting in the intersection to detect. */
       { id: "w", from: "N", intent: "left", arriveAt: 0.4, stops: true, kind: "car",
         name: "Waiting car", stopBias: M(6.5), startDelay: 8, priority: -3 },
     ],
@@ -179,7 +179,7 @@ console.log("\n5. A CAR ALREADY WAITING IN THE INTERSECTION");
   const t = 2.0;
   const box = carWaitingInBox(sim, t);
   box.blocked
-    ? ok(`a stopped car inside the junction is detected (${box.who})`)
+    ? ok(`a stopped car inside the intersection is detected (${box.who})`)
     : fail("a car waiting in the intersection was not detected");
 
   const clearScn = { ...withWaiter, actors: [{ ...withWaiter.actors[0], stopBias: 0 }] };
