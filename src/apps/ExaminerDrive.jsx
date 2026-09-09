@@ -29,24 +29,33 @@ import { Play, Pause, RotateCcw, Flag, CornerUpLeft, CornerUpRight, ArrowUp, Cli
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { simulate, poseAt, CAR_L, CAR_W, PED_R, M, CX, CY, STEP } from "../engine/index.js";
 import { specOf } from "../engine/road.js";
-import { faultsIn } from "../engine/faults.js";
+import { faultsIn, MIN_DURATION } from "../engine/faults.js";
 import { whatEgoSees, faultSeenAt, sightBlockersOf } from "../engine/sight.js";
 import { instructionWindow, runInFor, pressureOf, skillUnderPressure, loadCandidate } from "../engine/directions.js";
 import { sectionSheet, summarise } from "../engine/detect.js";
 import { composeCandidate } from "../engine/candidate.js";
 import { composeDriver, AXES, deficitOf, dominantAxis } from "../engine/ratings.js";
-import { planDrive, composeForTile, CHARACTER } from "../engine/tiles.js";
-import { driveThroughTiles, candidateAt } from "../engine/world.js";
+import {
+  planDrive, composeForTile, CHARACTER, kerbsideFor, roadsideLifeFor, segmentHazards,
+  DEAD_AIR_CEILING,
+} from "../engine/tiles.js";
+import { driveThroughTiles, candidateAt, placeScenario } from "../engine/world.js";
 import { approachDecel } from "../engine/paths.js";
 import { chaseOn } from "../frame.js";
 import { environmentFor, scatter } from "../environments.js";
 import { Road, Environment } from "./RightOfWayTiming.jsx";
 
 const JUNCTIONS = 6;
-/* Three to a section, from the recall band: a competent player can hold
-   three or four faults, and at the measured ~1 per junction that is three
-   junctions. Derived in verify-candidate.mjs rather than picked here. */
-const PER_SECTION = 3;
+/* THE RECALL BAND, which is the quantity that is actually known: free
+   recall runs out at about four items, so a section should carry three or
+   four faults. SECTION LENGTH IS DERIVED FROM THAT AND THE DRIVE'S OWN
+   DENSITY -- it is not a constant, and every time it was one it drifted:
+   3 was right at 1.11 faults per junction, wrong at 0.89 when
+   straight-through junctions arrived, and wrong again as soon as the
+   links started carrying content. Derived here, it cannot drift. */
+const RECALL_BAND = [3, 4];
+const sectionLengthFor = (perJunction) =>
+  Math.max(2, Math.min(4, Math.round(((RECALL_BAND[0] + RECALL_BAND[1]) / 2) / Math.max(0.3, perJunction))));
 const TAIL = 1.2;                       // beat after the candidate clears
 /* The least run-in that always shows the candidate arriving: their own
    approach, cruise over comfortable braking. Each leg then starts at
@@ -60,6 +69,20 @@ const APPROACH = M(11.5) / approachDecel(M(11.5));
    makes them CARRY anything — held counts what is outstanding beyond the
    one being executed. Stacking only exists at a distance of two. */
 const LOOK_SECONDS = 6;
+
+/* Roadside props. Colour lives here and never in the engine, same as
+   everywhere else -- tiles.js says a hedge is there and how big it is,
+   and has no idea it is green. */
+const ROADSIDE_FILL = {
+  parked: "#5a616b",
+  hedge: "#3d5a3a",
+  wall: "#4a4a46",
+  bins: "#4c5560",
+  furniture: "#565d66",
+  shopfront: "#5c5148",
+  shelter: "#4e5560",
+  signage: "#6b7280",
+};
 
 const AHEAD = [0, 1, 2];
 
@@ -106,7 +129,7 @@ export default function ExaminerDrive() {
   const drive = useMemo(() => {
     const candidate = { ...composeCandidate(seed * 7 + 3), ...composeDriver(seed * 11) };
     const plan = planDrive({ seed, length: JUNCTIONS, candidate });
-    const tiles = [], made = [], intents = [];
+    const tiles = [], made = [], intents = [], legTimes = [];
     let since = 0;
     for (let i = 0; i < plan.length; i++) {
       const tile = plan[i].tile;
@@ -115,6 +138,7 @@ export default function ExaminerDrive() {
         legTime, candidate, at: { from: plan[i].entry, intent: plan[i].intent },
       });
       if (!scn) continue;
+      legTimes.push(legTime);
       since = faultsIn(scn).length ? 0 : since + legTime;
       /* THE TILE'S DECLARED ROAD AND THE COMPOSED JUNCTION'S ROAD
          DISAGREE -- 15 of 56 match, 0 of 13 for arterial -- and this is
@@ -124,7 +148,13 @@ export default function ExaminerDrive() {
          declared spec would place roads that do not match the ones on
          screen. It also sidesteps the arterial-control question, which is
          a road-design call and not one to make in passing. */
-      tiles.push({ ...tile, spec: specOf(scn) });
+      /* The tile declares its own speed and the drive was ignoring it --
+         one flat 11.5 m/s for every link, so a residential street ran at
+         41 km/h where the road says 30 and an arterial at 41 where it
+         says 50. The hierarchy stopped at the junction and never reached
+         the straight, which is the half of the drive you spend most of
+         your time in. Another two-implementations-of-one-quantity. */
+      tiles.push({ ...tile, spec: specOf(scn), speed: CHARACTER[tile.character].speed });
       made.push(scn);
       intents.push(plan[i].intent);
     }
@@ -135,7 +165,99 @@ export default function ExaminerDrive() {
        the board centre and the candidate teleported 70-90m at every
        boundary onto new ground with every car and every tree replaced.
        Measured: nothing at all persisted across a boundary. */
-    const world = driveThroughTiles({ tiles, legs: made, speed: M(11.5) });
+    /* WHAT HAPPENS ON THE ROAD BETWEEN JUNCTIONS. Somebody steps out from
+       behind a parked car that is really there -- roadsideLifeFor and
+       kerbsideFor come from the same tile declaration, which is what makes
+       the car the reason you did not see them.
+
+       These were built, verified in verify-world, and drawn by nothing:
+       6 per drive, every drive carrying one, and 46% of them producing a
+       markable fault. The links were 27 seconds of bare tarmac.
+
+       A SECTION IS A CONTINUOUS STRETCH OF THE DRIVE, so a link belongs to
+       the junction it DEPARTS FROM -- which is what candidateAt already
+       reports during a link, `junction: i` with a clock in leg i's frame.
+       A link crossing a section boundary therefore lands in the earlier
+       section, where the player was when they saw it. */
+    const hazards = [];
+    /* Dead air carried across junctions AND links, because a section is
+       one continuous stretch and the budget has to see all of it. It has
+       to ACCUMULATE, not merely reset: a version that zeroed on the first
+       hazard and never grew again fired 8 in 30 drives. */
+    let sinceEvent = 0;
+    const holdFor = (i, link) => {
+      /* The junction just left, then the road leaving it. */
+      sinceEvent = faultsIn(made[i]).length ? 0 : sinceEvent + legTimes[i];
+      sinceEvent += link.length / (tiles[i].speed ?? M(11.5));
+      const found = segmentHazards(tiles[i], link, i * 13 + 1, { candidate })
+        .map((h) => {
+          const scn = placeScenario(h.scn, h.scn.at);
+          const sim = simulate(scn);
+          return { ...h, scn, sim, link: i, reaches: h.scn.reachesAt ?? 0, stepsAt: scn.actors[0]?.arriveAt ?? 0 };
+        });
+      /* `mayEmerge` MEANS "SOMEBODY IS THERE WHO COULD", NOT "THEY DO" --
+         roadsideLifeFor says so in as many words, and leaving the decision
+         to it fired one on 67% of links for a mean 6.8s hold, which would
+         have roughly doubled the time on the straights. Whether they
+         actually step out is the segment's business, so it is decided
+         here, and by the same budget junctions use: AT MOST ONE PER LINK,
+         and only when the drive would otherwise go quiet past the
+         ceiling. Exactly briefFor's predictive rule, on the other half of
+         the drive -- no new constant, and dead air is precisely what a
+         link has too much of.
+
+         RARE IS CORRECT, because hazardAt builds the WORST case on
+         purpose: the pedestrian is timed to step out as the candidate
+         arrives, so every one that fires costs a real ~6s hold. The road
+         feels alive from the people who are simply there -- 10 a drive,
+         drawn and costing nothing -- not from stopping for all of them. */
+      const fires = sinceEvent >= DEAD_AIR_CEILING ? found.slice(0, 1) : [];
+      for (const h of fires) hazards.push(h);
+      if (!fires.length) return null;
+      sinceEvent = 0;
+      /* HOW LONG TO HOLD IS DERIVED, not chosen: the hazard's own
+         simulation already says when the road is the candidate's again,
+         under the same near-half rule every crossing uses. */
+      const worst = fires.reduce((a, h) => Math.max(a, h.sim.legalAt ?? 0), 0);
+      const at = Math.min(...fires.map((h) => h.reaches));
+      return { at: Math.max(0, at - 1.0), wait: Math.max(0, worst) };
+    };
+
+    const world = driveThroughTiles({ tiles, legs: made, speed: M(11.5), holdFor });
+
+    /* WHAT IS BESIDE THE ROAD. Parked cars, hedges, walls, bins,
+       shopfronts -- and the people among them, placed from the same tile
+       declaration so a pedestrian is hiding behind a car that is actually
+       there. All of it existed, was verified in verify-world, and was
+       drawn by nothing: 59 objects and 10 people per drive, none of them
+       on screen. The links were 27 seconds of bare tarmac, which is why
+       they read as slow at any speed. */
+    const roadside = [];
+    world.links.forEach((link, i) => {
+      for (const k of kerbsideFor(tiles[i], link, i * 13 + 1)) roadside.push({ ...k, life: false });
+      for (const p of roadsideLifeFor(tiles[i], link, i * 13 + 1)) roadside.push({ ...p, life: true });
+    });
+
+    /* Hazard faults, moved into the frame the section sheet speaks:
+         hazard-local  ->  drive time  ->  leg-local for the junction it
+         departs from. Marks made during a link are recorded in exactly
+         that frame by candidateAt, so the two agree by construction. */
+    const hazardFaults = world.legs.map(() => []);
+    hazards.forEach((h, k) => {
+      const i = h.link;
+      const arriveAt = world.legs[i].scn.ego.arriveAt ?? 0;
+      const toLeg = (tau) =>
+        world.exits[i] + h.reaches + (tau - h.stepsAt) - world.arrivals[i] + arriveAt;
+      for (const f of faultsIn(h.scn)) {
+        hazardFaults[i].push({
+          ...f,
+          from: Math.round(toLeg(f.from) * 100) / 100,
+          to: Math.round(toLeg(f.to) * 100) / 100,
+          hazard: k,
+          onLink: true,
+        });
+      }
+    });
 
     const legs = world.legs.map((placed, i) => {
       const runIn = runInFor(placed.sim, { floor: APPROACH });
@@ -144,9 +266,16 @@ export default function ExaminerDrive() {
         intent: intents[i], tile: tiles[i], runIn,
         window: instructionWindow(placed.sim, { legStartsAt: -runIn }),
         env: environmentFor(placed.scn.id),
+        hazardFaults: hazardFaults[i],
+        faults: [...faultsIn(placed.scn), ...hazardFaults[i]],
       };
     });
-    return { candidate, legs, world };
+    /* Measured on THIS drive, so a quiet candidate gets longer sections
+       and a busy one shorter -- which is what the recall band means. */
+    const markable = legs.reduce(
+      (a, l) => a + l.faults.filter((f) => f.duration >= MIN_DURATION).length, 0
+    ) / Math.max(1, legs.length);
+    return { candidate, legs, world, roadside, hazards, perSection: sectionLengthFor(markable), markable };
   }, [seed]);
 
   const leg = drive.legs[Math.min(at, drive.legs.length - 1)];
@@ -173,7 +302,10 @@ export default function ExaminerDrive() {
       scn: leg.scn, sim: leg.sim,
       spec: specOf(leg.scn),
       statics: sightBlockersOf(leg.scn),
-      faults: faultsIn(scn),
+      /* The junction's own faults AND whatever happened on the road
+         leading away from it -- one list, because a section is a
+         continuous stretch of the drive rather than a set of junctions. */
+      faults: [...faultsIn(scn), ...(leg.hazardFaults ?? [])],
       runIn: leg.runIn,
       window: leg.window,
       env: leg.env,
@@ -182,8 +314,8 @@ export default function ExaminerDrive() {
   }, [leg, held]);
 
   const view = useMemo(
-    () => chaseOn(pose, M(11.5), { lookAhead: look }),
-    [pose, look]
+    () => chaseOn(pose, leg ? CHARACTER[leg.tile.character].speed : M(11.5), { lookAhead: look }),
+    [pose, look, leg]
   );
   /* How far each junction's roads reach. Sized so neighbours MEET: the
      gaps are 53-72m, so anything less leaves the candidate driving over a
@@ -246,7 +378,13 @@ export default function ExaminerDrive() {
     for (const f of live.faults) {
       if (t < f.from || t > f.to) continue;
       const key = `${at}/${f.who}/${f.trait ?? f.kind}`;
-      const v = faultSeenAt(live.sim, f, t, live.statics);
+      /* A hazard fault belongs to its own little scene, so its
+         visibility is judged there -- against the props that hid the
+         person, which is the whole point of placing them together. */
+      const h = f.onLink ? drive.hazards[f.hazard] : null;
+      const v = h
+        ? faultSeenAt(h.sim, f, h.stepsAt + (elapsed - (world.exits[h.link] + h.reaches)), h.blockers ?? [])
+        : faultSeenAt(live.sim, f, t, live.statics);
       if (v === "clear" || v === "partial") {
         seen.current.set(key, (seen.current.get(key) ?? 0) + STEP);
       }
@@ -259,7 +397,7 @@ export default function ExaminerDrive() {
   useEffect(() => {
     const here = pose.junction ?? 0;
     if (here === at || sheet) return;
-    if (here % PER_SECTION === 0 && here > 0) {
+    if (here % drive.perSection === 0 && here > 0) {
       setSheet(closeSection(here));
       setPlaying(false);
       return;
@@ -277,11 +415,11 @@ export default function ExaminerDrive() {
   /* THE SHEET. Deferred: everything the section produced, against
      everything the player called, scored in one go at the end. */
   function closeSection(upTo) {
-    const from = Math.max(0, upTo - PER_SECTION);
+    const from = Math.max(0, upTo - drive.perSection);
     const legs = [];
     for (let i = from; i < upTo && i < drive.legs.length; i++) {
       legs.push({
-        faults: faultsIn(drive.legs[i].scn),
+        faults: [...faultsIn(drive.legs[i].scn), ...(drive.legs[i].hazardFaults ?? [])],
         window: shown.current.get(i) ?? drive.legs[i].window,
         intent: drive.legs[i].intent,
       });
@@ -291,7 +429,7 @@ export default function ExaminerDrive() {
       marks: marks.filter((m) => m.junction >= from && m.junction < upTo),
       shownFor: (f) => seen.current.get(`${f.junction}/${f.who}/${f.trait ?? f.kind}`) ?? 0,
     });
-    return { ...sheet, done: upTo >= drive.legs.length };
+    return { ...sheet, done: upTo >= drive.legs.length, perSection: drive.perSection };
   }
 
 
@@ -324,7 +462,7 @@ export default function ExaminerDrive() {
     .sort((a, b) => b.d - a.d);
   const w = live.window;
   const late = t > w.deadline && !given[at];
-  const section = Math.floor(at / PER_SECTION) + 1;
+  const section = Math.floor(at / drive.perSection) + 1;
 
   /* An instruction for a junction they have not reached is given before
      that leg's window opens, which is what makes it STACKED rather than
@@ -359,6 +497,37 @@ export default function ExaminerDrive() {
                 <Road control={l.scn.control} crossings={l.scn.crossings || []} spec={specOf(l.scn)} reach={reach} />
               </g>
             ))}
+            {/* WHAT IS BESIDE THE ROAD, culled to the frame. Static props
+                first, then the people among them, so somebody stepping
+                out reads as coming from behind the car that hid them. */}
+            {drive.roadside.map((o) => {
+              if (Math.hypot(o.x - view.cx, o.y - view.cy) > view.ahead + view.behind) return null;
+              if (o.life) {
+                return <circle key={o.id} cx={o.x} cy={o.y} r={PED_R}
+                  fill={o.mayEmerge ? C.amber : "#6c737d"} opacity={o.mayEmerge ? 0.9 : 0.7} />;
+              }
+              const fill = ROADSIDE_FILL[o.kind] ?? "#3a4048";
+              return (
+                <rect key={o.id} x={o.x - o.hl} y={o.y - o.hw} width={o.hl * 2} height={o.hw * 2}
+                  rx={o.kind === "parked" ? M(0.3) : 0}
+                  transform={`rotate(${o.rot} ${o.x} ${o.y})`}
+                  fill={fill} stroke="#12151a" strokeWidth={o.kind === "parked" ? 2 : 1}
+                  opacity={0.92} />
+              );
+            })}
+            {/* THE PEOPLE WHO STEP OUT. Timed against the candidate's own
+                arrival, so the parked car that hid them is the reason
+                they were not seen earlier. Drawn from the hazard's own
+                simulation, at that scene's clock rather than the leg's. */}
+            {drive.hazards.map((h, k) => {
+              const tau = h.stepsAt + (elapsed - (world.exits[h.link] + h.reaches));
+              return h.sim.actors.map((a) => {
+                const q = poseAt(a, tau);
+                if (!q || q.gone || q.hidden || !Number.isFinite(q.x)) return null;
+                if (Math.hypot(q.x - view.cx, q.y - view.cy) > view.ahead + view.behind) return null;
+                return <circle key={`${k}-${a.id}`} cx={q.x} cy={q.y} r={PED_R} fill={C.yellow} />;
+              });
+            })}
             {/* Traffic is drawn from the junction being driven. It does
                 not yet persist across a boundary -- the cars at the next
                 junction appear as it is reached. That is the next thing,
@@ -506,7 +675,7 @@ function Sheet({ sheet, drive, onNext }) {
   return (
     <div style={S.sheetWrap}>
       <div style={S.sheet}>
-        <div style={S.sheetHead}><ClipboardList size={16} /> Section {Math.floor(sheet.from / PER_SECTION) + 1}</div>
+        <div style={S.sheetHead}><ClipboardList size={16} /> Section {Math.floor(sheet.from / sheet.perSection) + 1}</div>
         <div style={S.big}>{result.score}</div>
         <div style={S.dim}>{summarise(result) || "nothing called, nothing happened"}</div>
         <div style={S.dim}>

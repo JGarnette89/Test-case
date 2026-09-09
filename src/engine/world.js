@@ -22,7 +22,9 @@
    ===================================================================== */
 import { M, CX, CY, LANE, SET, simulate, poseAt, basePose } from "./index.js";
 import { crossSpec, stopPoint, exitPoint, exitSideFor, boxHalf, laneOffset, LEG } from "./road.js";
-import { linePath, pathLength, poseOn, progressAt, cruiseProfile } from "./paths.js";
+import {
+  linePath, pathLength, poseOn, progressAt, cruiseProfile, yieldingProfile, MOST_GIVE,
+} from "./paths.js";
 
 /* Where a junction's exit actually is, in the world.
 
@@ -121,7 +123,7 @@ export function junctionPorts(j, spec, intent) {
    candidate actually drives. Its length is the spacing minus whatever the
    two junctions themselves consume, which is why spacing has to be
    measured centre to centre and checked here rather than assumed. */
-export function linkBetween(a, b, spec, speed, intent = "straight", fromSpec) {
+export function linkBetween(a, b, spec, speed, intent = "straight", fromSpec, profile = null) {
   /* The link starts where the PREVIOUS junction's traverse ends, not at
      its stop line. Getting that wrong is the first assumption the design
      called out -- exits lead off-board rather than to the next junction --
@@ -150,7 +152,12 @@ export function linkBetween(a, b, spec, speed, intent = "straight", fromSpec) {
      out NaN. */
   const rot = (Math.atan2(to.y - raw.y, to.x - raw.x) * 180) / Math.PI;
   const from = { ...raw, rot };
-  const path = linePath(from, to, cruiseProfile(speed));
+  /* A link is a cruise unless something on it makes the candidate give
+     way. A pedestrian stepping out of a driveway is exactly that, and
+     without it the drive would run them over at a constant speed --
+     `hazardAt` times them to step out AS THE CANDIDATE ARRIVES, so the
+     conflict is the design rather than an accident of placement. */
+  const path = linePath(from, to, profile ?? cruiseProfile(speed));
   return { path, from, to, length: pathLength(path) };
 }
 
@@ -333,7 +340,7 @@ export function spacingForRunway({ prevSpec, spec, from = "S", intent = "straigh
 /* A drive assembled from tiles. Each gap is sized so the tile delivers
    the runway it declared, which is then measured back with runwayFor —
    the promise and the check use the same geometry. */
-export function driveThroughTiles({ tiles, legs, speed }) {
+export function driveThroughTiles({ tiles, legs, speed, holdFor = null }) {
   const specs = tiles.map((t) => t.spec);
   const from = legs[0].ego.from;
   const at = { x: CX, y: CY };
@@ -358,7 +365,14 @@ export function driveThroughTiles({ tiles, legs, speed }) {
     return { junction: js[i], scn: withAt, sim: simulate(withAt), tile: tiles[i] };
   });
 
+  /* A LINK RUNS AT ITS OWN ROAD'S SPEED. A tile already declares one --
+     30 km/h residential, 41 collector, 50 arterial -- and one figure for
+     the whole drive threw that away on the straights, which is where most
+     of the drive time is spent. The hierarchy stopped at the junction and
+     never reached the road between them. The fallback keeps every
+     existing caller behaving exactly as it did. */
   const v = speed ?? M(11.5);
+  const speedAt = (i) => tiles[i]?.speed ?? v;
   const arrivals = [], exits = [], links = [];
   arrivals.push(placed[0].scn.ego.arriveAt ?? 0);
   for (let i = 0; i < placed.length; i++) {
@@ -367,9 +381,18 @@ export function driveThroughTiles({ tiles, legs, speed }) {
     const localDepart = leg.sim.ego.departAt ?? localArrive;
     exits.push(arrivals[i] + (localDepart - localArrive) + spanOfTraverse(leg.sim.ego));
     if (i + 1 < placed.length) {
-      const link = linkBetween(js[i], js[i + 1], specs[i + 1], v, leg.scn.ego.intent ?? "straight", specs[i]);
+      const vi = speedAt(i);
+      /* Built once to find out what is ON it, then again holding for
+         whatever that is. The placements do not depend on the hold, so
+         the second build is a re-timing rather than a re-layout. */
+      const bare = linkBetween(js[i], js[i + 1], specs[i + 1], vi, leg.scn.ego.intent ?? "straight", specs[i]);
+      const hold = holdFor?.(i, bare) ?? null;
+      const link = hold && hold.wait > 0
+        ? linkBetween(js[i], js[i + 1], specs[i + 1], vi, leg.scn.ego.intent ?? "straight", specs[i],
+            yieldingProfile(cruiseProfile(vi), { from: hold.at, give: MOST_GIVE, wait: hold.wait }))
+        : bare;
       links.push(link);
-      arrivals.push(exits[i] + link.length / v);
+      arrivals.push(exits[i] + link.path.duration);
     }
   }
   return { junctions: js, legs: placed, arrivals, exits, links, spec: specs[0], specs, speed: v, tiles };

@@ -787,6 +787,31 @@ inspects the wrong half of a thing passes confidently and forever.
   is what two cars touching produces — so the lab went black on contact
   with every check passing.
 
+### The same thing again: correct in the engine, shown by nothing
+
+A FOURTH instance, and by now it is the pattern rather than a coincidence
+— every one of these was built, verified by a green check, and drawn by
+no screen at all:
+
+- **The screens never rendered.** Twenty increments verified headlessly
+  against a component that threw on mount.
+- **`<Belief>` was never defined.** The lab went black on contact.
+- **`world.js` was never imported by the drive.** The continuous world
+  existed and the playable screen drew six scenes at one address.
+- **The roadside was never drawn.** 59 props, 10 people and 6 hazards per
+  drive, all produced by `tiles.js`, all checked in `verify-world`, and
+  none of them on screen — 27 seconds of bare tarmac per drive.
+
+**A check that an engine function returns the right thing says nothing
+about whether anything shows it.** `verify-world` was measuring
+`kerbsideFor`'s output the whole time. The output was right. The renderer
+had never called it.
+
+So when adding engine content, the question is not "is it correct" but
+**"what draws it, and what happens if nothing does"** — because nothing
+in this suite will tell you, and the answer has been "nothing draws it"
+four times running.
+
 The lesson is not "write more checks". It is that **a check has a
 BOUNDARY, and the boundary is usually invisible in its output.** When one
 passes on something you suspect, ask what it does not look at: which half
