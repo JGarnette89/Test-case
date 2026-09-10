@@ -726,7 +726,33 @@ The attributability floor is further from being cleared than it was
 reported to be, not closer. Do not fold `unsighted` in to fix it (§4.5,
 §5.11.5).
 
-**OPEN, AND THE MAINTAINER'S: is a parked car in a driveway a cue?**
+**RULED, AND IT IS GRADED RATHER THAN BINARY.** Maintainer's words:
+*"drivers should notice cars in the driveway but the reverse lamps should
+raise awareness even higher that there could be a conflict especially, if
+the reversing car is actually moving."*
+
+So there is no single onset. There are **three cue strengths**:
+
+| cue | strength |
+|---|---|
+| a car present in a driveway | mild — a competent driver registers it |
+| its reverse lamps lit | stronger |
+| the car actually moving | strongest |
+
+**AWARENESS ONSET IS A FUNCTION OF CUE STRENGTH, NOT A SINGLE EVENT**,
+and that generalises far beyond driveways. A stronger cue is registered
+SOONER and by MORE drivers. Combined with the observation rating it gives
+exactly the gradient this game wants: a poor observer misses the
+stationary car entirely and may only catch the lamps, while a good
+observer clocks the car before anything happens at all. Two drivers, same
+scene, different moment of registration — and the difference is legible,
+which is the whole test of a mechanic here.
+
+It also makes **reverse lamps content the model needs** rather than a
+speculative nicety. Not to be built at stage 0: it belongs with stage 1 or
+later, once there is something for a cue to be a cue *about*.
+
+The question this answers was:
 Being able to see a car sitting in a driveway is not the same fact as
 perceiving that it is about to move. **The model currently treats
 REGISTRATION OF THE CAR as the onset of anticipation**, which assumes an
@@ -1049,6 +1075,96 @@ legs made road users `stops: false`; before that everybody stopped, so
 change surfacing something nothing was checking is the good case, and it
 is why the filter must not be allowed to close the file on them.
 
+
+## 5.13 RULINGS FOR THE REBUILD, given ahead of the build rather than after it
+
+The maintainer answered a list of blocking questions in one go so the
+work could carry on unattended. Recorded here because they are domain
+calls, which are the only kind of decision this project cannot derive.
+
+### 5.13.1 The all-way stop is a STRESS TEST, not a demo
+
+*"we should start with an all way stop with cars that just keep coming,
+so we can prove our right of way ordering stays consistent."*
+
+So the question is not whether precedence resolves once. It is whether it
+stays correct **indefinitely**, under a stream that never lets up. That
+makes the property a check rather than a screenshot: no car may ever
+enter the box while somebody who outranks it is still waiting, over a run
+long enough that any drift would show.
+
+### 5.13.2 Four-way precedence is confirmed as built
+
+Whoever stopped first goes; arriving together, the car on the right goes;
+head to head, a left turn yields to the oncoming. Two cars from opposite
+legs both going straight simply both go, because their paths never cross.
+
+**Waving each other through is real but rare** -- *"drivers may wave each
+other through on rare occasions where the stop order isn't clear, but
+isn't the norm"* -- so it is NOT modelled now. Recorded as a possible
+later nicety, and only for the genuinely ambiguous case rather than as a
+general behaviour.
+
+### 5.13.3 Right on red is allowed unless posted otherwise
+
+In scope once signals exist, with a PER-INTERSECTION PROHIBITION FLAG for
+the rare junction where it is forbidden. **Report what that flag costs
+before building it** -- the maintainer asked specifically how complicated
+it would be, which is the right question to answer with a measurement
+rather than an estimate.
+
+### 5.13.4 Pedestrians come later, and the reason is structural
+
+They need a decision model of their own. A pedestrian is not an obstacle
+with a timer on it; they choose when to cross, they can be heedless, and
+the near-half rule (5.4) is a claim about what they are entitled to
+rather than about where they are. Stage 4, with perception.
+
+### 5.13.5 A rolling stop is knowledge-dominant WITH CONFIDENCE AS A REAL
+CONTRIBUTOR
+
+Refines 5.2. The maintainer's mechanism, verbatim: *"rolling stops are a
+failure to obey the law not necessarily a skill issue. a high confidence
+driver might feel strong in their observation that it's clear to go and
+will disregard the stopping portion prematurely."*
+
+So it is not knowledge alone, and it is not a control failure either. It
+is a driver confident in their own read of the situation deciding the
+legal requirement is surplus. Two axes, weighted, knowledge dominant --
+which is a shape `CAUSES` already supports (4.8), so this is a change of
+weights rather than of machinery when the fault model is rebuilt.
+
+**And some NPCs should do it**, which follows for free once every car is
+a rated driver (REBUILD.md 4.1): a weak knowledge axis and a bold
+confidence axis produce it without anybody authoring it.
+
+### 5.13.6 Turn speeds carry over unchanged
+
+The old engine's derived figures -- about 26 km/h through a left and 22
+through a right -- are reused. The maintainer expects play-testing rather
+than derivation to say whether they need adjusting for the game's pace.
+
+### 5.13.7 UNDUE DELAY IS MARKABLE, AND THERE IS A NUMBER
+
+*"on the Ontario scoresheet, waiting 4-5 seconds beyond when the opening
+is there to turn is marked on the test."*
+
+So the timid tail of the confidence axis has a real threshold rather than
+a notional one, and hesitancy is a fault an examiner actually records.
+
+**It presupposes a defined OPENING, and that is the one question still
+outstanding** -- how big a gap a competent driver accepts turning across
+a moving stream. So the delay fault must be built AGAINST THAT NUMBER
+rather than against a second definition of an acceptable gap written
+beside it. Two definitions of "an opening" is section 10's pattern
+waiting to happen, and this is the moment it would be introduced.
+
+### 5.13.8 STILL OPEN: the gap a driver accepts turning across traffic
+
+The only question on the list not yet answered, and the one the most
+depends on: tight-gap faults, encroachment bands, the candidate's
+boldness, and 5.13.7's delay threshold all scale off it. Not to be
+guessed.
 
 ---
 

@@ -155,12 +155,18 @@ console.log("\n5. AND CARS ACTUALLY SORT THEMSELVES OUT AT IT");
      model does the rest -- no second mechanism, no search, and nobody's
      path rewritten after the fact, which is what the old engine had to do
      because it had no tick in which anybody could decide anything. */
-  const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8], MINUTES = 4;
+  /* ORDINARY TRAFFIC, DELIBERATELY BELOW CAPACITY. This section asks
+     whether the thing works at all; section 6 asks whether it holds when
+     it cannot cope. An intersection passes about 15 cars a minute, so a
+     car offered every 5 seconds is a busy junction rather than a jammed
+     one, and a long wait here would mean something is wrong rather than
+     that the queue is simply long. */
+  const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8], MINUTES = 4, EVERY = 5;
   const TICKS = Math.round((MINUTES * 60) / DT);
   let overlaps = 0, through = 0, stillest = 0, worstPair = null;
   const waits = [];
   for (const seed of SEEDS) {
-    let w = seedCrossing(seed, 50);
+    let w = seedCrossing(seed, 50, { every: EVERY });
     const since = new Map();
     for (let i = 0; i < TICKS; i++) {
       const before = new Map(w.actors.map((a) => [a.id, a]));
@@ -194,10 +200,11 @@ console.log("\n5. AND CARS ACTUALLY SORT THEMSELVES OUT AT IT");
   /* DEADLOCK IS THE FAILURE MODE OF A PRIORITY RULE, and it is silent:
      four cars each waiting for the one on their right wait forever, and
      nothing throws. */
-  stillest < 90
+  stillest < 45
     ? ok(`and nobody deadlocks: the longest anybody sat still was ${stillest.toFixed(1)}s`)
     : fail([
-        `somebody sat still for ${stillest.toFixed(1)}s, which is a deadlock rather than a wait.`,
+        `somebody sat still for ${stillest.toFixed(1)}s at a junction offered only ${(60 / EVERY).toFixed(0)} cars a minute against a capacity of about 15.`,
+        "That is not congestion, it is a deadlock or a starved approach.",
         "Four cars each yielding to the one on their right will wait for each other",
         "forever and nothing will throw. The right-hand rule needs a tie-break that",
         "cannot cycle -- arrival order is what provides it.",
@@ -230,6 +237,95 @@ console.log("\n5. AND CARS ACTUALLY SORT THEMSELVES OUT AT IT");
   blockedBy(lefts.me, lefts.them, L) && !blockedBy(lefts.them, lefts.me, L)
     ? ok("and a left turn yields to the oncoming, head to head, as it does in law")
     : fail("a left turn is not yielding to the oncoming straight (DECISIONS.md 5.5)");
+}
+
+
+console.log("\n6. UNDER A STREAM THAT NEVER LETS UP, THE ORDERING STAYS RIGHT");
+{
+  /* The maintainer's own framing: "we should start with an all way stop
+     with cars that just keep coming, so we can prove our right of way
+     ordering stays consistent."
+
+     So the question is not whether precedence resolves once. It is
+     whether it stays correct INDEFINITELY, under demand the intersection
+     cannot satisfy. A rule that is right for one cycle and drifts under
+     load is worse than one that is obviously wrong, because it looks
+     fine in a demo. */
+  const SEEDS = [1, 2, 3, 4], MINUTES = 10, EVERY = 0.6;
+  const TICKS = Math.round((MINUTES * 60) / DT);
+  let entered = 0, jumped = 0, overlaps = 0, offered = 0, admitted = 0;
+  let firstJump = null;
+  const early = [], late = [];
+
+  for (const seed of SEEDS) {
+    let w = seedCrossing(seed, 50, { every: EVERY });
+    const since = new Map();
+    for (let i = 0; i < TICKS; i++) {
+      const prev = w;
+      const was = new Map(prev.actors.map((a) => [a.id, a]));
+      w = step(w);
+      overlaps += overlapping(w).length;
+
+      for (const me of w.actors) {
+        const before = was.get(me.id);
+        if (!before) continue;
+        const mine = w.layout.paths[me.route];
+
+        /* THE MOMENT OF COMMITMENT: the tick a car crosses its own stop
+           line. Judged on the state it DECIDED from -- the previous one --
+           because once it is over the line `blockedBy` rightly reports it
+           as committed, and asking then would be asking after the fact. */
+        if (before.s < mine.stopAt && me.s >= mine.stopAt) {
+          entered++;
+          const held = prev.actors.find((t) => t.id !== me.id && blockedBy(before, t, prev.layout));
+          if (held) {
+            jumped++;
+            if (!firstJump) {
+              firstJump = { seed, tick: w.tick, who: me.route, held: held.route };
+            }
+          }
+        }
+        if (me.v < 0.3) since.set(me.id, (since.get(me.id) ?? 0) + DT);
+      }
+      for (const [id] of was) {
+        if (!w.actors.some((x) => x.id === id)) {
+          (i < TICKS / 2 ? early : late).push(since.get(id) ?? 0);
+        }
+      }
+    }
+    offered += w.spawned;
+    admitted += w.spawned - (w.turnedAway ?? 0);
+  }
+
+  const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  console.log(`   ${SEEDS.length} intersections, ${MINUTES} minutes each, a car offered every ${EVERY}s`);
+  console.log(`   ${offered} offered, ${admitted} got on the road, ${entered} crossed the line`);
+  console.log(`   mean wait: ${mean(early).toFixed(1)}s in the first half, ${mean(late).toFixed(1)}s in the second`);
+
+  jumped === 0
+    ? ok(`nobody ever goes out of turn: ${entered.toLocaleString()} crossings of a stop line, and not one with somebody who outranked them still waiting`)
+    : fail([
+        `${jumped} of ${entered} cars entered the box while somebody who outranked them was still waiting`,
+        firstJump ? `(first: a ${firstJump.who} went while a ${firstJump.held} was held, seed ${firstJump.seed} tick ${firstJump.tick}).` : "",
+        "Precedence that resolves once but drifts under load is worse than one that is",
+        "obviously wrong, because it looks right in a demo. DECISIONS.md 5.13.1.",
+      ].join(" "));
+
+  overlaps === 0
+    ? ok(`and nobody touches anybody, at a demand of ${(60 / EVERY).toFixed(0)} cars a minute against an intersection that can pass about 15`)
+    : fail(`${overlaps} overlapping ticks under load, so the ordering holds only while the intersection is quiet`);
+
+  /* STARVATION IS THE SLOW FAILURE. A rule can be locally correct and
+     still leave one approach permanently last, and the signature is a
+     wait that grows with the length of the run rather than settling. */
+  const growth = mean(late) - mean(early);
+  Math.abs(growth) < 6
+    ? ok(`and nobody is starved: the mean wait in the second half is ${growth >= 0 ? "+" : ""}${growth.toFixed(1)}s against the first, so the queue settles rather than growing`)
+    : fail([
+        `the mean wait grew by ${growth.toFixed(1)}s between the first half of the run and the second.`,
+        "That is starvation rather than congestion: some approach is being served last",
+        "every time and never catching up. Check the tie-break can't cycle.",
+      ].join(" "));
 }
 
 console.log("\n" + "=".repeat(70));

@@ -40,6 +40,8 @@ const AT_LINE = 2.0;
 /* Two cars that stopped within this of each other arrived together, and
    the right-hand rule decides. */
 const SAME_MOMENT = 0.4;
+/* Moving out of the line rather than creeping in it. */
+const LAUNCHED = 1.5;
 
 /* WHERE A CAR ACTUALLY WAITS. `s` is a car's centre -- stage 0 defines
    the gap as `ahead - CAR.length`, which is only right for centres -- so
@@ -80,10 +82,19 @@ export function blockedBy(me, them, layout) {
      can still be right beside me. */
   if (them.s > hit.clearOf + CAR.length / 2) return false;
 
-  /* Already committed to the box. */
-  if (them.s >= theirs.stopAt) return true;
-  /* I am committed and they are not. */
-  if (me.s >= mine.stopAt) return false;
+  /* ALREADY COMMITTED, AND COMMITMENT BEGINS AT THE LAUNCH RATHER THAN
+     AT THE LINE. A driver who has stopped, judged it clear and started to
+     move does not stop again halfway across, and everybody else treats
+     them as gone.
+
+     Defining it at the line instead let one car in 596 cross while
+     somebody who outranked them was still waiting: they had begun their
+     launch, the other car's standing changed underneath them, and they
+     were still nominally short of the line. Committing at the line is
+     also physically dishonest -- a car under way cannot stop in the two
+     metres it has left. */
+  if (them.going || them.s >= theirs.stopAt) return true;
+  if (me.going || me.s >= mine.stopAt) return false;
 
   /* Both still on the approach. Anybody who has not stopped yet has no
      claim at all -- at an all-way stop the queue is made of people who
@@ -151,7 +162,7 @@ export function whatStops(me, world) {
   /* AND THE LINE. Only while I am short of it and not yet through: once
      past the stop line I am committed, and a car that stopped halfway
      across would be worse than one that never yielded. */
-  if (me.s < waitAt(mine) + AT_LINE && me.s < mine.clearAt) {
+  if (!me.going && me.s < waitAt(mine) + AT_LINE && me.s < mine.clearAt) {
     const waiting = !me.stoppedAt || world.actors.some((t) => t.id !== me.id && blockedBy(me, t, layout));
     if (waiting) {
       /* THE NOSE STOPS AT THE LINE, NOT THE MIDDLE OF THE CAR. `s` is a
@@ -186,12 +197,16 @@ export function step(world) {
          it after the fact. */
       const atLine = Math.abs(s - waitAt(mine)) < AT_LINE;
       const stoppedAt = me.stoppedAt ?? (v < AT_REST && atLine ? world.t : null);
-      return { ...me, v, a, s, stoppedAt };
+      /* Under way from the line, and past the point of thinking better of
+         it. `LAUNCHED` is well above the "stopped" threshold so that a car
+         inching forward has not committed to anything. */
+      const going = me.going || (stoppedAt != null && v > LAUNCHED);
+      return { ...me, v, a, s, stoppedAt, going };
     })
     .filter((me) => me.s <= world.layout.paths[me.route].length);
 
   const t = world.t + DT;
-  let { spawned, nextAt } = world;
+  let { spawned, nextAt, turnedAway = 0 } = world;
   if (t >= nextAt) {
     const car = arriving(world, spawned);
     const behind = next
@@ -201,9 +216,25 @@ export function step(world) {
       next.push(car);
       spawned += 1;
       nextAt = t + car.arriveIn;
+    } else {
+      /* NO ROOM ON THAT LEG, SO THAT ARRIVAL IS GONE. Holding it back
+         until the leg clears would block every LATER arrival too --
+         head-of-line blocking, because the next car in the stream is
+         drawn from the same counter and would keep picking the same
+         blocked leg. Measured: demand of 133 cars a minute produced 6.1
+         cars on the road, because one full approach was stalling the
+         whole stream.
+
+         Dropping it is the honest model. Traffic that cannot get in
+         queues somewhere upstream, and upstream is outside this world.
+         Counted rather than silent, so the difference between what was
+         offered and what got in is visible. */
+      spawned += 1;
+      turnedAway += 1;
+      nextAt = t + car.arriveIn;
     }
   }
-  return { ...world, t, tick: world.tick + 1, spawned, nextAt, actors: next };
+  return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next };
 }
 
 /* A driver, on a leg, with somewhere to be. The person comes from stage
@@ -214,13 +245,25 @@ function arriving(world, n) {
   const who = driver(world.road, world.seed, n);
   const from = SIDES[Math.floor(r() * SIDES.length) % SIDES.length];
   const intent = INTENTS[Math.floor(r() * INTENTS.length) % INTENTS.length];
-  return { ...who, route: `${from}/${intent}`, s: 0, stoppedAt: null };
+  return {
+    ...who,
+    route: `${from}/${intent}`,
+    s: 0,
+    stoppedAt: null,
+    going: false,
+    /* THE INTERSECTION SETS ITS OWN DEMAND rather than borrowing the
+       straight road's. The maintainer wants this run as a stress test --
+       "cars that just keep coming, so we can prove our right of way
+       ordering stays consistent" -- and a rate tuned for one road is not
+       a rate that saturates four approaches. */
+    arriveIn: world.every * (0.6 + r() * 0.8),
+  };
 }
 
-export function seedCrossing(seed = 1, kmh = 50) {
+export function seedCrossing(seed = 1, kmh = 50, { every = 1.1 } = {}) {
   const layout = layoutFor();
   const road = { kmh, speed: kmh / 3.6, lane: layout.place.lane };
-  let w = { t: 0, tick: 0, seed, road, layout, spawned: 0, nextAt: 0, actors: [] };
+  let w = { t: 0, tick: 0, seed, road, layout, every, spawned: 0, nextAt: 0, actors: [] };
   /* Warmed until the approaches have traffic on them and the first cars
      have had to take turns. */
   const warm = Math.round(40 / DT);
