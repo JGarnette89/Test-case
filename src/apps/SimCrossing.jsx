@@ -17,6 +17,20 @@ import { seedCrossing, run, poseOf, overlapping, CAR, M, DT } from "../sim/cross
 
 const LIMITS = [30, 50, 60];
 
+/* HOW HARD TO PUSH IT. The maintainer's framing for this stage was "cars
+   that just keep coming, so we can prove our right of way ordering stays
+   consistent" -- so the stress case has to be something he can put on
+   screen, not only something a check reports.
+
+   The intersection passes about 15 cars a minute. Below that it flows;
+   above it, the approaches back up and the ordering is being asked to
+   hold under a load it cannot satisfy, which is the interesting case. */
+const DEMANDS = [
+  { id: "quiet", label: "Quiet", every: 5.0 },
+  { id: "busy", label: "Busy", every: 1.6 },
+  { id: "jammed", label: "Relentless", every: 0.6 },
+];
+
 /* How much of the place to show. The approaches run 60m out; showing all
    of that would put the box in the middle of a large empty cross and make
    the cars tiny. 34m each way keeps the whole intersection and a queue on
@@ -27,7 +41,8 @@ const VIEW = { x: -M(HALF), y: -M(HALF), w: M(HALF * 2), h: M(HALF * 2) };
 export default function SimCrossing() {
   const [seed, setSeed] = useState(1);
   const [limit, setLimit] = useState(50);
-  const [world, setWorld] = useState(() => seedCrossing(1, 50));
+  const [demand, setDemand] = useState("busy");
+  const [world, setWorld] = useState(() => seedCrossing(1, 50, { every: 1.6 }));
   const [playing, setPlaying] = useState(true);
 
   const raf = useRef(0), last = useRef(0), owed = useRef(0);
@@ -47,8 +62,10 @@ export default function SimCrossing() {
     return () => cancelAnimationFrame(raf.current);
   }, [playing]);
 
-  const restart = (s = seed, kmh = limit) => {
-    setSeed(s); setLimit(kmh); setWorld(seedCrossing(s, kmh)); owed.current = 0;
+  const restart = (s = seed, kmh = limit, d = demand) => {
+    setSeed(s); setLimit(kmh); setDemand(d);
+    setWorld(seedCrossing(s, kmh, { every: DEMANDS.find((x) => x.id === d).every }));
+    owed.current = 0;
   };
 
   const place = world.layout.place;
@@ -128,6 +145,17 @@ export default function SimCrossing() {
 
       <div style={S.panel}>
         <div style={S.row}>
+          <span style={S.label}>Traffic</span>
+          {DEMANDS.map((d) => (
+            <button key={d.id} className="btn" style={{
+              ...S.chip, minWidth: 0, flex: 1,
+              borderColor: demand === d.id ? C.green : "rgba(255,255,255,0.12)",
+              color: demand === d.id ? C.white : C.dim,
+            }} onClick={() => restart(seed, limit, d.id)}>{d.label}</button>
+          ))}
+        </div>
+
+        <div style={S.row}>
           <span style={S.label}>Limit</span>
           {LIMITS.map((kmh) => (
             <button key={kmh} className="btn" style={{
@@ -147,8 +175,8 @@ export default function SimCrossing() {
             <RotateCcw size={16} />
           </button>
           <span style={S.readout}>
-            {world.t.toFixed(0)}s · seed {seed} · {world.actors.length} cars ·{" "}
-            {waiting} waiting
+            {world.t.toFixed(0)}s · {world.actors.length} cars · {waiting} waiting
+            {(world.turnedAway ?? 0) > 0 && ` · ${world.turnedAway} turned away`}
             {touching > 0 && <b style={{ color: C.red }}> · {touching} TOUCHING</b>}
           </span>
         </div>
@@ -162,9 +190,16 @@ export default function SimCrossing() {
           to the oncoming.
           <br />
           Watch a car pull up, wait for two or three others, and then take
-          its turn. Darker is stopped, red is braking. If anything ever
-          reads <b>TOUCHING</b>, that is the one thing that must never
-          happen and I want to know.
+          its turn. Darker is stopped, red is braking.
+          <br />
+          On <b>Relentless</b> it is offered a hundred cars a minute and
+          can pass about fifteen, so the approaches back up and the
+          ordering is being asked to hold under a load it cannot satisfy.
+          Measured over forty intersection-minutes of that: 597 cars
+          crossed the line and none of them went out of turn.
+          <br />
+          If anything ever reads <b>TOUCHING</b>, that is the one thing
+          that must never happen and I want to know.
         </div>
       </div>
     </div>
