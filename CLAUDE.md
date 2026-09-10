@@ -1238,6 +1238,25 @@ three-layer reframing, the five axes and R2's build order:
      Probably "signs are occluded by walls, hedges and buildings but not
      by vehicles" — cheap, and physically right. A domain call.
 
+- **THE ROAD BETWEEN INTERSECTIONS IS ASSESSABLE TERRITORY, NOT
+  TRANSIT**, and this contradicts an assumption the whole design has
+  carried. Scenarios are intersections, `route.js` sequences
+  intersections, pacing counts intersections, and a link has always been
+  the distance between two of them.
+
+  The rebuild put all five axes into a live decision model and then asked
+  where each can be READ. **Three of the five express on the APPROACH and
+  only confidence needs the box** -- steering (lane-keeping needs motion,
+  and a queue at a stop line has none), braking (the whole of it is how
+  late they leave it), and pace. Gap acceptance is the one thing the
+  intersection is uniquely for. Measured at an all-way stop, where nobody
+  judges a gap, a hesitant driver is indistinguishable from a sound one
+  while ragged, heavy-footed and unschooled all still read as themselves.
+
+  So link length is a content decision rather than spacing, a course
+  needs more than one KIND of place or confidence is mute, and the camera
+  has to work on the link as well as at the box. DECISIONS.md 5.14.8.
+
 - **THE EXAMINER GAME IS THE ONLY PRIORITY.** Maintainer's ruling,
   verbatim: *"from now on the examiner game is the only priority, other
   game modes don't need to be accessible at all."* The driver game is no
@@ -1343,6 +1362,16 @@ https://claude.ai/code/artifact/2c436e9e-ddc3-4f18-a192-d42734d9127b
 
 ## Architecture
 
+**`src/sim/` IS THE REPLACEMENT FOUNDATION AND IT LIVES ALONGSIDE, NOT
+INSTEAD.** Read REBUILD.md first. It is a stepped 20 Hz simulation where
+every actor decides from the previous committed state, which is the one
+thing `src/engine/` structurally cannot do -- `poseAt(p, t)` is pure and
+resolves every participant's motion before the drive begins, so nobody
+ever reads anybody while moving. Stages 0-2 are built and watchable at
+`#/sim`, `#/crossing` and `#/candidates`. It imports from `src/engine/`
+where a thing was already solved (path shapes, the ratings model, the
+scoring floors) and never the other way round.
+
 **The engine is pure and the renderer is disposable.** `src/engine/` has no
 React, no SVG, no DOM and no colours in it. A renderer needs two calls:
 `simulate(scenario) -> { ego, actors, legalAt, priors }`, then
@@ -1380,6 +1409,10 @@ src/engine/traits.js     PLAYER car upgrades and consumables — not the driver 
 src/engine/roguelike.js  a run: stages, bosses, the branch, the Checkride, Insight
 src/engine/stages.js     the roguelike's stages and its roundabout graph, as data
 src/engine/bosses.js     hand-authored boss situations, as data
+src/sim/traffic.js       THE REBUILD, stage 0: a stepped world, and cars that follow each other
+src/sim/intersection.js  stage 1: paths through an intersection, and where two of them would meet
+src/sim/crossing.js      stage 1: who gives way, gap acceptance, and undue delay
+src/sim/candidate.js     stage 2: a named driver as five ratings, and the course they drive
 src/theme.js             palette and type — the engine must never import this
 src/environments.js      city, suburban, rural scenery — renderer side only
 src/frame.js             the camera: frameFor and cameraFor — no React
@@ -1735,11 +1768,12 @@ node tools/verify-reaction.mjs     the world gives way, and never decides whethe
 node tools/verify-screens.mjs      every reachable screen actually mounts and draws
 node tools/verify-sim.mjs          stage 0 of the rebuild: nobody drives through anybody
 node tools/verify-crossing.mjs     stage 1: paths through an intersection, who gives way, and what waiting too long costs
+node tools/verify-telling.mjs      stage 2: one driver model, and each weak axis showing as itself
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All twenty-nine must exit 0. Fourteen things they check are worth understanding:
+All thirty must exit 0. Fourteen things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take

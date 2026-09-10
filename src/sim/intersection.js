@@ -19,7 +19,7 @@
    METRES AND SECONDS, like the rest of the sim.
    ===================================================================== */
 import { turnPoints } from "../engine/paths.js";
-import { CAR } from "./traffic.js";
+import { CAR, weaveRoom } from "./traffic.js";
 
 export const SIDES = ["N", "E", "S", "W"];
 export const INTENTS = ["straight", "right", "left"];
@@ -197,7 +197,38 @@ export function poseAt(path, s) {
    Computed once per intersection: twelve paths, so 66 pairs, each a
    sampled scan. Done at setup and never again.
    ===================================================================== */
-export function conflictsBetween(a, b, clearance = 3.0) {
+/* THE FOUR CORNERS OF A CAR at a pose, optionally grown by `pad` on
+   every side. One definition, used both to ask whether two cars are
+   touching and to ask whether two PATHS could ever put them there. */
+export function cornersOf(p, pad = 0) {
+  const a = (p.rot * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+  const hl = CAR.length / 2 + pad, hw = CAR.width / 2 + pad;
+  return [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([u, v]) => ({
+    x: p.x + c * hl * u - sn * hw * v,
+    y: p.y + sn * hl * u + c * hw * v,
+  }));
+}
+
+/* The separating-axis theorem on two rectangles. A DISTANCE THRESHOLD
+   CANNOT ANSWER THIS and the first version of both callers used one,
+   wrongly in both directions: two cars side by side in opposite lanes
+   are 3.6m apart and perfectly fine, while two nose to tail at 4.0m are
+   inside each other. No single number separates those. */
+export function boxesOverlap(A, B) {
+  for (const [P, Q] of [[A, B], [B, A]]) {
+    for (let i = 0; i < 4; i++) {
+      const ax = P[(i + 1) % 4].x - P[i].x, ay = P[(i + 1) % 4].y - P[i].y;
+      const nx = -ay, ny = ax;
+      let pMin = Infinity, pMax = -Infinity, qMin = Infinity, qMax = -Infinity;
+      for (const v of P) { const d = v.x * nx + v.y * ny; pMin = Math.min(pMin, d); pMax = Math.max(pMax, d); }
+      for (const v of Q) { const d = v.x * nx + v.y * ny; qMin = Math.min(qMin, d); qMax = Math.max(qMax, d); }
+      if (pMax < qMin || qMax < pMin) return false;   // a gap on this axis
+    }
+  }
+  return true;
+}
+
+export function conflictsBetween(a, b, pad = 0) {
   /* Walk both polylines finely and record the whole REGION where they
      interact, not just the first point of it.
 
@@ -210,8 +241,23 @@ export function conflictsBetween(a, b, clearance = 3.0) {
      beside each other with the meeting point passed.
 
      `at`/`by` is where I must wait; `clearOf` is how far along THEIR path
-     they have to be before I may go. The clearance is a car's width plus
-     a margin, because two cars a hair apart have not really passed. */
+     they have to be before I may go.
+
+     TWO PATHS INTERACT WHERE TWO CARS ON THEM WOULD, which is a
+     FOOTPRINT question and not a distance one. It was a distance --
+     centres within 3.0m -- and that was wrong in a way only the steering
+     axis could expose: a driver who does not hold a steady line is not
+     on their own centreline, so two paths measured 3.2m apart at their
+     closest put two cars 2.6m apart and inside each other, in a pair the
+     conflict table said never meet.
+
+     Widening the distance was not available: two straights from opposite
+     legs run 3.6m apart for their whole length and MUST NOT conflict
+     (DECISIONS.md 5.3), so any threshold big enough to cover the weave
+     would have broken the rule that costs the most to lose. A footprint
+     grown by the weave is exact instead of approximate -- two cars in
+     adjacent lanes still have 0.9m of air between them at full stray,
+     because the amplitude is half the room by construction. */
   /* THE CONFLICT REGION IS INSIDE THE INTERSECTION. BEYOND IT, TWO CARS
      IN ONE LANE ARE A QUEUE.
 
@@ -230,6 +276,10 @@ export function conflictsBetween(a, b, clearance = 3.0) {
      it takes over at exactly this boundary, so bounding here removes a
      duplicate answer rather than dropping a case. */
   const step = 0.4;
+  /* Cheap reject first: two cars whose CENTRES are further apart than
+     their own diagonals cannot be touching however they are turned, so
+     the footprint test never has to run for most of the scan. */
+  const far = Math.hypot(CAR.length, CAR.width) + 2 * pad;
   const opens = (p) => Math.max(0, p.stopAt - 2 * CAR.length);
   const shuts = (p) => Math.min(p.length, p.clearAt + CAR.length);
   const [a0, a1] = [opens(a), shuts(a)];
@@ -239,7 +289,8 @@ export function conflictsBetween(a, b, clearance = 3.0) {
     const pa = poseAt(a, sa);
     for (let sb = b0; sb <= b1; sb += step) {
       const pb = poseAt(b, sb);
-      if (Math.hypot(pa.x - pb.x, pa.y - pb.y) >= clearance) continue;
+      if (Math.hypot(pa.x - pb.x, pa.y - pb.y) >= far) continue;
+      if (!boxesOverlap(cornersOf(pa, pad), cornersOf(pb, pad))) continue;
       if (first === null || sa < first.a) first = { a: sa, b: sb };
       if (sb > lastB) lastB = sb;
     }
@@ -264,7 +315,7 @@ export function layoutFor(opts = {}) {
          handles that and handling it twice would be two answers to one
          question. */
       if (paths[ka].from === paths[kb].from) continue;
-      const hit = conflictsBetween(paths[ka], paths[kb]);
+      const hit = conflictsBetween(paths[ka], paths[kb], weaveRoom(place.lane));
       if (hit) conflicts[`${ka}|${kb}`] = hit;
     }
   }

@@ -25,9 +25,13 @@
    driver, every tick, from what they can see, rather than an omniscient
    scheduler once before anybody moves.
    ===================================================================== */
-import { decide, wantedGap, driver, timeToCover, CAR, DT, PX_PER_M, M } from "./traffic.js";
 import {
-  layoutFor, poseAt, rightOf, OPPOSITE, SIDES, INTENTS, ALL_WAY, TWO_WAY,
+  decide, wantedGap, driver, timeToCover, weaveAt, wantedSpeed, stoppingRoom,
+  CAR, DT, PX_PER_M, M,
+} from "./traffic.js";
+import {
+  layoutFor, intersectionFor, poseAt, rightOf, OPPOSITE, SIDES, INTENTS,
+  ALL_WAY, TWO_WAY, cornersOf, boxesOverlap,
 } from "./intersection.js";
 import { rng } from "../engine/index.js";
 import { REACTION_FLOOR } from "../engine/score.js";
@@ -470,11 +474,9 @@ export function step(world) {
   let { spawned, nextAt, turnedAway = 0 } = world;
   if (t >= nextAt) {
     const car = arriving(world, spawned);
-    const behind = next
-      .filter((a) => world.layout.paths[a.route].from === world.layout.paths[car.route].from)
-      .reduce((lo, a) => (a.s < lo.s ? a : lo), { s: Infinity, v: Infinity });
-    if (behind.s - CAR.length > wantedGap(car, behind)) {
-      next.push(car);
+    const joining = joinAt(next, world.layout, car);
+    if (joining) {
+      next.push(joining);
       spawned += 1;
       nextAt = t + car.arriveIn;
     } else {
@@ -496,6 +498,42 @@ export function step(world) {
     }
   }
   return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next };
+}
+
+/* JOINING THE ROAD, AT THE SPEED THE ROAD IS DOING.
+
+   A driver arriving behind a queue does not arrive at the speed they
+   FEEL like, they arrive at the speed there is room for -- which is
+   ordinary merging, and it is what the first version of this was
+   missing. It asked only whether the arriving car fitted AT ITS OWN
+   PREFERRED SPEED and dropped it otherwise, so the faster a driver
+   wanted to go the less often they could get on at all: a bold candidate
+   completed 3 trips in fifteen minutes where a timid one completed 13,
+   which reads as a fact about the driver and is a fact about the
+   entrance. Their pace was being decided by the queue rather than by
+   them.
+
+   Bisected rather than stepped because `wantedGap` rises with speed
+   smoothly, so the fastest speed that fits is exactly findable and there
+   is no reason to guess at it. Returns null only when even a standing
+   start will not fit, which is a genuinely full approach.
+
+   Exported because a candidate joins the way anybody else does; they are
+   not a special kind of traffic. */
+export function joinAt(actors, layout, car) {
+  const behind = actors
+    .filter((a) => layout.paths[a.route].from === layout.paths[car.route].from)
+    .reduce((lo, a) => (a.s < lo.s ? a : lo), { s: Infinity, v: Infinity });
+  const room = behind.s - CAR.length;
+  const fits = (v) => room > wantedGap({ ...car, v }, behind);
+  if (fits(car.v)) return car;
+  if (!fits(0)) return null;
+  let lo = 0, hi = car.v;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) lo = mid; else hi = mid;
+  }
+  return { ...car, v: lo };
 }
 
 /* WHICH LEG THEY ARRIVE ON. A THROUGH ROAD CARRIES MORE TRAFFIC THAN
@@ -562,19 +600,32 @@ function arriving(world, n) {
    driver to be able to see, and is why sight lines at one are a real
    engineering concern rather than a detail.
 
-   Where nothing stops, nobody accepts a gap and the whole term is inert,
-   so an all-way stop keeps the 60m approach it has always had. */
+   AND IT HAS TO BE LONG ENOUGH TO STOP ON, which is the other half and
+   applies wherever anybody stops at all. It was missing, and the tell
+   was DECISIONS.md 10.0's exactly: five car-ticks in a hundred and fifty
+   thousand sat at EXACTLY the maximum braking the model allows -- not
+   near it, on it. Every one was a fast driver arriving 52m from a line
+   they needed 87m to stop at comfortably, so they were spawned inside
+   their own stopping distance and the clamp was the only thing standing
+   between the model and a car that could not stop. A 60m approach was
+   never long enough for a 60 km/h road.
+
+   Where nothing stops, nobody accepts a gap and the gap term is inert. */
 const REACH_MIN = 60;
 function reachFor(control, speed) {
+  const line = intersectionFor().lineAt;
+  /* The fastest driver this road produces, stopping comfortably. */
+  const room = line + stoppingRoom(wantedSpeed(speed, 0));
+
   const waits = SIDES.filter((side) => control[side] === "stop");
   const runs = SIDES.filter((side) => control[side] !== "stop");
-  if (!waits.length || !runs.length) return REACH_MIN;
+  if (!waits.length || !runs.length) return Math.max(REACH_MIN, Math.ceil(room));
 
   /* A provisional layout, only to measure the crossing itself. How far a
      driver has to travel to be clear is local to the box, so it does not
      depend on the approach length being solved for. */
   const draft = layoutFor({ control, reach: REACH_MIN });
-  const slowest = { v: 0, v0: speed * 0.65, caution: MOST_CAUTION };   // driver.js: 1.35 - 0.35 * caution
+  const slowest = { v: 0, v0: wantedSpeed(speed, MOST_CAUTION), caution: MOST_CAUTION };
   let worst = 0;
   for (const from of waits) {
     for (const intent of INTENTS) {
@@ -589,7 +640,7 @@ function reachFor(control, speed) {
       }
     }
   }
-  return Math.max(REACH_MIN, Math.ceil(worst * speed * 1.35));
+  return Math.max(REACH_MIN, Math.ceil(room), Math.ceil(worst * wantedSpeed(speed, 0)));
 }
 
 export function seedCrossing(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY } = {}) {
@@ -624,54 +675,40 @@ export function run(world, ticks) {
   return w;
 }
 
-/* Where a car is, for something that draws. */
+/* Where a car is -- for something that draws, and for the check that
+   nobody is inside anybody. ONE POSE, both jobs: a driver who does not
+   hold a steady line has to really not hold it, or the weave is a
+   drawing rather than a fault, and the overlap test would be measuring a
+   car that is not where the screen says it is (DECISIONS.md 0). */
 export function poseOf(world, actor) {
-  return poseAt(world.layout.paths[actor.route], actor.s);
+  const p = poseAt(world.layout.paths[actor.route], actor.s);
+  const off = weaveAt(actor, actor.s);
+  if (!off) return p;
+  const a = (p.rot * Math.PI) / 180;
+  return { ...p, x: p.x - Math.sin(a) * off, y: p.y + Math.cos(a) * off };
 }
 
 /* THE ONE PROPERTY, same as stage 0 and for the same reason: nobody may
    occupy the same piece of road as anybody else. At an intersection that
    is a real test rather than a formality, because two paths crossing is
    exactly where it could happen. */
-/* Do two cars share any tarmac? A DISTANCE THRESHOLD CANNOT ANSWER THIS
-   and the first version of this check used one, which was wrong in both
-   directions: two cars side by side in opposite lanes are 3.6m apart and
-   perfectly fine, while two nose to tail at 4.0m are inside each other.
-   No single number separates those, so this is a real footprint test --
-   the separating-axis theorem on two 4.5 x 1.8m rectangles.
+/* Do two cars share any tarmac? `cornersOf` and `boxesOverlap` come from
+   the geometry rather than being written again here: the question "are
+   these two inside each other" is the same one `conflictsBetween` asks of
+   two paths, and two implementations of it is the bug this project keeps
+   finding.
 
    A check that reports overlaps where there are none is worse than no
    check, because it trains you to ignore it. */
-function corners(p) {
-  const a = (p.rot * Math.PI) / 180, c = Math.cos(a), s2 = Math.sin(a);
-  const hl = CAR.length / 2, hw = CAR.width / 2;
-  return [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([u, v]) => ({
-    x: p.x + c * hl * u - s2 * hw * v,
-    y: p.y + s2 * hl * u + c * hw * v,
-  }));
-}
-
-function boxesOverlap(pa, pb) {
-  const A = corners(pa), B = corners(pb);
-  for (const [P, Q] of [[A, B], [B, A]]) {
-    for (let i = 0; i < 4; i++) {
-      const ax = P[(i + 1) % 4].x - P[i].x, ay = P[(i + 1) % 4].y - P[i].y;
-      const nx = -ay, ny = ax;
-      let pMin = Infinity, pMax = -Infinity, qMin = Infinity, qMax = -Infinity;
-      for (const v of P) { const d = v.x * nx + v.y * ny; pMin = Math.min(pMin, d); pMax = Math.max(pMax, d); }
-      for (const v of Q) { const d = v.x * nx + v.y * ny; qMin = Math.min(qMin, d); qMax = Math.max(qMax, d); }
-      if (pMax < qMin || qMax < pMin) return false;   // a gap on this axis
-    }
-  }
-  return true;
-}
-
 export function overlapping(world) {
   const out = [];
-  const at = world.actors.map((a) => ({ a, p: poseOf(world, a) }));
+  const at = world.actors.map((a) => {
+    const p = poseOf(world, a);
+    return { a, p, box: cornersOf(p) };
+  });
   for (let i = 0; i < at.length; i++) {
     for (let j = i + 1; j < at.length; j++) {
-      if (boxesOverlap(at[i].p, at[j].p)) {
+      if (boxesOverlap(at[i].box, at[j].box)) {
         out.push({
           a: at[i].a.id, b: at[j].a.id,
           apart: Math.hypot(at[i].p.x - at[j].p.x, at[i].p.y - at[j].p.y),

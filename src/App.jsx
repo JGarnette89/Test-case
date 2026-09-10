@@ -20,6 +20,7 @@ import MergeRush from "./apps/MergeRush.jsx";
    it. */
 import SimRoad from "./apps/SimRoad.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
+import SimCandidates from "./apps/SimCandidates.jsx";
 import { ROUTES } from "./engine/routes.js";
 import { SCENARIOS } from "./engine/scenarios.js";
 import {
@@ -87,6 +88,16 @@ const MODES = [
     Icon: Milestone,
     accent: C.green,
     Component: SimCrossing,
+  },
+  {
+    id: "candidates",
+    name: "Stage 2 — telling them apart",
+    kicker: "The rebuild — two drivers, one course",
+    blurb:
+      "Two candidates, the same seeded traffic, the same legs in the same order. One of them is a different person, and the whole question of this stage is whether you can say which by watching rather than by reading a label. Each is drawn from the same five ratings the traffic around them is drawn from — there is no separate candidate model — so a weak axis shows as behaviour: gaps refused, gaps taken, a line not held, braking left late, a stop sign treated as a suggestion.",
+    Icon: Milestone,
+    accent: C.blue,
+    Component: SimCandidates,
   },
   {
     id: "drive",

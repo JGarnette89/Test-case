@@ -134,14 +134,28 @@ console.log("\n4. A CONFLICT IS SOMEWHERE, NOT JUST SOMETHING");
     ? ok(`every conflict says how far along each path it is (N and W meet ${hit.a.toFixed(1)}m along one and ${hit.b.toFixed(1)}m along the other)`)
     : fail(`${bad.length} conflicts have no usable position, so a car could not know where to wait`);
 
-  /* AND THE CONFLICT IS AT OR BEYOND THE STOP LINE. A car yields by
-     waiting at its line; a conflict reported behind the line would mean
-     yielding somewhere it has already been. */
-  const early = Object.entries(L.conflicts)
-    .filter(([k, c]) => c.a < L.paths[k.split("|")[0]].stopAt - 0.01);
-  early.length === 0
-    ? ok("and never behind the stop line, so waiting at the line is always enough")
-    : fail(`${early.length} conflicts sit behind the stop line of the path they belong to`);
+  /* AND A CAR WAITING AT THE LINE IS CLEAR OF EVERY CONFLICT REGION,
+     which is the property that actually matters: a car yields by
+     waiting, and a region reaching back over the place it waits would
+     mean yielding somewhere it is already standing.
+
+     MEASURED AT THE WAIT POINT, NOT AT THE STOP LINE, and the difference
+     is the recurring bug in miniature. `stopAt` is where a car's NOSE
+     rests; the car itself sits `CAR.length / 2` short of it, which is
+     the same 2.25m that once put a waiting bonnet inside the box. The
+     line stood in as a proxy for the wait point and was right only while
+     a conflict region was a centreline measurement -- the moment it
+     became a footprint region, twelve regions correctly reached 0.20m
+     back over the line, because an oncoming left turner really does
+     sweep that far toward it, and the check read a truer model as a
+     regression. */
+  const wait = (path) => path.stopAt - CAR.length / 2;
+  const room = Object.entries(L.conflicts)
+    .map(([k, c]) => c.a - wait(L.paths[k.split("|")[0]]));
+  const tightest = Math.min(...room);
+  tightest > 0
+    ? ok(`and never back over the place a car waits, by ${tightest.toFixed(2)}m at the tightest — so waiting at the line is always enough`)
+    : fail(`${room.filter((x) => x <= 0).length} conflict regions reach back over the point a car waits at, so a driver would be yielding from inside one`);
 }
 
 
@@ -258,6 +272,10 @@ console.log("\n6. UNDER A STREAM THAT NEVER LETS UP, THE ORDERING STAYS RIGHT");
   let entered = 0, jumped = 0, overlaps = 0, offered = 0, admitted = 0;
   let firstJump = null;
   const early = [], late = [];
+  /* Served per approach, and how full the road gets, which is what
+     separates starvation from an intersection simply being full. */
+  const served = { N: 0, E: 0, S: 0, W: 0 };
+  const onRoad = [];
 
   for (const seed of SEEDS) {
     let w = seedCrossing(seed, 50, { every: EVERY });
@@ -279,6 +297,7 @@ console.log("\n6. UNDER A STREAM THAT NEVER LETS UP, THE ORDERING STAYS RIGHT");
            as committed, and asking then would be asking after the fact. */
         if (before.s < mine.stopAt && me.s >= mine.stopAt) {
           entered++;
+          served[mine.from] += 1;
           const held = prev.actors.find((t) => t.id !== me.id && blockedBy(before, t, prev.layout));
           if (held) {
             jumped++;
@@ -294,6 +313,7 @@ console.log("\n6. UNDER A STREAM THAT NEVER LETS UP, THE ORDERING STAYS RIGHT");
           (i < TICKS / 2 ? early : late).push(since.get(id) ?? 0);
         }
       }
+      if (i % 200 === 0) onRoad.push(w.actors.length);
     }
     offered += w.spawned;
     admitted += w.spawned - (w.turnedAway ?? 0);
@@ -317,17 +337,46 @@ console.log("\n6. UNDER A STREAM THAT NEVER LETS UP, THE ORDERING STAYS RIGHT");
     ? ok(`and nobody touches anybody, at a demand of ${(60 / EVERY).toFixed(0)} cars a minute against an intersection that can pass about 15`)
     : fail(`${overlaps} overlapping ticks under load, so the ordering holds only while the intersection is quiet`);
 
-  /* STARVATION IS THE SLOW FAILURE. A rule can be locally correct and
-     still leave one approach permanently last, and the signature is a
-     wait that grows with the length of the run rather than settling. */
+  /* STARVATION IS THE SLOW FAILURE, and it is a FAIRNESS question rather
+     than a queue-length one.
+
+     THIS CHECK USED TO ASK WHETHER THE MEAN WAIT SETTLED, and that was a
+     proxy that stopped being valid the moment arrivals stopped being
+     thrown away at the entrance. While excess demand evaporated there,
+     a growing wait could only mean an approach was never being served.
+     Now a driver who cannot get on at their own speed slows down and
+     joins anyway (`joinAt`), so at a hundred cars a minute against a
+     capacity of twenty the queue fills the approach -- and a wait that
+     grows toward that is the intersection being FULL, which is what
+     oversaturation looks like and is not a bug.
+
+     So ask the thing the section is actually about: is any one approach
+     being served materially less than the others? A tie-break that could
+     cycle would leave somebody permanently last, and that shows as a
+     share rather than as a duration. Kept alongside is the bound that
+     makes the queue honest -- the road holds what it holds, so the
+     number of cars on it has to level off rather than climb forever. */
+  const shares = SIDES.map((side) => served[side] / Math.max(1, entered));
+  const worst = Math.min(...shares), best = Math.max(...shares);
   const growth = mean(late) - mean(early);
-  Math.abs(growth) < 6
-    ? ok(`and nobody is starved: the mean wait in the second half is ${growth >= 0 ? "+" : ""}${growth.toFixed(1)}s against the first, so the queue settles rather than growing`)
+  console.log(`   served per approach: ${SIDES.map((x) => `${x} ${(served[x] / Math.max(1, entered) * 100).toFixed(0)}%`).join(", ")}`);
+
+  worst > 0.15
+    ? ok(`and nobody is starved: the quietest approach still takes ${(worst * 100).toFixed(0)}% of the crossings against the busiest's ${(best * 100).toFixed(0)}%, so no leg is permanently last`)
     : fail([
-        `the mean wait grew by ${growth.toFixed(1)}s between the first half of the run and the second.`,
+        `one approach took only ${(worst * 100).toFixed(0)}% of the crossings against ${(best * 100).toFixed(0)}% for the busiest.`,
         "That is starvation rather than congestion: some approach is being served last",
         "every time and never catching up. Check the tie-break can't cycle.",
       ].join(" "));
+
+  /* And the queue is bounded by the road rather than by nothing. */
+  const settled = onRoad.slice(Math.floor(onRoad.length / 2));
+  const climb = settled[settled.length - 1] - settled[0];
+  console.log(`   cars on the road: ${onRoad[0]} at the start, ${settled[0]} at the half, ${settled[settled.length - 1]} at the end` +
+    ` (mean wait ${mean(early).toFixed(0)}s then ${mean(late).toFixed(0)}s, ${growth >= 0 ? "+" : ""}${growth.toFixed(0)}s)`);
+  climb <= Math.max(4, settled[0] * 0.25)
+    ? ok(`and the queue is bounded by the road rather than by nothing: it levels off at about ${settled[settled.length - 1]} cars over the second half`)
+    : fail(`the number of cars on the road climbed by ${climb} over the second half of the run, so nothing is limiting the queue`);
 }
 
 

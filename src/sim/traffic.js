@@ -33,7 +33,7 @@
    That removes a class of bug for free.
    ===================================================================== */
 
-import { composeDriver, deficitOf, LACKING_AT } from "../engine/ratings.js";
+import { composeDriver, deficitOf, lackingIn, LACKING_AT } from "../engine/ratings.js";
 import { rng } from "../engine/index.js";
 
 /* The project's scale, and the one thing here that must agree with the
@@ -119,8 +119,19 @@ export const CAR = { length: 4.5, width: 1.8 };
    because how long a crossing takes from rest is derived from it. */
 export const ACCEL = 2.4;
 /* Comfortable braking. The old engine derives 2.70 m/s^2 as the rate
-   that brings a car from cruise to rest in the approach run it uses. */
+   that brings a car from cruise to rest in the approach run it uses.
+
+   It is the COMFORTABLE rate, not a limit, which is what makes it a
+   place the braking axis can land: a driver who brakes badly is not one
+   who cannot stop, it is one who plans on stopping harder than is
+   comfortable and therefore leaves it later. See `driver`. */
 const BRAKE = 2.7;
+/* And twice it is where a stop stops being controlled -- the old
+   engine's `ABRUPT_AT`, which is derived as double the comfortable rate
+   rather than picked. It is the far end of the braking axis here for the
+   same reason: the worst braker in the model plans on exactly the
+   deceleration an examiner would call abrupt, and no worse. */
+const ABRUPT = 2;
 /* THE GAP A DRIVER CHOOSES TO LEAVE, which is NOT the same thing as the
    gap they are owed -- and this is the one place stage 0 knowingly parts
    company with the old engine, on the maintainer's instruction to close
@@ -229,11 +240,11 @@ export function cautionOf(ratings) {
    bold tail and 14% in the timid one, which is the mix the maintainer
    asked for arriving from the driver model rather than from a
    distribution written to produce it. */
-export function driver(road, seed, n) {
-  const who = composeDriver(seed * 7919 + n);
+export function driver(road, seed, n, ratings = null) {
+  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }) } : composeDriver(seed * 7919 + n);
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
-  const v0 = road.speed * (1.35 - 0.35 * caution);
+  const v0 = wantedSpeed(road.speed, caution);
 
   /* WHO ROLLS A STOP, and it is two axes rather than one.
 
@@ -258,12 +269,58 @@ export function driver(road, seed, n) {
   const boldness = Math.max(0, 1 - caution);
   const rollsStops =
     0.7 * deficitOf(who.ratings, "knowledge").deficit + 0.3 * boldness > LACKING_AT;
+
+  /* HOW HARD THEY PLAN ON BRAKING, which is the whole of the braking
+     axis and is ONE PARAMETER RATHER THAN A NEW MECHANISM.
+
+     The following model already asks how hard a driver is willing to
+     brake -- it is the `b` in the desired-gap term -- and a larger one
+     means a smaller gap wanted, so they close in further before doing
+     anything about it and then have to brake harder than they meant to.
+     That is what a braking fault looks like from outside: not an
+     inability to stop, but leaving it late and then standing on it.
+
+     The span is derived rather than chosen. A perfect braker plans on
+     the comfortable rate; the worst plans on twice it, which is exactly
+     where the old engine's `ABRUPT_AT` says a stop stops being
+     controlled. So the axis runs from "comfortable" to "abrupt" and has
+     no room to be anything else. */
+  const brake = BRAKE * (1 + (ABRUPT - 1) * deficitOf(who.ratings, "braking").deficit);
+
+  /* AND HOW STEADY A LINE THEY HOLD. The steering axis's unambiguous
+     fault (CLAUDE.md: only `wander` and `wideTurn` belong to one axis
+     without argument), and the one of the two that this geometry can
+     express honestly -- a wide turn needs a next lane to be wide INTO,
+     and every road here is one lane each way. Deferred rather than
+     dropped; see DECISIONS.md.
+
+     THE AMPLITUDE IS THE ROOM THAT EXISTS, not a number, and it is HALF
+     the room rather than all of it. A car is 1.8m in a 3.6m lane, so
+     there is 0.9m of air on each side -- but the driver in the next lane
+     has exactly the same claim on it, so a driver who takes all of it is
+     not failing to hold a line, they are taking somebody else's. Half
+     each is the most two drivers can both be wrong by and still pass.
+
+     That bound is load-bearing rather than cosmetic. It is what lets the
+     conflict geometry stay true of a car that is not on its own
+     centreline -- see `weaveRoom` and `conflictsBetween`.
+
+     Held in DISTANCE rather than time so a pose stays a pure function of
+     how far along the car is -- the same discipline the paths are under
+     -- and so that a driver's weave does not speed up when they do. */
+  const weave = weaveRoom(road.lane ?? ROAD.laneWidth) * deficitOf(who.ratings, "steering").deficit;
+
   return {
     id: `car-${n}`,
     ratings: who.ratings,
     weakOn: who.weakOn,
     caution,
     rollsStops,
+    brake,
+    weave,
+    /* Where in the weave they happen to be, so two equally poor drivers
+       are not in lockstep. */
+    weavePhase: r() * WEAVE_OVER,
     s: 0,
     /* Joining at roughly the speed they want, so nobody enters the road
        accelerating from nothing. */
@@ -336,14 +393,47 @@ export function perceive(me, world) {
    on somebody. Exported because anything asking "was that car actually
    following?" has to ask against the same number the driver used, not a
    second opinion about what close means. */
+/* THE MOST ANYBODY MAY BE OFF THEIR OWN LINE. Exported because two
+   different files need it to agree: the driver model, which decides how
+   far a poor steerer strays, and the intersection geometry, which has to
+   know how far ANYBODY could stray before it can say which paths
+   interact. Two numbers here would be two answers to one question, and
+   the symptom would be a pair of cars overlapping in a place the
+   conflict table says they never meet -- which is exactly how this was
+   found. */
+export const weaveRoom = (lane) => (lane - CAR.width) / 4;
+
+/* HOW FAST THIS DRIVER WANTS TO GO. One expression, because three
+   different places need it and two of them are not the driver model:
+   how long a crossing takes for the slowest driver, and how much road
+   the fastest one needs to stop in. A second copy of "1.35" would be the
+   recurring bug in its plainest form. */
+export const wantedSpeed = (roadSpeed, caution) => roadSpeed * (1.35 - 0.35 * caution);
+
+/* AND HOW MUCH ROAD IT TAKES THEM TO STOP, at the comfortable rate. The
+   mirror of `timeToCover` and it exists for the same reason: a driver
+   has to be able to anticipate, and an approach has to be long enough to
+   be an approach. */
+export const stoppingRoom = (v) => (v * v) / (2 * BRAKE);
+
+/* ONE WEAVE PER WAVELENGTH, and the wavelength is a real one: about
+   three and a half seconds at 60 km/h, which is the pace of a driver
+   correcting, losing it, and correcting again. Faster than that reads as
+   a fault in the renderer rather than in the driver. */
+export const WEAVE_OVER = 55;
+export const weaveAt = (me, s) =>
+  (me.weave ?? 0) * Math.sin(((s + (me.weavePhase ?? 0)) / WEAVE_OVER) * 2 * Math.PI);
+
 export function wantedGap(me, leader) {
   const closing = me.v - leader.v;
   /* THIS DRIVER'S OWN HEADWAY, not the road's. A tailgater's desired gap
      really is smaller, which is what makes them visibly a tailgater
      rather than a car that happens to be close. */
   const t = me.headway ?? HEADWAY;
+  /* AND THIS DRIVER OWN WILLINGNESS TO BRAKE, for the same reason. */
+  const b = me.brake ?? BRAKE;
   return STANDSTILL
-    + Math.max(0, me.v * t + (me.v * closing) / (2 * Math.sqrt(ACCEL * BRAKE)));
+    + Math.max(0, me.v * t + (me.v * closing) / (2 * Math.sqrt(ACCEL * b)));
 }
 
 /* EXPORTED because stage 1 uses the same decision. A driver deciding
@@ -429,7 +519,7 @@ export function poseOf(actor) {
        oncoming one empty -- lane CHOICE is a later stage, but a car has
        to be somewhere real, and a single-track ribbon does not read as a
        street. */
-    x: ROAD.laneWidth / 2,
+    x: ROAD.laneWidth / 2 + weaveAt(actor, actor.s),
     y: -actor.s,
     rot: -90,
     v: actor.v,

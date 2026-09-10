@@ -471,27 +471,160 @@ cars. That is what the chase camera is for.
 not immediately read better than what ships today, the premise is wrong
 and we have spent a day finding out.
 
-### Stage 1 — an intersection, and giving way
+### Stage 1 — an intersection, and giving way — **BUILT**
 
-Add `road.js`'s geometry, conflict points, and the yield decision. One
-intersection, several arrivals, right-of-way rules live.
+`src/sim/intersection.js` (geometry), `src/sim/crossing.js` (the
+decision), `src/apps/SimCrossing.jsx`, `tools/verify-crossing.mjs`. At
+**`#/crossing`**, all-way or two-way.
+
+Conflict points, the yield decision, and the maintainer's right-of-way
+rules evaluated by each driver every tick from what they can see.
+**A yielding driver is following something that isn't moving**, so the
+conflict point becomes a stationary obstacle and stage 0's car-following
+does the rest -- no second mechanism, no search, and nobody's path
+rewritten after the fact.
+
+Three things landed on top of it:
+
+- **A stress test rather than a demo**, on the maintainer's instruction:
+  "cars that just keep coming, so we can prove our right of way ordering
+  stays consistent." Measured over forty intersection-minutes at a
+  hundred cars a minute against a capacity of about twenty: 912 crossings
+  of a stop line, not one out of turn, nobody touching anybody.
+- **The two-way stop**, which is two entries in a control table rather
+  than a second kind of place. **The gap a driver accepts is derived**
+  (DECISIONS.md 5.13.8) -- crossing time, plus as much again scaled by
+  caution -- and comes out at 6.9 / 7.2 / 8.3s for right, straight and
+  left. The Highway Capacity Manual's MEASURED critical headways are
+  6.2 / 6.5 / 7.1. Same order, within 1.2s, nothing fitted.
+- **Undue delay as a markable fault** at the maintainer's 4-5s, judged by
+  the same `blockedBy` the driver decides with, asked at the competent
+  point instead of at their own caution. A driver no more cautious than
+  competent can never be marked, by construction.
+
+Four bugs came out of it, each found by a check rather than by reading:
+two opposing left turns with nobody on anybody's right drove through each
+other; a left turn yielding unconditionally to oncoming traffic deadlocked
+the through road; a through car and a minor car both at rest at their
+lines both went in the same tick; and a driver had been waiting minus
+28.5 seconds because the clock rebase moved `t` and not the instants
+drivers carry.
 
 *Watchable:* cars arriving from four legs and sorting themselves out. A
 car waits, another goes, nobody is hit. **This has never once been true in
 this project.**
 
-### Stage 2 — the candidate, driven by ratings
+### Stage 2 — the candidate, driven by ratings — **BUILT**
 
-Ratings drive the decision model. No traits, no compilation.
+`src/sim/candidate.js`, `src/apps/SimCandidates.jsx`,
+`tools/verify-telling.mjs`. At **`#/candidates`**.
+
+Ratings drive the decision model. No traits, no compilation: the ratings
+ARE the parameters, and the controlled comparison is the same seed with
+one axis moved. `candidate.js` adds no behaviour at all -- it hands a set
+of ratings to the same `driver` the traffic is drawn from (section 4.1),
+and every profile is five numbers and the prose describing them. That is
+checked at source, because the old engine's two divergent trait pools are
+exactly the drift it prevents.
+
+**All five axes now reach the decision.** Confidence did already;
+knowledge did through rolling stops. Braking became one parameter of the
+following model -- how hard a driver PLANS on braking, which decides how
+late they leave it -- and its span is derived rather than chosen: a sound
+braker plans on the comfortable rate and the worst plans on twice it,
+which is exactly where the old engine's `ABRUPT_AT` says a stop stops
+being controlled. Steering became lane-keeping, bounded at half the room
+between the car and the next lane, because the driver over there has the
+same claim on the other half.
+
+Measured on one course, ten minutes, one axis moved each time:
+
+| driver | what shows | against sound |
+|---|---|---|
+| hesitant | waiting at the line | **7.1s** a trip against 1.2s |
+| pushy | trips completed | 15 against 14, at a fifth of the waiting |
+| ragged | off their own line | **0.38m** against 0.04m -- 37% of a car's width of swing |
+| heavy-footed | typical braking | **2.48 m/s2** against 1.96 |
+| unschooled | stop signs rolled | **2 of 6** against 0 of 6 |
+
+And each moves ONLY its own observable, which is the property that lets a
+player attribute what they saw rather than merely notice it.
+
+**The honest half: at an all-way stop a hesitant driver is
+indistinguishable from a sound one** -- 1.0x the waiting, against 6.1x at
+a two-way stop. Everybody stops, so there is no gap to judge and
+confidence has nothing to say. That is correct, and it is the argument
+for a course with more than one kind of place on it.
 
 *Watchable:* two candidates on the same course, visibly different — one
 hesitant, one pushy — and you can tell which is which by watching. The
-game's whole premise, made visible for the first time.
+names are hidden until you ask for them, because a label under a car
+answers the question and then nobody has learned anything.
+
+**THE VIEW SLIDES WITH THE CANDIDATE AND DOES NOT TURN, AND THAT IS
+SCAFFOLDING RATHER THAN THE ANSWER.** An approach at a two-way stop is
+279m at 60 km/h — it has to be, or "is there a gap" is answered by the
+edge of the world (§5.13.12 in DECISIONS.md) — and a view wide enough to
+hold all of it draws a car three pixels long. Fixed on the intersection,
+the candidate was off screen for about three quarters of every trip.
+
+So the panel centres on them, a little ahead of them, axis-aligned.
+**Stage 3 replaces it with `chaseFor` in `frame.js`, which already
+exists and already rotates**, and the rotation is not decoration: the
+camera rides the INTENDED pose, so a car that is not holding its line
+visibly deviates from the centre of the frame, and that deviation IS the
+steering fault made legible. Building half of that here would mean
+building it twice, and the half would have been the half that does not
+carry the mechanic. Do not mistake the sliding view for a finished
+camera — it exists because stage 2 needed the candidate on screen, and
+nothing more.
 
 ### Stage 3 — the course, and the examiner's three built jobs
 
 Route, directions with their deadlines, deferred marking, the section
 sheet. All of `detect.js` and `directions.js` come across.
+
+**FIRST INCREMENT: TWO INTERSECTIONS JOINED BY A LINK, WITH TRAFFIC
+FLOWING BETWEEN THEM.** It is the piece none of the existing stages have.
+Today every arrival is spawned at the far end of one approach and
+destroyed at the far end of its exit, and the candidate's "course" is
+`keepDriving` putting the same person back on a fresh leg — an honest
+stand-in, labelled as one in `candidate.js`, and the first thing stage 3
+should kill. A car that leaves intersection A has to arrive at
+intersection B as the same car, carrying its speed, its queue position
+and whoever it was following.
+
+**AND THE LINK IS ASSESSABLE TERRITORY, NOT TRANSIT. This contradicts an
+assumption the project has carried since before the flip** — that the
+intersection is where the assessment happens and the road between is the
+gap between assessments. Stage 2 measured otherwise. Of the five axes,
+**three express on the APPROACH and only confidence needs the box**:
+
+| axis | where it reads |
+|---|---|
+| steering | the approach — lane-keeping needs motion, and a stop-line queue has none |
+| braking | the approach — the whole of it is how late they leave the braking |
+| confidence, as pace | the approach — wanted speed and following distance |
+| confidence, as gap acceptance | **the intersection**, and nowhere else |
+| knowledge | the stop line itself |
+
+Measured at an all-way stop, where nobody judges a gap, a hesitant driver
+is indistinguishable from a sound one (1.0x the waiting, against 6.1x at
+a two-way stop) — while ragged, heavy-footed and unschooled all still
+read exactly as themselves.
+
+Three consequences for how a route is laid out:
+
+1. **Link length is a content decision, not spacing.** A long link is
+   several seconds of readable driving, not dead time to be minimised.
+   The old engine's `world.js` treats a link as the distance between
+   intersections; here it is where most of the marking supply lives.
+2. **A course needs more than one KIND of place**, or confidence is
+   mute. An all-way stop cannot test it at all.
+3. **The camera has to work on the link as well as at the box**, which
+   is the second argument for `chaseFor` — a top-down view of a whole
+   intersection is a poor place to read lane-keeping from, whatever the
+   amplitude of the weave.
 
 *Watchable:* a playable drive that is the current game, on a foundation
 where the traffic behaves.

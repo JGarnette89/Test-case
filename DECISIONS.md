@@ -1398,6 +1398,240 @@ than of the number.
 
 ---
 
+## 5.14 STAGE 2: A DRIVER IS THEIR RATINGS, AND YOU CAN TELL
+
+### 5.14.1 AN AXIS THAT CHANGES NOTHING IS A LABEL, NOT A RATING
+
+Two of the five reached the decision model and three did not: confidence
+through gap acceptance and pace, knowledge through rolling stops, and
+observation, steering and braking through nothing at all. A driver
+"weak on braking" drove identically to one who was not.
+
+Braking became ONE PARAMETER OF THE FOLLOWING MODEL rather than a new
+mechanism. The Intelligent Driver Model already asks how hard a driver is
+willing to brake -- it is the `b` in the desired-gap term -- and a larger
+one means a smaller gap wanted, so they close in further before doing
+anything about it and then have to brake harder than they meant to. That
+is what a braking fault looks like from outside: not an inability to
+stop, but leaving it late and then standing on it.
+
+**The span is derived rather than chosen.** A sound braker plans on the
+comfortable rate (2.70 m/s2, the rate the old engine derives from its own
+approach run) and the worst plans on twice it -- which is exactly
+`ABRUPT_AT`, where a stop stops being controlled. The axis runs from
+"comfortable" to "abrupt" and has no room to be anything else.
+
+Steering became LANE-KEEPING rather than turn line, and that is a
+geometry constraint rather than a preference: CLAUDE.md's own ruling is
+that a wide turn needs a next lane to be wide INTO, and every road in the
+sim is one lane each way. The turn-line half is deferred until the sim
+has a road that can express it.
+
+Observation is deliberately still absent, and 5.14.5 says why.
+
+### 5.14.2 A WEAK AXIS HAS TO MOVE ITS OWN OBSERVABLE AND NOBODY ELSE'S
+
+The first property is obvious and the second is the one that matters. A
+player who can see that something is wrong but cannot work out WHAT has
+learned nothing, and the whole five-axis structure exists so that the
+answer is recoverable. Measured on one course -- same seed, same traffic,
+the same legs in the same order, one rating moved:
+
+| driver | what shows | against sound |
+|---|---|---|
+| hesitant | waiting at the line | 7.1s a trip against 1.2s |
+| pushy | trips completed | 15 against 14, at a fifth of the waiting |
+| ragged | off their own line | 0.38m against 0.04m |
+| heavy-footed | typical braking | 2.48 m/s2 against 1.96 |
+| unschooled | stop signs rolled | 2 of 6 against 0 of 6 |
+
+and steering, braking and knowledge each leave the other two exactly
+where they were. Checked in `verify-telling.mjs` section 2.
+
+**AND WHERE AN AXIS CANNOT SHOW, IT DOES NOT.** At an all-way stop a
+hesitant driver is indistinguishable from a sound one -- 1.0x the
+waiting, against 6.1x at a two-way stop -- because everybody stops, so
+there is no gap to judge and confidence has nothing to say. That is
+correct rather than a gap, it is the same rule `chancesAt` lives under in
+the old engine, and it is the argument for a course with more than one
+kind of place on it.
+
+### 5.14.3 A MAX IS THE WRONG INSTRUMENT FOR A DISPOSITION
+
+"How hard does this driver brake" measured as the worst of fourteen
+approaches is dominated by whichever one had a car cut across it, so it
+measures the situation and not the person. The tell was the usual one: a
+SOUND candidate's worst came out at 5.39 m/s2, which is `ABRUPT_AT`
+exactly, while their typical stop was 1.96.
+
+The median of the per-trip peak separates cleanly. An examiner forms an
+impression from what somebody does every time, not from their worst
+moment -- and a statistic that cannot tell a disposition from an incident
+is not measuring a disposition.
+
+The same correction applied to rolling stops. Counting every trip crossed
+without coming to rest made a sound driver look like they rolled 8 of 14,
+because most of those were the through road, where not stopping is the
+correct thing to do. Only a leg that has a stop sign can roll one.
+
+### 5.14.4 TWO IMPLEMENTATIONS OF "ARE THESE TWO INSIDE EACH OTHER"
+
+`conflictsBetween` decided which paths could ever interact from the clean
+CENTRELINES, at a 3.0m distance threshold. A driver who does not hold a
+steady line is not on their centreline -- so two cars overlapped at 2.63m
+between centres in a pair the conflict table said never meet. The
+steering axis was the only thing that could have exposed it, and it did
+so within minutes of existing.
+
+**Widening the threshold was not available.** Two straights from opposite
+legs run 3.6m apart for their whole length and must not conflict (5.3),
+so any distance big enough to cover the weave would have broken the rule
+that costs the most to lose.
+
+It is a FOOTPRINT test now, grown by the maximum weave -- the same
+separating-axis predicate the overlap check uses, imported rather than
+written twice. Exact instead of approximate: two cars in adjacent lanes
+still have 0.9m of air between them at full stray, because the amplitude
+is half the room by construction, and the opposite-straights rule holds
+without a special case. It also found a conflict the distance test had
+been missing entirely: 84 conflicting ordered pairs against 60.
+
+**The weave amplitude is half the room and that bound is load-bearing.**
+A car is 1.8m in a 3.6m lane, so there is 0.9m of air on each side -- but
+the driver in the next lane has exactly the same claim on it. Half each
+is the most two drivers can both be wrong by and still pass.
+
+### 5.14.5 OBSERVATION IS THE AXIS THAT REQUIRES CONTACT TO EXIST FIRST
+
+Held back deliberately, and the reason is structural rather than
+schedule. A registration delay makes a driver read the traffic as it was
+a second ago, so they accept gaps sized to a car that has since moved.
+For a competent driver the margin absorbs it; for a bold one it does not,
+and the outcome is contact -- which is CLAUDE.md's own "the dangerous
+candidate is both blind and bold", arriving in the rebuild from a
+different direction.
+
+The sim's one property is that nobody drives through anybody, and it must
+not be weakened to admit a fault (`verify-crossing` says so in those
+words). So the honest order is: contact gets a representation, the
+property becomes the stronger statement -- **no contact for want of a
+rule, and every contact attributable to a named deficit** -- and
+observation ships against it. Turning it on first would either break the
+property or quietly cap the axis at whatever is survivable, and the
+second is worse because it looks fine.
+
+This is 5.12 restated one layer down. A state the engine can produce and
+nothing can express is a lie about what happened.
+
+### 5.14.6 A SPAWN GATE WAS DECIDING HOW FAST A CANDIDATE DROVE
+
+An arrival was admitted only if it fitted AT ITS OWN PREFERRED SPEED and
+dropped otherwise, so the faster a driver wanted to go the less often
+they could get onto the road at all. A bold candidate completed 3 trips
+in fifteen minutes where a timid one completed 13 -- which reads as a
+fact about the driver and is a fact about the entrance.
+
+A driver arriving behind a queue does not arrive at the speed they feel
+like, they arrive at the speed there is room for. `joinAt` bisects for
+the fastest speed that fits, which is ordinary merging, and returns
+nothing only when even a standing start will not. All six profiles now
+get identical time on the road, which is what makes anything measured
+between them a comparison.
+
+**The general form is worth keeping: a gate that admits or refuses is
+suspect wherever the thing being gated has a dial.** The refusal
+correlates with the dial and the correlation looks like a finding.
+
+**AND IT INVALIDATED A CHECK THAT HAD NOTHING TO DO WITH CANDIDATES**,
+which is the part worth remembering. `verify-crossing` section 6 asked
+whether the mean wait SETTLED between the first half of a ten-minute run
+and the second, and read growth as starvation. That was a valid proxy
+only while excess demand evaporated at the entrance: with arrivals
+discarded there, a growing wait could only mean an approach was never
+being served.
+
+Once a driver who cannot get on at their own speed slows down and joins
+anyway, the queue fills the approach instead, and a wait growing toward
+that is the intersection being FULL. The check went red on a strictly
+better model.
+
+It asks the fairness question directly now -- is any one approach served
+materially less than the others -- which is what "nobody is starved"
+always meant, and it is immune to the fill-up transient. Measured: all
+four legs take 25% of the crossings each, and the road holds 37 to 40
+cars flat across twenty-eight minutes while refusals climb linearly. The
+queue is bounded by the road rather than by nothing, which is the honest
+statement and one the old proxy could not make.
+
+Same lesson as 10.1 from the other end: a check has a boundary, and the
+boundary here was an assumption about a component the check never
+mentioned.
+
+### 5.14.7 AN APPROACH HAS TO BE LONG ENOUGH TO STOP ON
+
+Five car-ticks in a hundred and fifty thousand sat at EXACTLY the maximum
+braking the model allows -- not near it, on it, which is 10.0's tell
+verbatim. Every one was a fast driver arriving 52m from a line they
+needed 87m to stop at comfortably: they were spawned inside their own
+stopping distance, and the clamp was the only thing between the model and
+a car that could not stop.
+
+A 60m approach was never long enough for a 60 km/h road. It is derived
+now, from the same `wantedSpeed` the driver model uses at its boldest and
+the comfortable braking rate: 100m at 60 km/h, 267m at 100. The
+two-way stop's approach is longer still for the other reason (5.13.12),
+and the larger of the two wins.
+
+`wantedSpeed` and `stoppingRoom` exist as exported expressions rather
+than as arithmetic in three places, because "1.35 times the limit"
+appearing in the driver model AND in the geometry that sizes the road for
+it is the recurring bug waiting to happen.
+
+### 5.14.8 THE ROAD BETWEEN INTERSECTIONS IS ASSESSABLE TERRITORY, NOT
+TRANSIT
+
+**This contradicts an assumption the project has carried since before the
+flip to the examiner game**, and it was measured rather than argued.
+Everything about the design has treated the intersection as where the
+assessment happens: scenarios are intersections, `route.js` sequences
+intersections, pacing counts intersections, and a link is the distance
+between two of them.
+
+Stage 2 put all five axes into the decision model and then asked where
+each one can be READ. Three of the five express on the APPROACH and only
+one needs the box:
+
+| axis | where it reads |
+|---|---|
+| steering | the approach -- lane-keeping needs motion, and a queue at a stop line has none |
+| braking | the approach -- the whole of it is how late they leave the braking |
+| confidence, as pace | the approach -- wanted speed and following distance |
+| confidence, as gap acceptance | **the intersection**, and nowhere else |
+| knowledge | the stop line itself |
+
+The evidence is the all-way stop, where nobody has a gap to judge: a
+hesitant driver is indistinguishable from a sound one there (1.0x the
+waiting, against 6.1x at a two-way stop) while ragged, heavy-footed and
+unschooled all still read exactly as themselves.
+
+Three consequences, and they are design rather than implementation:
+
+1. **Link length is a content decision.** A long link is several seconds
+   of readable driving rather than dead time to be minimised. Most of the
+   marking supply lives there.
+2. **A course needs more than one KIND of place**, or confidence is mute.
+   An all-way stop cannot test it at all, which is an argument about
+   route composition rather than about traffic density.
+3. **The camera has to work on the link**, which is the second
+   independent argument for the chase view. A top-down view of a whole
+   intersection is a poor place to read lane-keeping from whatever the
+   amplitude of the weave -- see 5.14.4 for why the amplitude cannot
+   simply be increased.
+
+It also reframes 4.6's "longer waits are answered with something to read,
+not with shorter waits". The something to read was assumed to be events
+DURING the wait. Some of it is the driving either side of it.
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately
