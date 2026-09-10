@@ -1733,11 +1733,12 @@ node tools/verify-clearance.mjs    encroachment in seconds, and bands derived fr
 node tools/verify-awareness.mjs    what the candidate registered, and observation kept off outcome
 node tools/verify-reaction.mjs     the world gives way, and never decides whether a fault happened
 node tools/verify-screens.mjs      every reachable screen actually mounts and draws
+node tools/verify-sim.mjs          stage 0 of the rebuild: nobody drives through anybody
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All twenty-eight must exit 0. Fourteen things they check are worth understanding:
+All twenty-nine must exit 0. Fourteen things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take

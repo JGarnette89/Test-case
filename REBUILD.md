@@ -1,6 +1,6 @@
 # The foundation: a stepped simulation
 
-**Status: scope, not a plan of record. Nothing here is built.**
+**Status: approved. Stage 0 is built (§6); stages 1-5 are scope.**
 
 This document exists because the maintainer played the game and said:
 
@@ -372,11 +372,17 @@ The failure this week was weeks of correct machinery nobody could see, in
 a codebase where the renderer already existed. A rebuild is *more* exposed
 to that, not less, so the discipline has to be stricter rather than looser.
 
-### Stage 0 — one road, cars that follow each other
+### Stage 0 — one road, cars that follow each other — **BUILT**
 
-A straight road. Six cars. A fixed timestep, the following model, and the
-existing renderer pointed at the new state. **No intersections, no
-candidate, no faults, no scoring, no tests beyond "nobody overlaps".**
+`src/sim/traffic.js` (one file), `src/apps/SimRoad.jsx`,
+`tools/verify-sim.mjs`. On the home screen and at **`#/sim`**.
+
+A straight road, looped so it can be watched indefinitely. Six cars, each
+wanting a different speed. A fixed 20 Hz timestep, the Intelligent Driver
+Model for following, and one structural rule: **every actor decides from
+what it can see of the previous committed state, and nothing else.** No
+intersections, no candidate, no ratings, no faults, no scoring, no camera,
+and one check — nobody overlaps.
 
 *Watchable:* traffic that queues, closes up, and spreads out. If it does
 not immediately read better than what ships today, the premise is wrong

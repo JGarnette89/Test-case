@@ -14,6 +14,11 @@ import ExaminerDrive from "./apps/ExaminerDrive.jsx";
    while it is still a standalone thing to look at, not a decision to
    wire into the roguelike run. */
 import MergeRush from "./apps/MergeRush.jsx";
+/* STAGE 0 OF THE REBUILD. One road, six cars, following distance --
+   nothing else, deliberately. See REBUILD.md. It is on the home screen
+   because the whole deliverable of that stage is somebody looking at
+   it. */
+import SimRoad from "./apps/SimRoad.jsx";
 import { ROUTES } from "./engine/routes.js";
 import { SCENARIOS } from "./engine/scenarios.js";
 import {
@@ -62,6 +67,16 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
    without proving it unused first.
    ===================================================================== */
 const MODES = [
+  {
+    id: "sim",
+    name: "Stage 0 — following",
+    kicker: "The rebuild — one road, six cars",
+    blurb:
+      "The first stage of the new foundation. Six cars on one road, each wanting a different speed, deciding what to do every twentieth of a second from what they can see of the car in front. Nothing else: no intersection, no candidate, no marking, no score. The question it exists to answer is whether traffic that queues, closes up and spreads out reads as alive — and that is a question for your eyes, not for a test.",
+    Icon: Milestone,
+    accent: C.amber,
+    Component: SimRoad,
+  },
   {
     id: "drive",
     name: "The drive",
