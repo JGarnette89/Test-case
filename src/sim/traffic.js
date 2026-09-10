@@ -209,7 +209,7 @@ export function cautionOf(ratings) {
    bold tail and 14% in the timid one, which is the mix the maintainer
    asked for arriving from the driver model rather than from a
    distribution written to produce it. */
-function driver(road, seed, n) {
+export function driver(road, seed, n) {
   const who = composeDriver(seed * 7919 + n);
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
@@ -301,7 +301,12 @@ export function wantedGap(me, leader) {
     + Math.max(0, me.v * t + (me.v * closing) / (2 * Math.sqrt(ACCEL * BRAKE)));
 }
 
-function decide(me, view) {
+/* EXPORTED because stage 1 uses the same decision. A driver deciding
+   what to do about an intersection is not doing something different from
+   a driver deciding what to do about the car in front -- both are "how
+   fast may I go, given the nearest thing in my way". Two copies of this
+   would be two answers to one question. */
+export function decide(me, view) {
   const free = 1 - Math.pow(me.v / me.v0, 4);
   if (!view.leader) return ACCEL * free;
   const gap = Math.max(view.gap, 0.1);

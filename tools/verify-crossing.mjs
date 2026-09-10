@@ -1,9 +1,9 @@
 /* Stage 1 of the rebuild: an intersection, and where paths meet.
  *
- * GEOMETRY ONLY. Nothing here decides who yields -- that is a decision a
- * driver makes every tick, and it goes in the traffic loop where it can
- * be made from what a driver can see. This checks the thing the decision
- * will be made ON.
+ * Two halves. Sections 1-4 are the GEOMETRY: where a car goes and where
+ * two of them would meet. Section 5 is the DECISION, which lives in the
+ * traffic loop and is made by each driver every tick from what they can
+ * see -- not by a scheduler, once, before anybody moves.
  *
  * The properties are the maintainer's own rules, and the point of
  * checking them here is that they should FALL OUT of the geometry rather
@@ -16,6 +16,9 @@ import {
   layoutFor, pathFor, poseAt, conflictsBetween, intersectionFor,
   exitFor, rightOf, OPPOSITE, SIDES, INTENTS,
 } from "../src/sim/intersection.js";
+import {
+  seedCrossing, step, overlapping, blockedBy, DT,
+} from "../src/sim/crossing.js";
 
 let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);
@@ -139,7 +142,97 @@ console.log("\n4. A CONFLICT IS SOMEWHERE, NOT JUST SOMETHING");
     : fail(`${early.length} conflicts sit behind the stop line of the path they belong to`);
 }
 
+
+console.log("\n5. AND CARS ACTUALLY SORT THEMSELVES OUT AT IT");
+{
+  /* The decision is stage 0's, unchanged: `decide` and `wantedGap` are
+     imported rather than copied, because a driver working out what to do
+     about an intersection is not doing something different from one
+     working out what to do about the car in front.
+
+     A YIELDING DRIVER IS FOLLOWING SOMETHING THAT ISN'T MOVING. The
+     conflict point becomes a stationary obstacle and the car-following
+     model does the rest -- no second mechanism, no search, and nobody's
+     path rewritten after the fact, which is what the old engine had to do
+     because it had no tick in which anybody could decide anything. */
+  const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8], MINUTES = 4;
+  const TICKS = Math.round((MINUTES * 60) / DT);
+  let overlaps = 0, through = 0, stillest = 0, worstPair = null;
+  const waits = [];
+  for (const seed of SEEDS) {
+    let w = seedCrossing(seed, 50);
+    const since = new Map();
+    for (let i = 0; i < TICKS; i++) {
+      const before = new Map(w.actors.map((a) => [a.id, a]));
+      w = step(w);
+      const bad = overlapping(w);
+      overlaps += bad.length;
+      if (bad.length && !worstPair) worstPair = { seed, tick: w.tick, ...bad[0] };
+      for (const a of w.actors) {
+        if (a.v < 0.3) since.set(a.id, (since.get(a.id) ?? 0) + DT);
+        stillest = Math.max(stillest, since.get(a.id) ?? 0);
+      }
+      for (const [id] of before) {
+        if (!w.actors.some((x) => x.id === id)) waits.push(since.get(id) ?? 0);
+      }
+    }
+  }
+  waits.sort((a, b) => a - b);
+  const q = (p) => waits[Math.min(waits.length - 1, Math.floor(waits.length * p))];
+  console.log(`   ${waits.length} cars through ${SEEDS.length} intersections over ${MINUTES} minutes each`);
+  console.log(`   stopped for: median ${q(0.5).toFixed(1)}s, p90 ${q(0.9).toFixed(1)}s, worst ${waits[waits.length - 1].toFixed(1)}s`);
+
+  overlaps === 0
+    ? ok(`nobody ever shares tarmac with anybody: ${(SEEDS.length * TICKS).toLocaleString()} ticks, every car against every other, by footprint`)
+    : fail([
+        `${worstPair.a} and ${worstPair.b} are inside each other`,
+        `(seed ${worstPair.seed}, tick ${worstPair.tick}, ${worstPair.apart.toFixed(1)}m between centres).`,
+        "This is the one property the rebuild exists to have. DO NOT WEAKEN THIS CHECK",
+        "to make a yield rule pass -- the yield rule is what is wrong. REBUILD.md 7.1.",
+      ].join(" "));
+
+  /* DEADLOCK IS THE FAILURE MODE OF A PRIORITY RULE, and it is silent:
+     four cars each waiting for the one on their right wait forever, and
+     nothing throws. */
+  stillest < 90
+    ? ok(`and nobody deadlocks: the longest anybody sat still was ${stillest.toFixed(1)}s`)
+    : fail([
+        `somebody sat still for ${stillest.toFixed(1)}s, which is a deadlock rather than a wait.`,
+        "Four cars each yielding to the one on their right will wait for each other",
+        "forever and nothing will throw. The right-hand rule needs a tie-break that",
+        "cannot cycle -- arrival order is what provides it.",
+      ].join(" "));
+
+  through = waits.length;
+  through / (SEEDS.length * MINUTES) > 8
+    ? ok(`and it keeps flowing: ${(through / (SEEDS.length * MINUTES)).toFixed(1)} cars a minute through the intersection`)
+    : fail(`only ${(through / (SEEDS.length * MINUTES)).toFixed(1)} cars a minute get through, so the rule is too timid to be traffic`);
+
+  /* AND THE PRIORITY RULES ARE THE MAINTAINER'S, evaluated by drivers
+     rather than by a scheduler. Checked directly rather than inferred
+     from the traffic: two cars that stopped together, and who goes. */
+  const L = layoutFor();
+  const pair = (aRoute, bRoute, aStop, bStop) => ({
+    me: { id: "a", route: aRoute, s: L.paths[aRoute].stopAt - 3, stoppedAt: aStop, v: 0 },
+    them: { id: "b", route: bRoute, s: L.paths[bRoute].stopAt - 3, stoppedAt: bStop, v: 0 },
+  });
+  const first = pair("N/straight", "W/straight", 5.0, 2.0);
+  blockedBy(first.me, first.them, L) && !blockedBy(first.them, first.me, L)
+    ? ok("whoever stopped first goes first, and exactly one of the two is held")
+    : fail("arrival order does not decide, so the queue at an all-way stop has no order");
+
+  const tie = pair("N/straight", "W/straight", 2.0, 2.0);
+  blockedBy(tie.me, tie.them, L) && !blockedBy(tie.them, tie.me, L)
+    ? ok("arriving together, the car on the right goes — and only one of them yields, which is what stops it deadlocking")
+    : fail("the right-hand rule is not deciding a simultaneous arrival, or it is holding both of them");
+
+  const lefts = pair("N/left", "S/straight", 2.0, 2.0);
+  blockedBy(lefts.me, lefts.them, L) && !blockedBy(lefts.them, lefts.me, L)
+    ? ok("and a left turn yields to the oncoming, head to head, as it does in law")
+    : fail("a left turn is not yielding to the oncoming straight (DECISIONS.md 5.5)");
+}
+
 console.log("\n" + "=".repeat(70));
 if (problems) { console.log(`FAILED: ${problems} problem(s).`); process.exit(1); }
-console.log("OK: the paths are right and the rules fall out of them.");
-console.log("\n   Nothing decides anything yet. The yield decision is next.");
+console.log("OK: the paths are right, the rules fall out of them, and cars take turns.");
+console.log("\n   Stage 1's real test is somebody watching it.");

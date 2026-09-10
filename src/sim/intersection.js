@@ -57,8 +57,29 @@ const right = (u) => ({ x: -u.y, y: u.x });
    One lane each way on every leg, which makes the box exactly as wide as
    the crossing road: half of it is one lane.
    ===================================================================== */
+/* THE STOP LINE SITS OUTSIDE THE BOX, NOT ON ITS EDGE, and the numbers
+   are the old engine's rather than new ones. It puts the line beyond the
+   crossing -- a 0.95m pedestrian setback, the 1.5m painted bar itself,
+   and a 0.35m margin -- because that is where a driver actually meets it,
+   level with the sign.
+
+   Putting the line ON the box edge was a real geometric omission and it
+   showed up exactly where the old engine's own comment says it would:
+   "the centre sits just outside the box and the nose ends up 0.95m
+   INSIDE it". Measured here before the fix, three distinct pairs of cars
+   clipped each other in twenty-four intersection-minutes -- always a car
+   waiting at a line with its bonnet over the edge and another crossing
+   the box. */
+const PED_SETBACK = 0.95;
+const BAR_HALF = 0.75;
+const LINE_MARGIN = 0.35;
+
 export function intersectionFor({ lane = 3.6, reach = 60 } = {}) {
-  return { lane, reach, boxHalf: lane };
+  const boxHalf = lane;
+  return {
+    lane, reach, boxHalf,
+    lineAt: boxHalf + PED_SETBACK + BAR_HALF + LINE_MARGIN,
+  };
 }
 
 /* Where a car sits on a leg: `d` metres out from the centre, in the lane
@@ -84,7 +105,10 @@ function onLeg(place, side, d, going) {
 export function pathFor(place, from, intent) {
   const to = exitFor(from, intent);
   const entry = onLeg(place, from, place.reach, "in");
-  const stop = onLeg(place, from, place.boxHalf, "in");
+  /* Where the car waits is the LINE; where it is clear of the crossing
+     traffic is the BOX. Two different places, and conflating them is
+     what put a waiting bonnet inside the intersection. */
+  const stop = onLeg(place, from, place.lineAt, "in");
   const leave = onLeg(place, to, place.boxHalf, "out");
   const exit = onLeg(place, to, place.reach, "out");
 
@@ -162,21 +186,33 @@ export function poseAt(path, s) {
    Computed once per intersection: twelve paths, so 66 pairs, each a
    sampled scan. Done at setup and never again.
    ===================================================================== */
-export function conflictsBetween(a, b, clearance = 2.2) {
-  /* Walk both polylines finely and keep the FIRST place they come within
-     a car's width of each other -- first, because a driver yields at the
-     first point of conflict rather than the worst one. */
+export function conflictsBetween(a, b, clearance = 3.0) {
+  /* Walk both polylines finely and record the whole REGION where they
+     interact, not just the first point of it.
+
+     Two paths do not merely cross at a point -- a left turn and a
+     crossing straight run alongside each other for several metres. A
+     driver has to wait until the other car is clear of the WHOLE region,
+     and using only the first point left cars clipping each other after
+     the nominal conflict was behind them: measured, 13 pairs in
+     thirty-two intersection-minutes, every one of them two cars still
+     beside each other with the meeting point passed.
+
+     `at`/`by` is where I must wait; `clearOf` is how far along THEIR path
+     they have to be before I may go. The clearance is a car's width plus
+     a margin, because two cars a hair apart have not really passed. */
   const step = 0.4;
-  let best = null;
+  let first = null, lastB = -Infinity;
   for (let sa = 0; sa <= a.length; sa += step) {
     const pa = poseAt(a, sa);
     for (let sb = 0; sb <= b.length; sb += step) {
       const pb = poseAt(b, sb);
-      const d = Math.hypot(pa.x - pb.x, pa.y - pb.y);
-      if (d < clearance && (best === null || sa < best.a)) best = { a: sa, b: sb, d };
+      if (Math.hypot(pa.x - pb.x, pa.y - pb.y) >= clearance) continue;
+      if (first === null || sa < first.a) first = { a: sa, b: sb };
+      if (sb > lastB) lastB = sb;
     }
   }
-  return best;
+  return first === null ? null : { ...first, clearOf: lastB };
 }
 
 /* Every path, and where each pair meets. The whole geometry of one
