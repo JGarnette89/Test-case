@@ -19,6 +19,7 @@
    METRES AND SECONDS, like the rest of the sim.
    ===================================================================== */
 import { turnPoints } from "../engine/paths.js";
+import { CAR } from "./traffic.js";
 
 export const SIDES = ["N", "E", "S", "W"];
 export const INTENTS = ["straight", "right", "left"];
@@ -74,10 +75,20 @@ const PED_SETBACK = 0.95;
 const BAR_HALF = 0.75;
 const LINE_MARGIN = 0.35;
 
-export function intersectionFor({ lane = 3.6, reach = 60 } = {}) {
+/* CONTROL IS PER LEG, which is what lets one shape of intersection be
+   several kinds of place. All four stopping is an all-way stop; two
+   stopping and two running is the ordinary two-way stop, where the
+   through road never pauses and the minor road has to find a gap.
+
+   DECISIONS.md 5.3-5.5: a T-intersection defaults to a stop on the minor
+   leg only, with the through road uninterrupted. Same idea, four legs. */
+export const ALL_WAY = { N: "stop", E: "stop", S: "stop", W: "stop" };
+export const TWO_WAY = { N: "stop", S: "stop", E: "none", W: "none" };
+
+export function intersectionFor({ lane = 3.6, reach = 60, control = ALL_WAY } = {}) {
   const boxHalf = lane;
   return {
-    lane, reach, boxHalf,
+    lane, reach, boxHalf, control,
     lineAt: boxHalf + PED_SETBACK + BAR_HALF + LINE_MARGIN,
   };
 }
@@ -201,11 +212,32 @@ export function conflictsBetween(a, b, clearance = 3.0) {
      `at`/`by` is where I must wait; `clearOf` is how far along THEIR path
      they have to be before I may go. The clearance is a car's width plus
      a margin, because two cars a hair apart have not really passed. */
+  /* THE CONFLICT REGION IS INSIDE THE INTERSECTION. BEYOND IT, TWO CARS
+     IN ONE LANE ARE A QUEUE.
+
+     Without this bound the scan is honest but useless: two paths that
+     leave by the same leg -- a straight from the north and a left from
+     the east -- share their whole outbound lane, so they are within
+     clearance of each other for every remaining metre, and `clearOf`
+     came back as the far end of the road. A driver then waited for
+     anybody sharing their exit to leave the WORLD before moving, which
+     is intersection occupancy at its most extreme rather than path
+     conflict (DECISIONS.md 5.3).
+
+     It was survivable at a 60m approach and it is not at the longer one
+     a two-way stop needs, because the wait scales with the approach
+     length. `whatStops` already treats a shared exit as FOLLOWING, and
+     it takes over at exactly this boundary, so bounding here removes a
+     duplicate answer rather than dropping a case. */
   const step = 0.4;
+  const opens = (p) => Math.max(0, p.stopAt - 2 * CAR.length);
+  const shuts = (p) => Math.min(p.length, p.clearAt + CAR.length);
+  const [a0, a1] = [opens(a), shuts(a)];
+  const [b0, b1] = [opens(b), shuts(b)];
   let first = null, lastB = -Infinity;
-  for (let sa = 0; sa <= a.length; sa += step) {
+  for (let sa = a0; sa <= a1; sa += step) {
     const pa = poseAt(a, sa);
-    for (let sb = 0; sb <= b.length; sb += step) {
+    for (let sb = b0; sb <= b1; sb += step) {
       const pb = poseAt(b, sb);
       if (Math.hypot(pa.x - pb.x, pa.y - pb.y) >= clearance) continue;
       if (first === null || sa < first.a) first = { a: sa, b: sb };

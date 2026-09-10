@@ -1159,12 +1159,242 @@ rather than against a second definition of an acceptable gap written
 beside it. Two definitions of "an opening" is section 10's pattern
 waiting to happen, and this is the moment it would be introduced.
 
-### 5.13.8 STILL OPEN: the gap a driver accepts turning across traffic
+### 5.13.8 THE GAP A DRIVER ACCEPTS IS DERIVED, NOT ASKED FOR
 
-The only question on the list not yet answered, and the one the most
-depends on: tight-gap faults, encroachment bands, the candidate's
-boldness, and 5.13.7's delay threshold all scale off it. Not to be
-guessed.
+This was the one question left outstanding, and it turned out to be the
+wrong question to ask. **The gap falls out of the geometry and the
+caution model**, which is what this project does with every other number
+it refuses to type in.
+
+The derivation is the old engine's own, one level along. Section 4.6: *"the
+allowance is the candidate's own crossing time, derived per scenario --
+the way to be sure an unseen stretch is empty is to watch it for as long
+as anything hiding there would take to reach you. One quantity doing both
+jobs."* The same quantity answers this one: **the gap you need is the
+time it takes you to clear, plus as much again scaled by how cautious you
+are.**
+
+Measured against the intersection as built -- from rest at the line, at
+the engine's own pull-away rate, clearing the conflict region plus a car
+length:
+
+| manoeuvre | conflict to clear | time from rest | bold | competent | timid |
+|---|---|---|---|---|---|
+| right | 8.0m | 2.6s | 2.6s | **5.2s** | 7.8s |
+| straight | 8.0m | 2.6s | 2.6s | **5.2s** | 7.8s |
+| left | 10.0m | 2.9s | 2.9s | **5.8s** | 8.7s |
+
+**A competent driver's threshold for a left across traffic comes out at
+5.8 seconds** with no number typed in anywhere, which is where a real
+left turn across a stream sits. So the maintainer's answer becomes a
+CHECK on the derivation rather than an input to it: if 5.8s is roughly
+right, nothing needs setting; if it is badly wrong, the derivation is
+wrong and that is a finding worth more than the number would have been.
+
+**THE TABLE ABOVE WAS SHORT, AND THE CORRECTION IS THE INTERESTING
+PART.** It measured to the MEETING POINT. A driver is not clear when
+they reach the place their path crosses somebody else's -- they are
+clear when their whole car is out of the region where the two paths
+interact, which for a straight across a two-lane road is the far lane
+plus their own length. Building the two-way stop made the difference
+load-bearing and the model reported it:
+
+| manoeuvre | run to clear | time from rest | bold | competent | timid |
+|---|---|---|---|---|---|
+| right | 14.4m | 3.5s | 3.5s | **6.9s** | 10.4s |
+| straight | 15.6m | 3.6s | 3.6s | **7.2s** | 10.8s |
+| left | 20.4m | 4.1s | 4.1s | **8.3s** | 12.4s |
+
+The SHAPE is unchanged and is still the thing to confirm. What moved is
+the run, and it moved because the earlier figure was measuring the wrong
+end of the manoeuvre.
+
+**AND THERE IS NOW AN OUTSIDE CHECK ON IT.** The Highway Capacity
+Manual's base critical headways for a two-way stop are measured off real
+traffic: 6.2s for a minor right, 6.5s minor through, 7.1s minor left.
+The derived competent gaps are 6.9 / 7.2 / 8.3 -- the same ORDER, and
+within 1.2s, with nothing here fitted to them. That is the strongest
+independent confirmation this model has had, and it is checked in
+`verify-crossing.mjs` section 8 so it stays true.
+
+The remaining offset is honest and its cause is known: `clearOf` is
+bounded at a full car length past the box rather than half of one, and
+the conflict scan uses a 3.0m clearance band, so the model is about two
+metres more conservative than "your bumper is past mine". Both are
+deliberate and neither has been tuned to close the gap with the HCM
+figure -- doing that would be fitting the derivation to the answer,
+which is the one thing this section exists to avoid.
+
+**THE GAP IS PER CONFLICT, NOT PER DRIVER.** Nothing holds a single
+number for "the gap this driver needs": it is computed against the
+specific car being looked at, from how far along their path the region
+begins and how far along mine I must get to be out of it. A minor-road
+driver going straight needs 5.2s against a car coming straight through
+and 7.2s against one turning left into their lane, and both are the same
+expression. The first version of the check compared the worst of those
+against the specific one and reported a two-second disagreement between
+two correct answers -- worth remembering, because a check that compares
+an aggregate against an instance will always find a bug that is not
+there.
+
+
+### 5.13.9 YIELDING IS GAP ACCEPTANCE. THE RULES ONLY DECIDE WHO HAS TO
+FIND THE GAP
+
+The two-way stop was expected to need a second mechanism and did not.
+Every yield in the model is now the same act -- is there time for me to
+be clear before they get here -- and the right-of-way rules do nothing
+except decide which of the two drivers has to ask.
+
+That came out of a failure rather than a design. "A left turn yields to
+the oncoming" was implemented as an unconditional hold, which is what
+the rule says, and it **deadlocked the entire through road**: both major
+approaches headed by a left-turner, thirty-five cars queued behind each
+of them, four cars through in five minutes. A car stopped two hundred
+metres back was oncoming traffic by every test except the one that
+matters.
+
+CLAUDE.md already states the rule that fixes it -- *a moving vehicle
+claims the road ahead of it, proportional to speed; a stopped vehicle
+claims nothing* -- and applying it turned the unconditional hold into a
+gap question. Which is what a left turn across a stream actually is.
+
+**A TIE-BREAK THAT LEAVES NEITHER DRIVER YIELDING IS NOT A TIE-BREAK.**
+The right-hand rule decides adjacent legs and says nothing at all about
+opposite ones, so two opposing left turns were each on nobody's right,
+each read the other as somebody else's problem, and drove through each
+other -- 4.5m between centres at 16 and 21 m/s. It had been latent at
+the all-way stop for as long as that has existed and never fired,
+because at a stop one of the two always launches a tick before the
+other and commitment covers it. Take the stops away and the two of them
+arrive at speed with nothing between them.
+
+`settle` is now total by construction: the car on the right, then
+whoever has further to go to the meeting point, then the id. The last
+rung is arbitrary and is meant to be -- it is a guarantee about the
+RELATION, not a rule of the road, and if it is ever what decides in
+ordinary traffic then something above it is not working.
+
+**AND TWO DRIVERS CAN BOTH BE RIGHT AND STILL COLLIDE.** A through car
+at rest at the line beside a minor-road car at rest at its line: the
+minor driver read them as a stopped vehicle claiming nothing and went,
+they read the minor driver as owing them everything and went, and both
+decisions were taken in the same tick from the same previous state. This
+is the failure mode a stepped simulation has and a scheduler does not,
+and the fix has to be a fact both of them read the same way rather than
+a better rule for either: **a car on the road with priority that has
+come to rest at the line is waiting, not yielding**, and it still has
+its priority when it goes.
+
+
+### 5.13.10 ACCEPTING A GAP IS A DECISION, AND IT HAS TO STICK
+
+Commitment was a matter of SPEED -- a driver counted as under way once
+they passed 1.5 m/s. It takes two thirds of a second to reach that from
+rest, and for every tick of it the driver re-decided from scratch, so an
+opening that was ample when they judged it closed underneath them while
+they were still doing under a metre a second. They stopped again. Then
+they did it again.
+
+Measured: five drivers no more cautious than competent were marked for
+undue delay having correctly started and correctly aborted, several
+times each. That is dithering, and it is not what any of them decided.
+
+The gap a driver accepts already accounts for their own pull-away --
+`timeToCover` reads their current speed and their cruise -- so a gap
+that was adequate at the moment of the decision stays adequate. What was
+missing was that the decision was a decision. `LAUNCHED` survives as the
+physical backstop for a driver who never came to a decision because they
+never came to a stop.
+
+It also buys the undue-delay fault an EXACT property rather than a
+statistical one, which is why it is worth a section: a driver no more
+cautious than competent takes the opening in the tick it appears, which
+stops them sitting, which stops the clock before it can latch. So such a
+driver can never be marked -- by construction, not by tuning. Measured:
+233 drivers at or below the competent mark, none marked; 10 marks in
+all, averaging 1.69 caution against 0.99 for everybody else; and
+clamping the whole population to competent removes every one of them
+without buying a single overlap.
+
+
+### 5.13.11 UNDUE DELAY IS TIME SINCE THE OPENING, NOT ONE UNBROKEN
+OPENING -- AND THAT READING IS MINE RATHER THAN THE MAINTAINER'S
+
+His ruling: *"waiting 4-5 seconds beyond when the opening is there to
+turn is marked on the test."* Two readings fit those words and they do
+not produce the same game.
+
+Read as ONE UNBROKEN OPENING lasting four seconds, **the fault fires
+never.** Measured over 251 drivers who came to rest at a line: no
+opening ever stayed open for four seconds, and the longest was 3.0s,
+because an opening on a road with traffic on it is a rapid series of
+brief ones. Meanwhile the behaviour the fault exists to catch is plainly
+there -- a timid driver sits 15.9s at the line where a competent one
+sits 3.7s.
+
+Read as TIME SINCE THE OPENING APPEARED, it fires on exactly the drivers
+it should. His sentence points at a moment -- "beyond WHEN the opening is
+there" -- so that is how it is built: the clock starts at the first
+opening this driver could have acted on and runs while they are still
+sitting there.
+
+`REACTION_FLOOR` is the old engine's, not a new number. An opening that
+flickers for less time than anybody can react to was never an opening,
+and marking somebody for missing it would be marking them for physics.
+
+**THIS IS THE ONE THING IN THE STAGE WORTH PUTTING BACK TO HIM.**
+Everything else here is derived or is his already.
+
+**And an opening you cannot move into is not an opening.** A driver
+shuffling up behind a car that is still clearing the box is following,
+not delaying. That is stage 0's question and `wantedGap` is stage 0's
+answer, asked here rather than restated -- half the first run's marks
+were exactly that case.
+
+
+### 5.13.12 AN APPROACH IS A DURATION, LIKE THE ROAD
+
+Stage 0's road is sized as a duration rather than a distance. An
+approach is the same idea against a different clock: **it has to be long
+enough to hold the longest gap anybody waiting on it could need**, or
+"is there a gap" is answered by the edge of the world rather than by the
+traffic, and gap acceptance collapses into "is anybody visible at all".
+
+At 60 km/h that asks for 279m, derived from the same `gapNeeded` the
+driver uses at the timid end of the confidence axis against the fastest
+car that could be coming. Nothing is chosen. It is also roughly what a
+real two-way stop needs a driver to be able to see, which is why sight
+lines at one are an engineering concern rather than a detail.
+
+Where nothing stops, nobody accepts a gap, the whole term is inert and
+an all-way stop keeps the 60m approach it has always had.
+
+**THE CONFLICT REGION HAD TO BE BOUNDED TO THE INTERSECTION FOR THIS TO
+BE AFFORDABLE, AND THAT WAS A REAL BUG OF ITS OWN.** Two paths leaving
+by the same leg share their whole outbound lane, so the sampled scan
+found them within clearance of each other for every remaining metre and
+reported `clearOf` as the far end of the road. A driver then waited for
+anybody sharing their exit to leave the WORLD before moving -- which is
+intersection occupancy at its most extreme, and precisely what 5.3 says
+this model does not do. It was survivable at a 60m approach and is not
+at a 279m one, because the wait scales with the length of the road.
+`whatStops` already treats a shared exit as FOLLOWING and takes over at
+exactly that boundary, so bounding the scan removed a second answer
+rather than dropping a case. Throughput at the all-way stop went from
+597 crossings in forty intersection-minutes to 912, still with nobody
+out of turn.
+
+**And it settles 5.13.7's trap for free.** Undue delay is marked at 4-5
+seconds beyond "when the opening is there", and the opening is now one
+expression rather than a second definition written beside it -- the same
+function that tells a driver to go tells the scorer when they should
+have.
+
+The tails are the part to look at rather than the middle: a bold driver
+takes a 2.9s gap where a timid one waits for 8.7, both from one axis, and
+that spread is the mechanic. Awaiting confirmation of the shape rather
+than of the number.
 
 ---
 

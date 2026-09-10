@@ -1734,6 +1734,7 @@ node tools/verify-awareness.mjs    what the candidate registered, and observatio
 node tools/verify-reaction.mjs     the world gives way, and never decides whether a fault happened
 node tools/verify-screens.mjs      every reachable screen actually mounts and draws
 node tools/verify-sim.mjs          stage 0 of the rebuild: nobody drives through anybody
+node tools/verify-crossing.mjs     stage 1: paths through an intersection, who gives way, and what waiting too long costs
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```

@@ -115,8 +115,9 @@ export const CAR = { length: 4.5, width: 1.8 };
    first thing to derive properly once this exists -- see REBUILD.md.
    ===================================================================== */
 
-/* A brisk-but-ordinary pull-away. The old engine's `ACCEL`. */
-const ACCEL = 2.4;
+/* A brisk-but-ordinary pull-away. The old engine's `ACCEL`. Exported
+   because how long a crossing takes from rest is derived from it. */
+export const ACCEL = 2.4;
 /* Comfortable braking. The old engine derives 2.70 m/s^2 as the rate
    that brings a car from cruise to rest in the approach run it uses. */
 const BRAKE = 2.7;
@@ -192,6 +193,25 @@ const MOST_BRAKE = 8.0;
    dragging sight.js and most of the old engine with it. Written against
    the SAME `deficitOf`, so there is one confidence model even while there
    are two callers, and verify-sim asserts the two agree. */
+/* HOW LONG TO COVER `d` METRES, starting at `v` and pulling away at the
+   same ACCEL everything else here uses, levelling off at `v0`.
+
+   This is not a new physics model. It is the closed-form answer to the
+   question the stepped loop answers numerically, and it exists because
+   a driver deciding whether to pull out has to ANTICIPATE -- they need
+   how long the crossing will take BEFORE they commit to it, which is not
+   something a tick can tell them. Every number in it is one the loop
+   already uses, so the two cannot drift.
+   ===================================================================== */
+export function timeToCover(v, d, v0) {
+  if (d <= 0) return 0;
+  const cap = Math.max(v0, v);
+  const spent = (cap - v) / ACCEL;                     // time spent getting up to speed
+  const covered = v * spent + 0.5 * ACCEL * spent * spent;
+  if (d <= covered) return (Math.sqrt(v * v + 2 * ACCEL * d) - v) / ACCEL;
+  return spent + (d - covered) / cap;
+}
+
 export function cautionOf(ratings) {
   const { deficit, tail } = deficitOf(ratings, "confidence");
   if (tail > 0) return Math.max(0, 1 - deficit);

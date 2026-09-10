@@ -17,8 +17,10 @@ import {
   exitFor, rightOf, OPPOSITE, SIDES, INTENTS,
 } from "../src/sim/intersection.js";
 import {
-  seedCrossing, step, overlapping, blockedBy, DT,
+  seedCrossing, step, overlapping, blockedBy, whatStops, gapNeeded, DT,
+  ALL_WAY, TWO_WAY, COMPETENT, UNDUE_AT,
 } from "../src/sim/crossing.js";
+import { timeToCover, CAR } from "../src/sim/traffic.js";
 
 let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);
@@ -397,6 +399,272 @@ console.log("\n7. SOME DRIVERS ROLL THE STOP, AND IT COSTS THE ORDERING NOTHING"
      arrival order is what the precedence rule is built on. */
   ok("and they still yield: section 6's ordering runs against this same population, rollers included");
 }
+
+console.log("\n8. THE SAME INTERSECTION, TWO-WAY: ONE ROAD STOPS AND THE OTHER DOES NOT");
+{
+  /* CONTROL IS PER LEG (DECISIONS.md 5.4), so this is the SAME
+     intersection and the same rules -- nothing about the geometry
+     changed, and no second decision function exists. What changed is two
+     entries in a table, and everything below is what falls out of that.
+
+     The interesting half is that arrival order stops being available.
+     Nobody on the through road comes to rest, so there is no queue of
+     stops to be third in, and the waiting driver's question becomes the
+     one a two-way stop is actually about: IS THERE ROOM. */
+  const world = seedCrossing(1, 60, { every: 2.5, control: TWO_WAY });
+  const L = world.layout;
+
+  /* --- the gap, measured off the model rather than off the constant --- */
+  const speed = 60 / 3.6;
+  const runFor = (route) => {
+    let run = 0;
+    for (const other of SIDES.filter((x) => L.place.control[x] !== "stop")) {
+      for (const oi of INTENTS) {
+        const meet = L.conflicts[`${other}/${oi}|${route}`];
+        if (meet) run = Math.max(run, meet.clearOf - (L.paths[route].stopAt - CAR.length / 2));
+      }
+    }
+    return run;
+  };
+  const cross = {};
+  for (const intent of INTENTS) cross[intent] = timeToCover(0, runFor(`N/${intent}`), speed);
+
+  console.log("   the gap a driver needs, derived from how long the crossing takes:");
+  for (const intent of INTENTS) {
+    console.log(`     ${intent.padEnd(8)} clear in ${cross[intent].toFixed(2)}s  ->  ` +
+      `bold ${cross[intent].toFixed(1)}s, competent ${(cross[intent] * 2).toFixed(1)}s, timid ${(cross[intent] * 3).toFixed(1)}s`);
+  }
+
+  cross.right < cross.straight && cross.straight < cross.left
+    ? ok("a right needs the least room, a left the most, and straight on sits between — nobody wrote that order down")
+    : fail(`the manoeuvres do not order right < straight < left (${cross.right.toFixed(2)}, ${cross.straight.toFixed(2)}, ${cross.left.toFixed(2)})`);
+
+  /* AN INDEPENDENT NUMBER, FROM OUTSIDE THIS PROJECT. The Highway
+     Capacity Manual's base critical headways for a two-way stop are
+     measured from real traffic: 6.2s for a minor right, 6.5s minor
+     through, 7.1s minor left. Nothing here was fitted to them -- the
+     derivation is crossing time doubled -- so agreeing with them is a
+     genuine outside check rather than a restatement. */
+  const HCM = { right: 6.2, straight: 6.5, left: 7.1 };
+  const off = INTENTS.map((i) => cross[i] * (1 + COMPETENT) - HCM[i]);
+  console.log(`   against the Highway Capacity Manual's measured critical headways: ` +
+    `${INTENTS.map((i) => `${i} ${(cross[i] * 2).toFixed(1)} v ${HCM[i]}`).join(", ")}`);
+  Math.max(...off.map(Math.abs)) < 1.5
+    ? ok(`and a competent driver's derived gap lands within ${Math.max(...off).toFixed(1)}s of what real drivers are measured to accept`)
+    : fail(`the derived gaps are ${off.map((x) => x.toFixed(1)).join("/")}s off the measured ones, which is too far to call agreement`);
+
+  /* --- and it is really the gap that decides, not the presence of a car --- */
+  /* A car that has NOT stopped, deliberately: a through car standing at
+     the line is a case of its own (it is waiting, not yielding) and is
+     not what a gap is measured against. */
+  const at = (route, s, v, extra = {}) => ({ id: route, route, s, v, going: false, stoppedAt: null, ...extra });
+  const held = (caution) => {
+    const me = at("N/straight", L.paths["N/straight"].stopAt - CAR.length / 2, 0,
+      { v0: speed, caution, id: "me", stoppedAt: 1 });
+    /* Walk the oncoming car back until this driver will go. */
+    for (let d = 0; d < 400; d += 0.5) {
+      const them = at("E/straight", L.paths["E/straight"].stopAt - d, speed);
+      if (!blockedBy(me, them, L)) return d / speed;
+    }
+    return Infinity;
+  };
+  const bold = held(0), fair = held(COMPETENT), timid = held(2);
+  /* THE GAP IS PER CONFLICT, NOT PER DRIVER, so the number to compare
+     against is the one for THIS pair -- how far this driver has to
+     travel to be clear of a car coming straight through from the east --
+     and not the worst over every major movement printed above. Comparing
+     against the worst is what made this check disagree with the model by
+     two seconds while both were right. */
+  const meet = L.conflicts["E/straight|N/straight"];
+  const pairRun = meet.clearOf - (L.paths["N/straight"].stopAt - CAR.length / 2);
+  const pairCross = timeToCover(0, pairRun, speed);
+  console.log(`   the gap actually accepted at the line, against a car coming straight through: ` +
+    `bold ${bold.toFixed(1)}s, competent ${fair.toFixed(1)}s, timid ${timid.toFixed(1)}s ` +
+    `(the crossing itself takes ${pairCross.toFixed(1)}s)`);
+  bold < fair && fair < timid
+    ? ok("a bolder driver takes a gap a timid one refuses, and the same expression produces all three")
+    : fail(`caution does not order the gap accepted (${bold.toFixed(1)}, ${fair.toFixed(1)}, ${timid.toFixed(1)})`);
+  Math.abs(fair - pairCross * (1 + COMPETENT)) < 0.6
+    ? ok("and what a driver does at the line is exactly what the derivation says they need, so there is one gap and not two")
+    : fail(`the accepted gap (${fair.toFixed(1)}s) is not the derived one (${(pairCross * 2).toFixed(1)}s) — two definitions of one quantity, DECISIONS.md 10`);
+
+  /* --- the through road runs uninterrupted --- */
+  const SEEDS = [1, 2, 3], MINUTES = 3;
+  const TICKS = Math.round((MINUTES * 60) / DT);
+  let overlaps = 0, minorThrough = 0, majorThrough = 0, stoppedForNobody = 0, worstPair = null;
+  const minorWaits = [];
+  for (const seed of SEEDS) {
+    let w = seedCrossing(seed, 60, { every: 2.5, control: TWO_WAY });
+    const still = new Map();
+    for (let i = 0; i < TICKS; i++) {
+      const before = new Map(w.actors.map((a) => [a.id, a]));
+      w = step(w);
+      if (i % 4 === 0) {
+        const bad = overlapping(w);
+        overlaps += bad.length;
+        if (bad.length && !worstPair) worstPair = { seed, tick: w.tick, ...bad[0] };
+      }
+      /* NOBODY IS COMMITTED ANYWHERE, so there is nothing for a car on
+         the through road to be stopping for. */
+      const anyoneIn = w.actors.some((a) => a.going || a.s >= w.layout.paths[a.route].stopAt);
+      for (const a of w.actors) {
+        const path = w.layout.paths[a.route];
+        const stops = w.layout.place.control[path.from] === "stop";
+        if (stops) { if (a.v < 0.3) still.set(a.id, (still.get(a.id) ?? 0) + DT); }
+        else if (a.v < 0.3 && !anyoneIn) stoppedForNobody += 1;
+      }
+      for (const [id, a] of before) {
+        if (w.actors.some((x) => x.id === id)) continue;
+        if (w.layout.place.control[w.layout.paths[a.route].from] === "stop") {
+          minorThrough += 1; minorWaits.push(still.get(id) ?? 0);
+        } else majorThrough += 1;
+      }
+    }
+  }
+  minorWaits.sort((a, b) => a - b);
+  const mq = (k) => (minorWaits.length ? minorWaits[Math.floor(minorWaits.length * k)] : 0);
+  console.log(`   ${majorThrough} cars along the through road, ${minorThrough} out of the side street, over ${SEEDS.length * MINUTES} intersection-minutes`);
+  console.log(`   the side street waits: median ${mq(0.5).toFixed(1)}s, p90 ${mq(0.9).toFixed(1)}s, worst ${(minorWaits[minorWaits.length - 1] ?? 0).toFixed(1)}s`);
+
+  overlaps === 0
+    ? ok("nobody shares tarmac with anybody, with two roads of traffic and only one of them stopping")
+    : fail(`${worstPair.a} and ${worstPair.b} are inside each other (seed ${worstPair.seed}, tick ${worstPair.tick}) — a gap was accepted that was not there`);
+
+  stoppedForNobody === 0
+    ? ok("and the through road is never interrupted: no car on it ever came to rest with the intersection empty")
+    : fail(`a car on the through road stopped ${stoppedForNobody} times with nobody committed in the intersection — it is treating a stop sign it does not have`);
+
+  minorThrough > 0 && majorThrough > minorThrough
+    ? ok(`and the side street still gets out — ${minorThrough} of them — while carrying less of the traffic, which is what a two-way stop is`)
+    : fail(`the side street contributed ${minorThrough} of ${minorThrough + majorThrough} crossings, which is not a two-way stop`);
+
+  /* Same seed, same trace. Determinism is a property of the loop. */
+  const trace = (n) => {
+    let w = seedCrossing(9, 60, { every: 2.5, control: TWO_WAY });
+    for (let i = 0; i < n; i++) w = step(w);
+    return w.actors.map((a) => `${a.id}:${a.s.toFixed(6)}:${a.v.toFixed(6)}`).join("|");
+  };
+  trace(900) === trace(900)
+    ? ok("and it is deterministic: the same seed replays to the same metre")
+    : fail("the same seed produced two different traces, so nothing measured here can be trusted");
+}
+
+
+console.log("\n9. AND WAITING TOO LONG IS A FAULT, MEASURED AGAINST THE SAME OPENING");
+{
+  /* The maintainer, on the Ontario scoresheet: "waiting 4-5 seconds
+     beyond when the opening is there to turn is marked on the test."
+
+     The trap this section exists to avoid is a SECOND DEFINITION of the
+     opening -- one expression deciding when a driver goes and a
+     different one deciding when they were late, which would drift the
+     first time either was touched (DECISIONS.md 10). There is one:
+     `blockedBy`, asked at the driver's own caution to decide, and at
+     COMPETENT to judge. The only thing that differs is one parameter. */
+  /* WIDE ENOUGH TO BE A RATE RATHER THAN A HANDFUL. At four
+     intersections the fault turned up twice, which is not a sample you
+     can read a gradient off -- and a check that reports noise as a
+     finding is worse than no check. */
+  const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], EVERY = 3.0;
+  const TICKS = Math.round(420 / DT);
+
+  const sweep = (clamp) => {
+    const bands = { bold: [0, 0], "as competent": [0, 0], cautious: [0, 0], timid: [0, 0] };
+    let queued = 0, overlaps = 0, marked = 0, crossings = 0, tooCalm = 0;
+    const cautionOfMarked = [], cautionOfRest = [];
+    for (const seed of SEEDS) {
+      let w = seedCrossing(seed, 60, { every: EVERY, control: TWO_WAY });
+      /* THE WARM-UP IS NOT PART OF EITHER ARM. Cars already on the road
+         at t=0 drove their approach before the clamp existed, so counting
+         them would be comparing two different populations and calling the
+         difference a result. */
+      const warm = new Set(w.actors.map((a) => a.id));
+      if (clamp) w = { ...w, actors: w.actors.map((a) => ({ ...a, caution: Math.min(a.caution, COMPETENT) })) };
+      const seen = new Map();
+      for (let i = 0; i < TICKS; i++) {
+        const before = w.actors;
+        w = step(w);
+        if (clamp) w = { ...w, actors: w.actors.map((a) => ({ ...a, caution: Math.min(a.caution, COMPETENT) })) };
+        if (i % 8 === 0) overlaps += overlapping(w).length;
+        for (const a of w.actors) {
+          if (warm.has(a.id)) continue;
+          if (w.layout.place.control[w.layout.paths[a.route].from] !== "stop") continue;
+          /* A DRIVER MARKED FOR WAITING MUST HAVE BEEN ABLE TO GO. Anybody
+             stuck behind somebody else is not delaying anything.
+
+             Asked ONCE, at the tick the mark lands. `delayed` is sticky,
+             so asking every tick counts one driver hundreds of times and
+             turns a clean result into a number nobody can read. */
+          const was = seen.get(a.id);
+          if (a.delayed && !(was && was.delayed) && whatStops(a, w).queued) queued += 1;
+          seen.set(a.id, a);
+        }
+        for (const a of before) if (!warm.has(a.id) && !w.actors.some((x) => x.id === a.id) && a.stoppedAt != null) crossings += 1;
+      }
+      for (const a of seen.values()) {
+        /* BANDED AT `COMPETENT` EXACTLY, because that is the point the
+           fault is judged from and the property below is exact rather
+           than statistical: a driver no more cautious than competent
+           takes the opening in the tick it appears, so the clock never
+           latches. Bands drawn anywhere else blur that into a rate. */
+        const band = a.caution < 0.7 ? "bold" : a.caution <= COMPETENT ? "as competent"
+          : a.caution < 1.5 ? "cautious" : "timid";
+        bands[band][0] += 1;
+        (a.delayed ? cautionOfMarked : cautionOfRest).push(a.caution);
+        if (a.delayed) {
+          bands[band][1] += 1; marked += 1;
+          if (a.caution <= COMPETENT) tooCalm += 1;
+        }
+      }
+    }
+    const mean = (xs) => (xs.length ? xs.reduce((t, x) => t + x, 0) / xs.length : 0);
+    return { bands, queued, overlaps, marked, crossings, tooCalm,
+             markedCaution: mean(cautionOfMarked), restCaution: mean(cautionOfRest) };
+  };
+
+  const drawn = sweep(false);
+  console.log(`   ${drawn.crossings} drivers came to rest at the line across ${SEEDS.length} intersections`);
+  for (const [band, [n, bad]] of Object.entries(drawn.bands)) {
+    console.log(`     ${band.padEnd(10)} ${String(bad).padStart(3)} of ${String(n).padStart(4)} marked  ${n ? ((bad / n) * 100).toFixed(0) : 0}%`);
+  }
+
+  const rate = (b) => (drawn.bands[b][0] ? drawn.bands[b][1] / drawn.bands[b][0] : 0);
+  drawn.marked > 0
+    ? ok(`the fault exists at all: ${drawn.marked} drivers sat more than ${UNDUE_AT}s past an opening a competent driver would have taken`)
+    : fail("nobody was ever marked for undue delay, so the fault is decoration");
+
+  /* EXACT, NOT STATISTICAL. Accepting a gap sticks, so a driver at or
+     below competent goes in the tick the opening appears and stops
+     sitting before the clock can latch. One counter-example means the
+     opening the fault is judged against is not the opening the driver
+     is deciding on -- which is the two-implementations bug wearing this
+     section's costume. */
+  drawn.tooCalm === 0
+    ? ok(`and nobody up to the competent mark is ever late: ${drawn.bands["as competent"][0] + drawn.bands.bold[0]} such drivers, none marked`)
+    : fail(`${drawn.tooCalm} drivers no more cautious than competent were marked, so the opening being judged is not the opening being decided on`);
+
+  rate("timid") > rate("cautious") && drawn.markedCaution > drawn.restCaution + 0.3
+    ? ok(`and it is graded by confidence rather than by luck: a marked driver averages ${drawn.markedCaution.toFixed(2)} caution against ${drawn.restCaution.toFixed(2)} for everybody else`)
+    : fail(`the marking does not follow caution (cautious ${(rate("cautious") * 100).toFixed(0)}%, timid ${(rate("timid") * 100).toFixed(0)}%; marked mean ${drawn.markedCaution.toFixed(2)} against ${drawn.restCaution.toFixed(2)})`);
+
+  drawn.queued === 0
+    ? ok("and nobody is marked for a wait they could not have ended — every marked driver was at the head of their own approach")
+    : fail(`${drawn.queued} drivers were marked while queued behind somebody else, which is the intersection's fault rather than theirs`);
+
+  /* THE CONTROLLED COMPARISON, which is this project's own standard for
+     a fault: strip the cause and it has to vanish. Confidence is the
+     cause claimed here, so clamping every driver to the competent end
+     must remove the fault -- and must not buy it by driving worse. */
+  const clamped = sweep(true);
+  clamped.marked === 0
+    ? ok(`strip the timidity and the fault disappears: ${drawn.marked} marked as drawn, ${clamped.marked} with every driver clamped to competent`)
+    : fail(`${clamped.marked} drivers were still marked with nobody more cautious than competent, so the fault is not confidence's`);
+  clamped.overlaps === 0 && drawn.overlaps === 0
+    ? ok("and neither population touches anybody, so the fault was not being bought with a collision")
+    : fail(`${drawn.overlaps}/${clamped.overlaps} overlaps — going sooner is not allowed to mean going into somebody`);
+}
+
+
 
 console.log("\n" + "=".repeat(70));
 if (problems) { console.log(`FAILED: ${problems} problem(s).`); process.exit(1); }

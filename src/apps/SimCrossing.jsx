@@ -13,9 +13,20 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
-import { seedCrossing, run, poseOf, overlapping, CAR, M, DT } from "../sim/crossing.js";
+import { seedCrossing, run, poseOf, overlapping, delayed, CAR, M, DT, ALL_WAY, TWO_WAY } from "../sim/crossing.js";
 
 const LIMITS = [30, 50, 60];
+
+/* THE SAME INTERSECTION, TWO KINDS OF PLACE. Control is per leg
+   (DECISIONS.md 5.4), so nothing about the geometry or the decision
+   changes between these -- two entries in a table do. Everything the
+   two-way stop does differently falls out of that. */
+const CONTROLS = [
+  { id: "all", label: "All-way", control: ALL_WAY,
+    blurb: "four legs, and nobody is telling them who goes." },
+  { id: "two", label: "Two-way", control: TWO_WAY,
+    blurb: "the main road never stops, and the side street has to find a gap." },
+];
 
 /* HOW HARD TO PUSH IT. The maintainer's framing for this stage was "cars
    that just keep coming, so we can prove our right of way ordering stays
@@ -42,6 +53,7 @@ export default function SimCrossing() {
   const [seed, setSeed] = useState(1);
   const [limit, setLimit] = useState(50);
   const [demand, setDemand] = useState("busy");
+  const [kind, setKind] = useState("all");
   const [world, setWorld] = useState(() => seedCrossing(1, 50, { every: 1.6 }));
   const [playing, setPlaying] = useState(true);
 
@@ -62,9 +74,12 @@ export default function SimCrossing() {
     return () => cancelAnimationFrame(raf.current);
   }, [playing]);
 
-  const restart = (s = seed, kmh = limit, d = demand) => {
-    setSeed(s); setLimit(kmh); setDemand(d);
-    setWorld(seedCrossing(s, kmh, { every: DEMANDS.find((x) => x.id === d).every }));
+  const restart = (s = seed, kmh = limit, d = demand, k = kind) => {
+    setSeed(s); setLimit(kmh); setDemand(d); setKind(k);
+    setWorld(seedCrossing(s, kmh, {
+      every: DEMANDS.find((x) => x.id === d).every,
+      control: CONTROLS.find((x) => x.id === k).control,
+    }));
     owed.current = 0;
   };
 
@@ -73,14 +88,14 @@ export default function SimCrossing() {
   const line = M(place.lineAt);
   const waiting = world.actors.filter((a) => a.v < 0.3).length;
   const touching = overlapping(world).length;
+  const late = delayed(world).length;
+  const here = CONTROLS.find((x) => x.id === kind);
 
   return (
     <div style={S.page}>
       <div style={S.head}>
-        <span style={S.title}>Stage 1 — an all-way stop</span>
-        <span style={S.sub}>
-          four legs, and nobody is telling them who goes.
-        </span>
+        <span style={S.title}>Stage 1 — {here.label.toLowerCase()} stop</span>
+        <span style={S.sub}>{here.blurb}</span>
       </div>
 
       <div style={S.canvas}>
@@ -105,6 +120,11 @@ export default function SimCrossing() {
           {/* THE STOP LINES, across the inbound lane of each leg only --
               the lane you arrive on, not the one you leave by. */}
           {[["N", 0, -1], ["S", 0, 1], ["E", 1, 0], ["W", -1, 0]].map(([side, ux, uy]) => {
+            /* NO SIGN, NO LINE. A leg that does not stop must not be
+               painted as though it does -- the screen has to be able to
+               express what the model is doing, or it is telling the
+               player something that is not true (DECISIONS.md 0). */
+            if (place.control[side] !== "stop") return null;
             const rx = -uy, ry = ux;              // right of travel, inbound
             const cx = ux * line - rx * M(place.lane / 2);
             const cy = uy * line - ry * M(place.lane / 2);
@@ -123,12 +143,13 @@ export default function SimCrossing() {
             if (Math.abs(p.x) > HALF + 6 || Math.abs(p.y) > HALF + 6) return null;
             const hard = a.a < -0.5;
             const held = a.v < 0.3;
+            const dawdling = a.delayed;
             return (
               <g key={a.id} transform={`translate(${M(p.x)} ${M(p.y)}) rotate(${p.rot})`}>
                 <rect
                   x={-M(CAR.length) / 2} y={-M(CAR.width) / 2}
                   width={M(CAR.length)} height={M(CAR.width)} rx={M(0.3)}
-                  fill={hard ? "#8a4b4b" : held ? "#4a5058" : "#5a616b"}
+                  fill={hard ? "#8a4b4b" : dawdling ? "#6a5a34" : held ? "#4a5058" : "#5a616b"}
                   stroke="#12151a" strokeWidth={M(0.1)} />
                 {/* Which way it is pointing. */}
                 <rect x={M(CAR.length) / 2 - M(0.5)} y={-M(CAR.width) / 2}
@@ -144,6 +165,17 @@ export default function SimCrossing() {
       </div>
 
       <div style={S.panel}>
+        <div style={S.row}>
+          <span style={S.label}>Control</span>
+          {CONTROLS.map((c) => (
+            <button key={c.id} className="btn" style={{
+              ...S.chip, minWidth: 0, flex: 1,
+              borderColor: kind === c.id ? C.blue : "rgba(255,255,255,0.12)",
+              color: kind === c.id ? C.white : C.dim,
+            }} onClick={() => restart(seed, limit, demand, c.id)}>{c.label}</button>
+          ))}
+        </div>
+
         <div style={S.row}>
           <span style={S.label}>Traffic</span>
           {DEMANDS.map((d) => (
@@ -176,6 +208,7 @@ export default function SimCrossing() {
           </button>
           <span style={S.readout}>
             {world.t.toFixed(0)}s · {world.actors.length} cars · {waiting} waiting
+            {late > 0 && ` · ${late} dawdling`}
             {(world.turnedAway ?? 0) > 0 && ` · ${world.turnedAway} turned away`}
             {touching > 0 && <b style={{ color: C.red }}> · {touching} TOUCHING</b>}
           </span>
@@ -185,18 +218,24 @@ export default function SimCrossing() {
           Nobody is directing this. Each driver looks at the others every
           twentieth of a second and works out whether their paths cross,
           whether the other car is already committed, and who stopped
-          first — then waits or goes. Whoever stopped first goes first;
-          arriving together, the car on the right goes; a left turn yields
-          to the oncoming.
+          first — then waits or goes. Darker is stopped, red is braking,
+          <b style={{ color: "#c9a24a" }}> amber is a driver who has sat
+          more than four seconds past a gap they should have taken</b>.
           <br />
-          Watch a car pull up, wait for two or three others, and then take
-          its turn. Darker is stopped, red is braking.
-          <br />
-          On <b>Relentless</b> it is offered a hundred cars a minute and
-          can pass about fifteen, so the approaches back up and the
-          ordering is being asked to hold under a load it cannot satisfy.
-          Measured over forty intersection-minutes of that: 597 cars
+          <b>All-way:</b> whoever stopped first goes first; arriving
+          together, the car on the right goes; a left turn yields to the
+          oncoming. On <b>Relentless</b> it is offered a hundred cars a
+          minute and can pass about twenty, so the approaches back up and
+          the ordering is being asked to hold under a load it cannot
+          satisfy. Measured over forty intersection-minutes: 912 cars
           crossed the line and none of them went out of turn.
+          <br />
+          <b>Two-way:</b> the main road runs east–west and never stops.
+          The side street has to judge a gap, and how big a gap it wants
+          is not a number anybody chose — it is how long the crossing
+          takes, plus as much again scaled by how cautious that driver is.
+          A bold driver takes 2.5 seconds where a timid one wants nearly
+          eight. Watch the side street lose its nerve and let a gap go.
           <br />
           If anything ever reads <b>TOUCHING</b>, that is the one thing
           that must never happen and I want to know.
