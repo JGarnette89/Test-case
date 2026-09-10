@@ -109,6 +109,35 @@ console.log("\n3. THE PATHS ARE DRIVEABLE");
     ? ok(`no path jumps: half a metre along is at most ${worstJump.toFixed(2)}m of travel, so a car never teleports mid-turn`)
     : fail(`a path jumps ${worstJump.toFixed(2)}m in half a metre of travel, so it is not a continuous line`);
 
+  /* AND IT NEVER GOES BACKWARDS, which the jump test cannot see.
+
+     EVERY TURNING CAR USED TO REVERSE 2.05 METRES in the middle of the
+     intersection. The arc is tangent to both centrelines at `radius`
+     from the corner and the stop line is set back further than the box
+     edge, so the arc's outbound tangent point landed PAST the point that
+     was then appended after it: 177.8 degrees of turn at one vertex,
+     -180 at the next.
+
+     The check above passed throughout, because two metres backwards is
+     two metres of travel. It was measuring DISTANCE where it needed
+     DIRECTION -- and it is the check that existed specifically to catch a
+     malformed path. DECISIONS.md 5.15.11. */
+  let sharpest = 0, reversals = 0, worstPath = null;
+  for (const key of Object.keys(L.paths)) {
+    const path = L.paths[key];
+    for (let i = 1; i < path.pts.length - 1; i++) {
+      const h1 = Math.atan2(path.pts[i].y - path.pts[i - 1].y, path.pts[i].x - path.pts[i - 1].x);
+      const h2 = Math.atan2(path.pts[i + 1].y - path.pts[i].y, path.pts[i + 1].x - path.pts[i].x);
+      const turn = Math.abs((((h2 - h1) * 180) / Math.PI + 540) % 360 - 180);
+      if (turn > sharpest) { sharpest = turn; worstPath = key; }
+      if (turn > 100) reversals += 1;
+    }
+  }
+  reversals === 0 && sharpest < 30
+    ? ok(`and never doubles back on itself: the sharpest corner in any of the ${Object.keys(L.paths).length} paths is ${sharpest.toFixed(1)} degrees, which is the arc being drawn rather than a car turning round`)
+    : fail(`${reversals} vertices turn by more than 100 degrees (worst ${sharpest.toFixed(0)} on ${worstPath}) — the path doubles back, so a car drives backwards along it and every distance measured on it is wrong`);
+
+
   const left = pathFor(place, "N", "left"), rightP = pathFor(place, "N", "right");
   const straight = pathFor(place, "N", "straight");
   left.length > straight.length && rightP.length < straight.length

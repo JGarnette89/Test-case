@@ -132,7 +132,26 @@ export function pathFor(place, from, intent) {
        somebody picked, so a wider road turns wider on its own. */
     const corner = crossOf(stop, OUT[from], leave, OUT[to]);
     const radius = Math.hypot(corner.x - stop.x, corner.y - stop.y);
-    pts = [entry, ...turnPoints(stop, corner, leave, radius), exit];
+    /* AND THE ARC RUNS TO THE EXIT, NOT TO THE BOX EDGE.
+
+       EVERY TURNING CAR USED TO DRIVE 2.05 METRES BACKWARDS. The arc is
+       tangent to both centrelines at `radius` from the corner, and the
+       stop line is set further back than the box edge is -- 5.65m against
+       3.60m -- so the arc's tangent point on the way out lands 5.65m from
+       the centre, PAST `leave`. Appending `leave` after it sent the path
+       back toward the intersection for two metres and then forward again:
+       177.8 degrees of turn at one vertex, then -180 at the next.
+
+       `leave` is simply the wrong point to aim at. The arc already
+       reaches the outbound lane, so it is aimed at the exit and `leave`
+       is left to the straight case, where it really does sit between the
+       line and the exit.
+
+       Not caught by anything, because `verify-crossing` measured whether
+       a path JUMPS -- half a metre along being at most half a metre of
+       travel -- and two metres backwards is two metres of travel. It
+       measured distance where it needed direction. DECISIONS.md 5.15.11. */
+    pts = [entry, ...turnPoints(stop, corner, exit, radius)];
   }
 
   /* Cumulative distance along, so `s` means the same thing everywhere. */

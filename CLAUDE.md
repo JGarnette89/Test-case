@@ -1284,6 +1284,31 @@ three-layer reframing, the five axes and R2's build order:
   pedestrians — lands here rather than being scenery between the
   interesting parts. DECISIONS.md 5.14.8.
 
+- **TURN GEOMETRY IN `src/sim/` HAS TWO OPEN PROBLEMS AND ONE FIXED BUG,
+  and two of the three are the maintainer's.**
+
+  **FIXED:** every turning car drove 2.05m BACKWARDS in the middle of the
+  intersection, because the turn arc's outbound tangent point lands past
+  the box edge and `leave` was appended after it. The check that existed
+  to catch a malformed path asked whether it JUMPED — two metres
+  backwards is two metres of travel — so it measured distance where it
+  needed direction. DECISIONS.md 5.15.11.
+
+  **OPEN, and a domain question:** a right turn here has a 3.85m tangent
+  radius, tighter than `TURN_R_MIN`'s 5.5m full lock. The old engine
+  floors the radius and thereby finishes 1.65m wide of the lane; the sim
+  does not floor and produces an arc no car can follow. Both are wrong in
+  different directions. What does a driver actually do turning right from
+  a stop line at a tight urban intersection? 5.15.12.
+
+  **OPEN, and blocked on that one:** nothing in the sim knows a corner is
+  coming, so a car takes a turn at whatever speed it arrives at. At an
+  all-way stop this is hidden because everybody stopped; on a through
+  road, left turns run at a median 40 km/h and up to 78, which at a 6.4m
+  radius is about 7g. The maintainer's stated 26/22 km/h are not
+  derivable from lateral acceleration at these radii, so the turn-speed
+  question and the radius question are one question. 5.15.13.
+
 - **CURVED ROADS: the old ruling no longer applies, and a curve is now
   cheap.** It was ruled out against the old engine, where roads were
   compass-fixed and a curve meant reworking the geometry everything else

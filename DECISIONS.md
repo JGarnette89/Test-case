@@ -1878,6 +1878,128 @@ because each profile is only ever compared with sound on its own
 observable, and heavy differs from sound on the braking axis alone. Said
 out loud rather than left for somebody to trip over.
 
+### 5.15.11 EVERY TURNING CAR DROVE TWO METRES BACKWARDS
+
+Found while asking a different question -- what speed a car takes a turn
+at -- by measuring the curvature of a turn path and getting a radius of
+0.3m, which is impossible. It was not curvature. It was a KINK.
+
+`pathFor` built a turn as `[entry, ...turnPoints(stop, corner, leave,
+radius), exit]`. The arc is tangent to both centrelines at `radius` from
+the corner, and **the stop line is set back further than the box edge is**
+-- 5.65m against 3.60m -- so the arc's outbound tangent point lands 5.65m
+from the centre, PAST `leave`. Appending `leave` after the arc sent the
+path back toward the intersection for 2.05m and then forward again:
+177.8 degrees of turn at one vertex, -180 at the next.
+
+So every left and every right in the simulation ran forwards, backwards,
+and forwards again through the middle of the box.
+
+**`leave` is simply the wrong point to aim at.** The arc already reaches
+the outbound lane. It is aimed at the exit now, and `leave` is left to
+the straight case, where it really does sit between the line and the way
+out. The old engine had this right -- `turnMovement` passes `exit` -- so
+this was a faithful-looking reimplementation that dropped something,
+which is 10's pattern wearing a new costume.
+
+**THE CHECK THAT EXISTED TO CATCH A MALFORMED PATH MEASURED THE WRONG
+THING.** `verify-crossing` section 3 asked whether a path JUMPS: half a
+metre along being at most half a metre of travel. Two metres backwards is
+two metres of travel, so it passed, every run, for as long as the bug
+existed. It was measuring DISTANCE where it needed DIRECTION.
+
+It now also asks whether any vertex turns by more than 100 degrees, and
+that check was verified by putting the bug back: 16 reversals, worst 180.
+
+### 5.15.12 A RIGHT TURN HERE IS TIGHTER THAN A CAR CAN STEER, AND THE
+OLD ENGINE'S ANSWER IS NOT AVAILABLE
+
+Measured, once the kink was gone and curvature could be read honestly
+over a window wide enough to span several vertices:
+
+| turn | radius | speed at 2 m/s2 lateral | at 3 | at 4 |
+|---|---|---|---|---|
+| left | 6.4m | 13 km/h | 16 | 18 |
+| right | 3.6m | 10 km/h | 12 | 14 |
+
+**`TURN_R_MIN` is 5.5m -- a passenger car at full lock -- so a 3.85m
+tangent arc is not a tight turn, it is one no car can follow.** The
+geometry leaves no room for a better one: from a stop line 5.65m out to
+an exit lane 1.8m off centre is a 90 degree turn over that displacement,
+and the tangent radius is what it is.
+
+**The old engine floors the radius** (`Math.max(TURN_R_MIN, toCorner +
+bias)`) and the sim does not. That is not an oversight to correct,
+because `turnPoints` always starts its arc AT the stop line and sweeps
+the turn angle at whatever radius it is given -- so a floored radius
+finishes (r - toCorner) metres wide of the outbound lane. For a right
+turn that is 1.65m, which on a road with 3.6m of half-width puts the car
+essentially on the centre line.
+
+So both available answers are wrong in different directions:
+
+- no floor: an arc a car cannot physically follow
+- a floor: a car that finishes on the wrong part of the road
+
+**This is a domain question and it is the maintainer's.** What does a
+driver actually do turning right from a stop line at a tight urban
+intersection? Real answers exist -- creep into the box first so the turn
+starts from further forward, or swing wide and use more of the receiving
+road -- and both are behaviours rather than geometry fudges. Reported
+rather than picked.
+
+Note the interaction with 5.8: `wideTurn` works by INCREASING the radius,
+so a floored radius is the wide-turn mechanism firing on every right turn
+whether the driver is bad at steering or not.
+
+### 5.15.13 NOTHING IN THE SIM KNOWS A CORNER IS COMING
+
+`decide` is the Intelligent Driver Model and its free term is
+`1 - (v/v0)^4`, where `v0` is the speed this driver wants on this road.
+There is no term for the road bending. So a car takes a turn at whatever
+speed it happens to arrive at.
+
+At an ALL-WAY stop this is invisible, and the reason it is invisible is
+worth stating because it looks like the feature working: everybody stops
+first, so they cross at 20-24 km/h, which is close to the old engine's
+stated 22-26. That is acceleration from rest over a short box, not a turn
+speed. It is a coincidence and it would stop being true the moment the
+box got bigger.
+
+At a TWO-WAY stop the through road does not stop, and the numbers are
+what the absence really looks like:
+
+| manoeuvre | median | p90 | fastest |
+|---|---|---|---|
+| straight | 55 km/h | 65 | 80 |
+| left | 40 km/h | 64 | 78 |
+| right | 42 km/h | 62 | 78 |
+
+**A left turn at 78 km/h through a 6.4m radius is about 7g.** It is not a
+subtle defect; it is only hidden because the screens that get watched are
+mostly stop-controlled.
+
+The maintainer's ruling (5.13.6) is that turn speeds carry over from the
+old engine -- 26 km/h through a left, 22 through a right. Those figures
+are not derivable from lateral acceleration at these radii: they imply
+8.1 and 10.4 m/s2, which is 0.8 to 1.0g and is the limit of tyre grip
+rather than anything a passenger would sit through. Either the figures
+are stated rather than derived, or the radii are wrong -- and 5.15.12
+says the radii have their own problem, so the two questions are one
+question.
+
+What it costs to build, once that is settled: **a wanted speed that
+varies along the path**, read a little way ahead so a driver slows BEFORE
+the corner rather than in it. The curvature is already available from the
+path -- it is the turn rate per metre, which is how the radii above were
+measured -- so nothing has to be told what shape a turn is. It is the
+same shape of change as `stoppingRoom`: a quantity the model already has,
+given a name and read at the right moment.
+
+**NOT BUILT, because it depends on a domain answer**, and because
+building a turn-speed model on top of a radius nobody has confirmed would
+be deriving a behaviour from a geometry that is known to be wrong.
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately
