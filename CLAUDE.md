@@ -32,7 +32,7 @@ is what you must not break.
 **[DRIVE-GUIDE.md](DRIVE-GUIDE.md)** is how to actually operate the game
 at `#/drive`, and what is knowingly missing from it.
 
-Six things to know before your first change:
+Seven things to know before your first change:
 
 1. **NEVER AUTHOR THE ANSWER, and never author the fault.** Windows are
    simulated, never typed in. Faults are DERIVED by controlled comparison
@@ -48,7 +48,25 @@ Six things to know before your first change:
    measurement that comes out at exactly zero, or exactly saturated, or
    suspiciously clean.** DECISIONS.md §10 lists them.
 
-3. **A CHECK HAS A BOUNDARY, AND IT IS INVISIBLE IN ITS OUTPUT.** The
+3. **A CHECK CAN PASS FOR THE WRONG REASON, AND GREEN IS WORSE THAN RED
+   WHEN IT DOES.** Three shapes of this, all found in the rebuild and all
+   of them shipping green first:
+
+   - **It passes with the mechanism removed.** The cross-boundary
+     following check measured the closest gap near a seam under ordinary
+     traffic. Deleting the rule entirely moved the worst gap from 10.04m
+     to 8.46m and it still passed. Sabotage the thing on purpose before
+     believing a check about it. DECISIONS.md §5.15.4.
+   - **It has an implied sample size nobody stated.** `verify-telling`
+     compared drivers over one ten-minute drive; which manoeuvres they
+     drew swung the answer more than the driver did, and an unrelated
+     change took a 7.1x separation to 1.17x. Eight seeds gives 2.3x.
+     §5.15.9.
+   - **It compares a quantity with itself.** A check that set the gap
+     horizon to the approach length and then asserted the approach
+     covered it. §5.15.3.
+
+4. **A CHECK HAS A BOUNDARY, AND IT IS INVISIBLE IN ITS OUTPUT.** The
    second recurring failure, three times in two days: `verify-turns`
    measured only the approach and never the exit; `verify-screens`
    rendered the mode components and never the shell every route goes
@@ -57,13 +75,13 @@ Six things to know before your first change:
    on something you suspect, ask what it does NOT look at — and try to
    make it fail on purpose. DECISIONS.md §10.1.
 
-4. **THE BUILD PASSING DOES NOT MEAN THE APP RENDERS.** A render-time
+5. **THE BUILD PASSING DOES NOT MEAN THE APP RENDERS.** A render-time
    `ReferenceError` is not a build error: `vite build` succeeded while
    `App` threw on mount and every route served a blank page. Run
    `node tools/verify-screens.mjs`, which renders `App` and every route
    under SSR. It still cannot tell you how anything LOOKS.
 
-5. **A STATE THE ENGINE CAN PRODUCE AND THE RENDERER CANNOT EXPRESS IS
+6. **A STATE THE ENGINE CAN PRODUCE AND THE RENDERER CANNOT EXPRESS IS
    NOT A MISSING FEATURE. IT IS A LIE ABOUT WHAT HAPPENED.** Everything
    else in this file is about not authoring the answer; this is about not
    silently discarding it. `outcome.js` knew contact ends a drive from
@@ -74,7 +92,7 @@ Six things to know before your first change:
    ask what draws it; when you find one that nothing draws, that is not a
    backlog item. DECISIONS.md §5.12.
 
-6. **SCRIPTED PLAYTHROUGHS DO NOT WORK HERE. Do not try.** The preview
+7. **SCRIPTED PLAYTHROUGHS DO NOT WORK HERE. Do not try.** The preview
    pane delivers zero animation frames — measured, 0 in 1.5s with
    `document.hidden` false — and clamps timers, so an rAF-driven screen
    never advances and nothing errors. The signature is a screen that draws
@@ -1238,9 +1256,15 @@ three-layer reframing, the five axes and R2's build order:
      Probably "signs are occluded by walls, hedges and buildings but not
      by vehicles" — cheap, and physically right. A domain call.
 
-- **THE ROAD BETWEEN INTERSECTIONS IS ASSESSABLE TERRITORY, NOT
-  TRANSIT**, and this contradicts an assumption the whole design has
-  carried. Scenarios are intersections, `route.js` sequences
+- **THE ROAD BETWEEN INTERSECTIONS IS CONTENT, NOT CONNECTIVE TISSUE.**
+  The maintainer's ruling, verbatim: *"the roads between the
+  intersections are just as important as the intersections themselves.
+  this can't just be dead air the player needs to be engaged at all
+  times."* So a route is not a sequence of intersections joined by
+  transit — it is a continuous stretch of assessable driving that happens
+  to contain intersections. REBUILD.md section 8.
+
+  This contradicts an assumption the whole design has carried. Scenarios are intersections, `route.js` sequences
   intersections, pacing counts intersections, and a link has always been
   the distance between two of them.
 
@@ -1255,7 +1279,30 @@ three-layer reframing, the five axes and R2's build order:
 
   So link length is a content decision rather than spacing, a course
   needs more than one KIND of place or confidence is mute, and the camera
-  has to work on the link as well as at the box. DECISIONS.md 5.14.8.
+  has to work on the link as well as at the box. Everything the old
+  engine built for segments — parked cars, driveways, emerging vehicles,
+  pedestrians — lands here rather than being scenery between the
+  interesting parts. DECISIONS.md 5.14.8.
+
+- **CURVED ROADS: the old ruling no longer applies, and a curve is now
+  cheap.** It was ruled out against the old engine, where roads were
+  compass-fixed and a curve meant reworking the geometry everything else
+  measured from. In `src/sim/` a path is already a polyline with
+  cumulative distances, so a bend is more points. Measured, not assumed:
+  a real approach bent into a real bend passed 63 cars in four minutes
+  with ZERO overlaps, the conflict scan found the same conflict, and the
+  cars sat on their own line.
+
+  What it costs: the RENDERER, which draws roads as rectangles and would
+  have to draw them from the path — small, and exactly section 0's rule,
+  since until then the engine can produce a bend the screen cannot
+  express. Plus one line (`alongDir`), measured accurate to 5cm at the
+  radius a 60 km/h road wants. A curve that ARRIVES ON A DIFFERENT
+  BEARING is still expensive and is what the old ruling was refusing.
+
+  It is also where the OTHER HALF of the steering axis lives: a wide line
+  needs somewhere to be wide into, and the outside of a bend is
+  somewhere. REBUILD.md 8.2. Not built.
 
 - **THE EXAMINER GAME IS THE ONLY PRIORITY.** Maintainer's ruling,
   verbatim: *"from now on the examiner game is the only priority, other

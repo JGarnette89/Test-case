@@ -19,16 +19,26 @@ import React, { useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, Crosshair } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import {
-  seedCourse, step, poseOf, overlapping, pathOf, CAR, M, DT, ALL_WAY, TWO_WAY,
+  seedCourse, step, poseOf, overlapping, CAR, M, DT, ALL_WAY, TWO_WAY,
 } from "../sim/crossing.js";
-import { joinedTo } from "../sim/course.js";
+import { walkRoute } from "../sim/course.js";
+import RoadStrip from "./RoadStrip.jsx";
+import { withCandidates, keepDriving } from "../sim/candidate.js";
 
 const CONTROLS = [
   { id: "two", label: "Two-way", control: TWO_WAY },
   { id: "all", label: "All-way", control: ALL_WAY },
 ];
-const SIZES = [2, 3];
-const EVERY = 2.2;
+/* A ROW CANNOT HOLD A ROUTE. Every turn off it leaves the world, so the
+   only drive expressible is a straight line -- which is why the grid
+   exists and why it is the default here. The row is kept because it is
+   the clearest possible view of the one thing stage 3's first increment
+   established: a car crossing a boundary as the same car. */
+const SIZES = [
+  { id: "row", label: "2 in a row", cols: 2, rows: 1 },
+  { id: "grid", label: "3 × 2", cols: 3, rows: 2 },
+];
+const EVERY = 2.6;
 const LIMIT = 60;
 
 /* How much road the close view holds. The same figure the stage 2 screen
@@ -36,13 +46,23 @@ const LIMIT = 60;
    still see what a car is doing. */
 const HALF = 26;
 
+const seedWorld = (seed, kind, size) => {
+  const z = SIZES.find((x) => x.id === size);
+  return withCandidates(
+    seedCourse(seed, LIMIT, {
+      every: EVERY, control: CONTROLS.find((c) => c.id === kind).control,
+      cols: z.cols, rows: z.rows,
+    }),
+    [{ id: "them", profile: "sound" }],
+  );
+};
+
 export default function SimCourse() {
   const [seed, setSeed] = useState(1);
   const [kind, setKind] = useState("two");
-  const [size, setSize] = useState(2);
+  const [size, setSize] = useState("grid");
   const [playing, setPlaying] = useState(true);
-  const [watched, setWatched] = useState(null);
-  const [world, setWorld] = useState(() => seedCourse(1, LIMIT, { every: EVERY, control: TWO_WAY, n: 2 }));
+  const [world, setWorld] = useState(() => seedWorld(1, "two", "grid"));
 
   const raf = useRef(0), last = useRef(0), owed = useRef(0);
   useEffect(() => {
@@ -56,7 +76,7 @@ export default function SimCourse() {
           owed.current -= n * DT;
           setWorld((w) => {
             let next = w;
-            for (let i = 0; i < n; i++) next = step(next);
+            for (let i = 0; i < n; i++) next = keepDriving(step(next));
             return next;
           });
         }
@@ -70,76 +90,52 @@ export default function SimCourse() {
 
   const restart = (s = seed, k = kind, n = size) => {
     setSeed(s); setKind(k); setSize(n);
-    setWorld(seedCourse(s, LIMIT, {
-      every: EVERY, control: CONTROLS.find((c) => c.id === k).control, n,
-    }));
-    setWatched(null);
+    setWorld(seedWorld(s, k, n));
     owed.current = 0;
   };
 
   const course = world.course;
-  const span = course.at[course.n - 1].at.x;
+  const span = Math.max(...course.at.map((a) => a.at.x));
+  const drop = Math.max(...course.at.map((a) => a.at.y));
   const edge = course.at[0].layout.place.reach;
 
-  /* WHO TO WATCH: somebody who is about to PROVE THE POINT rather than
-     somebody who already has. That means a car whose exit leg has another
-     intersection on the end of it, and of those the one furthest from
-     the boundary, so you get the whole approach and the crossing rather
-     than the last two seconds of it. Sticky once picked -- the entire
-     idea is that it stays the same car. */
-  const them = watched ? world.actors.find((a) => a.id === watched) : null;
-  const pickOne = () => {
-    const going = world.actors
-      .filter((a) => joinedTo(course, a.k, pathOf(world, a).to))
-      .map((a) => ({ a, left: pathOf(world, a).length - a.s }))
-      .sort((x, y) => y.left - x.left);
-    setWatched(going.length ? going[0].a.id : (world.actors[0]?.id ?? null));
-  };
-  useEffect(() => { if (!them && world.actors.length) pickOne(); }, [world.actors.length, watched]);
+  /* THE CANDIDATE, and nobody else. Watching a random car proved the
+     first half of this stage -- that a car crossing a boundary is the
+     same car -- and the second half needs somebody with somewhere to be.
+     They are driving a route now: a sequence of intersections and what to
+     do at each, decided before they set off. */
+  const them = world.actors.find((a) => a.candidate === "them") ?? null;
+  const told = them
+    ? walkRoute(course, { from: { k: them.k, side: them.route.split("/")[0] }, plan: them.plan ?? [] })
+    : [];
 
   const at = them ? poseOf(world, them) : { x: span / 2, y: 0 };
   const touching = overlapping(world).length;
-  const crossed = them ? (them.k ?? 0) : 0;
+  const done = them ? (them.leg ?? 0) : 0;
 
   return (
     <div style={S.page}>
       <div style={S.head}>
-        <span style={S.title}>Stage 3 — one road, two intersections</span>
+        <span style={S.title}>Stage 3 — a course, and a route through it</span>
         <span style={S.sub}>
-          the car that leaves one is the car that arrives at the next.
+          the candidate has somewhere to be, and the car that leaves one
+          intersection is the car that arrives at the next.
         </span>
       </div>
 
-      {/* THE MAP. Everything at once, small, so the flow is visible even
-          though an individual car is not. */}
-      <div style={S.map}>
-        <svg viewBox={`${M(-edge)} ${M(-26)} ${M(span + edge * 2)} ${M(52)}`}
-          style={{ width: "100%", height: "100%", display: "block" }}
-          preserveAspectRatio="none">
-          <rect x={M(-edge)} y={M(-26)} width={M(span + edge * 2)} height={M(52)} fill="#1b1e23" />
-          <rect x={M(-edge)} y={M(-3.6)} width={M(span + edge * 2)} height={M(7.2)} fill="#2c3037" />
-          {course.at.map((spot) => (
-            <rect key={spot.k} x={M(spot.at.x - 3.6)} y={M(-26)} width={M(7.2)} height={M(52)} fill="#2c3037" />
-          ))}
-          {course.at.map((spot) => (
-            <rect key={"box" + spot.k} x={M(spot.at.x - 3.6)} y={M(-3.6)}
-              width={M(7.2)} height={M(7.2)} fill="#343941" />
-          ))}
-          {world.actors.map((a) => {
-            const p = poseOf(world, a);
-            const mine = them && a.id === them.id;
-            return (
-              <rect key={a.id} x={M(p.x) - M(CAR.length) / 2} y={M(p.y) - M(1.4)}
-                width={M(CAR.length)} height={M(2.8)}
-                fill={mine ? C.amber : a.v < 0.3 ? "#4a5058" : "#69707b"} />
-            );
-          })}
-          {them && (
-            <rect x={M(at.x - HALF)} y={M(-26)} width={M(HALF * 2)} height={M(52)}
-              fill="none" stroke={C.amber} strokeWidth={M(0.9)} opacity={0.7} />
-          )}
-        </svg>
-      </div>
+      {/* THE STRIP: the whole course at once. Its own component now,
+          because the maintainer wants it reused -- "something we can use
+          later on to display things to the user along the road" -- and
+          the `marks` prop is that. See RoadStrip.jsx. */}
+      <RoadStrip
+        course={course}
+        cars={world.actors.map((a) => {
+          const p = poseOf(world, a);
+          return { id: a.id, x: p.x, y: p.y, mine: them && a.id === them.id, still: a.v < 0.3 };
+        })}
+        route={told.map((leg, i) => ({ k: leg.k, reached: i <= done }))}
+        view={them ? { x: at.x, y: at.y, half: HALF } : null}
+      />
 
       {/* THE EVIDENCE. One car, close enough to see what it is doing. */}
       <div style={S.close}>
@@ -147,16 +143,26 @@ export default function SimCourse() {
           style={{ width: "100%", height: "100%", display: "block" }}
           preserveAspectRatio="xMidYMid slice">
           <rect x={M(at.x - HALF * 2)} y={M(at.y - HALF * 2)} width={M(HALF * 4)} height={M(HALF * 4)} fill="#22262c" />
-          <rect x={M(-edge)} y={M(-3.6)} width={M(span + edge * 2)} height={M(7.2)} fill="#2c3037" />
           {course.at.map((spot) => (
-            <rect key={spot.k} x={M(spot.at.x - 3.6)} y={M(spot.at.y - spot.layout.place.reach)}
-              width={M(7.2)} height={M(spot.layout.place.reach * 2)} fill="#2c3037" />
+            <rect key={"ew" + spot.k} x={M(-edge)} y={M(spot.at.y - 3.6)}
+              width={M(span + edge * 2)} height={M(7.2)} fill="#2c3037" />
+          ))}
+          {course.at.map((spot) => (
+            <rect key={spot.k} x={M(spot.at.x - 3.6)} y={M(-edge)}
+              width={M(7.2)} height={M(drop + edge * 2)} fill="#2c3037" />
           ))}
           {/* Centre lines, broken at every box. */}
-          <line x1={M(-edge)} y1={0} x2={M(span + edge)} y2={0}
-            stroke="#7a6a3a" strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(3)}`} />
+          {course.at.filter((a) => a.col === 0).map((spot) => (
+            <line key={"cl" + spot.k} x1={M(-edge)} y1={M(spot.at.y)} x2={M(span + edge)} y2={M(spot.at.y)}
+              stroke="#7a6a3a" strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(3)}`} />
+          ))}
+          {course.at.filter((a) => a.row === 0).map((spot) => (
+            <line key={"cv" + spot.k} x1={M(spot.at.x)} y1={M(-edge)} x2={M(spot.at.x)} y2={M(drop + edge)}
+              stroke="#7a6a3a" strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(3)}`} />
+          ))}
           {course.at.map((spot) => (
-            <rect key={"gap" + spot.k} x={M(spot.at.x - 3.6)} y={M(-0.4)} width={M(7.2)} height={M(0.8)} fill="#2c3037" />
+            <rect key={"gap" + spot.k} x={M(spot.at.x - 3.6)} y={M(spot.at.y - 3.6)}
+              width={M(7.2)} height={M(7.2)} fill="#2c3037" />
           ))}
           {/* Stop lines, on controlled legs only. */}
           {course.at.map((spot) =>
@@ -201,16 +207,16 @@ export default function SimCourse() {
             <RotateCcw size={16} />
           </button>
           <button className="btn" style={{ ...S.btn, width: "auto", padding: "0 12px", gap: 6 }}
-            onClick={pickOne}>
+            onClick={() => restart(seed + 1)}>
             <Crosshair size={16} />
-            <span style={{ fontFamily: FONT_D, fontSize: 13 }}>another car</span>
+            <span style={{ fontFamily: FONT_D, fontSize: 13 }}>another route</span>
           </button>
-          {SIZES.map((n) => (
-            <button key={n} className="btn" style={{
-              ...S.chip,
-              borderColor: size === n ? C.blue : "rgba(255,255,255,0.12)",
-              color: size === n ? C.white : C.dim,
-            }} onClick={() => restart(seed, kind, n)}>{n}</button>
+          {SIZES.map((z) => (
+            <button key={z.id} className="btn" style={{
+              ...S.chip, minWidth: 0, padding: "0 10px",
+              borderColor: size === z.id ? C.blue : "rgba(255,255,255,0.12)",
+              color: size === z.id ? C.white : C.dim,
+            }} onClick={() => restart(seed, kind, z.id)}>{z.label}</button>
           ))}
           {CONTROLS.map((c) => (
             <button key={c.id} className="btn" style={{
@@ -224,20 +230,32 @@ export default function SimCourse() {
         <div style={S.row}>
           <span style={S.readout}>
             {world.t.toFixed(0)}s · {world.actors.length} cars ·{" "}
-            {them ? `watching ${them.id}, at intersection ${crossed + 1} of ${course.n}` : "nobody picked"}
+            {them
+              ? `intersection ${done + 1} of ${told.length}` +
+                (them.plan?.length ? ` · told: ${them.plan.join(", ")}` : " · no instructions left")
+              : "the candidate is joining"}
             {(world.turnedAway ?? 0) > 0 && ` · ${world.turnedAway} turned away`}
             {touching > 0 && <b style={{ color: C.red }}> · {touching} TOUCHING</b>}
           </span>
         </div>
 
         <div style={S.note}>
-          The amber car is one particular car. Watch it clear an
-          intersection, drive the street, and arrive at the next one — it
-          is the same car the whole way, keeping its speed, its place in
-          the queue and whoever it was following. Until this stage every
-          car was created at the far end of an approach and destroyed at
-          the far end of its exit, so the traffic at one intersection had
-          nothing to do with the traffic at the next.
+          The amber car is the candidate, and they are driving a
+          <b> route</b> — a sequence of intersections and what to do at
+          each, decided before they set off. The rings on the map are
+          where they were told to go, filling in as they get there.
+          Watch them clear an intersection, drive the street, and arrive
+          at the next one: it is the same car the whole way, keeping its
+          speed, its place in the queue and whoever it was following.
+          Until this stage every car was created at the far end of an
+          approach and destroyed at the far end of its exit, so the
+          traffic at one intersection had nothing to do with the traffic
+          at the next.
+          <br />
+          <b>When the instructions run out they carry straight on</b>,
+          which is not a gap in the model — it is the rule that makes a
+          LATE instruction a missed turn rather than a pause, and it is
+          the hinge the whole directions mechanic hangs on.
           <br />
           <b>Nothing here is new geometry.</b> The exit of one
           intersection and the approach of the next are the same piece of
@@ -245,7 +263,13 @@ export default function SimCourse() {
           exactly — same metre, same lane, same heading. The link is the
           two approaches back to back, which at 60 km/h is about 560m: a
           city block, and it is that long because an approach has to hold
-          the biggest gap any driver could ask for.
+          the biggest gap any driver could ask for. The same rule places
+          the north-south roads, so a grid costs nothing a row did not.
+          <br />
+          <b>A row cannot hold a route.</b> Every turn off it leaves the
+          world, so the only drive expressible is a straight line — which
+          is a corridor rather than a course, and no instruction given on
+          it could ever be wrong.
           <br />
           That road is <b>where most of the marking will happen</b>.
           Steering, braking and pace all read while a car is driving;
@@ -261,7 +285,6 @@ const S = {
   head: { padding: "10px 12px 6px", display: "flex", flexDirection: "column", gap: 2 },
   title: { fontFamily: FONT_D, fontSize: 18, color: C.white },
   sub: { fontFamily: FONT_U, fontSize: 12, color: C.dim },
-  map: { height: 64, margin: "0 6px 6px", overflow: "hidden", borderRadius: 6 },
   close: { height: "40dvh", minHeight: 200, margin: "0 6px", overflow: "hidden", borderRadius: 6 },
   panel: { padding: 10, display: "flex", flexDirection: "column", gap: 8 },
   row: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" },

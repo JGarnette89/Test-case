@@ -536,6 +536,10 @@ export function step(world) {
       if (!on) return null;
       return {
         ...me, k: on.k, route: on.route, s: 0,
+        /* How many intersections they have been through, which is what a
+           plan is indexed by and what a section of a drive is counted
+           in. Everybody carries it, not only a candidate. */
+        leg: (me.leg ?? 0) + 1,
         stoppedAt: null, going: false, accepted: false,
         openFor: 0, openedAt: null,
       };
@@ -649,6 +653,21 @@ function edgeFor(course, x) {
    and the place rather than of the clock -- the same rule every other
    roll in this file lives under, and the reason a course replays. */
 function intentFor(world, me, k) {
+  /* A DRIVER WITH A PLAN FOLLOWS IT, AND SILENCE MEANS STRAIGHT ON.
+
+     That second half is the project's own rule (CLAUDE.md, Directions):
+     a candidate told nothing carries on ahead, which is what makes a LATE
+     instruction a missed turn rather than a pause. It falls out here
+     rather than being enforced -- a plan that has run out, or never
+     said anything about this intersection, produces `straight` because
+     that is what the absence of an instruction means.
+
+     Indexed by how many intersections they have negotiated rather than
+     by WHICH one, so a route that doubles back or crosses itself is
+     expressible. The course is a row today and the two would agree;
+     they would stop agreeing the moment it is not, and the version that
+     keeps working is this one. */
+  if (me.plan) return me.plan[(me.leg ?? 0) + 1] ?? "straight";
   const r = rng(world.seed * 96181 + (me.n ?? 0) * 7919 + k + 1);
   return INTENTS[Math.floor(r() * INTENTS.length) % INTENTS.length];
 }
@@ -666,6 +685,7 @@ function arriving(world, n) {
     n,
     k: where.k,
     route: where.side + "/" + intent,
+    leg: 0,
     s: 0,
     stoppedAt: null,
     going: false,
@@ -746,9 +766,9 @@ export function reachFor(control, speed) {
 export const seedCrossing = (seed = 1, kmh = 50, opts = {}) =>
   seedCourse(seed, kmh, { ...opts, n: 1 });
 
-export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY, n = 1 } = {}) {
+export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY, n = 1, cols, rows } = {}) {
   const speed = kmh / 3.6;
-  const course = courseOf({ n, kmh, control, reachFor });
+  const course = courseOf({ n, cols, rows, kmh, control, reachFor });
   const layout = course.at[0].layout;
   const road = { kmh, speed, lane: layout.place.lane };
   let w = { t: 0, tick: 0, seed, road, course, layout, every, spawned: 0, nextAt: 0, actors: [] };

@@ -613,6 +613,39 @@ it is 558m (5.15.5); and everybody keeps right across 201,529 readings,
 which is the cheapest wide net a course has.
 
 It was the piece none of the earlier stages had.
+
+**SECOND INCREMENT: A GRID, AND A CANDIDATE WHO DRIVES A ROUTE --
+BUILT.** `planRoute`/`walkRoute` in `course.js`, the plan carried on the
+driver, `verify-course.mjs` section 7.
+
+A course had to become a grid the moment a route was wanted: **on a row
+every turn leaves the world**, so the only drive expressible is a
+straight line, which is a corridor rather than a course and no
+instruction given on it could ever be wrong. The grid cost almost
+nothing -- the same placement rule works in both axes, 14 seams on a 3x2
+and none of them out -- and it needed exactly one real fix, because
+naming a link's two directions by the lower intersection index gave the
+east-west and north-south links the same lane names.
+
+A route is DERIVED FROM THE GEOMETRY rather than declared: an intent is
+only offered where the leg it leaves by has something on the end of it,
+so a plan cannot ask for a turn into nothing. 2,400 planned instructions
+across 40 seeds from every edge, all of them leading somewhere. And the
+candidate drives it: 8 intersections without a wrong turn.
+
+**SILENCE MEANS STRAIGHT ON, and it falls out rather than being
+enforced** -- a plan that has run out returns `straight` because that is
+what the absence of an instruction means. It is the rule that makes a
+LATE instruction a missed turn rather than a pause, which is the
+interlock the directions mechanic rests on. DECISIONS.md 5.15.8.
+
+`keepDriving` is no longer a stand-in for a course. A trip is a real
+route now, and it is what starts the next one.
+
+**Still to come in this stage:** the instruction itself, with the
+deadline `directions.js` already derives; deferred marking and the
+section sheet from `detect.js`; and `chaseFor` replacing the sliding
+view, which is where the steering axis becomes properly legible.
 Today every arrival is spawned at the far end of one approach and
 destroyed at the far end of its exit, and the candidate's "course" is
 `keepDriving` putting the same person back on a fresh leg — an honest
@@ -745,7 +778,172 @@ architecture is most of this work with none of the benefit.**
 
 ---
 
-## 8. New project, or replaced layer? — a replaced layer
+
+## 8. The road between intersections is content, not connective tissue
+
+**THE MAINTAINER'S RULING, and it is the one that changes what a course
+is rather than how one is paced:** *"the roads between the intersections
+are just as important as the intersections themselves. this can't just be
+dead air the player needs to be engaged at all times."*
+
+It endorses what stage 2 measured (DECISIONS.md 5.14.8) and raises it
+past a finding. **A route is not a sequence of intersections joined by
+transit. It is a continuous stretch of assessable driving that happens to
+contain intersections.**
+
+The measurement it rests on: of the five axes, three read on the road and
+only confidence needs the box.
+
+| axis | where it reads |
+|---|---|
+| steering | the road — lane-keeping needs motion, and a queue has none |
+| braking | the road — the whole of it is how late they leave it |
+| confidence, as pace | the road — wanted speed and following distance |
+| confidence, as gap acceptance | **the intersection**, and nowhere else |
+| knowledge | the stop line itself |
+
+At an all-way stop, where nobody judges a gap, a hesitant driver is
+indistinguishable from a sound one — 1.0x the waiting, against 6.1x at a
+two-way stop — while ragged, heavy-footed and unschooled all still read
+as themselves.
+
+What follows from it, and none of these is a note about pacing:
+
+1. **Link length is a content decision.** Today a link is 558m at
+   60 km/h because an approach has to hold the biggest gap anybody could
+   ask for, and that number arrived from the gap derivation rather than
+   from anybody asking how much driving a player should watch. It is now
+   a quantity with two masters and they will not always agree.
+2. **A course needs more than one KIND of place**, or confidence is mute.
+   That is a statement about route composition, not about traffic
+   density.
+3. **The camera has to work on the road**, which is the second
+   independent argument for `chaseFor` — and 100 km/h settled what kind
+   of help it should be (section 8.1).
+4. **A link needs things to read.** Everything the old engine built for
+   segments — parked cars, driveways, emerging vehicles, pedestrians —
+   lands here rather than being scenery between the interesting parts.
+   `world.js`'s hazard layer is not a nice-to-have on this reading; it is
+   half the content.
+
+### 8.1 100 km/h passes, and it answers the camera question
+
+The maintainer, on stage 0 at the higher limit: *"the traffic looks great
+at 100kmh."*
+
+That settles an open question in this file's own words. The trade a fixed
+camera cannot escape is that six seconds of road at 100 km/h is 167m, so
+a car is about six pixels wide — and the answer is that **the wider view
+of more traffic plays better than a close-up of less.** No change is
+needed at stage 0.
+
+It also decides what the chase camera at stage 3 is FOR. Not to make cars
+bigger: **to see more road ahead.** `LOOK_AHEAD` in the old engine is a
+DURATION for exactly this reason, and the tension recorded there — 10s
+reads as anticipation and 4s reads a fault — resolves toward the longer
+one now that a wide view is known to play well.
+
+### 8.2 A CURVED ROAD COSTS ALMOST NOTHING NOW, AND THE OLD RULING NO
+LONGER APPLIES
+
+Wanted, on the roadmap: *"I'd like to find if we can generate a curved
+road that challenges steering ability a little."*
+
+Curves were ruled out earlier as a deliberate constraint. **That ruling
+was made against the old engine and does not survive the rebuild.**
+There, roads were compass-fixed and `LEG` was discrete, so a curve meant
+reworking the geometry everything else measured from. In a stepped
+simulation a car follows a path, and a curved path is a different path.
+
+**Measured rather than assumed.** A real approach was bent into a real
+bend and traffic put on it:
+
+| | straight | bent |
+|---|---|---|
+| the path | 4 points, 558.0m | 27 points, 558.9m |
+| walking it | 0.500m per half-metre step | 0.500m — no jumps |
+| the conflict scan | meets at 273.5m, clear of 284.7m | meets at 274.0m, clear of 284.7m |
+| traffic, four minutes | — | 63 cars through, **0 overlaps** |
+| cars on their own line | — | 0.01–0.05m off, which is the weave and nothing else |
+
+So the following model, the yield rules, gap acceptance, the conflict
+geometry, the overlap test and the driver model all take a curve without
+being told about it. **The cost is not in the simulation.**
+
+Three things it does cost, in order of size:
+
+1. **THE RENDERER DRAWS ROADS AS RECTANGLES**, and this is the real cost
+   and the only one that is new work. Every sim screen draws the
+   carriageway as a `<rect>`; a curved road has to be drawn FROM the
+   path, as a thick stroked polyline. It is small — but it is exactly
+   section 0's rule, because until it is done the engine can produce a
+   bend that the screen cannot express, and a car would appear to drive
+   off the road.
+2. **`alongDir` projects onto a straight lane direction** — one line, in
+   the cross-boundary following in `whatStops`. Measured, on an 8m
+   following gap:
+
+   | bow over a 273m approach | radius | 8m reads as | error |
+   |---|---|---|---|
+   | 2m | 831m | 8.00m | 0.00m |
+   | 10m | 166m | 7.95m | 0.05m |
+   | 20m | 83m | 7.80m | 0.20m |
+   | 40m | 42m | 7.27m | 0.73m |
+   | 80m | 21m | 5.90m | 2.10m |
+
+   A 60 km/h road wants about a 150m radius, where the error is five
+   centimetres. **For the bends a real road at these speeds has, it is
+   already accurate enough**; it needs replacing with distance-along-lane
+   only for bends tighter than about 40m.
+3. **Placement, and only if the curve changes the bearing.** A bow that
+   returns to the heading it started on costs nothing at all — the seam
+   is untouched by construction, because both ends of the path are where
+   they were. A curve that ARRIVES on a different bearing needs
+   intersections to carry a heading, and then `SIDES`, `OPPOSITE` and
+   `rightOf` stop being compass constants and become relative bearings.
+
+**That third one is the expensive version and it is what the old ruling
+was actually refusing.** It is still expensive. The cheap one — a bend in
+the road BETWEEN two compass-aligned intersections — is available now,
+and it is what was asked for.
+
+**AND IT IS WHERE THE OTHER HALF OF THE STEERING AXIS LIVES.** Steering
+currently expresses as lane-keeping, which is honest but subtle: 0.38m of
+swing, 37% of a car's width, and it reads as a car not quite settled
+rather than as a driver getting something wrong. The other half — a wide
+line — is deferred because CLAUDE.md's own ruling is that **a wide turn
+needs a next lane to be wide INTO**, and every road in the sim is one
+lane each way.
+
+A bend has one. The outside of a curve is somewhere to drift to, and a
+driver who runs wide on a bend is legible in a way that a slightly
+off-centre car is not. So a curve does not merely give the steering axis
+a harder test — it makes the half of the axis that cannot currently be
+expressed at all expressible, and it does it on the link, which is where
+the maintainer has just said the player has to be engaged.
+
+Not built. Reported so it can be placed on the roadmap knowing what it
+actually costs.
+
+### 8.3 The strip along the top is a component, not a readout
+
+The maintainer, on the map above the stage 3 display: *"something we can
+use later on to display things to the user along the road."*
+
+So it is kept and named with that intent rather than as a debug view that
+happens to look good. What it is: **the whole course at once, small, with
+the driver's own position marked and the route they were given drawn on
+it.** What it is FOR: anything the player needs to know about the road
+ahead that does not fit in the close view — where the next instruction
+applies, where a hazard is, how far is left, what has been marked and
+where.
+
+Two properties it must keep to be that. It shows the WHOLE course, so
+nothing on it can be positioned relative to the camera. And it is legible
+at a glance, so what it carries has to be a handful of marks rather than
+a second rendering of the world.
+
+## 9. New project, or replaced layer? — a replaced layer
 
 **Recommendation: a replaced layer inside this repository.** Not a new
 project.
@@ -776,7 +974,7 @@ history.
 
 ---
 
-## 9. What is needed from the maintainer before starting
+## 10. What is needed from the maintainer before starting
 
 Nothing blocking. Two things worth having early:
 

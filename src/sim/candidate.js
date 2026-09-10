@@ -27,6 +27,7 @@
 import { driver } from "./traffic.js";
 import { INTENTS } from "./intersection.js";
 import { joinAt, edgesOf } from "./crossing.js";
+import { planRoute } from "./course.js";
 import { rng } from "../engine/index.js";
 import { AXES, CONFIDENT_ENOUGH } from "../engine/ratings.js";
 
@@ -118,7 +119,17 @@ export function candidateFor(world, { id, profile, trip = 0 }) {
      that is all four legs, which is what every earlier stage had. */
   const edges = edgesOf(world.course);
   const where = edges[Math.floor(r() * edges.length) % edges.length];
-  const intent = INTENTS[Math.floor(r() * INTENTS.length) % INTENTS.length];
+  /* AND A ROUTE THROUGH THE COURSE RATHER THAN A TURN AT THE FIRST
+     INTERSECTION. This is what replaces `keepDriving`'s stand-in: the
+     candidate is driving somewhere now, and where they go at each
+     intersection is a decision that was made before they set off rather
+     than a fresh roll when they get there.
+
+     Seeded off the trip like everything else about them, so two
+     candidates on one seed drive the same route as well as the same
+     legs. */
+  const route = planRoute(world.course, { from: where, seed: trip * 31337 + 17 });
+  const intent = route.plan[0] ?? "straight";
   return {
     ...driver(world.road, 4242, trip, who.ratings),
     id: `${id}#${trip}`,
@@ -130,6 +141,8 @@ export function candidateFor(world, { id, profile, trip = 0 }) {
        intersection they reach and the comparison stays controlled. */
     n: trip,
     k: where.k,
+    leg: 0,
+    plan: route.plan,
     route: `${where.side}/${intent}`,
     s: 0,
     stoppedAt: null,
@@ -149,10 +162,15 @@ export function withCandidates(world, wanted) {
   return keepDriving({ ...world, watching: wanted.map((w) => ({ ...w, trip: 0 })) });
 }
 
-/* THE COURSE, FOR AS LONG AS THERE IS NOT A REAL ONE. A candidate who
-   has driven out of the world comes back at the far end of another leg,
-   as the same person -- same ratings, same everything -- so a viewer can
-   keep watching one driver instead of losing them after six seconds.
+/* ANOTHER DRIVE, once this one is over. A candidate who has driven off
+   the edge of the course comes back at another edge, as the same person
+   -- same ratings, same everything -- with a NEW ROUTE through it.
+
+   This used to be the stand-in for a course and said so: before there
+   was more than one intersection it put the same driver back on a fresh
+   leg and called the repetition a drive. It is not that any more. A trip
+   is a real route now -- a sequence of intersections and what to do at
+   each -- and this is what starts the next one.
 
    They join through the SAME `joinAt` ordinary traffic does, so a
    candidate never materialises on top of a queue, and a fast one slows

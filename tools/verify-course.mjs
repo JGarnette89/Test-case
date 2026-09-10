@@ -16,7 +16,11 @@
  * even slightly out would show as a car teleporting, and a check that
  * only watched throughput would never see it.
  */
-import { courseOf, seamsOf, laneIn, laneOut, joinedTo, poseOn } from "../src/sim/course.js";
+import {
+  courseOf, seamsOf, laneIn, laneOut, joinedTo, poseOn, planRoute, walkRoute,
+} from "../src/sim/course.js";
+import { exitFor } from "../src/sim/intersection.js";
+import { withCandidates } from "../src/sim/candidate.js";
 import {
   seedCourse, step, overlapping, whatStops, poseOf, reachFor, edgesOf, gapNeeded,
   DT, CAR, ALL_WAY, TWO_WAY,
@@ -348,6 +352,98 @@ console.log("\n6. AND THE SAME SEED REPLAYS");
   trace(1500) === trace(1500)
     ? ok("the same seed replays to the same metre, across the boundary and back")
     : fail("two runs of one seed diverged, so nothing measured here can be trusted");
+}
+
+
+console.log("\n7. A GRID, AND A CANDIDATE WHO DRIVES THE ROUTE THEY WERE GIVEN");
+{
+  /* WHY A GRID AT ALL. On a row every turn leaves the world, so the only
+     route expressible is a straight line -- which is not a course, it is
+     a corridor, and no instruction given on it could ever be wrong. A
+     course you cannot be given directions through is not a course. */
+  const course = courseOf({ cols: 3, rows: 2, kmh: LIMIT, control: TWO_WAY, reachFor });
+  const seams = seamsOf(course);
+  const worst = Math.max(...seams.map((x) => x.apart));
+  const bent = Math.max(...seams.map((x) => x.turned));
+  console.log(`   ${course.cols}x${course.rows} at ${course.at.map((a) => `(${a.at.x},${a.at.y})`).join(" ")}`);
+  console.log(`   ${course.links.length} links, ${seams.length} seams, worst ${worst.toFixed(4)}m apart and ${bent.toFixed(2)} degrees out`);
+  worst < 0.001 && bent < 0.01
+    ? ok(`the same placement rule works in both axes: ${seams.length} seams across a grid, none of them out`)
+    : fail(`a north-south seam is ${worst.toFixed(3)}m and ${bent.toFixed(1)} degrees out — the vertical placement does not match the horizontal one`);
+
+  /* AND THE TWO AXES ARE DIFFERENT LANES. Naming a link's two directions
+     by which intersection has the lower index would give the east-west
+     and north-south links the same names, because the western neighbour
+     and the northern one both have the lower index. */
+  const mixed = laneOut(course, 0, "E") === laneOut(course, 0, "S")
+    || laneIn(course, 0, "E") === laneIn(course, 0, "S");
+  !mixed && laneOut(course, 0, "S") === laneIn(course, 3, "N")
+    ? ok("and a north-south lane is its own lane, shared with the intersection below and with nobody else")
+    : fail("the two axes are naming the same lane, so cars on one road would follow cars on the other");
+
+  /* --- a plan is only ever offered turns the geometry has --- */
+  let asked = 0, impossible = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    for (const start of edgesOf(course)) {
+      const { plan } = planRoute(course, { from: start, seed });
+      let k = start.k, side = start.side;
+      for (const intent of plan) {
+        asked += 1;
+        const j = joinedTo(course, k, exitFor(side, intent));
+        if (!j) { impossible += 1; break; }
+        k = j.k; side = j.side;
+      }
+    }
+  }
+  console.log(`   ${asked} instructions planned across 40 seeds from every edge of the course`);
+  impossible === 0
+    ? ok(`a route never asks for a turn into nothing: all ${asked} of them lead to another intersection`)
+    : fail(`${impossible} of ${asked} planned instructions turn into a leg with nothing on the end of it`);
+
+  /* --- and the candidate drives it --- */
+  let drove = 0, wandered = 0, longest = 0, ranOut = 0;
+  for (const seed of [2, 3, 4]) {
+    let w = seedCourse(seed, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2 });
+    w = withCandidates(w, [{ id: "X", profile: "sound" }]);
+    const me = w.actors.find((a) => a.candidate === "X");
+    const told = walkRoute(w.course, { from: { k: me.k, side: me.route.split("/")[0] }, plan: me.plan });
+    const went = [];
+    let last = null, trip = me.trip;
+    for (let i = 0; i < Math.round(500 / DT); i++) {
+      w = step(w);
+      const a = w.actors.find((x) => x.candidate === "X");
+      if (!a || a.trip !== trip) break;        // they finished; a new trip is a new route
+      const key = `${a.k}:${a.route}`;
+      if (key !== last) { went.push(key); last = key; }
+    }
+    drove += 1;
+    longest = Math.max(longest, went.length);
+    const strayed = went.findIndex((x, i) => !told[i] || `${told[i].k}:${told[i].route}` !== x);
+    if (strayed >= 0) {
+      wandered += 1;
+      console.log(`   seed ${seed}: told ${told.slice(0, 8).map((x) => x.k + ":" + x.route).join(" -> ")}`);
+      console.log(`   seed ${seed}: went ${went.slice(0, 8).join(" -> ")}`);
+    }
+    if (went.length > me.plan.length) ranOut += 1;
+  }
+  wandered === 0
+    ? ok(`and the candidate drives the route they were given, ${drove} of ${drove} times, up to ${longest} intersections without a wrong turn`)
+    : fail(`${wandered} of ${drove} candidates went somewhere they were not told to — a plan that the driver does not follow is not a route`);
+
+  /* SILENCE MEANS STRAIGHT ON, and it has to be checked rather than
+     assumed because it is the rule that makes a LATE instruction a
+     missed turn rather than a pause (CLAUDE.md, Directions). A plan that
+     runs out is the same thing as an examiner who has stopped talking. */
+  ranOut > 0
+    ? ok(`and when the instructions run out they carry straight on, which is what makes a late one a missed turn rather than a pause`)
+    : fail("no candidate ever outdrove their plan, so 'silence means straight on' is untested here");
+
+  /* And the same seed plans the same route, or two candidates being
+     compared are not on the same course after all. */
+  const twice = (s) => JSON.stringify(planRoute(course, { from: edgesOf(course)[0], seed: s }).plan);
+  twice(9) === twice(9)
+    ? ok("and a seed plans one route: the same drive replays for anybody given it")
+    : fail("planning the same route twice gave two answers");
 }
 
 

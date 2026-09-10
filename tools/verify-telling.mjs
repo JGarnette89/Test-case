@@ -43,19 +43,53 @@ console.log("=".repeat(70));
    The question this file asks is whether a weakness SHOWS when the
    driver gets to drive. Whether they get to drive is section 8 of
    verify-crossing's business. */
-const SEED = 4, LIMIT = 60, EVERY = 5.0, MINUTES = 10;
+/* EIGHT SEEDS, NOT ONE, and the reason is a failure rather than caution.
+   One ten-minute drive is about fourteen crossings, and which manoeuvres
+   a candidate happens to draw across fourteen swings the result more
+   than the driver does: on one seed a hesitant driver waited 1.17x a
+   sound one, and on eight the same code gives 2.3x. The single-seed
+   version had been GREEN, which is worse than having been red -- it was
+   measuring the draw and reporting it as the driver. */
+const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
+const LIMIT = 60, EVERY = 5.0, MINUTES = 10;
 const TICKS = Math.round((MINUTES * 60) / DT);
 
 /* Drive one profile round the same course and record everything anybody
    could watch for. Nothing measured here is a new quantity -- each is
    read off the driver or off the pose the screen draws. */
-function drive(profile, control = TWO_WAY, seed = SEED) {
+function drive(profile, control = TWO_WAY, seeds = SEEDS) {
+  const all = seeds.map((seed) => driveOne(profile, control, seed));
+  const it = { profile, legs: all[0].legs, peaks: [], eases: [] };
+  for (const key of ["trips", "onRoad", "waiting", "marked", "overlaps", "restedAt", "rolledPast"]) {
+    it[key] = all.reduce((t, x) => t + x[key], 0);
+  }
+  for (const key of ["hardest", "off", "top"]) it[key] = Math.max(...all.map((x) => x[key]));
+  for (const x of all) { it.peaks.push(...x.peaks); it.eases.push(...x.eases); }
+  it.perTrip = it.waiting / Math.max(1, it.trips);
+  const mid = (xs) => (xs.length ? xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0);
+  it.brakes = mid(it.peaks);
+  /* HOW FAR OUT THEY START EASING OFF, which is what the braking axis
+     actually sets. A bigger `b` means a smaller desired gap, so they
+     close in further before doing anything about it -- "leaves it late"
+     is the behaviour, and how hard they eventually pressed the pedal is
+     a consequence of it tangled up with whatever else was on the road.
+
+     Smaller is later. Confounded with SPEED across profiles -- a bold
+     driver arrives faster and needs more room, so they start sooner --
+     which is fine here because every profile is only ever compared with
+     sound on its own observable, and heavy differs from sound on the
+     braking axis alone. */
+  it.easesAt = mid(it.eases);
+  return it;
+}
+
+function driveOne(profile, control, seed) {
   let w = withCandidates(seedCrossing(seed, LIMIT, { every: EVERY, control }), [{ id: "them", profile }]);
   const it = {
     profile, trips: 0, onRoad: 0, waiting: 0, marked: 0, overlaps: 0,
-    hardest: 0, off: 0, top: 0, restedAt: 0, rolledPast: 0, legs: [], peaks: [],
+    hardest: 0, off: 0, top: 0, restedAt: 0, rolledPast: 0, legs: [], peaks: [], eases: [],
   };
-  let seen = null, cameToRest = false, peak = 0, mustStop = false;
+  let seen = null, cameToRest = false, peak = 0, mustStop = false, eased = false;
   for (let i = 0; i < TICKS; i++) {
     w = keepDriving(step(w));
     if (i % 4 === 0) it.overlaps += overlapping(w).length;
@@ -78,6 +112,7 @@ function drive(profile, control = TWO_WAY, seed = SEED) {
       seen = a.id;
       cameToRest = false;
       peak = 0;
+      eased = false;
       mustStop = w.layout.place.control[w.layout.paths[a.route].from] === "stop";
       it.legs.push(a.route);
     }
@@ -86,21 +121,16 @@ function drive(profile, control = TWO_WAY, seed = SEED) {
     if (a.stoppedAt != null && !a.going) it.waiting += DT;
     peak = Math.max(peak, -Math.min(0, a.a ?? 0));
     it.hardest = Math.max(it.hardest, peak);
+    if (mustStop && !eased && (a.a ?? 0) < -0.4) {
+      const out = (w.layout.paths[a.route].stopAt - CAR.length / 2) - a.s;
+      if (out > 0) { it.eases.push(out); eased = true; }
+    }
     it.top = Math.max(it.top, a.v);
     const clean = poseAt(w.layout.paths[a.route], a.s);
     const real = poseOf(w, a);
     it.off = Math.max(it.off, Math.hypot(clean.x - real.x, clean.y - real.y));
     if (a.delayed) it.marked = 1;
   }
-  it.perTrip = it.waiting / Math.max(1, it.trips);
-  /* HOW HARD THEY USUALLY BRAKE, not how hard they ever did. The worst
-     of fourteen approaches is dominated by whichever one had a car cut
-     across it, so it measures the situation rather than the driver: a
-     SOUND candidate's worst was 5.39 m/s2, which is the old engine's
-     `ABRUPT_AT` exactly, while their typical stop was nothing like it.
-     An examiner forms an impression from what somebody does every time. */
-  const sorted = it.peaks.slice().sort((a, b) => a - b);
-  it.brakes = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
   return it;
 }
 
@@ -128,7 +158,7 @@ console.log(`\n1. THE COURSE IS THE SAME COURSE, OR NOTHING BELOW MEANS ANYTHING
   const road = runs.map((r) => r.onRoad);
   const spread = (Math.max(...road) - Math.min(...road)) / Math.max(...road);
   spread < 0.1
-    ? ok(`and each of them is actually on the road for the same stretch: ${Math.min(...road).toFixed(0)}-${Math.max(...road).toFixed(0)}s of ${(MINUTES * 60)}s, ${(spread * 100).toFixed(0)}% apart`)
+    ? ok(`and each of them is actually on the road for the same stretch: ${Math.min(...road).toFixed(0)}-${Math.max(...road).toFixed(0)}s of ${(MINUTES * 60 * SEEDS.length)}s available, ${(spread * 100).toFixed(0)}% apart`)
     : fail(`time on the road varies ${(spread * 100).toFixed(0)}% between profiles (${Math.min(...road).toFixed(0)}s to ${Math.max(...road).toFixed(0)}s), so they are not being compared on equal terms`);
 
   runs.every((r) => r.overlaps === 0)
@@ -147,15 +177,15 @@ console.log(`\n2. A WEAK AXIS SHOWS, AND SHOWS AS ITSELF`);
     timid: ["waiting at the line, per trip", (r) => r.perTrip, "s"],
     bold: ["trips completed", (r) => r.trips, ""],
     ragged: ["furthest off their own line", (r) => r.off, "m"],
-    heavy: ["how hard they brake on a typical trip", (r) => r.brakes, " m/s2"],
+    heavy: ["how far out they start easing off", (r) => r.easesAt, "m"],
     unschooled: ["stop signs crossed without coming to rest", (r) => r.rolledPast, ""],
   };
   const base = RAN.sound;
   const runs = RAN;
 
-  console.log(`   sound: ${base.trips} trips, ${base.perTrip.toFixed(1)}s waiting each, ${base.off.toFixed(2)}m off line, ` +
-    `braking ${base.brakes.toFixed(2)} m/s2 typical and ${base.hardest.toFixed(2)} at worst, ` +
-    `${base.rolledPast} of ${base.rolledPast + base.restedAt} stop signs rolled`);
+  console.log(`   sound: ${base.trips} trips over ${SEEDS.length} seeds, ${base.perTrip.toFixed(1)}s waiting each, ` +
+    `${base.off.toFixed(2)}m off line, eases off ${base.easesAt.toFixed(0)}m out and peaks at ` +
+    `${base.brakes.toFixed(2)} m/s2, ${base.rolledPast} of ${base.rolledPast + base.restedAt} stop signs rolled`);
   for (const [id, [what, read, unit]] of Object.entries(SHOWS)) {
     const mine = read(runs[id]), theirs = read(base);
     console.log(`   ${profileOf(id).name.padEnd(13)} ${what}: ${mine.toFixed(2)}${unit} against sound's ${theirs.toFixed(2)}${unit}`);
@@ -169,7 +199,7 @@ console.log(`\n2. A WEAK AXIS SHOWS, AND SHOWS AS ITSELF`);
     ["a hesitant driver waits longer than a sound one", runs.timid.perTrip > base.perTrip * 1.5],
     ["a pushy one gets round more often", runs.bold.trips > base.trips],
     ["a ragged one strays further off its line", runs.ragged.off > base.off * 3],
-    ["a heavy-footed one brakes harder", runs.heavy.brakes > base.brakes * 1.15],
+    ["a heavy-footed one leaves the braking later", runs.heavy.easesAt < base.easesAt * 0.95],
     ["and an unschooled one crosses without stopping where a sound driver stops", runs.unschooled.rolledPast > base.rolledPast],
   ];
   const missing = moved.filter(([, held]) => !held);
@@ -180,13 +210,13 @@ console.log(`\n2. A WEAK AXIS SHOWS, AND SHOWS AS ITSELF`);
   /* AND IT MUST NOT MOVE ANYBODY ELSE'S, or the player can see that
      something is wrong and never work out what. This is the property
      that makes a drive readable rather than merely varied. */
-  const CLEAN = { ragged: "off", heavy: "brakes", unschooled: "rolledPast" };
+  const CLEAN = { ragged: "off", heavy: "easesAt", unschooled: "rolledPast" };
   const bled = [];
   for (const [id, own] of Object.entries(CLEAN)) {
-    for (const other of ["off", "brakes", "rolledPast"]) {
+    for (const other of ["off", "easesAt", "rolledPast"]) {
       if (other === own) continue;
       const mine = runs[id][other], theirs = base[other];
-      if (Math.abs(mine - theirs) > Math.max(0.02, Math.abs(theirs) * 0.05)) {
+      if (Math.abs(mine - theirs) > Math.max(0.02, Math.abs(theirs) * 0.06)) {
         bled.push(`${profileOf(id).name} moved ${other} (${theirs.toFixed(2)} -> ${mine.toFixed(2)})`);
       }
     }

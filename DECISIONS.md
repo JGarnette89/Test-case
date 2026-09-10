@@ -1763,6 +1763,121 @@ x = 558 - 1.8, and comparing it against -1.8 reports the entire course as
 driving on the wrong side. A check whose failure mode is "everything is
 broken" is almost always the check being broken.
 
+### 5.15.7 A ROW CANNOT HOLD A ROUTE
+
+The course started as a row on purpose: a grid would have added a
+placement problem to be got wrong at the same time as the handoff. It
+had to become a grid the moment a ROUTE was wanted, and the reason is
+worth stating because it is about what a course IS rather than about
+convenience.
+
+**On a row, every turn leaves the world.** The only drive expressible is
+a straight line -- which is a corridor rather than a course, and no
+instruction given on it could ever be wrong. A course you cannot be
+given directions through cannot test the direction-giving, which is one
+of the examiner's four jobs.
+
+The grid cost almost nothing, and that is the placement rule earning its
+keep a second time: **the same rule works in both axes**, because `OUT.S`
+points at +y and `OUT.N` at -y, so two intersections a `reach + reach`
+apart meet north-south exactly as they do east-west. Measured over a 3x2:
+14 seams, none of them out.
+
+One thing it did need. **Naming a link's two directions by which
+intersection has the lower index gives the two axes the same lane
+names**, because the western neighbour and the northern one both have the
+lower index -- so cars on one road would have followed cars on the other.
+A lane is named by which END of its own link it leaves from instead.
+
+**A route is derived from the geometry, never declared.** An intent is
+only offered at an intersection if the leg it would leave by has
+something on the end of it, so a plan cannot ask a candidate to turn into
+nothing: 2,400 planned instructions across 40 seeds from every edge, all
+of them leading somewhere.
+
+### 5.15.8 SILENCE MEANS STRAIGHT ON, AND IT FALLS OUT RATHER THAN BEING
+ENFORCED
+
+A plan is indexed by how many intersections a driver has negotiated, and
+a plan that has run out returns `straight` because that is what the
+absence of an instruction means (CLAUDE.md, Directions). Nothing checks
+for the end of the list; there is no branch for it.
+
+That matters more than it looks. **It is the rule that makes a LATE
+instruction a missed turn rather than a pause**, which is the interlock
+the whole directions mechanic rests on: being busy marking a fault makes
+you late with a direction, and the candidate then drives straight past
+the turn you meant. If silence meant "wait", lateness would cost nothing
+and the four systems could not make each other fail.
+
+Checked rather than assumed, because a rule that falls out is exactly the
+kind that can quietly stop falling out: a candidate has to be observed
+OUTDRIVING their plan and carrying on ahead.
+
+**Indexed by count, not by which intersection.** A row course would make
+the two agree and they would stop agreeing the moment it is not a row --
+a route that doubles back visits the same intersection twice and wants
+different instructions each time. The version that keeps working is the
+one that counts.
+
+### 5.15.9 A SINGLE-SEED CHECK WAS MEASURING THE DRAW AND REPORTING IT AS
+THE DRIVER
+
+`verify-telling` compared six candidates on ONE ten-minute drive, which
+is about fourteen crossings. Which manoeuvres a candidate happens to draw
+across fourteen swings the result more than the driver does, and stage
+3's route planner changed the draw: a hesitant driver went from waiting
+7.1x a sound one to waiting 1.17x, with nothing about either driver
+touched. Over eight seeds the same code gives 2.3x.
+
+**IT HAD BEEN GREEN, WHICH IS WORSE THAN HAVING BEEN RED.** A check that
+happens to pass on the seed it was written against is indistinguishable
+from one that works, right up until something unrelated moves and it
+reports a regression that is not there -- or, far worse, stays green
+through one that is.
+
+The lesson is not "use more seeds". It is that **a check with a threshold
+has an implied sample size, and it is never stated.** "A hesitant driver
+waits 1.5x longer" needs enough crossings for the ratio to be about the
+driver; nothing in the check said how many that was, and the number that
+happened to be there was chosen for runtime.
+
+### 5.15.10 AND THE BRAKING AXIS NEEDED A DIFFERENT INSTRUMENT AGAIN
+
+The same run showed heavy-footed drivers braking MORE GENTLY than sound
+ones -- 0.91 against 0.98 -- which is backwards.
+
+It was the instrument, not the model. The braking axis sets how hard a
+driver PLANS on braking; a bigger figure means a smaller desired gap, so
+they close in further before doing anything about it. **The behaviour is
+"leaves it late", and the peak deceleration is a consequence of that
+tangled up with whatever else happened to be on the road.**
+
+Measured directly, over eight seeds, approaching a stop line:
+
+| driver | 40m out | 20m out | starts easing off | peak |
+|---|---|---|---|---|
+| sound | 45.7 km/h | 35.2 km/h | 86m out | 1.11 m/s2 |
+| heavy-footed | 48.8 km/h | 33.3 km/h | **77m out** | 1.29 m/s2 |
+
+Faster far out, later off the accelerator, harder on the brake, slower
+close in. The signature is unmistakable once measured at the right point,
+and invisible in the statistic that had been used.
+
+**This is the third instrument tried for one axis** -- worst-ever, then
+median-per-trip, now where-they-start. That is not indecision: each
+change came from a measurement showing the previous one was reading
+something else. Worst-ever measured the situation (a sound driver's worst
+stop was `ABRUPT_AT` exactly). Median-per-trip measured the draw. Where
+they start easing off measures the decision, which is the thing the axis
+sets.
+
+It is confounded with SPEED across profiles -- a bold driver arrives
+faster and needs more room, so they start sooner -- and that is fine
+because each profile is only ever compared with sound on its own
+observable, and heavy differs from sound on the braking axis alone. Said
+out loud rather than left for somebody to trip over.
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately
