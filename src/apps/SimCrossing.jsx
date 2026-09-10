@@ -1,0 +1,200 @@
+/* =====================================================================
+   STAGE 1 OF THE REBUILD, on screen.
+
+   An all-way stop. Cars arrive from four legs, wait their turn, and go.
+   Nothing else: no candidate, no marking, no score, no camera.
+
+   The deliverable of this stage is the same as stage 0's -- an OPINION.
+   Does traffic that has to negotiate with itself read as drivers making
+   decisions? A green suite cannot answer that, and 31 green checks over a
+   game the maintainer says is not a game is exactly the failure a
+   test-first rebuild reproduces.
+   ===================================================================== */
+import React, { useEffect, useRef, useState } from "react";
+import { Play, Pause, RotateCcw } from "lucide-react";
+import { C, FONT_D, FONT_U } from "../theme.js";
+import { seedCrossing, run, poseOf, overlapping, CAR, M, DT } from "../sim/crossing.js";
+
+const LIMITS = [30, 50, 60];
+
+/* How much of the place to show. The approaches run 60m out; showing all
+   of that would put the box in the middle of a large empty cross and make
+   the cars tiny. 34m each way keeps the whole intersection and a queue on
+   every leg, which is what there is to watch. */
+const HALF = 34;
+const VIEW = { x: -M(HALF), y: -M(HALF), w: M(HALF * 2), h: M(HALF * 2) };
+
+export default function SimCrossing() {
+  const [seed, setSeed] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [world, setWorld] = useState(() => seedCrossing(1, 50));
+  const [playing, setPlaying] = useState(true);
+
+  const raf = useRef(0), last = useRef(0), owed = useRef(0);
+  useEffect(() => {
+    if (!playing) return;
+    last.current = 0;
+    const tick = (now) => {
+      if (last.current) {
+        owed.current += Math.min(0.25, (now - last.current) / 1000);
+        const n = Math.floor(owed.current / DT);
+        if (n > 0) { owed.current -= n * DT; setWorld((w) => run(w, n)); }
+      }
+      last.current = now;
+      raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf.current);
+  }, [playing]);
+
+  const restart = (s = seed, kmh = limit) => {
+    setSeed(s); setLimit(kmh); setWorld(seedCrossing(s, kmh)); owed.current = 0;
+  };
+
+  const place = world.layout.place;
+  const half = M(place.lane);              // half the road's width: one lane each way
+  const line = M(place.lineAt);
+  const waiting = world.actors.filter((a) => a.v < 0.3).length;
+  const touching = overlapping(world).length;
+
+  return (
+    <div style={S.page}>
+      <div style={S.head}>
+        <span style={S.title}>Stage 1 — an all-way stop</span>
+        <span style={S.sub}>
+          four legs, and nobody is telling them who goes.
+        </span>
+      </div>
+
+      <div style={S.canvas}>
+        <svg viewBox={`${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}`}
+          style={{ width: "100%", height: "100%", display: "block" }}
+          preserveAspectRatio="xMidYMid meet">
+          <rect x={VIEW.x} y={VIEW.y} width={VIEW.w} height={VIEW.h} fill="#22262c" />
+          {/* The two roads, crossing. Drawing them as full-length bars is
+              what makes the box appear where they overlap. */}
+          <rect x={-half} y={VIEW.y} width={half * 2} height={VIEW.h} fill="#2c3037" />
+          <rect x={VIEW.x} y={-half} width={VIEW.w} height={half * 2} fill="#2c3037" />
+
+          {/* Centre lines, stopping short of the box because road markings
+              do. */}
+          {[[0, -1], [0, 1], [-1, 0], [1, 0]].map(([ux, uy], i) => (
+            <line key={i}
+              x1={ux * half} y1={uy * half}
+              x2={ux * M(HALF)} y2={uy * M(HALF)}
+              stroke="#7a6a3a" strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(3)}`} />
+          ))}
+
+          {/* THE STOP LINES, across the inbound lane of each leg only --
+              the lane you arrive on, not the one you leave by. */}
+          {[["N", 0, -1], ["S", 0, 1], ["E", 1, 0], ["W", -1, 0]].map(([side, ux, uy]) => {
+            const rx = -uy, ry = ux;              // right of travel, inbound
+            const cx = ux * line - rx * M(place.lane / 2);
+            const cy = uy * line - ry * M(place.lane / 2);
+            return (
+              <rect key={side}
+                x={cx - (ux ? M(0.25) : M(place.lane / 2))}
+                y={cy - (uy ? M(0.25) : M(place.lane / 2))}
+                width={ux ? M(0.5) : M(place.lane)}
+                height={uy ? M(0.5) : M(place.lane)}
+                fill="#c9ccd1" opacity={0.75} />
+            );
+          })}
+
+          {world.actors.map((a) => {
+            const p = poseOf(world, a);
+            if (Math.abs(p.x) > HALF + 6 || Math.abs(p.y) > HALF + 6) return null;
+            const hard = a.a < -0.5;
+            const held = a.v < 0.3;
+            return (
+              <g key={a.id} transform={`translate(${M(p.x)} ${M(p.y)}) rotate(${p.rot})`}>
+                <rect
+                  x={-M(CAR.length) / 2} y={-M(CAR.width) / 2}
+                  width={M(CAR.length)} height={M(CAR.width)} rx={M(0.3)}
+                  fill={hard ? "#8a4b4b" : held ? "#4a5058" : "#5a616b"}
+                  stroke="#12151a" strokeWidth={M(0.1)} />
+                {/* Which way it is pointing. */}
+                <rect x={M(CAR.length) / 2 - M(0.5)} y={-M(CAR.width) / 2}
+                  width={M(0.5)} height={M(CAR.width)} fill="#12151a" opacity={0.55} />
+                {hard && (
+                  <rect x={-M(CAR.length) / 2} y={-M(CAR.width) / 2}
+                    width={M(0.4)} height={M(CAR.width)} fill={C.red} />
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div style={S.panel}>
+        <div style={S.row}>
+          <span style={S.label}>Limit</span>
+          {LIMITS.map((kmh) => (
+            <button key={kmh} className="btn" style={{
+              ...S.chip,
+              borderColor: limit === kmh ? C.amber : "rgba(255,255,255,0.12)",
+              color: limit === kmh ? C.white : C.dim,
+            }} onClick={() => restart(seed, kmh)}>{kmh}</button>
+          ))}
+          <span style={S.label}>km/h</span>
+        </div>
+
+        <div style={S.row}>
+          <button className="btn" style={S.btn} onClick={() => setPlaying((p) => !p)}>
+            {playing ? <Pause size={16} /> : <Play size={16} />}
+          </button>
+          <button className="btn" style={S.btn} onClick={() => restart(seed + 1, limit)}>
+            <RotateCcw size={16} />
+          </button>
+          <span style={S.readout}>
+            {world.t.toFixed(0)}s · seed {seed} · {world.actors.length} cars ·{" "}
+            {waiting} waiting
+            {touching > 0 && <b style={{ color: C.red }}> · {touching} TOUCHING</b>}
+          </span>
+        </div>
+
+        <div style={S.note}>
+          Nobody is directing this. Each driver looks at the others every
+          twentieth of a second and works out whether their paths cross,
+          whether the other car is already committed, and who stopped
+          first — then waits or goes. Whoever stopped first goes first;
+          arriving together, the car on the right goes; a left turn yields
+          to the oncoming.
+          <br />
+          Watch a car pull up, wait for two or three others, and then take
+          its turn. Darker is stopped, red is braking. If anything ever
+          reads <b>TOUCHING</b>, that is the one thing that must never
+          happen and I want to know.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const S = {
+  page: {
+    minHeight: "100dvh", display: "flex", flexDirection: "column",
+    background: C.bg, color: C.text,
+  },
+  head: { padding: "10px 12px 6px", display: "flex", flexDirection: "column", gap: 2 },
+  title: { fontFamily: FONT_D, fontSize: 18, color: C.white },
+  sub: { fontFamily: FONT_U, fontSize: 12, color: C.dim },
+  canvas: { height: "58dvh", minHeight: 280, position: "relative", overflow: "hidden" },
+  panel: { padding: 10, display: "flex", flexDirection: "column", gap: 8 },
+  row: { display: "flex", gap: 8, alignItems: "center" },
+  btn: {
+    minWidth: 44, minHeight: 44, display: "flex", alignItems: "center",
+    justifyContent: "center", background: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10,
+    color: C.text, cursor: "pointer",
+  },
+  chip: {
+    minWidth: 52, minHeight: 44, display: "flex", alignItems: "center",
+    justifyContent: "center", background: "rgba(255,255,255,0.05)",
+    border: "1px solid", borderRadius: 10, fontFamily: FONT_D, fontSize: 15,
+    cursor: "pointer",
+  },
+  label: { fontFamily: FONT_D, fontSize: 13, color: C.dim },
+  readout: { fontFamily: FONT_D, fontSize: 13, color: C.dim },
+  note: { fontFamily: FONT_U, fontSize: 12, color: C.dim, lineHeight: 1.45 },
+};

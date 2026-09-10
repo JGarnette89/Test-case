@@ -19,6 +19,7 @@ import MergeRush from "./apps/MergeRush.jsx";
    because the whole deliverable of that stage is somebody looking at
    it. */
 import SimRoad from "./apps/SimRoad.jsx";
+import SimCrossing from "./apps/SimCrossing.jsx";
 import { ROUTES } from "./engine/routes.js";
 import { SCENARIOS } from "./engine/scenarios.js";
 import {
@@ -76,6 +77,16 @@ const MODES = [
     Icon: Milestone,
     accent: C.amber,
     Component: SimRoad,
+  },
+  {
+    id: "crossing",
+    name: "Stage 1 — taking turns",
+    kicker: "The rebuild — an all-way stop",
+    blurb:
+      "Four legs and nobody directing. Each driver looks at the others twenty times a second, works out whether their paths cross and who stopped first, and waits or goes. Whoever stopped first goes first; arriving together, the car on the right goes; a left turn yields to the oncoming. Nothing else yet — no candidate, no marking, no score. The question is whether traffic that has to negotiate with itself reads as people making decisions.",
+    Icon: Milestone,
+    accent: C.green,
+    Component: SimCrossing,
   },
   {
     id: "drive",
