@@ -1632,6 +1632,137 @@ It also reframes 4.6's "longer waits are answered with something to read,
 not with shorter waits". The something to read was assumed to be events
 DURING the wait. Some of it is the driving either side of it.
 
+## 5.15 STAGE 3, FIRST INCREMENT: THE ROAD BETWEEN INTERSECTIONS
+
+### 5.15.1 THE LINK IS NOT NEW GEOMETRY
+
+The exit of one intersection and the approach of the next are the SAME
+PIECE OF ROAD. Place the two centres `reach + reach` apart and the exit
+path ends exactly where the approach path begins -- same metre, same
+lane, same heading -- so a car running off the end of one path runs onto
+the start of the next with nothing stitched and nothing interpolated.
+Measured across two- and three-intersection courses: every seam 0.0000m
+apart and 0.00 degrees out.
+
+That was not the expected answer. A link looked like it would need its
+own path type, its own length, and a rule for joining it to both ends.
+It needs none, and the reason is the constraint that made the geometry
+awkward in the first place: an approach is 279m at 60 km/h because it has
+to hold the biggest gap any driver could ask for (5.13.12), so two of
+them back to back is a 558m block -- a city block -- and the awkward
+constraint turns out to have been building the thing the next stage
+needed.
+
+**A COURSE OF ONE IS THE SINGLE INTERSECTION, NOT AN EXTENSION OF IT.**
+`seedCrossing` is now `seedCourse` with `n = 1`, and the single case
+carries no special path anywhere: an edge leg is a leg with nothing
+joined to it, of which a lone intersection has four. Verified rather than
+argued -- a trace of six worlds at 120 seconds each is BYTE IDENTICAL
+before and after the change.
+
+### 5.15.2 A LANE IS A PIECE OF ROAD AND IT DOES NOT STOP AT A BOUNDARY
+
+Right of way is a question about one intersection. Following is not: two
+cars nose to tail across a boundary are on one street, filed under
+different intersections, and the one behind must be able to see the one
+in front or it drives into it at the exact moment the leader changes
+hands.
+
+So a lane has an identity of its own, shared by the two paths that use
+it, and a position along it measured by projecting the world pose onto
+the lane's direction -- which needs no bookkeeping, because the pose is
+already the coordinate.
+
+WITHIN one intersection the older rules stay, and that is deliberate
+rather than leftover: they use the path's own distance, so a follower
+keeps following a leader THROUGH the box. A projection onto a straight
+lane cannot do that -- a car turning off my lane stops advancing along
+it, and a follower reading that would think it had stopped dead.
+
+### 5.15.3 FILING A CAR UNDER ONE INTERSECTION IS SAFE BECAUSE THE
+APPROACH COVERS THE GAP HORIZON
+
+`blockedBy` returns false for two cars at different intersections, which
+looks like a hole: a driver waiting at intersection 1 must yield to
+traffic coming from intersection 0, and that traffic is filed at 0 until
+it crosses.
+
+It is not a hole, and the reason is the approach length. A car AT the
+boundary is already a full approach from the next box, and the approach
+is sized to hold the longest gap anybody could need -- so anything still
+filed at the previous intersection is further away than any driver would
+wait for. Traffic beyond the approach cannot change a gap decision.
+
+**This is a load-bearing coincidence and it is checked rather than
+assumed.** `verify-course` re-derives the horizon from `gapNeeded` and
+the intersection geometry, without consulting `reachFor`, and compares.
+If a future course ever shortens an approach below what the drivers on it
+would wait for, that check goes red and filing by intersection has to be
+revisited.
+
+### 5.15.4 A CHECK THAT PASSES WITH THE MECHANISM REMOVED IS DECORATION
+
+The first version of the cross-boundary following check ran ordinary
+traffic and measured the closest any two cars came near the seam. It
+passed. It also passed **with the cross-boundary rule deleted entirely**
+-- the worst gap moved from 10.04m to 8.46m and nothing collided --
+because the seam sits in the middle of a 558m block where nothing queues,
+so the rule was never the binding constraint and its absence changed
+nothing measurable.
+
+CLAUDE.md's own instruction is the one that caught it: when a check
+passes on something you suspect, ask what it does NOT look at, and try to
+make it fail on purpose. Sabotaging the rule and re-running took two
+minutes and turned a green check into a known-worthless one.
+
+What replaced it is DIRECTED rather than statistical. Two cars are placed
+by hand straddling the boundary at a distance a driver must react to, and
+the questions are asked outright: does the one behind see the one in
+front at all, is the gap it reads the real one measured off the two
+poses, and does it brake. Under sabotage that now fails in eight places.
+
+**The general form: a property-based check is the right instrument for
+"is this ever violated" and the wrong one for "does this specific
+mechanism work".** The second needs the situation built, because waiting
+for traffic to produce it means the check's strength is a matter of luck.
+
+### 5.15.5 THE RULE IS LOAD-BEARING EXACTLY WHERE THE BLOCK IS SHORT
+
+Measured, four demands, how often the cross-boundary rule finds a leader
+and how often that leader is the thing actually holding somebody back:
+
+| place | fires | binds |
+|---|---|---|
+| two-way, a car every 2.0s | 2.23% of car-ticks | **0** |
+| two-way, every 0.9s | 0.39% | **0** |
+| two-way, every 0.45s | 0.23% | **0** |
+| all-way, every 0.9s | 1.75% | **195** |
+
+At a two-way stop it never binds at any density tried, because the
+approach is 279m and the block is 558m: a queue never reaches the seam.
+At an all-way stop the approach is 100m and the block is 200m, and the
+queues from the stop lines do reach across it.
+
+So the rule is necessary and, on a two-way course, currently inert -- and
+saying so is the point. A mechanism kept because it is correct is fine; a
+mechanism believed to be doing work it is not doing is how a model drifts
+away from what anybody thinks it is.
+
+### 5.15.6 KEEP RIGHT IS THE CHEAPEST WIDE NET A COURSE HAS
+
+Lane discipline over a whole course is the first thing a placement
+mistake breaks: an intersection put down at the wrong offset, or a leg
+joined to the wrong side, shows up as cars on the wrong side of a centre
+line long before it shows up as a collision. 201,529 readings across
+three intersections, none wrong.
+
+**Measured from the intersection the leg belongs to, never from the
+origin**, and that trap is worth naming because it cost a false alarm of
+47,443: a southbound lane at the intersection 558m along sits at
+x = 558 - 1.8, and comparing it against -1.8 reports the entire course as
+driving on the wrong side. A check whose failure mode is "everything is
+broken" is almost always the check being broken.
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately

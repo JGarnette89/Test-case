@@ -33,6 +33,9 @@ import {
   layoutFor, intersectionFor, poseAt, rightOf, OPPOSITE, SIDES, INTENTS,
   ALL_WAY, TWO_WAY, cornersOf, boxesOverlap,
 } from "./intersection.js";
+import {
+  courseOf, laneIn, laneOut, dirIn, dirOut, alongDir, nextFor, joinedTo, poseOn,
+} from "./course.js";
 import { rng } from "../engine/index.js";
 import { REACTION_FLOOR } from "../engine/score.js";
 
@@ -99,6 +102,17 @@ const UNDUE_AT = 4.0;
 /* Does this leg stop? Control is per leg, so one intersection shape is
    an all-way stop or a two-way stop depending only on this. */
 const stops = (layout, path) => layout.place.control[path.from] === "stop";
+
+/* WHICH INTERSECTION AN ACTOR IS AT, AND WHICH PATH THROUGH IT.
+
+   A world is a COURSE now -- one intersection or several -- and an actor
+   carries the index of the one they are currently negotiating. A course
+   of ONE is exactly the single intersection every earlier stage had, so
+   nothing below has a special case for it: the single intersection is the
+   general thing with `n = 1`, rather than the general thing being an
+   extension of it. */
+export const layoutOf = (world, a) => world.course.at[a.k ?? 0].layout;
+export const pathOf = (world, a) => layoutOf(world, a).paths[a.route];
 
 /* WHERE A CAR ACTUALLY WAITS. `s` is a car's centre -- stage 0 defines
    the gap as `ahead - CAR.length`, which is only right for centres -- so
@@ -208,6 +222,11 @@ function settle(me, them, mine, theirs, layout) {
             stopped first goes.
    ===================================================================== */
 export function blockedBy(me, them, layout, caution = me.caution) {
+  /* RIGHT OF WAY IS A QUESTION ABOUT ONE INTERSECTION. Two cars at
+     different ones are half a kilometre apart and have nothing to settle
+     between them; what they may have to do is FOLLOW each other, which is
+     `whatStops`'s business and is about the lane rather than the box. */
+  if ((me.k ?? 0) !== (them.k ?? 0)) return false;
   const hit = layout.conflicts[me.route + "|" + them.route];
   if (!hit) return false;
 
@@ -322,7 +341,8 @@ export function blockedBy(me, them, layout, caution = me.caution) {
    lets undue delay be measured without a second opinion about what an
    opening is. */
 export function openTo(me, world, caution) {
-  return !world.actors.some((t) => t.id !== me.id && blockedBy(me, t, world.layout, caution));
+  const layout = layoutOf(world, me);
+  return !world.actors.some((t) => t.id !== me.id && blockedBy(me, t, layout, caution));
 }
 
 /* What is in this driver's way: the nearest of the car in front and the
@@ -330,13 +350,47 @@ export function openTo(me, world, caution) {
    `decide` already understands, so nothing downstream knows the
    difference between a queue and a right-of-way. */
 export function whatStops(me, world) {
-  const layout = world.layout;
+  const layout = layoutOf(world, me);
   const mine = layout.paths[me.route];
   let leader = null, gap = Infinity;
 
+  /* MY LANE, AND HOW FAR ALONG IT I AM.
+
+     A LANE IS A PIECE OF ROAD AND IT DOES NOT STOP AT AN INTERSECTION'S
+     BOUNDARY. The exit of one and the approach of the next are the same
+     street (course.js), so two cars nose to tail across that boundary are
+     filed under different intersections and would otherwise be invisible
+     to each other -- and the one behind would drive into the one in
+     front at the exact moment it changed hands. */
+  const course = world.course;
+  const mineAt = me.k ?? 0;
+  const myIn = laneIn(course, mineAt, mine.from);
+  const myOut = laneOut(course, mineAt, mine.to);
+  const myPose = poseOf(world, me);
+
   for (const them of world.actors) {
     if (them.id === me.id) continue;
-    const theirs = layout.paths[them.route];
+    const theirs = pathOf(world, them);
+
+    /* THE CAR IN FRONT ON THE ROAD I AM ON, WHEREVER THEY ARE FILED.
+       Only ACROSS a boundary: within one intersection the two rules
+       below are finer, because they can use the path's own distance and
+       so keep following a leader THROUGH the box, which a projection onto
+       a straight lane cannot -- a car turning off my lane stops advancing
+       along it, and a follower reading that would think it had stopped. */
+    if ((them.k ?? 0) !== mineAt) {
+      for (const [lane, dir] of [[myIn, dirIn(mine.from)], [myOut, dirOut(mine.to)]]) {
+        /* The lane test first and the pose only after it, because the
+           test is two string compares and the pose is a walk along a
+           polyline -- and all but a handful of pairs fail the test. */
+        const onIt = laneIn(course, them.k ?? 0, theirs.from) === lane
+          || laneOut(course, them.k ?? 0, theirs.to) === lane;
+        if (!onIt) continue;
+        const d = alongDir(poseOf(world, them), dir) - alongDir(myPose, dir) - CAR.length;
+        if (d >= 0 && d < gap) { gap = d; leader = them; }
+      }
+      continue;
+    }
 
     /* THE CAR IN FRONT ON MY OWN APPROACH. Same leg, same lane, so this
        is stage 0's queue arriving unchanged. */
@@ -419,7 +473,7 @@ export function step(world) {
       const a = decide(me, view);
       const v = Math.max(0, me.v + a * DT);
       const s = me.s + v * DT;
-      const mine = world.layout.paths[me.route];
+      const mine = pathOf(world, me);
       /* WHEN THEY STOPPED, remembered because the queue at an all-way
          stop is made of arrival order and nothing else can reconstruct
          it after the fact. */
@@ -468,13 +522,31 @@ export function step(world) {
       const waited = sitting && openedAt != null ? world.t - openedAt : (me.waited || 0);
       return { ...at, a, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
     })
-    .filter((me) => me.s <= world.layout.paths[me.route].length);
+    /* AND OFF THE END OF ONE PATH IS THE START OF THE NEXT, rather than
+       the end of the world. The two intersections are placed so those are
+       the same metre (course.js), so a car crossing the boundary keeps
+       its speed, its place in the queue and whoever it was following --
+       it is the SAME CAR, which is the whole of what this stage adds.
+
+       A leg with nothing beyond it is still the edge of the world, and a
+       course of one intersection is made entirely of those. */
+    .map((me) => {
+      if (me.s <= pathOf(world, me).length) return me;
+      const on = nextFor(world.course, me.k ?? 0, me.route, (k) => intentFor(world, me, k));
+      if (!on) return null;
+      return {
+        ...me, k: on.k, route: on.route, s: 0,
+        stoppedAt: null, going: false, accepted: false,
+        openFor: 0, openedAt: null,
+      };
+    })
+    .filter(Boolean);
 
   const t = world.t + DT;
   let { spawned, nextAt, turnedAway = 0 } = world;
   if (t >= nextAt) {
     const car = arriving(world, spawned);
-    const joining = joinAt(next, world.layout, car);
+    const joining = joinAt(world, next, car);
     if (joining) {
       next.push(joining);
       spawned += 1;
@@ -520,9 +592,10 @@ export function step(world) {
 
    Exported because a candidate joins the way anybody else does; they are
    not a special kind of traffic. */
-export function joinAt(actors, layout, car) {
+export function joinAt(world, actors, car) {
+  const mine = pathOf(world, car);
   const behind = actors
-    .filter((a) => layout.paths[a.route].from === layout.paths[car.route].from)
+    .filter((a) => (a.k ?? 0) === (car.k ?? 0) && pathOf(world, a).from === mine.from)
     .reduce((lo, a) => (a.s < lo.s ? a : lo), { s: Infinity, v: Infinity });
   const room = behind.s - CAR.length;
   const fits = (v) => room > wantedGap({ ...car, v }, behind);
@@ -536,23 +609,48 @@ export function joinAt(actors, layout, car) {
   return { ...car, v: lo };
 }
 
-/* WHICH LEG THEY ARRIVE ON. A THROUGH ROAD CARRIES MORE TRAFFIC THAN
-   THE STREET THAT STOPS FOR IT -- that is most of what makes it the
-   through road, and a two-way stop with traffic split evenly four ways
-   is not a two-way stop, it is a coincidence.
+/* WHERE TRAFFIC ENTERS THE WORLD, AND WHY IT IS ONLY THE EDGES.
 
-   With every leg controlled the weights are all equal and this reduces
-   EXACTLY to the uniform draw it replaces, so the all-way stop is
-   untouched. */
+   A leg with another intersection on the end of it is not a source: the
+   traffic on it arrived from that intersection, and creating more there
+   would be conjuring cars out of the middle of a street. So arrivals
+   happen only where the course stops, which for one intersection is all
+   four legs and for a row of them is the two ends plus every side road.
+
+   A THROUGH ROAD CARRIES MORE TRAFFIC THAN THE STREET THAT STOPS FOR IT
+   -- that is most of what makes it the through road, and a two-way stop
+   with traffic split evenly four ways is not a two-way stop, it is a
+   coincidence. With every leg controlled the weights are all equal and
+   this reduces EXACTLY to the uniform draw it replaces. */
 const BUSIER = 2;
-function legFor(layout, x) {
-  const weight = (side) => (layout.place.control[side] === "stop" ? 1 : BUSIER);
-  let left = x * SIDES.reduce((sum, side) => sum + weight(side), 0);
-  for (const side of SIDES) {
-    if (left < weight(side)) return side;
-    left -= weight(side);
+export function edgesOf(course) {
+  const out = [];
+  for (let k = 0; k < course.n; k++) {
+    for (const side of SIDES) {
+      if (joinedTo(course, k, side)) continue;
+      out.push({ k, side, weight: course.at[k].layout.place.control[side] === "stop" ? 1 : BUSIER });
+    }
   }
-  return SIDES[SIDES.length - 1];
+  return out;
+}
+
+function edgeFor(course, x) {
+  const edges = edgesOf(course);
+  let left = x * edges.reduce((sum, e) => sum + e.weight, 0);
+  for (const e of edges) {
+    if (left < e.weight) return e;
+    left -= e.weight;
+  }
+  return edges[edges.length - 1];
+}
+
+/* WHAT THEY DO AT THE NEXT ONE. Drawn from this driver's own number and
+   the intersection they have reached, so it is a property of the person
+   and the place rather than of the clock -- the same rule every other
+   roll in this file lives under, and the reason a course replays. */
+function intentFor(world, me, k) {
+  const r = rng(world.seed * 96181 + (me.n ?? 0) * 7919 + k + 1);
+  return INTENTS[Math.floor(r() * INTENTS.length) % INTENTS.length];
 }
 
 /* A driver, on a leg, with somewhere to be. The person comes from stage
@@ -561,11 +659,13 @@ function legFor(layout, x) {
 function arriving(world, n) {
   const r = rng(world.seed * 31337 + n + 1);
   const who = driver(world.road, world.seed, n);
-  const from = legFor(world.layout, r());
+  const where = edgeFor(world.course, r());
   const intent = INTENTS[Math.floor(r() * INTENTS.length) % INTENTS.length];
   return {
     ...who,
-    route: from + "/" + intent,
+    n,
+    k: where.k,
+    route: where.side + "/" + intent,
     s: 0,
     stoppedAt: null,
     going: false,
@@ -612,7 +712,7 @@ function arriving(world, n) {
 
    Where nothing stops, nobody accepts a gap and the gap term is inert. */
 const REACH_MIN = 60;
-function reachFor(control, speed) {
+export function reachFor(control, speed) {
   const line = intersectionFor().lineAt;
   /* The fastest driver this road produces, stopping comfortably. */
   const room = line + stoppingRoom(wantedSpeed(speed, 0));
@@ -643,14 +743,23 @@ function reachFor(control, speed) {
   return Math.max(REACH_MIN, Math.ceil(room), Math.ceil(worst * wantedSpeed(speed, 0)));
 }
 
-export function seedCrossing(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY } = {}) {
+export const seedCrossing = (seed = 1, kmh = 50, opts = {}) =>
+  seedCourse(seed, kmh, { ...opts, n: 1 });
+
+export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY, n = 1 } = {}) {
   const speed = kmh / 3.6;
-  const layout = layoutFor({ control, reach: reachFor(control, speed) });
+  const course = courseOf({ n, kmh, control, reachFor });
+  const layout = course.at[0].layout;
   const road = { kmh, speed, lane: layout.place.lane };
-  let w = { t: 0, tick: 0, seed, road, layout, every, spawned: 0, nextAt: 0, actors: [] };
+  let w = { t: 0, tick: 0, seed, road, course, layout, every, spawned: 0, nextAt: 0, actors: [] };
   /* Warmed until the approaches have traffic on them and the first cars
      have had to take turns. */
-  const warm = Math.round(40 / DT);
+  /* WARMED LONG ENOUGH FOR A CAR TO HAVE CROSSED THE WHOLE COURSE, so
+     the first thing anybody sees is a street with traffic on it rather
+     than one filling up from the ends. A fixed forty seconds was right
+     for one intersection and is not for a row of them. */
+  const acrossIt = course.at.reduce((sum, a) => sum + 2 * a.layout.place.reach, 0) / speed;
+  const warm = Math.round(Math.max(40, acrossIt) / DT);
   for (let i = 0; i < warm; i++) w = step(w);
   /* AND THE REBASE HAS TO MOVE EVERYTHING THAT IS ON THAT CLOCK, which
      is not only `t`. Drivers carry two instants -- when they stopped and
@@ -681,7 +790,7 @@ export function run(world, ticks) {
    drawing rather than a fault, and the overlap test would be measuring a
    car that is not where the screen says it is (DECISIONS.md 0). */
 export function poseOf(world, actor) {
-  const p = poseAt(world.layout.paths[actor.route], actor.s);
+  const p = poseOn(world.course, actor.k ?? 0, actor.route, actor.s);
   const off = weaveAt(actor, actor.s);
   if (!off) return p;
   const a = (p.rot * Math.PI) / 180;

@@ -26,7 +26,7 @@
    ===================================================================== */
 import { driver } from "./traffic.js";
 import { INTENTS } from "./intersection.js";
-import { joinAt } from "./crossing.js";
+import { joinAt, edgesOf } from "./crossing.js";
 import { rng } from "../engine/index.js";
 import { AXES, CONFIDENT_ENOUGH } from "../engine/ratings.js";
 
@@ -113,7 +113,11 @@ export function candidateFor(world, { id, profile, trip = 0 }) {
      the person. Seeding off the id as well would have been the obvious
      thing and would have quietly made every difference unattributable. */
   const r = rng(trip * 7919 + 1);
-  const from = "NESW"[Math.floor(r() * 4) % 4];
+  /* ON AN EDGE OF THE COURSE, like any other arrival: a candidate does
+     not appear in the middle of a street either. With one intersection
+     that is all four legs, which is what every earlier stage had. */
+  const edges = edgesOf(world.course);
+  const where = edges[Math.floor(r() * edges.length) % edges.length];
   const intent = INTENTS[Math.floor(r() * INTENTS.length) % INTENTS.length];
   return {
     ...driver(world.road, 4242, trip, who.ratings),
@@ -121,7 +125,12 @@ export function candidateFor(world, { id, profile, trip = 0 }) {
     candidate: id,
     profile: who.id,
     trip,
-    route: `${from}/${intent}`,
+    /* Numbered off the trip rather than off who they are, so two
+       candidates on the same seed make the same choices at every
+       intersection they reach and the comparison stays controlled. */
+    n: trip,
+    k: where.k,
+    route: `${where.side}/${intent}`,
     s: 0,
     stoppedAt: null,
     going: false,
@@ -157,7 +166,7 @@ export function keepDriving(world) {
     if (actors.some((a) => a.candidate === w.id)) continue;
     /* Gone means they finished the last one, so this is the next trip. */
     const trip = w.trip + (w.started ? 1 : 0);
-    const joining = joinAt(actors, world.layout, candidateFor(world, { ...w, trip }));
+    const joining = joinAt(world, actors, candidateFor(world, { ...w, trip }));
     if (!joining) continue;
     actors = [...actors, joining];
     watching = watching.map((x, j) => (j === i ? { ...x, trip, started: true } : x));

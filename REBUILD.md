@@ -585,7 +585,34 @@ Route, directions with their deadlines, deferred marking, the section
 sheet. All of `detect.js` and `directions.js` come across.
 
 **FIRST INCREMENT: TWO INTERSECTIONS JOINED BY A LINK, WITH TRAFFIC
-FLOWING BETWEEN THEM.** It is the piece none of the existing stages have.
+FLOWING BETWEEN THEM -- BUILT.** `src/sim/course.js`,
+`src/apps/SimCourse.jsx`, `tools/verify-course.mjs`. At **`#/course`**.
+
+The link turned out to need no geometry at all: the exit of one
+intersection and the approach of the next ARE the same piece of road, so
+placing the centres `reach + reach` apart makes the paths meet exactly --
+every seam 0.0000m apart and 0.00 degrees out. The constraint that made
+the approach awkwardly long was building the thing this stage needed.
+
+A course of ONE is the single intersection, not an extension of it:
+`seedCrossing` is `seedCourse` with `n = 1`, and a trace of six worlds at
+120 seconds each is byte identical before and after the change.
+
+What did need building is that **a lane does not stop at an
+intersection's boundary** -- two cars nose to tail across one are on the
+same street and the follower has to see the leader. Right of way stays a
+question about one intersection, which is safe because the approach is
+long enough that traffic beyond it cannot change a gap decision, and that
+is checked by re-derivation rather than assumed.
+
+Three findings worth carrying: the first version of the cross-boundary
+check PASSED WITH THE MECHANISM DELETED and had to be rebuilt as a
+directed test (DECISIONS.md 5.15.4); the rule is load-bearing at an
+all-way stop, where the block is 200m, and inert at a two-way stop, where
+it is 558m (5.15.5); and everybody keeps right across 201,529 readings,
+which is the cheapest wide net a course has.
+
+It was the piece none of the earlier stages had.
 Today every arrival is spawned at the far end of one approach and
 destroyed at the far end of its exit, and the candidate's "course" is
 `keepDriving` putting the same person back on a fresh leg — an honest

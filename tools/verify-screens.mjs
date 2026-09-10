@@ -137,6 +137,7 @@ try {
     ["#/sim", "stage 0 of the rebuild"],
     ["#/crossing", "stage 1 of the rebuild"],
     ["#/candidates", "stage 2 of the rebuild"],
+    ["#/course", "stage 3 of the rebuild"],
     ["#/drive", "the examiner drive"],
     ["#/examiner", "the examiner lab"],
     ["#/timing", "timing (unlisted)"],

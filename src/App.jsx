@@ -21,6 +21,7 @@ import MergeRush from "./apps/MergeRush.jsx";
 import SimRoad from "./apps/SimRoad.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
 import SimCandidates from "./apps/SimCandidates.jsx";
+import SimCourse from "./apps/SimCourse.jsx";
 import { ROUTES } from "./engine/routes.js";
 import { SCENARIOS } from "./engine/scenarios.js";
 import {
@@ -98,6 +99,16 @@ const MODES = [
     Icon: Milestone,
     accent: C.blue,
     Component: SimCandidates,
+  },
+  {
+    id: "course",
+    name: "Stage 3 — one road, two intersections",
+    kicker: "The rebuild — traffic that goes somewhere",
+    blurb:
+      "Until now every car was created at the far end of an approach and destroyed at the far end of its exit, so the traffic at one intersection had nothing to do with the traffic at the next. Here the car that leaves one is the car that arrives at the other — same speed, same place in the queue, same person. Nothing about it is new geometry: the exit of one intersection and the approach of the next are the same piece of road, so placing them a reach apart makes the two paths meet exactly.",
+    Icon: Milestone,
+    accent: C.amber,
+    Component: SimCourse,
   },
   {
     id: "drive",

@@ -1368,7 +1368,8 @@ every actor decides from the previous committed state, which is the one
 thing `src/engine/` structurally cannot do -- `poseAt(p, t)` is pure and
 resolves every participant's motion before the drive begins, so nobody
 ever reads anybody while moving. Stages 0-2 are built and watchable at
-`#/sim`, `#/crossing` and `#/candidates`. It imports from `src/engine/`
+`#/sim`, `#/crossing` and `#/candidates`; stage 3 has started at
+`#/course`. It imports from `src/engine/`
 where a thing was already solved (path shapes, the ratings model, the
 scoring floors) and never the other way round.
 
@@ -1413,6 +1414,7 @@ src/sim/traffic.js       THE REBUILD, stage 0: a stepped world, and cars that fo
 src/sim/intersection.js  stage 1: paths through an intersection, and where two of them would meet
 src/sim/crossing.js      stage 1: who gives way, gap acceptance, and undue delay
 src/sim/candidate.js     stage 2: a named driver as five ratings, and the course they drive
+src/sim/course.js        stage 3: intersections placed in one space, and the roads between them
 src/theme.js             palette and type — the engine must never import this
 src/environments.js      city, suburban, rural scenery — renderer side only
 src/frame.js             the camera: frameFor and cameraFor — no React
@@ -1769,11 +1771,12 @@ node tools/verify-screens.mjs      every reachable screen actually mounts and dr
 node tools/verify-sim.mjs          stage 0 of the rebuild: nobody drives through anybody
 node tools/verify-crossing.mjs     stage 1: paths through an intersection, who gives way, and what waiting too long costs
 node tools/verify-telling.mjs      stage 2: one driver model, and each weak axis showing as itself
+node tools/verify-course.mjs       stage 3: intersections that join, and traffic that is the same traffic
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All thirty must exit 0. Fourteen things they check are worth understanding:
+All thirty-one must exit 0. Fourteen things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take
