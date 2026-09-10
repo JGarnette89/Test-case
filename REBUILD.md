@@ -438,12 +438,34 @@ to that, not less, so the discipline has to be stricter rather than looser.
 `src/sim/traffic.js` (one file), `src/apps/SimRoad.jsx`,
 `tools/verify-sim.mjs`. On the home screen and at **`#/sim`**.
 
-A straight road, looped so it can be watched indefinitely. Six cars, each
-wanting a different speed. A fixed 20 Hz timestep, the Intelligent Driver
-Model for following, and one structural rule: **every actor decides from
-what it can see of the previous committed state, and nothing else.** No
-intersections, no candidate, no ratings, no faults, no scoring, no camera,
-and one check — nobody overlaps.
+A straight road with traffic flowing along it. A fixed 20 Hz timestep, the
+Intelligent Driver Model for following, and one structural rule: **every
+actor decides from what it can see of the previous committed state, and
+nothing else.** No intersections, no candidate, no faults, no scoring, no
+camera, and one check — nobody overlaps.
+
+Three things landed on top of it, each on the maintainer's instruction:
+
+- **The pace.** A 60 km/h road, wide speed variance with real outliers,
+  and a closer following gap. That last one separated `HEADWAY` from
+  `ENTITLED` — the gap a driver *chooses* is not the gap they are
+  *owed*, and having them equal put every following car permanently on
+  the fault boundary. The bill lands at stage 4.
+- **The limit is a parameter**, with 30/50/60/100 buttons on the page so
+  speed questions cost ten seconds rather than a round trip. **The road is
+  a DURATION, not a distance** — six seconds at any limit — because 90m
+  is six seconds at 60 km/h and three at 100. Verified at 100: the gap
+  scales because it is a time (1.32s at 30, 1.31s at 100), nothing
+  tunnels (0.78m of closing per tick against a 4.5m car), and stopping
+  from 100 needs 143m against 167m of road. Above 130 km/h the tick
+  would have to shorten.
+- **Every car is a rated driver** (§4.1), drawn from the same
+  `composeDriver` the candidate will be. 17% bold, 14% timid, the rest
+  ordinary; 39–81 km/h wanted and 0.39–1.01s of gap kept.
+
+The one trade a fixed camera cannot escape: six seconds at 100 km/h is
+167m, so a car is 6 x 15px. Showing more cars needs more road and smaller
+cars. That is what the chase camera is for.
 
 *Watchable:* traffic that queues, closes up, and spreads out. If it does
 not immediately read better than what ships today, the premise is wrong
