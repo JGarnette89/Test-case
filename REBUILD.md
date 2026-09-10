@@ -642,10 +642,33 @@ interlock the directions mechanic rests on. DECISIONS.md 5.15.8.
 `keepDriving` is no longer a stand-in for a course. A trip is a real
 route now, and it is what starts the next one.
 
-**Still to come in this stage:** the instruction itself, with the
-deadline `directions.js` already derives; deferred marking and the
-section sheet from `detect.js`; and `chaseFor` replacing the sliding
-view, which is where the steering axis becomes properly legible.
+**THIRD INCREMENT: THE CHASE CAMERA -- BUILT**, and it corrected a claim
+made in this document. `chaseOn` came across unchanged, pointed at a pose
+in world coordinates, riding the INTENDED pose so a wandering driver does
+not read as a wobbling camera.
+
+It does NOT make the steering axis legible, which is what this section
+used to say it would. Measured on a phone panel: 0.38m of stray is 0.68px
+at the 10s look-ahead, against 2.74px in the 52m fixed view -- the chase
+view is the widest and therefore the WORST of the three for lane-keeping,
+and being wide is what it is for. The deviation is reported as a number
+instead (sound 0.04m, ragged 0.20m), because magnifying it would be a lie
+about how far off line the car is. DECISIONS.md 5.15.14.
+
+What it is genuinely for: it TURNS with the car, which is what a gaze
+cone held in degrees off the heading needs and which nothing else can
+provide; and it is a DURATION of road, so a faster road shows further
+ahead.
+
+**Still to come in this stage:** the instruction itself with its
+deadline; deferred marking and the section sheet from `detect.js`.
+
+**And the instruction's deadline is BLOCKED**, on the two turn questions
+in DECISIONS.md 5.15.12-13. A deadline is "in time to be acted on", and
+acting on a turn means slowing for it -- but nothing in the sim knows a
+corner is coming, and the radius the geometry produces is one no car can
+steer. Building a deadline on either would be deriving a rule from a
+quantity known to be wrong.
 Today every arrival is spawned at the far end of one approach and
 destroyed at the far end of its exit, and the candidate's "course" is
 `keepDriving` putting the same person back on a fresh leg — an honest

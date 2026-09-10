@@ -2000,6 +2000,57 @@ given a name and read at the right moment.
 building a turn-speed model on top of a radius nobody has confirmed would
 be deriving a behaviour from a geometry that is known to be wrong.
 
+### 5.15.14 THE CHASE CAMERA DOES NOT MAKE THE STEERING AXIS LEGIBLE, AND
+SAYING IT WOULD WAS WRONG
+
+`chaseOn` came across from the old engine unchanged -- it was already
+split out of `chaseFor` so it could be pointed at a pose in world
+coordinates rather than at one scenario's ego, which is exactly the case
+a course needs. It rides the INTENDED pose (`poseOn`, the path without
+the weave) while the car is drawn at its real one (`poseOf`), so the
+deviation is a real quantity rather than a wobbling camera.
+
+**The claim that this makes lane-keeping visible is false, and it was
+made here before it was measured.** On a 375px phone panel a 0.38m stray
+is worth:
+
+| view | width | 0.38m reads as |
+|---|---|---|
+| chase, 10s look-ahead | 208m | **0.68px** |
+| chase, 4s | 83m | 1.71px |
+| fixed | 52m | 2.74px |
+
+The chase view is the LEAST legible of the three for this, because it is
+the widest -- and being wide is what it is FOR, on the maintainer's own
+finding that a wide view of more traffic plays better than a close-up.
+The two wants are in direct conflict and no single width serves both.
+
+So the deviation is reported as a NUMBER beside the readout. Measured
+live: a sound candidate reads 0.04m off line and a ragged one 0.20m.
+Magnifying it on screen would be a lie about how far off line the car
+actually is, which is the same rule as never authoring the answer,
+pointed at the renderer.
+
+**What the chase view is genuinely for, and both are real:**
+
+1. **It turns with the car**, so the candidate's straight-ahead is always
+   one screen direction. That is what a gaze cone held in degrees off the
+   car's heading needs, and it is why relative gaze was the right call in
+   the old engine. Nothing else can provide it.
+2. **It is a duration of road, not a distance**, so a faster road shows
+   further ahead. *"The traffic looks great at 100kmh"* is the maintainer
+   on exactly that, and it settles the old 10s-versus-4s tension toward
+   the longer one.
+
+The open question this leaves is real and is now sharper: **reading
+lane-keeping by eye wants a closer view than reading the road ahead
+does.** The old engine recorded that tension and guessed the answer was
+"probably not one fixed number". It still is not, and the two candidates
+for resolving it are a second, closer view rather than a different single
+one -- which the strip above the drive already is, in a different form --
+or accepting that lane-keeping is read from the readout rather than from
+the road.
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately
