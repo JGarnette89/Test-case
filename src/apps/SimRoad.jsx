@@ -81,7 +81,8 @@ export default function SimRoad() {
       <div style={S.head}>
         <span style={S.title}>Stage 0 — cars that follow each other</span>
         <span style={S.sub}>
-          one road, six cars, following distance. Nothing else yet.
+          one road at {Math.round(ROAD.speed * 3.6)} km/h, following distance.
+          Nothing else yet.
         </span>
       </div>
 
@@ -146,10 +147,10 @@ export default function SimRoad() {
           </span>
         </div>
         <div style={S.note}>
-          Each driver wants a different speed, so the slowest one gathers a
-          queue behind it. Watch what the cars behind do about it — they
-          close up, hold a gap, and open out again when the road clears.
-          Red is braking.
+          Most drivers sit near the limit and a few are badly slow or badly
+          quick, so the slow ones gather a queue behind them. Watch what the
+          cars behind do about it — close up, hold a gap, and open out again
+          once the road clears. Red is braking.
         </div>
       </div>
     </div>

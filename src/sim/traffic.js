@@ -60,7 +60,15 @@ export const DT = 0.05;
    A stream keeps producing the thing worth seeing: a faster driver
    catches a slower one, closes up, sits behind them, and opens out again
    once they have gone. Close-up AND spread-out, indefinitely. */
-export const ROAD = { length: 90, lanes: 2, laneWidth: 3.6 };
+export const ROAD = {
+  length: 90,
+  lanes: 2,
+  laneWidth: 3.6,
+  /* THE ROAD'S OWN SPEED, and it is the maintainer's call on pace rather
+     than a figure derived from anything: 60 km/h. The old engine's roads
+     ran at 30 to 50 and the drive read as a crawl. */
+  speed: 60 / 3.6,
+};
 
 export const CAR = { length: 4.5, width: 1.8 };
 
@@ -85,12 +93,25 @@ const ACCEL = 2.4;
 /* Comfortable braking. The old engine derives 2.70 m/s^2 as the rate
    that brings a car from cruise to rest in the approach run it uses. */
 const BRAKE = 2.7;
-/* The road a moving vehicle claims ahead of it. This project has had a
-   number for that since `forwardClaim` was written: LOOKAHEAD, 0.9s,
-   which is also `ENTITLED`, the entitled gap encroachment is measured
-   against. Using it here is the same quantity finally being used by the
-   driver rather than only by the scorer afterwards. */
-const HEADWAY = 0.9;
+/* THE GAP A DRIVER CHOOSES TO LEAVE, which is NOT the same thing as the
+   gap they are owed -- and this is the one place stage 0 knowingly parts
+   company with the old engine, on the maintainer's instruction to close
+   it up for pace.
+
+   `ENTITLED` (= `LOOKAHEAD` = 0.9s) is what the law grants a moving
+   vehicle ahead of it, and it is what encroachment is marked against.
+   Setting a driver's chosen headway to exactly that put every following
+   car permanently ON the fault boundary, which is wrong in both
+   directions: a careful driver leaves more, and real traffic routinely
+   leaves less.
+
+   So they are two quantities now. THIS ONE IS A CHARACTER NUMBER; the
+   entitled gap is a rule and has not moved. The consequence lands at
+   stage 4 rather than here: traffic following at 0.7s sits slightly
+   inside the gap it is owed, so once encroachment is marked again,
+   ordinary following traffic reads as a mild encroachment unless the two
+   are reconciled. Flagged rather than solved. */
+const HEADWAY = 0.7;
 /* Bumper-to-bumper gap at a standstill. A real figure, not derived. */
 const STANDSTILL = 2.0;
 /* Nobody brakes harder than this. An emergency stop is about 8 m/s^2. */
@@ -121,18 +142,43 @@ function rng(seed) {
    however long it runs. The ONLY per-driver variation in stage 0 is how
    fast they want to go -- ratings are stage 2, and putting them here
    would be exactly the scope creep this file exists to resist. */
+/* HOW FAST THIS ONE WANTS TO GO, as a share of the road's own speed.
+
+   Maintainer's call, and it is about pace rather than about realism:
+   most drivers sit near the limit, and a real minority are EXCESSIVELY
+   slow or excessively fast. The tails are not decoration -- a bunched
+   distribution gives everybody roughly the same speed, so nobody ever
+   catches anybody and there is no following to watch. The outliers are
+   what make the road worth looking at.
+
+   Rolled once per driver from their own seed, so the stream replays
+   however long it runs. */
+function wants(r) {
+  const roll = r();
+  if (roll < 0.12) return 0.55 + r() * 0.25;   // 33-48 km/h, holding people up
+  if (roll > 0.88) return 1.15 + r() * 0.25;   // 69-84 km/h, coming up behind
+  return 0.85 + r() * 0.22;                    // 51-73 km/h, ordinary
+}
+
 function driver(seed, n) {
   const r = rng(seed * 7919 + n);
+  const v0 = ROAD.speed * wants(r);
   return {
     id: `car-${n}`,
     s: 0,
-    v: 7 + r() * 4,
-    /* 25 to 47 km/h. The spread is the whole reason anybody ever has to
-       follow anybody. */
-    v0: 7 + r() * 6,
+    /* Arriving at roughly the speed they want, so nobody joins the road
+       accelerating from nothing. */
+    v: v0 * (0.85 + r() * 0.15),
+    v0,
     /* How long after this one before the next arrives. Drawn now so the
-       schedule is a property of the seed rather than of the clock. */
-    headway: 1.0 + r() * 2.4,
+       schedule is a property of the seed rather than of the clock.
+
+       SWEPT RATHER THAN PICKED, against how much following it produces:
+       0.9-2.7s gives 4.1 cars on the road and somebody following 44% of
+       the time, 0.8-2.0s gives 5.1 and 56%, 0.7-1.7s gives 5.6 and 60%.
+       The middle one is the road that is busy enough to watch without
+       being a permanent queue. */
+    headway: 0.8 + r() * 1.2,
   };
 }
 
@@ -142,7 +188,7 @@ export function seedTraffic(seed = 1) {
      for twice the time it takes to drive the length of it, which is long
      enough for the arrivals to have reached the far end and for the first
      platoons to have formed. */
-  const warm = Math.round((2 * ROAD.length) / 8 / DT);
+  const warm = Math.round((2 * ROAD.length) / ROAD.speed / DT);
   let w = { t: 0, tick: 0, seed, spawned: 0, nextAt: 0, actors: [] };
   for (let i = 0; i < warm; i++) w = step(w);
   /* The clock goes back to zero and THE ARRIVAL SCHEDULE COMES WITH IT.
