@@ -11,8 +11,20 @@ More than one agent works in this repository. Anything decided by argument
 and not written down is invisible to every tool that was not part of that
 argument, so the documentation is a CONTRACT rather than a diary.
 
+**THE FOUNDATION IS BEING REPLACED. Read [REBUILD.md](REBUILD.md)
+before starting anything in `src/engine/`.** The maintainer played the
+game and concluded it "doesn't resemble anything like a game, more like a
+flash animation... the cars crawl on the road and they don't actually
+interact". The cause is structural: every road user's motion is resolved
+before the drive begins, so no participant ever reads another while
+moving. Interaction cannot be added to trajectories that were all decided
+in advance. REBUILD.md scopes a stepped simulation, what survives, and
+what it costs.
+
 **Read [DECISIONS.md](DECISIONS.md) before changing anything in
-`src/engine/`.** It is the load-bearing constraints with their reasoning
+`src/engine/`.** Almost all of it survives the rebuild -- every domain
+ruling, the five-axis driver model, the three perception layers, the
+failure patterns. That is the point of having written it. It is the load-bearing constraints with their reasoning
 attached — the things that have a plausible, well-intentioned "fix" that
 destroys what they protect. This file is the long-form history; that one
 is what you must not break.

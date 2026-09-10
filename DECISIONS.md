@@ -897,6 +897,39 @@ BOUND rather than a cost: the gate belongs inside `composeScenario`'s
 accept/reject loop next to `windowIsMarkable`, where a refused draw is
 redrawn rather than lost.
 
+**MEASURED AGAIN WITH IT LIVE, and the upper bound turned out to be the
+whole of the cost -- there is none:**
+
+| | before | after |
+|---|---|---|
+| legs composed over 24 drives | 144 | **144** |
+| intersections the ladder could not fill | 0 | **0** |
+| markable faults per leg | 1.07 | **1.07** |
+| contacts | 22 | **4** |
+| drives ending in contact | 15/24 | **4/24** |
+
+Nothing was lost because nothing needed to be: the accept loop simply
+draws again, and there is always another scene. And 0 of 300 accepted
+draws are unsurvivable afterwards, which is the gate holding rather than
+a restatement of it.
+
+**AND EVERY SURVIVOR IS THE CANDIDATE'S OWN DOING**, which is the whole
+property the gate exists for. Over 40 drives: 4 contacts, and stripping
+the candidate's traits ONE AT A TIME on the same composed scene makes all
+4 vanish -- `cutsCorner` 2, `wander` 2. The same controlled comparison
+`faults.js` is built on, asked of the terminal outcome rather than of a
+fault. A collision the player is asked to prevent is now always one
+somebody caused, and can be named.
+
+**But the rate is THIN for the mechanic it feeds: 0.10 per drive over 40,
+one drive in ten.** A player could go ten drives without a justified
+intervention, which is not a job. That is not an argument for loosening
+the gate -- it is what the gated driveway emergence is FOR, and it is why
+`LIVE` mattering was worth chasing: it produced 3 contacts in 33 driveway
+emergences, all avoidable, in content specifically shaped so attention is
+the only thing that decides the outcome. Measure the combined rate before
+judging either.
+
 **THE TWIN IS TRAIT-FREE, NOT CAREFUL.** It departs on `earliestClear`
 like anybody else, so this refuses scenes where doing the legally correct
 thing kills you -- not scenes that are merely demanding.
@@ -915,6 +948,52 @@ on their departure in a composed drive either. Neither is the cause here
 -- only 1 leg in 144 has anybody who needs to give way, and applying
 reactions removes 1 contact of 22 -- but both are wiring that the design
 assumes is in place.
+
+### 5.12.6 THE GATE WAS MEASURED AND NOT APPLIED
+
+`sceneIsSurvivable` is designed, measured and **not in the tree**. Two
+reasons, and the second is the larger one.
+
+First, it turned `verify-awareness` red and the fix would have been to
+loosen a threshold, which this file exists to prevent. Second, the
+foundation it was patching is being replaced (section 13): a filter that
+discards scenes where cars drive through each other stops being worth
+having once cars cannot drive through each other. The reasoning is kept
+because it characterises the defect precisely, and because if the rebuild
+is abandoned this is still the cheapest available stopgap.
+
+`verify-awareness` section 4 asserts that the WORST drawn driver misses
+more than 10% of the traffic they could have gathered -- "enough to be a
+habit". With the gate live it comes out at **exactly 10%**, and the
+assertion is a strict `> 0.1`. **Do not loosen it to `>= 0.1`.** That is
+tuning a number until it looks right, and this file exists to stop that.
+
+What is actually going on, measured rather than assumed:
+
+- The statistic is **6 of 60 sightings**, not a rate. Without the gate it
+  was 7 of 66. Both say "the worst drawn driver misses about a tenth".
+- **It does not move with sample size.** 60, 120, 240 and 400 drawn
+  drivers all give exactly 6 of 60. So it is not noise -- it is a ceiling.
+- The AXIS can express far more: a driver rated 0.00 on observation misses
+  18%. **The drawn distribution's tail simply never reaches there.**
+- And the check's own scene set varies with the generator -- 19 of 20
+  briefs composed before, 18 after -- while nothing in its output said so.
+  That is section 10.1 again, and it is now printed.
+
+**The design question underneath it.** `SHOWINGS_FOR_A_HABIT` is 3. The
+36-scene set is roughly six drives' worth of sightings, so the worst
+drawn observer misses about ONE road user per drive -- a third of what
+this project's own constant says a habit needs. Either the content has to
+supply more late-clearing road users, or observation has to be accepted
+as a habit that accumulates ACROSS drives rather than within one.
+
+**This is very likely the same root cause as observation failing the
+attributability floor** (section 5.11.5, section 4.5). The axis does not
+dominate a fault kind because it barely shows, and it barely shows
+because the drawn tail is thin -- not because the attribution is wrong.
+That connection is worth testing before either is treated as its own
+problem.
+
 
 ### 5.12.5 TWO OPEN MODELLING GAPS. THE FILTER IS A STOPGAP, NOT THE FIX.
 
@@ -1594,6 +1673,16 @@ are available.
 ---
 
 ## 12. Build order: done, next, deferred
+
+**READ [REBUILD.md](REBUILD.md) FIRST.** The maintainer has played the
+game and concluded the foundation is wrong, and the diagnosis is
+architectural: every road user's motion is resolved before the drive
+begins, so nothing reads anything else while moving. That is why there is
+no car-following, why a rolling non-prior never yields, and why giving way
+had to be built as a post-hoc search. The build order below is the order
+for the CURRENT foundation and most of it is superseded. Everything in
+sections 0-11 of this file survives the rebuild and is why it is
+survivable at all.
 
 ### Done
 

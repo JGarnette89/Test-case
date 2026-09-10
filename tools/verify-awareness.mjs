@@ -229,13 +229,35 @@ console.log("\n4. A BETTER OBSERVER GATHERS MORE. MEASURED ON GATHERING, NOT OUT
     ? ok("and missing rises monotonically as the rating falls")
     : fail(`the miss rate is not monotone in the rating: ${curve.map((c) => (100 * c.r).toFixed(0)).join(" ")}`);
 
-  let tot = 0, worst = 0, n = 0;
+  let tot = 0, worst = 0, n = 0, seenAt = 0;
   for (let i = 1; i <= 60; i++) {
-    const r = missRate(composeDriver(i * 13));
-    tot += r; worst = Math.max(worst, r); n++;
+    const cand = composeDriver(i * 13);
+    let sighted = 0, missed = 0;
+    for (const { scn, sim } of scenes) {
+      const seen = sightingsIn(sim, scn, { candidate: cand });
+      const reg = registrationsIn(sim, scn, cand, 7, { sightings: seen });
+      for (const [id, st] of Object.entries(seen)) {
+        if (st.clearAt == null || st.clearAt > sim.legalAt) continue;
+        sighted++;
+        if (reg[id] == null || reg[id] > sim.legalAt) missed++;
+      }
+    }
+    const r = sighted ? missed / sighted : 0;
+    tot += r; n++;
+    if (r > worst) { worst = r; seenAt = sighted; }
   }
   const mean = tot / n;
-  console.log(`   drawn drivers (${n}): mean ${(100 * mean).toFixed(0)}% missed, worst ${(100 * worst).toFixed(0)}%`);
+  /* SAY WHAT THIS RESTS ON. The percentage reads like a rate and is
+     really a ratio of small integers over a scene set whose SIZE VARIES
+     with the generator: 20 briefs are asked for and fewer come back, so
+     an unrelated change to composition moves every number in this
+     section and nothing here would say so. Measured: the worst drawn
+     driver misses exactly 6 of 60 sighted road users, and that figure
+     does not move at 60, 120, 240 or 400 draws -- a property of the
+     CONTENT and of how thin the drawn distribution's tail is, not a
+     sampling artifact. A check printing only a percentage hides both. */
+  console.log(`   scenes: ${scenes.length} (${SCENARIOS.length} authored + ${scenes.length - SCENARIOS.length} of 20 briefs composed)`);
+  console.log(`   drawn drivers (${n}): mean ${(100 * mean).toFixed(0)}% missed, worst ${(100 * worst).toFixed(0)}% = ${Math.round(worst * seenAt)} of ${seenAt} sightings`);
   mean > 0.01 && mean < 0.15 && worst > 0.1
     ? ok(`REGISTER_SPAN ${REGISTER_SPAN}s: most drivers notice most things, and the worst miss enough to be a habit`)
     : fail(`REGISTER_SPAN ${REGISTER_SPAN}s gives mean ${(100 * mean).toFixed(0)}% / worst ${(100 * worst).toFixed(0)}% — either nobody misses anything or nobody notices anything`);
