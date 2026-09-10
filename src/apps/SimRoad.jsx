@@ -177,11 +177,22 @@ export default function SimRoad() {
             {world.actors.map((a) => (a.v * 3.6).toFixed(0)).join(" ")} km/h
           </span>
         </div>
+        {/* WHAT TO LOOK FOR, because the deliverable of this stage is
+            somebody's opinion and an opinion needs something to be about.
+            Deliberately NOT colour-coded by temperament: colouring the
+            bold ones would have you judging the colour rather than the
+            behaviour, which is the whole question. */}
         <div style={S.note}>
-          Most drivers sit near the limit and a few are badly slow or badly
-          quick, so the slow ones gather a queue behind them. Watch what the
-          cars behind do about it — close up, hold a gap, and open out again
-          once the road clears. Red is braking.
+          Every car is a driver drawn from the same five ratings the
+          candidate will be — an NPC is just a rated driver. About one in
+          six is <b>bold</b>: wants 80 rather than 60 and sits about half a
+          car-length off the bumper in front. One in seven is <b>timid</b>:
+          wants 40, hangs well back, and gathers a queue.
+          <br />
+          Watch for one car working up through the traffic and then stuck
+          much closer behind somebody than the others would sit — that is a
+          speeder and a tailgater being the same person in two different
+          situations. Red is braking.
         </div>
       </div>
     </div>

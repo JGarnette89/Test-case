@@ -33,6 +33,9 @@
    That removes a class of bug for free.
    ===================================================================== */
 
+import { composeDriver, deficitOf } from "../engine/ratings.js";
+import { rng } from "../engine/index.js";
+
 /* The project's scale, and the one thing here that must agree with the
    old engine while both exist: verify-sim checks it against `M(1)`. */
 export const PX_PER_M = 20;
@@ -141,17 +144,6 @@ const STANDSTILL = 2.0;
 /* Nobody brakes harder than this. An emergency stop is about 8 m/s^2. */
 const MOST_BRAKE = 8.0;
 
-/* mulberry32, the same reproducible draw the old engine uses. */
-function rng(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /* =====================================================================
    Setting up
 
@@ -166,34 +158,74 @@ function rng(seed) {
    however long it runs. The ONLY per-driver variation in stage 0 is how
    fast they want to go -- ratings are stage 2, and putting them here
    would be exactly the scope creep this file exists to resist. */
-/* HOW FAST THIS ONE WANTS TO GO, as a share of the road's own speed.
+/* =====================================================================
+   EVERY CAR IS A RATED DRIVER, AND THERE IS ONLY ONE DRIVER MODEL.
 
-   Maintainer's call, and it is about pace rather than about realism:
-   most drivers sit near the limit, and a real minority are EXCESSIVELY
-   slow or excessively fast. The tails are not decoration -- a bunched
-   distribution gives everybody roughly the same speed, so nobody ever
-   catches anybody and there is no following to watch. The outliers are
-   what make the road worth looking at.
+   The maintainer asked for NPC traits -- "a speeder or a tailgater" --
+   and answered it in the same breath: "we are already building something
+   like this into our candidates." So this imports `composeDriver` rather
+   than growing a second vocabulary beside it.
 
-   Rolled once per driver from their own seed, so the stream replays
-   however long it runs. */
-function wants(r) {
-  const roll = r();
-  if (roll < 0.12) return 0.55 + r() * 0.25;   // 33-48 km/h, holding people up
-  if (roll > 0.88) return 1.15 + r() * 0.25;   // 69-84 km/h, coming up behind
-  return 0.85 + r() * 0.22;                    // 51-73 km/h, ordinary
+   That is not tidiness. The old engine HAD two pools and they had already
+   drifted: `generate.js` attached driver traits from five, `compose.js`
+   from seven, and neither of them was the ratings model. This is the same
+   bug declined rather than predicted.
+
+   A SPEEDER AND A TAILGATER ARE THE SAME PERSON IN DIFFERENT SITUATIONS.
+   Both are a bold driver -- low caution -- and which one you see depends
+   on whether the road ahead is clear. That falls out of mapping one axis
+   to both knobs, and it is a better answer than two labels would have
+   been.
+
+   ONLY CONFIDENCE HAS ANYTHING TO SAY AT STAGE 0. The other four axes are
+   carried on every actor because the model is one model, and they are
+   inert until the stages that give them something to do: observation
+   needs perception (stage 4), steering needs a lane to hold (stage 2),
+   braking needs somewhere to stop (stage 1), knowledge needs a rule to
+   know. Carrying them now costs nothing and means nobody has to invent
+   them later.
+   ===================================================================== */
+
+/* The whole of the confidence axis in one number: 1 at the optimum, 0
+   maximally bold, 2 maximally timid. Three lines, and the same three as
+   `cautionOf` in awareness.js -- which cannot be imported here without
+   dragging sight.js and most of the old engine with it. Written against
+   the SAME `deficitOf`, so there is one confidence model even while there
+   are two callers, and verify-sim asserts the two agree. */
+export function cautionOf(ratings) {
+  const { deficit, tail } = deficitOf(ratings, "confidence");
+  if (tail > 0) return Math.max(0, 1 - deficit);
+  if (tail < 0) return 1 + deficit;
+  return 1;
 }
 
+/* THE TWO KNOBS THE FOLLOWING MODEL ALREADY HAD, now driven by who the
+   driver is rather than by a random number.
+
+   A bold driver wants 1.35x the limit and leaves 0.55x the gap; a timid
+   one wants 0.65x and leaves 1.45x; the ordinary majority sit near 1.0 on
+   both. At 60 km/h that is 39 to 81 km/h and a headway of 0.39s to
+   1.02s. Measured over 300 drawn drivers, `composeDriver` puts 16% in the
+   bold tail and 14% in the timid one, which is the mix the maintainer
+   asked for arriving from the driver model rather than from a
+   distribution written to produce it. */
 function driver(road, seed, n) {
-  const r = rng(seed * 7919 + n);
-  const v0 = road.speed * wants(r);
+  const who = composeDriver(seed * 7919 + n);
+  const r = rng(seed * 104729 + n + 1);
+  const caution = cautionOf(who.ratings);
+  const v0 = road.speed * (1.35 - 0.35 * caution);
   return {
     id: `car-${n}`,
+    ratings: who.ratings,
+    weakOn: who.weakOn,
+    caution,
     s: 0,
-    /* Arriving at roughly the speed they want, so nobody joins the road
+    /* Joining at roughly the speed they want, so nobody enters the road
        accelerating from nothing. */
     v: v0 * (0.85 + r() * 0.15),
     v0,
+    /* The gap this one keeps, as a multiple of the road's own. */
+    headway: HEADWAY * (0.55 + 0.45 * caution),
     /* How long after this one before the next arrives. Drawn now so the
        schedule is a property of the seed rather than of the clock.
 
@@ -203,12 +235,9 @@ function driver(road, seed, n) {
        on the road at 60 km/h, 0.6-1.6s gives 4.2, 0.5-1.3s gives 4.4.
        Halving the interval buys a tenth of a car, because the spawn gate
        refuses anybody there is no room for and the extra arrivals simply
-       queue at the entrance.
-
-       Six seconds of road at a 1.3s equilibrium headway holds about four
-       and a half cars. To show more, show more road -- and that costs
-       size on a fixed camera. See the note on ON_SCREEN. */
-    headway: 0.6 + r() * 1.0,
+       queue at the entrance. To show more, show more road -- and that
+       costs size on a fixed camera. See ON_SCREEN. */
+    arriveIn: 0.6 + r() * 1.0,
   };
 }
 
@@ -264,8 +293,12 @@ export function perceive(me, world) {
    second opinion about what close means. */
 export function wantedGap(me, leader) {
   const closing = me.v - leader.v;
+  /* THIS DRIVER'S OWN HEADWAY, not the road's. A tailgater's desired gap
+     really is smaller, which is what makes them visibly a tailgater
+     rather than a car that happens to be close. */
+  const t = me.headway ?? HEADWAY;
   return STANDSTILL
-    + Math.max(0, me.v * HEADWAY + (me.v * closing) / (2 * Math.sqrt(ACCEL * BRAKE)));
+    + Math.max(0, me.v * t + (me.v * closing) / (2 * Math.sqrt(ACCEL * BRAKE)));
 }
 
 function decide(me, view) {
@@ -317,7 +350,7 @@ export function step(world) {
     if (last.s - CAR.length > wantedGap(car, last)) {
       next.push(car);
       spawned += 1;
-      nextAt = t + car.headway;
+      nextAt = t + car.arriveIn;
     }
   }
   return { ...world, t, tick: world.tick + 1, spawned, nextAt, actors: next };
