@@ -295,6 +295,67 @@ What this fixes that is currently stuck:
   people and is not derivable. But nothing has to consult it to decide
   what a driver does.
 
+### 4.1 EVERY CAR IS A RATED DRIVER. THE CANDIDATE IS THE ONE BEING ASSESSED.
+
+**Structural decision, recorded before anything is built on it.**
+
+The maintainer asked for NPC traits — *"giving NPC cars traits like
+speeder or tailgater could help to make traffic feel more organic than
+everyone driving the exact same way"* — and then answered it in the same
+breath: *"we are already building something like this into our
+candidates."*
+
+So there is no second system. **A speeder is high confidence. A tailgater
+is high confidence with little caution. A hesitant driver is low
+confidence. Somebody who misses things is low observation.** The five axes
+already say all of it, and a parallel list of NPC traits beside them would
+be the two-implementations-of-one-quantity pattern (§10 of DECISIONS.md)
+committed deliberately rather than stumbled into — with the added
+guarantee that the two would drift, because one would be tuned for how
+traffic LOOKS and the other for how a candidate is MARKED.
+
+**It is cheap right now and it will never be cheaper.** The following
+model already has exactly the two knobs a rated driver needs: the speed
+they want, and the gap they keep. A speeder and a tailgater are values of
+those, not new machinery.
+
+**The old engine could not hold this position.** There the candidate was
+"just a participant", but NPC traits were hand-assigned from a narrower
+pool than the candidate's — `generate.js` drew from five, `compose.js`
+from seven, and neither was the ratings model. One driver model for
+everybody removes a whole class of divergence rather than managing it.
+
+#### And the payoff is much bigger than variety
+
+**The avoidability fault class requires other drivers to make mistakes.**
+The maintainer's ruling is that failing to prevent an avoidable collision
+is a fail on the test even when the candidate is not at fault
+(DECISIONS.md §5.11) — and a candidate cannot fail to prevent somebody
+else's mistake unless somebody else makes one.
+
+In the old engine those mistakes had to be AUTHORED, one situation at a
+time, each needing its own tell and its own verification. That is why the
+class had almost no content: it was waiting on somebody to write hazards
+by hand.
+
+**If every car is rated, other drivers err at whatever rate their own
+ratings imply.** The fault class stops needing content and starts having
+a SOURCE. That is the difference between a mechanic that has to be fed
+and one that runs.
+
+#### What that means for the stages
+
+Stage 0 gets the cheap half only: draw a rating profile per car from the
+seed and map it to desired speed and target headway, so the cars differ
+FOR A REASON rather than by a random number. **No faults, no attribution,
+and the candidate model is not pulled forward** — those are stages 2 and
+4, and pulling them in early is exactly how a rebuild turns into a long
+silence (§7.1).
+
+The test at stage 0 is the same as every other: does the traffic read as
+a mix of people rather than one driver repeated? That is a question for
+somebody's eyes.
+
 ---
 
 ## 5. Verification

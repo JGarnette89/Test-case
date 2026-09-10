@@ -60,15 +60,39 @@ export const DT = 0.05;
    A stream keeps producing the thing worth seeing: a faster driver
    catches a slower one, closes up, sits behind them, and opens out again
    once they have gone. Close-up AND spread-out, indefinitely. */
-export const ROAD = {
-  length: 90,
-  lanes: 2,
-  laneWidth: 3.6,
-  /* THE ROAD'S OWN SPEED, and it is the maintainer's call on pace rather
-     than a figure derived from anything: 60 km/h. The old engine's roads
-     ran at 30 to 50 and the drive read as a crawl. */
-  speed: 60 / 3.6,
-};
+export const ROAD = { lanes: 2, laneWidth: 3.6 };
+
+/* HOW MUCH ROAD IS ON SCREEN IS A DURATION, NOT A DISTANCE.
+
+   A distance is right at one speed and wrong at every other: 90m is six
+   seconds of road at 60 km/h and three at 100, so the same road that
+   reads as a street at one limit reads as a glimpse at the other. The
+   old engine reached the same conclusion about its camera -- `LOOK_AHEAD`
+   is ten seconds, not a hundred metres -- for the same reason.
+
+   Six seconds is about three times as long as it takes a driver to shed
+   an ordinary speed difference (5 m/s at the comfortable braking rate is
+   1.9s), so it is long enough to watch one following interaction begin
+   and finish. Holding it fixed also holds the number of cars on screen
+   fixed -- measured 3.8 to 4.2 from 30 km/h to 100 -- because arrivals
+   are drawn in seconds too.
+
+   THE TRADE IT CANNOT ESCAPE: a fixed camera showing a fixed duration
+   shows more metres at a higher limit, so the cars get smaller. At 60
+   km/h the road is 100m and a car is 27px on a phone; at 100 it is 167m
+   and 16px. Showing six cars instead of four would need nine seconds of
+   road and take a car at 100 km/h down to 10px. There is no arrangement
+   of a FIXED camera that gives both, which is what the chase camera
+   exists for and why it is a later stage rather than an oversight. */
+export const ON_SCREEN = 6.0;
+
+/* A road at a given limit. The limit is a PARAMETER, not a constant: the
+   maintainer needs to try 30, 50, 60 and eventually 100 without a round
+   trip through anybody. */
+export function roadFor(kmh = 60) {
+  const speed = kmh / 3.6;
+  return { ...ROAD, kmh, speed, length: speed * ON_SCREEN };
+}
 
 export const CAR = { length: 4.5, width: 1.8 };
 
@@ -160,9 +184,9 @@ function wants(r) {
   return 0.85 + r() * 0.22;                    // 51-73 km/h, ordinary
 }
 
-function driver(seed, n) {
+function driver(road, seed, n) {
   const r = rng(seed * 7919 + n);
-  const v0 = ROAD.speed * wants(r);
+  const v0 = road.speed * wants(r);
   return {
     id: `car-${n}`,
     s: 0,
@@ -173,23 +197,30 @@ function driver(seed, n) {
     /* How long after this one before the next arrives. Drawn now so the
        schedule is a property of the seed rather than of the clock.
 
-       SWEPT RATHER THAN PICKED, against how much following it produces:
-       0.9-2.7s gives 4.1 cars on the road and somebody following 44% of
-       the time, 0.8-2.0s gives 5.1 and 56%, 0.7-1.7s gives 5.6 and 60%.
-       The middle one is the road that is busy enough to watch without
-       being a permanent queue. */
-    headway: 0.8 + r() * 1.2,
+       AND THE DENSITY IS CAPACITY-LIMITED, NOT ARRIVAL-LIMITED, which is
+       worth knowing before anybody tries to make the road busier by
+       asking for more cars. Swept at three rates: 0.8-2.0s gives 4.0 cars
+       on the road at 60 km/h, 0.6-1.6s gives 4.2, 0.5-1.3s gives 4.4.
+       Halving the interval buys a tenth of a car, because the spawn gate
+       refuses anybody there is no room for and the extra arrivals simply
+       queue at the entrance.
+
+       Six seconds of road at a 1.3s equilibrium headway holds about four
+       and a half cars. To show more, show more road -- and that costs
+       size on a fixed camera. See the note on ON_SCREEN. */
+    headway: 0.6 + r() * 1.0,
   };
 }
 
-export function seedTraffic(seed = 1) {
+export function seedTraffic(seed = 1, kmh = 60) {
   /* Start with a road that already has traffic on it, so the first thing
      anybody sees is a street rather than an empty road filling up. Warmed
      for twice the time it takes to drive the length of it, which is long
      enough for the arrivals to have reached the far end and for the first
      platoons to have formed. */
-  const warm = Math.round((2 * ROAD.length) / ROAD.speed / DT);
-  let w = { t: 0, tick: 0, seed, spawned: 0, nextAt: 0, actors: [] };
+  const road = roadFor(kmh);
+  const warm = Math.round((2 * ON_SCREEN) / DT);
+  let w = { t: 0, tick: 0, seed, road, spawned: 0, nextAt: 0, actors: [] };
   for (let i = 0; i < warm; i++) w = step(w);
   /* The clock goes back to zero and THE ARRIVAL SCHEDULE COMES WITH IT.
      Zeroing `t` alone left `nextAt` thirty seconds in the future, so the
@@ -260,7 +291,7 @@ export function step(world) {
       return { ...me, v, a, s: me.s + v * DT };
     })
     /* Off the end of the road, and gone. */
-    .filter((me) => me.s <= ROAD.length + CAR.length);
+    .filter((me) => me.s <= world.road.length + CAR.length);
 
   const t = world.t + DT;
   let { spawned, nextAt } = world;
@@ -269,9 +300,21 @@ export function step(world) {
      only let on if there is actually room for it -- otherwise the queue
      would be fed by the spawner rather than by the traffic. */
   if (t >= nextAt) {
-    const car = driver(world.seed, spawned);
-    const last = next.reduce((lo, a) => (a.s < lo.s ? a : lo), { s: Infinity });
-    if (last.s > CAR.length + STANDSTILL + car.v * HEADWAY) {
+    const car = driver(world.road, world.seed, spawned);
+    const last = next.reduce((lo, a) => (a.s < lo.s ? a : lo), { s: Infinity, v: Infinity });
+    /* ROOM MEANS THE GAP THIS DRIVER WOULD ACTUALLY WANT, asked of the
+       same expression they will use a tick later -- including the closing
+       term, because a car joining at 60 behind one doing 40 needs far
+       more room than the raw headway says.
+
+       The first version left out the closing term and used a hand-written
+       sum instead. It produced cars materialising inside their own
+       stopping distance, and the tell was unmistakable: worst braking
+       pinned at exactly -8.0 m/s^2, the emergency-stop clamp, at EVERY
+       speed limit including 30 km/h. A number that is exactly saturated
+       is a statement about the measurement, not about the traffic
+       (DECISIONS.md 10.0). */
+    if (last.s - CAR.length > wantedGap(car, last)) {
       next.push(car);
       spawned += 1;
       nextAt = t + car.headway;

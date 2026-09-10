@@ -19,8 +19,8 @@
  */
 import { M as engineM } from "../src/engine/index.js";
 import {
-  seedTraffic, step, run, overlapping, perceive, wantedGap,
-  ROAD, CAR, DT, M, PX_PER_M,
+  seedTraffic, step, run, overlapping, perceive, wantedGap, roadFor,
+  ROAD, CAR, DT, M, PX_PER_M, ON_SCREEN,
 } from "../src/sim/traffic.js";
 
 let problems = 0;
@@ -133,6 +133,102 @@ console.log("\n3. IT AGREES WITH THE OLD ENGINE ABOUT HOW BIG A METRE IS");
   CAR.length === 4.5 && CAR.width === 1.8 && ROAD.laneWidth === 3.6
     ? ok("and about how big a car and a lane are (4.5 x 1.8m, 3.6m lane)")
     : fail("the sim's car or lane dimensions have drifted from the project's true-to-life scale");
+}
+
+
+console.log("\n4. AND IT HOLDS AS THE SPEED LIMIT RISES");
+{
+  /* The limit is a parameter because the maintainer needs 100 km/h
+     eventually and should not need us to try it. Higher speeds stress
+     the model in four specific ways and each is checked here. */
+  const LIMITS = [30, 50, 60, 80, 100];
+  const rows = [];
+  for (const kmh of LIMITS) {
+    let overlaps = 0, closing = 0, gapT = [], brake = 0, cars = 0, ticks = 0;
+    for (const seed of [1, 2, 3]) {
+      let w = seedTraffic(seed, kmh);
+      for (let i = 0; i < 1200; i++) {
+        const prev = w;
+        w = step(w);
+        ticks++; cars += w.actors.length;
+        overlaps += overlapping(w).length;
+        for (const me of w.actors) {
+          brake = Math.min(brake, me.a ?? 0);
+          const view = perceive(me, w);
+          if (!view.leader) continue;
+          gapT.push(view.gap / Math.max(1, me.v));
+          /* THE REAL TUNNELLING CONDITION is how much two cars close on
+             each other between samples, not how far one travels. Two cars
+             going the same way at similar speeds barely close at all; it
+             is the DIFFERENCE that could carry one through another
+             without any tick seeing them overlap. */
+          const was = prev.actors.find((a) => a.id === me.id);
+          const wasLead = prev.actors.find((a) => a.id === view.leader.id);
+          if (was && wasLead) {
+            closing = Math.max(closing, (wasLead.s - was.s) - (view.leader.s - me.s));
+          }
+        }
+      }
+    }
+    rows.push({ kmh, overlaps, closing, cars: cars / ticks, brake,
+                gapT: [...gapT].sort((a, b) => a - b)[Math.floor(gapT.length / 2)] });
+  }
+  console.log("   limit   cars on road   median gap   closes per tick   worst braking");
+  for (const r of rows) {
+    console.log("   " + (r.kmh + " km/h").padEnd(8) + r.cars.toFixed(1).padStart(9)
+      + (r.gapT.toFixed(2) + "s").padStart(13) + (r.closing.toFixed(2) + "m").padStart(15)
+      + (r.brake.toFixed(1) + " m/s2").padStart(17));
+  }
+
+  rows.every((r) => r.overlaps === 0)
+    ? ok(`no overlaps at any limit from ${LIMITS[0]} to ${LIMITS[LIMITS.length - 1]} km/h`)
+    : fail(`overlaps appear at ${rows.filter((r) => r.overlaps).map((r) => r.kmh).join(", ")} km/h`);
+
+  /* THE GAP IS A TIME, SO IT SCALES BY CONSTRUCTION. A model holding a
+     fixed DISTANCE would look right at one limit and absurd at the other
+     -- 17m is a sensible gap at 60 and tailgating at 100. */
+  const spread = Math.max(...rows.map((r) => r.gapT)) - Math.min(...rows.map((r) => r.gapT));
+  spread < 0.25
+    ? ok(`the gap is a time and stays one: ${rows[0].gapT.toFixed(2)}s at ${rows[0].kmh} against ${rows[rows.length - 1].gapT.toFixed(2)}s at ${rows[rows.length - 1].kmh}, ${(spread).toFixed(2)}s apart`)
+    : fail(`median headway swings ${spread.toFixed(2)}s across the range, so the gap is not scaling with speed`);
+
+  /* Nothing may pass through anything between samples. */
+  const worstClose = Math.max(...rows.map((r) => r.closing));
+  worstClose < CAR.length / 2
+    ? ok(`nothing can tunnel: two cars close by at most ${worstClose.toFixed(2)}m in a tick, against a ${CAR.length}m car`)
+    : fail(`two cars close by ${worstClose.toFixed(2)}m per tick against a ${CAR.length}m car, so one could pass through another between samples and no tick would see it`);
+
+  /* Ordinary traffic must not be making emergency stops. This is the
+     check that caught the spawn bug: worst braking was pinned at exactly
+     -8.0 m/s2, the emergency clamp, at EVERY limit including 30 km/h,
+     because cars were being let onto the road inside their own stopping
+     distance. */
+  const worstBrake = Math.min(...rows.map((r) => r.brake));
+  worstBrake > -4
+    ? ok(`and ordinary traffic brakes comfortably, never in emergency: worst ${worstBrake.toFixed(1)} m/s2 across every limit`)
+    : fail([
+        `something is braking at ${worstBrake.toFixed(1)} m/s2 in ordinary traffic.`,
+        `An emergency stop is about 8. If this is pinned at exactly the clamp it is`,
+        `not traffic, it is cars being created somewhere they cannot stop from --`,
+        `check what the spawn gate thinks "room" means. DECISIONS.md 10.0.`,
+      ].join(" "));
+
+  /* AND THE CHECK ABOVE HAS TEETH AT SPEED. Put a car somewhere it
+     cannot possibly avoid contact and the overlap check must see it --
+     otherwise "no overlaps" would only mean the samples were lucky. */
+  const road = roadFor(100);
+  const lead = { id: "lead", s: 6.5, v: road.speed * 0.5, v0: road.speed * 0.5 };
+  const back = { id: "back", s: 0, v: road.speed * 1.3, v0: road.speed * 1.3 };
+  let w = { t: 0, tick: 0, seed: 1, road, spawned: 0, nextAt: 1e9, actors: [lead, back] };
+  let caught = false, hardest = 0;
+  for (let i = 0; i < 400; i++) {
+    w = step(w);
+    hardest = Math.min(hardest, w.actors.find((a) => a.id === "back")?.a ?? 0);
+    if (overlapping(w).length) caught = true;
+  }
+  caught && hardest <= -7
+    ? ok(`and it has teeth at 100 km/h: a car placed 2m behind a slower one brakes at ${hardest.toFixed(1)} m/s2 and the contact is caught`)
+    : fail("a car placed somewhere it cannot avoid contact was not caught, so a clean run means nothing");
 }
 
 console.log("\n" + "=".repeat(70));

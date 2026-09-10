@@ -17,8 +17,14 @@ import React, { useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import {
-  seedTraffic, run, poseOf, ROAD, CAR, M, DT,
+  seedTraffic, run, poseOf, ROAD, CAR, M, DT, ON_SCREEN,
 } from "../sim/traffic.js";
+
+/* The limits worth trying. 100 is the one that matters -- the game has to
+   work at highway speed eventually -- and the rest are here so the
+   maintainer can answer a speed question in ten seconds rather than
+   through us. */
+const LIMITS = [30, 50, 60, 100];
 
 /* The viewBox is the road plus the ground either side, with s = 0 at the
    bottom. Everything the sim knows is in metres; this is the only place
@@ -32,14 +38,18 @@ import {
    the current game. Measured at 375x812: the road was drawn 135px wide
    in a 375px pane before this. */
 const ASPECT = 0.68;
-const HALF_W = (ASPECT * ROAD.length) / 2;
-const VIEW = {
-  x: -M(HALF_W), y: -M(ROAD.length), w: M(HALF_W * 2), h: M(ROAD.length),
+/* THE VIEW FOLLOWS THE ROAD, and the road follows the limit: six seconds
+   of travel is 50m at 30 km/h and 167m at 100, so this cannot be computed
+   once. */
+const viewFor = (road) => {
+  const halfW = (ASPECT * road.length) / 2;
+  return { x: -M(halfW), y: -M(road.length), w: M(halfW * 2), h: M(road.length) };
 };
 
 export default function SimRoad() {
   const [seed, setSeed] = useState(1);
-  const [world, setWorld] = useState(() => seedTraffic(1));
+  const [limit, setLimit] = useState(60);
+  const [world, setWorld] = useState(() => seedTraffic(1, 60));
   const [playing, setPlaying] = useState(true);
 
   /* A fixed timestep with an accumulator, so the simulation advances by
@@ -68,21 +78,23 @@ export default function SimRoad() {
     return () => cancelAnimationFrame(raf.current);
   }, [playing]);
 
-  const restart = (s) => {
+  const restart = (s = seed, kmh = limit) => {
     setSeed(s);
-    setWorld(seedTraffic(s));
+    setLimit(kmh);
+    setWorld(seedTraffic(s, kmh));
     owed.current = 0;
   };
 
   const lane = M(ROAD.laneWidth * ROAD.lanes) / 2;
+  const VIEW = viewFor(world.road);
 
   return (
     <div style={S.page}>
       <div style={S.head}>
         <span style={S.title}>Stage 0 — cars that follow each other</span>
         <span style={S.sub}>
-          one road at {Math.round(ROAD.speed * 3.6)} km/h, following distance.
-          Nothing else yet.
+          one road, following distance. {ON_SCREEN}s of road on screen —{" "}
+          {Math.round(world.road.length)}m at {world.road.kmh} km/h.
         </span>
       </div>
 
@@ -134,11 +146,30 @@ export default function SimRoad() {
       </div>
 
       <div style={S.panel}>
+        {/* THE SPEED LIMIT, on the page rather than in the source, because
+            at this stage the maintainer's eyes are the instrument and a
+            question they can answer in ten seconds should not cost a round
+            trip. Changing it restarts the road: the limit decides how long
+            the road is, so it cannot change under moving traffic. */}
+        <div style={S.row}>
+          <span style={S.label}>Limit</span>
+          {LIMITS.map((kmh) => (
+            <button key={kmh} className="btn" style={{
+              ...S.chip,
+              borderColor: limit === kmh ? C.amber : "rgba(255,255,255,0.12)",
+              color: limit === kmh ? C.white : C.dim,
+            }} onClick={() => restart(seed, kmh)}>
+              {kmh}
+            </button>
+          ))}
+          <span style={S.label}>km/h</span>
+        </div>
+
         <div style={S.row}>
           <button className="btn" style={S.btn} onClick={() => setPlaying((p) => !p)}>
             {playing ? <Pause size={16} /> : <Play size={16} />}
           </button>
-          <button className="btn" style={S.btn} onClick={() => restart(seed + 1)}>
+          <button className="btn" style={S.btn} onClick={() => restart(seed + 1, limit)}>
             <RotateCcw size={16} />
           </button>
           <span style={S.readout}>
@@ -188,5 +219,12 @@ const S = {
     color: C.text, cursor: "pointer",
   },
   readout: { fontFamily: FONT_D, fontSize: 13, color: C.dim },
+  label: { fontFamily: FONT_D, fontSize: 13, color: C.dim },
+  chip: {
+    minWidth: 52, minHeight: 44, display: "flex", alignItems: "center",
+    justifyContent: "center", background: "rgba(255,255,255,0.05)",
+    border: "1px solid", borderRadius: 10, fontFamily: FONT_D, fontSize: 15,
+    cursor: "pointer",
+  },
   note: { fontFamily: FONT_U, fontSize: 12, color: C.dim, lineHeight: 1.45 },
 };
