@@ -42,6 +42,17 @@ const AT_LINE = 2.0;
 const SAME_MOMENT = 0.4;
 /* Moving out of the line rather than creeping in it. */
 const LAUNCHED = 1.5;
+/* What a rolling stop actually is: slowing to a crawl and carrying on,
+   rather than coming to rest. About 8 km/h -- slow enough to have looked,
+   fast enough that it was never a stop. */
+const ROLLING = 2.2;
+
+/* HOW SLOW THIS DRIVER THINKS IS SLOW ENOUGH. A driver who rolls stops
+   treats a crawl as having discharged the obligation; everybody else
+   comes to rest. They still YIELD -- a rolling stop is a failure to obey
+   the law, not a failure to look, and the maintainer's mechanism is a
+   driver confident in their own read rather than a reckless one. */
+const restFor = (me) => (me.rollsStops ? ROLLING : AT_REST);
 
 /* WHERE A CAR ACTUALLY WAITS. `s` is a car's centre -- stage 0 defines
    the gap as `ahead - CAR.length`, which is only right for centres -- so
@@ -196,7 +207,7 @@ export function step(world) {
          stop is made of arrival order and nothing else can reconstruct
          it after the fact. */
       const atLine = Math.abs(s - waitAt(mine)) < AT_LINE;
-      const stoppedAt = me.stoppedAt ?? (v < AT_REST && atLine ? world.t : null);
+      const stoppedAt = me.stoppedAt ?? (v < restFor(me) && atLine ? world.t : null);
       /* Under way from the line, and past the point of thinking better of
          it. `LAUNCHED` is well above the "stopped" threshold so that a car
          inching forward has not committed to anything. */

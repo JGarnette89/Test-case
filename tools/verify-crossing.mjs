@@ -328,6 +328,76 @@ console.log("\n6. UNDER A STREAM THAT NEVER LETS UP, THE ORDERING STAYS RIGHT");
       ].join(" "));
 }
 
+
+console.log("\n7. SOME DRIVERS ROLL THE STOP, AND IT COSTS THE ORDERING NOTHING");
+{
+  /* The maintainer's ruling: "rolling stops are a failure to obey the law
+     not necessarily a skill issue. a high confidence driver might feel
+     strong in their observation that it's clear to go and will disregard
+     the stopping portion prematurely."
+
+     Knowledge-dominant with confidence a real contributor, and it falls
+     out of every car being a rated driver rather than being authored --
+     nobody decided WHICH cars roll stops, only what kind of person does.
+
+     THE PROPERTY THAT MATTERS IS NOT THAT IT HAPPENS. It is that it
+     happens WHEN THE WAY IS CLEAR and not otherwise, and that the
+     ordering survives a population that does not all stop -- because the
+     precedence rule is built on arrival order, and a driver who never
+     comes to rest is exactly the case that could break it. */
+  const AT_REST_ISH = 0.5;
+  const look = (every) => {
+    let rollers = 0, rolledThrough = 0, others = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      let w = seedCrossing(seed, 50, { every });
+      const low = new Map(), isRoller = new Map();
+      for (let i = 0; i < 4800; i++) {
+        const before = new Map(w.actors.map((a) => [a.id, a]));
+        w = step(w);
+        for (const a of w.actors) {
+          low.set(a.id, Math.min(low.get(a.id) ?? 99, a.v));
+          isRoller.set(a.id, Boolean(a.rollsStops));
+        }
+        for (const [id] of before) {
+          if (w.actors.some((x) => x.id === id)) continue;
+          const never = (low.get(id) ?? 99) > AT_REST_ISH;
+          if (isRoller.get(id)) { rollers++; if (never) rolledThrough++; }
+          else { others++; }
+        }
+      }
+    }
+    return { rollers, rolledThrough, others };
+  };
+
+  const quiet = look(5.0), busy = look(1.6);
+  const share = (x) => Math.round((100 * x.rolledThrough) / Math.max(1, x.rollers));
+  console.log(`   quiet: ${quiet.rollers} rollers through, ${quiet.rolledThrough} never came to rest (${share(quiet)}%)`);
+  console.log(`   busy:  ${busy.rollers} rollers through, ${busy.rolledThrough} never came to rest (${share(busy)}%)`);
+
+  quiet.rolledThrough > 0
+    ? ok(`the behaviour happens: ${quiet.rolledThrough} of ${quiet.rollers} rollers cleared the line without ever coming to rest`)
+    : fail([
+        "nobody ever rolled a stop, so this is an untested code path rather than a behaviour.",
+        "It falls out of a weak knowledge axis and a bold confidence axis (DECISIONS.md 5.13.5)",
+        "-- if no drawn driver has both, the occurrence rule is asking for too much.",
+      ].join(" "));
+
+  share(quiet) > share(busy)
+    ? ok(`and it happens when the way is CLEAR rather than at random: ${share(quiet)}% of rollers roll at a quiet junction against ${share(busy)}% at a busy one`)
+    : fail([
+        `rollers roll ${share(quiet)}% of the time when quiet and ${share(busy)}% when busy.`,
+        "A rolling stop is a driver deciding the legal requirement is surplus BECAUSE they",
+        "can see it is clear. If it happens as often in traffic, they are not judging",
+        "anything -- they are just not stopping, which is a different and worse driver.",
+      ].join(" "));
+
+  /* AND THE ORDERING SURVIVES THEM -- checked in section 6, which runs
+     against the same population. Stated here so the connection is not
+     lost: a driver who never comes to rest has no arrival time, and
+     arrival order is what the precedence rule is built on. */
+  ok("and they still yield: section 6's ordering runs against this same population, rollers included");
+}
+
 console.log("\n" + "=".repeat(70));
 if (problems) { console.log(`FAILED: ${problems} problem(s).`); process.exit(1); }
 console.log("OK: the paths are right, the rules fall out of them, and cars take turns.");

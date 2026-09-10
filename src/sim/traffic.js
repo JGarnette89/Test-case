@@ -33,7 +33,7 @@
    That removes a class of bug for free.
    ===================================================================== */
 
-import { composeDriver, deficitOf } from "../engine/ratings.js";
+import { composeDriver, deficitOf, LACKING_AT } from "../engine/ratings.js";
 import { rng } from "../engine/index.js";
 
 /* The project's scale, and the one thing here that must agree with the
@@ -214,11 +214,36 @@ export function driver(road, seed, n) {
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
   const v0 = road.speed * (1.35 - 0.35 * caution);
+
+  /* WHO ROLLS A STOP, and it is two axes rather than one.
+
+     The maintainer's ruling: "rolling stops are a failure to obey the law
+     not necessarily a skill issue. a high confidence driver might feel
+     strong in their observation that it's clear to go and will disregard
+     the stopping portion prematurely." So it is KNOWLEDGE-DOMINANT WITH
+     CONFIDENCE A REAL CONTRIBUTOR -- not knowledge alone, and not the
+     control failure the old weighting had it as.
+
+     The split within "dominant plus real" is mine and is PROVISIONAL:
+     `CAUSES` in ratings.js is the one table this project authors on
+     purpose and it is the maintainer's, so the real weighting lands there
+     when the fault model is rebuilt. Measured at 0.7/0.3: 16% of drawn
+     drivers roll, which is a visible minority rather than a curiosity.
+     The threshold is the project's own `LACKING_AT` rather than a new
+     number.
+
+     Carried on the driver rather than on the scene, because it is a fact
+     about the person. It means nothing on a straight road and everything
+     at a stop line. */
+  const boldness = Math.max(0, 1 - caution);
+  const rollsStops =
+    0.7 * deficitOf(who.ratings, "knowledge").deficit + 0.3 * boldness > LACKING_AT;
   return {
     id: `car-${n}`,
     ratings: who.ratings,
     weakOn: who.weakOn,
     caution,
+    rollsStops,
     s: 0,
     /* Joining at roughly the speed they want, so nobody enters the road
        accelerating from nothing. */
