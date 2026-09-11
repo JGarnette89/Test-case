@@ -660,15 +660,51 @@ cone held in degrees off the heading needs and which nothing else can
 provide; and it is a DURATION of road, so a faster road shows further
 ahead.
 
-**Still to come in this stage:** the instruction itself with its
-deadline; deferred marking and the section sheet from `detect.js`.
+**FOURTH INCREMENT: THE DIRECTIONS -- BUILT.** `tell`, `toTell` and
+`stillTellable` in `candidate.js`; verify-course section 8. A candidate
+sets off knowing NOTHING and carries straight on until told otherwise, so
+the instructions are the examiner's to give rather than the course's to
+know. What is told is the same field the driver reads. Three rules, all
+checked: silence means straight on; an instruction in time is followed;
+one given after they are already there is refused, and they carry
+straight on -- the examiner's fault, which is the interlock.
 
-**And the instruction's deadline is BLOCKED**, on the two turn questions
-in DECISIONS.md 5.15.12-13. A deadline is "in time to be acted on", and
-acting on a turn means slowing for it -- but nothing in the sim knows a
-corner is coming, and the radius the geometry produces is one no car can
-steer. Building a deadline on either would be deriving a rule from a
-quantity known to be wrong.
+The deadline is the LOOSEST TRUE ONE, deliberately: the tick the plan is
+read, which is the handoff to that intersection. Real, not a placeholder,
+but generous (31s of notice on a 524m leg). The tighter bound -- in time
+to slow for the turn and signal -- needs a turn speed the model does not
+have (DECISIONS.md 5.15.13), and it will only ever move EARLIER, so
+nothing built against this one has to be unbuilt.
+
+**FIFTH INCREMENT: DEFERRED MARKING AND THE SECTION SHEET -- BUILT.**
+`src/sim/marking.js`; verify-course section 9. `detect.js` comes across
+UNCHANGED and is fed what the sim already derives, in the shape it
+already grades. Three faults, each a threshold on a quantity the model
+holds for its own reasons: undue delay, a rolling stop, and abrupt
+braking (`HARSH_AT`, twice the comfortable rate -- the old engine's own
+line). A sound driver directed on time is a clean sheet; a prompt examiner
+catches every rolling stop, a silent one misses them, a spraying one is
+charged for every invented mark; a direction never given for a turn the
+course wanted lands on the examiner.
+
+**One thing is EXCLUDED on purpose.** Lane-keeping is not on the sheet:
+the weave's ceiling is half the room between lanes (0.45m) and the old
+engine's threshold for a fault anybody could see is `POS_VISIBLE`, which
+is 0.45m. The maximum stray is exactly the visibility floor, so a fault
+there would be authored rather than derived. It becomes markable where
+the other half of the steering axis does: on a bend.
+
+**And it corrected the old engine.** `sectionSheet` charged the examiner
+for every direction never given, including for legs the course wanted
+STRAIGHT -- where silence produced exactly the right drive. The old
+routes always turned, so the branch had never run; the rebuild's set
+courses go straight sometimes, and the first one charged five directions
+for four turns. Fixed in `detect.js`, with the old check corrected to
+count turns.
+
+**STAGE 3 IS LANDED.** Route, directions, deferred marking, the section
+sheet, `detect.js` and `directions.js` across. What is still owed to it
+is the tighter instruction deadline, blocked on turn speed (5.15.13).
 Today every arrival is spawned at the far end of one approach and
 destroyed at the far end of its exit, and the candidate's "course" is
 `keepDriving` putting the same person back on a fresh leg — an honest

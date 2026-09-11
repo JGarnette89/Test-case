@@ -852,4 +852,7 @@ export function overlapping(world) {
    it. Sticky, so a driver who has been late is still late after they go. */
 export const delayed = (world) => world.actors.filter((a) => a.delayed);
 
-export { PX_PER_M, M, CAR, DT, ALL_WAY, TWO_WAY, COMPETENT, UNDUE_AT };
+/* The line-region and rest thresholds, for the marking sheet: whether a
+   driver came to rest before a line is judged by the same numbers that
+   decide it here. */
+export { PX_PER_M, M, CAR, DT, ALL_WAY, TWO_WAY, COMPETENT, UNDUE_AT, AT_REST, AT_LINE, waitAt };

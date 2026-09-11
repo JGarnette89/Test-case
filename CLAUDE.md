@@ -1439,9 +1439,9 @@ INSTEAD.** Read REBUILD.md first. It is a stepped 20 Hz simulation where
 every actor decides from the previous committed state, which is the one
 thing `src/engine/` structurally cannot do -- `poseAt(p, t)` is pure and
 resolves every participant's motion before the drive begins, so nobody
-ever reads anybody while moving. Stages 0-2 are built and watchable at
-`#/sim`, `#/crossing` and `#/candidates`; stage 3 has started at
-`#/course`. It imports from `src/engine/`
+ever reads anybody while moving. Stages 0-3 are built and watchable at
+`#/sim`, `#/crossing`, `#/candidates` and `#/course` -- the last is a
+course with a route, directions, marking and the section sheet. It imports from `src/engine/`
 where a thing was already solved (path shapes, the ratings model, the
 scoring floors) and never the other way round.
 
@@ -1486,7 +1486,8 @@ src/sim/traffic.js       THE REBUILD, stage 0: a stepped world, and cars that fo
 src/sim/intersection.js  stage 1: paths through an intersection, and where two of them would meet
 src/sim/crossing.js      stage 1: who gives way, gap acceptance, and undue delay
 src/sim/candidate.js     stage 2: a named driver as five ratings, and the course they drive
-src/sim/course.js        stage 3: intersections placed in one space, and the roads between them
+src/sim/course.js        stage 3: intersections placed in one space, the roads between them, and a route
+src/sim/marking.js       stage 3: deferred marking and the section sheet, fed to detect.js unchanged
 src/theme.js             palette and type — the engine must never import this
 src/environments.js      city, suburban, rural scenery — renderer side only
 src/frame.js             the camera: frameFor and cameraFor — no React

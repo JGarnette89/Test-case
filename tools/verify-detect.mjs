@@ -368,9 +368,16 @@ const markableSeed = (() => {
   onTime.directionsOnYou === 0
     ? ok("directions given inside the window are nobody's fault")
     : fail(`${onTime.directionsOnYou} in-window directions were blamed on somebody`);
-  tooLate.directionsOnYou === PER_SECTION && silent.directionsOnYou === PER_SECTION
-    ? ok(`and a late one is the EXAMINER's (${tooLate.directionsOnYou}/${PER_SECTION}), as is never saying anything — the interlock the design rests on`)
-    : fail(`late and absent directions were not attributed to the examiner (${tooLate.directionsOnYou}, ${silent.directionsOnYou})`);
+  /* ONLY THE LEGS THAT WANTED A TURN. Silence means straight on, so a
+     direction never given for a straight leg produced exactly the right
+     drive and is nobody's fault -- charging it would be charging the
+     examiner for not saying a thing the rule says need not be said. This
+     used to count every leg, and passed only because the composed
+     section had never included a straight one. */
+  const turns = section.filter((leg) => leg.intent !== "straight").length;
+  turns > 0 && tooLate.directionsOnYou === turns && silent.directionsOnYou === turns
+    ? ok(`and a late one is the EXAMINER's (${tooLate.directionsOnYou}/${turns} turns wanted), as is never saying anything — the interlock the design rests on`)
+    : fail(`late and absent directions were not attributed to the examiner for every turn wanted (${tooLate.directionsOnYou}, ${silent.directionsOnYou} of ${turns})`);
   const wrong = {};
   section.forEach((leg, i) => {
     const other = leg.intent === "left" ? "right" : "left";

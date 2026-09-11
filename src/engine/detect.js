@@ -235,7 +235,16 @@ export function sectionSheet({
     };
   });
 
-  const onYou = calls.filter((c) => c.blame === "examiner" || c.wrongTurn).length;
+  /* ON THE EXAMINER only where their silence or lateness actually cost
+     something. Silence means straight on, so a direction never given for
+     a leg the course wanted STRAIGHT produced exactly the right drive --
+     charging it would be charging the examiner for not saying a thing
+     the rule says need not be said. The old routes always turned, so
+     this branch had never been reached; the rebuild's set courses go
+     straight sometimes, and the first one to do so was charged five
+     directions for four turns. */
+  const onYou = calls.filter((c) =>
+    (c.blame === "examiner" && c.followed !== c.wanted) || c.wrongTurn).length;
   return { from, upTo: from + legs.length, result, calls, directionsOnYou: onYou };
 }
 

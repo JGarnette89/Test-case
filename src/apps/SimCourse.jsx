@@ -16,7 +16,7 @@
    drive out of one intersection, down the street, and into the next.
    ===================================================================== */
 import React, { useEffect, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, Crosshair } from "lucide-react";
+import { Play, Pause, RotateCcw, Crosshair, Flag } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import {
   seedCourse, step, poseOf, overlapping, CAR, M, DT, ALL_WAY, TWO_WAY,
@@ -27,6 +27,8 @@ import RoadStrip from "./RoadStrip.jsx";
 import {
   withCandidates, keepDriving, PROFILES, toTell, tell,
 } from "../sim/candidate.js";
+import { noticing, mark, sheetFor, sectionDone, SECTION } from "../sim/marking.js";
+import { summarise } from "../engine/detect.js";
 
 const CONTROLS = [
   { id: "two", label: "Two-way", control: TWO_WAY },
@@ -113,6 +115,23 @@ export default function SimCourse() {
   const [playing, setPlaying] = useState(true);
   const [world, setWorld] = useState(() => seedWorld(1, "two", "grid", "sound"));
 
+  /* THE SECTION BEING TRACKED, AND THE SHEETS SO FAR. Marking is
+     DEFERRED: nothing is graded until a section fills or the drive ends,
+     which is what makes the job memory as well as attention. */
+  const [section, setSection] = useState({ trip: -1, from: 1 });
+  const [sheets, setSheets] = useState([]);
+  useEffect(() => {
+    const done = section.trip >= 0 && sectionDone(world, "them", section.from, section.trip);
+    if (done) {
+      const sheet = sheetFor(world, "them", { from: section.from, trip: done.trip });
+      if (sheet) setSheets((all) => [sheet, ...all].slice(0, 6));
+      setSection(done.ended ? { trip: -1, from: 1 } : { ...section, from: section.from + SECTION });
+      return;
+    }
+    const a = world.actors.find((x) => x.candidate === "them");
+    if (a && a.trip !== section.trip) setSection({ trip: a.trip, from: 1 });
+  }, [world]);
+
   const raf = useRef(0), last = useRef(0), owed = useRef(0);
   useEffect(() => {
     if (!playing) return;
@@ -125,7 +144,7 @@ export default function SimCourse() {
           owed.current -= n * DT;
           setWorld((w) => {
             let next = w;
-            for (let i = 0; i < n; i++) next = keepDriving(step(next));
+            for (let i = 0; i < n; i++) next = noticing(keepDriving(step(next)));
             return next;
           });
         }
@@ -140,8 +159,11 @@ export default function SimCourse() {
   const restart = (s = seed, k = kind, n = size, p = who) => {
     setSeed(s); setKind(k); setSize(n); setWho(p);
     setWorld(seedWorld(s, k, n, p));
+    setSection({ trip: -1, from: 1 });
+    setSheets([]);
     owed.current = 0;
   };
+  const markIt = () => setWorld((w) => mark(w, "them"));
 
   const course = world.course;
   const span = Math.max(...course.at.map((a) => a.at.x));
@@ -321,6 +343,20 @@ export default function SimCourse() {
           ))}
         </div>
 
+        {/* THE MARK. Say "that" -- when, and at which intersection. What
+            it was is the maintainer's open question and is not asked. */}
+        <div style={S.row}>
+          <button className="btn" style={{ ...S.btn, width: "auto", padding: "0 16px", gap: 8, borderColor: C.red }}
+            onClick={markIt}>
+            <Flag size={16} />
+            <span style={{ fontFamily: FONT_D, fontSize: 14 }}>Mark that</span>
+          </button>
+          <span style={S.readout}>
+            {(world.marks ?? []).filter((m) => m.who === "them" && m.trip === (them?.trip ?? -1)).length} marked this drive
+            {" · "}sheet after {SECTION} intersections
+          </span>
+        </div>
+
         {/* THE DIRECTIONS. One of the examiner's four jobs, and the
             first the rebuild can do. Say nothing and they carry straight
             on -- which is what makes a LATE instruction a missed turn
@@ -369,6 +405,43 @@ export default function SimCourse() {
           </span>
         </div>
 
+        {/* THE SHEET. What you recorded against what actually happened,
+            one section at a time, most recent first. */}
+        {sheets.map((sheet, i) => (
+          <div key={`${sheet.trip}-${sheet.from}`} style={S.sheet}>
+            <div style={S.sheetHead}>
+              <span>drive {sheet.trip + 1}, intersections {sheet.from}–{sheet.upTo - 1}</span>
+              <b style={{ color: sheet.result.score >= 70 ? C.green : sheet.result.score >= 40 ? C.amber : C.red }}>
+                {sheet.result.score}
+              </b>
+            </div>
+            <div>{summarise(sheet.result)}</div>
+            {sheet.result.missed.map((f, j) => (
+              <div key={"m" + j} style={{ color: C.amber }}>
+                missed: {f.trait} at intersection {f.intersection}, {(f.to - f.from).toFixed(1)}s long
+              </div>
+            ))}
+            {sheet.result.hits.map((h, j) => (
+              <div key={"h" + j} style={{ color: C.green }}>
+                caught: {h.fault.trait} at intersection {h.fault.intersection}
+                {h.value < 1 ? " (late)" : ""}
+              </div>
+            ))}
+            <div style={{ marginTop: 4 }}>
+              directions:{" "}
+              {sheet.calls.map((c) => (
+                <span key={c.intersection} style={{ marginRight: 8,
+                  color: c.blame === "examiner" && c.followed !== c.wanted ? C.red : c.wrongTurn ? C.red : C.dim }}>
+                  {c.intersection}:{c.wanted}
+                  {c.said === null ? " (nothing said)" : c.said !== c.wanted ? ` (said ${c.said})` : ""}
+                  {c.verdict === "late" ? " late" : c.verdict === "stacked" ? " early" : ""}
+                </span>
+              ))}
+              {sheet.directionsOnYou > 0 && <b style={{ color: C.red }}> · {sheet.directionsOnYou} on you</b>}
+            </div>
+          </div>
+        ))}
+
         <div style={S.note}>
           The amber car is the candidate, and <b>they only know what
           you have told them</b>. Say nothing and they carry straight on;
@@ -387,6 +460,16 @@ export default function SimCourse() {
           approach and destroyed at the far end of its exit, so the
           traffic at one intersection had nothing to do with the traffic
           at the next.
+          <br />
+          <b>Mark what you see, and settle up later.</b> Press the flag
+          when the candidate does something wrong; the sheet comes after
+          every three intersections, or when the drive ends, and it grades
+          <i> you</i> — what you caught, what you missed, what you called
+          that never happened, and which directions you gave too late. The
+          candidate's rolling stops, undue delays and abrupt braking are on
+          it; their lane-keeping is not, because the most a driver here can
+          stray is exactly the old engine's threshold for a fault anybody
+          could see, and a fault that cannot be seen is not one you missed.
           <br />
           <b>Nothing here is new geometry.</b> The exit of one
           intersection and the approach of the next are the same piece of
@@ -446,4 +529,10 @@ const S = {
   },
   readout: { fontFamily: FONT_D, fontSize: 13, color: C.dim },
   note: { fontFamily: FONT_U, fontSize: 12, color: C.dim, lineHeight: 1.45 },
+  sheet: {
+    fontFamily: FONT_D, fontSize: 12, color: C.text, lineHeight: 1.5,
+    padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.10)",
+  },
+  sheetHead: { display: "flex", justifyContent: "space-between", fontSize: 13, color: C.white },
 };

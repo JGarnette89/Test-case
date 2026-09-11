@@ -132,6 +132,10 @@ const BRAKE = 2.7;
    same reason: the worst braker in the model plans on exactly the
    deceleration an examiner would call abrupt, and no worse. */
 const ABRUPT = 2;
+/* WHERE A STOP STOPS BEING CONTROLLED, as a rate. Exported because the
+   marking sheet has to ask the same question the driver model answers --
+   one definition of "abrupt", read in both places. */
+export const HARSH_AT = BRAKE * ABRUPT;
 /* THE GAP A DRIVER CHOOSES TO LEAVE, which is NOT the same thing as the
    gap they are owed -- and this is the one place stage 0 knowingly parts
    company with the old engine, on the maintainer's instruction to close

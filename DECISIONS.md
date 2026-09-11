@@ -2051,6 +2051,61 @@ one -- which the strip above the drive already is, in a different form --
 or accepting that lane-keeping is read from the readout rather than from
 the road.
 
+### 5.15.15 THE SHEET GRADES WHAT THE SIM CAN DERIVE, AND SAYS WHAT IT
+CANNOT
+
+`detect.js` came across unchanged and is fed what the simulation already
+holds. Three faults, each a threshold on a physical quantity the model
+has for its own reasons: undue delay (the maintainer's 4-5s, judged
+against the competent opening), a rolling stop (crossed a line on a leg
+with a stop sign without ever coming to rest), and abrupt braking (harder
+than twice the comfortable rate, which is where the old engine says a
+stop stops being controlled).
+
+**LANE-KEEPING IS NOT ON IT, AND THE REASON IS A COINCIDENCE OF TWO
+DERIVED NUMBERS.** The weave is bounded at half the room between a car
+and the next lane -- 0.45m, because the driver over there has the same
+claim on the other half (5.14.4). The old engine's threshold for "more
+than a driver could fail to notice" is `POS_VISIBLE`, and it is 0.45m.
+The most a driver here can stray is exactly the line at which a fault
+becomes visible, so a ragged driver at 0.38m is under it. Lowering the
+threshold to make a fault appear would be authoring one; raising the
+weave would put cars into each other. The axis becomes markable on a
+bend, where a wide line is a real distance from where the car should be
+-- which is the case 8.2 in REBUILD.md makes for the curve.
+
+**ABRUPT BRAKING FIRES ON CONFIDENCE, NOT ON THE BRAKING AXIS.** A
+heavy-footed driver plans on 5.0 m/s2 and does not cross the 5.4 line; a
+bold one arrives hot at a stop line and does. So the fault as a threshold
+discriminates the wrong axis -- the same entanglement CLAUDE.md records,
+that an examiner watching a stop cannot tell braking from knowledge by
+position alone. The braking axis's honest observable is "leaves it late"
+(5.15.10), and turning that into a derived fault needs the stage 4
+controlled comparison against a sound twin. Kept on the sheet because an
+abrupt stop IS a fault by the maintainer's ruling whoever caused it;
+reported so nobody reads it as the braking axis showing.
+
+### 5.15.16 A DIRECTION NEVER GIVEN FOR A STRAIGHT LEG IS NOBODY'S FAULT
+
+`sectionSheet` charged the examiner for every direction never given.
+Its own comment says why: "silence means straight on, so a direction
+never given is a missed TURN". When the course wanted straight, silence
+produced exactly the right drive, and charging it would be charging the
+examiner for not saying a thing the rule says need not be said.
+
+The old routes always turned -- the planner steers WHICH turn, never
+whether to turn -- so the branch had never run. The rebuild's set courses
+go straight sometimes, and the first one to be graded was charged five
+directions for four turns. Fixed in `detect.js` with one expression:
+blame only where what was followed differs from what was wanted. The old
+check counted every leg and passed only because its composed section had
+never included a straight one; it counts turns now.
+
+**A rule that falls out somewhere is a rule that can quietly stop
+falling out somewhere else.** Silence-means-straight-on was correct in
+`intentFor` and wrong in the sheet, and the two only met when a course
+existed that exercised both.
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately

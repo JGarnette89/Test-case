@@ -138,10 +138,16 @@ export function candidateFor(world, { id, profile, trip = 0, planned = false }) 
      a check wants when the question is whether a driver FOLLOWS one --
      and what the screen wanted before there was anybody to give
      instructions. */
-  const route = planned
-    ? planRoute(world.course, { from: where, seed: trip * 31337 + 17 })
-    : { plan: [] };
-  const intent = route.plan[0] ?? "straight";
+  /* THE SET COURSE IS ALWAYS PLANNED, because the sheet grades the
+     examiner's directions against it. Whether the DRIVER knows it is a
+     separate question: by default they do not, and `wanted` is a record
+     the driver never reads -- `intentFor` consults `plan` and nothing
+     else. `planned` copies the course into the plan for a check that
+     wants a driver who follows a route rather than an examiner who has
+     to give one. */
+  const wanted = planRoute(world.course, { from: where, seed: trip * 31337 + 17 }).plan;
+  const plan = planned ? [...wanted] : [];
+  const intent = plan[0] ?? "straight";
   return {
     ...driver(world.road, 4242, trip, who.ratings),
     id: `${id}#${trip}`,
@@ -154,7 +160,12 @@ export function candidateFor(world, { id, profile, trip = 0, planned = false }) 
     n: trip,
     k: where.k,
     leg: 0,
-    plan: route.plan,
+    plan,
+    wanted,
+    /* When each instruction was given, by leg. The sheet needs the
+       moment as well as the content, because a right instruction given
+       late is the examiner's fault and one given in time is nobody's. */
+    toldAt: {},
     route: `${where.side}/${intent}`,
     s: 0,
     stoppedAt: null,
@@ -270,9 +281,10 @@ export function tell(world, id, at, intent) {
   const plan = [...(a.plan ?? [])];
   while (plan.length < at) plan.push(undefined);
   plan[at] = intent;
+  const toldAt = { ...(a.toldAt ?? {}), [at]: a.toldAt?.[at] ?? world.t };
   return {
     ...world,
-    actors: world.actors.map((x) => (x.id === a.id ? { ...x, plan } : x)),
+    actors: world.actors.map((x) => (x.id === a.id ? { ...x, plan, toldAt } : x)),
   };
 }
 

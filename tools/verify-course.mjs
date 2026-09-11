@@ -23,6 +23,9 @@ import { exitFor } from "../src/sim/intersection.js";
 import {
   withCandidates, keepDriving, toTell, tell, stillTellable,
 } from "../src/sim/candidate.js";
+import { noticing, mark, sheetFor, sectionDone, SECTION } from "../src/sim/marking.js";
+import { REACTION_FLOOR } from "../src/engine/score.js";
+import fs from "node:fs";
 import {
   seedCourse, step, overlapping, whatStops, poseOf, reachFor, edgesOf, gapNeeded,
   DT, CAR, ALL_WAY, TWO_WAY,
@@ -547,6 +550,131 @@ console.log("\n8. AND THE EXAMINER CAN GIVE THE DIRECTIONS");
       ? ok(`the deadline is real but generous — it is the tick the plan is read, and it will only ever move EARLIER once a turn has a speed to slow for (DECISIONS.md 5.15.13)`)
       : fail(`only ${notice.toFixed(1)}s of notice, which is not a deadline anybody could work with`);
   }
+}
+
+
+console.log("\n9. DEFERRED MARKING, AND THE SECTION SHEET");
+{
+  /* `detect.js` comes across unchanged and is fed what the sim already
+     derives. What is checked here is not `detect.js` -- verify-detect
+     does that -- but the HANDOFF: that the sim's faults arrive in the
+     shape it grades, that marks pair with them, that the directions are
+     graded against the set course, and that the whole thing is
+     deterministic. */
+  const drive = (profile, examiner, seconds = 300, seed = 4) => {
+    let w = withCandidates(
+      seedCourse(seed, LIMIT, { every: 4.0, control: TWO_WAY, cols: 3, rows: 2 }),
+      [{ id: "X", profile }],
+    );
+    const out = { sheets: [], faults: {}, marks: 0 };
+    let section = { trip: -1, from: 1 }, known = 0;
+    for (let i = 0; i < Math.round(seconds / DT); i++) {
+      w = noticing(keepDriving(step(w)));
+      const a = w.actors.find((x) => x.candidate === "X");
+      /* Grade the section being tracked FIRST -- it fills, or the drive
+         ends with legs in it, which is what a drive nobody directed looks
+         like -- and only then notice that a new trip has begun. The other
+         order loses the last section of every drive. */
+      const done = section.trip >= 0 && sectionDone(w, "X", section.from, section.trip);
+      if (done) {
+        const sheet = sheetFor(w, "X", { from: section.from, trip: done.trip });
+        if (sheet) out.sheets.push(sheet);
+        section = done.ended ? { trip: -1, from: 1 } : { ...section, from: section.from + SECTION };
+      }
+      if (a) {
+        if (a.trip !== section.trip) section = { trip: a.trip, from: 1 };
+        w = examiner(w, a, (w.faults ?? []).slice(known));
+        known = (w.faults ?? []).length;
+      }
+    }
+    for (const f of w.faults ?? []) if (f.who === "X") out.faults[f.trait] = (out.faults[f.trait] ?? 0) + 1;
+    out.marks = (w.marks ?? []).length;
+    return out;
+  };
+  const tot = (sheets, f) => sheets.reduce((t, s) => t + f(s), 0);
+
+  /* EXAMINERS, as functions of the world. A perfect one marks every
+     fault as soon as a person could (REACTION_FLOOR after it begins) and
+     gives every direction the moment it can be given; a silent one does
+     nothing; a spraying one marks every tick. */
+  const directs = (w, a) => {
+    for (const slot of toTell(w, "X", 2)) {
+      if (slot.told === null) w = tell(w, "X", slot.at, a.wanted[slot.at] ?? "straight");
+    }
+    return w;
+  };
+  const perfect = (w, a, fresh) => {
+    w = directs(w, a);
+    /* A fault that began REACTION_FLOOR ago is the earliest anybody could
+       call; call it now, once. */
+    for (const f of w.faults ?? []) {
+      if (f.who !== "X" || f.called) continue;
+      if (w.t >= f.from + REACTION_FLOOR + DT) {
+        w = mark(w, "X");
+        w = { ...w, faults: w.faults.map((x) => (x === f ? { ...x, called: true } : x)) };
+      }
+    }
+    return w;
+  };
+  const silent = (w, a) => directs(w, a);
+  const spraying = (w, a) => mark(directs(w, a), "X");
+  const mute = (w) => w;                       // no directions at all
+
+  /* --- a clean driver gives a clean sheet --- */
+  const sound = drive("sound", perfect);
+  console.log(`   sound driver, perfect examiner: ${sound.sheets.length} sheets, faults ${JSON.stringify(sound.faults)}`);
+  sound.sheets.length >= 1 && sound.sheets.every((s) => s.result.score === 100 && s.directionsOnYou === 0)
+    ? ok(`a sound driver directed on time is a clean sheet: ${sound.sheets.length} sections, every one scored 100 with nothing on the examiner`)
+    : fail(`a sound driver produced a marked sheet — ${sound.sheets.map((s) => s.result.score).join(", ")} — so something is being charged that did not happen`);
+
+  /* --- a weak axis shows on the sheet, in detect.js's own shape --- */
+  const rolled = drive("unschooled", perfect);
+  const hits = tot(rolled.sheets, (s) => s.result.hits.length);
+  const missed = tot(rolled.sheets, (s) => s.result.missed.length);
+  console.log(`   unschooled driver, perfect examiner: faults ${JSON.stringify(rolled.faults)}, ${hits} caught, ${missed} missed across ${rolled.sheets.length} sheets`);
+  (rolled.faults.rollingStop ?? 0) > 0 && hits > 0 && missed === 0
+    ? ok(`an unschooled driver's rolling stops reach the sheet and a prompt examiner catches all of them: ${hits} caught, none missed`)
+    : fail(`rolling stops did not reach the sheet as catchable faults (${rolled.faults.rollingStop ?? 0} derived, ${hits} caught, ${missed} missed)`);
+
+  /* --- and the three examiner failures cost what they should --- */
+  const quiet = drive("unschooled", silent);
+  const quietMissed = tot(quiet.sheets, (s) => s.result.missed.length);
+  quietMissed > 0 && quiet.sheets.some((s) => s.result.score < 100)
+    ? ok(`a silent examiner misses them: ${quietMissed} missed, and the sheet says so`)
+    : fail("an examiner who marked nothing was not charged for the faults they let go");
+
+  const spray = drive("unschooled", spraying, 300);
+  const invented = tot(spray.sheets, (s) => s.result.invented.length);
+  invented > 20 && spray.sheets.length > 0 && spray.sheets.every((s) => s.result.score === 0)
+    ? ok(`and spraying marks is charged for every one that landed on nothing: ${invented} invented across ${spray.sheets.length} sheets, all scored 0`)
+    : fail(`marking every tick scored ${spray.sheets.map((s) => s.result.score).join(", ")} with ${invented} invented — inventing faults has to cost or the strategy is to mark everything`);
+
+  const deaf = drive("sound", mute);
+  const onYou = tot(deaf.sheets, (s) => s.directionsOnYou);
+  const turnsWanted = tot(deaf.sheets, (s) => s.calls.filter((c) => c.wanted !== "straight").length);
+  console.log(`   sound driver, no directions: ${turnsWanted} turns wanted across ${deaf.sheets.length} sheets, ${onYou} on the examiner`);
+  onYou === turnsWanted && turnsWanted > 0
+    ? ok(`and every direction never given for a turn the course wanted lands on the examiner — ${onYou} of ${turnsWanted} — because silence meant straight on and the candidate did as told`)
+    : fail(`${onYou} directions on the examiner against ${turnsWanted} turns the course wanted; a missed turn nobody called for is being blamed on the wrong person`);
+
+  /* --- what the sheet can see today, and what it cannot --- */
+  const src = fs.readFileSync(new URL("../src/sim/marking.js", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  const traits = [...src.matchAll(/trait: "([a-zA-Z]+)"/g)].map((m) => m[1]);
+  const named = [...new Set(traits)].sort();
+  console.log(`   faults the sheet can derive today: ${named.join(", ")}`);
+  JSON.stringify(named) === JSON.stringify(["harshBraking", "rollingStop", "undueDelay"])
+    ? ok("the sheet derives exactly the three faults the sim already holds as physical quantities, and nothing it would have to author")
+    : fail(`the sheet derives ${named.join(", ")}, which is not the list this stage can honestly stand behind`);
+  !/weave|POS_VISIBLE/.test(src)
+    ? ok("and lane-keeping is not on it: the weave's ceiling is the old engine's own visibility floor, so a fault there would be authored rather than derived")
+    : fail("marking.js reaches for the weave, which cannot clear POS_VISIBLE as bounded and would be an authored fault");
+
+  /* --- and it replays --- */
+  const twice = () => JSON.stringify(drive("unschooled", perfect, 200).sheets.map((s) => [s.result.score, s.result.hits.length, s.directionsOnYou]));
+  twice() === twice()
+    ? ok("the same seed produces the same sheet")
+    : fail("two runs of one seed produced different sheets, so nothing graded here can be trusted");
 }
 
 
