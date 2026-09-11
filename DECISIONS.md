@@ -2675,7 +2675,9 @@ every other check in the suite.
 
 **Any change to the conflict engine, trait system, scenario timings or the
 generator must be re-verified numerically before it is considered done.**
-All 26 `tools/verify-*.mjs` plus `verify-scoring.py` must exit 0.
+All 31 `tools/verify-*.mjs` plus `verify-scoring.py` must exit 0 before
+a commit. Between commits, the subset the change could have reached --
+11.3, and CLAUDE.md's cold-start item 8.
 
 New engine logic gets an **independent re-derivation, not a self-check** —
 which is why the scoring curve is reimplemented from prose in Python
@@ -2723,6 +2725,115 @@ subscribed BEFORE any pump starts.
 **Verify a component by reading it, by `verify-screens.mjs`, and by asking
 a person to open the page.** Their eyes are the better instrument and they
 are available.
+
+---
+
+### 11.3 SPENDING TURNS: run what could have broken, and where a
+session's turns actually went
+
+**The maintainer's instruction, verbatim in intent:** the efficiency
+practices are a convention of the project, so they survive and apply to
+any agent working here -- Gemini, Aider, a cheaper model -- and NONE OF
+THEM MAY WEAKEN THE DISCIPLINE THAT HAS MADE THE PROJECT WORK. The rules
+are in CLAUDE.md, cold-start item 8, where an agent will actually read
+them. This section is the account behind them, kept because a rule
+without the failure that produced it is the kind that gets argued away.
+
+**The occasion.** One session ran past five thousand turns and hit the
+usage limit three times in two days. It landed stage 3 of the rebuild,
+which was real work; but a large share of the turns did not go on the
+work. Honestly, and specifically:
+
+- **Nine full suite runs, of which about three were needed.** The suite
+  takes 17m41s (run of 10 Sep, timed per check). Three runs preceded
+  commits that touched `src/engine/` or crossed subsystems -- the
+  `detect.js` fix, the directions commit, the marking commit -- and the
+  full suite was the right instrument for those. The other six followed
+  changes confined to `src/sim/` or to one verify file, where the four
+  sim checks plus `verify-screens` (about 100 seconds) would have
+  answered the same question. `src/engine/` never imports `src/sim/`,
+  which is what makes that partition safe, and it was known all along;
+  the reflex was the suite.
+
+- **Two runs against a moving tree.** Run 8 was started before the
+  section-9 edit to `verify-course.mjs` was finished. It reported one
+  FAIL that was true of a file that no longer existed, which then had to
+  be explained, and a ninth run had to be made. Each of those cost the
+  run, the stale failure, the explanation, and the re-run -- and the
+  session then WAITED on a superseded run rather than killing it, which
+  is the waste this section is for. The instruction that came out of it
+  is concrete: the moment an edit supersedes a background run, stop it
+  (the harness's task stop, or the process), and treat its result as
+  evidence about a tree that is gone.
+
+- **Sweeps re-run per tweak.** `verify-telling`'s separation between
+  drivers was measured at least five times while the sample-size
+  question (one seed against eight, 5.15.9) and the braking instrument
+  (max per drive, then median, then `easesAt`, 5.15.10) were each
+  changed one at a time and re-measured over six profiles of ten-minute
+  drives. The keep-right probe (201,529 readings) and the gap-horizon
+  re-derivation were re-run similarly. One parameterised sweep, run once
+  across the range, would have answered all of it. And the curve-cost
+  measurement that produced REBUILD.md 8.2's bend table was run inline
+  and its script was not kept -- so when the bend came to be built, the
+  bow shape behind the table could not be reproduced and the
+  measurement has to be made again. A documented number needs its
+  script beside it.
+
+- **Retries on mechanics.** Bash heredocs containing quotes failed on
+  the Windows shell several times, a turn each; patch scripts written as
+  files and executed never failed. A documentation patch asserted on an
+  anchor that had drifted by one word ("already known" against
+  "known"), and failed; a `grep` in the same command would have caught
+  it. Whole files (858-line `crossing.js`, 538-line `SimCourse.jsx`)
+  were re-read in full across compactions where a region would have
+  done.
+
+- **The pane.** One screenshot to confirm the Mark button mounted was a
+  fair use. Turns spent earlier trying to watch cars drive in a pane
+  that delivers no animation frames were not, and CLAUDE.md item 7
+  already said so. The rule stands; the lesson is that a written rule
+  is still a rule you have to remember to apply.
+
+- **Re-deriving the state after every cut-off.** Each restart re-read
+  the contract (which is the price of having one) and then
+  reconstructed where the tree stood from `git status` and the
+  transcript. A three-line note in the scratchpad -- what is running,
+  what is next, what is blocked -- written before each long operation,
+  would have replaced most of that.
+
+- **And what the maintainer asked for that cost turns.** Asking for the
+  suite to be green before every commit was right, and stays. Applying
+  it as "the full suite after every increment" was the agent's reflex,
+  not the instruction; but the instruction to report on the way past at
+  every increment, combined with three cut-offs, meant each report was
+  re-read and re-summarised at every restart, and the request to record
+  every finding in three documents (REBUILD, DECISIONS, CLAUDE.md) as it
+  landed produced a documentation patch per finding rather than one per
+  commit. The mid-stage request to investigate the curve's cost pulled a
+  sweep into the middle of an increment; it was worth doing -- it changed
+  the roadmap -- and it would have cost the same batched at the end of
+  the increment. The eight-seed requirement in `verify-telling` made
+  that check eight times slower, and that is rigour rather than waste:
+  it stays.
+
+**The rules that came out of it** are CLAUDE.md item 8, and they reduce
+to: run the checks the imports say could have broken, and say which;
+keep the full suite for commits, cross-cutting changes and anything
+unexplained; let the golden answer "did the engine move" before anything
+else does; measure once across the range and keep the script; kill
+superseded background work; read the state before reproducing it; write
+the next step down before a long operation.
+
+**What they must not become.** "Run fewer checks" is exactly the kind
+of instruction that rots into "skip the inconvenient ones", so the
+subset is justified from the imports out loud every time, a subset is
+reported AS a subset, and a commit still gets the whole suite. Measure
+before building, report failures rather than building over them, never
+tune a number to make a check pass, never claim green that was not
+green: none of that moved, and a saving that trades against any of it
+is not a saving. Reporting a run as green when it was red is still the
+one thing that undermines everything else here.
 
 ---
 

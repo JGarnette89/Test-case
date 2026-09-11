@@ -32,7 +32,7 @@ is what you must not break.
 **[DRIVE-GUIDE.md](DRIVE-GUIDE.md)** is how to actually operate the game
 at `#/drive`, and what is knowingly missing from it.
 
-Seven things to know before your first change:
+Eight things to know before your first change:
 
 1. **NEVER AUTHOR THE ANSWER, and never author the fault.** Windows are
    simulated, never typed in. Faults are DERIVED by controlled comparison
@@ -100,6 +100,90 @@ Seven things to know before your first change:
    after a burst. Verify by reading, by `verify-screens.mjs`, and by
    asking a person to open the page. This cost real time four times before
    it was written down.
+
+8. **RUN THE CHECKS THAT COULD HAVE BROKEN, NOT ALL OF THEM -- AND NONE
+   OF THIS WEAKENS THE DISCIPLINE.** The maintainer's instruction, after
+   one session ran past five thousand turns and the usage limit stopped
+   work three times in two days. A large share of those turns went on
+   full suite runs after changes confined to one subsystem, on sweeps
+   re-run per tweak, on re-verifying things nothing had touched, and on
+   waiting for background runs that a later edit had already made
+   meaningless. The account, with numbers, is DECISIONS.md 11.3. The
+   rules:
+
+   - **The import lines at the top of each `tools/verify-*.mjs` ARE the
+     dependency map.** `src/engine/` never imports `src/sim/`, so a
+     change confined to `src/sim/` can only break `verify-sim`,
+     `verify-crossing`, `verify-telling`, `verify-course` and
+     `verify-screens` -- about 100 seconds, against 18 minutes for the
+     suite. The table is below; re-derive it with
+     `grep -l "sim/" tools/verify-*.mjs` when in doubt, and whenever you
+     add a check.
+   - **Reserve the full suite for three occasions: before a commit;
+     after a change that crosses subsystems (`index.js`, `paths.js`,
+     `ratings.js`, `road.js`, `scenarios.js` and `score.js` are imported
+     by nearly every check); and when something unexplained happens.** A
+     subset run is REPORTED as a subset -- name the checks and say why
+     the others could not have broken. If you cannot say why, that is a
+     reason to run more, never fewer.
+   - **Don't re-verify what hasn't moved.** `verify-equivalence` and
+     `engine-golden.json` exist so that "did the engine change" is a
+     one-second question. Run it FIRST after any engine change: green
+     means no window, departure or pose moved, and the rest of the
+     engine suite is then checking things the change could not reach.
+   - **Batch measurement.** A sweep is a script with its range as
+     parameters, run once across the range, and kept beside the number
+     it produced -- under `tools/measure/`, or as the verify section it
+     became. Prefer one run that answers several questions to several
+     runs that each answer one. A number in the docs without its script
+     has to be measured again: REBUILD.md 8.2's bend table cost exactly
+     that when the bend came to be built.
+   - **Stop background work the moment an edit supersedes it.** Kill it
+     -- the harness's task stop, or the process -- do not wait on it,
+     and never read its result as evidence about the current tree. A
+     suite started against a tree that is still being edited costs the
+     run, the stale failure, the explanation, and the re-run; that
+     happened here, twice.
+   - **Prefer the cheap diagnostic.** `git status`, the log file, a
+     one-line `node -e` against the module, `grep` for the anchor --
+     before driving the whole system to reproduce anything. This
+     environment forces it anyway: the pane draws no frames (item 7).
+   - **Write patch scripts as files and run them; grep an anchor before
+     asserting on it.** Bash heredocs with quotes in them fail on this
+     Windows shell, and a documentation anchor drifts by a word.
+   - **Before a long operation, write down what you are doing and what
+     comes next**, in the scratchpad. Context is compacted and sessions
+     are cut off; re-deriving the state afterwards was one of the largest
+     costs of the session that produced this rule.
+
+   | a change confined to | run | cost (run of 10 Sep) |
+   |---|---|---|
+   | `*.md` | nothing | 0 |
+   | `tools/verify-X.mjs` | X | |
+   | `src/apps/*`, `App.jsx`, `theme.js` | `verify-screens` | 6s |
+   | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens` | ~100s |
+   | `src/frame.js` | `-screens`, `-camera`, `-clearance`, `-events`, `-world` | ~5m |
+   | `src/engine/detect.js` | `-detect`, `-faults`, `-outcome`, `-course` | ~2m |
+   | `src/engine/paths.js` | `-equivalence` first, then `-turns`, `-roundabout`, `-detect`, `-outcome`, `-reaction` and the `src/sim/` five | ~4m |
+   | `index.js`, `ratings.js`, `road.js`, `scenarios.js`, `score.js` | the full suite | 18m |
+
+   Where the 18 minutes go: `verify-candidate` 6m39s, `verify-world`
+   4m06s, `verify-roguelike` 1m31s, `verify-course` 63s, `-outcome` 43s,
+   `-generator` 33s, `-events` 31s, `-crossing` 19s, `-playthrough` 16s,
+   `-telling` 13s, `-screens` 6s; everything else under ten seconds. The
+   three long ones are old-engine checks that a `src/sim/` change cannot
+   reach.
+
+   **WHAT DOES NOT CHANGE, AND IT MATTERS MORE THAN THE SAVINGS.**
+   Measure before building. Report a failure rather than building over
+   it. Never tune a number to make a check pass. Never claim a run was
+   green without it being green, and never let "the checks passed" stand
+   where "the five sim checks passed" is the truth. "Run fewer checks"
+   rots into "skip the inconvenient ones" the first time a subset is
+   chosen for convenience rather than justified from the imports -- so
+   the justification is said out loud every time, and a commit still
+   gets the whole suite. A saving that trades against any of this is not
+   a saving.
 
 **LANGUAGE IS ONTARIO, CANADA — American English, North American road
 terms.** intersection not junction, curb not kerb, sidewalk not pavement,
@@ -1849,7 +1933,10 @@ node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All thirty-one must exit 0. Fourteen things they check are worth understanding:
+All thirty-one must exit 0 **before a commit**. Between commits, run
+the subset the change could have broken and say which -- item 8 of the
+cold-start section has the dependency table and the rule. Fourteen things
+they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take
