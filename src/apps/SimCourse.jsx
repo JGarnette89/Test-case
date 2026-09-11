@@ -24,7 +24,9 @@ import {
 import { walkRoute, poseOn } from "../sim/course.js";
 import { chaseOn, LOOK_AHEAD } from "../frame.js";
 import RoadStrip from "./RoadStrip.jsx";
-import { withCandidates, keepDriving, PROFILES } from "../sim/candidate.js";
+import {
+  withCandidates, keepDriving, PROFILES, toTell, tell,
+} from "../sim/candidate.js";
 
 const CONTROLS = [
   { id: "two", label: "Two-way", control: TWO_WAY },
@@ -177,6 +179,13 @@ export default function SimCourse() {
      fault, stated rather than drawn, because at this zoom it is under a
      pixel. */
   const drift = them ? Math.hypot(at.x - clean.x, at.y - clean.y) : 0;
+
+  /* WHAT CAN STILL BE SAID. Three intersections, because stacking only
+     exists from a distance of two: an instruction for the very next one
+     is discharged the moment they arrive, so it never makes them carry
+     anything. */
+  const ahead = them ? toTell(world, "them", 3) : [];
+  const say = (at, intent) => setWorld((w) => tell(w, "them", at, intent));
   const touching = overlapping(world).length;
   const done = them ? (them.leg ?? 0) : 0;
 
@@ -312,6 +321,30 @@ export default function SimCourse() {
           ))}
         </div>
 
+        {/* THE DIRECTIONS. One of the examiner's four jobs, and the
+            first the rebuild can do. Say nothing and they carry straight
+            on -- which is what makes a LATE instruction a missed turn
+            rather than a pause. */}
+        {ahead.map((slot, i) => (
+          <div key={slot.at} style={S.row}>
+            <span style={{ ...S.readout, width: 74 }}>
+              {["at the next", "then", "after that"][i]}
+            </span>
+            {[["left", "Left"], ["straight", "Straight on"], ["right", "Right"]].map(([id, label]) => (
+              <button key={id} className="btn" style={{
+                ...S.chip, minWidth: 0, padding: "0 10px", minHeight: 38, fontSize: 13,
+                borderColor: slot.told === id ? C.green : "rgba(255,255,255,0.12)",
+                color: slot.told === id ? C.white : C.dim,
+              }} onClick={() => say(slot.at, id)}>{label}</button>
+            ))}
+            {slot.told === null && (
+              <span style={{ ...S.readout, fontSize: 11, opacity: 0.6 }}>
+                nothing said
+              </span>
+            )}
+          </div>
+        ))}
+
         <div style={S.row}>
           <span style={S.readout}>Candidate</span>
           {PROFILES.map((pr) => (
@@ -328,7 +361,7 @@ export default function SimCourse() {
             {world.t.toFixed(0)}s · {world.actors.length} cars ·{" "}
             {them
               ? `intersection ${done + 1} of ${told.length}` +
-                (them.plan?.length ? ` · told: ${them.plan.join(", ")}` : " · no instructions left") +
+                (them.plan?.filter(Boolean).length ? ` · told ${them.plan.filter(Boolean).length} so far` : " · told nothing yet") +
                 ` · ${drift.toFixed(2)}m off line`
               : "the candidate is joining"}
             {(world.turnedAway ?? 0) > 0 && ` · ${world.turnedAway} turned away`}
@@ -337,10 +370,16 @@ export default function SimCourse() {
         </div>
 
         <div style={S.note}>
-          The amber car is the candidate, and they are driving a
-          <b> route</b> — a sequence of intersections and what to do at
-          each, decided before they set off. The rings on the map are
-          where they were told to go, filling in as they get there.
+          The amber car is the candidate, and <b>they only know what
+          you have told them</b>. Say nothing and they carry straight on;
+          the rings on the map are where that takes them, and they move
+          as you give instructions. Tell them late — after they have
+          already reached the intersection — and the button does nothing,
+          because by then they have made the turn or not made it. That is
+          the interlock the whole design rests on: being busy with one job
+          makes you late with another, and the error that follows is
+          <i> yours</i> rather than theirs.
+          <br />
           Watch them clear an intersection, drive the street, and arrive
           at the next one: it is the same car the whole way, keeping its
           speed, its place in the queue and whoever it was following.
@@ -348,11 +387,6 @@ export default function SimCourse() {
           approach and destroyed at the far end of its exit, so the
           traffic at one intersection had nothing to do with the traffic
           at the next.
-          <br />
-          <b>When the instructions run out they carry straight on</b>,
-          which is not a gap in the model — it is the rule that makes a
-          LATE instruction a missed turn rather than a pause, and it is
-          the hinge the whole directions mechanic hangs on.
           <br />
           <b>Nothing here is new geometry.</b> The exit of one
           intersection and the approach of the next are the same piece of

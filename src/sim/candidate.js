@@ -105,7 +105,7 @@ export const profileOf = (id) => PROFILES.find((p) => p.id === id) ?? PROFILES[0
    real route, and until it exists the honest stand-in is the same driver
    arriving again.
    ===================================================================== */
-export function candidateFor(world, { id, profile, trip = 0 }) {
+export function candidateFor(world, { id, profile, trip = 0, planned = false }) {
   const who = profileOf(profile);
   /* SEEDED OFF THE TRIP AND NOTHING ELSE, so two candidates given the
      same seed drive the SAME COURSE -- leg for leg, turn for turn, in
@@ -128,7 +128,19 @@ export function candidateFor(world, { id, profile, trip = 0 }) {
      Seeded off the trip like everything else about them, so two
      candidates on one seed drive the same route as well as the same
      legs. */
-  const route = planRoute(world.course, { from: where, seed: trip * 31337 + 17 });
+  /* A CANDIDATE KNOWS ONLY WHAT THEY HAVE BEEN TOLD, so by default they
+     set off with an EMPTY plan and carry straight on until somebody says
+     otherwise. That is the examiner's job arriving: without it there is
+     nothing for the directions to do, and a course that plans itself is a
+     course nobody is being examined on.
+
+     `planned` asks for a route decided in advance instead, which is what
+     a check wants when the question is whether a driver FOLLOWS one --
+     and what the screen wanted before there was anybody to give
+     instructions. */
+  const route = planned
+    ? planRoute(world.course, { from: where, seed: trip * 31337 + 17 })
+    : { plan: [] };
   const intent = route.plan[0] ?? "straight";
   return {
     ...driver(world.road, 4242, trip, who.ratings),
@@ -193,6 +205,85 @@ export function keepDriving(world) {
   return changed ? { ...world, actors, watching } : world;
 }
 
+/* =====================================================================
+   GIVING THE DIRECTIONS
+
+   One of the examiner's four jobs, and the first of them the rebuild can
+   actually do. A set course is a route; the instruction to give at each
+   intersection is that leg's intent; and the candidate only knows what
+   they have been TOLD.
+
+   SILENCE MEANS STRAIGHT ON, which is already how `intentFor` reads a
+   plan with a hole in it -- so a candidate who is told nothing carries on
+   ahead, and a LATE instruction is a missed turn rather than a pause.
+   That is the interlock the whole design rests on: being busy with one
+   job makes you late with another, and the resulting error is then the
+   examiner's and unmarkable.
+
+   WHAT IS TOLD IS THE SAME FIELD THE DRIVER READS. There is no separate
+   record of instructions given -- `plan` IS the instructions given, and
+   `intentFor` reads it at the moment of handoff. A second list would be
+   two answers to "what were they told", which is the bug this project
+   keeps finding.
+
+   THE DEADLINE IS THE LOOSEST TRUE ONE, DELIBERATELY. An instruction can
+   be given right up until the candidate is handed to that intersection,
+   because that is the tick `intentFor` reads the plan. It is a real
+   boundary rather than a placeholder -- past it the choice is genuinely
+   made -- but it is generous: an approach is 279m, so it allows a good
+   seventeen seconds of notice. The tighter bound is "in time to slow for
+   the turn and signal", and it needs a turn speed the model does not have
+   (DECISIONS.md 5.15.13). It will only ever move EARLIER, so nothing
+   built against this one has to be unbuilt.
+   ===================================================================== */
+
+/* WHICH INTERSECTIONS CAN STILL BE INSTRUCTED FOR, and what they have
+   already been told about each. `at` is an absolute leg number, so an
+   instruction survives the candidate moving on. */
+export function toTell(world, id, ahead = 3) {
+  const a = world.actors.find((x) => x.candidate === id);
+  if (!a) return [];
+  const out = [];
+  for (let i = 1; i <= ahead; i++) {
+    const at = (a.leg ?? 0) + i;
+    out.push({
+      at,
+      /* Distance 1 is the next intersection, which is discharged the
+         moment they reach it -- so it never makes them CARRY anything.
+         Stacking only exists from distance two, which is why more than
+         one is offered at all. */
+      distance: i,
+      told: a.plan?.[at] ?? null,
+    });
+  }
+  return out;
+}
+
+/* THE INSTRUCTION. Written into the plan the driver reads, at an
+   absolute leg, and refused once that leg has been decided -- which is
+   not an error to report but the late instruction itself: they carry
+   straight on, and it is the examiner's fault. */
+export function tell(world, id, at, intent) {
+  const a = world.actors.find((x) => x.candidate === id);
+  if (!a) return world;
+  if (at <= (a.leg ?? 0)) return world;
+  const plan = [...(a.plan ?? [])];
+  while (plan.length < at) plan.push(undefined);
+  plan[at] = intent;
+  return {
+    ...world,
+    actors: world.actors.map((x) => (x.id === a.id ? { ...x, plan } : x)),
+  };
+}
+
+/* CAN THIS STILL BE SAID? The same test `tell` applies, asked in
+   advance, so a screen can grey a button out rather than offering
+   something that will be ignored. */
+export const stillTellable = (world, id, at) => {
+  const a = world.actors.find((x) => x.candidate === id);
+  return !!a && at > (a.leg ?? 0);
+};
+
 /* What one of them is doing, for something that wants to say so out
    loud. Nothing here is a new measurement -- every field is a quantity
    the driver already carries. */
@@ -213,5 +304,7 @@ export function watch(world, id) {
     rolling: !!a.rollsStops,
     off: Math.abs(a.weave ?? 0),
     route: a.route,
+    leg: a.leg ?? 0,
+    plan: a.plan ?? [],
   };
 }

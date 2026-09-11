@@ -20,7 +20,9 @@ import {
   courseOf, seamsOf, laneIn, laneOut, joinedTo, poseOn, planRoute, walkRoute,
 } from "../src/sim/course.js";
 import { exitFor } from "../src/sim/intersection.js";
-import { withCandidates } from "../src/sim/candidate.js";
+import {
+  withCandidates, keepDriving, toTell, tell, stillTellable,
+} from "../src/sim/candidate.js";
 import {
   seedCourse, step, overlapping, whatStops, poseOf, reachFor, edgesOf, gapNeeded,
   DT, CAR, ALL_WAY, TWO_WAY,
@@ -404,7 +406,7 @@ console.log("\n7. A GRID, AND A CANDIDATE WHO DRIVES THE ROUTE THEY WERE GIVEN")
   let drove = 0, wandered = 0, longest = 0, ranOut = 0;
   for (const seed of [2, 3, 4]) {
     let w = seedCourse(seed, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2 });
-    w = withCandidates(w, [{ id: "X", profile: "sound" }]);
+    w = withCandidates(w, [{ id: "X", profile: "sound", planned: true }]);
     const me = w.actors.find((a) => a.candidate === "X");
     const told = walkRoute(w.course, { from: { k: me.k, side: me.route.split("/")[0] }, plan: me.plan });
     const went = [];
@@ -444,6 +446,107 @@ console.log("\n7. A GRID, AND A CANDIDATE WHO DRIVES THE ROUTE THEY WERE GIVEN")
   twice(9) === twice(9)
     ? ok("and a seed plans one route: the same drive replays for anybody given it")
     : fail("planning the same route twice gave two answers");
+}
+
+
+console.log("\n8. AND THE EXAMINER CAN GIVE THE DIRECTIONS");
+{
+  /* One of the examiner's four jobs, and the first the rebuild can do.
+     Three rules carry it and all three are checked here rather than
+     asserted:
+
+       silence means straight on;
+       an instruction has a deadline, not a window;
+       and a late instruction is the EXAMINER'S fault.
+
+     The third is why the second matters. Being busy with one job makes
+     you late with another, and the error that follows is then yours and
+     unmarkable -- which is the interlock that makes four systems a game
+     rather than four scoreboards. */
+  const start = () => withCandidates(
+    seedCourse(2, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2 }),
+    [{ id: "X", profile: "sound" }],
+  );
+
+  /* --- told nothing --- */
+  {
+    let w = start();
+    const me = w.actors.find((a) => a.candidate === "X");
+    console.log(`   told nothing, a candidate enters at intersection ${me.k} from the ${me.route.split("/")[0]}`);
+    const went = [];
+    let last = null;
+    for (let i = 0; i < Math.round(400 / DT); i++) {
+      w = keepDriving(step(w));
+      const a = w.actors.find((x) => x.candidate === "X");
+      if (!a || a.trip !== me.trip) break;
+      const key = `${a.k}:${a.route}`;
+      if (key !== last) { went.push(key); last = key; }
+    }
+    const allStraight = went.every((x) => x.endsWith("/straight"));
+    console.log(`   and drives ${went.join(" -> ")}`);
+    allStraight && went.length > 1
+      ? ok(`silence means straight on: a candidate told nothing crossed ${went.length} intersections and turned at none of them`)
+      : fail(`a candidate told nothing turned somewhere — ${went.join(" -> ")} — so silence is not straight on and a late instruction would be a pause rather than a missed turn`);
+  }
+
+  /* --- told in time --- */
+  {
+    let w = start();
+    const ahead = toTell(w, "X");
+    console.log(`   the examiner is offered ${ahead.map((x) => `leg ${x.at} (${x.distance} ahead)`).join(", ")}`);
+    ahead.every((x) => x.told === null)
+      ? ok("and a candidate starts with nothing told, so the instructions are the examiner's to give rather than the course's to know")
+      : fail("the candidate already knows where to go, so nothing the examiner does can matter");
+
+    w = tell(w, "X", 1, "left");
+    const went = [];
+    let last = null, trip = w.actors.find((a) => a.candidate === "X").trip;
+    for (let i = 0; i < Math.round(400 / DT); i++) {
+      w = keepDriving(step(w));
+      const a = w.actors.find((x) => x.candidate === "X");
+      if (!a || a.trip !== trip) break;
+      const key = `${a.k}:${a.route}`;
+      if (key !== last) { went.push(key); last = key; }
+    }
+    console.log(`   told "left" for the second intersection, drives ${went.join(" -> ")}`);
+    went.length > 1 && went[1].endsWith("/left")
+      ? ok("an instruction given in time is followed, at the intersection it was given for")
+      : fail(`the candidate did not take the turn they were told to: ${went.join(" -> ")}`);
+  }
+
+  /* --- told too late --- */
+  {
+    let w = start();
+    let refusedAt = null, wentStraight = null, trip = w.actors.find((a) => a.candidate === "X").trip;
+    for (let i = 0; i < Math.round(400 / DT); i++) {
+      w = keepDriving(step(w));
+      const a = w.actors.find((x) => x.candidate === "X");
+      if (!a || a.trip !== trip) break;
+      /* Say it once they are already there, which is the whole point. */
+      if ((a.leg ?? 0) === 1 && refusedAt === null) {
+        refusedAt = stillTellable(w, "X", 1);
+        const before = JSON.stringify(a.plan ?? []);
+        w = tell(w, "X", 1, "left");
+        const after = JSON.stringify(w.actors.find((x) => x.candidate === "X").plan ?? []);
+        wentStraight = before === after && w.course.at[a.k].layout.paths[a.route].intent === "straight";
+      }
+    }
+    refusedAt === false && wentStraight
+      ? ok("and one given after they are already there is not an instruction at all: they carried straight on, which is the examiner's fault rather than the candidate's")
+      : fail("an instruction given after the candidate had already committed was accepted, so lateness costs nothing and the four jobs cannot make each other fail");
+  }
+
+  /* --- and the deadline is the loosest TRUE one, said out loud --- */
+  {
+    const w = start();
+    const me = w.actors.find((a) => a.candidate === "X");
+    const path = w.course.at[me.k].layout.paths[me.route];
+    const notice = path.length / Math.max(1, me.v0);
+    console.log(`   the deadline today is the handoff, which allows ${notice.toFixed(0)}s of notice on a ${path.length.toFixed(0)}m leg`);
+    notice > 5
+      ? ok(`the deadline is real but generous — it is the tick the plan is read, and it will only ever move EARLIER once a turn has a speed to slow for (DECISIONS.md 5.15.13)`)
+      : fail(`only ${notice.toFixed(1)}s of notice, which is not a deadline anybody could work with`);
+  }
 }
 
 
