@@ -706,6 +706,19 @@ count turns.
 sheet, `detect.js` across unchanged. What is still owed to it is the
 tighter instruction deadline, blocked on turn speed (5.15.13).
 
+**A CLAIM CORRECTED: `directions.js` is across only as far as the sheet
+reads it.** `sectionSheet` grades each direction against its window
+through `attribute`, so late and stacked verdicts are real. What is NOT
+in the sim is the other half of that file -- the stacking trade, "a
+loaded driver is a worse driver" (`loadCandidate`, `skillUnderPressure`,
+measured at 62% wider turns under full stack in the old engine). Telling
+a candidate three intersections ahead costs them nothing here, so the
+"stacked" verdict is a label with no consequence behind it: the same
+shape as the old drive's stacking meter shipping inert (CLAUDE.md, "The
+stacking trade shipped INERT"). It belongs to stage 4, where the ratings
+become live inputs a load can degrade, and it is recorded here so the
+word "across" above is not read as more than it is.
+
 **SIXTH INCREMENT: THE CURVED ROAD -- BUILT**, renderer first. Roads are
 drawn from the path, a link can bend as tightly as its speed allows, and
 the wide line on the bend puts the steering axis on the sheet. Section
@@ -757,6 +770,94 @@ where the traffic behaves.
 
 `awareness.js` and `sight.js` as live inputs. Faults derived by
 rating-stripped controlled comparison. The full marking sheet.
+
+**FIRST INCREMENT: THE TWIN, MEASURED BEFORE ANYTHING IS BUILT ON IT.**
+`tools/measure/twin.mjs`, seed 4, eight legs per profile, bends on. The
+world is forked at each handoff, the candidate's disposition replaced by
+the sound one in the fork with every piece of state kept, and both run
+to the next handoff; the traces are compared ALONG THE ROAD, at the same
+metre, not at the same instant -- because a twin who dwells half a
+second longer at a line is eight metres behind for the rest of the leg,
+and so is everyone behind them.
+
+| profile | how they differ from their twin | where |
+|---|---|---|
+| sound | **exactly nothing, 8 of 8 legs** | -- |
+| ragged | stray 0.66-0.67m, no speed or time difference at all | the right-hand bends, 21-66m of each 540m leg |
+| heavy | 1.2 m/s faster, 14-24m of the leg, on stop legs only; nothing on through legs | 20m before the line |
+| timid | 4.9 m/s slower over 95% of every leg; 9-14s later at the end of each | everywhere; the wait at the box |
+| bold | 4.9 m/s faster over 90% of every leg; 6-22s earlier at the end of each | everywhere; the gap at the box |
+| unschooled | 0.2 m/s at the line, 0.3s, on 2 legs; nothing on the other 6 | the line, when the road happened to be free |
+
+**Five things this decides, and two questions it raises.**
+
+1. **The fork is a controlled comparison.** The sound driver against
+   their own twin differs by zero on every leg. Section 0 holds.
+2. **Steering and braking localise, and to the places the model already
+   named**: the bend for steering (5.15.18), the last twenty metres before
+   a stop line for braking (5.15.10, "leaves it late"). The twin
+   comparison can derive both as intervals in the old engine's sense.
+3. **Confidence does not localise, because it is not an event.** Pace is
+   a standing 5 m/s either side of the road's speed for the whole leg;
+   gap acceptance is a time difference that appears at the box and
+   persists. A fault with a `from` and a `to` is the wrong shape for a
+   disposition that is on for the entire drive. The timid side already
+   has its honest derivation -- undue delay, a threshold on the competent
+   opening -- and the bold side's is the MIRROR of it: went when a
+   competent driver would still have been waiting, from the same
+   `blockedBy` expression at the moment of going. One expression, two
+   directions, and it is what the twin's -22s at the box is measuring.
+4. **The rolling stop is a binary fact, not a difference.** The roller
+   crawls at 2.2 m/s where the twin comes to rest, but only where the road
+   is free; held by traffic they stop like everyone, and over eight legs
+   at a busy two-way stop that was six of eight. Where it does show, the
+   twin reads 0.2 m/s. The honest observable is "came to rest or did
+   not", which the sim holds directly and `marking.js` already reads.
+5. **Context diverges once behaviour does.** The bold driver reads 12 m/s
+   faster than their twin at 18m before one line -- not because they were
+   doing 12 m/s more, but because the twin, arriving later, met a queue
+   the bold driver did not. Per-leg forking bounds this to a leg; a
+   derivation has to take the FIRST divergence and treat what follows
+   as consequence, or fork on a rolling short horizon so the traffic has
+   no time to diverge. Not decided; measured.
+
+**And the risky tail was measured at the only place it can show, and
+it does not show there yet.** `tools/measure/gaps.mjs` records, at every
+commitment a candidate makes, the margin they left the car they had to
+judge a gap against -- the other car's time to the conflict region on
+its visible speed, less the candidate's time to be clear of it; planned,
+not reacted, which is DECISIONS.md 6 and 7 in the sim's own terms.
+Twenty minutes per profile over three seeds, two-way stops:
+
+| profile | commitments | with anyone to judge | tightest margin taken |
+|---|---|---|---|
+| sound | 33 | 4 | 5.8s |
+| bold | 41 | 5 | 3.9s |
+| timid | 24 | 5 | 5.9s |
+
+Nobody came within the old engine's entitled gap (0.9s), the bold
+driver's tail is two seconds inside the sound one's, and the reason is
+density rather than disposition: at the course's spawn rate the through
+road offers a car every fifteen seconds or so, so a bold driver never
+meets a gap tight enough to be a fault -- they waited four ticks at a
+line in four hundred seconds. The crossing where undue delay was derived
+ran four edges at 1.1s; the course runs ten at 3.0s. **Gap acceptance
+is content the traffic has to supply**, the same finding as 5.14.8 from
+the other side: a course needs busy roads as well as more than one kind
+of place, and the spawn rate should be a per-road density rather than a
+total. Not changed here, because changing it moves every course trace;
+recorded as the first thing stage 4's sheet will run into.
+
+**The two questions are the maintainer's.** Whether PACE is a markable
+fault -- a candidate who drives at 70% or 135% of the limit for the whole
+drive, with no single occasion -- and how an examiner marks it. And
+whether a LATE BUT CONTROLLED stop is a braking fault: the heavy-footed
+driver plans on 5.0 m/s^2 and the model's own line for abrupt is 5.4, so
+by the manner ruling (5.15.15) they never commit one; the twin shows the
+lateness is real and visible, 1.2 m/s at twenty metres. If late-and-
+controlled is not a fault, the braking axis's markable content in this
+model is traffic, not disposition, and that is worth knowing before
+anything is derived from the comparison.
 
 ### Stage 5 — intervention, and the world
 
