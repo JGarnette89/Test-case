@@ -32,6 +32,7 @@
    ===================================================================== */
 import {
   layoutFor, poseAt, exitFor, SIDES, INTENTS, OPPOSITE, ALL_WAY, TWO_WAY,
+  intersectionFor, axisOf,
 } from "./intersection.js";
 import { rng } from "../engine/index.js";
 
@@ -64,41 +65,22 @@ const OUT_DIR = {
    offsets fall on the same line from both directions -- checked, not
    assumed, by `seamsOf`.
    ===================================================================== */
-export function courseOf({ n, cols, rows = 1, kmh = 60, control = TWO_WAY, reachFor } = {}) {
+export function courseOf({ n, cols, rows = 1, kmh = 60, control = TWO_WAY, reachFor, bends } = {}) {
   if (!reachFor) throw new Error("courseOf needs the same reachFor the crossing uses");
   const across = cols ?? n ?? 2;
   const down = rows;
   const speed = kmh / 3.6;
   const count = across * down;
+  const radius = radiusFor(speed);
 
-  /* Each intersection gets its own layout, so a course of mixed control
-     is expressible without anything here knowing about it. */
-  const at = [];
+  /* Each intersection's control and reach first, because the links --
+     and what bends on them -- have to be known before a layout can be
+     built: a bend belongs to a LINK and both of its ends have to agree. */
+  const kinds = [], reaches = [];
   for (let k = 0; k < count; k++) {
-    const kind = typeof control === "function" ? control(k) : control;
-    const layout = layoutFor({ control: kind, reach: reachFor(kind, speed) });
-    at.push({ k, col: k % across, row: Math.floor(k / across), layout, at: { x: 0, y: 0 } });
+    kinds.push(typeof control === "function" ? control(k) : control);
+    reaches.push(reachFor(kinds[k], speed));
   }
-
-  /* A GRID WANTS ONE SPACING, so the reaches have to agree. They do
-     whenever the control does, which is every case that exists today --
-     but a mixed-control grid would silently misplace every seam, so it
-     is refused rather than approximated. */
-  const reaches = [...new Set(at.map((a) => a.layout.place.reach))];
-  if (down > 1 && reaches.length > 1) {
-    throw new Error(`a grid needs one approach length, got ${reaches.join(", ")}`);
-  }
-
-  let x = 0;
-  const xs = [];
-  for (let c = 0; c < across; c++) {
-    xs.push(x);
-    const here = at[c].layout.place.reach;
-    const next = c + 1 < across ? at[c + 1].layout.place.reach : 0;
-    x += here + next;
-  }
-  const pitch = reaches[0] * 2;
-  for (const spot of at) spot.at = { x: xs[spot.col], y: spot.row * pitch };
 
   /* The links. A leg with no link on it is an EDGE: traffic enters the
      world there and leaves by it. */
@@ -109,7 +91,8 @@ export function courseOf({ n, cols, rows = 1, kmh = 60, control = TWO_WAY, reach
     /* How much road there is between the two boxes, which is both
        approaches back to back. Recorded rather than derived at the call
        site because it is the quantity a route wants. */
-    length: at[a].layout.place.reach + at[b].layout.place.reach,
+    length: reaches[a] + reaches[b],
+    bend: 0,
   });
   for (let r = 0; r < down; r++) {
     for (let c = 0; c < across; c++) {
@@ -119,9 +102,104 @@ export function courseOf({ n, cols, rows = 1, kmh = 60, control = TWO_WAY, reach
     }
   }
 
-  const course = { n: count, cols: across, rows: down, kmh, speed, at, links };
+  /* WHICH LINKS BEND, AND BY HOW MUCH. `bends(link, geometry)` answers
+     in metres of sideways bow, signed; nothing bends unless asked, so
+     every course that existed before this is the same course. The
+     geometry handed over is what an amplitude has to be solved against:
+     both ends' reaches (equal on a grid, and a bend needs them equal so
+     the two halves are mirror images at the seam), the line, and the
+     radius the road's speed wants. */
+  const lineAt = intersectionFor().lineAt;
+  const bend = {};
+  for (const l of links) {
+    if (!bends) break;
+    if (reaches[l.a] !== reaches[l.b]) continue;   // a bend needs both halves alike
+    l.bend = bends(l, { reach: reaches[l.a], lineAt, radius }) || 0;
+    if (!l.bend) continue;
+    (bend[l.a] ??= {})[l.aSide] = l.bend;
+    (bend[l.b] ??= {})[l.bSide] = l.bend;
+  }
+
+  /* Each intersection gets its own layout, so a course of mixed control
+     is expressible without anything here knowing about it. */
+  const at = [];
+  for (let k = 0; k < count; k++) {
+    const layout = layoutFor({ control: kinds[k], reach: reaches[k], bend: bend[k] ?? {} });
+    at.push({ k, col: k % across, row: Math.floor(k / across), layout, at: { x: 0, y: 0 } });
+  }
+
+  /* A GRID WANTS ONE SPACING, so the reaches have to agree. They do
+     whenever the control does, which is every case that exists today --
+     but a mixed-control grid would silently misplace every seam, so it
+     is refused rather than approximated. */
+  const distinct = [...new Set(reaches)];
+  if (down > 1 && distinct.length > 1) {
+    throw new Error(`a grid needs one approach length, got ${distinct.join(", ")}`);
+  }
+
+  let x = 0;
+  const xs = [];
+  for (let c = 0; c < across; c++) {
+    xs.push(x);
+    const here = reaches[c];
+    const next = c + 1 < across ? reaches[c + 1] : 0;
+    x += here + next;
+  }
+  const pitch = distinct[0] * 2;
+  for (const spot of at) spot.at = { x: xs[spot.col], y: spot.row * pitch };
+
+  const course = { n: count, cols: across, rows: down, kmh, speed, radius, at, links };
   course.joins = joinsOf(course);
   return course;
+}
+
+/* =====================================================================
+   HOW TIGHT A BEND THIS ROAD IS ALLOWED
+
+   A road is designed so that a driver at its speed feels no more than a
+   set sideways acceleration on its tightest curve; the radius follows
+   from the speed and that one constant. The constant is road design's
+   own -- the side-friction factor the design tables use at the speeds a
+   street has, about 0.15 g on a flat road with no banking -- and it is
+   the one number in the bend that is taken from a standard rather than
+   derived here. It is not tuned: at 60 km/h it gives 189m, and a bend at
+   that radius is as tight as a road built for 60 is allowed to be, which
+   is exactly "challenges steering ability a little".
+
+   The same radius is what the wide line reads against (crossing.js): a
+   driver who cannot hold a line runs fully wide on a bend this tight and
+   proportionally less on a gentler one.
+   ===================================================================== */
+export const LATERAL = 0.15 * 9.81;
+export const radiusFor = (speed) => (speed * speed) / LATERAL;
+
+/* =====================================================================
+   THE ROADS, FOR WHATEVER DRAWS THEM
+
+   One polyline per link, from box edge to box edge through the seam, and
+   one per edge leg. Drawn FROM the geometry the cars follow -- the same
+   `axisOf` the lanes are offset from -- rather than from rectangles that
+   only agree with it while the road is straight. Section 0's rule: the
+   renderer has to be able to express any state the engine can produce,
+   and the first bend would otherwise have had cars driving across the
+   grass beside a straight grey rectangle.
+   ===================================================================== */
+export function roadsOf(course) {
+  const world = (k, pts) => pts.map((p) => ({ x: p.x + course.at[k].at.x, y: p.y + course.at[k].at.y }));
+  const out = [];
+  for (const l of course.links) {
+    const a = world(l.a, axisOf(course.at[l.a].layout.place, l.aSide));
+    const b = world(l.b, axisOf(course.at[l.b].layout.place, l.bSide)).reverse();
+    /* `a` ends at the seam and `b`, reversed, begins there: one point. */
+    out.push({ link: l.id, bend: l.bend, pts: [...a, ...b.slice(1)] });
+  }
+  for (let k = 0; k < course.n; k++) {
+    for (const side of SIDES) {
+      if (joinedTo(course, k, side)) continue;
+      out.push({ k, side, bend: 0, pts: world(k, axisOf(course.at[k].layout.place, side)) });
+    }
+  }
+  return out;
 }
 
 /* WHAT IS ON THE OTHER SIDE OF THIS LEG. `joins["2|E"]` is the

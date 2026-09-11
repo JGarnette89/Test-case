@@ -18,19 +18,21 @@
  */
 import {
   courseOf, seamsOf, laneIn, laneOut, joinedTo, poseOn, planRoute, walkRoute,
+  roadsOf, alongDir, dirOut, radiusFor, OPPOSITE,
 } from "../src/sim/course.js";
-import { exitFor } from "../src/sim/intersection.js";
+import { exitFor, tightestOf, intersectionFor } from "../src/sim/intersection.js";
+import { POS_VISIBLE } from "../src/engine/faults.js";
 import {
-  withCandidates, keepDriving, toTell, tell, stillTellable,
+  withCandidates, keepDriving, toTell, tell, stillTellable, PROFILES,
 } from "../src/sim/candidate.js";
 import { noticing, mark, sheetFor, sectionDone, SECTION } from "../src/sim/marking.js";
 import { REACTION_FLOOR } from "../src/engine/score.js";
 import fs from "node:fs";
 import {
   seedCourse, step, overlapping, whatStops, poseOf, reachFor, edgesOf, gapNeeded,
-  DT, CAR, ALL_WAY, TWO_WAY,
+  strayOf, wideAt, DT, CAR, ALL_WAY, TWO_WAY,
 } from "../src/sim/crossing.js";
-import { decide, wantedGap } from "../src/sim/traffic.js";
+import { decide, wantedGap, PX_PER_M } from "../src/sim/traffic.js";
 
 let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);
@@ -663,12 +665,15 @@ console.log("\n9. DEFERRED MARKING, AND THE SECTION SHEET");
   const traits = [...src.matchAll(/trait: "([a-zA-Z]+)"/g)].map((m) => m[1]);
   const named = [...new Set(traits)].sort();
   console.log(`   faults the sheet can derive today: ${named.join(", ")}`);
-  JSON.stringify(named) === JSON.stringify(["harshBraking", "rollingStop", "undueDelay"])
-    ? ok("the sheet derives exactly the three faults the sim already holds as physical quantities, and nothing it would have to author")
+  JSON.stringify(named) === JSON.stringify(["harshBraking", "rollingStop", "undueDelay", "wideLine"])
+    ? ok("the sheet derives exactly the four faults the sim holds as physical quantities, and nothing it would have to author")
     : fail(`the sheet derives ${named.join(", ")}, which is not the list this stage can honestly stand behind`);
-  !/weave|POS_VISIBLE/.test(src)
-    ? ok("and lane-keeping is not on it: the weave's ceiling is the old engine's own visibility floor, so a fault there would be authored rather than derived")
-    : fail("marking.js reaches for the weave, which cannot clear POS_VISIBLE as bounded and would be an authored fault");
+  /* The wide line is judged against the old engine's visibility floor,
+     IMPORTED. A second 0.45 written here would be the two-implementations
+     bug; and the floor must not be lowered to make a fault appear. */
+  /POS_VISIBLE \/ PX_PER_M/.test(src) && !/0\.45/.test(src.replace(/\/\/.*$/gm, ""))
+    ? ok("lane-keeping is judged against POS_VISIBLE imported from faults.js, not a second copy of the number")
+    : fail("marking.js restates the visibility floor instead of importing it, or lowered it");
 
   /* --- and it replays --- */
   const twice = () => JSON.stringify(drive("unschooled", perfect, 200).sheets.map((s) => [s.result.score, s.result.hits.length, s.directionsOnYou]));
@@ -677,6 +682,191 @@ console.log("\n9. DEFERRED MARKING, AND THE SECTION SHEET");
     : fail("two runs of one seed produced different sheets, so nothing graded here can be trusted");
 }
 
+
+console.log("\n10. THE ROAD IS DRAWN FROM THE PATH");
+{
+  /* Section 0's rule, made checkable: whatever the renderer draws the
+     road from has to contain every place a car can be. `roadsOf` is what
+     both screens stroke, so the property is asked of it directly rather
+     than of a screenshot -- and asked at FULL STRAY, because the stroke
+     has to hold a car that is off its line, not only one on it. */
+  const distToPoly = (p, pts) => {
+    let best = Infinity;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], vx = b.x - a.x, vy = b.y - a.y;
+      const L = vx * vx + vy * vy || 1;
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / L));
+      best = Math.min(best, Math.hypot(p.x - (a.x + vx * t), p.y - (a.y + vy * t)));
+    }
+    return best;
+  };
+  const half = intersectionFor().lane;      // two lanes of road: half of it is a lane
+  const stray = POS_VISIBLE / PX_PER_M;     // the most a car is ever off its line on a straight
+  for (const bends of [0, 1]) {
+    const w = seedCourse(3, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends });
+    const roads = roadsOf(w.course);
+    let worst = -Infinity, samples = 0;
+    for (const spot of w.course.at) {
+      const { lineAt } = spot.layout.place;
+      for (const [key, path] of Object.entries(spot.layout.paths)) {
+        for (let s = 0; s <= path.length; s += 2) {
+          const p = poseOn(w.course, spot.k, key, s);
+          /* The legs only. The corners are the turn arcs, whose radius is
+             DECISIONS.md 5.15.12's open question and not the road's. */
+          if (Math.max(Math.abs(p.x - spot.at.x), Math.abs(p.y - spot.at.y)) < lineAt) continue;
+          samples++;
+          /* The car's far side at full stray, against the drawn edge. */
+          worst = Math.max(worst, Math.min(...roads.map((r) => distToPoly(p, r.pts))) + CAR.width / 2 + stray - half);
+        }
+      }
+    }
+    const pts = roads.reduce((t, r) => t + r.pts.length, 0);
+    console.log(`   bends=${bends}: ${roads.length} roads, ${pts} points; ${samples} path samples on the legs, a car at full stray reaches ${(-worst).toFixed(3)}m short of the drawn edge at worst`);
+    worst <= 1e-6
+      ? ok(`every point a car can reach on a leg is on the drawn road, with ${(-worst).toFixed(2)}m to spare at full stray (bends=${bends})`)
+      : fail(`a car can be ${worst.toFixed(2)}m off the drawn road (bends=${bends}): the screen cannot express where the engine put it`);
+    if (!bends) {
+      /* A link's road has a vertex at the seam; straight means collinear,
+         not two points. */
+      const straight = roads.every((r) => r.pts.every((q, i) => i < 2
+        || Math.abs((q.x - r.pts[0].x) * (r.pts[1].y - r.pts[0].y) - (q.y - r.pts[0].y) * (r.pts[1].x - r.pts[0].x)) < 1e-6));
+      straight
+        ? ok("and a straight course draws as straight lines, which is the rectangle each road replaced")
+        : fail("a straight course produced a bent road polyline");
+    }
+  }
+}
+
+console.log("\n11. THE BEND");
+{
+  /* --- nothing bends unless asked: every course that existed is the same course --- */
+  const before = seedCourse(4, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2 });
+  const explicit = seedCourse(4, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends: 0 });
+  const paths = (w) => JSON.stringify(w.course.at.map((a) => a.layout.paths));
+  paths(before) === paths(explicit) && before.course.at.every((a) => Object.values(a.layout.paths).every((p) => p.intent !== "straight" || p.pts.length === 4))
+    ? ok("with no bends asked for, every straight path is the same four points it always was")
+    : fail("the bend changed a course that did not ask for one");
+
+  /* --- as tight as the road's speed allows, and no tighter --- */
+  const bent = seedCourse(4, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends: 1 });
+  const place = bent.course.at[0].layout.place;
+  const want = radiusFor(LIMIT / 3.6);
+  const radii = bent.course.links.map((l) => tightestOf(place.reach, place.lineAt, Math.abs(l.bend)));
+  console.log(`   ${bent.course.links.length} links bent by ${bent.course.links.map((l) => l.bend.toFixed(1)).join(", ")}m; tightest ${radii.map((r) => r.toFixed(1)).join(", ")}m against ${want.toFixed(1)}m wanted`);
+  radii.every((r) => Math.abs(r - want) < 0.5)
+    ? ok(`every bend is exactly as tight as a ${LIMIT} km/h road allows: ${want.toFixed(0)}m, from the speed and one design constant`)
+    : fail("a bend's radius is not the one derived from the road speed");
+
+  /* --- the seams are still exact, and the road is straight through them --- */
+  const seams = seamsOf(bent.course);
+  const apart = Math.max(...seams.map((s) => s.apart)), turned = Math.max(...seams.map((s) => s.turned));
+  apart < 1e-9 && turned < 1e-9
+    ? ok(`with every link bent the ${seams.length} seams are exact: ${apart.toExponential(1)}m apart, ${turned.toExponential(1)} degrees out`)
+    : fail(`a bent link's seam is ${apart}m and ${turned} degrees out`);
+
+  /* --- alongDir across a seam: the projection error where following actually uses it --- */
+  {
+    const c = bent.course;
+    const link = c.links[0];
+    const out = c.at[link.a].layout.paths[`${OPPOSITE[link.aSide]}/straight`];   // leaves by aSide
+    const dir = dirOut(link.aSide);
+    let worst = 0;
+    for (let back = 2; back <= 60; back += 2) {
+      for (let gap = back + 2; gap <= 60; gap += 2) {
+        const me = poseOn(c, link.a, `${out.from}/${out.intent}`, out.length - back);
+        const them = poseOn(c, link.b, `${link.bSide}/straight`, gap - back);
+        const read = alongDir(them, dir) - alongDir(me, dir);
+        worst = Math.max(worst, gap - read);
+      }
+    }
+    console.log(`   across the seam of a bent link, gaps up to 60m read short by at most ${worst.toFixed(3)}m`);
+    worst >= 0 && worst < 0.5
+      ? ok("the straight-lane projection following uses across a boundary is within half a metre on any gap it would act on, and only ever reads SHORT")
+      : fail(`alongDir misreads a cross-boundary gap by ${worst.toFixed(2)}m on a bend; following needs distance along the lane here`);
+  }
+
+  /* --- traffic on it: nobody through anybody, with candidates aboard --- */
+  {
+    let hits = 0, cars = 0;
+    for (const seed of [4, 5]) {
+      let w = withCandidates(seedCourse(seed, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends: 1 }), [{ id: "X", profile: "ragged" }]);
+      for (let i = 0; i < Math.round(200 / DT); i++) { w = keepDriving(step(w)); hits += overlapping(w).length; cars = Math.max(cars, w.actors.length); }
+    }
+    hits === 0
+      ? ok(`two seeds, every link bent, a ragged candidate aboard, 400s of traffic (up to ${cars} cars): nobody drove through anybody`)
+      : fail(`${hits} overlapping car-ticks on the bent course`);
+  }
+
+  /* --- THE WIDE LINE: the steering axis, markable at last, and only here --- */
+  const floor = POS_VISIBLE / PX_PER_M;
+  const stray = (profile, bends, seed = 4, seconds = 240) => {
+    let w = withCandidates(seedCourse(seed, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends }), [{ id: "X", profile }]);
+    let worst = 0, bendsMet = 0, onBend = false;
+    for (let i = 0; i < Math.round(seconds / DT); i++) {
+      w = noticing(keepDriving(step(w)));
+      const a = w.actors.find((x) => x.candidate === "X");
+      if (!a) continue;
+      worst = Math.max(worst, Math.abs(strayOf(w, a)));
+      const now = wideAt(w, a) > 0;
+      if (now && !onBend) bendsMet++;
+      onBend = now;
+    }
+    const showings = (w.faults ?? []).filter((f) => f.trait === "wideLine");
+    return { worst, showings, bendsMet };
+  };
+  const sS = stray("sound", 0), sB = stray("sound", 1), rS = stray("ragged", 0), rB = stray("ragged", 1);
+  console.log(`   worst stray: sound ${sS.worst.toFixed(3)} / ${sB.worst.toFixed(3)}m, ragged ${rS.worst.toFixed(3)} / ${rB.worst.toFixed(3)}m (straight / bent), floor ${floor.toFixed(2)}m`);
+  rS.worst <= floor && rS.showings.length === 0
+    ? ok(`on a straight road even the ragged driver stays under the floor (${rS.worst.toFixed(3)}m): the weave alone is never a markable fault, as before`)
+    : fail("the weave alone cleared the visibility floor on a straight road, which the bound says it cannot");
+  rB.worst > floor && rB.showings.length > 0
+    ? ok(`on the bend the same driver runs wide to ${rB.worst.toFixed(3)}m and the sheet derives ${rB.showings.length} wideLine showings`)
+    : fail("the ragged driver's wide line did not clear the floor on a bend, so steering is still unmarkable");
+  sB.showings.length === 0 && sB.worst < floor / 2
+    ? ok(`and a sound driver on the same bends shows nothing (${sB.worst.toFixed(3)}m): the bend is the occasion, the deficit is the cause`)
+    : fail("a sound driver was derived a wide line, so the bend is being marked rather than the driver");
+  rB.worst <= 2 * floor + 1e-6
+    ? ok(`the wide line is bounded: at the worst of the axis the stray is ${rB.worst.toFixed(3)}m, the car's side on the centre line and no further`)
+    : fail(`the stray reached ${rB.worst.toFixed(2)}m, past the room the other lane leaves`);
+  /* One showing per right-hand bend: the fault is the bend being driven
+     wide, not the sinusoid crossing the floor. */
+  console.log(`   ragged on the bent course: ${rB.bendsMet} right-hand bends met, ${rB.showings.length} showings, lengths ${rB.showings.map((f) => ((f.to ?? f.over) - f.from).toFixed(1)).join("/")}s`);
+  rB.showings.length <= rB.bendsMet && rB.showings.every((f) => (f.to ?? f.over) - f.from > 1)
+    ? ok("one showing per bend at most, each lasting seconds rather than a flicker of the weave")
+    : fail("the wide line is being derived per weave crossing rather than per bend");
+  /* THE SABOTAGE: the fault must vanish with its cause. Same seed, same
+     course, same everything, one rating changed. */
+  const ragged = PROFILES.find((p) => p.id === "ragged"), sound = PROFILES.find((p) => p.id === "sound");
+  const onlySteering = Object.keys(ragged.ratings).every((k) => k === "steering" || ragged.ratings[k] === sound.ratings[k]);
+  onlySteering && rB.showings.length > 0 && sB.showings.length === 0
+    ? ok("strip the steering deficit -- the only rating the two profiles differ on -- and every wideLine showing vanishes: derived, not authored")
+    : fail("the controlled comparison is not controlled: the profiles differ on more than steering, or the fault survived its cause being removed");
+
+  /* --- and it reaches the sheet --- */
+  {
+    let w = withCandidates(seedCourse(4, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends: 1 }), [{ id: "X", profile: "ragged" }]);
+    let sheets = [], section = { trip: -1, from: 1 };
+    for (let i = 0; i < Math.round(300 / DT); i++) {
+      w = noticing(keepDriving(step(w)));
+      const a = w.actors.find((x) => x.candidate === "X");
+      if (!a) continue;
+      if (a.trip !== section.trip) section = { trip: a.trip, from: 1 };
+      for (const slot of toTell(w, "X", 2)) if (slot.told === null) w = tell(w, "X", slot.at, a.wanted[slot.at] ?? "straight");
+      for (const f of w.faults ?? []) {
+        if (f.who !== "X" || f.called || w.t < f.from + REACTION_FLOOR + DT) continue;
+        w = mark(w, "X");
+        w = { ...w, faults: w.faults.map((x) => (x === f ? { ...x, called: true } : x)) };
+      }
+      const done = sectionDone(w, "X", section.from, section.trip);
+      if (done) { const sheet = sheetFor(w, "X", { from: section.from, trip: done.trip }); if (sheet) sheets.push(sheet); section = done.ended ? { trip: -1, from: 1 } : { ...section, from: section.from + SECTION }; }
+    }
+    const caught = sheets.reduce((t, s) => t + s.result.hits.filter((h) => h.fault.trait === "wideLine").length, 0);
+    const missed = sheets.reduce((t, s) => t + s.result.missed.filter((f) => f.trait === "wideLine").length, 0);
+    caught > 0 && missed === 0
+      ? ok(`a prompt examiner catches every wide line on the sheet: ${caught} caught, ${missed} missed across ${sheets.length} sections`)
+      : fail(`the wide line reached the sheet as ${caught} caught and ${missed} missed`);
+  }
+}
 
 console.log("\n" + "=".repeat(70));
 if (problems) { console.log(`FAILED: ${problems} problem(s).`); process.exit(1); }

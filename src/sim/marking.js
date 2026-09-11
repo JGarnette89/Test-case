@@ -22,18 +22,21 @@
      harshBraking  braked harder than twice the comfortable rate, which
                    is where the old engine says a stop stops being
                    controlled (HARSH_AT)
+     wideLine      off their line by more than a driver could fail to
+                   notice -- the old engine's own floor, POS_VISIBLE --
+                   which only a bend can produce
 
-   AND ONE THING IS EXCLUDED ON PURPOSE, WITH THE REASON. Lane-keeping is
-   the steering axis's whole expression today, and it is not markable:
-   the weave is bounded at half the room between a car and the next lane
-   (0.45m, because the driver over there has the same claim on the other
-   half), and the old engine's own threshold for "more than a driver could
-   fail to notice" is POS_VISIBLE, which is 0.45m. The maximum stray is
-   exactly the visibility floor. So a ragged driver, at 0.38m, is below
-   the line where a fault could be seen -- and lowering that line to make
-   one appear would be authoring the fault. It becomes markable where the
-   other half of the axis does: on a bend, where a wide line is a real
-   distance from where the car should be. DECISIONS.md 5.15.14.
+   THE FOURTH IS THE STEERING AXIS, AND IT COULD NOT BE ON THE SHEET
+   UNTIL THE ROAD BENT. On a straight the weave is bounded at half the
+   room between a car and the next lane (0.45m, because the driver over
+   there has the same claim on the other half), and POS_VISIBLE is 0.45m:
+   the most a driver can stray is exactly the floor at which a fault
+   becomes visible, so a ragged driver at 0.38m was below it, and lowering
+   the floor to make a fault appear would have been authoring one. On a
+   bend the same deficit also runs wide, into the other half of the room
+   (crossing.js, `wideAt`), and the two together clear the floor. The
+   threshold is imported, not restated: the number the old engine derived
+   a fault against is the number this reads. DECISIONS.md 5.15.14, 5.15.18.
 
    VISIBILITY IS NOT MODELLED AT THIS STAGE, so every fault counts as
    shown for its whole duration. `detect.js` takes `shownFor` for exactly
@@ -43,8 +46,12 @@
    Pure. No React, no DOM, no colour.
    ===================================================================== */
 import { sectionSheet } from "../engine/detect.js";
-import { HARSH_AT } from "./traffic.js";
-import { AT_REST, AT_LINE, waitAt, pathOf, layoutOf } from "./crossing.js";
+import { POS_VISIBLE } from "../engine/faults.js";
+import { HARSH_AT, PX_PER_M } from "./traffic.js";
+import { AT_REST, AT_LINE, waitAt, pathOf, layoutOf, strayOf, wideAt } from "./crossing.js";
+
+/* The old engine's visibility floor is in pixels; the sim is in metres. */
+const OFF_LINE = POS_VISIBLE / PX_PER_M;
 
 /* How many intersections make a section. CLAUDE.md derives 2.7-3.6 from
    what a player can hold in free recall; three is the whole number
@@ -66,7 +73,9 @@ export function noticing(world) {
   /* Faults are REPLACED, never mutated: the previous world still holds
      the old objects and a tick must not reach back into it. */
   let faults = world.faults ?? [];
-  const close = (f) => { faults = faults.map((x) => (x === f ? { ...x, to: world.t } : x)); };
+  /* A fault closes now, or -- for one that is judged over a stretch of
+     road rather than tick by tick -- at the last instant it was showing. */
+  const close = (f) => { faults = faults.map((x) => (x === f ? { ...x, to: x.over ?? world.t } : x)); };
   /* THE DRIVE OUTLIVES THE DRIVER. A candidate who goes off the edge is
      replaced by a new one on the next trip, and the sheet for the drive
      that just ended still needs what they were told, when, and what the
@@ -151,6 +160,27 @@ export function noticing(world) {
       changed = true;
     } else if (!harsh && open("harshBraking")) {
       close(open("harshBraking")); changed = true;
+    }
+
+    /* --- the wide line: off the line by more than could be missed --- */
+    /* ONE SHOWING PER BEND, the way the old engine derives one fault per
+       trait per scenario: from the first instant the stray clears the
+       floor to the last instant it does, however many times the weave
+       dips it back under in between. A driver running wide through a
+       bend is doing one thing, and an examiner who saw it saw one thing;
+       twenty half-second flickers on the sheet would be the sinusoid
+       showing rather than the fault. The bend is the unit because it is
+       where the wide line exists at all (`wideAt`), and it ends before
+       the seam, so a showing never straddles two intersections. */
+    const wide = Math.abs(strayOf(world, a)) > OFF_LINE;
+    const showing = open("wideLine");
+    if (wide) {
+      faults = showing
+        ? faults.map((x) => (x === showing ? { ...x, over: world.t } : x))
+        : [...faults, { ...at, trait: "wideLine", from: world.t, to: null, over: world.t }];
+      changed = true;
+    } else if (showing && !(wideAt(world, a) > 0)) {
+      close(showing); changed = true;
     }
 
     if (next.trip !== me.trip || next.leg !== me.leg || next.rested !== me.rested || next.lined !== me.lined) {

@@ -32,9 +32,11 @@ import {
 import {
   layoutFor, intersectionFor, poseAt, rightOf, OPPOSITE, SIDES, INTENTS,
   ALL_WAY, TWO_WAY, cornersOf, boxesOverlap,
+  bendSeenBy, amplitudeFor,
 } from "./intersection.js";
 import {
   courseOf, laneIn, laneOut, dirIn, dirOut, alongDir, nextFor, joinedTo, poseOn,
+  radiusFor,
 } from "./course.js";
 import { rng } from "../engine/index.js";
 import { REACTION_FLOOR } from "../engine/score.js";
@@ -766,9 +768,18 @@ export function reachFor(control, speed) {
 export const seedCrossing = (seed = 1, kmh = 50, opts = {}) =>
   seedCourse(seed, kmh, { ...opts, n: 1 });
 
-export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY, n = 1, cols, rows } = {}) {
+export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY, n = 1, cols, rows, bends = 0 } = {}) {
   const speed = kmh / 3.6;
-  const course = courseOf({ n, cols, rows, kmh, control, reachFor });
+  /* WHICH LINKS BEND: a share, drawn from the seed, each way round with
+     equal chance, and every bend as tight as this road's speed allows.
+     Zero by default, so every course that existed before the bend is the
+     same course to the byte. Drawn from its own stream so the traffic
+     that follows is unchanged by whether the road bends. */
+  const bowing = rng((seed * 7919 + 17) >>> 0);
+  const bend = bends
+    ? (link, g) => (bowing() < bends ? (bowing() < 0.5 ? 1 : -1) * amplitudeFor(g.reach, g.lineAt, g.radius) : 0)
+    : null;
+  const course = courseOf({ n, cols, rows, kmh, control, reachFor, bends: bend });
   const layout = course.at[0].layout;
   const road = { kmh, speed, lane: layout.place.lane };
   let w = { t: 0, tick: 0, seed, road, course, layout, every, spawned: 0, nextAt: 0, actors: [] };
@@ -811,10 +822,54 @@ export function run(world, ticks) {
    car that is not where the screen says it is (DECISIONS.md 0). */
 export function poseOf(world, actor) {
   const p = poseOn(world.course, actor.k ?? 0, actor.route, actor.s);
-  const off = weaveAt(actor, actor.s);
+  const off = strayOf(world, actor);
   if (!off) return p;
   const a = (p.rot * Math.PI) / 180;
   return { ...p, x: p.x - Math.sin(a) * off, y: p.y + Math.cos(a) * off };
+}
+
+/* HOW FAR OFF THEIR LINE A DRIVER IS, signed, to the right. The one
+   place the steering axis becomes a distance, so the pose that is drawn,
+   the pose that is checked for overlap and the deviation the marking
+   sheet reads are the same number (DECISIONS.md 0): the weave, and on a
+   bend the wide line. */
+export function strayOf(world, actor) {
+  return weaveAt(actor, actor.s) - wideAt(world, actor);
+}
+
+/* THE WIDE LINE: THE OTHER HALF OF THE STEERING AXIS, AND IT LIVES ON A
+   BEND. A driver who cannot hold a line weaves on a straight road and
+   runs wide on a curve -- steers less than the bend asks for and drifts
+   toward its outside -- and both are one deficit. The weave's amplitude
+   is half the room between a car and the next lane, because the driver
+   over there has the same claim on the other half (5.14.4); the wide
+   line takes THIS driver's other half, with the same deficit, so at the
+   tightest bend the road allows a driver at the worst of the axis puts
+   their side of the car on the centre line and no further. Nobody
+   touches by construction, and the two together clear the old engine's
+   visibility floor where the weave alone cannot -- which is what makes
+   lane-keeping markable at all (marking.js).
+
+   ONLY WHERE THE OUTSIDE IS A LANE. On a right-hand bend the outside is
+   the oncoming lane and the wide line is a real fault into real space;
+   on a left-hand bend it is the curb, and the maintainer's ruling on the
+   wide turn (DECISIONS.md 5.8) is that off-road is rare and not this
+   model's -- so the wide line declines there, exactly as `wideTurn`
+   declines a road with no next lane. Every bow here gives each driver
+   one of each, so no bent link is silent.
+
+   AND IT SCALES WITH THE BEND. Full at the radius the road's own speed
+   allows (course.js), in proportion on a gentler one, never more than
+   the room on a tighter one; zero on a straight and in the box, where the
+   turn arcs' radius is still an open question and must not be read as a
+   bend (intersection.js, `bendSeenBy`). */
+export function wideAt(world, actor) {
+  const amp = actor.weave ?? 0;
+  if (!amp || !world.course?.radius) return 0;
+  const layout = layoutOf(world, actor);
+  const k = bendSeenBy(layout.place, layout.paths[actor.route], actor.s);
+  if (k <= 0) return 0;
+  return amp * Math.min(1, k * world.course.radius);
 }
 
 /* THE ONE PROPERTY, same as stage 0 and for the same reason: nobody may
@@ -855,4 +910,4 @@ export const delayed = (world) => world.actors.filter((a) => a.delayed);
 /* The line-region and rest thresholds, for the marking sheet: whether a
    driver came to rest before a line is judged by the same numbers that
    decide it here. */
-export { PX_PER_M, M, CAR, DT, ALL_WAY, TWO_WAY, COMPETENT, UNDUE_AT, AT_REST, AT_LINE, waitAt };
+export { PX_PER_M, M, CAR, DT, ALL_WAY, TWO_WAY, COMPETENT, UNDUE_AT, AT_REST, AT_LINE, waitAt, radiusFor };

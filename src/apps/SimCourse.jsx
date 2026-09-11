@@ -21,7 +21,7 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import {
   seedCourse, step, poseOf, overlapping, CAR, M, DT, ALL_WAY, TWO_WAY,
 } from "../sim/crossing.js";
-import { walkRoute, poseOn } from "../sim/course.js";
+import { walkRoute, poseOn, roadsOf } from "../sim/course.js";
 import { chaseOn, LOOK_AHEAD } from "../frame.js";
 import RoadStrip from "./RoadStrip.jsx";
 import {
@@ -45,6 +45,14 @@ const SIZES = [
 ];
 const EVERY = 2.6;
 const LIMIT = 60;
+/* WHAT SHARE OF THE LINKS BEND. A content decision rather than a
+   physical one: some straight, some bent, so the course has more than
+   one kind of road on it and the two can be compared on one drive. Each
+   bend is as tight as a road at this speed is allowed to be. */
+const BENDS = 0.6;
+
+/* A polyline in metres, as SVG points. */
+const ptsOf = (pts) => pts.map((p) => `${M(p.x)},${M(p.y)}`).join(" ");
 
 /* How much road the FIXED view holds. Kept alongside the chase view so
    the two can be compared rather than argued about. */
@@ -95,12 +103,12 @@ const VIEWS = [
   { id: "fixed", label: "Fixed" },
 ];
 
-const seedWorld = (seed, kind, size, profile = "sound") => {
+const seedWorld = (seed, kind, size, profile = "sound", bends = true) => {
   const z = SIZES.find((x) => x.id === size);
   return withCandidates(
     seedCourse(seed, LIMIT, {
       every: EVERY, control: CONTROLS.find((c) => c.id === kind).control,
-      cols: z.cols, rows: z.rows,
+      cols: z.cols, rows: z.rows, bends: bends ? BENDS : 0,
     }),
     [{ id: "them", profile }],
   );
@@ -112,8 +120,9 @@ export default function SimCourse() {
   const [size, setSize] = useState("grid");
   const [look, setLook] = useState("chase");
   const [who, setWho] = useState("sound");
+  const [bends, setBends] = useState(true);
   const [playing, setPlaying] = useState(true);
-  const [world, setWorld] = useState(() => seedWorld(1, "two", "grid", "sound"));
+  const [world, setWorld] = useState(() => seedWorld(1, "two", "grid", "sound", true));
 
   /* THE SECTION BEING TRACKED, AND THE SHEETS SO FAR. Marking is
      DEFERRED: nothing is graded until a section fills or the drive ends,
@@ -156,9 +165,9 @@ export default function SimCourse() {
     return () => cancelAnimationFrame(raf.current);
   }, [playing]);
 
-  const restart = (s = seed, k = kind, n = size, p = who) => {
-    setSeed(s); setKind(k); setSize(n); setWho(p);
-    setWorld(seedWorld(s, k, n, p));
+  const restart = (s = seed, k = kind, n = size, p = who, b = bends) => {
+    setSeed(s); setKind(k); setSize(n); setWho(p); setBends(b);
+    setWorld(seedWorld(s, k, n, p, b));
     setSection({ trip: -1, from: 1 });
     setSheets([]);
     owed.current = 0;
@@ -166,9 +175,7 @@ export default function SimCourse() {
   const markIt = () => setWorld((w) => mark(w, "them"));
 
   const course = world.course;
-  const span = Math.max(...course.at.map((a) => a.at.x));
-  const drop = Math.max(...course.at.map((a) => a.at.y));
-  const edge = course.at[0].layout.place.reach;
+  const roads = roadsOf(course);
 
   /* THE CANDIDATE, and nobody else. Watching a random car proved the
      first half of this stage -- that a car crossing a boundary is the
@@ -180,7 +187,7 @@ export default function SimCourse() {
     ? walkRoute(course, { from: { k: them.k, side: them.route.split("/")[0] }, plan: them.plan ?? [] })
     : [];
 
-  const at = them ? poseOf(world, them) : { x: span / 2, y: 0 };
+  const at = them ? poseOf(world, them) : { x: course.at[course.n - 1].at.x / 2, y: 0 };
 
   /* THE CAMERA RIDES THE CLEAN POSE. `poseOn` is the path without the
      weave on it; `poseOf` is where the car really is. The gap between
@@ -251,21 +258,19 @@ export default function SimCourse() {
             width={(chase.ahead + chase.behind) * 2} height={(chase.ahead + chase.behind) * 2}
             fill="#22262c" />
           <g transform={look === "chase" ? `rotate(${chase.rotate} ${chase.cx} ${chase.cy})` : undefined}>
-            {course.at.map((spot) => (
-              <rect key={"ew" + spot.k} x={M(-edge)} y={M(spot.at.y - 3.6)}
-                width={M(span + edge * 2)} height={M(7.2)} fill="#2c3037" />
+            {/* THE ROAD IS DRAWN FROM THE PATH, not from a rectangle that
+                happens to agree with it while it is straight. A stroke
+                along each road's axis, and the centre line as a dash along
+                the same axis -- so a bend the engine produces is a bend
+                the screen shows, which is the rule this stage's first
+                section was written under. The box is the one rectangle
+                left, because it is one. */}
+            {roads.map((road, i) => (
+              <polyline key={"road" + i} points={ptsOf(road.pts)} fill="none"
+                stroke="#2c3037" strokeWidth={M(7.2)} strokeLinejoin="round" strokeLinecap="butt" />
             ))}
-            {course.at.map((spot) => (
-              <rect key={spot.k} x={M(spot.at.x - 3.6)} y={M(-edge)}
-                width={M(7.2)} height={M(drop + edge * 2)} fill="#2c3037" />
-            ))}
-            {/* Centre lines, broken at every box. */}
-            {course.at.filter((a) => a.col === 0).map((spot) => (
-              <line key={"cl" + spot.k} x1={M(-edge)} y1={M(spot.at.y)} x2={M(span + edge)} y2={M(spot.at.y)}
-                stroke="#7a6a3a" strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(3)}`} />
-            ))}
-            {course.at.filter((a) => a.row === 0).map((spot) => (
-              <line key={"cv" + spot.k} x1={M(spot.at.x)} y1={M(-edge)} x2={M(spot.at.x)} y2={M(drop + edge)}
+            {roads.map((road, i) => (
+              <polyline key={"line" + i} points={ptsOf(road.pts)} fill="none"
                 stroke="#7a6a3a" strokeWidth={M(0.15)} strokeDasharray={`${M(3)} ${M(3)}`} />
             ))}
             {course.at.map((spot) => (
@@ -341,6 +346,13 @@ export default function SimCourse() {
               color: kind === c.id ? C.white : C.dim,
             }} onClick={() => restart(seed, c.id)}>{c.label}</button>
           ))}
+          {/* BENDS ON OR OFF, so a bend can be compared with the straight
+              road it replaced on the same seed. */}
+          <button className="btn" style={{
+            ...S.chip,
+            borderColor: bends ? C.amber : "rgba(255,255,255,0.12)",
+            color: bends ? C.white : C.dim,
+          }} onClick={() => restart(seed, kind, size, who, !bends)}>{bends ? "Bends" : "Straight"}</button>
         </div>
 
         {/* THE MARK. Say "that" -- when, and at which intersection. What
@@ -467,9 +479,21 @@ export default function SimCourse() {
           <i> you</i> — what you caught, what you missed, what you called
           that never happened, and which directions you gave too late. The
           candidate's rolling stops, undue delays and abrupt braking are on
-          it; their lane-keeping is not, because the most a driver here can
-          stray is exactly the old engine's threshold for a fault anybody
-          could see, and a fault that cannot be seen is not one you missed.
+          it, and so is a wide line on a bend. Lane-keeping on a straight
+          is not: the most a driver here can stray there is exactly the
+          old engine's threshold for a fault anybody could see, and a fault
+          that cannot be seen is not one you missed.
+          <br />
+          <b>The road bends, and the bend is where steering shows.</b>
+          Some links bow sideways and come back parallel — as tightly as a
+          road at this speed is allowed to, 189m at 60 km/h — and the road
+          is drawn from the path the cars follow rather than from a
+          rectangle. A driver who cannot hold a line weaves on the straight
+          and runs wide on the bend, toward the centre line on a right-hand
+          bend and no further than it; the two together are visible where
+          the weave alone never was, and that is the <i>wide line</i> on
+          the sheet. <b>Bends</b> switches them off for the same seed, so
+          the straight road it replaced is one press away.
           <br />
           <b>Nothing here is new geometry.</b> The exit of one
           intersection and the approach of the next are the same piece of

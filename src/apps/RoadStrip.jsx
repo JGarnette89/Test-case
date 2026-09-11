@@ -26,6 +26,10 @@
 import React from "react";
 import { C } from "../theme.js";
 import { M, CAR } from "../sim/crossing.js";
+import { roadsOf } from "../sim/course.js";
+
+/* A polyline in metres, as SVG points. */
+const ptsOf = (pts) => pts.map((p) => `${M(p.x)},${M(p.y)}`).join(" ");
 
 export default function RoadStrip({
   course,
@@ -47,15 +51,14 @@ export default function RoadStrip({
         preserveAspectRatio="xMidYMid meet">
         <rect x={M(box.x)} y={M(box.y)} width={M(box.w)} height={M(box.h)} fill="#1b1e23" />
 
-        {/* Every road, both axes. Drawn per intersection rather than per
-            link because a road runs past the ones on it. */}
-        {course.at.filter((a) => a.col === 0).map((spot) => (
-          <rect key={"ew" + spot.k} x={M(box.x)} y={M(spot.at.y - 3.6)}
-            width={M(box.w)} height={M(7.2)} fill="#2c3037" />
-        ))}
-        {course.at.filter((a) => a.row === 0).map((spot) => (
-          <rect key={"ns" + spot.k} x={M(spot.at.x - 3.6)} y={M(box.y)}
-            width={M(7.2)} height={M(box.h)} fill="#2c3037" />
+        {/* EVERY ROAD, DRAWN FROM THE PATH THE CARS FOLLOW. A stroke along
+            each link's axis and each edge leg's, so a bend in the road is
+            a bend on the strip -- the rectangles this replaced could only
+            draw a straight one, and a road the screen cannot draw is a
+            state the engine produces and the player is not shown. */}
+        {roadsOf(course).map((road, i) => (
+          <polyline key={"road" + i} points={ptsOf(road.pts)} fill="none"
+            stroke="#2c3037" strokeWidth={M(7.2)} strokeLinejoin="round" strokeLinecap="butt" />
         ))}
         {course.at.map((spot) => (
           <rect key={"box" + spot.k} x={M(spot.at.x - 3.6)} y={M(spot.at.y - 3.6)}

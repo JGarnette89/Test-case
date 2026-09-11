@@ -85,12 +85,189 @@ const LINE_MARGIN = 0.35;
 export const ALL_WAY = { N: "stop", E: "stop", S: "stop", W: "stop" };
 export const TWO_WAY = { N: "stop", S: "stop", E: "none", W: "none" };
 
-export function intersectionFor({ lane = 3.6, reach = 60, control = ALL_WAY } = {}) {
+export function intersectionFor({ lane = 3.6, reach = 60, control = ALL_WAY, bend = {} } = {}) {
   const boxHalf = lane;
   return {
     lane, reach, boxHalf, control,
     lineAt: boxHalf + PED_SETBACK + BAR_HALF + LINE_MARGIN,
+    /* How far each leg bows sideways by the time it reaches its far end,
+       in metres, signed along ACROSS. Zero is a straight leg, which is
+       every leg that existed before the bend and every edge leg still. */
+    bend: { N: 0, E: 0, S: 0, W: 0, ...bend },
   };
+}
+
+/* =====================================================================
+   A BEND IN THE LEG
+
+   The maintainer wanted "a curved road that challenges steering ability
+   a little", and REBUILD.md 8.2 measured what one costs: nothing in the
+   simulation, because a path is already a polyline, and the renderer,
+   which drew roads as rectangles and now draws them from this.
+
+   THE CHEAP KIND, DELIBERATELY. A bend that ARRIVES on a different
+   bearing would make SIDES, OPPOSITE and rightOf relative bearings
+   instead of compass constants, and that is the expensive version the
+   old ruling was refusing. This one bows a leg sideways and brings it
+   back parallel: zero offset and flat through the stop line, so the box,
+   the corners and every turn arc are untouched; the full offset and flat
+   again at the far end, so the seam with the next intersection is exactly
+   where it was and pointing the same way. Both ends of a link bow by the
+   same signed amount in the same world direction, which is what ACROSS
+   is for: it is fixed by the AXIS rather than by the leg, so the east leg
+   of one intersection and the west leg of the next name the same side.
+
+   THE SHAPE IS THE SMOOTHEST STEP, and it was chosen for what it gives
+   for free rather than for how it looks. Zero slope AND zero curvature at
+   both ends: a car queues on straight road at the line, and the road is
+   flat at the seam, which is where `alongDir`'s straight-lane projection
+   has to be accurate for following across the boundary (course.js).
+   Between them it is one reverse curve -- out, then back parallel --
+   whose tightest points are at 21% and 79% of the way, and the amplitude
+   that gives a wanted radius there is solved for in `amplitudeFor`.
+
+   THE OFFSET IS ALONG THE LOCAL NORMAL, NOT SIDEWAYS. Displacing both
+   lanes by the same sideways vector keeps them `lane` apart sideways but
+   narrows them across the road by cos(slope); at the slopes a real bend
+   has that is a third of a metre of lane gone. So the axis is bent and
+   each lane is offset from it perpendicular to where the axis is
+   actually pointing.
+   ===================================================================== */
+const ACROSS = {
+  N: { x: 1, y: 0 }, S: { x: 1, y: 0 }, E: { x: 0, y: 1 }, W: { x: 0, y: 1 },
+};
+/* Whether +ACROSS is to the RIGHT of a driver heading OUT along the leg.
+   East and north: yes; west and south: it is their left. What a bend is
+   to the driver on it -- a right-hand bend or a left-hand one -- follows
+   from this and which way they are going. */
+const HANDED = { N: 1, E: 1, S: -1, W: -1 };
+/* Metres between samples along a bent leg. A resolution, like DT and the
+   conflict scan's 0.4m, not a behaviour: fine enough that the heading
+   changes by well under a degree per vertex at the radius a road wants. */
+const BEND_STEP = 5;
+
+const smoother = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+const smootherSlope = (t) => 30 * t * t * (1 - t) * (1 - t);
+const smootherCurve = (t) => 60 * t * (1 - t) * (1 - 2 * t);
+
+/* Where the bow runs: from one sample past the line to one sample short
+   of the far end. The sample touching the line and the sample touching
+   the seam are therefore EXACTLY straight, not merely flat -- a chord
+   across any part of a smooth bow has a slope, and a seam that turned by
+   0.08 degrees would be a seam that turned. */
+const bowSpan = (place) => [place.lineAt + BEND_STEP, place.reach - BEND_STEP];
+
+/* The bow at `d` metres from the centre along a leg: how far sideways,
+   the slope of that, and the signed curvature toward +ACROSS. Zero and
+   flat through the line; the full amplitude and flat at the far end. */
+export function bowAt(place, side, d) {
+  const A = place.bend?.[side] ?? 0;
+  const [d0, d1] = bowSpan(place);
+  const w = d1 - d0;
+  if (!A || d <= d0) return { off: 0, slope: 0, curve: 0 };
+  if (d >= d1) return { off: A, slope: 0, curve: 0 };
+  const t = (d - d0) / w;
+  const slope = (A / w) * smootherSlope(t);
+  const second = (A / (w * w)) * smootherCurve(t);
+  return { off: A * smoother(t), slope, curve: second / Math.pow(1 + slope * slope, 1.5) };
+}
+
+/* The tightest the bow gets, as a radius, for a given amplitude. */
+export function tightestOf(reach, lineAt, amplitude) {
+  const place = { reach, lineAt, bend: { E: amplitude } };
+  let worst = 0;
+  for (let i = 0; i <= 400; i++) {
+    const d = lineAt + ((reach - lineAt) * i) / 400;
+    worst = Math.max(worst, Math.abs(bowAt(place, "E", d).curve));
+  }
+  return worst ? 1 / worst : Infinity;
+}
+
+/* THE AMPLITUDE THAT MAKES THE BEND EXACTLY AS TIGHT AS ASKED. Solved
+   rather than typed: the radius is the derived quantity (course.js), and
+   the bow that produces it over this leg follows. Bisection, because the
+   curvature's slope correction makes the closed form only approximate. */
+export function amplitudeFor(reach, lineAt, radius) {
+  let lo = 0, hi = reach;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (tightestOf(reach, lineAt, mid) > radius) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+
+/* A point on the leg's AXIS -- between the two lanes -- `d` out from the
+   centre, with the direction the axis is pointing there (outward). */
+function axisAt(place, side, d) {
+  const out = OUT[side], across = ACROSS[side];
+  const { off, slope } = bowAt(place, side, d);
+  const n = Math.hypot(1, slope);
+  return {
+    x: out.x * d + across.x * off,
+    y: out.y * d + across.y * off,
+    ux: (out.x + across.x * slope) / n,
+    uy: (out.y + across.y * slope) / n,
+  };
+}
+
+/* A point in a LANE of the leg, `d` out, in the lane a car uses going the
+   given way -- offset from the axis perpendicular to where the axis
+   points there, so the lanes stay `lane` apart across the road however
+   it bends. Reduces to `onLeg` exactly on a straight leg. */
+function laneAt(place, side, d, going) {
+  const a = axisAt(place, side, d);
+  const u = going === "in" ? { x: -a.ux, y: -a.uy } : { x: a.ux, y: a.uy };
+  const r = right(u);
+  return { x: a.x + r.x * (place.lane / 2), y: a.y + r.y * (place.lane / 2) };
+}
+
+/* The distances at which a leg is sampled between the line and the far
+   end: just the two ends when it is straight, so a straight path is the
+   same four points it always was, and BEND_STEP apart when it bends. */
+function stationsOf(place, side) {
+  if (!place.bend?.[side]) return [place.lineAt, place.reach];
+  const [d0, d1] = bowSpan(place);
+  const n = Math.max(1, Math.ceil((d1 - d0) / BEND_STEP));
+  const out = [place.lineAt];
+  for (let i = 0; i <= n; i++) out.push(d0 + ((d1 - d0) * i) / n);
+  out.push(place.reach);
+  return out;
+}
+
+/* The lane along a leg, line to far end going out, far end to line going
+   in. What `pathFor` builds its approach and its exit from. */
+function legPoints(place, side, going) {
+  const ds = stationsOf(place, side);
+  if (going === "in") ds.reverse();
+  return ds.map((d) => laneAt(place, side, d, going));
+}
+
+/* THE AXIS OF A LEG FROM THE BOX EDGE TO THE FAR END, for whatever draws
+   the road. The renderer draws the carriageway as a stroke along this and
+   the centre line as a dash along it, so a road is drawn FROM the
+   geometry the cars follow rather than from a rectangle that agrees with
+   it only while the road is straight -- which is section 0's rule: a
+   state the engine can produce and the screen cannot express is a lie
+   about what happened. */
+export function axisOf(place, side) {
+  const ds = place.bend?.[side] ? [place.boxHalf, ...stationsOf(place, side)] : [place.boxHalf, place.reach];
+  return ds.map((d) => { const a = axisAt(place, side, d); return { x: a.x, y: a.y }; });
+}
+
+/* THE BEND AS THE DRIVER AT `s` MEETS IT: signed curvature, positive for
+   a right-hand bend, zero in the box and on a straight leg. Read from the
+   bow rather than from the polyline, so the turn arcs -- whose radius is
+   an open question with the maintainer (DECISIONS.md 5.15.12) -- are
+   never mistaken for a bend in the road. */
+export function bendSeenBy(place, path, s) {
+  let side, going;
+  if (s < path.stopAt) { side = path.from; going = "in"; }
+  else if (s > path.clearAt) { side = path.to; going = "out"; }
+  else return 0;
+  if (!place.bend?.[side]) return 0;
+  const p = poseAt(path, s);
+  const d = Math.abs(p.x * OUT[side].x + p.y * OUT[side].y);
+  return bowAt(place, side, d).curve * HANDED[side] * (going === "out" ? 1 : -1);
 }
 
 /* Where a car sits on a leg: `d` metres out from the centre, in the lane
@@ -115,17 +292,29 @@ function onLeg(place, side, d, going) {
    ===================================================================== */
 export function pathFor(place, from, intent) {
   const to = exitFor(from, intent);
-  const entry = onLeg(place, from, place.reach, "in");
   /* Where the car waits is the LINE; where it is clear of the crossing
      traffic is the BOX. Two different places, and conflating them is
      what put a waiting bonnet inside the intersection. */
   const stop = onLeg(place, from, place.lineAt, "in");
   const leave = onLeg(place, to, place.boxHalf, "out");
+  /* The STRAIGHT exit, whatever the leg does further out: the turn arc
+     needs the direction of the outbound centreline, and a bent leg's far
+     end is not on it. */
   const exit = onLeg(place, to, place.reach, "out");
+  /* The approach, far end to line, and the way out, line to far end.
+     Two points each on a straight leg -- so a straight path is the same
+     four points it always was -- and sampled on a bent one. */
+  const approach = legPoints(place, from, "in");
+  const away = legPoints(place, to, "out");
 
-  let pts;
+  let pts, iStop, iClear;
   if (intent === "straight") {
-    pts = [entry, stop, leave, exit];
+    /* `leave` sits between the line and the far end on a straight leg,
+       collinear, so the way out needs only its far end there; a bent
+       leg keeps its line point, because the bend starts from it. */
+    pts = [...approach, leave, ...(place.bend?.[to] ? away : away.slice(1))];
+    iStop = approach.length - 1;
+    iClear = approach.length;
   } else {
     /* Where the two lane centrelines cross, which is the corner a driver
        steers around. The radius is that distance rather than a number
@@ -151,7 +340,15 @@ export function pathFor(place, from, intent) {
        a path JUMPS -- half a metre along being at most half a metre of
        travel -- and two metres backwards is two metres of travel. It
        measured distance where it needed direction. DECISIONS.md 5.15.11. */
-    pts = [entry, ...turnPoints(stop, corner, exit, radius)];
+    const arc = turnPoints(stop, corner, exit, radius);
+    /* The arc's last sample is the tangent point on the outbound lane,
+       which is where the way out begins; the straight `exit` after it is
+       replaced by the leg, bent or not. */
+    arc.pop();
+    pts = [...approach.slice(0, -1), ...arc];
+    iStop = approach.length - 1;
+    iClear = pts.length - 1;
+    pts.push(...away.slice(1));
   }
 
   /* Cumulative distance along, so `s` means the same thing everywhere. */
@@ -165,8 +362,8 @@ export function pathFor(place, from, intent) {
     /* How far along the path the stop line is, and where the box ends.
        A driver needs both: one is where they wait, the other is what
        they have to be clear of. */
-    stopAt: at[1],
-    clearAt: intent === "straight" ? at[2] : at[at.length - 2],
+    stopAt: at[iStop],
+    clearAt: at[iClear],
   };
 }
 
@@ -304,10 +501,14 @@ export function conflictsBetween(a, b, pad = 0) {
   const [a0, a1] = [opens(a), shuts(a)];
   const [b0, b1] = [opens(b), shuts(b)];
   let first = null, lastB = -Infinity;
+  /* The inner path's poses once, not once per outer sample: a bent path
+     has a hundred vertices for `poseAt` to walk, and the scan is the one
+     place it is called thousands of times per layout. */
+  const bs = [];
+  for (let sb = b0; sb <= b1; sb += step) bs.push([sb, poseAt(b, sb)]);
   for (let sa = a0; sa <= a1; sa += step) {
     const pa = poseAt(a, sa);
-    for (let sb = b0; sb <= b1; sb += step) {
-      const pb = poseAt(b, sb);
+    for (const [sb, pb] of bs) {
       if (Math.hypot(pa.x - pb.x, pa.y - pb.y) >= far) continue;
       if (!boxesOverlap(cornersOf(pa, pad), cornersOf(pb, pad))) continue;
       if (first === null || sa < first.a) first = { a: sa, b: sb };

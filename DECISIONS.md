@@ -2106,6 +2106,109 @@ falling out somewhere else.** Silence-means-straight-on was correct in
 `intentFor` and wrong in the sheet, and the two only met when a course
 existed that exercised both.
 
+### 5.15.17 THE BEND: A BOW THAT RETURNS TO ITS HEADING, AS TIGHT AS THE
+ROAD ALLOWS, AND THE SCREEN DRAWS IT FROM THE PATH
+
+**Built renderer-first, on section 0's rule.** Both sim screens now draw
+the carriageway as a stroke along `roadsOf` -- the same axis the lanes
+are offset from -- instead of rectangles that agreed with the geometry
+only while it was straight. Checked at full stray (verify-course 10):
+every point a car can reach on a leg is 0.45m inside the drawn edge.
+
+**The cheap kind of curve, deliberately.** REBUILD.md 8.2 separated two
+things the old ruling had refused together: a bend in the road between
+two compass-aligned intersections, and a road that ARRIVES on a
+different bearing. The second makes `SIDES`, `OPPOSITE` and `rightOf`
+relative bearings and is still expensive. The first is a leg that bows
+sideways and comes back parallel, with zero offset and flat through the
+stop line and the full offset and flat at the far end, so the box, the
+turn arcs and the seam are all exactly where they were. Measured with
+every link bent: 14 seams, 0.0m apart, 0.0 degrees out.
+
+**The shape is the smoothest step, and the choice is about what it gives
+free rather than how it looks.** Zero curvature at both ends: a queue
+sits on straight road at the line, and the road is straight through the
+seam, which is where the cross-boundary following projection has to be
+accurate. The samples touching the line and the seam are EXACTLY
+straight, not merely flat, because a chord across any part of a smooth
+bow has a slope and a seam that turned by 0.08 degrees would have been a
+seam that turned. Both lanes are offset from the bent axis along its
+local normal, not sideways -- displacing both by the same sideways vector
+narrows the road by cos(slope), a third of a metre at the slopes a real
+bend has.
+
+**ONE CONSTANT, FROM ROAD DESIGN, AND IT IS FLAGGED.** The radius is
+derived from the road's speed and the side-friction factor a flat street
+is designed to, 0.15 g (`LATERAL` in course.js). It is the one number in
+the increment that is data rather than derivation. At 60 km/h it gives
+189m; the amplitude that produces exactly that over the leg is solved
+for (58.6m over a 262m leg). It is not tuned to anything: at the limit a
+driver at the road's speed feels 1.47 m/s^2 and the boldest in the model
+2.68, both comfortable, which is what "challenges steering ability a
+little" should mean. If the maintainer wants tighter, it is that
+constant that moves, and the wide line moves with it.
+
+**`alongDir` measured where following uses it.** Across a seam, every
+cross-boundary gap up to 60m reads short by at most 0.26m, and only ever
+short; 3.4m at 120m, 9m at 200m, where nobody is following anybody. One
+line, unchanged. The earlier table in REBUILD.md 8.2 was of a bow whose
+script was not kept and cannot be reproduced -- CLAUDE.md item 8's
+example -- and `tools/measure/bend.mjs` is kept so this one can be.
+
+### 5.15.18 THE WIDE LINE: ONE DEFICIT, TWO EXPRESSIONS, AND THE STEERING
+AXIS ON THE SHEET AT LAST
+
+**Lane-keeping was excluded from the sheet by a coincidence of two
+derived numbers (5.15.15):** the weave is bounded at half the room
+between a car and the next lane, 0.45m, and the old engine's visibility
+floor is 0.45m. A bend resolves it without touching either number. The
+same steering deficit that weaves on a straight runs wide on a bend --
+steers less than the curve asks and drifts toward its outside -- and the
+wide line takes the driver's OTHER half of the room, so at the worst of
+the axis on the tightest bend the road allows, the car's side reaches
+the centre line and no further. Measured: ragged 0.382m on a straight,
+0.765m on a bend; sound 0.045m and 0.090m. Nobody touches by
+construction, and 400s of bent-course traffic with a ragged candidate
+aboard produced zero overlaps.
+
+**The floor is imported, not restated.** `marking.js` reads
+`POS_VISIBLE` from `faults.js`, and verify-course checks that no second
+0.45 appears in the file -- the two-implementations bug, and the way a
+floor gets quietly lowered to make a fault appear.
+
+**Right-hand bends only, by the maintainer's own ruling.** The outside of
+a right-hand bend is the oncoming lane; the outside of a left-hand bend
+is the curb, and 5.8 holds that off-road is real but rare and not this
+model's -- `wideTurn` declines a road with no next lane, and the wide
+line declines a bend whose outside is not one. Every bow is an S, so
+each driver meets one of each per half-link and no bent link is silent.
+The turn arcs are NOT read as bends (`bendSeenBy` reads the bow, not the
+polyline): a right turn's radius is 5.15.12's open question, and a wide
+line derived on a geometry known to be wrong would be a fault authored
+on a mistake.
+
+**One showing per bend.** The old engine derives one fault per trait per
+scenario, from the first over-floor sample to the last; here the unit is
+the bend, because it is where the wide line exists at all and it ends
+before the seam. Without it the sinusoid crossing the floor produced
+twenty half-second faults in 300s -- the weave showing, not the fault.
+With it: ten right-hand bends met, ten showings, 4.2s each. A prompt
+examiner catches all of them on the sheet.
+
+**Derived, and the control is the profile table itself.** Ragged and
+sound differ on exactly one rating, so sound on the same seed and the
+same bends IS the stripped twin: zero showings. The check asserts the
+profiles still differ on steering alone, so a future profile edit cannot
+quietly turn the comparison into an uncontrolled one.
+
+**Found on the way past.** Measuring whether the drawn road contains
+every path found that on the corners a right turn's 3.85m radius passes
+0.95m outside the curb corner, so a car weaving to the right clips it by
+8cm. Not the bend's doing -- it was true before the road bent -- and it
+is 5.15.12 again. The check measures the legs and reports the corners
+separately, so the known problem is neither hidden nor mistaken for a
+new one.
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately

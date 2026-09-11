@@ -703,8 +703,13 @@ for four turns. Fixed in `detect.js`, with the old check corrected to
 count turns.
 
 **STAGE 3 IS LANDED.** Route, directions, deferred marking, the section
-sheet, `detect.js` and `directions.js` across. What is still owed to it
-is the tighter instruction deadline, blocked on turn speed (5.15.13).
+sheet, `detect.js` across unchanged. What is still owed to it is the
+tighter instruction deadline, blocked on turn speed (5.15.13).
+
+**SIXTH INCREMENT: THE CURVED ROAD -- BUILT**, renderer first. Roads are
+drawn from the path, a link can bend as tightly as its speed allows, and
+the wide line on the bend puts the steering axis on the sheet. Section
+8.2.1, with the numbers.
 Today every arrival is spawned at the far end of one approach and
 destroyed at the far end of its exit, and the candidate's "course" is
 `keepDriving` putting the same person back on a fresh leg — an honest
@@ -965,6 +970,98 @@ Three things it does cost, in order of size:
 was actually refusing.** It is still expensive. The cheap one — a bend in
 the road BETWEEN two compass-aligned intersections — is available now,
 and it is what was asked for.
+
+### 8.2.1 BUILT: the bend, the renderer that can draw it, and the wide line
+
+Three increments, in the order section 0 demands -- the renderer first,
+because until a curved road could be drawn the engine could produce a
+bend the screen could not express. Every number here is from
+`tools/measure/bend.mjs`, kept so it can be produced again; the first
+measurement above was run inline and could not be, which is why the
+shape behind its table is not this one.
+
+**The renderer draws the road from the path.** `roadsOf` in `course.js`
+hands whatever draws the course one polyline per link -- box edge to box
+edge through the seam -- and one per edge leg, along the same axis the
+lanes are offset from. Both sim screens stroke it, two lanes wide, with
+the centre line dashed along it; the box is the one rectangle left. On a
+straight course it is the rectangle it replaced, measured: every road
+collinear. And it is checked at full stray rather than on the line: a car
+0.45m off its line is still 0.45m inside the drawn edge on every leg,
+straight or bent (verify-course section 10).
+
+**The bend is the cheap kind, and it is exactly as tight as the road
+allows.** A leg bows sideways and comes back parallel -- zero offset and
+flat through the stop line, so the box and every turn arc are untouched;
+the full offset and flat at the far end, so the seam is where it was and
+pointing the same way. The shape is the smoothest step, chosen for what
+it gives free: zero curvature at both ends, so a queue sits on straight
+road at the line and the road is straight through the seam, where
+`alongDir` has to be accurate. The one sample touching the line and the
+one touching the seam are exactly straight, not merely flat -- a chord
+across any part of a smooth bow has a slope, and a seam that turned by
+0.08 degrees is a seam that turned. Measured with every link bent: 14
+seams, 0.0m apart, 0.0 degrees out.
+
+The radius is derived from the road's speed and ONE constant taken from
+road design rather than tuned: the side-friction factor a flat street is
+built to, 0.15 g. At 60 km/h that is 189m, and the bow that produces it
+over a 262m leg is solved for (58.6m). At the limit a driver at the
+road's speed feels 1.47 m/s^2 sideways and the boldest driver in the
+model 2.68 -- comfortable either way, which is what "challenges steering
+a little" should mean. The design constant is the one number in the
+increment that is data rather than derivation, and it is flagged as such.
+
+| speed | reach | bow | tightest radius | extra length over the leg |
+|---|---|---|---|---|
+| 40 km/h | 181m | 62.8m | 84m | +15.7m over 351m |
+| 60 km/h | 262m | 58.6m | 189m | +9.6m over 513m |
+| 100 km/h | 437m | 59.8m | 524m | +6.0m over 863m |
+
+**`alongDir` was measured where following actually uses it**, not on a
+bow of a shape nobody can reproduce. Across the seam of a bent link,
+every cross-boundary gap up to 60m reads short by at most 0.26m, and it
+only ever reads SHORT -- the projection under-counts arc length -- so the
+error is on the cautious side of a following model whose wanted gap at
+this speed is about 27m. At 120m gaps the error reaches 3.4m and at 200m
+about 9m, where nothing in the model is following anybody. It stays one
+line.
+
+**The wide line is the other half of the steering axis, and it made
+lane-keeping markable.** One deficit, two expressions: a driver who
+cannot hold a line weaves on a straight and runs wide on a bend. The
+weave takes half the room between a car and the next lane, because the
+driver over there has the same claim on the other half; the wide line
+takes THIS driver's other half, with the same deficit, so at the worst
+of the axis on the tightest bend the road allows the car's side reaches
+the centre line and no further. Nobody touches by construction -- two
+seeds, every link bent, a ragged candidate aboard, 400s: zero overlaps.
+
+And the two together clear the old engine's visibility floor where the
+weave alone could not: measured, ragged 0.382m on a straight and 0.765m
+on a bend, everyone else 0.045m and 0.090m. `POS_VISIBLE` is imported
+from `faults.js` rather than restated, so the floor is the old engine's
+and it was not lowered to make a fault appear. Strip the steering
+deficit -- the only rating ragged and sound differ on -- and every
+showing vanishes: derived, not authored.
+
+**It shows on right-hand bends only**, because the outside of a
+right-hand bend is the oncoming lane and the outside of a left-hand one
+is the curb, and the maintainer's ruling on the wide turn (DECISIONS.md
+5.8) is that off-road is rare and not this model's. Every bow gives each
+driver one of each, so no bent link is silent. **One showing per bend**,
+the way the old engine derives one fault per trait per scenario: from
+the first instant the stray clears the floor to the last, however many
+times the weave dips it back under in between -- twenty half-second
+flickers on a sheet would be the sinusoid showing, not the fault. Ten
+right-hand bends met, ten showings, 4.2s each; a prompt examiner catches
+every one on the sheet.
+
+**Found on the way past, and not the bend's doing:** on the turn arcs a
+right turn's 3.85m radius passes 0.95m outside the curb corner, so a car
+weaving to the right clips the corner by 8cm. That is the open radius
+question in DECISIONS.md 5.15.12 in another guise, reported by the
+measurement rather than hidden by a check that looked only at the legs.
 
 **AND IT IS WHERE THE OTHER HALF OF THE STEERING AXIS LIVES.** Steering
 currently expresses as lane-keeping, which is honest but subtle: 0.38m of

@@ -1411,7 +1411,17 @@ three-layer reframing, the five axes and R2's build order:
 
   It is also where the OTHER HALF of the steering axis lives: a wide line
   needs somewhere to be wide into, and the outside of a bend is
-  somewhere. REBUILD.md 8.2. Not built.
+  somewhere. REBUILD.md 8.2.
+
+  **BUILT**, renderer first: `roadsOf` draws the road from the path, a
+  link bows and returns to its heading as tightly as its speed allows
+  (one flagged design constant, 0.15 g sideways: 189m at 60 km/h), and
+  the wide line on right-hand bends puts lane-keeping on the sheet as
+  `wideLine` -- one showing per bend, derived against the old engine's
+  own floor, vanishing when the steering deficit is stripped. The seams
+  are exact with every link bent and `alongDir` reads short by at most
+  0.26m on any gap it acts on. REBUILD.md 8.2.1, DECISIONS.md
+  5.15.17-18, numbers from `tools/measure/bend.mjs`.
 
 - **THE EXAMINER GAME IS THE ONLY PRIORITY.** Maintainer's ruling,
   verbatim: *"from now on the examiner game is the only priority, other
