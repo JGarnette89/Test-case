@@ -105,7 +105,7 @@ export const profileOf = (id) => PROFILES.find((p) => p.id === id) ?? PROFILES[0
    real route, and until it exists the honest stand-in is the same driver
    arriving again.
    ===================================================================== */
-export function candidateFor(world, { id, profile, trip = 0, planned = false }) {
+export function candidateFor(world, { id, profile, trip = 0, planned = false, ratings = null }) {
   const who = profileOf(profile);
   /* SEEDED OFF THE TRIP AND NOTHING ELSE, so two candidates given the
      same seed drive the SAME COURSE -- leg for leg, turn for turn, in
@@ -149,7 +149,9 @@ export function candidateFor(world, { id, profile, trip = 0, planned = false }) 
   const plan = planned ? [...wanted] : [];
   const intent = plan[0] ?? "straight";
   return {
-    ...driver(world.road, 4242, trip, who.ratings),
+    /* Ratings given directly override the profile's: a measurement can
+       ask for a driver the profile table does not have yet. */
+    ...driver(world.road, 4242, trip, ratings ?? who.ratings),
     id: `${id}#${trip}`,
     candidate: id,
     profile: who.id,

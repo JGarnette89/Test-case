@@ -2269,6 +2269,50 @@ loading a view returns it unchanged, so a view that passes through
 first version compounded the load on every hand it passed through,
 found by asking.
 
+### 5.16.2 PERCEPTION IS A LAG, IT IS MEASURED, AND IT IS OFF UNTIL
+CONTACT HAS A RESPONSE
+
+**Layer 2 as an input rather than a query.** The old engine's awareness
+was asked after the fact: a registration delay per road user, and a
+departure decided on the set the candidate had taken in. In a stepped
+world the same idea is the actor's actual perception: `seenBy` returns
+the committed state from the driver's lag ago, and `whatStops` decides
+from that. The lag is `registrationDelay` shape for shape (`lagFor`):
+the reaction floor everybody has, plus REGISTER_SPAN times the
+observation deficit, with the same jitter -- the constants imported
+through the road so stage 0's traffic.js stays free of awareness.js and
+the old engine it drags in.
+
+**What is not perceived late is the opening the competent standard
+judges undue delay against.** Whether the road was open is a fact about
+the road; whether the driver saw it is the axis. `openTo` reads the
+present.
+
+**Measured before switching on, and the measurement is why it is off.**
+Everybody lagged: traffic touches, one pair in fifteen minutes, harsh
+braking tripled. The candidate alone: nobody touched on the course in
+forty-five minutes at any rating; on the crossing the bold candidate
+rear-ends the car ahead, 47 car-ticks in eight hours -- a 0.39s chosen
+headway against a 0.55s lag. That is the dangerous candidate (4.4,
+bold and blind) arriving exactly as the design said it would, and it is
+a contact nothing draws and nothing responds to. The line sits where
+5.12 puts it: it switches on when contact ends a drive. The mechanism is
+verified meanwhile against a world that asks for it, so the default
+world keeps no past and moves by nothing.
+
+**What the axis does and does not read through.** At the box, the gap:
+the poorest observer takes gaps a lag tighter than they look, every one,
+never by more. On the road, nothing: the braking distribution is the
+same at every observation rating, because leaders brake gently and
+following gaps are comfortable. The first version of the check asserted
+harder braking off one seed's single event and failed on the next two;
+the section states the non-result rather than picking the seed.
+
+**And it is density-limited like confidence (stage 4's first
+increment).** A gap misjudged by a second only matters where gaps are
+close to the margin, and at the course's spawn rate none are. The axis
+is built; its supply is content.
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately

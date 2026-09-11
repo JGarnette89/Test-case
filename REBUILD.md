@@ -874,6 +874,37 @@ has a tenth of a deficit to amplify; a perfect one would not move.
 `#/course` shows the load and the composure beside the direction
 buttons, from the same view the sim drives from.
 
+**THIRD INCREMENT: PERCEPTION AS A LIVE INPUT -- BUILT, MEASURED, AND
+OFF BY DEFAULT FOR A MEASURED REASON.** `seenBy` in crossing.js, `lagFor`
+in traffic.js; verify-course section 13; `tools/measure/lag.mjs`. Layer
+2 stops being a query and becomes the actor's input: a driver decides
+from the world as it was `lag` seconds ago, the lag being the old
+engine's registration delay shape for shape -- the reaction floor plus
+the span the observation deficit buys, with its jitter. The world keeps
+its last few committed states for it, only when perception is on.
+
+What it does, measured: a poor observer takes gaps a lag tighter than
+they look (seen 7.1s, really 5.8s at the worst rating), every one of
+them, never by more than the lag. What it does NOT do: read through
+braking -- the braking distribution is identical at every observation
+rating, because leaders here brake gently and following gaps are
+comfortable; the first check asserted the opposite off one seed's single
+event and failed on the next two, and the section now says so instead.
+
+**Why it is off.** Lagging everybody makes traffic touch (one pair in
+fifteen minutes, harsh braking tripled). Lagging the candidate alone
+touches nobody on the course in forty-five minutes at any rating -- and
+on the crossing the BOLD candidate rear-ends the car ahead, 47 car-ticks
+in eight hours, because a bold driver keeps 0.39s of headway and
+perceives 0.55s behind, and a driver aiming for a gap they cannot see in
+time closes it. That is exactly the dangerous candidate the design names
+(bold and blind), and it is a contact nothing draws and nothing responds
+to -- section 0's rule and DECISIONS.md 5.12. So the default world lags
+nobody and every trace that existed is the trace it was; the mechanism
+is verified against a world that asks for it, and it switches on when
+contact ends a drive (stage 5). Traffic perceives the present, as it
+always has: the same asymmetry the old engine had, now stated.
+
 **The two questions are the maintainer's.** Whether PACE is a markable
 fault -- a candidate who drives at 70% or 135% of the limit for the whole
 drive, with no single occasion -- and how an examiner marks it. And

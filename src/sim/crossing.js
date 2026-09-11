@@ -40,6 +40,57 @@ import {
 } from "./course.js";
 import { rng } from "../engine/index.js";
 import { REACTION_FLOOR } from "../engine/score.js";
+import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../engine/awareness.js";
+
+/* =====================================================================
+   PERCEPTION, STAGE 4: THE WORLD AS THIS DRIVER HAS TAKEN IT IN
+
+   Layer 2 (DECISIONS.md 3): what the candidate REGISTERED, as distinct
+   from what happened. In the old engine that was a query after the fact
+   -- a registration delay per road user, and a departure decided on the
+   set the driver had taken in. Here it is the actor's actual input: a
+   driver decides from the world as it was `lag` seconds ago, so a poor
+   observer pulls out on a gap that has since closed and brakes for a
+   leader that slowed a moment back, and neither is scripted.
+
+   The world keeps its last few committed states for exactly this, and
+   only when perception is switched on (`road.perceive`), so the default
+   world carries nothing extra and moves by nothing.
+
+   What is NOT perceived late: the opening the competent standard judges
+   undue delay against (`openTo`), because whether the road was open is a
+   fact about the road, and whether the driver saw it is the axis.
+
+   WHO PERCEIVES LATE, WHEN IT IS ON, IS THE CANDIDATE AND ONLY THE
+   CANDIDATE, and that is measured rather than a shortcut. With everybody
+   lagged -- ordinary traffic at the floor and its poor observers up to
+   two seconds behind -- traffic touches: one pair in fifteen minutes,
+   with harsh braking tripled (tools/measure/lag.mjs). The candidate
+   lagged alone touched nobody in forty-five minutes on the course at any
+   rating, and takes gaps that are a lag tighter than they look -- the
+   axis expressing where the game can read it. It does NOT read through
+   braking: the braking distribution is the same at every observation
+   rating, because leaders here brake gently and following gaps are
+   comfortable. And on the crossing the bold candidate, lagged, rear-ends
+   the car ahead -- 47 car-ticks in eight hours -- because the headway
+   they choose is shorter than the lag they perceive behind; which is
+   why it is off by default until contact has a response. Traffic
+   perceives the present, as it always has: the same asymmetry the old
+   engine had, stated.
+   ===================================================================== */
+export const PERCEIVE = { floor: REGISTER_FLOOR, span: REGISTER_SPAN, jitter: JITTER, who: "candidate" };
+/* The longest lag anybody can have, in ticks: how much past the world
+   has to keep. */
+const LAG_TICKS = Math.ceil((PERCEIVE.floor + PERCEIVE.span * (1 + PERCEIVE.jitter)) / DT);
+
+/* The actors as this driver currently has them: the present, or the
+   committed state from their lag ago. Never further back than the world
+   remembers, so a driver in a freshly made world sees the present. */
+export function seenBy(world, me) {
+  const back = Math.round((me.lag ?? 0) / DT);
+  if (!back || !world.past?.length) return world.actors;
+  return world.past[Math.min(back, world.past.length) - 1];
+}
 
 /* Slow enough to count as stopped. Not zero: a car creeping at a
    centimetre a second has stopped, and a threshold of exactly zero would
@@ -370,7 +421,10 @@ export function whatStops(me, world) {
   const myOut = laneOut(course, mineAt, mine.to);
   const myPose = poseOf(world, me);
 
-  for (const them of world.actors) {
+  /* Everybody else, as THIS driver has them -- the present for a driver
+     with no lag, their lag ago otherwise. */
+  const others = seenBy(world, me);
+  for (const them of others) {
     if (them.id === me.id) continue;
     const theirs = pathOf(world, them);
 
@@ -444,7 +498,7 @@ export function whatStops(me, world) {
   const queued = leader != null && gap <= wantedGap(me, leader);
 
   const short = !me.going && me.s < waitAt(mine) + AT_LINE && me.s < mine.clearAt;
-  const held = short && world.actors.some((t) => t.id !== me.id && blockedBy(me, t, layout));
+  const held = short && others.some((t) => t.id !== me.id && blockedBy(me, t, layout));
   if (short) {
     const waiting = stops(layout, mine) ? (!me.stoppedAt || held) : held;
     if (waiting) {
@@ -580,7 +634,12 @@ export function step(world) {
       nextAt = t + car.arriveIn;
     }
   }
-  return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next };
+  /* What the world remembers of itself, for drivers who perceive it
+     late. Only with perception on: a world without it keeps nothing. */
+  const past = world.road.perceive
+    ? [world.actors, ...(world.past ?? [])].slice(0, LAG_TICKS)
+    : world.past;
+  return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(past ? { past } : {}) };
 }
 
 /* JOINING THE ROAD, AT THE SPEED THE ROAD IS DOING.
@@ -684,7 +743,9 @@ function intentFor(world, me, k) {
    only the route is new. */
 function arriving(world, n) {
   const r = rng(world.seed * 31337 + n + 1);
-  const who = driver(world.road, world.seed, n);
+  /* Traffic perceives the present unless perception is for everybody. */
+  const road = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
+  const who = driver(road, world.seed, n);
   const where = edgeFor(world.course, r());
   const intent = INTENTS[Math.floor(r() * INTENTS.length) % INTENTS.length];
   return {
@@ -773,7 +834,7 @@ export function reachFor(control, speed) {
 export const seedCrossing = (seed = 1, kmh = 50, opts = {}) =>
   seedCourse(seed, kmh, { ...opts, n: 1 });
 
-export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY, n = 1, cols, rows, bends = 0 } = {}) {
+export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY, n = 1, cols, rows, bends = 0, perceive = false } = {}) {
   const speed = kmh / 3.6;
   /* WHICH LINKS BEND: a share, drawn from the seed, each way round with
      equal chance, and every bend as tight as this road's speed allows.
@@ -786,7 +847,25 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
     : null;
   const course = courseOf({ n, cols, rows, kmh, control, reachFor, bends: bend });
   const layout = course.at[0].layout;
-  const road = { kmh, speed, lane: layout.place.lane };
+  /* Perception lag: OFF by default, and the reason is measured rather
+     than cautious. `"candidate"` lags the candidate alone; `true` lags
+     everybody (a measurement). Even the candidate alone, on the
+     crossing verify-telling drives, touches somebody: the BOLD one, 47
+     car-ticks in eight hours, every one a rear-ending on the through
+     road -- because a bold driver keeps 0.55 of the road's headway,
+     0.39s at 60 km/h, which is shorter than the 0.47-0.55s they perceive
+     behind, and a driver aiming for a gap they cannot see in time closes
+     it. Honest, and exactly the dangerous candidate the design names
+     (bold and blind); but a contact nothing draws and nothing responds
+     to is the lie DECISIONS.md 5.12 names. It switches on when contact
+     ends a drive (stage 5), and the mechanism is verified meanwhile so
+     that day costs nothing new.
+     Traffic drivers are made through `arriving`, which strips the lag
+     unless it is for everybody. */
+  const road = {
+    kmh, speed, lane: layout.place.lane,
+    perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
+  };
   let w = { t: 0, tick: 0, seed, road, course, layout, every, spawned: 0, nextAt: 0, actors: [] };
   /* Warmed until the approaches have traffic on them and the first cars
      have had to take turns. */
@@ -808,8 +887,13 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
      stops with each other, which is what kept it hidden. */
   const shift = w.t;
   const back = (x) => (x == null ? null : x - shift);
+  /* AND THE PAST IS DROPPED, because it is on the old clock too: a
+     lagged driver reading a warm-up snapshot would compare a stopped-at
+     instant a hundred seconds out. The first lag's worth of ticks after
+     seeding sees the present instead, which `seenBy` does on its own. */
+  const { past: _warm, ...rebased } = w;
   return {
-    ...w, t: 0, tick: 0, nextAt: Math.max(0, w.nextAt - shift),
+    ...rebased, t: 0, tick: 0, nextAt: Math.max(0, w.nextAt - shift),
     actors: w.actors.map((a) => ({ ...a, stoppedAt: back(a.stoppedAt), openedAt: back(a.openedAt) })),
   };
 }

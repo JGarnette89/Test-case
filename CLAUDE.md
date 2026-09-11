@@ -1226,6 +1226,13 @@ three-layer reframing, the five axes and R2's build order:
   drivers are looking. A large share of what a real examiner marks is whether
   the candidate *looked*. This is the biggest gap in the whole design and it
   is new modelling, not reuse.
+
+  **In the rebuild the first piece is built and measured**: a candidate
+  can perceive the world a lag behind (`seenBy` in `src/sim/crossing.js`,
+  the old engine's registration delay as a live input). It is OFF by
+  default because the bold candidate, lagged, rear-ends the car ahead on
+  the crossing -- a contact nothing can yet respond to -- and it switches
+  on when contact ends a drive. DECISIONS.md 5.16.2.
 - **Intervention cannot be triggered by the conflict, but the candidate's
   own driving gives ample warning.** Measured across ten situations,
   warning from first conflict to contact is min 0.45s, median 1.10s, max

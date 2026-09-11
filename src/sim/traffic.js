@@ -315,6 +315,23 @@ export function driver(road, seed, n, ratings = null) {
      -- and so that a driver's weave does not speed up when they do. */
   const weave = weaveRoom(road.lane ?? ROAD.laneWidth) * deficitOf(who.ratings, "steering").deficit;
 
+  /* HOW FAR BEHIND THE WORLD THEY PERCEIVE IT, in seconds: the whole of
+     the observation axis (stage 4). Everything here is visible all the
+     time, so the old engine's registration delay -- how long after a
+     road user appears before this driver has taken them in -- becomes a
+     LAG: the driver decides from the world as it was that long ago. A
+     good observer is a reaction floor behind; a poor one adds up to the
+     old engine's REGISTER_SPAN on top, with its jitter.
+
+     OFF UNLESS THE ROAD SAYS HOW (`road.perceive`), so nothing that ran
+     before this moves by a byte, and drawn from its own stream so
+     switching it on changes nothing else about the driver either --
+     which is what makes lag-on against lag-off a controlled comparison.
+     The constants are the old engine's and arrive through the road
+     rather than being imported here, because awareness.js drags most of
+     the old engine with it and stage 0 stays small. */
+  const lag = road.perceive ? lagFor(who.ratings, road.perceive, rng(seed * 7 + n + 3)) : 0;
+
   return {
     id: `car-${n}`,
     ratings: who.ratings,
@@ -323,6 +340,7 @@ export function driver(road, seed, n, ratings = null) {
     rollsStops,
     brake,
     weave,
+    lag,
     /* Where in the weave they happen to be, so two equally poor drivers
        are not in lockstep. */
     weavePhase: r() * WEAVE_OVER,
@@ -454,6 +472,17 @@ export const weaveRoom = (lane) => (lane - CAR.width) / 4;
    The unloaded case returns the actor itself, so nothing about a driver
    with nothing held has moved by a byte.
    ===================================================================== */
+/* The lag a driver perceives the world behind by. The old engine's
+   `registrationDelay`, shape for shape: a floor everybody has, a span the
+   observation deficit buys, and a jitter so two equally poor observers
+   are not in lockstep. */
+export function lagFor(ratings, { floor, span, jitter = 0 }, r) {
+  const { deficit } = deficitOf(ratings, "observation");
+  if (deficit <= 0) return floor;
+  const wobble = 1 + (r() - 0.5) * 2 * jitter;
+  return floor + deficit * span * wobble;
+}
+
 export const heldBy = (me) =>
   (me.plan ?? []).slice((me.leg ?? 0) + 2).filter((x) => x != null).length;
 

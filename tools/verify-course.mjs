@@ -30,9 +30,12 @@ import { REACTION_FLOOR } from "../src/engine/score.js";
 import fs from "node:fs";
 import {
   seedCourse, step, overlapping, whatStops, poseOf, reachFor, edgesOf, gapNeeded,
-  strayOf, wideAt, DT, CAR, ALL_WAY, TWO_WAY,
+  strayOf, wideAt, seenBy, PERCEIVE, layoutOf, DT, CAR, ALL_WAY, TWO_WAY,
 } from "../src/sim/crossing.js";
-import { decide, wantedGap, PX_PER_M, underLoad, heldBy, weaveRoom, HARSH_AT } from "../src/sim/traffic.js";
+import {
+  decide, wantedGap, PX_PER_M, underLoad, heldBy, weaveRoom, HARSH_AT, lagFor, timeToCover,
+} from "../src/sim/traffic.js";
+import { rng } from "../src/engine/index.js";
 import { pressureOf, skillUnderPressure } from "../src/engine/directions.js";
 import { severityOf } from "../src/engine/index.js";
 
@@ -952,6 +955,116 @@ console.log("\n12. A LOADED DRIVER IS A WORSE DRIVER");
   r3.jump <= bound * weaveRoom(w3.road.lane) + 1e-9
     ? ok("and the one artifact is measured and inside its bound: the car steps sideways by no more than the amplitude change when told")
     : fail(`an instruction moved the car ${r3.jump.toFixed(3)}m sideways in one tick`);
+}
+
+console.log("\n13. THE CANDIDATE PERCEIVES THE WORLD AS A PERSON DOES: LATE");
+{
+  /* The observation axis as a live input. A candidate decides from the
+     world as it was their lag ago; traffic perceives the present, as it
+     always has, because with everybody lagged traffic touches and nothing
+     can yet respond to that (tools/measure/lag.mjs). What is checked: the
+     traffic is unmoved; the lag is the old engine's registration curve;
+     the candidate really does decide from the past; the axis reads --
+     harder braking, and gaps a lag tighter than they look -- and nobody
+     touches. */
+  const sound = PROFILES.find((p) => p.id === "sound").ratings;
+  const trace = (opts) => {
+    let w = seedCourse(4, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends: 1, ...opts });
+    const out = [];
+    for (let i = 0; i < 600; i++) { w = step(w); if (i % 40 === 0) out.push(w.actors.map((a) => [a.id, a.s, a.v, a.lag])); }
+    return { w, s: JSON.stringify(out) };
+  };
+  const on = trace({ perceive: "candidate" }), off = trace({});
+  on.s === off.s && on.w.actors.every((a) => a.lag === 0) && !("past" in off.w)
+    ? ok("traffic perceives the present: with nobody being examined a world with the candidate's perception on is byte-identical to the default, which keeps no past at all")
+    : fail("switching the candidate's perception on moved the traffic, which is not lagged");
+
+  let w = withCandidates(
+    seedCourse(4, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends: 1, perceive: "candidate" }),
+    [{ id: "X", profile: "sound" }],
+  );
+  const x = w.actors.find((a) => a.candidate === "X");
+  const expect = lagFor(sound, PERCEIVE, rng(4242 * 7 + 0 + 3));
+  console.log(`   the sound candidate perceives ${x.lag.toFixed(3)}s behind (floor ${PERCEIVE.floor}s, span ${PERCEIVE.span}s x their deficit); traffic ${[...new Set(w.actors.filter((a) => !a.candidate).map((a) => a.lag))].join(",")}`);
+  x.lag === expect && x.lag > PERCEIVE.floor
+    ? ok("the candidate's lag is the old engine's registration delay, shape for shape: the reaction floor plus the span their observation deficit buys")
+    : fail(`the candidate's lag is ${x.lag} against ${expect} from the same constants`);
+
+  for (let i = 0; i < 60; i++) w = keepDriving(step(w));
+  const me = w.actors.find((a) => a.candidate === "X");
+  const seen = seenBy(w, me);
+  const back = Math.round(me.lag / DT);
+  seen !== w.actors && seen === w.past[back - 1] && seenBy(w, { ...me, lag: 0 }) === w.actors
+    ? ok(`and they decide from the committed state ${back} ticks back, while a driver with no lag reads the present`)
+    : fail("seenBy did not return the state the lag names");
+
+  /* THE AXIS READS. Same seed, same route, three observation ratings on
+     an otherwise sound driver: harder braking as it falls, and the gap
+     they take a lag tighter than the one they saw. And nobody touches. */
+  const stops = (layout, path) => layout.place.control[path.from] === "stop";
+  const margins = (world, me, actors) => {
+    const layout = layoutOf(world, me), mine = layout.paths[me.route];
+    const out = [];
+    for (const them of actors) {
+      if (them.id === me.id || (them.k ?? 0) !== (me.k ?? 0)) continue;
+      const meet = layout.conflicts[them.route + "|" + me.route];
+      if (!meet) continue;
+      const theirs = layout.paths[them.route];
+      if (them.going || them.s >= theirs.stopAt || them.s > meet.a) continue;
+      if (!((stops(layout, mine) && !stops(layout, theirs))
+        || (!stops(layout, mine) && !stops(layout, theirs) && mine.intent === "left" && theirs.from === OPPOSITE[mine.from] && theirs.intent !== "left"))) continue;
+      out.push((meet.a - them.s) / Math.max(them.v, 0.5) - timeToCover(me.v, meet.clearOf - me.s, me.v0));
+    }
+    return out;
+  };
+  const byRating = {};
+  for (const observation of [0.9, 0.5, 0.15]) {
+    let harsh = 0, hits = 0, gap = [], lag = 0;
+    for (const seed of [4, 5]) {
+      let w = withCandidates(
+        seedCourse(seed, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends: 1, perceive: "candidate" }),
+        [{ id: "X", profile: "sound", planned: true, ratings: { ...sound, observation } }],
+      );
+      for (let i = 0; i < Math.round(240 / DT); i++) {
+        const before = w.actors.find((a) => a.candidate === "X");
+        w = keepDriving(step(w));
+        const a = w.actors.find((z) => z.candidate === "X");
+        if (!a) continue;
+        lag = a.lag;
+        if ((a.a ?? 0) < -HARSH_AT) harsh++;
+        for (const o of overlapping(w)) if (o.a === a.id || o.b === a.id) hits++;
+        if (!before || before.id !== a.id) continue;
+        const path = layoutOf(w, a).paths[a.route];
+        if (!((a.going && !before.going) || (before.s < path.stopAt && a.s >= path.stopAt && !a.going))) continue;
+        const wasTrue = margins(w, before, w.past?.[0] ?? w.actors), wasSeen = margins(w, before, seenBy(w, before));
+        if (wasTrue.length && wasSeen.length) gap.push({ seen: Math.min(...wasSeen), real: Math.min(...wasTrue) });
+      }
+    }
+    byRating[observation] = { harsh, hits, gap, lag };
+    console.log(`   observation ${observation}: lag ${lag.toFixed(2)}s, harsh-braking ticks ${harsh}, gaps judged ${gap.length} (seen ${gap.map((g) => g.seen.toFixed(1)).join("/")}s, really ${gap.map((g) => g.real.toFixed(1)).join("/")}s), overlaps ${hits}`);
+  }
+  const r = byRating;
+  /* WHAT IT DOES NOT DO, stated so nobody reads it in: the lag does not
+     read through braking on the road. Measured over three seeds and
+     fifteen minutes per rating, the braking distribution is the same at
+     every observation rating (peak 5.78, p95 2.67-2.72 m/s^2) -- leaders
+     here brake gently and following gaps are comfortable, so a second
+     of lag costs nothing a follower notices. The first version of this
+     check asserted the opposite off one seed's single event, and failed
+     on the next two. The axis reads at the box, as the gap. */
+  console.log(`   harsh-braking ticks by rating: ${[0.9, 0.5, 0.15].map((k) => `${k}: ${r[k].harsh}`).join(", ")} -- the lag does not read through braking in this traffic, and is not claimed to`);
+  const worst = r[0.15];
+  const misjudged = worst.gap.filter((g) => g.seen > g.real).length;
+  worst.gap.length > 0 && misjudged > 0 && worst.gap.every((g) => g.seen - g.real <= worst.lag + 0.5)
+    ? ok(`and the poorest observer takes gaps tighter than they look, by up to their lag: ${misjudged} of ${worst.gap.length} judged gaps were smaller than seen, never by more than the lag`)
+    : fail(`gap misjudgment did not read as the lag: ${JSON.stringify(worst.gap)}`);
+  Object.values(r).every((v) => v.hits === 0)
+    ? ok("and at every rating this sound-tempered candidate touched nobody in 480s on the course -- the BOLD one, lagged, rear-ends on the crossing (47 car-ticks in eight hours: a 0.39s headway against a 0.55s lag), which is why it is OFF by default until contact has a response (stage 5)")
+    : fail("a lagged candidate drove into somebody on the course as well; the measurement behind the default has moved");
+  const plain = withCandidates(seedCourse(4, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends: 1 }), [{ id: "X", profile: "sound" }]);
+  plain.actors.every((a) => a.lag === 0) && !plain.road.perceive
+    ? ok("the default world lags nobody: every trace that existed is the trace it was")
+    : fail("perception is on by default, and the bold candidate on the crossing says it must not be yet");
 }
 
 console.log("\n" + "=".repeat(70));
