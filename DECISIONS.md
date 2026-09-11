@@ -2209,6 +2209,66 @@ is 5.15.12 again. The check measures the legs and reports the corners
 separately, so the known problem is neither hidden nor mistaken for a
 new one.
 
+## 5.16 STAGE 4: THE RATINGS AS LIVE INPUTS
+
+### 5.16.1 A LOADED DRIVER IS A WORSE DRIVER, LIVE, AND BOUNDED
+
+The maintainer's ruling from the old drive, and the half of
+`directions.js` that came across last: stacking instructions is a trade,
+and its cost lands on the candidate's concentration. Stage 3 brought the
+sheet's side across (`attribute`: late, stacked, never-given) and not
+the driver's, so "stacked" was a verdict with no consequence -- the same
+shape as the old drive's stacking meter, which shipped inert because
+`held` was zero by construction.
+
+**What is held is counted from the plan the driver reads.** Everything
+beyond the instruction being executed: the next intersection's is
+discharged at the handoff into it and is never carried, so an examiner
+who only ever calls the next intersection loads nobody, which is the
+common correct play and has to be free. Told three ahead, a candidate
+carries two.
+
+**The curve is imported, not restated.** `pressureOf`,
+`skillUnderPressure` and `severityOf` are the old engine's, and the
+verify checks the sim's composure IS `skillUnderPressure(1,
+pressureOf(held))`. Two curves would drift the first time either was
+tuned.
+
+**Applied to the deficit, so the bounds survive.** The old engine
+multiplied the size of a fault by the severity; here the same multiplier
+scales how far each axis sits from its optimum -- the weave, the planned
+braking, caution's distance from competent -- and every one is then
+clamped by what clamped it unloaded. The weave cannot exceed the room
+between lanes (5.14.4), braking cannot plan past `HARSH_AT` (the model's
+own abrupt line), caution cannot leave [0, 2]. A driver with no deficit
+is unmoved: composure decides how badly a habit shows, never which habits
+a driver has, which is the old engine's property verbatim. The sound
+PROFILE moves a little, because it is rated 0.9 rather than 1.0; the
+verify says so rather than claiming it does not.
+
+**Live rather than frozen, and one artifact stated.** The old drive
+froze load at the start of a leg because reading it live would have
+re-simulated the intersection under the candidate. A stepped world reads
+the loaded disposition every tick from what is held right now, so the
+cost lands on the driving done while holding it and lifts when the
+instruction is discharged. The weave's amplitude therefore changes in
+the tick an instruction is given, which steps the car sideways by the
+change times the phase -- bounded at the severity's share of the room,
+18cm, measured at 2.6cm. Stated and checked rather than smoothed with a
+time constant nobody could derive.
+
+**Measured, and modest.** Same seed, same route, the ragged driver:
+0.765m and 60.2s off the line told one ahead, 0.900m and 62.8s told
+three ahead. Modest because bounded -- a driver at 85% of the room has
+15% to lose -- and honest for the same reason: the alternative was a
+load that could put cars into each other.
+
+**Idempotent by construction.** A loaded view carries `held`, and
+loading a view returns it unchanged, so a view that passes through
+`whatStops`, `poseOf` and `strayOf` in one tick is loaded once. The
+first version compounded the load on every hand it passed through,
+found by asking.
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately

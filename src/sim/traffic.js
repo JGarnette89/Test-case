@@ -34,7 +34,8 @@
    ===================================================================== */
 
 import { composeDriver, deficitOf, lackingIn, LACKING_AT } from "../engine/ratings.js";
-import { rng } from "../engine/index.js";
+import { rng, severityOf } from "../engine/index.js";
+import { pressureOf, skillUnderPressure } from "../engine/directions.js";
 
 /* The project's scale, and the one thing here that must agree with the
    old engine while both exist: verify-sim checks it against `M(1)`. */
@@ -406,6 +407,75 @@ export function perceive(me, world) {
    conflict table says they never meet -- which is exactly how this was
    found. */
 export const weaveRoom = (lane) => (lane - CAR.width) / 4;
+
+/* =====================================================================
+   A LOADED DRIVER IS A WORSE DRIVER
+
+   The maintainer's ruling, and the other half of `directions.js`, which
+   stage 3 brought across only as far as the sheet reads it. Stacking
+   instructions is a trade: calling ahead buys the candidate time and
+   buys the examiner attention back, and it costs the candidate's
+   concentration. Without this half the "stacked" verdict is a label
+   with nothing behind it, which is exactly how the old drive's stacking
+   meter shipped inert.
+
+   WHAT IS HELD is every instruction beyond the one being executed. The
+   one for the next intersection is discharged at the handoff into it, so
+   it is never carried; the ones for the intersections after that are.
+   Told three ahead, a candidate carries two.
+
+   HOW MUCH IT COSTS is the old engine's own curve, imported rather than
+   restated: pressure per instruction held, composure lost under it, and
+   the severity multiplier on the size of whatever a driver gets wrong.
+   Applied here to the DEFICIT on each axis -- the weave, the planned
+   braking, and how far caution sits from the competent optimum -- so a
+   loaded driver's weaknesses are the same weaknesses, larger. A sound
+   driver has nothing to amplify and is unmoved, which is the old engine's
+   property too: skill decides how badly a habit shows, never which
+   habits a driver has.
+
+   Each is still bounded by what bounded it unloaded. The weave cannot
+   exceed the room between lanes, braking cannot plan past abrupt, and
+   caution cannot leave the axis; so a heavy-footed driver under full
+   load plans on exactly the rate an examiner calls abrupt, and a bend
+   driven under load runs no wider than the centre line.
+
+   LIVE, NOT FROZEN PER LEG. The old drive froze load at the start of a
+   leg because reading it live would have re-simulated the intersection
+   under the candidate. A stepped world has no such problem: the loaded
+   disposition is read every tick from what is held right now, so the
+   cost lands on the driving done while holding it and lifts when the
+   instruction is discharged. One honest artifact: the weave's amplitude
+   changes in the tick an instruction is given, which steps the car
+   sideways by at most the amplitude change times the phase -- 16cm for
+   the worst steerer told two ahead at once -- and verify-course measures
+   it rather than hiding it.
+
+   The unloaded case returns the actor itself, so nothing about a driver
+   with nothing held has moved by a byte.
+   ===================================================================== */
+export const heldBy = (me) =>
+  (me.plan ?? []).slice((me.leg ?? 0) + 2).filter((x) => x != null).length;
+
+export function underLoad(me, road) {
+  /* Idempotent: a view is never loaded twice, however many hands it
+     passes through in one tick. */
+  if (me.held != null) return me;
+  const held = heldBy(me);
+  if (!held) return me;
+  const composure = skillUnderPressure(1, pressureOf(held));
+  const sev = severityOf({ skill: composure });
+  const caution = Math.min(2, Math.max(0, 1 + (me.caution - 1) * sev));
+  return {
+    ...me,
+    held, composure,
+    caution,
+    v0: wantedSpeed(road.speed, caution),
+    headway: HEADWAY * (0.55 + 0.45 * caution),
+    brake: Math.min(BRAKE * ABRUPT, BRAKE + (me.brake - BRAKE) * sev),
+    weave: Math.min(weaveRoom(road.lane ?? ROAD.laneWidth), (me.weave ?? 0) * sev),
+  };
+}
 
 /* HOW FAST THIS DRIVER WANTS TO GO. One expression, because three
    different places need it and two of them are not the driver model:

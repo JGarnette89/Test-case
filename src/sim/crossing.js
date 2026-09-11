@@ -26,7 +26,7 @@
    scheduler once before anybody moves.
    ===================================================================== */
 import {
-  decide, wantedGap, driver, timeToCover, weaveAt, wantedSpeed, stoppingRoom,
+  decide, wantedGap, driver, timeToCover, weaveAt, wantedSpeed, stoppingRoom, underLoad,
   CAR, DT, PX_PER_M, M,
 } from "./traffic.js";
 import {
@@ -470,7 +470,12 @@ export function whatStops(me, world) {
    ===================================================================== */
 export function step(world) {
   const next = world.actors
-    .map((me) => {
+    .map((raw) => {
+      /* THE DRIVER AS THEY ARE RIGHT NOW: their disposition under
+         whatever instructions they are carrying (traffic.js,
+         `underLoad`). Decided from, never written back -- the actor keeps
+         its unloaded self, and the load is re-read every tick. */
+      const me = underLoad(raw, world.road);
       const view = whatStops(me, world);
       const a = decide(me, view);
       const v = Math.max(0, me.v + a * DT);
@@ -513,7 +518,7 @@ export function step(world) {
          the fault belongs to the confidence axis by construction.
 
          Frozen once they go, so what they did stays inspectable. */
-      const at = { ...me, v, s, stoppedAt, going, accepted };
+      const at = { ...raw, v, s, stoppedAt, going, accepted };
       const sitting = stoppedAt != null && !going;
       /* How long the opening in front of them has been there this time,
          and -- latched -- when the first one they could have acted on
@@ -834,7 +839,8 @@ export function poseOf(world, actor) {
    sheet reads are the same number (DECISIONS.md 0): the weave, and on a
    bend the wide line. */
 export function strayOf(world, actor) {
-  return weaveAt(actor, actor.s) - wideAt(world, actor);
+  const me = underLoad(actor, world.road);
+  return weaveAt(me, me.s) - wideAt(world, me);
 }
 
 /* THE WIDE LINE: THE OTHER HALF OF THE STEERING AXIS, AND IT LIVES ON A

@@ -28,6 +28,8 @@ import {
   withCandidates, keepDriving, PROFILES, toTell, tell,
 } from "../sim/candidate.js";
 import { noticing, mark, sheetFor, sectionDone, SECTION } from "../sim/marking.js";
+import { underLoad, heldBy } from "../sim/traffic.js";
+import { severityOf } from "../engine/index.js";
 import { summarise } from "../engine/detect.js";
 
 const CONTROLS = [
@@ -215,6 +217,11 @@ export default function SimCourse() {
      anything. */
   const ahead = them ? toTell(world, "them", 3) : [];
   const say = (at, intent) => setWorld((w) => tell(w, "them", at, intent));
+  /* WHAT THE STACK IS COSTING THEM, right now: a loaded driver is a
+     worse driver (traffic.js, `underLoad`), and the meter reads the
+     same view the sim drives from rather than a curve of its own. */
+  const held = them ? heldBy(them) : 0;
+  const composure = them ? (underLoad(them, world.road).composure ?? 1) : 1;
   const touching = overlapping(world).length;
   const done = them ? (them.leg ?? 0) : 0;
 
@@ -392,6 +399,13 @@ export default function SimCourse() {
             )}
           </div>
         ))}
+        <div style={S.row}>
+          <span style={{ ...S.readout, color: held ? C.amber : C.dim }}>
+            {held
+              ? `carrying ${held} · composure ${Math.round(composure * 100)}% — their weaknesses show ${Math.round((severityOf({ skill: composure }) - 1) * 100)}% larger`
+              : "carrying nothing · composure 100%"}
+          </span>
+        </div>
 
         <div style={S.row}>
           <span style={S.readout}>Candidate</span>
@@ -494,6 +508,14 @@ export default function SimCourse() {
           the weave alone never was, and that is the <i>wide line</i> on
           the sheet. <b>Bends</b> switches them off for the same seed, so
           the straight road it replaced is one press away.
+          <br />
+          <b>Calling ahead is a trade.</b> An instruction for the next
+          intersection is discharged the moment they get there, so it
+          costs them nothing; one for the intersection after that, or the
+          one after, is <i>carried</i> — and a loaded driver is a worse
+          driver. The meter above reads what the sim drives from: their
+          weaknesses, the same weaknesses, larger. Nothing to amplify,
+          nothing amplified.
           <br />
           <b>Nothing here is new geometry.</b> The exit of one
           intersection and the approach of the next are the same piece of

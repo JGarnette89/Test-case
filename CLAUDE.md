@@ -663,6 +663,11 @@ from the intersection. A fixed 3.5s run-in left 15 of those 48 undirectable;
 approach so the player always sees them arriving. The shipped drive spans
 1.0s to 9.9s of decision time as a result.
 
+**In the rebuild the trade is live**: `underLoad` in `src/sim/traffic.js`
+reads what a candidate is carrying every tick and amplifies the deficit
+on each axis by the same curve, bounded by what bounded it unloaded.
+DECISIONS.md 5.16.1. The paragraph below is the old drive's history.
+
 **The stacking trade shipped INERT, and that is worth remembering.** The
 direction buttons wrote `given[at]` — the intersection being driven — while
 `held` counts instructions outstanding for intersections BEYOND it. So `held`

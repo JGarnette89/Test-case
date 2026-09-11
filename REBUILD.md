@@ -848,6 +848,32 @@ of place, and the spawn rate should be a per-road density rather than a
 total. Not changed here, because changing it moves every course trace;
 recorded as the first thing stage 4's sheet will run into.
 
+**SECOND INCREMENT: THE STACKING COST -- BUILT.** `underLoad` in
+traffic.js; verify-course section 12. The half of `directions.js` that
+stage 3 had not brought across: a loaded driver is a worse driver. What
+is held is every instruction beyond the one being executed -- the next
+intersection's is discharged at the handoff and never carried; told
+three ahead, a candidate carries two. The cost is the old engine's own
+curve imported (pressure per instruction, composure under it, the
+severity multiplier), applied to the DEFICIT on each axis, so a loaded
+driver's weaknesses are the same weaknesses, larger, and each stays
+inside the bound that held it unloaded: the weave inside the room,
+braking no harder than abrupt, caution on its axis. A driver with no
+deficit is unmoved. Read live, every tick, from what is held right now,
+because a stepped world does not have to freeze it per leg the way the
+old drive did; the one artifact -- the weave's amplitude changing in the
+tick an instruction is given -- is measured at 2.6cm against a bound of
+18cm.
+
+Measured, same seed, same route: the ragged driver told one ahead runs
+to 0.765m and spends 60.2s off the line in 300s; told three ahead, 0.900m
+and 62.8s. **The cost is real and it is modest**, and the reason is the
+bounds: a driver already at 85% of the room has 15% left to lose. The
+sound profile moves from 0.090m to 0.127m, because it is rated 0.9 and
+has a tenth of a deficit to amplify; a perfect one would not move.
+`#/course` shows the load and the composure beside the direction
+buttons, from the same view the sim drives from.
+
 **The two questions are the maintainer's.** Whether PACE is a markable
 fault -- a candidate who drives at 70% or 135% of the limit for the whole
 drive, with no single occasion -- and how an examiner marks it. And

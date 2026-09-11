@@ -32,7 +32,9 @@ import {
   seedCourse, step, overlapping, whatStops, poseOf, reachFor, edgesOf, gapNeeded,
   strayOf, wideAt, DT, CAR, ALL_WAY, TWO_WAY,
 } from "../src/sim/crossing.js";
-import { decide, wantedGap, PX_PER_M } from "../src/sim/traffic.js";
+import { decide, wantedGap, PX_PER_M, underLoad, heldBy, weaveRoom, HARSH_AT } from "../src/sim/traffic.js";
+import { pressureOf, skillUnderPressure } from "../src/engine/directions.js";
+import { severityOf } from "../src/engine/index.js";
 
 let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);
@@ -866,6 +868,90 @@ console.log("\n11. THE BEND");
       ? ok(`a prompt examiner catches every wide line on the sheet: ${caught} caught, ${missed} missed across ${sheets.length} sections`)
       : fail(`the wide line reached the sheet as ${caught} caught and ${missed} missed`);
   }
+}
+
+console.log("\n12. A LOADED DRIVER IS A WORSE DRIVER");
+{
+  /* The other half of directions.js, and the trade the directions
+     mechanic rests on: calling ahead buys the candidate time and costs
+     their concentration. What is checked is that the cost is real, that
+     it is the old engine's own curve rather than a second one, that it
+     is bounded by what already bounded each axis, and that a driver with
+     nothing held has not moved by a byte. */
+  const fresh = () => withCandidates(
+    seedCourse(4, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends: 1 }),
+    [{ id: "X", profile: "ragged" }],
+  );
+  const w0 = fresh();
+  const a0 = w0.actors.find((x) => x.candidate === "X");
+  underLoad(a0, w0.road) === a0 && w0.actors.every((a) => underLoad(a, w0.road) === a)
+    ? ok("with nothing held every actor's loaded view IS the actor: the traffic, and a candidate told nothing, are unmoved by a byte")
+    : fail("an actor with nothing held came back changed, so the mechanic is not free in the common case");
+
+  const w3 = tell(tell(tell(w0, "X", 1, "left"), "X", 2, "right"), "X", 3, "straight");
+  const a3 = w3.actors.find((x) => x.candidate === "X");
+  const v3 = underLoad(a3, w3.road);
+  console.log(`   told three ahead: holding ${heldBy(a3)}, composure ${v3.composure.toFixed(3)}; weave ${a3.weave.toFixed(3)} -> ${v3.weave.toFixed(3)}m, planned braking ${a3.brake.toFixed(2)} -> ${v3.brake.toFixed(2)} m/s^2`);
+  heldBy(a3) === 2 && v3.composure === skillUnderPressure(1, pressureOf(2))
+    ? ok("told three ahead a candidate carries two -- the next one is never carried -- and their composure is directions.js's own curve, imported, not restated")
+    : fail(`held ${heldBy(a3)} with composure ${v3.composure} against ${skillUnderPressure(1, pressureOf(2))} from directions.js`);
+  v3.weave > a3.weave && v3.brake > a3.brake
+    ? ok("and the load amplifies the weaknesses they have: the weave and the planned braking both grew")
+    : fail("the load did not amplify a weak axis");
+  underLoad(v3, w3.road) === v3
+    ? ok("loading a loaded view is the identity, so a view passed through several hands in one tick is loaded once")
+    : fail("underLoad is not idempotent: the load compounds");
+
+  /* Bounded by what bounded each axis unloaded, at the worst of every
+     axis and the heaviest load. */
+  const worst = { ...a3, caution: 0.0, weave: weaveRoom(w3.road.lane), brake: HARSH_AT, plan: ["l", "l", "l", "l", "l"], leg: 0 };
+  const vw = underLoad(worst, w3.road);
+  const timidest = underLoad({ ...worst, caution: 2 }, w3.road);
+  vw.weave <= weaveRoom(w3.road.lane) + 1e-9 && vw.brake <= HARSH_AT + 1e-9 && vw.caution >= 0 && timidest.caution <= 2
+    ? ok(`bounded: the loaded weave never exceeds the room (${vw.weave.toFixed(3)}m), braking never plans past abrupt (${vw.brake.toFixed(2)}), caution stays on the axis`)
+    : fail("a loaded driver escaped a bound that held unloaded");
+  const perfect = underLoad({ ...worst, caution: 1, weave: 0, brake: 2.7 }, w3.road);
+  perfect.weave === 0 && perfect.brake === 2.7 && perfect.caution === 1
+    ? ok("a driver with no deficit is unmoved by any load: composure decides how badly a habit shows, never which habits a driver has")
+    : fail("load invented a weakness in a driver who had none");
+
+  /* THE TRADE, MEASURED THROUGH THE SAME DERIVATION THE SHEET USES. The
+     same seed and the same route, driven twice: an examiner who tells
+     only the next intersection (nothing ever held) and one who tells
+     every slot the moment it is offered (up to two held). */
+  const drive = (profile, ahead, seconds = 300) => {
+    let w = withCandidates(
+      seedCourse(4, LIMIT, { every: 3.0, control: TWO_WAY, cols: 3, rows: 2, bends: 1 }),
+      [{ id: "X", profile }],
+    );
+    let stray = 0, heldMax = 0, jump = 0;
+    for (let i = 0; i < Math.round(seconds / DT); i++) {
+      const before = w.actors.find((x) => x.candidate === "X");
+      const wasAt = before ? strayOf(w, before) : null;
+      if (before) for (const slot of toTell(w, "X", ahead)) if (slot.told === null) w = tell(w, "X", slot.at, before.wanted[slot.at] ?? "straight");
+      /* The one artifact: an instruction changes the weave's amplitude in
+         the tick it is given, and the car steps sideways by the change. */
+      const told = w.actors.find((x) => x.candidate === "X");
+      if (told && wasAt != null && told.id === before.id) jump = Math.max(jump, Math.abs(strayOf(w, told) - wasAt));
+      w = noticing(keepDriving(step(w)));
+      const a = w.actors.find((x) => x.candidate === "X");
+      if (a) { stray = Math.max(stray, Math.abs(strayOf(w, a))); heldMax = Math.max(heldMax, heldBy(a)); }
+    }
+    const wide = (w.faults ?? []).filter((f) => f.trait === "wideLine").reduce((t, f) => t + ((f.to ?? f.over) - f.from), 0);
+    return { stray, heldMax, jump, wide };
+  };
+  const r1 = drive("ragged", 1), r3 = drive("ragged", 3);
+  const s1 = drive("sound", 1), s3 = drive("sound", 3);
+  console.log(`   ragged, told 1 ahead: held ${r1.heldMax}, worst stray ${r1.stray.toFixed(3)}m, ${r1.wide.toFixed(1)}s off the line; told 3 ahead: held ${r3.heldMax}, ${r3.stray.toFixed(3)}m, ${r3.wide.toFixed(1)}s`);
+  console.log(`   sound,  told 1 ahead: worst stray ${s1.stray.toFixed(3)}m; told 3 ahead: ${s3.stray.toFixed(3)}m (the sound profile is rated 0.9, not 1.0, so it has a tenth of a deficit to amplify)`);
+  r1.heldMax === 0 && r3.heldMax === 2 && r3.stray > r1.stray && r3.wide >= r1.wide
+    ? ok(`the trade is real: the same driver on the same route runs wider under load (${r1.stray.toFixed(3)} -> ${r3.stray.toFixed(3)}m, ${r1.wide.toFixed(1)} -> ${r3.wide.toFixed(1)}s off the line)`)
+    : fail(`load did not cost the candidate anything measurable: ${JSON.stringify({ r1, r3 })}`);
+  const bound = severityOf({ skill: skillUnderPressure(1, pressureOf(2)) }) - 1;   // the amplitude change at full load, as a share
+  console.log(`   the sideways step in the tick an instruction is given: ${r3.jump.toFixed(3)}m at worst, against a bound of ${(bound * weaveRoom(w3.road.lane)).toFixed(3)}m`);
+  r3.jump <= bound * weaveRoom(w3.road.lane) + 1e-9
+    ? ok("and the one artifact is measured and inside its bound: the car steps sideways by no more than the amplitude change when told")
+    : fail(`an instruction moved the car ${r3.jump.toFixed(3)}m sideways in one tick`);
 }
 
 console.log("\n" + "=".repeat(70));
