@@ -20,6 +20,7 @@ import MergeRush from "./apps/MergeRush.jsx";
    it. */
 import SimRoad from "./apps/SimRoad.jsx";
 import IsoRoad from "./apps/IsoRoad.jsx";
+import Wheel from "./apps/Wheel.jsx";
 import ErrorBoundary from "./apps/ErrorBoundary.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
 import SimCandidates from "./apps/SimCandidates.jsx";
@@ -72,6 +73,16 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
    without proving it unused first.
    ===================================================================== */
 const MODES = [
+  {
+    id: "wheel",
+    name: "Stage 1 — at the wheel",
+    kicker: "The simulator — you drive",
+    blurb:
+      "The two controls: steer by dragging on the left, and one slider on the right from throttle at the top through coasting to the brakes at the bottom. On the stage-0 roads, in the stage-0 traffic, with the car behind you following you the way it follows everybody. The one question: does it feel right to drive? No intersections yet, so nothing to turn into; the road wraps; a contact stops you.",
+    Icon: Milestone,
+    accent: C.green,
+    Component: Wheel,
+  },
   {
     id: "iso",
     name: "Stage 0 — isometric",

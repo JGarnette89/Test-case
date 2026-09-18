@@ -174,7 +174,8 @@ Eight things to know before your first change:
    | `*.md` | nothing | 0 |
    | `tools/verify-X.mjs` | X | |
    | `src/apps/*`, `App.jsx`, `theme.js` | `verify-screens` | 6s |
-   | `src/iso/*` | `verify-perf`, `verify-screens` | 7s |
+   | `src/iso/*` | `verify-perf`, `verify-wheel`, `verify-screens` | 7s |
+   | `src/sim/traffic.js` | the `src/sim/` five, plus `verify-wheel` (the player rides its step) | ~3m |
    | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens` | ~100s |
    | `src/frame.js` | `-screens`, `-camera`, `-clearance`, `-events`, `-world` | ~5m |
    | `src/engine/detect.js` | `-detect`, `-faults`, `-outcome`, `-course` | ~2m |
@@ -1966,11 +1967,12 @@ node tools/verify-crossing.mjs     stage 1: paths through an intersection, who g
 node tools/verify-telling.mjs      stage 2: one driver model, and each weak axis showing as itself
 node tools/verify-course.mjs       stage 3: intersections that join, and traffic that is the same traffic
 node tools/verify-perf.mjs         the budget ramp terminates, stops at the first failure, and derives the cap
+node tools/verify-wheel.mjs        the player at the wheel: a monotone pedal, a grip-limited wheel, a lane that can be held, honest contact
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All thirty-two must exit 0 **before a commit**. Between commits, run
+All thirty-three must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:

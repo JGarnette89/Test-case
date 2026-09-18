@@ -134,6 +134,7 @@ try {
   console.log("");
   const ROUTES = [
     ["", "home"],
+    ["#/wheel", "stage 1 of the simulator: the player at the wheel"],
     ["#/iso", "stage 0 of the simulator: isometric"],
     ["#/sim", "stage 0 of the rebuild"],
     ["#/crossing", "stage 1 of the rebuild"],

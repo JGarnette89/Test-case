@@ -562,12 +562,17 @@ export function decide(me, view) {
 export function step(world) {
   const next = world.actors
     .map((me) => {
+      /* A player at the wheel is an actor everybody else perceives and
+         follows, but nobody decides for: the screen integrates it from
+         the controls and writes it in before each tick (iso/world.js).
+         Its owner wraps it at the road's end, so it is never filtered. */
+      if (me.player) return me;
       const a = decide(me, perceive(me, world));
       const v = Math.max(0, me.v + a * DT);
       return { ...me, v, a, s: me.s + v * DT };
     })
     /* Off the end of the road, and gone. */
-    .filter((me) => me.s <= world.road.length + CAR.length);
+    .filter((me) => me.player || me.s <= world.road.length + CAR.length);
 
   const t = world.t + DT;
   let { spawned, nextAt } = world;

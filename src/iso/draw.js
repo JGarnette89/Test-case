@@ -196,12 +196,13 @@ export function drawFrame(ctx, canvas, scene) {
     for (const car of cars) {
       const along = car.dir > 0 ? car.s : road.length - car.s;
       const p = poseAt(road, along);
-      const heading = car.dir > 0 ? p.heading : p.heading + 180;
+      const roadHeading = car.dir > 0 ? p.heading : p.heading + 180;
       /* Right of travel in plan, y down: (-sin, cos) of the heading. */
-      const h = (heading * Math.PI) / 180;
+      const h = (roadHeading * Math.PI) / 180;
       const off = LANE / 2 + (car.weave ?? 0);
       const at = { x: p.x - Math.sin(h) * off, y: p.y + Math.cos(h) * off, z: p.z };
-      const deg = quantise(heading);
+      /* A driven car points where its wheel says, not where the road does. */
+      const deg = quantise(roadHeading + (car.yaw ?? 0));
       const grade = tilt ? (car.dir > 0 ? p.grade : -p.grade) : 0;
       const [px, py] = P(at.x, at.y, at.z);
       if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;

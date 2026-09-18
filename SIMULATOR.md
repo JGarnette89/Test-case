@@ -512,6 +512,36 @@ still read as people at a skewed five-way, with you in the queue?
 *Cost:* one to two weeks; the refactor is most of it, the controls a
 few days that will be revisited at every later stage.
 
+#### 1.1 The first slice: at the wheel, on the stage-0 roads -- BUILT
+
+`#/wheel`, 18 September. The two controls on the stage-0 roads, in the
+stage-0 traffic, before the map format exists, so the feel can be
+judged on a phone in week one rather than after the refactor. The car
+lives in the road's frame (`src/iso/player.js`): metres along, metres
+off the centreline, and a heading relative to the road's tangent, so a
+road that bends under a straight wheel drifts the car outward -- the
+bend is driven. The wheel is limited by lock at walking pace and by
+tyre grip at speed (0.6 g at full deflection: a 48 m circle at 60
+km/h), and does nothing at rest. The slider runs from the coast in
+both directions: lifting off slows you a little, the first touch of
+brake a little more, never less -- a version that ran the brake from
+zero had a light brake slowing the car less than coasting, caught by
+`verify-wheel.mjs`. Off the road the grass drags and the car crawls;
+it can always come back.
+
+The player is an actor in the traffic's own world (`stepWithPlayer`):
+the car behind follows them with the model that follows everybody,
+and stops behind them when they stop. Contact is two discs per car
+(`touching`), and it stops the car -- what a collision IS in this game
+is still the maintainer's question, so nothing more is claimed for it.
+
+Not yet, and said on the screen: no intersections, so no turn commit;
+the road wraps at its end; the oncoming lane does not react to a car
+in it; nothing is scored. One product question for the maintainer,
+felt rather than argued: **does the slider hold where it is left, or
+spring back to neutral when the thumb lifts?** Both are on the screen
+as a toggle.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,

@@ -74,6 +74,32 @@ export function propsFor(n, seed, roads, focus = null) {
   return out;
 }
 
+/* THE PLAYER IS AN ACTOR IN THE TRAFFIC'S OWN WORLD -- the valley road,
+   forward -- so the car behind follows them with the model that follows
+   everybody, and the spawner leaves room for them. `me` is the player's
+   road-frame state from player.js; it is written in before the tick and
+   the tick leaves it alone (traffic.js step). */
+export function stepWithPlayer(scene, me) {
+  const worlds = scene.worlds.map((w, i) => {
+    if (i !== 0) return { ...w, world: step(w.world) };
+    const actor = { id: "player", player: true, n: -1, s: me.s, v: me.v, a: me.a, off: me.off, yaw: (me.psi * 180) / Math.PI };
+    const others = w.world.actors.filter((a) => !a.player);
+    return { ...w, world: step({ ...w.world, actors: [...others, actor] }) };
+  });
+  return { ...scene, worlds };
+}
+
+/* A start for the player: the forward valley world with its cars
+   cleared from a stretch around `s`, so a car at rest there is not
+   born in contact. Traffic ahead stays ahead; the spawner fills in
+   behind once the player moves off, since a car at rest is the last
+   car on the road and it leaves no room. */
+export function clearAround(scene, s, reach = 35) {
+  const worlds = scene.worlds.map((w, i) => i !== 0 ? w
+    : { ...w, world: { ...w.world, actors: w.world.actors.filter((a) => Math.abs(a.s - s) > reach) } });
+  return { ...scene, worlds };
+}
+
 export function stepScene(scene, n = 1) {
   const worlds = scene.worlds.map((w) => {
     let world = w.world;
@@ -91,6 +117,12 @@ export function carsOf(scene, carry = 0) {
     if (!byRoad.has(road)) byRoad.set(road, []);
     const list = byRoad.get(road);
     for (const a of world.actors) {
+      if (a.player) {
+        /* Carried forward by the screen, which owns its state; drawn in
+           its own colour, with its heading off the road's. */
+        list.push({ id: a.id, n: -1, s: a.s, v: a.v, dir, weave: a.off - LANE / 2, yaw: a.yaw, colour: "#f4f4f2", player: true });
+        continue;
+      }
       list.push({ id: a.id, n: a.n ?? 0, s: a.s + a.v * carry, v: a.v, dir, weave: a.weave ? weaveOf(a) : 0 });
     }
   }
