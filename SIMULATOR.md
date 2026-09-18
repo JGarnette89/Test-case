@@ -1,6 +1,7 @@
 # The simulator first: the reframe, and the plan
 
-*18 September 2026. Settled with the maintainer. Nothing here is built;
+*18 September 2026. Settled with the maintainer, including the player's
+verb (section 1.1, settled later the same day). Nothing here is built;
 this is the plan the next work is held to. Read REBUILD.md for the
 foundation it stands on and DECISIONS.md for the rulings it keeps.*
 
@@ -76,6 +77,78 @@ All settled with the maintainer on 18 September.
    fixed-direction tiles. Driving quality beats tile crispness. The road
    surface is drawn by code; buildings, vehicles and props are sprites on
    top.
+10. **The player drives** — two controls, turns committed at
+    intersections. Settled later the same day; section 1.1.
+
+### 1.1 The player drives — the control scheme, and what it gives the exam mode
+
+**The player drives. Confirmed by the maintainer**, which settles the
+question section 8 first raised.
+
+**The controls, in his words**: *"players can move left and right,
+throttle and braking could be a slider going up and down, allowing for
+slowing without braking and braking without applying full brakes."* Two
+controls:
+
+- **lateral** — steering, left and right;
+- **one vertical slider** spanning throttle at the top, through a neutral
+  coasting zone, down to partial and then full braking at the bottom.
+
+**Turning is the middle option.** On the open road the player steers for
+real, so bends are genuinely driven and the curve work matters. Turns at
+intersections are **committed to rather than steered**: the player
+chooses a direction and the car takes the corner along the arc the model
+builds. That keeps bends meaningful without asking anyone to thread a
+right-angle turn with a thumb on a phone.
+
+**A dividend, recorded because it was not designed for.** The slider's
+neutral zone and its graduated braking put the MANNER of slowing in the
+player's hands — easing off against stabbing the brake. That is the same
+distinction the assessment work arrived at on its own (DECISIONS.md
+5.15.15: a fault is how you did it, not where you ended up; the stop
+split on manner, not position), and it means **the player and the AI
+drivers become measurable on identical terms**: the slider's position
+over time is a deceleration profile, which is exactly the quantity the
+driver model plans with and the sheet judges against. Lane-keeping the
+same: a player steering on a bend strays from the lane's centre in the
+same metres the weave and the wide line are measured in. Nothing new has
+to be built to measure a player that is not already built to measure a
+car.
+
+**The result, and it changes what the exam mode costs.** The scheme
+separates two things other control models fuse: **WHERE WE ARE GOING**
+and **HOW WE ARE DRIVING**. Committing to a turn is a different verb from
+steering through a bend. That division is exactly the division of labour
+between an examiner and a candidate — the examiner picks the route, the
+candidate drives — so the exam mode becomes **the base game with
+steering removed and the remaining two controls reinterpreted**:
+
+- the turn-commit control becomes **giving the direction**, unchanged.
+  No separate instruction system has to be built; the player has been
+  using that control since their first minute in the game.
+- the slider's lower half becomes **intervention**. Easing it down is
+  telling the candidate to slow; pushing it to the bottom is the
+  instructor's brake. That yields **graduated intervention for free**,
+  which matters because the maintainer ruled that a hasty grab is struck
+  from the candidate's sheet but still costs the player — and partial and
+  full are now genuinely different acts rather than one button.
+
+The exam mode therefore moves from a separate build to a
+reinterpretation, and it sits earlier in the staged path than it did
+(section 6, stage 3).
+
+**THE CAUTION, written in because it is the failure this project keeps
+repeating.** The elegance is a dividend, not a reason. **The base game
+must be good on its own terms.** If driving the simulator is not
+enjoyable, the exam mode inherits a clean mapping onto something nobody
+wants to play. The controls are designed to feel right to drive, and the
+exam mode takes what it gets. The moment the driving is shaped around
+how neatly it degrades into examining — a neutral zone sized for
+intervention rather than for coasting, a turn commit timed for a
+direction's deadline rather than for the corner — we are building
+assessment machinery first again, which is the mistake being corrected.
+Any decision about the controls is judged by one question: does it feel
+right to drive?
 
 ---
 
@@ -294,17 +367,18 @@ elevation and drive it, at `#/editor`:
 - **Nodes**: created by snapping; control per approach set by clicking
   the approach.
 - **Zones**: draw a polygon, pick a kind. (Generation inside the shape is
-  stage 4, not here.)
+  stage 5, not here.)
 - **Validate**: the warning list, each entry jumping the view to the spot.
 - **Save / load**: JSON to a file and to local storage; a map has an id
   and a version; the app ships with its test maps as data.
-- **Drive it**: load the map into the simulator and put the camera on a
-  car. Same screen, one button, no reload.
+- **Drive it**: load the map into the simulator and put the player at
+  the wheel of a car in its traffic (section 1.1). Same screen, one
+  button, no reload.
 
 Built as a screen in the app so it is one codebase and the same map
 loader the game uses, from the first day. The generation inside shapes —
 local streets filling a district, buildings along frontages, parking and
-props — is stage 4; the editor's job at v1 is to make the blockout by
+props — is stage 5; the editor's job at v1 is to make the blockout by
 hand.
 
 ---
@@ -363,7 +437,7 @@ Model once, render the headings automatically: a voxel or low-poly model
 per vehicle, a script that renders it at 32 headings from the isometric
 camera with one fixed light, into a sheet plus a manifest. The same for
 props with a heading (parked cars, benches); buildings and trees need
-one view. The pipeline is stage 3 and it is what makes 32 headings cheap
+one view. The pipeline is stage 4 and it is what makes 32 headings cheap
 rather than a commission of 32 drawings per car. ASSET-SPEC v2 is
 written from the pipeline's output format, after stage 0 has fixed the
 projection and the scale.
@@ -404,7 +478,7 @@ right? If it looks wrong, everything below changes, and we know on day
 two rather than in month two.
 *Cost:* one to two days.
 
-### Stage 1 — the map as data, and the sim on a graph
+### Stage 1 — the map as data, the sim on a graph, and the player at the wheel
 
 The map format (section 3), the loader with its normalisation and
 warnings, a hand-written test map in a text editor — a loop with a hill,
@@ -415,11 +489,21 @@ was underneath. The isometric renderer draws the map from its chunks.
 Traffic spawns at every dangling end, picks turns at random at every
 node, and is endless.
 
-*Deliverable:* `#/map?id=test-1`: drive around a hand-written map with
-the camera on a car.
-*The question:* do the precedence rules still read as people at a skewed
-five-way? Does the T look like a T?
-*Cost:* one to two weeks; the refactor is most of it.
+**And the player drives, from here on.** The two controls of section
+1.1 — steering on the road, the throttle-to-brake slider, turns
+committed at nodes — on a car that is otherwise an ordinary member of
+the traffic: the same following, the same right of way owed to it and
+by it. This is the earliest stage a car can be driven, so it is the
+stage the controls start being judged by feel, and the caution in 1.1
+applies from the first day: the controls are tuned to drive well, and
+nothing about them is decided for the exam mode's sake.
+
+*Deliverable:* `#/map?id=test-1`: drive a hand-written map yourself,
+in traffic.
+*The question:* does it feel right to drive? Do the precedence rules
+still read as people at a skewed five-way, with you in the queue?
+*Cost:* one to two weeks; the refactor is most of it, the controls a
+few days that will be revisited at every later stage.
 
 ### Stage 2 — the editor, first version
 
@@ -433,7 +517,34 @@ drawing a road pleasant enough that he will draw eight square
 kilometres of them?
 *Cost:* one to two weeks.
 
-### Stage 3 — the art pipeline, and the first real sprites
+### Stage 3 — the exam mode, as a reinterpretation
+
+Moved up from the end of the path, because section 1.1 made it cheap:
+the base game with steering removed and the other two controls
+reinterpreted. A candidate driven by the model takes the player's seat;
+the player's turn commit gives the direction; the slider's lower half
+eases the candidate off or brakes for them, graduated. The shelved sheet
+(section 2.2) comes back unchanged for the four faults the sim already
+derives, marked deferred as before. Nothing about the controls changes
+for this stage — that is the point, and the caution.
+
+It sits here rather than after the city because it costs days and
+because the reinterpretation is worth checking early: does giving a
+direction with the turn control feel like giving a direction when you
+are not the one steering? Does easing the slider read as "slow down" to
+a passenger? Those are questions about the mapping, and they are cheap
+to ask on a test map. It is NOT here because it is the priority; the
+priority is stages 4 and 5, and if this stage ever competes with them
+for time it yields.
+
+*Deliverable:* `#/exam?id=test-1`: ride with a rated candidate on the
+stage 2 map, give directions with the turn control, intervene with the
+slider, get a sheet.
+*The question:* does the reinterpretation feel like examining, or like
+a driving game with the wheel taken away?
+*Cost:* days.
+
+### Stage 4 — the art pipeline, and the first real sprites
 
 Section 5.3. The voxel-to-headings script, vehicles as 32-heading
 sprites replacing the prisms, a handful of buildings and trees, the
@@ -444,7 +555,7 @@ asset specification rewritten as v2 from what the pipeline emits.
 smooth, or is 16 enough?
 *Cost:* a week of pipeline; art time on top, external.
 
-### Stage 4 — the city
+### Stage 5 — the city
 
 The maintainer's blockout — the highway route, the district polygons —
 and **generation inside his shapes**: local streets filling a district,
@@ -457,10 +568,10 @@ traffic from every edge and from the districts.
 end, never the same drive twice.
 *The question:* is it learnable? Can he find the back street he found
 yesterday? Does the traffic feel alive at every density the districts
-ask for?
+ask for? And, with the player at the wheel: is it good to drive?
 *Cost:* three to four weeks.
 
-### Stage 5 — a world with things in it
+### Stage 6 — a world with things in it
 
 The content the axes have been waiting for, rebuilt on the map rather
 than ported: pedestrians as road users, parked cars and driveways and
@@ -475,29 +586,33 @@ tell two drivers apart, two districts apart, by watching.
 axes were right all along and the world was the missing half.
 *Cost:* four weeks and up; open-ended by nature.
 
-### Stage 6 — the exam mode returns
+### Stage 7 — the exam mode grows up, and the school
 
-The shelved machinery (section 2.2) over the real world: a candidate on
-a route through the city, directions, the sheet, faults derived where
-the twin measurement said they localise. Then the driving school on top
-(DRIVING-SCHOOL.md): the population, learning, towns as distributions.
-Not scoped further here; it is scoped there.
+The stage 3 reinterpretation over the real world: a candidate on a
+route through the city, faults derived where the twin measurement said
+they localise, the hazards of stage 6 on the sheet, graduated
+intervention with the maintainer's rulings on what a grab costs whom.
+Then the driving school on top (DRIVING-SCHOOL.md): the population,
+learning, towns as distributions. Not scoped further here; it is scoped
+there.
 
 ---
 
 ## 7. Cost, honestly
 
-Stages 0–4 — the visual direction, the map, the editor, the pipeline,
-the city — is on the order of **two to three months of focused work
-before the city exists with art in it**, and stage 5 is open-ended
-after that. For calibration: the rebuild's stages 0–3, which built the
+Stages 0–5 — the visual direction, the map with the player at the
+wheel, the editor, the exam reinterpretation, the pipeline, the city —
+is on the order of **two to three months of focused work before the city
+exists with art in it**, and stage 6 is open-ended after that. The exam
+mode moving to stage 3 adds days, not weeks, which is the whole reason
+it moved. For calibration: the rebuild's stages 0–3, which built the
 stepped core this plan keeps, took about five weeks of sessions. The
 renderer rewrite and the bearing refactor are each comparable to a
 rebuild stage; the editor and the generation are each larger.
 
 What is cheap: stage 0 (days), and it is the stage that can send the
 rest back. What is not: the city and its generation, which is why it is
-stage 4 and not stage 1, and why throwaway maps are first-class — the
+stage 5 and not stage 1, and why throwaway maps are first-class — the
 maintainer will be driving his own hand-drawn blocks for a month before
 generation fills them.
 
@@ -505,30 +620,35 @@ generation fills them.
 
 ## 8. The biggest risk
 
-**The world could be built for months before the player has a verb in
-it — the exact mirror of the failure being corrected.** The assessment
-machinery came first and the world was deferred; the risk now is that
-the world comes first and what the player *does* is deferred. "Free
-roam" names a camera, not a verb. It is not decided whether the player
-drives a car with controls, rides along in one and watches (the
-examiner's seat, without the marking), or is a camera over a living
-city. Each is a different game: driving on a phone is its own control
-problem; riding is the examiner mode without the examining; a camera
-over traffic is a screensaver unless the traffic gives reasons to look.
+The verb question this section first raised is settled: **the player
+drives** (section 1.1). What remains is the risk that section named
+underneath it, and it is now sharper rather than gone.
 
-The mitigation is to keep the question in every stage rather than
-answer it now. Stages 0–3 are verb-agnostic — a car for the camera to
-ride is enough to judge a road, a map and a sprite. **Stage 4 is where
-the verb has to exist**, because "is the city learnable" cannot be
-asked of a passenger who chooses nothing; the editor's "drive it" button
-should already offer both — ride along in a car the traffic model
-drives, or steer it with the simplest possible controls — so that by the
-time the blockout is drawn the maintainer has felt both and can choose.
-The decision is his, and it is the one to make before the city is
-generated, not after.
+**The base game has to be good to drive on its own terms, and the
+elegance of the exam mapping is the thing most likely to distract from
+that.** Section 1.1 found that the controls degrade into examining
+almost for free. That is a dividend. The failure this project repeats
+is treating a dividend as a reason: the assessment machinery came first
+once because it was elegant and measurable, and the world was deferred
+until there was nothing for a good driver to be good at. The same
+failure is available again in a new coat — a neutral zone sized so
+intervention reads cleanly, a turn commit timed so a direction's
+deadline is neat, a steering feel chosen because stray is measurable —
+each defensible alone, each shaping the driving around the examining.
+**If driving the simulator is not enjoyable, the exam mode inherits a
+clean mapping onto something nobody wants to play.**
+
+The mitigation is structural, not a resolution: every stage from stage 1
+puts the maintainer at the wheel and asks first whether it is good to
+drive; the exam mode at stage 3 is held to days and yields any time it
+competes with the driving for time; and no control decision is argued
+from what it does for the exam mode. Controls are designed to feel right
+to drive, and the exam mode takes what it gets.
 
 The technical risks are real and are smaller: the isometric draw order
-with elevation and overpasses (stage 0 exists to hit it first); the
-simulation's cost at hundreds of cars (the chunk index, stage 4); the
-projection making a 3.6 m lane and a 4.5 m car read at phone scale
-(stage 0 again). None of them is unknown territory; the verb is.
+with elevation and overpasses (stage 0 exists to hit it first); driving
+controls on a phone that feel right at all, which is its own craft and
+is why they start at stage 1 rather than stage 5; the simulation's cost
+at hundreds of cars (the chunk index, stage 5); the projection making a
+3.6 m lane and a 4.5 m car read at phone scale (stage 0 again). None of
+them is unknown territory.
