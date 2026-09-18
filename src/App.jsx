@@ -19,6 +19,7 @@ import MergeRush from "./apps/MergeRush.jsx";
    because the whole deliverable of that stage is somebody looking at
    it. */
 import SimRoad from "./apps/SimRoad.jsx";
+import IsoRoad from "./apps/IsoRoad.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
 import SimCandidates from "./apps/SimCandidates.jsx";
 import SimCourse from "./apps/SimCourse.jsx";
@@ -70,6 +71,16 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
    without proving it unused first.
    ===================================================================== */
 const MODES = [
+  {
+    id: "iso",
+    name: "Stage 0 — isometric",
+    kicker: "The simulator — a curve, a hill, an overpass",
+    blurb:
+      "The traffic that already works, drawn isometrically on a road that bends and climbs, with a second road crossing over it on a bridge. Nothing else: no intersection, no player, no map, no sprites — the cars are code-drawn boxes at 32 headings. It exists to answer two questions by eye: does an isometric world with free-drawn curves and real height look right, and does the draw order survive an overpass. If either answer is no, everything after it changes.",
+    Icon: Milestone,
+    accent: C.amber,
+    Component: IsoRoad,
+  },
   {
     id: "sim",
     name: "Stage 0 — following",

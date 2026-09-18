@@ -472,7 +472,14 @@ downstream back to the drawing board, and it costs an afternoon to
 include now.
 
 *Deliverable:* `#/iso`: a curved road with a crest and a flyover, cars
-following each other over it, camera following one of them.
+following each other over it, camera following one of them. **BUILT,
+18 September** -- canvas, the depth key from project.js, code-drawn
+boxes at 32 headings, level by default with a tilt toggle, fixed
+viewpoints on the overpass and the crest so neither has to be waited
+for. One thing found on the way: ground cells and road segments cannot
+share one kind of key -- a cell keyed by its centre painted grass over
+the road it overlapped; the ground is keyed by its farthest corner and
+the road by its nearest, and cars follow the segment they stand on.
 *The question:* does an isometric curved road with elevation look
 right? If it looks wrong, everything below changes, and we know on day
 two rather than in month two.
