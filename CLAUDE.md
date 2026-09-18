@@ -11,6 +11,19 @@ More than one agent works in this repository. Anything decided by argument
 and not written down is invisible to every tool that was not part of that
 argument, so the documentation is a CONTRACT rather than a diary.
 
+**THE PROJECT WAS REFRAMED ON 18 SEPTEMBER 2026: it is a TRAFFIC
+SIMULATOR first, with the examiner game as a mode inside it later. Read
+[SIMULATOR.md](SIMULATOR.md) before starting anything.** It records why
+(the axes were built before a world that could express them), the
+decisions (one continuous handmade ~8 km² world, an editor, maps as
+data loaded in chunks, elevation, an ISOMETRIC view, roads as free
+curves), what survives of the code below (the stepped sim core; the
+assessment machinery is shelved, not deleted; the content-generation
+layer does not survive), and the staged path, every stage of which ends
+in something the maintainer can look at. Everything under "The examiner
+game" in this file describes the shelved mode and the retired engine;
+it is history until the exam mode returns.
+
 **THE FOUNDATION IS BEING REPLACED. Read [REBUILD.md](REBUILD.md)
 before starting anything in `src/engine/`.** The maintainer played the
 game and concluded it "doesn't resemble anything like a game, more like a

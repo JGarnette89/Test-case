@@ -1,0 +1,534 @@
+# The simulator first: the reframe, and the plan
+
+*18 September 2026. Settled with the maintainer. Nothing here is built;
+this is the plan the next work is held to. Read REBUILD.md for the
+foundation it stands on and DECISIONS.md for the rulings it keeps.*
+
+---
+
+## 0. The reframe, and why
+
+**The product is a traffic simulator first. The examiner game becomes a
+mode inside it, later.**
+
+Why, recorded so it is not re-argued: **the axes were built before a
+world that could express them.** Weeks went on measuring whether driver
+skill is legible in a world where a driver only follows a car in a
+straight line and stops at a sign — and there was nothing for a good
+driver to be good at. No version of this game has ever had the candidate
+respond to an instruction in a way a player could feel. The assessment
+machinery kept coming first and the world kept being deferred. The
+maintainer's own words: *"we never simulated anything other than cars in
+a straight line, so none of the axes do anything by the limited
+framework."*
+
+The measurements bear him out, and they were made by the assessment
+work itself: three of five axes were found to express on the road rather
+than at the box (DECISIONS.md 5.14.8), the risky tail of confidence had
+no supply because the road offered a car every fifteen seconds, the
+observation axis read through nothing but a misjudged gap because
+leaders brake gently and nothing was ever hidden, and the wide line
+needed a bend before the steering axis could be marked at all. Every one
+of those is the world being too thin for the model, not the model being
+wrong. The order was backwards.
+
+**A second thing recorded: metric realism is no longer a goal in
+itself.** It came from the project's origin as a tool for instructors to
+draw real situations. Gameplay now takes precedence over fidelity.
+Derived constants are welcome where they help — a derived number is
+still better than a tuned one when it is doing work — and they are not
+worth defending where they do not. The bend radius from a side-friction
+factor was worth deriving; a stop line 5.65 m from the centre of the
+intersection is worth exactly as much as it helps the drive read.
+
+---
+
+## 1. The decisions
+
+All settled with the maintainer on 18 September.
+
+1. **One continuous world, free roam.** Not separate selectable
+   environments.
+2. **Handmade, roughly 8 km².** Dense and learnable rather than expansive
+   — GTA-like attention per inch. **Familiarity with the city is a design
+   pillar**: knowing the back streets is meant to become a skill, which
+   is what keeps travel interesting after the visuals stop being novel.
+3. **Endless comes from the traffic, not the map.** Fixed streets, never
+   the same drive.
+4. **Built in an editor we make.** The maintainer sketches the blockout
+   — the highway route, the district areas — and detail is generated
+   inside his shapes; he then hand-places wherever it matters. The editor
+   may eventually be player-facing, so it is built properly, and **the
+   map format survives badly-drawn input without taking the simulation
+   down.**
+5. **Multiple maps as data, added over time.** Throwaway test maps are
+   first-class; expect a series of them as gameplay is tested.
+6. **The map loads in pieces from the start.** Cheap now, painful to
+   retrofit, and it is what lets the city grow later.
+7. **Elevation**, including overpasses and underpasses — roads can cross
+   without meeting. Blind crests and dips are wanted as real hazards.
+8. **Isometric view, not top-down.** This reverses the sprite rule:
+   sprites cannot be freely rotated, so a vehicle needs a drawing per
+   heading — 16 minimum, 32 for smooth. The voxel pipeline from the
+   earlier art research now earns itself: model once, render the angles
+   automatically.
+9. **Roads are free curves drawn from a path**, not built from
+   fixed-direction tiles. Driving quality beats tile crispness. The road
+   surface is drawn by code; buildings, vehicles and props are sprites on
+   top.
+
+---
+
+## 2. What survives, honestly
+
+### 2.1 Survives, and is the foundation
+
+The cold review's finding stands: **the stepped simulation core is good
+work.** Specifically, and by file:
+
+- `src/sim/traffic.js` — the stepped world; car-following that reads as
+  drivers; **one driver model from five ratings**, candidate included;
+  the load model. This is the thing the school idea and the towns idea
+  both rest on (DRIVING-SCHOOL.md) and it carries over whole.
+- `src/sim/intersection.js` — paths through an intersection as
+  polylines with cumulative distance; turn arcs from the old engine's
+  `turnPoints`; **the conflict region between any two paths, found by
+  footprint scan**; the bend as a bow that returns to its heading; the
+  road axis a renderer draws from. Survives, but see 2.4: its compass is
+  the thing the map generalises.
+- `src/sim/crossing.js` — **yielding as gap acceptance**, precedence
+  (stopped first; the right-hand rule; left yields to oncoming;
+  commitment at the launch), undue delay against the competent opening,
+  joining at the speed there is room for, following across a boundary,
+  perception as a lag. Survives.
+- `src/sim/course.js` — links as the same piece of road, exact seams,
+  handoff at the seam, `roadsOf` for the renderer. **Survives as
+  mechanics; the GRID does not.** A course placed on a grid is exactly
+  the special case the map replaces.
+- `src/engine/ratings.js` — the five axes and how a deficit is read.
+  Survives as the model of a person.
+- `src/engine/paths.js` — turn geometry. Survives.
+- **Every domain ruling in DECISIONS.md.** Right of way is path conflict;
+  a moving vehicle claims the road ahead; the five axes and the three
+  layers; yielding is not freezing; the stop-fault split on manner. These
+  are the examiner's rules and they are the product whichever mode is
+  in front.
+- The four sim checks (`verify-sim`, `-crossing`, `-telling`,
+  `-course`) and `verify-screens`. They keep running per commit under the
+  dependency rule in CLAUDE.md item 8; sections that assert the grid
+  will move to asserting the graph when the grid goes.
+
+### 2.2 Shelved, not deleted — the assessment machinery
+
+Returns for the exam mode, untouched until then:
+
+- `src/sim/marking.js` (deferred marking, the section sheet, the four
+  derived faults), `src/engine/detect.js` (grading the examiner),
+  `src/engine/directions.js` (the instruction window, late/stacked
+  verdicts, the load curve — the curve itself stays live in traffic.js),
+  the tell/toTell/sheet half of `src/sim/candidate.js`, and the old
+  engine's fault derivation, clearance, awareness, belief and sight
+  modules.
+- The stage 4 findings in REBUILD.md — the twin, the gap taken, what
+  each axis needs, the two questions for the maintainer — stand as the
+  spec for exam mode when it returns, in a world that finally gives the
+  axes something to do.
+
+Shelved means: no new work on them, their checks stay green as long as
+the files they import are untouched (which under the dependency rule
+means they need not be re-run), and nothing is deleted.
+
+### 2.3 Does not survive, and never did
+
+**The content-generation layer.** `compose.js`, `generate.js`, the tile
+library and planner in `tiles.js`, `world.js`'s placement, `scenarios.js`
+and `routes.js` as content, `route.js`'s rotation trick — all of it
+answered "how do we make situations out of pre-resolved scenes", which is
+a question the stepped world does not ask. The roguelike layer
+(`roguelike.js`, `stages.js`, `bosses.js`, `traits.js`) was retired
+already. **What survives from that layer is its IDEAS as content for the
+map**: parked cars, driveways, emerging vehicles, pedestrians stepping
+out, the curbside strip, "a driveway is the break in the parked row",
+parking prohibited near an intersection. They get rebuilt on the map, not
+ported.
+
+The old renderer (`RightOfWayTiming.jsx`, `ExaminerDrive.jsx`,
+`ExaminerLab.jsx`) goes with the old engine: kept in git, unlisted,
+unmaintained. The four sim screens (`SimRoad`, `SimCrossing`,
+`SimCandidates`, `SimCourse`) are the SVG top-down renderer and are
+replaced by the isometric one; their stages become that renderer's
+stages.
+
+**`ASSET-SPEC.md` is superseded in its central instruction.** It forbids
+rotation sets and mandates strict top-down; the isometric decision
+reverses both. Its dimensions, palette, naming and manifest survive; it
+is flagged at the top and will be rewritten as v2 once stage 0 has
+settled the projection (section 5.3). Do not commission art against v1.
+
+### 2.4 The one real refactor in the core
+
+The sim's intersection is **compass-aligned**: four legs at N/E/S/W,
+`SIDES`, `OPPOSITE` and `rightOf` as constants, and a grid that places
+intersections a reach apart. REBUILD.md 8.2 named this "the expensive
+version" of a curve and deliberately did not do it. **The map requires
+it**: an intersection is wherever roads meet, at whatever bearings, with
+however many legs (three, four, five, skewed). Precedence has to be
+restated in bearing terms — "on my right" is the approach whose bearing
+is clockwise-next; "oncoming" is the approach within some angle of
+opposite — and `pathFor` has to build arcs between arbitrary legs. The
+rules do not change; their coordinates do. This is the bulk of stage 1
+and the largest single piece of work in the core.
+
+---
+
+## 3. The map format
+
+A map is data, in JSON, in metres, and it is the one artifact both the
+editor and the simulator agree on. It is designed so that **nothing a
+badly drawn map contains can throw the simulation**: loading normalises,
+warns, and produces a valid graph or refuses with a reason.
+
+### 3.1 What a map holds
+
+```
+map
+  id, name, version
+  bounds        { x, y, w, h }        metres; origin top-left, y southward as today
+  chunk         256                    metres per chunk edge (section 3.4)
+  roads[]       one per drawn stroke
+    id, kind    residential | collector | arterial | highway | service
+    points[]    { x, y, z }            the centreline as the editor drew it
+    lanes       per direction (1, 2, 3); oneWay: true|false
+    speed       km/h
+    parking     none | parallel
+    control     per end: how this road meets the node at each end (stop | yield | none | signal)
+  nodes[]       where roads MEET — explicit, never inferred from geometry
+    id, at { x, y, z }, legs[] { road, end }
+  zones[]       district polygons: residential | commercial | industrial | park | water | highway
+    polygon[], density, character biases (the town profile, DRIVING-SCHOOL.md section 3)
+  props[]       hand-placed things: { kind, at, heading, z }
+  spawns[]      optional: where traffic enters; every dangling road end is one by default
+```
+
+**Roads cross without meeting when there is no node.** An overpass is two
+roads whose plan projections cross with no node at the crossing; the
+loader checks their elevations differ by at least a clearance and warns
+if they do not. Connectivity comes only from nodes, so a road drawn over
+another by accident yields "no intersection here" and a warning, never a
+crash.
+
+### 3.2 Normalisation on load — what makes it survive bad input
+
+In order, every load:
+
+1. **Dedupe and thin** points closer than 0.5 m; drop roads shorter than a
+   car.
+2. **Resample** each centreline at a fixed spacing (the bend's 5 m today)
+   so the sim's polyline walk and the renderer's ribbon see the same
+   curve.
+3. **Curvature clamp**: a bend tighter than the radius its speed allows
+   (the side-friction rule, `radiusFor`) does not get rejected — its
+   posted speed is lowered to what the bend allows, and the editor shows
+   it. Gameplay over fidelity: a tight bend is content.
+4. **Grade clamp**: elevation is smoothed so no segment exceeds a maximum
+   grade; a crest sharper than the clamp is flattened and warned.
+5. **Snap road ends** to a nearby road (within a lane width) by splitting
+   that road and creating the node, so a T drawn slightly short still
+   connects. Ends that snap to nothing become edges — spawn and despawn
+   points.
+6. **Build the graph**: nodes with legs at real bearings; each node's
+   paths and conflict regions computed as `layoutFor` does today, per
+   node rather than per template.
+7. **Validate**: two roads crossing in plan without a node and without
+   clearance; a node with one leg; a leg shorter than its own stop line
+   setback; a lane count the road's width cannot hold. Each is a warning
+   with a location. Only an empty map or a map with no drivable road
+   refuses.
+
+The output of a load is the graph plus the warning list. The editor
+shows the list; the simulator ignores it.
+
+### 3.3 Elevation
+
+`z` per centreline point, interpolated along the road. In the first
+version elevation is **visual only**: the renderer projects it, the sim
+drives the plan path. Two things follow later, in this order:
+
+- **Blind crests as occlusion**: a car beyond a crest is not in the
+  driver's line of sight along the road profile, so `seenBy` does not
+  return it until it appears. This is the first place the observation
+  axis meets a world that hides things, and it is exactly the asymmetry
+  DECISIONS.md 4.4 is built on: occlusion is perceptible and caution
+  compensates; inattention is not.
+- **Grade in the dynamics**: braking distance and pull-away on a hill.
+  Only if it reads; probably not worth it.
+
+### 3.4 Chunks
+
+The map is stored whole and **indexed in chunks** of 256 m: every road
+sample and every prop knows its chunk. Two things read the index:
+
+- **The renderer** draws the chunks in and around the camera's view and
+  nothing else. With roads as ribbons and buildings as sprites, an 8 km²
+  city is ~120 chunks of which a phone view touches four to nine.
+- **The simulator's neighbour queries.** `whatStops` today asks every
+  actor about every other, which is fine at forty cars and is not at
+  several hundred: measured, 141 cars cost 118 ms per simulated second
+  and 316 cost 492 ms. A car's leader, its conflicts and the cars it
+  yields to are all within a chunk or two, so the index turns the
+  question from all-pairs into neighbours. **This is the reason chunks
+  exist from the start**; the rendering benefit is the smaller half.
+
+---
+
+## 4. The editor, first version
+
+The minimum that lets the maintainer draw a road network with kinds and
+elevation and drive it, at `#/editor`:
+
+- **Draw a road**: click to place points, drag to move, double-click to
+  finish. Snapping to existing roads at the ends (section 3.2 step 5).
+- **Per road**: kind, lanes per direction, one-way, speed, parking.
+- **Elevation**: a height handle per point, or a road-wide ramp; the
+  profile drawn beside the map so a crest is visible while being made.
+- **Nodes**: created by snapping; control per approach set by clicking
+  the approach.
+- **Zones**: draw a polygon, pick a kind. (Generation inside the shape is
+  stage 4, not here.)
+- **Validate**: the warning list, each entry jumping the view to the spot.
+- **Save / load**: JSON to a file and to local storage; a map has an id
+  and a version; the app ships with its test maps as data.
+- **Drive it**: load the map into the simulator and put the camera on a
+  car. Same screen, one button, no reload.
+
+Built as a screen in the app so it is one codebase and the same map
+loader the game uses, from the first day. The generation inside shapes —
+local streets filling a district, buildings along frontages, parking and
+props — is stage 4; the editor's job at v1 is to make the blockout by
+hand.
+
+---
+
+## 5. The renderer
+
+### 5.1 The change
+
+From top-down SVG to **isometric with elevation and code-drawn curved
+roads.** Everything the current sim renderer does — the ribbon along a
+path, the box, the markings, the chase camera — has to be redone in a
+projection, with elevation, with depth ordering, with sprites instead of
+drawn shapes, and at a scale of hundreds of moving things rather than
+forty. This is the big one and it is where stage 0 goes first.
+
+### 5.2 Decisions inside it
+
+- **Projection**: a fixed isometric (2:1 dimetric) with `z` lifting the
+  point straight up on screen. World stays metric; the projection is one
+  function; every drawable goes through it.
+- **The camera does not rotate.** Isometric worlds face one way (at most
+  the four quarter-turns some builders offer), and a city that always
+  faces the same way is a city you can learn — which is the design
+  pillar. The chase camera's "heading up" convention goes with the
+  top-down view; the camera follows a car's position and keeps the
+  world's orientation.
+- **Roads by code**: the centreline projected; the surface as a filled
+  ribbon whose edges are offset in world space before projection (so a
+  bend's edges are true curves, not sheared); markings as projected
+  polylines; intersections as filled polygons where legs meet. Kerbs and
+  sidewalks the same way. Elevation makes a road's ribbon a strip that
+  climbs; an overpass is a ribbon drawn after what it crosses.
+- **Sprites for everything with height**: vehicles at 32 headings (16 as
+  the floor), buildings, trees, props, people. Anchored at the base of
+  the footprint, sorted with everything else.
+- **Draw order** is the isometric painter's problem and it is the known
+  hard part: sort by ground depth (x + y), then elevation, per visible
+  chunk, per frame; a car under an overpass has to draw before the
+  overpass and a car on it after. Get this right in stage 0 with one hill
+  and one overpass before there are three hundred cars.
+- **Canvas, not SVG.** The app's rule has been React + SVG and no canvas,
+  and it held because the old renderer drew one intersection. A city
+  view of hundreds of sprites and ribbons re-sorted every frame is not an
+  SVG workload, on a phone least of all. The sim steps at a fixed 20 Hz
+  as it does now; the renderer draws at the display's rate from the last
+  committed state, interpolating positions. Screens around the canvas
+  (menus, the editor's panels) stay React.
+- **Scale**: what fits on a phone decides it. Something like 60–80 m of
+  road across a phone width, which puts a car around 30–40 px long at 32
+  headings — large enough for a heading set to read, small enough to see
+  a block ahead. Settled by looking, in stage 0.
+
+### 5.3 The art pipeline
+
+Model once, render the headings automatically: a voxel or low-poly model
+per vehicle, a script that renders it at 32 headings from the isometric
+camera with one fixed light, into a sheet plus a manifest. The same for
+props with a heading (parked cars, benches); buildings and trees need
+one view. The pipeline is stage 3 and it is what makes 32 headings cheap
+rather than a commission of 32 drawings per car. ASSET-SPEC v2 is
+written from the pipeline's output format, after stage 0 has fixed the
+projection and the scale.
+
+---
+
+## 6. The staged path — every stage ends in something to look at
+
+The lesson of this whole project, and a new direction is more vulnerable
+to forgetting it, not less: a stage that ends in a check and not a
+screen is a stage nobody can judge. Every stage below ends in a route the
+maintainer opens.
+
+### Stage 0 — the visual direction, in a day or two
+
+**The maintainer's suggestion, agreed, with one change.** Take the
+traffic that already works — stage 0's following on one road, with the
+bend geometry that exists — and render it isometrically on a curved road
+with a hill in it. No editor, no city, no map format.
+
+The change: **do not wait for voxel sprites.** Draw the cars as
+isometric boxes by code for this stage — a car is a rotated prism, which
+is a dozen lines — so the test of the visual direction does not depend
+on an art pipeline that is its own stage. A code-drawn prism at 32
+headings proves the projection, the depth sort, the elevation and the
+road ribbon exactly as a sprite would, and if the prisms look right the
+sprites will.
+
+Add one overpass to the hill — a second road crossing above — because
+the draw-order problem is the one thing here that could send everything
+downstream back to the drawing board, and it costs an afternoon to
+include now.
+
+*Deliverable:* `#/iso`: a curved road with a crest and a flyover, cars
+following each other over it, camera following one of them.
+*The question:* does an isometric curved road with elevation look
+right? If it looks wrong, everything below changes, and we know on day
+two rather than in month two.
+*Cost:* one to two days.
+
+### Stage 1 — the map as data, and the sim on a graph
+
+The map format (section 3), the loader with its normalisation and
+warnings, a hand-written test map in a text editor — a loop with a hill,
+a T, a crossroads, a skewed five-way, an overpass — and **the core
+refactor**: intersections at arbitrary bearings with any number of legs
+(section 2.4), the grid gone, `course.js` reduced to the graph it always
+was underneath. The isometric renderer draws the map from its chunks.
+Traffic spawns at every dangling end, picks turns at random at every
+node, and is endless.
+
+*Deliverable:* `#/map?id=test-1`: drive around a hand-written map with
+the camera on a car.
+*The question:* do the precedence rules still read as people at a skewed
+five-way? Does the T look like a T?
+*Cost:* one to two weeks; the refactor is most of it.
+
+### Stage 2 — the editor, first version
+
+Section 4. Draw, set kinds and elevation, snap to nodes, set controls,
+validate, save, drive — in one screen.
+
+*Deliverable:* `#/editor`: the maintainer draws a map and drives it in
+the same session. The first throwaway test maps are his.
+*The question:* can a badly drawn map break the sim? (Try to.) Is
+drawing a road pleasant enough that he will draw eight square
+kilometres of them?
+*Cost:* one to two weeks.
+
+### Stage 3 — the art pipeline, and the first real sprites
+
+Section 5.3. The voxel-to-headings script, vehicles as 32-heading
+sprites replacing the prisms, a handful of buildings and trees, the
+asset specification rewritten as v2 from what the pipeline emits.
+
+*Deliverable:* the stage 2 map with real cars and a few buildings.
+*The question:* does it look like the game? Do 32 headings read as
+smooth, or is 16 enough?
+*Cost:* a week of pipeline; art time on top, external.
+
+### Stage 4 — the city
+
+The maintainer's blockout — the highway route, the district polygons —
+and **generation inside his shapes**: local streets filling a district,
+buildings along frontages, parking, props; density and character per
+district (the town profile). The spatial index for neighbour queries,
+and the performance work to run a few hundred cars on a phone. Endless
+traffic from every edge and from the districts.
+
+*Deliverable:* the first version of the 8 km² city, driveable end to
+end, never the same drive twice.
+*The question:* is it learnable? Can he find the back street he found
+yesterday? Does the traffic feel alive at every density the districts
+ask for?
+*Cost:* three to four weeks.
+
+### Stage 5 — a world with things in it
+
+The content the axes have been waiting for, rebuilt on the map rather
+than ported: pedestrians as road users, parked cars and driveways and
+cars emerging from them, blind crests as occlusion with perception
+switched on, and **contact as a state** — drawn, and with a response —
+which is what the observation axis has been held behind. Then the two
+falsification tests from DRIVING-SCHOOL.md re-run in this world: can you
+tell two drivers apart, two districts apart, by watching.
+
+*Deliverable:* a drive that feels alive, on the city, with hazards.
+*The question:* the two tests. If a rated driver is legible here, the
+axes were right all along and the world was the missing half.
+*Cost:* four weeks and up; open-ended by nature.
+
+### Stage 6 — the exam mode returns
+
+The shelved machinery (section 2.2) over the real world: a candidate on
+a route through the city, directions, the sheet, faults derived where
+the twin measurement said they localise. Then the driving school on top
+(DRIVING-SCHOOL.md): the population, learning, towns as distributions.
+Not scoped further here; it is scoped there.
+
+---
+
+## 7. Cost, honestly
+
+Stages 0–4 — the visual direction, the map, the editor, the pipeline,
+the city — is on the order of **two to three months of focused work
+before the city exists with art in it**, and stage 5 is open-ended
+after that. For calibration: the rebuild's stages 0–3, which built the
+stepped core this plan keeps, took about five weeks of sessions. The
+renderer rewrite and the bearing refactor are each comparable to a
+rebuild stage; the editor and the generation are each larger.
+
+What is cheap: stage 0 (days), and it is the stage that can send the
+rest back. What is not: the city and its generation, which is why it is
+stage 4 and not stage 1, and why throwaway maps are first-class — the
+maintainer will be driving his own hand-drawn blocks for a month before
+generation fills them.
+
+---
+
+## 8. The biggest risk
+
+**The world could be built for months before the player has a verb in
+it — the exact mirror of the failure being corrected.** The assessment
+machinery came first and the world was deferred; the risk now is that
+the world comes first and what the player *does* is deferred. "Free
+roam" names a camera, not a verb. It is not decided whether the player
+drives a car with controls, rides along in one and watches (the
+examiner's seat, without the marking), or is a camera over a living
+city. Each is a different game: driving on a phone is its own control
+problem; riding is the examiner mode without the examining; a camera
+over traffic is a screensaver unless the traffic gives reasons to look.
+
+The mitigation is to keep the question in every stage rather than
+answer it now. Stages 0–3 are verb-agnostic — a car for the camera to
+ride is enough to judge a road, a map and a sprite. **Stage 4 is where
+the verb has to exist**, because "is the city learnable" cannot be
+asked of a passenger who chooses nothing; the editor's "drive it" button
+should already offer both — ride along in a car the traffic model
+drives, or steer it with the simplest possible controls — so that by the
+time the blockout is drawn the maintainer has felt both and can choose.
+The decision is his, and it is the one to make before the city is
+generated, not after.
+
+The technical risks are real and are smaller: the isometric draw order
+with elevation and overpasses (stage 0 exists to hit it first); the
+simulation's cost at hundreds of cars (the chunk index, stage 4); the
+projection making a 3.6 m lane and a 4.5 m car read at phone scale
+(stage 0 again). None of them is unknown territory; the verb is.

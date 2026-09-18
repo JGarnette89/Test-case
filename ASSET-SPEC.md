@@ -1,5 +1,16 @@
 # Right of Way — Art Asset Specification (v1)
 
+> **SUPERSEDED ON 18 SEPTEMBER 2026 — DO NOT COMMISSION ART AGAINST THIS
+> VERSION.** The project has been reframed as a traffic simulator with an
+> **isometric** view (SIMULATOR.md). That reverses this document's two
+> central instructions: the view is no longer strictly top-down, and
+> vehicles now NEED a drawing per heading (16 minimum, 32 for smooth),
+> which section 0 below forbids. The dimensions in metres, the palette,
+> the naming and the manifest idea still hold; the projection, the
+> anchor rule and the "no rotation sets" rule do not. A v2 is written
+> after the isometric stage 0 has fixed the projection and the scale.
+
+
 A brief for producing top-down art for *Right of Way*, a driving-examiner
 game: you sit beside a candidate driver on a set course through a small
 North American town, give the directions, and mark the faults you catch.
