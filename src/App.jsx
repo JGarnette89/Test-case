@@ -20,6 +20,7 @@ import MergeRush from "./apps/MergeRush.jsx";
    it. */
 import SimRoad from "./apps/SimRoad.jsx";
 import IsoRoad from "./apps/IsoRoad.jsx";
+import ErrorBoundary from "./apps/ErrorBoundary.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
 import SimCandidates from "./apps/SimCandidates.jsx";
 import SimCourse from "./apps/SimCourse.jsx";
@@ -260,10 +261,10 @@ export default function App() {
     <>
       <Style />
 
-      {!mode && !submenu && !isTest && !isPrototype && <Home />}
-      {isTest && <TestMenu />}
-      {isPrototype && <MergeRush />}
-      {submenu && <SubMenu id={submenu.id} />}
+      {!mode && !submenu && !isTest && !isPrototype && <ErrorBoundary name="home"><Home /></ErrorBoundary>}
+      {isTest && <ErrorBoundary name="test menu"><TestMenu /></ErrorBoundary>}
+      {isPrototype && <ErrorBoundary name="merge rush"><MergeRush /></ErrorBoundary>}
+      {submenu && <ErrorBoundary name="submenu"><SubMenu id={submenu.id} /></ErrorBoundary>}
 
       {mode && (
         <>
@@ -281,7 +282,9 @@ export default function App() {
 
           {/* Keyed on the parameter too, so picking a different situation from
               home restarts the mode rather than leaving the old one running. */}
-          <Active key={`${mode.id}/${param || ""}`} {...(mode.props || {})} scenarioId={param} />
+          <ErrorBoundary key={`${mode.id}/${param || ""}`} name={mode.name}>
+            <Active {...(mode.props || {})} scenarioId={param} />
+          </ErrorBoundary>
         </>
       )}
 

@@ -20,7 +20,7 @@
    would buy if the level look reads wrong.
    ===================================================================== */
 import { depthOf, TOWARD_EYE, projector } from "./project.js";
-import { poseAt, isDeck, LANE } from "./road.js";
+import { poseAt, isDeck, groundAt, LANE } from "./road.js";
 import { C } from "../theme.js";
 
 /* Light from high, behind-left of the viewer, so tops are bright and
@@ -113,7 +113,8 @@ function seg(ctx, P, a, b) {
    smooth at the display's rate rather than at the sim's.
    ===================================================================== */
 export function drawFrame(ctx, canvas, scene) {
-  const { roads, terrain, cam, k, tilt } = scene;
+  const { roads, terrain, cam, k, tilt, props = [] } = scene;
+  const counts = { cells: 0, segments: 0, cars: 0, props: 0 };
   const P = projector(k, cam, canvas);
   const margin = 40 * k;
   const onScreen = ([px, py]) => px > -margin && px < canvas.w + margin && py > -margin && py < canvas.h + margin;
@@ -140,6 +141,7 @@ export function drawFrame(ctx, canvas, scene) {
        its contours. A ten-metre hill on a flat colour is invisible. */
     const zc = (a.z + b.z + c.z + d.z) / 4;
     const tone = mix(C.grass, "#9fb86a", Math.min(1, zc / 14));
+    counts.cells++;
     items.push({ key, paint: () => { quad(ctx, P, a, b, c, d); ctx.fillStyle = shade(tone, n, 0.35); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.5; ctx.stroke(); } });
   }
 
@@ -153,6 +155,7 @@ export function drawFrame(ctx, canvas, scene) {
       const key = Math.max(depthOf(a.x, a.y, a.z), depthOf(b.x, b.y, b.z), depthOf(c.x, c.y, c.z), depthOf(d.x, d.y, d.z)) + 0.01;
       const n = cross(sub(b, a), sub(d, a));
       const deck = isDeck(road, i) && isDeck(road, i + 1);
+      counts.segments++;
       items.push({ key, paint: () => {
         if (deck) {
           /* The slab: its outer sides, a metre deep, so the deck reads as
@@ -200,11 +203,12 @@ export function drawFrame(ctx, canvas, scene) {
       const at = { x: p.x - Math.sin(h) * off, y: p.y + Math.cos(h) * off, z: p.z };
       const deg = quantise(heading);
       const grade = tilt ? (car.dir > 0 ? p.grade : -p.grade) : 0;
+      const [px, py] = P(at.x, at.y, at.z);
+      if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
+      counts.cars++;
       const colour = car.colour ?? CAR_COLOURS[car.n % CAR_COLOURS.length];
       const body = boxCorners(at, deg, grade, BODY);
       const cabin = boxCorners(at, deg, grade, CABIN, BODY.h);
-      const [px, py] = P(at.x, at.y, at.z);
-      if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
       /* A car follows the segment it stands on, whose key is that
          segment's nearest corner -- up to a car length and a road width
          nearer than the car's own centre -- so the car's key is pushed
@@ -214,7 +218,18 @@ export function drawFrame(ctx, canvas, scene) {
     }
   }
 
+  /* Stand-in buildings, for the budget ramp: boxes on the ground, keyed
+     like cars. */
+  for (const b of props) {
+    const z = groundAt(b.x, b.y);
+    const [px, py] = P(b.x, b.y, z);
+    if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
+    counts.props++;
+    const box = boxCorners({ x: b.x, y: b.y, z }, b.heading, 0, { l: b.l, w: b.w, h: b.h });
+    items.push({ key: depthOf(b.x, b.y, z) + 10, paint: () => paintBox(ctx, P, box, "#7d8290") });
+  }
+
   items.sort((a, b) => a.key - b.key);
   for (const it of items) it.paint();
-  return items.length;
+  return { items: items.length, ...counts };
 }

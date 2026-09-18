@@ -114,18 +114,38 @@ works. Those are your save points.
 
 ---
 
-## 6. Put it on the internet
+## 6. Put it on the internet — and on your phone
 
-When you want to show someone:
+**Tonight, on the same Wi-Fi.** The dev server already listens on the
+network, so a phone on the same Wi-Fi can open it. Run `npm run dev` and
+it prints two addresses — `Local:` and `Network:`. Type the `Network:`
+one (something like `http://192.168.1.23:5173/#/iso`) into the phone's
+browser. The build works the same way, and is what a player would get:
 
-> Deploy this to Vercel and give me the link.
+    npm run build
+    npm run preview -- --host
 
-Free, takes a couple of minutes, gives you a URL that works on any phone. That
-is enough to hand to an instructor and watch them use it — which is the only
-test that actually matters.
+then open the `Network:` address it prints. If the phone cannot reach
+it, the Windows firewall is asking; allow Node on private networks.
 
-Native app stores come later, via Capacitor. The storage adapter is already
-written for it.
+**Permanently, for anyone with the link.** The repository carries a
+GitHub Actions workflow (`.github/workflows/deploy.yml`) that builds and
+publishes the site to GitHub Pages on every push to `main`. It needs
+three things done once, all on github.com:
+
+1. Create a repository (private is fine — Pages still publishes) and
+   push this project to it.
+2. Settings → Pages → Source: **GitHub Actions**.
+3. Push to `main`. About two minutes later the site is at
+   `https://<your-username>.github.io/<repository-name>/`.
+
+The site is served from a sub-path named after the repository, which the
+build handles through `BASE_PATH`; the hash routes (`#/iso`) work
+unchanged. Vercel or Netlify would also do it in a couple of minutes if
+GitHub Pages is ever in the way.
+
+Native app stores come later, via Capacitor. The storage adapter is
+already written for it.
 
 ---
 

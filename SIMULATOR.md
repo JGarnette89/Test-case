@@ -512,6 +512,74 @@ still read as people at a skewed five-way, with you in the queue?
 *Cost:* one to two weeks; the refactor is most of it, the controls a
 few days that will be revisited at every later stage.
 
+#### 1.2 Production from here on, and the performance budget
+
+**The maintainer's direction, 18 September: this is a production app,
+and "production ready" is a bar, not a phase.** The project had run
+only on a dev server on his machine, never on a phone, with no build
+pipeline, no deploy, no save, no settings, and no error handling worth
+the name. Three of those are built and the rest are stage 1 work:
+
+- **One broken screen no longer takes the app down.** Every route
+  renders inside an error boundary (`src/apps/ErrorBoundary.jsx`): the
+  screen that threw shows what it threw, with a way home and a way to
+  copy the details, and the menu keeps working. It has been seen to
+  work rather than believed to -- `/?crash#/iso` throws on purpose --
+  and it has already caught one real render error on the day it was
+  written.
+- **A build pipeline and a deploy.** `npm run build` produces the site;
+  `.github/workflows/deploy.yml` renders every screen under SSR, builds,
+  and publishes to GitHub Pages on every push to `main`, so anyone with
+  the link can open it on any device. It needs a repository on GitHub
+  to point at, which is the maintainer's to create (SETUP.md 6).
+- **Save and settings** through `src/storage.js`, which already falls
+  back cleanly when storage is refused: not built yet, and stage 1's.
+
+**The performance budget, measured, not asserted.** Reference device: a
+Pixel 7 Pro. In ordinary play, 60 fps; dips tolerated when the scene is
+busy; never sustained below 30; and **no hitching** -- the maintainer's
+words, and the ruling that consistency beats average: a steady 40 feels
+better than a 60 that stutters, so a stutter is the failure. A floor
+device is measured too, a mid-range Android two or three years old,
+because the reference phone is not what most players hold.
+
+So the instrument (`src/iso/perf.js`) records the things that ARE the
+budget rather than an average: the frame 19 of 20 beat (p95 <= 25 ms),
+the worst frame (no hitch over 50 ms -- three missed vsyncs), and
+whether any whole second fell under 30 fps. `budgetRamp` steps the load
+up -- more traffic, then stand-in buildings scattered where the camera
+looks -- holding each step for eight seconds after a one-second settle
+that keeps the scene build's own stall out of the record, and stops at
+the first step that fails. **The cap on visible vehicles is DERIVED from
+where the budget breaks on the device in hand**, never picked; it is
+the last step that passed. Run from the button on `#/iso`, and the
+report is a block of text to copy and paste back.
+
+Two things are known before any phone has run it. `tools/verify-perf.mjs`
+drives the ramp with synthetic frames and proves it terminates, stops at
+the first failure, ignores the scene build, and derives the cap -- the
+preview pane this project is built in delivers no animation frames, so
+the ramp could not otherwise have been watched to completion before a
+person was asked to spend a minute on it. And `tools/measure/perf.mjs`
+measures the CPU half of a frame in node against a stub canvas: on the
+development machine the sim step is negligible and the JavaScript of the
+draw is 1-2 ms at every step of the ramp, from 37 cars on screen to 245,
+with the ground cells a fixed cost that dwarfs the cars. What that
+cannot see is the rasterising, which is the phone's whole question, and
+the reason the desktop number is a floor and not a forecast. A phone's
+JavaScript runs three to five times slower than a desktop's, which
+still leaves the CPU half inside the budget at the heaviest step; if the
+phone breaks the budget, it is the fill rate, and the levers are the
+canvas's device-pixel ratio (a 3.5x screen is twelve pixels per CSS
+pixel), the ground drawn as fewer, larger cells, and only then fewer
+cars.
+
+**If the density the maintainer wants is not achievable in a browser at
+this scale, that is said early and plainly, as a design change -- fewer
+cars in view, a tighter camera, simpler geometry -- rather than
+discovered in stage 5 with a city built on top of it.** The first phone
+report decides which.
+
 ### Stage 2 — the editor, first version
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,

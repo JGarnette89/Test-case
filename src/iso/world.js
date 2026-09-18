@@ -26,21 +26,52 @@ function trafficOn(road, seed, kmh) {
   return { ...w, t: 0, tick: 0, nextAt: w.nextAt - w.t };
 }
 
-export function seedScene(seed = 1, kmh = 60) {
+export function seedScene(seed = 1, kmh = 60, { traffic = 1, props = 0, focus = null } = {}) {
   const valley = valleyRoad(), bridge = bridgeRoad();
-  return {
-    seed, kmh,
-    valley, bridge,
-    terrain: terrain(),
-    /* Two directions per road: the same world twice, one driven along
-       `s` and one against it, each in its own right-hand lane. */
-    worlds: [
-      { road: valley, dir: 1, world: trafficOn(valley, seed * 4 + 1, kmh) },
-      { road: valley, dir: -1, world: trafficOn(valley, seed * 4 + 2, kmh) },
-      { road: bridge, dir: 1, world: trafficOn(bridge, seed * 4 + 3, kmh) },
-      { road: bridge, dir: -1, world: trafficOn(bridge, seed * 4 + 4, kmh) },
-    ],
-  };
+  /* Two directions per road: the same world twice, one driven along
+     `s` and one against it, each in its own right-hand lane. `traffic`
+     above one stacks more worlds on each -- cars that overlap, which is
+     not a scene but a LOAD, for the performance budget (perf.js). */
+  const worlds = [];
+  for (let k = 0; k < Math.max(1, traffic); k++) {
+    const base = seed * 4 + k * 1000;
+    worlds.push(
+      { road: valley, dir: 1, world: trafficOn(valley, base + 1, kmh) },
+      { road: valley, dir: -1, world: trafficOn(valley, base + 2, kmh) },
+      { road: bridge, dir: 1, world: trafficOn(bridge, base + 3, kmh) },
+      { road: bridge, dir: -1, world: trafficOn(bridge, base + 4, kmh) },
+    );
+  }
+  return { seed, kmh, valley, bridge, terrain: terrain(), worlds, props: propsFor(props, seed, [valley, bridge], focus) };
+}
+
+/* Boxes standing about the ground, off the roads: stand-ins for the
+   buildings and props a city will have, at the cost each will have.
+   Only for the budget ramp; a scene has none. Scattered around `focus`
+   when one is given -- the ramp's camera -- because a load the camera
+   cannot see is not a load: spread over the whole world, 300 of them
+   put 25 on a phone's screen. */
+export function propsFor(n, seed, roads, focus = null) {
+  const out = [];
+  let x = (seed * 2654435761) >>> 0;
+  const r = () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
+  const REACH = 90;   // metres either side of the focus: about what a phone shows at the ramp's zoom
+  let tries = 0;
+  while (out.length < n && tries++ < n * 20) {
+    const px = focus ? focus.x - REACH + r() * 2 * REACH : -60 + r() * 780;
+    const py = focus ? focus.y - REACH + r() * 2 * REACH : -70 + r() * 560;
+    let near = false;
+    for (const road of roads) {
+      for (let i = 0; i < road.pts.length; i += 2) {
+        const p = road.pts[i];
+        if (Math.hypot(p.x - px, p.y - py) < 12) { near = true; break; }
+      }
+      if (near) break;
+    }
+    if (near) continue;
+    out.push({ x: px, y: py, heading: Math.floor(r() * 4) * 90, l: 6 + r() * 6, w: 5 + r() * 5, h: 3 + r() * 6 });
+  }
+  return out;
 }
 
 export function stepScene(scene, n = 1) {

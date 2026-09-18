@@ -20,6 +20,7 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import { seedScene, stepScene, carsOf, DT } from "../iso/world.js";
 import { drawFrame } from "../iso/draw.js";
 import { poseAt } from "../iso/road.js";
+import { perfMeter, deviceInfo, budgetRamp, reportText, BUDGET } from "../iso/perf.js";
 
 const LIMITS = [50, 60, 100];
 /* The palette has no dim or body text tone; these are the ones the other
@@ -27,6 +28,9 @@ const LIMITS = [50, 60, 100];
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
 
 export default function IsoRoad() {
+  /* `/?crash#/iso` throws on render, so the error boundary around every
+     screen can be seen to work rather than believed to. */
+  if (typeof location !== "undefined" && /crash/.test(location.search)) throw new Error("deliberate crash for the error boundary");
   const canvasRef = useRef(null);
   const [seed, setSeed] = useState(1);
   const [limit, setLimit] = useState(60);
@@ -34,7 +38,15 @@ export default function IsoRoad() {
   const [follow, setFollow] = useState("valley");   // which road the camera rides, or a fixed place
   const [tilt, setTilt] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const [stats, setStats] = useState({ cars: 0, items: 0, fps: 0 });
+  const [stats, setStats] = useState({ cars: 0, items: 0, fps: 0, p95: 0, worst: 0, hitches: 0 });
+  /* THE BUDGET TEST. A ramp of loads, each held for a few seconds while
+     the meter records; the cap on visible cars is whatever step last
+     passed. Runs from a ref so the frame loop can drive it; the report
+     lands in state when it is done. */
+  const [report, setReport] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const ramp = useRef(null);
+  const drewLast = useRef(null);   // what the last frame drew, for the ramp's record
 
   /* THE SCENE LIVES IN A REF, NOT IN STATE. Sixty repaints a second
      through React would be sixty reconciliations of nothing; the canvas
@@ -44,6 +56,15 @@ export default function IsoRoad() {
   const owed = useRef(0);
   const last = useRef(0);
   const raf = useRef(0);
+  const meter = useRef(perfMeter());
+
+  const startTest = () => {
+    ramp.current = budgetRamp();
+    setReport(null); setTesting(true);
+    setPlaying(true); setFollow("overpass"); setZoom(0.8);
+    cam.current = { x: 0, y: 0, z: 0, id: null };
+    meter.current.reset();
+  };
 
   const restart = (s = seed, kmh = limit) => {
     setSeed(s); setLimit(kmh);
@@ -68,8 +89,28 @@ export default function IsoRoad() {
       return { w, h };
     };
 
+    /* Two fixed places to look at, because a viewer should not have to
+       wait for a car to reach the bridge or the crest to judge them. The
+       ramp looks at the overpass and scatters its props around it. */
+    const PLACES = { overpass: { x: 140, y: 257, z: 3 }, crest: { x: 470, y: 166, z: 10 } };
+
     const tick = (now) => {
       const size = fit();
+      if (last.current) meter.current.record(now - last.current);
+      /* The ramp, if one is running: it says when to load the next step
+         and when it is done (perf.js). */
+      const r = ramp.current;
+      if (r) {
+        const want = r.frame(now, drewLast.current);
+        if (want.done) {
+          setReport(reportText({ device: deviceInfo(), results: want.results, cap: want.cap, canvas: `${size.w}x${size.h}` }));
+          ramp.current = null; setTesting(false);
+          scene.current = seedScene(seed, limit);
+          meter.current.reset();
+        } else if (want.load) {
+          scene.current = seedScene(seed, limit, { ...want.load, focus: PLACES.overpass });
+        }
+      }
       if (last.current && playing) {
         owed.current += Math.min(0.25, (now - last.current) / 1000);
         const n = Math.floor(owed.current / DT);
@@ -86,9 +127,6 @@ export default function IsoRoad() {
          the world; the followed car sits a little below centre so the
          road ahead of it gets the screen. The camera never rotates: an
          isometric world faces one way (SIMULATOR.md 5.2). */
-      /* Two fixed places to look at, because a viewer should not have to
-         wait for a car to reach the bridge or the crest to judge them. */
-      const PLACES = { overpass: { x: 140, y: 257, z: 3 }, crest: { x: 470, y: 166, z: 10 } };
       const wanted = PLACES[follow] ? null : roads.find((r) => r === (follow === "bridge" ? roads[1] : roads[0]));
       let target = null;
       if (PLACES[follow]) {
@@ -120,11 +158,13 @@ export default function IsoRoad() {
       /* `/?bare#/iso` drops the ground, for telling a drawing bug from
          an ordering bug. */
       const bare = typeof location !== "undefined" && /bare/.test(location.search);
-      const items = drawFrame(ctx, size, { roads, terrain: bare ? [] : sc.terrain, cam: cam.current, k, tilt });
+      const drew = drawFrame(ctx, size, { roads, terrain: bare ? [] : sc.terrain, cam: cam.current, k, tilt, props: sc.props });
+      drewLast.current = drew;
 
       frames++;
       if (now - fpsAt > 1000) {
-        setStats({ cars: roads.reduce((t, r) => t + r.cars.length, 0), items, fps: Math.round((frames * 1000) / (now - fpsAt)) });
+        const sum = meter.current.summary(120);
+        setStats({ cars: drew.cars, items: drew.items, fps: sum.fps, p95: sum.p95, worst: sum.worst, hitches: sum.hitches });
         frames = 0; fpsAt = now;
       }
       raf.current = requestAnimationFrame(tick);
@@ -135,7 +175,7 @@ export default function IsoRoad() {
        pane this project has lost sessions to (CLAUDE.md item 7). */
     tick(performance.now());
     return () => cancelAnimationFrame(raf.current);
-  }, [playing, follow, tilt, zoom]);
+  }, [playing, follow, tilt, zoom, seed, limit]);
 
   return (
     <div style={S.page}>
@@ -149,7 +189,8 @@ export default function IsoRoad() {
       <div style={S.view}>
         <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }} />
         <div style={S.readout}>
-          {stats.cars} cars · {stats.items} things drawn · {stats.fps} fps · {limit} km/h
+          {stats.cars} cars on screen · {stats.items} things drawn · {stats.fps} fps · p95 {stats.p95}ms · worst {stats.worst}ms · {stats.hitches} hitches · {limit} km/h
+          {testing && " · BUDGET TEST RUNNING"}
         </div>
       </div>
 
@@ -190,7 +231,27 @@ export default function IsoRoad() {
           ))}
         </div>
 
+        <div style={S.row}>
+          <button className="btn" style={{ ...S.chip, borderColor: testing ? C.amber : C.green, color: C.white }}
+            onClick={startTest} disabled={testing}>
+            {testing ? "Budget test running (about a minute)…" : "Run the budget test on this device"}
+          </button>
+          {report && (
+            <button className="btn" style={S.chip} onClick={() => { try { navigator.clipboard?.writeText(report); } catch { /* selectable below */ } }}>
+              Copy report
+            </button>
+          )}
+        </div>
+        {report && <pre style={S.report}>{report}</pre>}
         <div style={S.note}>
+          <b>The budget test.</b> Ramps the load on this device — more
+          traffic, then stand-in buildings — holding each step for eight
+          seconds and recording the frame times that ARE the budget: the
+          frame 19 of 20 beat (p95 ≤ {BUDGET.p95} ms), the worst frame
+          (no hitch over {BUDGET.max} ms), and whether any whole second
+          fell under 30 fps. The cap on visible cars is the last step
+          that passed. Run it on the phone, then copy the report.
+          <br />
           <b>What to look at.</b> Two roads. The valley road bends twice
           and climbs a hill in its second half; the bridge road crosses
           it on an embankment with a span over the top. Cars follow each
@@ -233,4 +294,5 @@ const S = {
   chip: { minHeight: 44, minWidth: 64, padding: "0 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", fontFamily: FONT_D, fontSize: 13 },
   label: { fontFamily: FONT_D, fontSize: 13, color: DIM, marginLeft: 6 },
   note: { fontFamily: FONT_U, fontSize: 12, color: DIM, lineHeight: 1.45 },
+  report: { fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 11, color: TEXT, whiteSpace: "pre", overflowX: "auto", background: "rgba(255,255,255,0.05)", padding: 8, borderRadius: 8, userSelect: "text" },
 };

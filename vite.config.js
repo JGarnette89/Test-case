@@ -2,6 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
+  /* Where the built app is served from. "/" for a dev server or a root
+     deploy; the deploy workflow sets "/<repo>/" for GitHub Pages, whose
+     project sites live under a path. Hash routing means nothing else
+     cares. */
+  base: process.env.BASE_PATH ?? "/",
   plugins: [react()],
   server: {
     // Bind to the LAN as well as localhost so the dev server can be opened on a

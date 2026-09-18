@@ -1,0 +1,52 @@
+# Build on every push to main and publish the built app to GitHub Pages, so
+# anyone with the link can open the game -- on a phone, which is the device
+# it is specified for and had never been run on until this existed.
+#
+# One-time setup, once the repository is on GitHub:
+#   Settings -> Pages -> Source: "GitHub Actions".
+# The app is then served at https://<owner>.github.io/<repo>/ ; the base
+# path below makes the built asset URLs match that.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The suite is the gate: a build that would ship red does not ship.
+      - run: node tools/verify-screens.mjs
+      - run: npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
