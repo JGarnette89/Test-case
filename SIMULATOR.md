@@ -542,6 +542,46 @@ felt rather than argued: **does the slider hold where it is left, or
 spring back to neutral when the thumb lifts?** Both are on the screen
 as a toggle.
 
+#### 1.1.1 Handover, 18 September evening -- where stage 1 stands
+
+Committed and green (full suite, 33 checks): `f9f6da9` the production
+batch, `93053ba` the wheel slice. The tree was clean when this session
+ended; nothing was mid-change.
+
+**Waiting on the maintainer, and nothing below should start before the
+first two land:**
+- the budget report from the Pixel 7 Pro (`#/iso`, "Run the budget
+  test", Copy report). On the same Wi-Fi tonight the dev server is at
+  `http://192.168.2.17:5173/`; SETUP.md 6 has the firewall note. The
+  report decides whether the cap is engineering (DPR cap, coarser
+  ground) or a design change. Do not guess it.
+- whether `#/wheel` feels right to drive, and slider hold vs spring.
+- a GitHub repository for the Pages deploy (his to create; publishing
+  needs his say).
+
+**The next increment** is the map format (section 3) and its loader
+with normalisation, then the sim on a graph with intersections at any
+bearing (section 2.4, the core refactor), then the turn-commit control
+on top of `src/iso/player.js`, then save/settings through
+`src/storage.js`. Build the map format first and load the stage-0
+roads through it, so `#/iso` and `#/wheel` become the first two maps
+rather than a parallel path.
+
+**Things that are not obvious from the diff:**
+- `src/iso/player.js` is the car in the ROAD'S frame (s, off, psi);
+  the graph refactor will need it in a lane's frame per edge, and the
+  road-end wrap in `Wheel.jsx` is the placeholder for a node.
+- `stepWithPlayer` in `src/iso/world.js` writes the player into
+  `worlds[0]` (the valley road, forward) only; on a graph the player's
+  world is whichever edge they are on.
+- `verify-wheel.mjs` caught two real bugs before anyone drove (a light
+  brake slower than coasting; a start inside a parked car). Keep adding
+  to it as the controls grow -- the feel is the phone's, the model is
+  the check's.
+- vite's watcher on this Windows machine misses the last of several
+  rapid writes; patch scripts must write each file ONCE (the session's
+  `patchlib.py` does), or `touch` the file a second later.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,
