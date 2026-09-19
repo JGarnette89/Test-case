@@ -20,7 +20,13 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import { seedScene, stepScene, carsOf, DT } from "../iso/world.js";
 import { drawFrame } from "../iso/draw.js";
 import { poseAt } from "../iso/road.js";
-import { perfMeter, deviceInfo, budgetRamp, reportText, BUDGET } from "../iso/perf.js";
+import { perfMeter, deviceInfo, budgetRamp, reportText, gcProbe, BUDGET } from "../iso/perf.js";
+
+/* THE CANVAS IS CAPPED AT TWO DEVICE PIXELS PER CSS PIXEL. A 3.5x phone
+   would otherwise rasterise 1383x1845 for a 395x527 view -- twelve
+   device pixels per CSS pixel -- for no difference a phone screen can
+   show. Free headroom for when the scene is busy. */
+const DPR_CAP = 2;
 
 const LIMITS = [50, 60, 100];
 /* The palette has no dim or body text tone; these are the ones the other
@@ -57,6 +63,12 @@ export default function IsoRoad() {
   const last = useRef(0);
   const raf = useRef(0);
   const meter = useRef(perfMeter());
+  const gc = useRef(gcProbe());
+  /* What the previous frame did, for the ramp's stall log: a React
+     state update issued (it renders in the task after the frame, so its
+     cost lands on the NEXT frame's time), and whether the canvas was
+     resized. */
+  const flags = useRef({ hud: false, resized: false });
 
   const startTest = () => {
     ramp.current = budgetRamp();
@@ -80,10 +92,11 @@ export default function IsoRoad() {
     let frames = 0, fpsAt = performance.now();
 
     const fit = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(DPR_CAP, window.devicePixelRatio || 1);
       const w = canvas.clientWidth, h = canvas.clientHeight;
       if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
         canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+        flags.current.resized = true;
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       return { w, h };
@@ -95,15 +108,23 @@ export default function IsoRoad() {
     const PLACES = { overpass: { x: 140, y: 257, z: 3 }, crest: { x: 470, y: 166, z: 10 } };
 
     const tick = (now) => {
+      /* The flags describe the frame that just ended, whose cost is the
+         dt recorded now; a fresh set collects what THIS frame does. */
+      const before = flags.current;
+      flags.current = { hud: false, resized: false, ticks: 0 };
       const size = fit();
       if (last.current) meter.current.record(now - last.current);
       /* The ramp, if one is running: it says when to load the next step
-         and when it is done (perf.js). */
+         and when it is done (perf.js). It is told what the frame before
+         did -- a collection seen by the probe, a HUD update, the sim
+         ticks, a resize -- so a stall can be read against a cause. */
+      const collected = gc.current.tick();
       const r = ramp.current;
       if (r) {
-        const want = r.frame(now, drewLast.current);
+        const want = r.frame(now, drewLast.current, { gc: collected, hud: before.hud, ticks: before.ticks ?? 0, resized: before.resized });
         if (want.done) {
-          setReport(reportText({ device: deviceInfo(), results: want.results, cap: want.cap, canvas: `${size.w}x${size.h}` }));
+          const device = deviceInfo({ canvasDpr: Math.min(DPR_CAP, window.devicePixelRatio || 1), build: import.meta.env?.DEV ? "dev server (unminified React, StrictMode)" : "production build" });
+          setReport(reportText({ device, results: want.results, cap: want.cap, steadyCap: want.steadyCap, canvas: `${size.w}x${size.h}` }));
           ramp.current = null; setTesting(false);
           scene.current = seedScene(seed, limit);
           meter.current.reset();
@@ -114,7 +135,7 @@ export default function IsoRoad() {
       if (last.current && playing) {
         owed.current += Math.min(0.25, (now - last.current) / 1000);
         const n = Math.floor(owed.current / DT);
-        if (n > 0) { owed.current -= n * DT; scene.current = stepScene(scene.current, n); }
+        if (n > 0) { owed.current -= n * DT; scene.current = stepScene(scene.current, n); flags.current.ticks = n; }
       }
       last.current = now;
 
@@ -162,9 +183,14 @@ export default function IsoRoad() {
       drewLast.current = drew;
 
       frames++;
-      if (now - fpsAt > 1000) {
+      /* The once-a-second readout is a React state update issued from
+         inside the frame loop. During the budget test it runs only on a
+         step that asks for it (the HUD-on probe), so its cost can be
+         told from everything else's. */
+      if (now - fpsAt > 1000 && (!ramp.current || ramp.current.step?.hud)) {
         const sum = meter.current.summary(120);
         setStats({ cars: drew.cars, items: drew.items, fps: sum.fps, p95: sum.p95, worst: sum.worst, hitches: sum.hitches });
+        flags.current.hud = true;
         frames = 0; fpsAt = now;
       }
       raf.current = requestAnimationFrame(tick);
