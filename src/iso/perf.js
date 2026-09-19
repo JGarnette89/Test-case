@@ -33,6 +33,12 @@
    caps, the strict one the budget asks for and the steady one the
    fill rate allows.
    ===================================================================== */
+/* WHICH INSTRUMENT. Bumped whenever the ramp or the report changes
+   shape, and printed with the build stamp on the screen and in the
+   report, so a report from a stale tab says so on its first line. */
+export const INSTRUMENT = 3;
+export const BUILD = typeof __BUILD__ !== "undefined" ? __BUILD__ : "unbundled";   // vite.config.js bakes it in; bare node has none
+
 export const HITCH = 50;     // ms: a frame long enough to see as a stutter (three missed vsyncs at 60)
 export const STALL = 100;    // ms: a frame long enough to feel as a freeze
 /* "No hitching" is taken at its word: the worst frame of a step must
@@ -237,7 +243,7 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
 
 export function reportText({ device, results, cap, steadyCap, canvas }) {
   const lines = [];
-  lines.push(`performance report ${new Date().toISOString()}`);
+  lines.push(`performance report ${new Date().toISOString()} · instrument v${INSTRUMENT} · build ${BUILD}`);
   const platform = [device.platform, device.platformVersion].filter(Boolean).join(" ");
   const who = device.model ? `${device.model} · ${platform}`.trim() : `model unknown${device.note ? ` (${device.note})` : ""}${platform ? ` · ${platform}` : ""}`;
   lines.push(`device: ${who}`);

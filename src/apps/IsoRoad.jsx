@@ -20,7 +20,7 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import { seedScene, stepScene, carsOf, DT } from "../iso/world.js";
 import { drawFrame } from "../iso/draw.js";
 import { poseAt } from "../iso/road.js";
-import { perfMeter, deviceInfo, deviceIdentity, budgetRamp, reportText, gcProbe, BUDGET } from "../iso/perf.js";
+import { perfMeter, deviceInfo, deviceIdentity, budgetRamp, reportText, gcProbe, BUDGET, INSTRUMENT, BUILD } from "../iso/perf.js";
 
 /* THE CANVAS IS CAPPED AT TWO DEVICE PIXELS PER CSS PIXEL. A 3.5x phone
    would otherwise rasterise 1383x1845 for a 395x527 view -- twelve
@@ -269,6 +269,7 @@ export default function IsoRoad() {
               Copy report
             </button>
           )}
+          <span style={S.label}>instrument v{INSTRUMENT} · build {BUILD} — if this is not the latest, reload the page</span>
         </div>
         {report && <pre style={S.report}>{report}</pre>}
         <div style={S.note}>

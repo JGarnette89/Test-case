@@ -1,7 +1,22 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { execSync } from "node:child_process";
+
+/* A BUILD STAMP, baked into the served code: the commit, a "+" if the
+   tree was dirty, and when this server or build started. A phone tab
+   that kept yesterday's modules in memory ran yesterday's instrument
+   and produced a report that cost a round trip to recognise (19 Sep);
+   the stamp is on the screen before a test runs and in the report
+   after, so a stale run identifies itself. */
+const stamp = () => {
+  const git = (cmd) => { try { return execSync(cmd, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim(); } catch { return ""; } };
+  const hash = git("git rev-parse --short HEAD") || "nogit";
+  const dirty = git("git status --porcelain") ? "+" : "";
+  return `${hash}${dirty} ${new Date().toISOString().slice(0, 16).replace("T", " ")}Z`;
+};
 
 export default defineConfig({
+  define: { __BUILD__: JSON.stringify(stamp()) },
   /* Where the built app is served from. "/" for a dev server or a root
      deploy; the deploy workflow sets "/<repo>/" for GitHub Pages, whose
      project sites live under a path. Hash routing means nothing else
