@@ -20,7 +20,7 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import { seedScene, stepScene, carsOf, DT } from "../iso/world.js";
 import { drawFrame } from "../iso/draw.js";
 import { poseAt } from "../iso/road.js";
-import { perfMeter, deviceInfo, deviceIdentity, budgetRamp, reportText, gcProbe, BUDGET, INSTRUMENT, BUILD } from "../iso/perf.js";
+import { perfMeter, deviceInfo, deviceIdentity, budgetRamp, reportText, gcProbe, taskProbe, BUDGET, INSTRUMENT, BUILD } from "../iso/perf.js";
 
 /* THE CANVAS IS CAPPED AT TWO DEVICE PIXELS PER CSS PIXEL. A 3.5x phone
    would otherwise rasterise 1383x1845 for a 395x527 view -- twelve
@@ -44,7 +44,16 @@ export default function IsoRoad() {
   const [follow, setFollow] = useState("valley");   // which road the camera rides, or a fixed place
   const [tilt, setTilt] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const [stats, setStats] = useState({ cars: 0, items: 0, fps: 0, p95: 0, worst: 0, hitches: 0 });
+  /* NO REACT STATE IS WRITTEN FROM THE FRAME LOOP. The readout used to
+     be one state update a second, and on the Pixel 7 Pro every one of
+     them was a frame of 133-158 ms -- measured with and without, same
+     load (perf.js). The readout is now text drawn on the canvas from a
+     string refreshed once a second; the DOM does not change while the
+     world moves. `probe` is the one exception, and it is the point: the
+     ramp's first step issues it once a second so the report shows what
+     a DOM update from the loop costs on the device in hand. */
+  const readout = useRef("");
+  const [probe, setProbe] = useState(0);
   /* THE BUDGET TEST. A ramp of loads, each held for a few seconds while
      the meter records; the cap on visible cars is whatever step last
      passed. Runs from a ref so the frame loop can drive it; the report
@@ -68,7 +77,8 @@ export default function IsoRoad() {
      state update issued (it renders in the task after the frame, so its
      cost lands on the NEXT frame's time), and whether the canvas was
      resized. */
-  const flags = useRef({ hud: false, resized: false });
+  const flags = useRef({ domTtl: 0, resized: false, ticks: 0, tickMs: 0 });
+  const tasks = useRef(null);   // the browser's own record of long tasks, hidden tabs and input (perf.js taskProbe)
   const identity = useRef({});   // the real model, from client hints, fetched when a test starts
 
   const startTest = () => {
@@ -92,6 +102,7 @@ export default function IsoRoad() {
     if (!canvas) return undefined;
     const ctx = canvas.getContext("2d");
     let frames = 0, fpsAt = performance.now();
+    if (!tasks.current) tasks.current = taskProbe();   // once: it listens on the window for the life of the page
 
     const fit = () => {
       const dpr = Math.min(DPR_CAP, window.devicePixelRatio || 1);
@@ -110,22 +121,32 @@ export default function IsoRoad() {
     const PLACES = { overpass: { x: 140, y: 257, z: 3 }, crest: { x: 470, y: 166, z: 10 } };
 
     const tick = (now) => {
+      const t0 = performance.now();
       /* The flags describe the frame that just ended, whose cost is the
-         dt recorded now; a fresh set collects what THIS frame does. */
+         dt recorded now; a fresh set collects what THIS frame does. A
+         DOM update is flagged for the two frames after it: its cost
+         landed one frame later than the update itself in every case
+         measured, so a one-frame flag read "no" against every stall it
+         caused. */
       const before = flags.current;
-      flags.current = { hud: false, resized: false, ticks: 0 };
+      flags.current = { domTtl: Math.max(0, (before.domTtl ?? 0) - 1), resized: false, ticks: 0, tickMs: 0 };
       const size = fit();
       if (last.current) meter.current.record(now - last.current);
       /* The ramp, if one is running: it says when to load the next step
-         and when it is done (perf.js). It is told what the frame before
-         did -- a collection seen by the probe, a HUD update, the sim
-         ticks, a resize -- so a stall can be read against a cause. */
+         and when it is done (perf.js). It is told what went on in the
+         gap that just closed -- how long our own callback ran, what the
+         browser saw, a collection, a DOM update, the sim ticks, a
+         resize -- so a stall can be read against a cause. */
       const collected = gc.current.tick();
       const r = ramp.current;
       if (r) {
-        const want = r.frame(now, drewLast.current, { gc: collected, hud: before.hud, ticks: before.ticks ?? 0, resized: before.resized });
+        const gap = last.current ? tasks.current.during(last.current, now) : {};
+        const want = r.frame(now, drewLast.current, {
+          gc: collected, dom: (before.domTtl ?? 0) > 0, ticks: before.ticks ?? 0, resized: before.resized, tickMs: before.tickMs,
+          tasks: gap.tasks, longest: gap.longest, hidden: gap.hidden, input: gap.input, frame: gap.frame,
+        });
         if (want.done) {
-          const device = deviceInfo({ ...identity.current, canvasDpr: Math.min(DPR_CAP, window.devicePixelRatio || 1), build: import.meta.env?.DEV ? "dev server (unminified React, StrictMode)" : "production build" });
+          const device = deviceInfo({ ...identity.current, canvasDpr: Math.min(DPR_CAP, window.devicePixelRatio || 1), longTasks: tasks.current.supported, loaf: tasks.current.loaf, build: import.meta.env?.DEV ? "dev server (unminified React, StrictMode)" : "production build" });
           setReport(reportText({ device, results: want.results, cap: want.cap, steadyCap: want.steadyCap, canvas: `${size.w}x${size.h}` }));
           ramp.current = null; setTesting(false);
           scene.current = seedScene(seed, limit);
@@ -185,16 +206,19 @@ export default function IsoRoad() {
       drewLast.current = drew;
 
       frames++;
-      /* The once-a-second readout is a React state update issued from
-         inside the frame loop. During the budget test it runs only on a
-         step that asks for it (the HUD-on probe), so its cost can be
-         told from everything else's. */
-      if (now - fpsAt > 1000 && (!ramp.current || ramp.current.step?.hud)) {
+      if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
-        setStats({ cars: drew.cars, items: drew.items, fps: sum.fps, p95: sum.p95, worst: sum.worst, hitches: sum.hitches });
-        flags.current.hud = true;
+        readout.current = `${drew.cars} cars on screen · ${drew.items} things drawn · ${sum.fps} fps · p95 ${sum.p95}ms · worst ${sum.worst}ms · ${sum.hitches} hitches · ${limit} km/h`
+          + (ramp.current ? ` · BUDGET TEST: step ${ramp.current.step?.label ?? ""}` : "");
+        /* THE PROBE: the ramp's first step asks for a React state update
+           once a second, the thing that stalled the first phone run,
+           so the report measures it on this device every time. */
+        if (ramp.current?.step?.probe) { setProbe((p) => p + 1); flags.current.domTtl = 2; }
         frames = 0; fpsAt = now;
       }
+      ctx.fillStyle = "rgba(230,232,236,0.85)"; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.fillText(readout.current, 8, 6);
+      flags.current.tickMs = performance.now() - t0;
       raf.current = requestAnimationFrame(tick);
     };
     /* The first frame is painted NOW, not on the first animation frame:
@@ -216,10 +240,13 @@ export default function IsoRoad() {
 
       <div style={S.view}>
         <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }} />
-        <div style={S.readout}>
-          {stats.cars} cars on screen · {stats.items} things drawn · {stats.fps} fps · p95 {stats.p95}ms · worst {stats.worst}ms · {stats.hitches} hitches · {limit} km/h
-          {testing && " · BUDGET TEST RUNNING"}
-        </div>
+        {/* THE PROBE'S DOM CHANGE LANDS WHERE THE OLD READOUT WAS -- over the
+            canvas, inside the clipped view -- so the ramp's first step
+            reproduces the original condition and not a milder one. If the
+            cost was the paint of a change in this spot rather than React's
+            render, a change elsewhere would read as fixed when it was not;
+            the long-animation-frame line in the report tells the two apart. */}
+        {probe > 0 && <div style={S.probe}>probe {probe}</div>}
       </div>
 
       <div style={S.panel}>
@@ -316,7 +343,7 @@ const S = {
   title: { fontFamily: FONT_D, fontSize: 18, fontWeight: 700, color: C.white },
   sub: { fontFamily: FONT_U, fontSize: 12, color: DIM },
   view: { position: "relative", height: "62vh", minHeight: 320, margin: "0 8px", borderRadius: 8, overflow: "hidden", background: "#1b1e23" },
-  readout: { position: "absolute", left: 8, top: 6, fontFamily: FONT_D, fontSize: 12, color: DIM, pointerEvents: "none" },
+  probe: { position: "absolute", right: 8, top: 6, fontFamily: FONT_D, fontSize: 12, color: DIM, pointerEvents: "none" },
   panel: { padding: 10, display: "flex", flexDirection: "column", gap: 8 },
   row: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
   btn: { width: 44, height: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: C.white },

@@ -20,23 +20,36 @@
    than picked. Pure: it records frame times and reports; the screen
    decides what to ramp.
 
-   THE FIRST PHONE RUN (19 Sep) FAILED ON STALLS ALONE: p50 16.7, p95
-   16.8, and eight frames of 100-208 ms in eight seconds. A stall is a
-   different class of thing from a slow frame and needs a different
-   instrument, so a ramp step now also keeps a STALL LOG -- for every
-   frame over HITCH, when in the step it landed and what the screen
-   was doing in that frame: a garbage collection detected between
-   frames (a WeakRef sentinel), a React state update issued the frame
-   before, how many sim ticks ran, a canvas resize. And the ramp no
-   longer stops at a hitch: a stutter with a clean steady state says
-   nothing about capacity, so it runs on and the report derives two
-   caps, the strict one the budget asks for and the steady one the
-   fill rate allows.
+   WHAT THE PHONE HAS SAID SO FAR (Pixel 7 Pro, the dev server):
+
+     run 1, 19 Sep   p50 16.7 / p95 16.8 at 39 cars, and eight frames of
+                     100-208 ms in eight seconds. Stalls, not load.
+     run 3, 19 Sep   the same step twice, with and without a React state
+                     update once a second from the frame loop: 8 stalls
+                     of 133-158 ms a second apart, then ZERO with a worst
+                     frame of 16.8 ms. Cause confirmed. Steps 2-4 then
+                     held a locked 60 fps to 114 cars and 120 props, and
+                     step 5 (154 cars) had p50 16.7 / p95 16.8 -- and one
+                     frame of 2642 ms with no cause flag. A second stall
+                     bug, not a ceiling; the ceiling has not been found.
+
+   A stall is a different class of thing from a slow frame and needs
+   its own instrument, so a ramp step keeps a STALL LOG: every frame
+   over HITCH, when in the hold it landed, and what was going on --
+   how long our own callback ran (a stall inside it is our code), how
+   much of the gap the browser reports as long tasks (busy main thread
+   outside our code, or none at all: the page got no frames), a full
+   garbage collection seen by a WeakRef sentinel, a DOM/React update
+   issued within the last two frames (the cost lands one or two frames
+   after the update, measured), the tab going hidden, input arriving,
+   sim ticks, a canvas resize. The ramp does not stop at a hitch,
+   because a stutter says nothing about capacity; it stops when a
+   step's steady state fails, and the report derives two caps.
    ===================================================================== */
 /* WHICH INSTRUMENT. Bumped whenever the ramp or the report changes
    shape, and printed with the build stamp on the screen and in the
    report, so a report from a stale tab says so on its first line. */
-export const INSTRUMENT = 3;
+export const INSTRUMENT = 4;
 export const BUILD = typeof __BUILD__ !== "undefined" ? __BUILD__ : "unbundled";   // vite.config.js bakes it in; bare node has none
 
 export const HITCH = 50;     // ms: a frame long enough to see as a stutter (three missed vsyncs at 60)
@@ -128,6 +141,83 @@ export function gcProbe() {
   };
 }
 
+/* WHAT THE BROWSER SAYS THE MAIN THREAD WAS DOING. Long tasks are the
+   browser's own record of the main thread being blocked for over 50 ms
+   by anything -- script, style, layout, paint, its own work. A stall
+   with a long task across it was a busy main thread; a stall with NONE
+   was a page that got no frames: hidden, frozen, or waiting on the GPU.
+   Visibility and input are recorded the same way, for the same reason.
+   Everything here degrades to "unknown" where the API is missing. */
+export function taskProbe() {
+  const tasks = [], hidden = [], inputs = [], frames = [];
+  /* Support is what the platform LISTS, not whether observe() throws:
+     node accepts an unknown entry type silently and never delivers it. */
+  const listed = typeof PerformanceObserver !== "undefined" ? (PerformanceObserver.supportedEntryTypes ?? []) : [];
+  let supported = false, loaf = false;
+  if (listed.includes("longtask")) {
+    try {
+      const po = new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) { tasks.push({ start: e.startTime, ms: e.duration, name: e.name }); if (tasks.length > 400) tasks.shift(); }
+      });
+      po.observe({ type: "longtask", buffered: true });
+      supported = true;
+    } catch { supported = false; }
+  }
+  /* LONG ANIMATION FRAMES say what a long frame was doing: how much was
+     script and WHICH script, by file and function, and how much was
+     style, layout and paint. Chrome 123+. A stall's attribution comes
+     from here when it is available. */
+  if (listed.includes("long-animation-frame")) {
+    try {
+      const po = new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) {
+          const end = e.startTime + e.duration;
+          const scripts = (e.scripts ?? []).map((s) => ({
+            ms: Math.round(s.duration), where: `${(s.sourceURL ?? "").split("/").pop().split("?")[0] || "?"}:${s.sourceFunctionName || s.invoker || "?"}`, kind: s.invokerType ?? "",
+            layout: Math.round(s.forcedStyleAndLayoutDuration ?? 0),
+          })).sort((a, b) => b.ms - a.ms).slice(0, 3);
+          frames.push({
+            start: e.startTime, ms: Math.round(e.duration), blocking: Math.round(e.blockingDuration ?? 0),
+            script: Math.round(scripts.reduce((t, s) => t + s.ms, 0)),
+            render: e.renderStart ? Math.round(end - e.renderStart) : 0,
+            styleLayout: e.styleAndLayoutStart ? Math.round(end - e.styleAndLayoutStart) : 0,
+            scripts,
+          });
+          if (frames.length > 200) frames.shift();
+        }
+      });
+      po.observe({ type: "long-animation-frame", buffered: true });
+      loaf = true;
+    } catch { loaf = false; }
+  }
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") hidden.push(performance.now()); });
+    for (const ev of ["pointerdown", "pointerup", "touchmove", "wheel", "scroll", "keydown"]) {
+      window.addEventListener(ev, () => { inputs.push(performance.now()); if (inputs.length > 400) inputs.shift(); }, { capture: true, passive: true });
+    }
+  }
+  return {
+    supported,
+    /* The gap between two frame timestamps: long-task milliseconds in
+       it, the longest one, whether the tab went hidden, input events. */
+    loaf,
+    during(t0, t1) {
+      const within = tasks.filter((t) => t.start + t.ms > t0 - 5 && t.start < t1 + 5);
+      const ms = within.reduce((s, t) => s + Math.min(t.start + t.ms, t1) - Math.max(t.start, t0), 0);
+      /* The long animation frame that covers the gap, if the browser
+         reported one: the biggest overlapping it. */
+      const lf = frames.filter((f) => f.start + f.ms > t0 - 5 && f.start < t1 + 5).sort((a, b) => b.ms - a.ms)[0] ?? null;
+      return {
+        tasks: supported ? Math.round(Math.max(0, ms)) : null,
+        longest: within.length ? Math.round(Math.max(...within.map((t) => t.ms))) : 0,
+        hidden: hidden.some((h) => h >= t0 - 5 && h <= t1 + 5),
+        input: inputs.filter((x) => x >= t0 && x <= t1).length,
+        frame: lf ? { ms: lf.ms, script: lf.script, render: lf.render, styleLayout: lf.styleLayout, scripts: lf.scripts } : null,
+      };
+    },
+  };
+}
+
 /* WHICH DEVICE, REALLY. Chrome's User-Agent Reduction freezes the
    Android version at 10 and the model at "K" for every device -- a
    privacy measure -- so "Android 10; K" in a UA string says nothing
@@ -167,41 +257,50 @@ export function deviceInfo(extra = {}) {
    budget's numbers for that load. Steps are whatever the screen can
    ramp -- here, a traffic multiplier (each unit is four worlds of cars,
    about forty on a phone's screen at the overpass) and stand-in
-   buildings scattered where the camera looks. The prop counts are what
-   a city view might hold, not a stress figure: a phone screen at this
-   zoom shows a couple of hundred metres of street.
+   buildings scattered where the camera looks. It runs well past the
+   loads a phone has already carried, because the ceiling has not been
+   found: 154 cars on screen were still at a locked 60 fps.
 
-   The first step is a PROBE, the same load twice: once with the
-   screen's once-a-second React state update left on, once with it
-   off. The first phone run stalled exactly as many times as that
-   update fired inside the recorded window, which is a suspect and not
-   a finding until the two halves of this step differ. */
+   The first step is a PROBE, a positive control: the same load as the
+   second, with a React state update issued once a second from the
+   frame loop, which is the thing that stalled the first phone run. It
+   must show stalls -- if it stops showing them, either the device or
+   the framework has changed, and either is worth knowing -- and it
+   proves the instrument still sees a stall at all. */
 export function rampSteps() {
   return [
-    { traffic: 1, props: 0, hud: true, label: "1 (HUD on)" },
-    { traffic: 1, props: 0, hud: false, label: "1" },
-    { traffic: 2, props: 0, hud: false, label: "2" },
-    { traffic: 2, props: 60, hud: false, label: "3" },
-    { traffic: 3, props: 120, hud: false, label: "4" },
-    { traffic: 4, props: 200, hud: false, label: "5" },
-    { traffic: 6, props: 300, hud: false, label: "6" },
+    { traffic: 1, props: 0, probe: true, label: "1 (DOM probe)" },
+    { traffic: 1, props: 0, label: "1" },
+    { traffic: 2, props: 0, label: "2" },
+    { traffic: 2, props: 60, label: "3" },
+    { traffic: 3, props: 120, label: "4" },
+    { traffic: 4, props: 200, label: "5" },
+    { traffic: 6, props: 300, label: "6" },
+    { traffic: 8, props: 400, label: "7" },
+    { traffic: 12, props: 500, label: "8" },
+    { traffic: 16, props: 600, label: "9" },
+    { traffic: 24, props: 800, label: "10" },
   ];
 }
 
 /* THE RAMP AS A STATE MACHINE, so it can be driven by synthetic frames
    in node and proven to terminate before a phone is asked to run it.
    The screen calls `frame(now, counts, flags)` once per animation frame
-   with the frame timestamp, what that frame drew, and what else the
-   frame did (gc, hud, ticks, resized); the result says what to do:
-   nothing, `load` a new step (the screen rebuilds its scene), or `done`
-   with the report's inputs. Each step settles for `settle` seconds --
-   the scene build is a stall and must not be counted -- then holds for
-   `hold` seconds of recording. The ramp stops when a step's STEADY
-   state fails: a heavier load cannot pass where a lighter one did not.
-   A hitch fails the step but does not stop the ramp, because a stutter
-   says nothing about how much the device can draw. */
+   with the frame timestamp, what that frame drew, and what else went
+   on; the result says what to do: nothing, `load` a new step (the
+   screen rebuilds its scene), or `done` with the report's inputs.
+
+   A STEP'S CLOCK STARTS ON THE FRAME AFTER THE LOAD, not on the frame
+   that asked for it: the scene build runs inside that frame and takes
+   seconds at the heavy steps on a phone, and a settle that had already
+   started would have counted the build as a stall. Then `settle`
+   seconds are discarded and `hold` seconds recorded. The ramp stops
+   when a step's STEADY state fails -- a heavier load cannot pass where
+   a lighter one did not -- and a hitch fails the step without stopping
+   the ramp, because a stutter says nothing about how much the device
+   can draw. */
 export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = perfMeter() } = {}) {
-  let i = 0, at = null, settled = false, last = null, counts = null;
+  let i = 0, at = null, settled = false, started = false, last = null, counts = null;
   let log = [], gcFrames = 0, gcMs = 0;
   const results = [];
   const finish = () => {
@@ -219,12 +318,22 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       if (last != null) { dt = now - last; meter.record(dt); }
       last = now;
       if (drew) counts = { cars: drew.cars, items: drew.items };
-      if (at == null) { at = now; meter.reset(); return { load: steps[0] }; }
+      if (!started) { started = true; return { load: steps[0] }; }
+      if (at == null) { at = now; settled = false; meter.reset(); log = []; gcFrames = 0; gcMs = 0; return {}; }
       const held = (now - at) / 1000;
       if (!settled && held >= settle) { settled = true; meter.reset(); log = []; gcFrames = 0; gcMs = 0; }
       if (settled && dt != null) {
         if (flags.gc) { gcFrames++; gcMs += dt; }
-        if (dt > HITCH) log.push({ t: Math.round((held - settle) * 100) / 100, dt: Math.round(dt), gc: !!flags.gc, hud: !!flags.hud, ticks: flags.ticks ?? 0, resized: !!flags.resized });
+        if (dt > HITCH) {
+          log.push({
+            t: Math.round((held - settle) * 100) / 100, dt: Math.round(dt),
+            tickMs: flags.tickMs != null ? Math.round(flags.tickMs) : null,
+            tasks: flags.tasks ?? null, longest: flags.longest ?? 0,
+            gc: !!flags.gc, dom: !!flags.dom, hidden: !!flags.hidden, input: flags.input ?? 0,
+            ticks: flags.ticks ?? 0, resized: !!flags.resized,
+            frame: flags.frame ?? null,
+          });
+        }
       }
       if (!settled || held < settle + hold) return {};
       const sum = meter.summary();
@@ -235,7 +344,7 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       });
       i++;
       if (i >= steps.length || !results[results.length - 1].steady) return finish();
-      at = now; settled = false; meter.reset();
+      at = null;
       return { load: steps[i] };
     },
   };
@@ -248,17 +357,25 @@ export function reportText({ device, results, cap, steadyCap, canvas }) {
   const who = device.model ? `${device.model} · ${platform}`.trim() : `model unknown${device.note ? ` (${device.note})` : ""}${platform ? ` · ${platform}` : ""}`;
   lines.push(`device: ${who}`);
   lines.push(`ua: ${device.ua} (a Chrome UA is reduced: "Android 10; K" is every Android device)`);
-  lines.push(`cores ${device.cores} · memory ${device.memoryGB}GB · dpr ${device.dpr}${device.canvasDpr != null ? ` (canvas at ${device.canvasDpr})` : ""} · screen ${device.screen} · viewport ${device.viewport} · canvas ${canvas}${device.build ? ` · ${device.build}` : ""}`);
+  lines.push(`cores ${device.cores} · memory ${device.memoryGB}GB · dpr ${device.dpr}${device.canvasDpr != null ? ` (canvas at ${device.canvasDpr})` : ""} · screen ${device.screen} · viewport ${device.viewport} · canvas ${canvas}${device.build ? ` · ${device.build}` : ""}${device.longTasks === false ? " · no long-task API" : ""}${device.loaf === false ? " · no long-animation-frame API" : ""}`);
   lines.push(`budget: p95 <= ${BUDGET.p95}ms, no frame over ${BUDGET.max}ms (a hitch), no second under 30 fps`);
-  lines.push("step        traffic  props  cars(drawn)  things  fps  p50   p95   worst  hitches  stalls  slow-s  gc-frames(mean ms)  steady  pass");
+  lines.push("step           traffic  props  cars(drawn)  things  fps  p50   p95   worst  hitches  stalls  slow-s  gc-frames(mean ms)  steady  pass");
   for (const r of results) {
-    lines.push(`${String(r.label ?? r.step).padEnd(11)} ${String(r.traffic).padStart(7)}  ${String(r.props).padStart(5)}  ${String(r.cars).padStart(11)}  ${String(r.items).padStart(6)}  ${String(r.fps).padStart(3)}  ${String(r.p50).padStart(4)}  ${String(r.p95).padStart(4)}  ${String(r.worst).padStart(5)}  ${String(r.hitches).padStart(7)}  ${String(r.stalls).padStart(6)}  ${String(r.slowSeconds).padStart(6)}  ${String(`${r.gcFrames ?? 0} (${r.gcMeanMs ?? 0})`).padStart(18)}  ${r.steady ? "yes" : "NO "}     ${r.pass ? "yes" : "NO"}`);
+    lines.push(`${String(r.label ?? r.step).padEnd(14)} ${String(r.traffic).padStart(7)}  ${String(r.props).padStart(5)}  ${String(r.cars).padStart(11)}  ${String(r.items).padStart(6)}  ${String(r.fps).padStart(3)}  ${String(r.p50).padStart(4)}  ${String(r.p95).padStart(4)}  ${String(r.worst).padStart(5)}  ${String(r.hitches).padStart(7)}  ${String(r.stalls).padStart(6)}  ${String(r.slowSeconds).padStart(6)}  ${String(`${r.gcFrames ?? 0} (${r.gcMeanMs ?? 0})`).padStart(18)}  ${r.steady ? "yes" : "NO "}     ${r.pass ? "yes" : "NO"}`);
   }
   const stalls = results.flatMap((r) => (r.stallLog ?? []).map((s) => ({ step: r.label ?? r.step, ...s })));
   if (stalls.length) {
-    lines.push("stalls: every frame over the hitch line, with what the frame was doing");
-    lines.push("  step        t(s)   dt(ms)  gc   hud  ticks  resized");
-    for (const s of stalls) lines.push(`  ${String(s.step).padEnd(11)} ${String(s.t.toFixed(2)).padStart(5)}  ${String(s.dt).padStart(6)}  ${s.gc ? "yes" : "no "}  ${s.hud ? "yes" : "no "}  ${String(s.ticks).padStart(5)}  ${s.resized ? "yes" : "no"}`);
+    lines.push("stalls: every frame over the hitch line, and what was going on in the gap");
+    lines.push("  step           t(s)   dt(ms)  ours(ms)  tasks(ms)  longest  gc   dom  hidden  input  ticks  resized");
+    for (const s of stalls) {
+      lines.push(`  ${String(s.step).padEnd(14)} ${String(s.t.toFixed(2)).padStart(5)}  ${String(s.dt).padStart(6)}  ${String(s.tickMs ?? "?").padStart(8)}  ${String(s.tasks ?? "?").padStart(9)}  ${String(s.longest).padStart(7)}  ${s.gc ? "yes" : "no "}  ${s.dom ? "yes" : "no "}  ${s.hidden ? "yes " : "no  "}   ${String(s.input).padStart(5)}  ${String(s.ticks).padStart(5)}  ${s.resized ? "yes" : "no"}`);
+      if (s.frame) {
+        const top = s.frame.scripts.map((x) => `${x.where} ${x.ms}ms${x.kind ? ` (${x.kind})` : ""}${x.layout ? ` forced-layout ${x.layout}ms` : ""}`).join(", ");
+        lines.push(`                 long animation frame ${s.frame.ms}ms: script ${s.frame.script}ms, style+layout ${s.frame.styleLayout}ms, render ${s.frame.render}ms${top ? `; ${top}` : ""}`);
+      }
+    }
+    lines.push("  ours = time inside our frame callback; tasks = long tasks the browser saw in the gap (0 with a long gap = the page got no frames);");
+    lines.push("  the long-animation-frame line, where Chrome gives one, says what the frame was doing and which script");
   } else {
     lines.push("stalls: none");
   }

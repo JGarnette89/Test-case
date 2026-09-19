@@ -30,7 +30,11 @@ export default function Wheel() {
   const [seed, setSeed] = useState(1);
   const [limit, setLimit] = useState(60);
   const [spring, setSpring] = useState(false);
-  const [hud, setHud] = useState({ kmh: 0, contacts: 0, fps: 0, offRoad: false, laps: 0, cars: 0 });
+  /* NO REACT STATE IS WRITTEN FROM THE FRAME LOOP: the readout is
+     drawn on the canvas. A state update from the loop cost 133-158 ms a
+     time on the Pixel 7 Pro (IsoRoad.jsx, perf.js), and this one ran
+     four times a second while the player was driving. */
+  const hud = useRef({ kmh: 0, fps: 0, offRoad: false, laps: 0, cars: 0 });
   const [stopped, setStopped] = useState(false);   // after a contact, until restarted
 
   /* The world and the player live in refs: the canvas is painted
@@ -141,14 +145,13 @@ export default function Wheel() {
 
       const k = Math.max(3, size.w / 60);
       const drew = drawFrame(ctx, size, { roads, terrain: sc.terrain, cam: cam.current, k, tilt: false, props: sc.props });
-      drawControls(ctx, size, inp, tally.current);
-      if (tally.current.flash > 0) tally.current.flash = Math.max(0, tally.current.flash - dt * 2);
-
       if (now - fpsAt > 250) {
         const sum = meter.current.summary(120);
-        setHud({ kmh: Math.round(me.current.v * 3.6), contacts: tally.current.contacts, fps: sum.fps, offRoad: Math.abs(me.current.off) > road.width / 2 + 0.5, laps: tally.current.laps, cars: drew.cars });
+        hud.current = { kmh: Math.round(me.current.v * 3.6), fps: sum.fps, offRoad: Math.abs(me.current.off) > road.width / 2 + 0.5, laps: tally.current.laps, cars: drew.cars };
         fpsAt = now;
       }
+      drawControls(ctx, size, inp, tally.current, { ...hud.current, kmh: Math.round(me.current.v * 3.6), limit });
+      if (tally.current.flash > 0) tally.current.flash = Math.max(0, tally.current.flash - dt * 2);
       raf.current = requestAnimationFrame(tick);
     };
     tick(performance.now());
@@ -172,11 +175,6 @@ export default function Wheel() {
       <div style={S.view}>
         <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }}
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
-        <div style={S.readout}>
-          <span style={S.speed}>{hud.kmh}</span> km/h · limit {limit} · {hud.cars} cars in view · {hud.fps} fps
-          {hud.offRoad && <span style={{ color: C.amber }}> · OFF THE ROAD</span>}
-          {hud.laps > 0 && <span> · lap {hud.laps + 1}</span>}
-        </div>
         {stopped && (
           <div style={S.banner}>
             <div style={{ fontFamily: FONT_D, fontSize: 18, fontWeight: 700 }}>Contact.</div>
@@ -217,10 +215,18 @@ export default function Wheel() {
   );
 }
 
-/* THE CONTROLS ARE DRAWN ON THE CANVAS: the slider's track and thumb on
-   the right, the wheel's deflection along the bottom left, and a red
-   wash for a contact. Drawn after the world, so they are always on top. */
-function drawControls(ctx, size, inp, tally) {
+/* THE CONTROLS AND THE READOUT ARE DRAWN ON THE CANVAS: the speed and
+   the state of play top left, the slider's track and thumb on the
+   right, the wheel's deflection along the bottom left, and a red wash
+   for a contact. Drawn after the world, so they are always on top. */
+function drawControls(ctx, size, inp, tally, hud) {
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillStyle = "#ffffff"; ctx.font = "700 26px system-ui, sans-serif";
+  ctx.fillText(String(hud.kmh), 10, 6);
+  const w = ctx.measureText(String(hud.kmh)).width;
+  ctx.fillStyle = "rgba(230,232,236,0.8)"; ctx.font = "12px system-ui, sans-serif";
+  ctx.fillText(` km/h · limit ${hud.limit} · ${hud.cars} cars in view · ${hud.fps} fps${hud.laps > 0 ? ` · lap ${hud.laps + 1}` : ""}`, 10 + w, 16);
+  if (hud.offRoad) { ctx.fillStyle = "#F2B84B"; ctx.fillText("OFF THE ROAD", 10, 38); }
   const margin = 24, x = size.w - SLIDER_W / 2, top = margin, bottom = size.h - margin, mid = (top + bottom) / 2;
   /* The track: throttle above the band, brake below. */
   ctx.lineCap = "round";
@@ -252,8 +258,6 @@ const S = {
   title: { fontFamily: FONT_D, fontSize: 18, fontWeight: 700, color: C.white },
   sub: { fontFamily: FONT_U, fontSize: 12, color: DIM },
   view: { position: "relative", height: "68vh", minHeight: 360, margin: "0 8px", borderRadius: 8, overflow: "hidden", background: "#1b1e23" },
-  readout: { position: "absolute", left: 10, top: 8, fontFamily: FONT_D, fontSize: 12, color: DIM, pointerEvents: "none" },
-  speed: { fontSize: 26, fontWeight: 700, color: C.white },
   banner: { position: "absolute", left: 16, right: 16 + SLIDER_W, top: "40%", padding: 14, borderRadius: 10, background: "rgba(20,22,26,0.92)", border: "1px solid rgba(255,255,255,0.15)", color: TEXT },
   panel: { padding: 10, display: "flex", flexDirection: "column", gap: 8 },
   row: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
