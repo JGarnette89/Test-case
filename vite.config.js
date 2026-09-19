@@ -8,15 +8,19 @@ import { execSync } from "node:child_process";
    and produced a report that cost a round trip to recognise (19 Sep);
    the stamp is on the screen before a test runs and in the report
    after, so a stale run identifies itself. */
-const stamp = () => {
+const stamp = (command) => {
   const git = (cmd) => { try { return execSync(cmd, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim(); } catch { return ""; } };
   const hash = git("git rev-parse --short HEAD") || "nogit";
   const dirty = git("git status --porcelain") ? "+" : "";
-  return `${hash}${dirty} ${new Date().toISOString().slice(0, 16).replace("T", " ")}Z`;
+  const when = `${new Date().toISOString().slice(0, 16).replace("T", " ")}Z`;
+  /* A build's stamp is exact. A dev server's is taken when the server
+     starts and then serves live code for hours, so it says so: the
+     commit it started at, not the commit being served. */
+  return command === "build" ? `${hash}${dirty} built ${when}` : `dev server started ${when} at ${hash}${dirty}, serving live code`;
 };
 
-export default defineConfig({
-  define: { __BUILD__: JSON.stringify(stamp()) },
+export default defineConfig(({ command }) => ({
+  define: { __BUILD__: JSON.stringify(stamp(command)) },
   /* Where the built app is served from. "/" for a dev server or a root
      deploy; the deploy workflow sets "/<repo>/" for GitHub Pages, whose
      project sites live under a path. Hash routing means nothing else
@@ -38,4 +42,4 @@ export default defineConfig({
     host: true,
     allowedHosts: [".trycloudflare.com", ".ngrok-free.app", ".ngrok.io", ".loca.lt"],
   },
-});
+}));

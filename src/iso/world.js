@@ -11,7 +11,24 @@
    when it measured a bend costing the simulation nothing.
    ===================================================================== */
 import { step, DT, ROAD, CAR } from "../sim/traffic.js";
-import { valleyRoad, bridgeRoad, terrain, LANE } from "./road.js";
+import { terrain, LANE } from "./road.js";
+import { loadMap } from "../map/load.js";
+import { stage0Map } from "../map/format.js";
+
+/* THE ROADS COME FROM A MAP. Stage 0's two roads are the first map
+   (map/format.js), loaded through the same normalisation every map
+   will get; verify-map.mjs holds the loaded roads to the hand-built
+   ones within 5 mm. Loaded once: the map does not change while the
+   scene runs. */
+let stage0 = null;
+export function stage0Roads() {
+  if (!stage0) {
+    const loaded = loadMap(stage0Map());
+    if (!loaded.ok) throw new Error(`stage 0 map: ${loaded.error}`);
+    stage0 = { valley: loaded.roads.find((r) => r.id === "valley"), bridge: loaded.roads.find((r) => r.id === "bridge"), loaded };
+  }
+  return stage0;
+}
 
 function trafficOn(road, seed, kmh) {
   const speed = kmh / 3.6;
@@ -27,7 +44,7 @@ function trafficOn(road, seed, kmh) {
 }
 
 export function seedScene(seed = 1, kmh = 60, { traffic = 1, props = 0, focus = null } = {}) {
-  const valley = valleyRoad(), bridge = bridgeRoad();
+  const { valley, bridge } = stage0Roads();
   /* Two directions per road: the same world twice, one driven along
      `s` and one against it, each in its own right-hand lane. `traffic`
      above one stacks more worlds on each -- cars that overlap, which is

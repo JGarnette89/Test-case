@@ -36,10 +36,16 @@ export function sampleRoad({ plan, height, width, step = 5, samples = 400 }) {
     pts.push({ ...p, z: height(p, s) });
     at.push(s);
   }
-  /* Edges: offset each sample perpendicular to the local tangent in
-     plan, at the sample's own height. With y down, the right of travel
-     is (-dy, dx) -- the same expression the sim uses for which side of
-     the road a car is on. */
+  return { pts, at, ...ribbonOf(pts, width), length, width, step: length / n };
+}
+
+/* THE RIBBON: a road's two edges from its centreline samples. Offset
+   each sample perpendicular to the local tangent in plan, at the
+   sample's own height. With y down, the right of travel is (-dy, dx)
+   -- the same expression the sim uses for which side of the road a car
+   is on. One implementation, used by the hand-built stage 0 roads and
+   by every road a map loader produces (map/load.js). */
+export function ribbonOf(pts, width) {
   const left = [], right = [];
   for (let i = 0; i < pts.length; i++) {
     const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
@@ -48,7 +54,7 @@ export function sampleRoad({ plan, height, width, step = 5, samples = 400 }) {
     right.push({ x: pts[i].x + nx * width / 2, y: pts[i].y + ny * width / 2, z: pts[i].z });
     left.push({ x: pts[i].x - nx * width / 2, y: pts[i].y - ny * width / 2, z: pts[i].z });
   }
-  return { pts, at, left, right, length, width, step: length / n };
+  return { left, right };
 }
 
 /* Position, heading (degrees, in plan, y down so clockwise positive)
