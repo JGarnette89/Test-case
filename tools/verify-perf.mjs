@@ -12,7 +12,7 @@
    What it cannot check is a real frame time -- that is the phone's job,
    and the report it produces is the number that matters.
    ===================================================================== */
-import { perfMeter, budgetRamp, rampSteps, reportText, gcProbe, BUDGET, HITCH } from "../src/iso/perf.js";
+import { perfMeter, budgetRamp, rampSteps, reportText, gcProbe, deviceIdentity, BUDGET, HITCH } from "../src/iso/perf.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -84,6 +84,15 @@ function drive(frameMs, flagsFor = () => ({}), { settle = 1, hold = 8 } = {}) {
   const text = reportText({ device: { ua: "test", cores: 8, memoryGB: 8, dpr: 3.5, canvasDpr: 2, screen: "1x1", viewport: "1x1", build: "test" }, results: r.results, cap: r.cap, steadyCap: r.steadyCap, canvas: "1x1" });
   check(/stalls: every frame/.test(text) && /yes  no /.test(text) && /no   yes/.test(text), "the report lists the stalls with their flags");
   check(/canvas at 2/.test(text) && /cap \(budget, no hitching\)/.test(text) && /cap \(steady state/.test(text), "the report states the canvas scale and both caps");
+  check(/device: model unknown/.test(text) && /ua: test/.test(text) && /reduced/.test(text), "without a model the report says the model is unknown and warns that the UA is reduced");
+  const named = reportText({ device: { ua: "x", model: "Pixel 7 Pro", platform: "Android", platformVersion: "14.0.0", cores: 8, memoryGB: 8, dpr: 3.5, screen: "1x1", viewport: "1x1" }, results: r.results, cap: r.cap, steadyCap: r.steadyCap, canvas: "1x1" });
+  check(/device: Pixel 7 Pro · Android 14.0.0/.test(named), "with client hints the report names the model and platform version");
+}
+
+/* 4b. The identity call never throws and never guesses where client hints are missing. */
+{
+  const id = await deviceIdentity();
+  check(id.model === null && typeof id.note === "string" && /no client hints/.test(id.note), `in node, no model and a note saying why (${id.note})`);
 }
 
 /* 5. A slow second fails a step even when the p95 would pass. */

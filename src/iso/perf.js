@@ -122,6 +122,26 @@ export function gcProbe() {
   };
 }
 
+/* WHICH DEVICE, REALLY. Chrome's User-Agent Reduction freezes the
+   Android version at 10 and the model at "K" for every device -- a
+   privacy measure -- so "Android 10; K" in a UA string says nothing
+   about a phone, and the first report was misread from it as an older
+   phone than it was (it was the Pixel 7 Pro). The sanctioned route to
+   the real model is the client hints API: asynchronous, Chromium only,
+   and it may be refused. When it is missing the report says so rather
+   than guessing from the string. Fetched once when a test starts. */
+export async function deviceIdentity() {
+  const none = (note) => ({ model: null, platformVersion: null, platform: null, note });
+  try {
+    const uad = typeof navigator !== "undefined" ? navigator.userAgentData : null;
+    if (!uad?.getHighEntropyValues) return none("no client hints (not Chromium): the UA string below is reduced and says nothing about the model");
+    const v = await uad.getHighEntropyValues(["model", "platformVersion", "platform"]);
+    return { model: v.model || null, platformVersion: v.platformVersion || null, platform: v.platform || uad.platform || null, note: v.model ? null : "client hints gave no model" };
+  } catch {
+    return none("client hints refused");
+  }
+}
+
 /* What the report has to say about the device, so a number means
    something when it is pasted somewhere else. */
 export function deviceInfo(extra = {}) {
@@ -218,7 +238,10 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
 export function reportText({ device, results, cap, steadyCap, canvas }) {
   const lines = [];
   lines.push(`performance report ${new Date().toISOString()}`);
-  lines.push(`device: ${device.ua}`);
+  const platform = [device.platform, device.platformVersion].filter(Boolean).join(" ");
+  const who = device.model ? `${device.model} · ${platform}`.trim() : `model unknown${device.note ? ` (${device.note})` : ""}${platform ? ` · ${platform}` : ""}`;
+  lines.push(`device: ${who}`);
+  lines.push(`ua: ${device.ua} (a Chrome UA is reduced: "Android 10; K" is every Android device)`);
   lines.push(`cores ${device.cores} · memory ${device.memoryGB}GB · dpr ${device.dpr}${device.canvasDpr != null ? ` (canvas at ${device.canvasDpr})` : ""} · screen ${device.screen} · viewport ${device.viewport} · canvas ${canvas}${device.build ? ` · ${device.build}` : ""}`);
   lines.push(`budget: p95 <= ${BUDGET.p95}ms, no frame over ${BUDGET.max}ms (a hitch), no second under 30 fps`);
   lines.push("step        traffic  props  cars(drawn)  things  fps  p50   p95   worst  hitches  stalls  slow-s  gc-frames(mean ms)  steady  pass");

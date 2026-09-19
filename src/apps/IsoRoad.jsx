@@ -20,7 +20,7 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import { seedScene, stepScene, carsOf, DT } from "../iso/world.js";
 import { drawFrame } from "../iso/draw.js";
 import { poseAt } from "../iso/road.js";
-import { perfMeter, deviceInfo, budgetRamp, reportText, gcProbe, BUDGET } from "../iso/perf.js";
+import { perfMeter, deviceInfo, deviceIdentity, budgetRamp, reportText, gcProbe, BUDGET } from "../iso/perf.js";
 
 /* THE CANVAS IS CAPPED AT TWO DEVICE PIXELS PER CSS PIXEL. A 3.5x phone
    would otherwise rasterise 1383x1845 for a 395x527 view -- twelve
@@ -69,9 +69,11 @@ export default function IsoRoad() {
      cost lands on the NEXT frame's time), and whether the canvas was
      resized. */
   const flags = useRef({ hud: false, resized: false });
+  const identity = useRef({});   // the real model, from client hints, fetched when a test starts
 
   const startTest = () => {
     ramp.current = budgetRamp();
+    deviceIdentity().then((id) => { identity.current = id; });
     setReport(null); setTesting(true);
     setPlaying(true); setFollow("overpass"); setZoom(0.8);
     cam.current = { x: 0, y: 0, z: 0, id: null };
@@ -123,7 +125,7 @@ export default function IsoRoad() {
       if (r) {
         const want = r.frame(now, drewLast.current, { gc: collected, hud: before.hud, ticks: before.ticks ?? 0, resized: before.resized });
         if (want.done) {
-          const device = deviceInfo({ canvasDpr: Math.min(DPR_CAP, window.devicePixelRatio || 1), build: import.meta.env?.DEV ? "dev server (unminified React, StrictMode)" : "production build" });
+          const device = deviceInfo({ ...identity.current, canvasDpr: Math.min(DPR_CAP, window.devicePixelRatio || 1), build: import.meta.env?.DEV ? "dev server (unminified React, StrictMode)" : "production build" });
           setReport(reportText({ device, results: want.results, cap: want.cap, steadyCap: want.steadyCap, canvas: `${size.w}x${size.h}` }));
           ramp.current = null; setTesting(false);
           scene.current = seedScene(seed, limit);
