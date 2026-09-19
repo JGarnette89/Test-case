@@ -2124,6 +2124,16 @@ invisible to the encroachment fault because it only ever watches priors — in
 - Comments explain *why*, not *what*. Only where the reasoning is not obvious.
 - Mobile-first: 44 px minimum touch targets, `100dvh`, safe-area insets,
   `touch-action: none` on the canvas, 16 px inputs so iOS does not zoom.
+- **No React state is written from a frame loop, and no DOM changes
+  while the world moves.** Measured on the Pixel 7 Pro, 19 Sep 2026: a
+  readout updated through `setState` once a second from inside
+  `requestAnimationFrame` cost a frame of 133-158 ms every time it
+  fired, against a steady 16.7 ms with it off -- the same load, the
+  same everything else (SIMULATOR.md 1.2.1). Readouts are drawn on the
+  canvas from strings the loop refreshes; React draws the chrome around
+  the canvas and nothing inside the frame. The ramp on `#/iso` issues
+  one such update a second in its first step on purpose, as a positive
+  control, so the cost stays measured on whatever device runs it.
 
 ## Known work in progress
 

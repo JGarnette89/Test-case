@@ -650,6 +650,66 @@ cars in view, a tighter camera, simpler geometry -- rather than
 discovered in stage 5 with a city built on top of it.** The first phone
 report decides which.
 
+##### 1.2.1 What the phone said -- 19 September, Pixel 7 Pro, the dev server
+
+**The headline: on a real phone, on the slow development build
+(unminified React in StrictMode), 114 cars and 120 props drew at a
+locked 60 fps with no headroom consumed, and both failures so far were
+stutters, not limits.**
+
+Run 1 failed the budget at the first step on stalls alone: p50 16.7 ms,
+p95 16.8 ms, zero slow seconds, 39 cars and 472 things drawn -- and
+eight frames of 100-208 ms in the eight-second hold. Before anything
+was changed, two things were measured. `tools/measure/alloc.mjs`
+showed V8 on the exact per-frame work does young-generation scavenges
+only (292 in 20 s, worst 1.6 ms, no full collections), so the JS heap
+cannot produce a 100 ms pause from this code by itself; it also showed
+the draw allocating about 4 MB per frame, a rate to cut later. And the
+screen issued one React state update a second from inside the frame
+loop, which lands exactly eight times inside a step's recorded window.
+
+Run 3 settled it by controlled comparison, the same load twice: with
+the update, 8 stalls of 133-158 ms a second apart; without it, zero
+and a worst frame of 16.8 ms. Steps 2-4 then held p50 16.7 / p95
+16.7-16.8 to 114 cars and 120 props. Step 5 at 154 cars had the same
+p50 and p95 and ONE frame of 2642 ms with no cause flag -- a second
+stall bug of the same class, not a capacity limit, since a device at
+its limit shows a rising p95 long before it shows a stall.
+
+What came out of it, and holds from here on:
+
+- **No React state is written from a frame loop.** The readouts are
+  drawn on the canvas from strings refreshed once a second; the DOM
+  does not change while the world moves. The Wheel screen had been
+  writing state four times a second while the player was driving.
+- **The instrument attributes a stall** rather than counting it: how
+  long our own callback ran, what the browser saw in the gap (long
+  tasks, and Chrome's long animation frame with script against
+  style/layout/render and the scripts by file and function), a full
+  collection, a DOM update within the last two frames -- the cost
+  lands one or two frames after the update, which is why the first
+  flag read "no" against every stall it caused -- the tab going
+  hidden, input arriving. The ramp's first step is a positive control:
+  a state update once a second, so every report measures the thing
+  that bit us. The ramp runs to traffic 24 (about 450 cars on a phone
+  screen), starts each step's clock after the scene is built, and does
+  not stop at a stutter.
+- **A build stamp on the screen and on the report's first line.** A
+  phone tab that kept the previous modules in memory ran the previous
+  instrument and cost a round trip to recognise; the stamp is the
+  commit plus the server or build start time, and a stale tab says so.
+- **The device is named through client hints**, not the UA string:
+  Chrome's User-Agent Reduction reports "Android 10; K" for every
+  Android device, and it was misread once as an older phone.
+- **The production build is measured from here on** (`npm run build`,
+  the `drivedraw-preview` launch entry on port 4173): the dev server
+  carries unminified React in StrictMode, which is not what a player
+  gets.
+
+Still open: the real ceiling (somewhere above 154 cars), the cause of
+the 2642 ms frame (the next run's stall table says), and the floor
+device.
+
 ### Stage 2 — the editor, first version
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,
