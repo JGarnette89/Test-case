@@ -2134,6 +2134,19 @@ invisible to the encroachment fault because it only ever watches priors — in
   the canvas and nothing inside the frame. The ramp on `#/iso` issues
   one such update a second in its first step on purpose, as a positive
   control, so the cost stays measured on whatever device runs it.
+- **Anything phone-facing runs over plain HTTP on the LAN, which is
+  not a secure context.** The maintainer opens the app at
+  `http://192.168.x.x:port` from his phone; measured there (19 Sep
+  2026): `navigator.clipboard`, `navigator.userAgentData`,
+  `deviceMemory`, `crypto.subtle`, `crypto.randomUUID`,
+  `navigator.storage`, `share`, `wakeLock`, service workers and the
+  Cache API are all `undefined`; `localStorage`, `PerformanceObserver`
+  and `WeakRef` work. A `?.` call on a missing API is a button that
+  silently does nothing, which is how he came to copy a report by
+  hand. Copy through `src/copy.js`, which falls back and says which
+  path it took; for anything else in that list, feature-test it, fall
+  back, and tell the person when there is no fallback. The permanent
+  answer is the HTTPS deploy (SETUP.md 6), which is a secure context.
 
 ## Known work in progress
 

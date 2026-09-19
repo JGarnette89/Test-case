@@ -128,6 +128,16 @@ browser. The build works the same way, and is what a player would get:
 then open the `Network:` address it prints. If the phone cannot reach
 it, the Windows firewall is asking; allow Node on private networks.
 
+Two things about that address. **It lives only as long as the server
+does** -- a dev server started inside a Claude session dies with the
+session, and a phone tab left open keeps running the code it already
+loaded, so reload the page and check the build stamp on the screen
+before trusting a run. And **it is plain HTTP, not a secure context**,
+so browser APIs that need one are simply absent there: the clipboard
+API, client hints, and more (CLAUDE.md, Conventions). The app has to
+work without them, and where it cannot it has to say so. The deployed
+site is HTTPS and has all of them.
+
 **Permanently, for anyone with the link.** The repository carries a
 GitHub Actions workflow (`.github/workflows/deploy.yml`) that builds and
 publishes the site to GitHub Pages on every push to `main`. It needs
