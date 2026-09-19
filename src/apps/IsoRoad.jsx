@@ -21,6 +21,7 @@ import { seedScene, stepScene, carsOf, DT } from "../iso/world.js";
 import { drawFrame } from "../iso/draw.js";
 import { poseAt } from "../iso/road.js";
 import { perfMeter, deviceInfo, deviceIdentity, budgetRamp, reportText, gcProbe, taskProbe, BUDGET, INSTRUMENT, BUILD } from "../iso/perf.js";
+import { copyText } from "../copy.js";
 
 /* THE CANVAS IS CAPPED AT TWO DEVICE PIXELS PER CSS PIXEL. A 3.5x phone
    would otherwise rasterise 1383x1845 for a 395x527 view -- twelve
@@ -60,6 +61,8 @@ export default function IsoRoad() {
      lands in state when it is done. */
   const [report, setReport] = useState(null);
   const [testing, setTesting] = useState(false);
+  const [copied, setCopied] = useState(null);   // "clipboard" | "execCommand" | false, after the button
+  const reportRef = useRef(null);
   const ramp = useRef(null);
   const drewLast = useRef(null);   // what the last frame drew, for the ramp's record
 
@@ -84,7 +87,7 @@ export default function IsoRoad() {
   const startTest = () => {
     ramp.current = budgetRamp();
     deviceIdentity().then((id) => { identity.current = id; });
-    setReport(null); setTesting(true);
+    setReport(null); setCopied(null); setTesting(true);
     setPlaying(true); setFollow("overpass"); setZoom(0.8);
     cam.current = { x: 0, y: 0, z: 0, id: null };
     meter.current.reset();
@@ -292,13 +295,14 @@ export default function IsoRoad() {
             {testing ? "Budget test running (about a minute)…" : "Run the budget test on this device"}
           </button>
           {report && (
-            <button className="btn" style={S.chip} onClick={() => { try { navigator.clipboard?.writeText(report); } catch { /* selectable below */ } }}>
-              Copy report
+            <button className="btn" style={{ ...S.chip, borderColor: copied ? C.green : copied === false ? C.amber : "rgba(255,255,255,0.12)" }}
+              onClick={async () => { setCopied(await copyText(report, { selectIn: reportRef.current })); }}>
+              {copied ? "Copied" : copied === false ? "Could not copy — the report is selected below, copy it by hand" : "Copy report"}
             </button>
           )}
           <span style={S.label}>instrument v{INSTRUMENT} · build {BUILD} — if this is not the latest, reload the page</span>
         </div>
-        {report && <pre style={S.report}>{report}</pre>}
+        {report && <pre ref={reportRef} style={S.report}>{report}</pre>}
         <div style={S.note}>
           <b>The budget test.</b> Ramps the load on this device — more
           traffic, then stand-in buildings — holding each step for eight

@@ -14,11 +14,13 @@
    changes, so leaving a broken screen and coming back retries it.
    ===================================================================== */
 import React from "react";
+import { copyText } from "../copy.js";
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { error: null, info: null };
+    this.state = { error: null, info: null, copied: null };
+    this.details = React.createRef();
   }
 
   static getDerivedStateFromError(error) {
@@ -33,7 +35,7 @@ export default class ErrorBoundary extends React.Component {
   }
 
   render() {
-    const { error, info } = this.state;
+    const { error, info, copied } = this.state;
     if (!error) return this.props.children;
     const details = `${this.props.name ?? "screen"}\n${error?.stack ?? String(error)}\n${info?.componentStack ?? ""}`;
     return (
@@ -44,11 +46,13 @@ export default class ErrorBoundary extends React.Component {
         <div style={S.row}>
           <button className="btn" style={S.btn} onClick={() => { window.location.hash = "#/"; }}>Home</button>
           <button className="btn" style={S.btn} onClick={() => this.setState({ error: null, info: null })}>Try again</button>
-          <button className="btn" style={S.btn} onClick={() => {
-            try { navigator.clipboard?.writeText(details); } catch { /* the pre below is selectable */ }
-          }}>Copy details</button>
+          <button className="btn" style={S.btn} onClick={async () => {
+            /* Over plain HTTP on the LAN there is no navigator.clipboard;
+               copy.js falls back, and says so if it cannot. */
+            this.setState({ copied: await copyText(details, { selectIn: this.details.current }) });
+          }}>{copied ? "Copied" : copied === false ? "Could not copy — select the details below" : "Copy details"}</button>
         </div>
-        <pre style={{ ...S.pre, fontSize: 11, opacity: 0.7, maxHeight: 220, overflow: "auto" }}>{details}</pre>
+        <pre ref={this.details} style={{ ...S.pre, fontSize: 11, opacity: 0.7, maxHeight: 220, overflow: "auto" }}>{details}</pre>
       </div>
     );
   }

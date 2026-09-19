@@ -95,6 +95,8 @@ function drive(frameMs, flagsFor = () => ({}), { settle = 1, hold = 8, build = 3
   check(text.includes("long animation frame 160ms: script 14ms, style+layout 120ms, render 140ms; react-dom_client.js:performWorkUntilDeadline 14ms (user-callback)"), "a stall with a long animation frame prints what the frame was doing and which script");
   check(/canvas at 2/.test(text) && /cap \(budget, no hitching\)/.test(text) && /cap \(steady state/.test(text), "the report states the canvas scale and both caps");
   check(/device: model unknown/.test(text) && /ua: test/.test(text) && /reduced/.test(text), "without a model the report says the model is unknown and warns that the UA is reduced");
+  const lan = reportText({ device: { ua: "x", cores: 8, memoryGB: null, secure: false, dpr: 3.5, screen: "1x1", viewport: "1x1" }, results: r.results, cap: r.cap, steadyCap: r.steadyCap, canvas: "1x1" });
+  check(/memory n\/a \(secure contexts only\)/.test(lan) && /plain http, not a secure context/.test(lan), "over plain HTTP the report says why memory is missing and that the context is insecure");
   const first = text.slice(0, text.indexOf(String.fromCharCode(10)));
   check(first.includes(`instrument v${INSTRUMENT}`) && first.includes(`build ${BUILD}`) && BUILD === "unbundled", `the first line carries the instrument version and the build stamp (v${INSTRUMENT}, ${BUILD} here in bare node)`);
   const named = reportText({ device: { ua: "x", model: "Pixel 7 Pro", platform: "Android", platformVersion: "14.0.0", cores: 8, memoryGB: 8, dpr: 3.5, screen: "1x1", viewport: "1x1" }, results: r.results, cap: r.cap, steadyCap: r.steadyCap, canvas: "1x1" });

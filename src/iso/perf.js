@@ -230,7 +230,13 @@ export async function deviceIdentity() {
   const none = (note) => ({ model: null, platformVersion: null, platform: null, note });
   try {
     const uad = typeof navigator !== "undefined" ? navigator.userAgentData : null;
-    if (!uad?.getHighEntropyValues) return none("no client hints (not Chromium): the UA string below is reduced and says nothing about the model");
+    /* Client hints are a secure-context API: over plain HTTP on the LAN
+       (measured: http://192.168.2.17:4173) they are missing in Chromium
+       too, and saying "not Chromium" there would blame the wrong thing. */
+    if (!uad?.getHighEntropyValues) {
+      const insecure = typeof window !== "undefined" && window.isSecureContext === false;
+      return none(insecure ? "no client hints: not a secure context (plain HTTP over the LAN); the UA string below is reduced and says nothing about the model" : "no client hints (not Chromium): the UA string below is reduced and says nothing about the model");
+    }
     const v = await uad.getHighEntropyValues(["model", "platformVersion", "platform"]);
     return { model: v.model || null, platformVersion: v.platformVersion || null, platform: v.platform || uad.platform || null, note: v.model ? null : "client hints gave no model" };
   } catch {
@@ -245,7 +251,8 @@ export function deviceInfo(extra = {}) {
   return {
     ua: navigator.userAgent,
     cores: navigator.hardwareConcurrency ?? null,
-    memoryGB: navigator.deviceMemory ?? null,
+    memoryGB: navigator.deviceMemory ?? null,   // secure contexts only: null over plain HTTP
+    secure: typeof window !== "undefined" ? window.isSecureContext : null,
     dpr: window.devicePixelRatio ?? 1,
     screen: `${window.screen?.width}x${window.screen?.height}`,
     viewport: `${window.innerWidth}x${window.innerHeight}`,
@@ -357,7 +364,7 @@ export function reportText({ device, results, cap, steadyCap, canvas }) {
   const who = device.model ? `${device.model} · ${platform}`.trim() : `model unknown${device.note ? ` (${device.note})` : ""}${platform ? ` · ${platform}` : ""}`;
   lines.push(`device: ${who}`);
   lines.push(`ua: ${device.ua} (a Chrome UA is reduced: "Android 10; K" is every Android device)`);
-  lines.push(`cores ${device.cores} · memory ${device.memoryGB}GB · dpr ${device.dpr}${device.canvasDpr != null ? ` (canvas at ${device.canvasDpr})` : ""} · screen ${device.screen} · viewport ${device.viewport} · canvas ${canvas}${device.build ? ` · ${device.build}` : ""}${device.longTasks === false ? " · no long-task API" : ""}${device.loaf === false ? " · no long-animation-frame API" : ""}`);
+  lines.push(`cores ${device.cores} · memory ${device.memoryGB != null ? `${device.memoryGB}GB` : "n/a (secure contexts only)"} · ${device.secure === false ? "plain http, not a secure context" : device.secure ? "secure context" : "context unknown"} · dpr ${device.dpr}${device.canvasDpr != null ? ` (canvas at ${device.canvasDpr})` : ""} · screen ${device.screen} · viewport ${device.viewport} · canvas ${canvas}${device.build ? ` · ${device.build}` : ""}${device.longTasks === false ? " · no long-task API" : ""}${device.loaf === false ? " · no long-animation-frame API" : ""}`);
   lines.push(`budget: p95 <= ${BUDGET.p95}ms, no frame over ${BUDGET.max}ms (a hitch), no second under 30 fps`);
   lines.push("step           traffic  props  cars(drawn)  things  fps  p50   p95   worst  hitches  stalls  slow-s  gc-frames(mean ms)  steady  pass");
   for (const r of results) {
