@@ -244,6 +244,7 @@ export function loadMap(map) {
       if (!r) continue;
       const a = l.end === "start" ? r.pts[0] : r.pts[r.pts.length - 1];
       const b = l.end === "start" ? r.pts[1] : r.pts[r.pts.length - 2];
+      l.id = `${l.road}|${l.end}`;
       l.bearing = Math.round(headingOf(a, b) * 10) / 10;
       l.control = r.control[l.end];
     }

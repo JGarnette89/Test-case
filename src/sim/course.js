@@ -35,6 +35,7 @@ import {
   intersectionFor, axisOf,
 } from "./intersection.js";
 import { rng } from "../engine/index.js";
+import { laneSpanOnGraph } from "./graph.js";
 
 /* Which way a car is travelling when it ARRIVES from a given side. A car
    arriving from the west is heading east. The mirror of `OUT` in
@@ -282,7 +283,26 @@ export function nextFor(course, k, route, pick) {
   const path = course.at[k].layout.paths[route];
   const j = joinedTo(course, k, path.to);
   if (!j) return null;
-  return { k: j.k, route: `${j.side}/${pick(j.k, j.side)}` };
+  /* `pick` names the whole route out of the leg arrived on -- an
+     intent on the compass, a destination leg on the map. */
+  return { k: j.k, route: pick(j.k, j.side) };
+}
+
+/* WHERE A CAR IS ON ITS TWO LANES -- the one it came in on and the one
+   it leaves by -- as a position along each, so following across a seam
+   compares two cars on the same piece of road. On the grid a lane is
+   straight and the position is the world pose projected onto its
+   direction; on a map it is arc length along the road (graph.js),
+   which is the same number on a straight road and the right one on a
+   bend. */
+export function laneSpan(course, k, route, s) {
+  if (course.graph) return laneSpanOnGraph(course, k, route, s);
+  const path = course.at[k].layout.paths[route];
+  const pose = poseOn(course, k, route, s);
+  return [
+    { lane: laneIn(course, k, path.from), along: alongDir(pose, dirIn(path.from)) },
+    { lane: laneOut(course, k, path.to), along: alongDir(pose, dirOut(path.to)) },
+  ];
 }
 
 /* =====================================================================

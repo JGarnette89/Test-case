@@ -74,6 +74,9 @@ const right = (u) => ({ x: -u.y, y: u.x });
 const PED_SETBACK = 0.95;
 const BAR_HALF = 0.75;
 const LINE_MARGIN = 0.35;
+/* The stop line's distance beyond the box edge: one definition, used
+   here and by every node the map produces (graph.js). */
+export const LINE_SETBACK = PED_SETBACK + BAR_HALF + LINE_MARGIN;
 
 /* CONTROL IS PER LEG, which is what lets one shape of intersection be
    several kinds of place. All four stopping is an all-way stop; two
@@ -89,7 +92,7 @@ export function intersectionFor({ lane = 3.6, reach = 60, control = ALL_WAY, ben
   const boxHalf = lane;
   return {
     lane, reach, boxHalf, control,
-    lineAt: boxHalf + PED_SETBACK + BAR_HALF + LINE_MARGIN,
+    lineAt: boxHalf + LINE_SETBACK,
     /* How far each leg bows sideways by the time it reaches its far end,
        in metres, signed along ACROSS. Zero is a straight leg, which is
        every leg that existed before the bend and every edge leg still. */
@@ -520,12 +523,23 @@ export function conflictsBetween(a, b, pad = 0) {
 
 /* Every path, and where each pair meets. The whole geometry of one
    intersection, resolved once. */
+/* EACH COMPASS LEG'S BEARING, so the bearing rules the map needs
+   (graph.js: onRightOf, oncoming) answer for this layout too, and give
+   the answers the table gave: north is -90 with y down, west 180, and
+   west is 90 degrees clockwise-short of north, on its right. */
+export const BEARING = { N: -90, E: 0, S: 90, W: 180 };
+
 export function layoutFor(opts = {}) {
   const place = intersectionFor(opts);
   const paths = {};
   for (const from of SIDES) {
     for (const intent of INTENTS) paths[`${from}/${intent}`] = pathFor(place, from, intent);
   }
+  const legs = Object.fromEntries(SIDES.map((s) => [s, { id: s, bearing: BEARING[s], control: place.control[s] }]));
+  /* The routes out of a leg, in INTENTS order -- the same order the
+     random draw has always indexed, so a course seeded before the map
+     existed is the same course to the byte. */
+  const routesFrom = (leg) => INTENTS.map((i) => `${leg}/${i}`);
   const conflicts = {};
   const keys = Object.keys(paths);
   for (const ka of keys) {
@@ -539,5 +553,5 @@ export function layoutFor(opts = {}) {
       if (hit) conflicts[`${ka}|${kb}`] = hit;
     }
   }
-  return { place, paths, conflicts };
+  return { place, paths, conflicts, legs, routesFrom };
 }

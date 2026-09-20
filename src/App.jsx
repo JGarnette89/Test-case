@@ -21,6 +21,7 @@ import MergeRush from "./apps/MergeRush.jsx";
 import SimRoad from "./apps/SimRoad.jsx";
 import IsoRoad from "./apps/IsoRoad.jsx";
 import Wheel from "./apps/Wheel.jsx";
+import MapRoad from "./apps/MapRoad.jsx";
 import ErrorBoundary from "./apps/ErrorBoundary.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
 import SimCandidates from "./apps/SimCandidates.jsx";
@@ -73,6 +74,16 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
    without proving it unused first.
    ===================================================================== */
 const MODES = [
+  {
+    id: "map",
+    name: "Stage 1 — the map",
+    kicker: "The simulator — a road network, with traffic on it",
+    blurb:
+      "A hand-written map: a loop with a hill, a T, a crossroads, a skewed five-way, an overpass. Loaded through the map format, run by the sim on a graph — intersections wherever roads meet, at whatever bearings, the same right-of-way rules — and drawn isometrically. Traffic enters at every dangling end and turns where it likes. No player yet: that is the next increment, with the turn-commit control.",
+    Icon: Milestone,
+    accent: C.amber,
+    Component: MapRoad,
+  },
   {
     id: "wheel",
     name: "Stage 1 — at the wheel",

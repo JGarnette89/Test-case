@@ -139,15 +139,15 @@ export function groundAt(x, y) {
 
 /* The ground as a grid of cells, each with its four corner heights, for
    a renderer to fill. Coarse on purpose. */
-export function terrain({ x0 = -80, y0 = -90, x1 = 760, y1 = 520, cell = 10 } = {}) {
+export function terrain({ x0 = -80, y0 = -90, x1 = 760, y1 = 520, cell = 10, ground = groundAt } = {}) {
   const cells = [];
   for (let y = y0; y < y1; y += cell) {
     for (let x = x0; x < x1; x += cell) {
       cells.push([
-        { x, y, z: groundAt(x, y) },
-        { x: x + cell, y, z: groundAt(x + cell, y) },
-        { x: x + cell, y: y + cell, z: groundAt(x + cell, y + cell) },
-        { x, y: y + cell, z: groundAt(x, y + cell) },
+        { x, y, z: ground(x, y) },
+        { x: x + cell, y, z: ground(x + cell, y) },
+        { x: x + cell, y: y + cell, z: ground(x + cell, y + cell) },
+        { x, y: y + cell, z: ground(x, y + cell) },
       ]);
     }
   }

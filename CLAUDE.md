@@ -175,7 +175,8 @@ Eight things to know before your first change:
    | `tools/verify-X.mjs` | X | |
    | `src/apps/*`, `App.jsx`, `theme.js` | `verify-screens` | 6s |
    | `src/iso/*` | `verify-perf`, `verify-wheel`, `verify-map`, `verify-screens` | 8s |
-   | `src/map/*` | `verify-map`, `verify-wheel`, `verify-perf`, `verify-screens` (the scene loads its roads through it) | 8s |
+   | `src/map/*` | `verify-map`, `verify-graph`, `verify-wheel`, `verify-perf`, `verify-screens` (the scene loads its roads through it) | ~50s |
+   | `src/sim/graph.js` | `verify-graph`, and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
    | `src/sim/traffic.js` | the `src/sim/` five, plus `verify-wheel` (the player rides its step) | ~3m |
    | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens` | ~100s |
    | `src/frame.js` | `-screens`, `-camera`, `-clearance`, `-events`, `-world` | ~5m |
@@ -1970,11 +1971,12 @@ node tools/verify-course.mjs       stage 3: intersections that join, and traffic
 node tools/verify-perf.mjs         the budget ramp terminates, stops at the first failure, and derives the cap
 node tools/verify-wheel.mjs        the player at the wheel: a monotone pedal, a grip-limited wheel, a lane that can be held, honest contact
 node tools/verify-map.mjs          a map loads normalised and warned, never thrown; stage 0 is the first map and reproduces the hand-built roads
+node tools/verify-graph.mjs        the sim on a road network: the map's crossroads IS the compass crossroads; a T, a five-way, a loop, a bend, a hill and an overpass run the same rules
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All thirty-four must exit 0 **before a commit**. Between commits, run
+All thirty-five must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:

@@ -30,14 +30,15 @@ import {
   CAR, DT, PX_PER_M, M,
 } from "./traffic.js";
 import {
-  layoutFor, intersectionFor, poseAt, rightOf, OPPOSITE, SIDES, INTENTS,
+  layoutFor, intersectionFor, poseAt, SIDES, INTENTS,
   ALL_WAY, TWO_WAY, cornersOf, boxesOverlap,
   bendSeenBy, amplitudeFor,
 } from "./intersection.js";
 import {
-  courseOf, laneIn, laneOut, dirIn, dirOut, alongDir, nextFor, joinedTo, poseOn,
+  courseOf, laneSpan, nextFor, joinedTo, poseOn,
   radiusFor,
 } from "./course.js";
+import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph } from "./graph.js";
 import { rng } from "../engine/index.js";
 import { REACTION_FLOOR } from "../engine/score.js";
 import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../engine/awareness.js";
@@ -217,10 +218,13 @@ function hasGap(me, them, layout, caution) {
    the other's path gives way. Returns null where the pair is not head to
    head at all, because there the rule has nothing to say and something
    else has to decide. */
-function leftYields(mine, theirs) {
-  if (mine.intent === "left" && theirs.from === OPPOSITE[mine.from]
+function leftYields(mine, theirs, layout) {
+  /* "Oncoming" is a bearing question the layout answers (graph.js):
+     the opposite leg on the compass, the leg within ONCOMING_TOL of
+     straight across on a map. */
+  if (mine.intent === "left" && oncoming(layout, mine.from, theirs.from)
       && theirs.intent !== "left") return true;
-  if (theirs.intent === "left" && mine.from === OPPOSITE[theirs.from]
+  if (theirs.intent === "left" && oncoming(layout, theirs.from, mine.from)
       && mine.intent !== "left") return false;
   return null;
 }
@@ -241,8 +245,10 @@ function leftYields(mine, theirs) {
    because a driver would reason that way, and if it is ever what
    decides in ordinary traffic something above it is not doing its job. */
 function settle(me, them, mine, theirs, layout) {
-  if (rightOf(mine.from) === theirs.from) return true;
-  if (rightOf(theirs.from) === mine.from) return false;
+  /* The car on the right, in bearings: the leg clockwise-short of my
+     own, whatever the compass says (graph.js onRightOf). */
+  if (onRightOf(layout, mine.from, theirs.from)) return true;
+  if (onRightOf(layout, theirs.from, mine.from)) return false;
   const mineIn = layout.conflicts[me.route + "|" + them.route].a - me.s;
   const theirsIn = layout.conflicts[them.route + "|" + me.route].a - them.s;
   if (Math.abs(mineIn - theirsIn) > 0.5) return mineIn > theirsIn;
@@ -333,7 +339,7 @@ export function blockedBy(me, them, layout, caution = me.caution) {
        CLAUDE.md already states the rule this restores: A MOVING VEHICLE
        CLAIMS THE ROAD AHEAD OF IT, PROPORTIONAL TO SPEED. A STOPPED
        VEHICLE CLAIMS NOTHING. */
-    const head = leftYields(mine, theirs);
+    const head = leftYields(mine, theirs, layout);
     if (head === false) return false;
     if (head === true) return !hasGap(me, them, layout, caution);
     const mineIn = hit.a - me.s;
@@ -384,7 +390,7 @@ export function blockedBy(me, them, layout, caution = me.caution) {
   if (me.stoppedAt < them.stoppedAt - SAME_MOMENT) return false;
 
   /* Arrived together. */
-  const head = leftYields(mine, theirs);
+  const head = leftYields(mine, theirs, layout);
   if (head != null) return head;
   return settle(me, them, mine, theirs, layout);
 }
@@ -417,9 +423,8 @@ export function whatStops(me, world) {
      front at the exact moment it changed hands. */
   const course = world.course;
   const mineAt = me.k ?? 0;
-  const myIn = laneIn(course, mineAt, mine.from);
-  const myOut = laneOut(course, mineAt, mine.to);
-  const myPose = poseOf(world, me);
+  /* My two lanes and how far along each I am (course.js laneSpan). */
+  const mySpan = laneSpan(course, mineAt, me.route, me.s);
 
   /* Everybody else, as THIS driver has them -- the present for a driver
      with no lag, their lag ago otherwise. */
@@ -435,14 +440,11 @@ export function whatStops(me, world) {
        a straight lane cannot -- a car turning off my lane stops advancing
        along it, and a follower reading that would think it had stopped. */
     if ((them.k ?? 0) !== mineAt) {
-      for (const [lane, dir] of [[myIn, dirIn(mine.from)], [myOut, dirOut(mine.to)]]) {
-        /* The lane test first and the pose only after it, because the
-           test is two string compares and the pose is a walk along a
-           polyline -- and all but a handful of pairs fail the test. */
-        const onIt = laneIn(course, them.k ?? 0, theirs.from) === lane
-          || laneOut(course, them.k ?? 0, theirs.to) === lane;
-        if (!onIt) continue;
-        const d = alongDir(poseOf(world, them), dir) - alongDir(myPose, dir) - CAR.length;
+      const theirSpan = laneSpan(course, them.k ?? 0, them.route, them.s);
+      for (const my of mySpan) {
+        const on = theirSpan.find((t) => t.lane === my.lane);
+        if (!on) continue;
+        const d = on.along - my.along - CAR.length;
         if (d >= 0 && d < gap) { gap = d; leader = them; }
       }
       continue;
@@ -593,7 +595,7 @@ export function step(world) {
        course of one intersection is made entirely of those. */
     .map((me) => {
       if (me.s <= pathOf(world, me).length) return me;
-      const on = nextFor(world.course, me.k ?? 0, me.route, (k) => intentFor(world, me, k));
+      const on = nextFor(world.course, me.k ?? 0, me.route, (k, side) => routeFor(world, me, k, side));
       if (!on) return null;
       return {
         ...me, k: on.k, route: on.route, s: 0,
@@ -694,6 +696,7 @@ export function joinAt(world, actors, car) {
    this reduces EXACTLY to the uniform draw it replaces. */
 const BUSIER = 2;
 export function edgesOf(course) {
+  if (course.graph) return edgesOfGraph(course, BUSIER);
   const out = [];
   for (let k = 0; k < course.n; k++) {
     for (const side of SIDES) {
@@ -718,24 +721,34 @@ function edgeFor(course, x) {
    the intersection they have reached, so it is a property of the person
    and the place rather than of the clock -- the same rule every other
    roll in this file lives under, and the reason a course replays. */
-function intentFor(world, me, k) {
-  /* A DRIVER WITH A PLAN FOLLOWS IT, AND SILENCE MEANS STRAIGHT ON.
+/* THE ROUTE OUT OF THE LEG THEY ARRIVE ON.
 
-     That second half is the project's own rule (CLAUDE.md, Directions):
-     a candidate told nothing carries on ahead, which is what makes a LATE
-     instruction a missed turn rather than a pause. It falls out here
-     rather than being enforced -- a plan that has run out, or never
-     said anything about this intersection, produces `straight` because
-     that is what the absence of an instruction means.
+   A DRIVER WITH A PLAN FOLLOWS IT, AND SILENCE MEANS STRAIGHT ON. That
+   second half is the project's own rule (CLAUDE.md, Directions): a
+   candidate told nothing carries on ahead, which is what makes a LATE
+   instruction a missed turn rather than a pause. It falls out here
+   rather than being enforced -- a plan that has run out, or never said
+   anything about this intersection, produces `straight` because that
+   is what the absence of an instruction means. Indexed by how many
+   intersections they have negotiated rather than by WHICH one, so a
+   route that doubles back or crosses itself is expressible.
 
-     Indexed by how many intersections they have negotiated rather than
-     by WHICH one, so a route that doubles back or crosses itself is
-     expressible. The course is a row today and the two would agree;
-     they would stop agreeing the moment it is not, and the version that
-     keeps working is this one. */
-  if (me.plan) return me.plan[(me.leg ?? 0) + 1] ?? "straight";
+   A plan names an INTENT; the route is the one out of this leg that
+   carries it -- the compass names routes by intent, a map node names
+   them by the leg they go to and carries the intent on the path. With
+   no plan the draw is from the routes the leg offers, from this
+   driver's own number and the place, as it always was: on the compass
+   the routes are the three intents in INTENTS order, so the draw is
+   the same draw. */
+function routeFor(world, me, k, side) {
+  const layout = world.course.at[k].layout;
+  const routes = layout.routesFrom(side);
+  if (me.plan) {
+    const want = me.plan[(me.leg ?? 0) + 1] ?? "straight";
+    return routes.find((r) => layout.paths[r].intent === want) ?? routes.find((r) => layout.paths[r].intent === "straight") ?? routes[0];
+  }
   const r = rng(world.seed * 96181 + (me.n ?? 0) * 7919 + k + 1);
-  return INTENTS[Math.floor(r() * INTENTS.length) % INTENTS.length];
+  return routes[Math.floor(r() * routes.length) % routes.length];
 }
 
 /* A driver, on a leg, with somewhere to be. The person comes from stage
@@ -747,12 +760,16 @@ function arriving(world, n) {
   const road = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
   const who = driver(road, world.seed, n);
   const where = edgeFor(world.course, r());
-  const intent = INTENTS[Math.floor(r() * INTENTS.length) % INTENTS.length];
+  /* The route out of that leg, drawn from the routes it offers: on the
+     compass those are the three intents in INTENTS order, so the draw
+     is the one it always was. */
+  const routes = world.course.at[where.k].layout.routesFrom(where.side);
+  const route = routes[Math.floor(r() * routes.length) % routes.length];
   return {
     ...who,
     n,
     k: where.k,
-    route: where.side + "/" + intent,
+    route,
     leg: 0,
     s: 0,
     stoppedAt: null,
@@ -866,14 +883,41 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
     kmh, speed, lane: layout.place.lane,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  let w = { t: 0, tick: 0, seed, road, course, layout, every, spawned: 0, nextAt: 0, actors: [] };
-  /* Warmed until the approaches have traffic on them and the first cars
-     have had to take turns. */
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, spawned: 0, nextAt: 0, actors: [] };
   /* WARMED LONG ENOUGH FOR A CAR TO HAVE CROSSED THE WHOLE COURSE, so
      the first thing anybody sees is a street with traffic on it rather
      than one filling up from the ends. A fixed forty seconds was right
      for one intersection and is not for a row of them. */
   const acrossIt = course.at.reduce((sum, a) => sum + 2 * a.layout.place.reach, 0) / speed;
+  return warmed(w, acrossIt);
+}
+
+/* THE SAME WORLD ON A MAP: every node an intersection at its own
+   bearings, every road a link, traffic entering at every dangling end
+   and picking a way out at every node (graph.js). `control` overrides
+   the map's per-leg controls -- `{ "*": "stop" }` makes every node an
+   all-way stop -- and is a convenience for checks and screens. */
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false } = {}) {
+  const speed = kmh / 3.6;
+  const course = graphOf(loaded, { lane: 3.6, control });
+  const layout = course.at[0].layout;
+  const road = {
+    kmh, speed, lane: 3.6,
+    perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
+  };
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, spawned: 0, nextAt: 0, actors: [] };
+  /* Long enough for a car to have crossed the longest road twice: the
+     sum of every road would be an upper bound and cost six seconds of
+     seeding on a desktop for a kilometre-square map, which on a phone
+     is a screen that takes half a minute to open. */
+  const acrossIt = (2 * Math.max(...loaded.roads.map((r) => r.length))) / speed;
+  return warmed(w, acrossIt);
+}
+
+/* Run a fresh world until it has traffic on it, then put the clock
+   back to zero -- moving everything that is on that clock. */
+function warmed(w0, acrossIt) {
+  let w = w0;
   const warm = Math.round(Math.max(40, acrossIt) / DT);
   for (let i = 0; i < warm; i++) w = step(w);
   /* AND THE REBASE HAS TO MOVE EVERYTHING THAT IS ON THAT CLOCK, which
@@ -910,7 +954,10 @@ export function run(world, ticks) {
    drawing rather than a fault, and the overlap test would be measuring a
    car that is not where the screen says it is (DECISIONS.md 0). */
 export function poseOf(world, actor) {
-  const p = poseOn(world.course, actor.k ?? 0, actor.route, actor.s);
+  /* On a map the pose has a height, from the road's own profile. */
+  const p = world.course.graph
+    ? poseOnGraph(world.course, actor.k ?? 0, actor.route, actor.s)
+    : poseOn(world.course, actor.k ?? 0, actor.route, actor.s);
   const off = strayOf(world, actor);
   if (!off) return p;
   const a = (p.rot * Math.PI) / 180;
@@ -982,6 +1029,12 @@ export function overlapping(world) {
   });
   for (let i = 0; i < at.length; i++) {
     for (let j = i + 1; j < at.length; j++) {
+      /* TWO CARS ON DIFFERENT LEVELS ARE NOT TOUCHING. The footprint
+         test is in plan, and an overpass puts two roads in the same
+         plan seven metres apart: every "overlap" on the first map was a
+         car on the deck above a car beneath it. More than a car's
+         height apart is two levels. */
+      if (Math.abs((at[i].p.z ?? 0) - (at[j].p.z ?? 0)) > 2.0) continue;
       if (boxesOverlap(at[i].box, at[j].box)) {
         out.push({
           a: at[i].a.id, b: at[j].a.id,

@@ -20,7 +20,7 @@
    would buy if the level look reads wrong.
    ===================================================================== */
 import { depthOf, TOWARD_EYE, projector } from "./project.js";
-import { poseAt, isDeck, groundAt, LANE } from "./road.js";
+import { poseAt, groundAt as stage0Ground, LANE } from "./road.js";
 import { C } from "../theme.js";
 
 /* Light from high, behind-left of the viewer, so tops are bright and
@@ -113,7 +113,12 @@ function seg(ctx, P, a, b) {
    smooth at the display's rate rather than at the sim's.
    ===================================================================== */
 export function drawFrame(ctx, canvas, scene) {
-  const { roads, terrain, cam, k, tilt, props = [] } = scene;
+  const { roads, terrain, cam, k, tilt, props = [], actors = [] } = scene;
+  /* THE GROUND IS THE SCENE'S, not stage 0's hill: a map supplies its
+     own (flat, for now), and a deck is wherever a road stands more than
+     a metre above whatever ground the scene has. */
+  const groundAt = scene.groundAt ?? stage0Ground;
+  const isDeck = (road, i) => road.pts[i].z - groundAt(road.pts[i].x, road.pts[i].y) > 1.0;
   const counts = { cells: 0, segments: 0, cars: 0, props: 0 };
   const P = projector(k, cam, canvas);
   const margin = 40 * k;
@@ -192,7 +197,23 @@ export function drawFrame(ctx, canvas, scene) {
     }
   }
 
-  for (const { road, cars } of roads) {
+  /* CARS GIVEN AS POSES: a car on a map is somewhere on a path through
+     a node, not at a distance along one road, so the sim hands the
+     renderer where it is and which way it faces. Drawn exactly as the
+     others, keyed the same way. */
+  for (const a of actors) {
+    const [px, py] = P(a.x, a.y, a.z ?? 0);
+    if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
+    counts.cars++;
+    const at = { x: a.x, y: a.y, z: a.z ?? 0 };
+    const deg = quantise(a.heading);
+    const colour = a.colour ?? CAR_COLOURS[(a.n ?? 0) % CAR_COLOURS.length];
+    const body = boxCorners(at, deg, 0, BODY);
+    const cabin = boxCorners(at, deg, 0, CABIN, BODY.h);
+    items.push({ key: depthOf(at.x, at.y, at.z) + 10, paint: () => { paintBox(ctx, P, body, colour); paintBox(ctx, P, cabin, colour); } });
+  }
+
+  for (const { road, cars = [] } of roads) {
     for (const car of cars) {
       const along = car.dir > 0 ? car.s : road.length - car.s;
       const p = poseAt(road, along);
