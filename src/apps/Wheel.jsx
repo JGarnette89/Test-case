@@ -162,7 +162,7 @@ export default function Wheel() {
         hud.current = { kmh: Math.round(me.current.v * 3.6), fps: sum.fps, offRoad: Math.abs(me.current.off) > road.width / 2 + 0.5, laps: tally.current.laps, cars: drew.cars };
         fpsAt = now;
       }
-      drawControls(ctx, size, inp, tally.current, { ...hud.current, kmh: Math.round(me.current.v * 3.6), limit, signal: input.current.state.signal, now });
+      drawControls(ctx, size, inp, tally.current, { ...hud.current, kmh: Math.round(me.current.v * 3.6), v: me.current.v, grade: me.current.grade ?? 0, limit, signal: input.current.state.signal, now });
       if (tally.current.flash > 0) tally.current.flash = Math.max(0, tally.current.flash - dt * 2);
       raf.current = requestAnimationFrame(tick);
     };
@@ -242,7 +242,7 @@ function drawControls(ctx, size, inp, tally, hud) {
   ctx.fillStyle = "rgba(230,232,236,0.8)"; ctx.font = "12px system-ui, sans-serif";
   ctx.fillText(`km/h · limit ${hud.limit} · ${hud.cars} cars in view · ${hud.fps} fps${hud.laps > 0 ? ` · lap ${hud.laps + 1}` : ""}`, size.w / 2, 38);
   if (hud.offRoad) { ctx.fillStyle = "#F2B84B"; ctx.fillText("OFF THE ROAD", size.w / 2, 54); }
-  drawSlider(ctx, size, inp.slider);
+  drawSlider(ctx, size, inp.slider, hud.v, hud.grade);
   drawWheelBar(ctx, size, inp.steer);
   drawSignals(ctx, size, hud.signal, hud.now);
   if (tally.flash > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * tally.flash})`; ctx.fillRect(0, 0, size.w, size.h); }

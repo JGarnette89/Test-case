@@ -33,7 +33,7 @@ import { touching } from "../sim/player.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
-import { drawSlider, drawWheelBar, drawSignals, drawReadout } from "../iso/hud.js";
+import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner } from "../iso/hud.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter } from "../iso/perf.js";
 import { loadSettings, setSetting } from "../settings.js";
@@ -106,6 +106,7 @@ export default function MapRoad() {
   const input = useRef(controls());
   const held = useRef(new Set());
   const flash = useRef(0);
+  const judged = useRef({ last: null, at: 0 });   // the last turn's verdict and when it landed, for the fade
   const contacts = useRef(0);
   if (!scene.current) scene.current = sceneFor(1, 50, 2.0, true);
 
@@ -251,7 +252,12 @@ export default function MapRoad() {
           if (ahead.hint) { ctx.fillStyle = "#f2b84b"; ctx.fillText(ahead.hint, size.w / 2, 70); }
         }
         if (me.atEdge) { ctx.fillStyle = "#F2B84B"; ctx.fillText("THE EDGE OF THE MAP — restart", size.w / 2, 72); }
-        drawSlider(ctx, size, inp.slider);
+        /* The corner's speed while a turn is ahead and not yet committed; the verdict for a few seconds after. */
+        if (me.lastTurn !== judged.current.last) { judged.current = { last: me.lastTurn, at: now }; }
+        const tally = me.turns ? Object.entries(me.turns).map(([k, n]) => `${n} ${k}`).join(" · ") : "";
+        drawCorner(ctx, size, 86, Math.round(me.v * 3.6), ahead.node && ahead.intent !== "straight" && !ahead.committed ? ahead.cornerSpeed : null, me.lastTurn, (now - judged.current.at) / 1000);
+        if (tally) { ctx.fillStyle = "rgba(230,232,236,0.6)"; ctx.font = "12px system-ui, sans-serif"; ctx.fillText(`turns: ${tally}`, size.w / 2, 104); }
+        drawSlider(ctx, size, inp.slider, me.v, me.grade ?? 0);
         drawWheelBar(ctx, size, inp.steer);
         drawSignals(ctx, size, input.current.state.signal, now);
         drawReadout(ctx, readout.current, 8, size.h - 44);

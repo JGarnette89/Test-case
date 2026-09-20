@@ -15,7 +15,7 @@
    ===================================================================== */
 import { seedGraph, step, poseOf, overlapping, DT } from "../src/sim/crossing.js";
 import { playerAt, playerOn, stepDriver, driverPose, withDriver, routeForSignal, aheadOf } from "../src/sim/drive.js";
-import { touching } from "../src/sim/player.js";
+import { touching, holdAt, CLEAN } from "../src/sim/player.js";
 import { graphOf } from "../src/sim/graph.js";
 import { loadMap } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
@@ -182,5 +182,49 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   check(overlapsAmongOthers === 0, "and the rest of the traffic is still not driving through itself");
 }
 
+/* 6. THE CORNER HAS TO BE EARNED. The maintainer: "we need to make sure
+   players are going the correct speed to actually make the turn well
+   and reward them for doing so." So the committed arc is followed only
+   as far as the tyres allow: at the right speed it is clean and the
+   speed is carried out; faster it scrubs; faster still it runs wide.
+   The speeds are not typed in -- CLEAN is what the maintainer's 26 km/h
+   costs on this map's 12.7 m left, and his 22 for a right falls out of
+   the curb-lane right's 9.3 m unasked. Swept in tools/measure/turn.mjs;
+   the properties any right model would have are checked here. */
+{
+  const w0 = { ...seedGraph(1, 50, loaded, { every: 2 }), actors: [] };
+  const RANK = { slow: 0, clean: 0, rough: 1, wide: 2, cut: 2 };
+  const through = (leg, sig, kmh) => {
+    const k = w0.course.at.findIndex((s) => s.layout.legs[leg]);
+    const layout = w0.course.at[k].layout, route = routeForSignal(layout, leg, sig), path = layout.paths[route];
+    let me = { ...playerAt(w0, k, route), s: path.stopAt - 0.5, v: kmh / 3.6, signal: sig, going: true, accepted: true, off: 0 };
+    let world = withDriver(w0, me), offMax = 0;
+    for (let i = 0; i < 400 && !me.lastTurn; i++) {
+      me = stepDriver(me, { steer: 0, slider: holdAt(me.v, me.grade ?? 0) }, world, DT);   // held in the band: the speed is the entry speed unless the tyres take it
+      world = withDriver(world, me);
+      if (me.turn) offMax = Math.max(offMax, Math.abs(me.off));
+    }
+    return { ...me.lastTurn, offMax, vOut: me.v };
+  };
+  const left = [12, 18, 24, 26, 30, 36, 40].map((kmh) => [kmh, through("A-north|end#0", "left", kmh)]);
+  const right = [12, 18, 22, 26, 30, 36].map((kmh) => [kmh, through("A-north|end#1", "right", kmh)]);
+  const say = (rows) => rows.map(([kmh, t]) => `${kmh}: ${t.verdict}`).join(", ");
+  check(left.every(([, t]) => t.verdict) && right.every(([, t]) => t.verdict), "a turn is judged as the car leaves the box, every time");
+  check(left.every(([kmh, t]) => kmh <= 26 ? t.verdict === "clean" : t.verdict !== "clean") && Math.round(left[0][1].vClean * 3.6) === 26, `the crossroads left is clean up to the maintainer's 26 km/h and not above it (${say(left)})`);
+  check(right.every(([kmh, t]) => kmh <= 22 ? t.verdict === "clean" : t.verdict !== "clean") && Math.round(right[0][1].vClean * 3.6) === 22, `the curb-lane right is clean up to his 22 km/h, which nobody typed in (${say(right)})`);
+  check(left.every(([, t], i) => i === 0 || RANK[t.verdict] >= RANK[left[i - 1][1].verdict]) && right.every(([, t], i) => i === 0 || RANK[t.verdict] >= RANK[right[i - 1][1].verdict]), "arriving faster never earns a better verdict");
+  const fast = left[left.length - 1][1], ok = left[2][1];
+  check(fast.verdict === "wide" && fast.offMax > 0.9 && ok.offMax < 0.05, `at 40 km/h the left runs wide -- ${fast.offMax.toFixed(2)} m off the line against ${ok.offMax.toFixed(2)} at 24 -- because the tyres cannot turn the car as hard as the arc asks`);
+  check(left.every(([kmh, t]) => t.verdict !== "clean" || Math.abs(t.vOut * 3.6 - kmh) < 1) && left.filter(([, t]) => t.verdict === "rough").every(([kmh, t]) => t.vOut * 3.6 < kmh - 0.5 || t.scrubbed < 0.3), `a clean turn carries its speed out; a rough one scrubs it (30 km/h in, ${(left[4][1].vOut * 3.6).toFixed(0)} out)`);
+  const crawl = through("A-north|end#0", "left", 6);
+  check(crawl.verdict === "slow", `and crawling round at 6 km/h is called what it is: ${crawl.verdict}`);
+  const straight = (() => { const k = 0, layout = w0.course.at[k].layout, route = routeForSignal(layout, "A-north|end#1", null), path = layout.paths[route];
+    let me = { ...playerAt(w0, k, route), s: path.stopAt - 0.5, v: 12, going: true, accepted: true }, world = withDriver(w0, me);
+    for (let i = 0; i < 200; i++) { me = stepDriver(me, { steer: 0, slider: 0.4 }, world, DT); world = withDriver(world, me); }
+    return me; })();
+  check(!straight.lastTurn && !straight.turns, "straight through is not a turn and is not judged");
+  check(Math.abs(CLEAN - (26 / 3.6) ** 2 / 12.7) < 0.05, `CLEAN is derived: ${CLEAN} m/s^2 is 26 km/h on a 12.7 m arc`);
+}
+
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
-console.log("\nOK: the signal picks the exit it means and only before the line, the box is committed to and the road is driven, the seam is seamless, and the traffic treats the player as its own.");
+console.log("\nOK: the signal picks the exit it means and only before the line, the box is committed to and the road is driven, the seam is seamless, the corner has to be earned, and the traffic treats the player as its own.");

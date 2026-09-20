@@ -8,25 +8,64 @@
    Conventions).
    ===================================================================== */
 import { SLIDER_W, SLIDER_TOP, SIGNAL_ZONE } from "./controls.js";
-import { NEUTRAL } from "../sim/player.js";
+import { NEUTRAL, holdBand } from "../sim/player.js";
 
 const FONT = "600 10px system-ui, sans-serif";
 
-/* The slider: its track, the neutral band, and the thumb coloured by
-   what it is doing. */
-export function drawSlider(ctx, size, slider) {
+/* The slider: its track, the neutral band, THE MAINTAIN BAND where
+   the car is holding its speed -- drawn where holdBand puts it for
+   this speed and grade, so it climbs as the car speeds up and as the
+   road climbs, and finding it is a readable act rather than guesswork
+   -- and the thumb coloured by what it is doing. `v` and `grade` are
+   the car's; without them the band is not drawn. */
+export function drawSlider(ctx, size, slider, v = null, grade = 0) {
   const margin = 24, x = size.w - SLIDER_W / 2, top = SLIDER_TOP, bottom = size.h - margin, mid = (top + bottom) / 2;
+  const yOf = (u) => mid - (u * (bottom - top)) / 2;
   ctx.lineCap = "round";
   ctx.strokeStyle = "rgba(255,255,255,0.14)"; ctx.lineWidth = 10;
   ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
-  const band = (NEUTRAL * (bottom - top)) / 2;
   ctx.strokeStyle = "rgba(255,255,255,0.35)";
-  ctx.beginPath(); ctx.moveTo(x, mid - band); ctx.lineTo(x, mid + band); ctx.stroke();
-  const y = mid - (slider * (bottom - top)) / 2;
-  ctx.fillStyle = slider > NEUTRAL ? "#6cc070" : slider < -NEUTRAL ? "#e0574f" : "#cfd3da";
+  ctx.beginPath(); ctx.moveTo(x, yOf(NEUTRAL)); ctx.lineTo(x, yOf(-NEUTRAL)); ctx.stroke();
+  let holding = false;
+  if (v != null) {
+    const band = holdBand(v, grade);
+    holding = slider >= band.lo && slider <= band.hi;
+    if (band.lo > 1) {
+      /* The hill costs more than the engine has: the band is off the top. */
+      ctx.fillStyle = "#f2b84b"; ctx.font = FONT; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.fillText("can't hold", x, top - 4);
+    } else {
+      const y0 = yOf(Math.min(1, band.hi)), y1 = yOf(Math.max(-1, band.lo));
+      ctx.strokeStyle = holding ? "rgba(111,182,255,0.9)" : "rgba(111,182,255,0.55)"; ctx.lineWidth = 10;
+      ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, Math.max(y0 + 1, y1)); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - 14, yOf(band.at)); ctx.lineTo(x + 14, yOf(band.at)); ctx.stroke();
+      ctx.fillStyle = "rgba(111,182,255,0.9)"; ctx.font = FONT; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      ctx.fillText("hold", x - 20, yOf(band.at));
+    }
+  }
+  const y = yOf(slider);
+  ctx.fillStyle = holding ? "#6fb6ff" : slider > NEUTRAL ? "#6cc070" : slider < -NEUTRAL ? "#e0574f" : "#cfd3da";
   ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.font = FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(slider > NEUTRAL ? "GO" : slider < -NEUTRAL ? "BRK" : "--", x, y);
+  ctx.fillText(holding ? "HOLD" : slider > NEUTRAL ? "GO" : slider < -NEUTRAL ? "BRK" : "--", x, y);
+}
+
+/* THE TURN, JUDGED: the corner's speed beside the car's while the turn
+   is ahead, and how it went once it is done -- so the player learns
+   what a corner wants from what it gave them. `last` is the car's
+   `lastTurn`, `age` seconds since it was judged. */
+export function drawCorner(ctx, size, y, kmh, cornerSpeed, last, age) {
+  ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.font = "600 13px system-ui, sans-serif";
+  if (cornerSpeed != null) {
+    const want = Math.round(cornerSpeed * 3.6);
+    ctx.fillStyle = kmh > want * 1.15 ? "#e0574f" : kmh > want ? "#f2b84b" : "#6cc070";
+    ctx.fillText(`corner: ${want} km/h`, size.w / 2, y);
+  } else if (last && age < 3.5) {
+    const word = { clean: "clean turn", rough: `rough turn — scrubbed ${Math.round(last.scrubbed * 3.6)} km/h`, wide: "ran wide", cut: "cut the corner", slow: "crawled round" }[last.verdict];
+    ctx.fillStyle = { clean: "#6cc070", rough: "#f2b84b", wide: "#e0574f", cut: "#e0574f", slow: "rgba(230,232,236,0.6)" }[last.verdict];
+    ctx.fillText(word, size.w / 2, y);
+  }
 }
 
 /* The wheel: a bar along the bottom left that fills left or right of

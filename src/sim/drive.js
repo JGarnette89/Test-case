@@ -20,7 +20,7 @@
    and line come from the slider and the wheel (sim/player.js), and
    their route from the signal. Pure: the screen owns the state.
    ===================================================================== */
-import { stepPlayerOn, newPlayer } from "./player.js";
+import { stepPlayerOn, newPlayer, cornerSpeedFor } from "./player.js";
 import { poseOnGraph, intentOf, normDeg, curbLegOf } from "./graph.js";
 import { poseAt } from "./intersection.js";
 import { CAR, DT } from "./traffic.js";
@@ -65,15 +65,39 @@ export function playerOn(course, roadId, end) {
    where the committed arc is followed rather than driven. */
 function geomOf(path, leg, lane = LANE) {
   const mine = leg?.lane ?? 0, count = leg?.lanes ?? 1;
+  const [b0, b1] = [path.stopAt, path.clearAt];
   return {
     length: path.length,
+    lane,
+    turn: path.intent !== "straight",
     headingAt: (s) => poseAt(path, s).rot,
+    /* The committed arc's curvature, read only inside the box, so the
+       approach and the way out do not bleed into it. */
+    arcAt: (s) => {
+      const s0 = Math.max(b0, s - 1.5), s1 = Math.min(b1, s + 1.5);
+      if (s1 - s0 < 0.5) return 0;
+      return (normDeg(poseAt(path, s1).rot - poseAt(path, s0).rot) * Math.PI) / 180 / (s1 - s0);
+    },
+    /* The road's grade under the car, from the path's own elevation. */
+    gradeAt: (s) => {
+      const lo = Math.max(0, s - 2), hi = Math.min(path.length, s + 2);
+      return hi > lo ? (zAlong(path, hi) - zAlong(path, lo)) / (hi - lo) : 0;
+    },
     /* From this lane's centre: the lanes to the right of it and half of
        this one to the right edge; this half-lane, the lanes to the
        left and the whole oncoming carriageway to the left edge. */
     edges: { left: -(0.5 + mine + count) * lane, right: (count - mine - 0.5) * lane },
     box: [path.stopAt, path.clearAt],
   };
+}
+
+/* Elevation along a path, as poseOnGraph reads it. */
+function zAlong(path, s) {
+  const { pts, at } = path;
+  let i = 1;
+  while (i < at.length - 1 && at[i] < s) i++;
+  const f = Math.max(0, Math.min(1, (s - at[i - 1]) / (at[i] - at[i - 1] || 1)));
+  return (pts[i - 1].z ?? 0) + ((pts[i].z ?? 0) - (pts[i - 1].z ?? 0)) * f;
 }
 
 /* A LANE CHANGE, for the player: on the approach, a car that has moved
@@ -178,5 +202,8 @@ export function aheadOf(me, course) {
     const can = others.some((l) => spot.layout.routesFrom(l.id).some((r) => spot.layout.paths[r].intent === me.signal));
     hint = can ? `${me.signal} turns are from the ${me.signal === "right" ? "right" : "left"} lane` : `no ${me.signal} turn here`;
   }
-  return { node: spot.node, intent: path.intent, committed: me.s > path.stopAt, toLine: Math.max(0, path.stopAt - me.s), hint, lane: spot.layout.legs[path.from]?.lane, lanes: spot.layout.legs[path.from]?.lanes };
+  /* The speed the committed corner wants, for the screen to show
+     beside the speed the car is doing. */
+  const cornerSpeed = cornerSpeedFor(geomOf(path, spot.layout.legs[path.from]));
+  return { node: spot.node, intent: path.intent, committed: me.s > path.stopAt, toLine: Math.max(0, path.stopAt - me.s), hint, lane: spot.layout.legs[path.from]?.lane, lanes: spot.layout.legs[path.from]?.lanes, cornerSpeed };
 }

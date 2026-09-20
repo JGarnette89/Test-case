@@ -714,6 +714,85 @@ rather than a realism one.
   in the gap taken, steering in the blend -- so it is exam content,
   not only traffic realism.
 
+#### 1.1.3 The second playtest -- 20 September: the throttle holds, and the corner is earned
+
+Two more pieces of feel, both from the maintainer driving 1.1.2, and
+the second is worth more than it looks.
+
+**THE SLIDER HAS A MAINTAIN BAND, AND IT MOVES.** His words: "it
+should have a clear section that will maintain steady speed, perhaps
+dependant on the speed of the car itself (to maintain higher speeds
+will require more fuel input from the throttle)." That is the physics,
+so it is modelled as the physics rather than as a dead zone: the road
+takes rolling resistance, air rising with the square of speed, and
+g times the grade; the throttle supplies a thrust linear in the
+slider, running out exactly at 120 km/h on the flat; the point where
+the two balance is where the car holds its speed (`holdAt` in
+`src/sim/player.js`), and it climbs with speed -- slider 0.19 at rest,
+0.34 at 50 km/h, 0.56 at 80 -- and with the road, off the top of the
+slider up stage 0's 23% hill above 60 km/h, and onto the BRAKE going
+down it. Around that point the throttle holds the speed exactly across
+a band 12% of the slider's travel wide (`HOLD_W`), so holding a speed
+is finding the band and staying in it as it moves: something the
+player does, which is what makes smoothness a skill and what the
+assessment model will read as pace later -- a driver who cannot hold a
+steady speed is the same fault whoever is driving.
+
+**The band is drawn.** A moving equilibrium the player cannot see is
+guesswork, so `drawSlider` paints it where `holdBand` puts it, blue,
+with a line at the point and "hold" beside it; the thumb turns blue
+and says HOLD inside it; "can't hold" appears above the track when the
+hill costs more than the engine has. Built with the model, not after.
+
+**THE CORNER HAS TO BE EARNED.** His words: "the signal to turn
+strategy can work, but we need to make sure players are going the
+correct speed to actually make the turn well and reward them for doing
+so." So inside the box the commit still turns the wheel for the arc,
+but THE TYRES DECIDE whether the car can do it. The arc at this speed
+asks for a sideways acceleration; below `CLEAN` the turn is clean and
+the speed is carried out; between `CLEAN` and `GRIP` the tyres scrub
+speed off, harder toward the limit; past `GRIP` the car gets only
+GRIP's worth of turning and runs wide -- and the wheel still works, so
+a fast entry can be steered at, up to the same limit. `CLEAN` is not
+chosen: it is what the maintainer's 26 km/h costs on this map's 12.7 m
+left-turn arc (4.1 m/s^2, 0.4 g); and his 22 km/h for a right is what
+the same number gives on the 9.3 m curb-lane right at the crossroads,
+which nobody typed in. Swept in `tools/measure/turn.mjs`, held in the
+band through the box, wheel straight:
+
+| entry | crossroads left, 12.7 m | curb-lane right, 9.3 m |
+|---|---|---|
+| 12-24 km/h | clean, speed carried out | clean (to 22) |
+| 26 | clean (the maintainer's number) | rough, scrubs 3 |
+| 30 | rough, scrubs 2 km/h | rough, scrubs 7 |
+| 36 | rough, scrubs 6, 0.4 m off the line | wide, 1.3 m off |
+| 40 | wide, 1.0 m off the line, scrubs 10 | wide, 3.4 m off |
+
+The outcome is said on screen: the corner's speed beside the car's
+while the turn is ahead (green, amber, red as the car exceeds it), the
+verdict for a few seconds after -- clean turn, rough turn and what it
+scrubbed, ran wide, cut the corner, crawled round -- and a running
+tally. Checked in `verify-drive.mjs` §6 as properties: clean up to his
+numbers and not above, faster never earns a better verdict, a clean
+turn carries its speed out, straight on is not judged.
+
+**Why it is worth more than it looks.** It relocates the interesting
+part of driving from the intersection to the APPROACH -- the speed
+you arrive at decides the turn, so the road before the box is where
+the judgment happens, which is the conclusion recorded in CLAUDE.md
+("the road between intersections is content, not connective tissue")
+reached from the other direction. And it gives the brake half of the
+slider a job for the first time: you are slowing FOR something, and
+judging how much. Both controls now have a reason to be precise.
+
+**Known, deliberate, open.** The T's right turn is a 4.2 m arc and
+wants 15 km/h, which is DECISIONS.md 5.15.12 (is the sim's right-turn
+arc too tight?) now drivable rather than argued; if it feels too slow
+that is evidence about the arc, not the tyre model. The traffic still
+takes corners at whatever speed it arrives at (5.15.13); the player
+is judged, the NPCs are not yet. `SCRUB` (3 m/s^2 at the limit) is a
+design constant. Grade acts on the player only.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,
