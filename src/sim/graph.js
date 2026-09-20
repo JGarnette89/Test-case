@@ -103,17 +103,39 @@ export function intentOf(layout, from, to) {
 }
 
 /* ---- lanes along a road --------------------------------------------- */
-/* THE LANE A CAR DRIVES ALONG A ROAD, in one direction: the centreline
-   offset half a lane to the right of travel, with cumulative distance
-   from the lane's own start. `dir` +1 runs the road's points in order,
-   -1 reversed. One lane each way for now, as the compass intersection
-   has; a road's lane count is carried and not yet used. */
-export function laneAlong(road, dir, lane) {
+/* THE LANES A CAR DRIVES ALONG A ROAD, in one direction: the centreline
+   offset to the right of travel by half a lane for lane 0, a lane and
+   a half for lane 1, and so on -- lane 0 is BESIDE THE CENTRE LINE and
+   the last lane is the curb lane -- each with cumulative distance from
+   its own start. `dir` +1 runs the road's points in order, -1 reversed.
+
+   MORE THAN ONE LANE EACH WAY, from 20 September. Every road had been
+   one lane each way, the examiner project's narrow street, and the
+   maintainer's first drive called the roads "very restrictive": with
+   one lane there is nowhere to go, nothing to pass, and any car ahead
+   is a wall. The map's `lanes` per direction is honoured from here,
+   and lane changing is REACHABLE -- a lane is a polyline with an id,
+   following is per lane already, and a car that moves to the next lane
+   is a car on the next polyline. The player does it now (drive.js);
+   the traffic will. */
+export function laneAlong(road, dir, lane, index = 0) {
   const pts = dir > 0 ? road.pts : road.pts.slice().reverse();
-  const { right } = ribbonOf(pts, lane);   // ribbonOf offsets by width/2 each side: half a lane
+  const { right } = ribbonOf(pts, lane * (2 * index + 1));   // ribbonOf offsets by width/2 each side
   const at = [0];
   for (let i = 1; i < right.length; i++) at.push(at[i - 1] + dist(right[i], right[i - 1]));
-  return { id: `${road.id}:${dir > 0 ? "fwd" : "rev"}`, road: road.id, dir, pts: right, at, length: at[at.length - 1] };
+  return { id: `${road.id}:${dir > 0 ? "fwd" : "rev"}#${index}`, road: road.id, dir, index, pts: right, at, length: at[at.length - 1] };
+}
+
+/* WHICH LANE A TURN IS MADE FROM, AND INTO. The rule real driving
+   supplies: a right turn from the curb lane into the curb lane; a left
+   turn from the lane beside the centre line into the lane beside the
+   centre line; straight on stays in its lane, or the nearest the road
+   ahead has. A car in the wrong lane for a turn has no route for it --
+   which is what makes the lane a choice. */
+export function laneForTurn(kind, fromLeg, toLanes) {
+  if (kind === "right") return fromLeg.curb ? toLanes - 1 : null;
+  if (kind === "left") return fromLeg.inner ? 0 : null;
+  return Math.min(fromLeg.lane, toLanes - 1);
 }
 
 /* The polyline of a lane between two arc positions, cut exactly. */
@@ -170,10 +192,13 @@ const unit = (a, b) => { const L = dist(a, b) || 1; return { x: (b.x - a.x) / L,
 export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
   const roads = loaded.roads;
   const roadOf = Object.fromEntries(roads.map((r) => [r.id, r]));
+  const lanesOf = (r) => Math.max(1, Math.round(r.lanes ?? 1));
   const lanes = {};
   for (const r of roads) {
-    lanes[`${r.id}:fwd`] = laneAlong(r, 1, lane);
-    lanes[`${r.id}:rev`] = laneAlong(r, -1, lane);
+    for (let i = 0; i < lanesOf(r); i++) {
+      lanes[`${r.id}:fwd#${i}`] = laneAlong(r, 1, lane, i);
+      lanes[`${r.id}:rev#${i}`] = laneAlong(r, -1, lane, i);
+    }
   }
   /* Which node each road end belongs to, if any. */
   const endNode = {};
@@ -182,8 +207,6 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
   const at = [];
   const joins = {};
   const links = [];
-  const boxHalf = lane;                       // one lane each way: the box is as wide as the crossing road
-  const lineAt = boxHalf + LINE_SETBACK;      // the stop line beyond the box, as intersection.js has it
 
   /* Whether a road has a node at both ends, and so a seam. THE SEAM IS
      THE LANE'S OWN MIDPOINT, not the road's: a lane is the centreline
@@ -197,39 +220,77 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
   const seamed = (r) => !!(endNode[`${r.id}|start`] && endNode[`${r.id}|end`]);
 
   for (const [k, n] of loaded.nodes.entries()) {
+    /* THE BOX is as wide as the widest road meeting here, so the stop
+       line on every leg sits clear of the crossing traffic's lanes. */
+    const widest = Math.max(1, ...n.legs.map((l) => (roadOf[l.road] ? lanesOf(roadOf[l.road]) : 1)));
+    const boxHalf = lane * widest;
+    const lineAt = boxHalf + LINE_SETBACK;      // the stop line beyond the box, as intersection.js has it
     const legs = {};
     for (const l of n.legs) {
       const r = roadOf[l.road];
       if (!r) continue;
-      /* Travelling TOWARD the node on this road is the lane whose
-         direction ends at this end. */
-      const inLane = lanes[`${r.id}:${l.end === "end" ? "fwd" : "rev"}`];
-      const outLane = lanes[`${r.id}:${l.end === "end" ? "rev" : "fwd"}`];
       const seam = seamed(r);
-      const id = l.id ?? `${r.id}|${l.end}`;
+      const base = l.id ?? `${r.id}|${l.end}`;
       /* A control override by leg id, or for every leg ("*"), else the
-         map's own. (Looked up by `l.id` at first, which the loader does
-         not set, so an override never applied and a two-way stop ran
-         uncontrolled -- with zero overlaps, which says something about
-         the precedence rules, but not what the check claimed.) */
-      const ctl = control?.[id] ?? control?.["*"] ?? l.control ?? "none";
-      legs[id] = {
-        id, road: r.id, end: l.end, bearing: l.bearing, control: ctl,
-        inLane, outLane,
-        /* Arc positions on the two lanes: where the approach begins
-           (the lane's midpoint, or the far edge) and where the exit
-           ends (the lane's midpoint, or the road's end). */
-        inFrom: seam ? inLane.length / 2 : 0,
-        outTo: seam ? outLane.length / 2 : outLane.length,
-      };
+         map's own. */
+      const ctl = control?.[base] ?? control?.["*"] ?? l.control ?? "none";
+      const count = lanesOf(r);
+      /* ONE LEG PER LANE: `road|end#i`. Travelling TOWARD the node on
+         this road is the lane whose direction ends at this end. */
+      for (let i = 0; i < count; i++) {
+        const inLane = lanes[`${r.id}:${l.end === "end" ? "fwd" : "rev"}#${i}`];
+        const outLane = lanes[`${r.id}:${l.end === "end" ? "rev" : "fwd"}#${i}`];
+        const id = `${base}#${i}`;
+        legs[id] = {
+          id, base, lane: i, lanes: count, inner: i === 0, curb: i === count - 1,
+          road: r.id, end: l.end, bearing: l.bearing, control: ctl,
+          inLane, outLane,
+          /* Arc positions on the two lanes: where the approach begins
+             (the lane's midpoint, or the far edge) and where the exit
+             ends (the lane's midpoint, or the road's end). */
+          inFrom: seam ? inLane.length / 2 : 0,
+          outTo: seam ? outLane.length / 2 : outLane.length,
+        };
+      }
     }
     const ids = Object.keys(legs);
+    /* THE STOP LINE CLEARS THE CROSSING TRAFFIC ON A SKEWED LEG TOO. The
+       box's half-width is measured along a leg's own axis, and on a leg
+       that meets the crossing road at an angle that is not far enough:
+       at the five-way a car at rest at its line on the 45 degree
+       diagonal sat inside the swept path of the eastbound curb lane,
+       and was clipped twice in five minutes. A leg's setback is the
+       box's, divided by the sine of the smallest angle to any leg that
+       actually crosses it -- 1 at a right angle, 1.41 at 45 degrees,
+       capped at 2 for a fork -- with the legs that run parallel to it
+       (its own opposite) left out, since they do not cross its lane. */
+    for (const id of ids) {
+      const A = legs[id];
+      let sinMin = 1;
+      for (const other of ids) {
+        const B = legs[other];
+        if (B.base === A.base) continue;
+        const theta = Math.abs(norm(B.bearing - A.bearing));
+        if (theta < 15 || theta > 165) continue;           // parallel or oncoming: does not cross this lane
+        sinMin = Math.min(sinMin, Math.sin((theta * Math.PI) / 180));
+      }
+      const f = 1 / Math.max(sinMin, 0.5);
+      A.boxHalf = boxHalf * f;
+      A.lineAt = boxHalf * f + LINE_SETBACK;
+    }
     const place = { lane, boxHalf, lineAt, control: Object.fromEntries(ids.map((id) => [id, legs[id].control])), at: n.at, reach: 0 };
     const paths = {};
     for (const from of ids) {
+      const A = legs[from];
       for (const to of ids) {
-        if (from === to) continue;
-        paths[`${from}/${to}`] = pathBetween(place, legs[from], legs[to], { from, to, intent: intentOf({ legs }, from, to) });
+        const B = legs[to];
+        if (B.base === A.base) continue;
+        const kind = intentOf({ legs }, from, to);
+        /* The one lane a turn of this kind goes into from this lane, or
+           none: right turns from the curb lane, left turns from beside
+           the centre line, straight on in one's own lane. */
+        if (laneForTurn(kind, A, B.lanes) !== B.lane) continue;
+        paths[`${from}/${to}`] = pathBetween(place, A, B, { from, to, intent: kind });
       }
     }
     place.reach = Math.max(0, ...Object.values(paths).map((p) => p.stopAt));
@@ -242,35 +303,55 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
         if (hit) conflicts[`${ka}|${kb}`] = hit;
       }
     }
-    at.push({ at: { x: 0, y: 0 }, node: n.id, layout: { place, paths, conflicts, legs, routesFrom: (leg) => ids.filter((t) => t !== leg).map((t) => `${leg}/${t}`) } });
+    const byFrom = {};
+    for (const key of keys) (byFrom[paths[key].from] ??= []).push(key);
+    at.push({ at: { x: 0, y: 0 }, node: n.id, layout: { place, paths, conflicts, legs, routesFrom: (leg) => byFrom[leg] ?? [] } });
   }
 
-  /* Joins: a road between two nodes joins their two legs. */
+  /* Joins: a road between two nodes joins their two legs, lane by
+     lane -- the lane a car leaves one node in is the lane it arrives
+     at the next in. */
   for (const r of roads) {
     const a = endNode[`${r.id}|start`], b = endNode[`${r.id}|end`];
     if (a && b) {
       const id = links.length;
-      links.push({ id, road: r.id, a: a.k, aSide: a.leg.id ?? `${r.id}|start`, b: b.k, bSide: b.leg.id ?? `${r.id}|end` });
-      joins[`${a.k}|${a.leg.id ?? `${r.id}|start`}`] = { k: b.k, side: b.leg.id ?? `${r.id}|end`, link: id };
-      joins[`${b.k}|${b.leg.id ?? `${r.id}|end`}`] = { k: a.k, side: a.leg.id ?? `${r.id}|start`, link: id };
+      const aBase = a.leg.id ?? `${r.id}|start`, bBase = b.leg.id ?? `${r.id}|end`;
+      links.push({ id, road: r.id, a: a.k, aSide: aBase, b: b.k, bSide: bBase });
+      for (let i = 0; i < lanesOf(r); i++) {
+        joins[`${a.k}|${aBase}#${i}`] = { k: b.k, side: `${bBase}#${i}`, link: id };
+        joins[`${b.k}|${bBase}#${i}`] = { k: a.k, side: `${aBase}#${i}`, link: id };
+      }
     }
   }
 
   /* ROADS WITH NO NODE AT EITHER END are lanes with nothing on them:
-     one path each way, the whole lane, no line and no conflicts. Cars
-     spawn at the start and are gone at the end. */
+     one path per lane each way, the whole lane, no line and no
+     conflicts. Cars spawn at the start and are gone at the end. */
   for (const r of roads) {
     if (endNode[`${r.id}|start`] || endNode[`${r.id}|end`]) continue;
     for (const dir of ["fwd", "rev"]) {
-      const L = lanes[`${r.id}:${dir}`];
-      const id = `${r.id}:${dir}`;
-      const legs = { [id]: { id, road: r.id, end: dir === "fwd" ? "end" : "start", bearing: bearingOf(L.pts[L.pts.length - 2], L.pts[L.pts.length - 1]) + 180, control: "none", inLane: L, outLane: L, inFrom: 0, outTo: L.length } };
-      const path = { from: id, to: id, intent: "straight", pts: L.pts, at: L.at, length: L.length, stopAt: L.length, clearAt: L.length, laneIn: { id: L.id, at0: 0 }, laneOut: { id: L.id, at0: 0 } };
-      at.push({ at: { x: 0, y: 0 }, node: `${r.id}:${dir}`, through: true, layout: { place: { lane, boxHalf, lineAt, control: { [id]: "none" }, at: L.pts[L.pts.length - 1], reach: L.length }, paths: { [`${id}/${id}`]: path }, conflicts: {}, legs, routesFrom: (leg) => [`${leg}/${leg}`] } });
+      for (let i = 0; i < lanesOf(r); i++) {
+        const L = lanes[`${r.id}:${dir}#${i}`];
+        const id = `${r.id}:${dir}#${i}`;
+        const legs = { [id]: { id, base: `${r.id}:${dir}`, lane: i, lanes: lanesOf(r), inner: i === 0, curb: i === lanesOf(r) - 1, road: r.id, end: dir === "fwd" ? "end" : "start", bearing: bearingOf(L.pts[L.pts.length - 2], L.pts[L.pts.length - 1]) + 180, control: "none", inLane: L, outLane: L, inFrom: 0, outTo: L.length } };
+        const path = { from: id, to: id, intent: "straight", pts: L.pts, at: L.at, length: L.length, stopAt: L.length, clearAt: L.length, laneIn: { id: L.id, at0: 0 }, laneOut: { id: L.id, at0: 0 } };
+        at.push({ at: { x: 0, y: 0 }, node: id, through: true, layout: { place: { lane, boxHalf: lane, lineAt: lane + LINE_SETBACK, control: { [id]: "none" }, at: L.pts[L.pts.length - 1], reach: L.length }, paths: { [`${id}/${id}`]: path }, conflicts: {}, legs, routesFrom: (leg) => [`${leg}/${leg}`] } });
+      }
     }
   }
 
   return { graph: true, n: at.length, at, joins, links, lanes, roads, map: loaded };
+}
+
+/* The lane-leg a car should start on for a road end: the curb lane,
+   which is where a driver keeps to. */
+export function curbLegOf(course, roadId, end) {
+  for (const [k, spot] of course.at.entries()) {
+    for (const leg of Object.values(spot.layout.legs)) {
+      if (leg.road === roadId && leg.end === end && leg.curb && !spot.through) return { k, leg: leg.id };
+    }
+  }
+  return null;
 }
 
 /* ---- a path between two legs of one node ---------------------------- */
@@ -281,11 +362,11 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
    turns wider on its own and a skew turns as its angle demands. */
 function pathBetween(place, A, B, meta) {
   const inL = A.inLane, outL = B.outLane;
-  const stopS = inL.length - place.lineAt;                    // the stop line, along the inbound lane
+  const stopS = inL.length - (A.lineAt ?? place.lineAt);       // the stop line, along the inbound lane
   const approach = cut(inL, A.inFrom, stopS);
   const stop = approach[approach.length - 1];
   const inDir = unit(approach[approach.length - 2] ?? inL.pts[inL.pts.length - 2], stop);
-  const leaveS = Math.min(outL.length, place.boxHalf);        // the box edge, along the outbound lane
+  const leaveS = Math.min(outL.length, B.boxHalf ?? place.boxHalf);   // the box edge, along the outbound lane
   const exit0 = cut(outL, leaveS, Math.min(outL.length, leaveS + 20));
   const outDir = unit(exit0[0], exit0[exit0.length - 1]);
   const turn = norm((Math.atan2(outDir.y, outDir.x) - Math.atan2(inDir.y, inDir.x)) * 180 / Math.PI);
@@ -391,19 +472,24 @@ export function junctionsOf(course) {
     const centre = place.at;
     const corners = [];
     const lines = [], signs = [];
+    const seenBase = new Set();
     for (const leg of Object.values(legs)) {
       const r = roadOf[leg.road];
       if (!r) continue;
-      /* The road's edges at the box edge: the ribbon sample nearest
-         boxHalf from this end. */
-      const n = r.pts.length;
-      const idx = (() => {
-        if (leg.end === "end") { let i = n - 1; while (i > 0 && r.length - r.at[i] < place.boxHalf) i--; return i; }
-        let i = 0; while (i < n - 1 && r.at[i] < place.boxHalf) i++; return i;
-      })();
-      corners.push(r.left[idx], r.right[idx]);
-      /* The stop line: across the inbound lane at the stop point of any
-         path out of this leg (they share the approach). */
+      if (!seenBase.has(leg.base)) {
+        seenBase.add(leg.base);
+        /* The road's edges at the box edge: the ribbon sample nearest
+           boxHalf from this end. */
+        const n = r.pts.length;
+        const idx = (() => {
+          const half = leg.boxHalf ?? place.boxHalf;
+          if (leg.end === "end") { let i = n - 1; while (i > 0 && r.length - r.at[i] < half) i--; return i; }
+          let i = 0; while (i < n - 1 && r.at[i] < half) i++; return i;
+        })();
+        corners.push(r.left[idx], r.right[idx]);
+      }
+      /* The stop line: across this lane at the stop point of any path
+         out of it (they share the approach). */
       const route = Object.keys(paths).find((k) => paths[k].from === leg.id);
       if (!route) continue;
       const p = paths[route];
@@ -413,8 +499,8 @@ export function junctionsOf(course) {
       const lane = place.lane;
       if (leg.control === "stop" || leg.control === "yield") {
         lines.push({ kind: leg.control, a: { x: pose.x - nx * lane / 2, y: pose.y - ny * lane / 2, z }, b: { x: pose.x + nx * lane / 2, y: pose.y + ny * lane / 2, z } });
-        /* The sign stands at the right-hand edge of the lane, level with the line, facing the approaching driver. */
-        signs.push({ kind: leg.control, at: { x: pose.x + nx * (lane / 2 + 0.6), y: pose.y + ny * (lane / 2 + 0.6), z }, heading: pose.rot });
+        /* One sign per road end, at the curb lane's right-hand edge, level with the line, facing the approaching driver. */
+        if (leg.curb) signs.push({ kind: leg.control, at: { x: pose.x + nx * (lane / 2 + 0.6), y: pose.y + ny * (lane / 2 + 0.6), z }, heading: pose.rot });
       }
     }
     /* The surface: the corners in order round the centre. */

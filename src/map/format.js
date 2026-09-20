@@ -23,11 +23,16 @@ export const SAMPLE = 5;           // metres between centreline samples after no
    (tiles.js: 30 / 41 / 50), which was tuned to that engine's pace.
    Posted speeds are the maintainer's to correct; nothing below depends
    on these exact numbers. */
+/* LANES PER DIRECTION: generous, as a gameplay decision. The first
+   playtest called one lane each way "very restrictive" -- nowhere to
+   go, nothing to pass, a car ahead is a wall -- and metric realism was
+   demoted when the project was reframed: only a quiet residential
+   street is one lane each way. */
 export const KINDS = {
   residential: { speed: 40, lanes: 1, parking: "parallel" },
-  collector:   { speed: 50, lanes: 1, parking: "none" },
-  arterial:    { speed: 60, lanes: 2, parking: "none" },
-  highway:     { speed: 100, lanes: 2, parking: "none" },
+  collector:   { speed: 50, lanes: 2, parking: "none" },
+  arterial:    { speed: 60, lanes: 3, parking: "none" },
+  highway:     { speed: 100, lanes: 3, parking: "none" },
   service:     { speed: 30, lanes: 1, parking: "none" },
 };
 export const CONTROLS = ["stop", "yield", "none", "signal"];
@@ -58,7 +63,7 @@ export function stage0Map() {
     ...emptyMap("stage0", "Stage 0 — a valley road, a hill, an overpass"),
     bounds: { x: -80, y: -90, w: 840, h: 610 },
     roads: [
-      road({ id: "valley", kind: "arterial", lanes: 1, speed: 60, points: strokeOf(valleyRoad()) }),
+      road({ id: "valley", kind: "arterial", lanes: 1, speed: 60, points: strokeOf(valleyRoad()) }),   // stage 0's roads, exactly as built: one lane each way
       road({ id: "bridge", kind: "arterial", lanes: 1, speed: 60, points: strokeOf(bridgeRoad()) }),
     ],
   };

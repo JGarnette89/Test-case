@@ -20,6 +20,18 @@
    ===================================================================== */
 import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS } from "./format.js";
 import { ribbonOf } from "../iso/road.js";
+
+/* A road's ribbon and, for more than one lane each way, the lines
+   between lanes: the centreline offset a whole lane, two lanes, each
+   side -- the same offsets the sim drives its lanes between. */
+function surfaceOf(pts, width, lanes) {
+  const out = { ...ribbonOf(pts, width), laneLines: [] };
+  for (let k = 1; k < lanes; k++) {
+    const { left, right } = ribbonOf(pts, 2 * k * LANE);
+    out.laneLines.push(left, right);
+  }
+  return out;
+}
 import { radiusFor, LATERAL } from "../sim/course.js";
 
 export const THIN = 0.5;                 // m: points closer than this are one point
@@ -162,7 +174,7 @@ export function loadMap(map) {
     const moved = clampGrade(raw.pts, raw.at);
     if (moved > 0.01) warn("grade-clamped", `road ${id}: a slope steeper than ${Math.round(MAX_GRADE * 100)}% was flattened by up to ${moved.toFixed(2)} m`);
     const control = { start: CONTROLS.includes(r.control?.start) ? r.control.start : "none", end: CONTROLS.includes(r.control?.end) ? r.control.end : "none" };
-    roads.push({ id, kind, lanes, oneWay, width, speed, parking: r.parking ?? KINDS[kind].parking, control, ...raw, ...ribbonOf(raw.pts, width) });
+    roads.push({ id, kind, lanes, oneWay, width, speed, parking: r.parking ?? KINDS[kind].parking, control, ...raw, ...surfaceOf(raw.pts, width, lanes) });
   }
   if (!roads.length) return { ok: false, error: "no drivable road", warnings };
 
@@ -214,7 +226,7 @@ export function loadMap(map) {
         const aPts = [...o.pts.slice(0, cut), { ...q.at }], bPts = [{ ...q.at }, ...o.pts.slice(cut)];
         const mk = (suffix, pts, controlStart, controlEnd) => {
           const rs = resample(pts);
-          return { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, ...rs, ...ribbonOf(rs.pts, o.width) };
+          return { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, ...rs, ...surfaceOf(rs.pts, o.width, o.lanes) };
         };
         const a = mk("#a", aPts, o.control.start, "none"), b = mk("#b", bPts, "none", o.control.end);
         roads.splice(roads.indexOf(o), 1, a, b);
@@ -228,7 +240,7 @@ export function loadMap(map) {
       const pts = r.pts.slice();
       pts[end === "start" ? 0 : pts.length - 1] = { ...q.at };
       const rs = resample(pts);
-      Object.assign(r, rs, ribbonOf(rs.pts, r.width));
+      Object.assign(r, rs, surfaceOf(rs.pts, r.width, r.lanes));
       joinedEnds.add(`${r.id}|${end}`);
       nodes.push(node);
       if (atEnd) warn("snapped-join", `road ${r.id}'s ${end} joined road ${o.id}'s ${atEnd} ${q.d.toFixed(2)} m away`, q.at);

@@ -185,6 +185,8 @@ export function drawFrame(ctx, canvas, scene) {
         ctx.strokeStyle = "rgba(250,250,242,0.8)";
         seg(ctx, P, a, b); seg(ctx, P, d, c);
         if (i % 3 !== 2) { ctx.strokeStyle = C.yellow; seg(ctx, P, pts[i], pts[i + 1]); }
+        /* Lines between lanes going the same way: white, broken. */
+        if (road.laneLines && i % 2 === 0) { ctx.strokeStyle = "rgba(250,250,242,0.75)"; for (const line of road.laneLines) seg(ctx, P, line[i], line[i + 1]); }
       } });
       /* Piers at the ends of the span, so the deck visibly stands on
          something -- and only at the ends, because the road it crosses

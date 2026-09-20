@@ -27,7 +27,7 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import { loadMap } from "../map/load.js";
 import { testMap1 } from "../map/samples.js";
 import { seedGraph, step, poseOf, DT } from "../sim/crossing.js";
-import { playerAt, stepDriver, driverPose, withDriver, aheadOf, routeForSignal } from "../sim/drive.js";
+import { playerOn, stepDriver, driverPose, withDriver, aheadOf } from "../sim/drive.js";
 import { junctionsOf } from "../sim/graph.js";
 import { touching } from "../sim/player.js";
 import { controls } from "../iso/controls.js";
@@ -54,9 +54,7 @@ function sceneFor(seed, kmh, every, drive) {
   let world = seedGraph(seed, kmh, loaded, { every });
   let me = null;
   if (drive) {
-    const legId = `${START.road}|${START.end}`;
-    const k = world.course.at.findIndex((s) => s.layout.legs[legId]);
-    me = playerAt(world.course, k, routeForSignal(world.course.at[k].layout, legId, null));
+    me = playerOn(world.course, START.road, START.end);   // the curb lane, driving down to the crossroads
     world = withDriver(world, me);
   }
   return {
@@ -250,6 +248,7 @@ export default function MapRoad() {
           const word = ahead.intent === "left" ? "turning left" : ahead.intent === "right" ? "turning right" : "straight on";
           ctx.fillStyle = ahead.committed ? "#6cc070" : me.signal ? "#f2b84b" : "rgba(230,232,236,0.6)";
           ctx.fillText(`${word} at the ${ahead.node === "n0" ? "crossroads" : ahead.node === "n1" ? "T" : ahead.node === "n2" ? "five-way" : "T"}${ahead.committed ? " — committed" : ` in ${Math.round(ahead.toLine)} m`}`, size.w / 2, 54);
+          if (ahead.hint) { ctx.fillStyle = "#f2b84b"; ctx.fillText(ahead.hint, size.w / 2, 70); }
         }
         if (me.atEdge) { ctx.fillStyle = "#F2B84B"; ctx.fillText("THE EDGE OF THE MAP — restart", size.w / 2, 72); }
         drawSlider(ctx, size, inp.slider);
@@ -331,8 +330,15 @@ export default function MapRoad() {
           it drifts you. Inside an intersection the car takes the corner
           it committed to, and your wheel only trims the line.
           <br />
-          <b>What it deliberately does not do yet.</b> One lane each way.
-          Nobody reads your signal but the car. Nothing is scored, nothing
+          <b>Lanes.</b> Most roads here are two lanes each way. Drift
+          across the line into the next lane and you are in it; right
+          turns are made from the right lane and left turns from the lane
+          beside the centre line, and the line under the speed says so
+          when your signal asks for a turn your lane cannot make. The
+          traffic keeps its lane for now.
+          <br />
+          <b>What it deliberately does not do yet.</b> Nobody changes lane
+          but you. Nobody reads your signal but the car. Nothing is scored, nothing
           is a fault. The edge of the map is the end of the road. Signs
           are boxes on posts, not sprites. Flat ground under a road that
           climbs. Every car drives at the one limit chosen here.

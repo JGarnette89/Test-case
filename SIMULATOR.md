@@ -624,10 +624,9 @@ about to do and when it is committed.
 **Not yet in stage 1:** the real cap (the production-build sweep is
 Jay's to run; the instrument is ready at `#/iso`); per-road posted
 speeds in the sim (the loader carries them, every car drives at one
-limit); more than one lane each way; intersections drawn as junction
-surfaces with stop lines and signs (the sim knows where they are; the
-renderer draws overlapping ribbons); ground under a road that climbs;
-a candidate on the map. The editor is stage 2.
+limit); ground under a road that climbs; a candidate on the map. The
+editor is stage 2. (Junction surfaces, the chase camera and more than
+one lane each way were on this list; 1.1.2 has them.)
 
 **Not obvious from the diff:** a turn arc's radius is NOT floored at a
 car's lock, on purpose -- flooring it swung the arc wide of a 3.85 m
@@ -637,6 +636,83 @@ and is queued for its own commit; the servers a session starts die
 with it, so the production build is served by a detached process
 (`serve-preview.ps1` in the session scratchpad) until the deploy has a
 repository.
+
+#### 1.1.2 The first playtest -- 20 September: the chase camera, and wider roads
+
+The maintainer drove `#/map` and said two things: "it's hard to see
+what's coming up, it's very hard to control from the current
+perspective", and "the road is very restrictive. I think we need wider
+roads asap." Both landed the same day, the second as a gameplay call
+rather than a realism one.
+
+- **Junctions drawn from the sim's own geometry** (`7bf84b6`): the
+  surface polygon, a stop line wherever a car is held, a sign per
+  controlled road end -- `junctionsOf` in graph.js, so the screen and
+  the rule that stops a car cannot disagree about where the line is.
+- **The chase camera** (`src/iso/chase.js`; `bfbde16`): behind the
+  car, leading it by 2.6 seconds of travel (14 m at rest, 48 m at
+  speed), eased, and turned so the road ahead is up the screen. The
+  rotation decision and what it costs the art pipeline are in 5.2.
+  The depth key was wrong from stage 0 (z weighted 2 LIFT, should be
+  1/LIFT) and the rotation check found it.
+- **Wider roads, as lanes.** A road kind's default is now generous:
+  a collector is two lanes each way, an arterial and a highway three,
+  and only a residential or service street is one (`KINDS` in
+  `src/map/format.js`; `lanes` on a road still overrides). The lane
+  width stays 3.6 m -- wider lanes were an option and are still one
+  if it reads narrow at this camera. The test map's collectors are
+  therefore two each way, which is what the maintainer drives on.
+
+  Built so that it does not have to be redone when overtaking arrives:
+  - the loader paints lane lines from the same ribbon the surface
+    comes from (`surfaceOf`), so a three-lane road draws three lanes;
+  - the graph has ONE LEG PER LANE (`road|end#i`): lane 0 is beside
+    the centre line, the last lane is the curb; a path exists from a
+    lane only into the lane a turn of that kind goes to --
+    `laneForTurn`: right turns from the curb lane into the curb lane,
+    left turns from beside the centre line into the lane beside the
+    centre line, straight on keeps its lane. That is the general
+    North American rule as built, NOT yet confirmed by the maintainer,
+    and it is the one place the rule lives; lane arrows that change it (dual
+    turn lanes, a curb lane that must turn) are a road marking the
+    format does not carry yet;
+  - a stop line per lane, one sign per road end, and at a skewed
+    crossing every lane's line is set back by 1/sin of the sharpest
+    crossing angle (capped at 2), because with two lanes the crossing
+    road's swept lanes reach further into the box -- the five-way's
+    45-degree legs were being clipped without it;
+  - the traffic is seeded into lanes and keeps them; NPCs never
+    change lane. The conflict table compares paths from different
+    lanes of one road like any other pair, and two straights in
+    adjacent lanes are 3.6 m apart against the 2.7 m the weave room
+    needs, so they do not conflict -- measured, not assumed: five
+    minutes on two seeds on the two-lane test map, zero overlapping
+    car-ticks;
+  - **the player changes lane by drifting**: more than half a lane
+    sideways on an approach and the car is in the next lane, its
+    route re-picked for the signal from there, its offset re-based
+    so nothing jumps; past the line the turn is committed and the
+    lane is the turn's. When the signal asks for a turn this lane
+    cannot make, the line under the speed says which lane it is
+    made from ("left turns are from the left lane"); a signal with
+    no such exit says so ("no left turn here"). The drive starts in
+    the curb lane.
+
+  **Lane changing for the traffic is now REACHABLE**, which it was
+  not while a road was one lane. What exists: adjacent lanes are
+  legs that share a `base`, each with its own path, seam and stop
+  line; the following model measures the gap to the leader on a
+  lane, and the same query on the neighbouring lane's path is the
+  gap an NPC would be merging into; the player's `off` is already a
+  lateral state a car can carry. What is missing is the decision
+  (when a driver wants the other lane: a slower leader, a turn that
+  is made from the other lane, an obstruction) and the manoeuvre (a
+  blend between the two paths over a few seconds, during which the
+  car is on both for the conflict scan). Overtaking is that plus a
+  reason to want the lane back. The candidate's five axes have
+  something to say in it -- observation before the move, confidence
+  in the gap taken, steering in the blend -- so it is exam content,
+  not only traffic realism.
 
 #### 1.2 Production from here on, and the performance budget
 

@@ -21,7 +21,7 @@
    their route from the signal. Pure: the screen owns the state.
    ===================================================================== */
 import { stepPlayerOn, newPlayer } from "./player.js";
-import { poseOnGraph, intentOf, normDeg } from "./graph.js";
+import { poseOnGraph, intentOf, normDeg, curbLegOf } from "./graph.js";
 import { poseAt } from "./intersection.js";
 import { CAR, DT } from "./traffic.js";
 
@@ -53,18 +53,47 @@ export function playerAt(course, k, route) {
   return { ...newPlayer(0, 0, 0), id: "player", player: true, n: -1, k, route, leg: 0, signal: null, stoppedAt: null, going: false, accepted: false, contacts: 0 };
 }
 
+/* The player at the start of a road, in its curb lane, with no signal. */
+export function playerOn(course, roadId, end) {
+  const at = curbLegOf(course, roadId, end);
+  if (!at) return null;
+  return playerAt(course, at.k, routeForSignal(course.at[at.k].layout, at.leg, null));
+}
+
 /* The geometry a path presents to the car model: its heading along,
-   the road's edges either side of the lane centre, and the box, where
-   the committed arc is followed rather than driven. */
-function geomOf(path, lane = LANE) {
+   the road's edges either side of this lane's centre, and the box,
+   where the committed arc is followed rather than driven. */
+function geomOf(path, leg, lane = LANE) {
+  const mine = leg?.lane ?? 0, count = leg?.lanes ?? 1;
   return {
     length: path.length,
     headingAt: (s) => poseAt(path, s).rot,
-    /* From the lane centre: half a lane to the right edge, a lane and a
-       half to the left one across the oncoming lane. */
-    edges: { left: -1.5 * lane, right: 0.5 * lane },
+    /* From this lane's centre: the lanes to the right of it and half of
+       this one to the right edge; this half-lane, the lanes to the
+       left and the whole oncoming carriageway to the left edge. */
+    edges: { left: -(0.5 + mine + count) * lane, right: (count - mine - 0.5) * lane },
     box: [path.stopAt, path.clearAt],
   };
+}
+
+/* A LANE CHANGE, for the player: on the approach, a car that has moved
+   more than half a lane sideways is on the next lane, and its route
+   becomes that lane's -- the same kind of exit if that lane offers it,
+   else straight on. `off` is re-based to the new lane's centre so the
+   car does not move. Only before the line: past it the turn is
+   committed, and on the way out the lane is the turn's. */
+function laneChange(layout, me, path) {
+  const leg = layout.legs[path.from];
+  if (!leg || me.s > path.stopAt) return me;
+  const lane = LANE;
+  let to = null;
+  if (me.off > lane / 2 && leg.lane + 1 < leg.lanes) to = leg.lane + 1;
+  else if (me.off < -lane / 2 && leg.lane > 0) to = leg.lane - 1;
+  if (to == null) return me;
+  const newLeg = `${leg.base}#${to}`;
+  if (!layout.legs[newLeg]) return me;
+  const route = routeForSignal(layout, newLeg, me.signal);
+  return { ...me, route, off: me.off - (to - leg.lane) * lane };
 }
 
 /* ONE TICK OF THE PLAYER, in the world as it is: the car model along
@@ -85,8 +114,11 @@ export function stepDriver(me, input, world, dt = DT) {
     if (want !== route) { route = want; path = layout.paths[route]; }
   }
 
-  let next = stepPlayerOn(me, input, geomOf(path, world.road?.lane ?? LANE), dt);
+  let next = stepPlayerOn(me, input, geomOf(path, layout.legs[path.from], world.road?.lane ?? LANE), dt);
   next = { ...next, k, route };
+  /* Across into the next lane: the route becomes that lane's. */
+  next = laneChange(layout, next, path);
+  route = next.route; path = layout.paths[route];
 
   /* Off the end of the path onto the next one, choosing by the signal;
      off the edge of the world, back onto the same road's start would be
@@ -132,10 +164,19 @@ export function withDriver(world, me) {
 }
 
 /* What the player is about to do, for the screen to say so: the kind
-   of turn the current route takes at the node ahead, and its name. */
+   of turn the current route takes at the node ahead, its name, and --
+   when the signal asks for a turn this lane cannot make -- which lane
+   to move to. */
 export function aheadOf(me, course) {
   const spot = course.at[me.k];
   const path = spot.layout.paths[me.route];
-  if (spot.through) return { node: null, intent: "straight", committed: false };
-  return { node: spot.node, intent: path.intent, committed: me.s > path.stopAt, toLine: Math.max(0, path.stopAt - me.s) };
+  if (spot.through) return { node: null, intent: "straight", committed: false, hint: null };
+  let hint = null;
+  if (me.signal && path.intent !== me.signal && me.s <= path.stopAt) {
+    const leg = spot.layout.legs[path.from];
+    const others = Object.values(spot.layout.legs).filter((l) => l.base === leg.base && l.id !== leg.id);
+    const can = others.some((l) => spot.layout.routesFrom(l.id).some((r) => spot.layout.paths[r].intent === me.signal));
+    hint = can ? `${me.signal} turns are from the ${me.signal === "right" ? "right" : "left"} lane` : `no ${me.signal} turn here`;
+  }
+  return { node: spot.node, intent: path.intent, committed: me.s > path.stopAt, toLine: Math.max(0, path.stopAt - me.s), hint, lane: spot.layout.legs[path.from]?.lane, lanes: spot.layout.legs[path.from]?.lanes };
 }
