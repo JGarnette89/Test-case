@@ -22,6 +22,7 @@ import { newPlayer, stepPlayer, playerPose, touching } from "../sim/player.js";
 import { controls, SLIDER_W } from "../iso/controls.js";
 import { drawSlider, drawWheelBar, drawSignals } from "../iso/hud.js";
 import { perfMeter } from "../iso/perf.js";
+import { loadSettings, setSetting } from "../settings.js";
 
 const LIMITS = [50, 60, 100];
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
@@ -63,6 +64,20 @@ export default function Wheel() {
   };
 
   useEffect(() => { input.current.state.spring = spring; }, [spring]);
+
+  /* What the player chose last time: the slider's manner and the
+     traffic's speed, kept through settings.js. Applied once, after the
+     first render, and only where it differs from what shipped. */
+  useEffect(() => {
+    let live = true;
+    loadSettings().then((s) => {
+      if (!live) return;
+      if ((s.slider === "spring") !== spring) setSpring(s.slider === "spring");
+      if (LIMITS.includes(s.limit) && s.limit !== limit) restart(seed, s.limit);
+    });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -192,10 +207,10 @@ export default function Wheel() {
           <span style={S.label}>Traffic</span>
           {LIMITS.map((kmh) => (
             <button key={kmh} className="btn" style={{ ...S.chip, minWidth: 0, padding: "0 10px", borderColor: limit === kmh ? C.green : "rgba(255,255,255,0.12)", color: limit === kmh ? C.white : DIM }}
-              onClick={() => restart(seed, kmh)}>{kmh}</button>
+              onClick={() => { setSetting("limit", kmh); restart(seed, kmh); }}>{kmh}</button>
           ))}
           <button className="btn" style={{ ...S.chip, borderColor: spring ? C.blue : "rgba(255,255,255,0.12)", color: spring ? C.white : DIM }}
-            onClick={() => setSpring((s) => !s)}>{spring ? "Slider springs back to neutral" : "Slider holds where it is left"}</button>
+            onClick={() => { setSpring((s) => { setSetting("slider", !s ? "spring" : "hold"); return !s; }); }}>{spring ? "Slider springs back to neutral" : "Slider holds where it is left"}</button>
           <span style={S.label}>keys: arrows or WASD, space brakes</span>
         </div>
         <div style={S.note}>

@@ -140,14 +140,22 @@ site is HTTPS and has all of them.
 
 **Permanently, for anyone with the link.** The repository carries a
 GitHub Actions workflow (`.github/workflows/deploy.yml`) that builds and
-publishes the site to GitHub Pages on every push to `main`. It needs
-three things done once, all on github.com:
+publishes the site to GitHub Pages on every push to `main`. What it
+needs from you, and it can be done from a phone:
 
-1. Create a repository (private is fine — Pages still publishes) and
-   push this project to it.
-2. Settings → Pages → Source: **GitHub Actions**.
-3. Push to `main`. About two minutes later the site is at
-   `https://<your-username>.github.io/<repository-name>/`.
+**On your phone, on github.com, signed in: tap the + at the top, New
+repository, name it `drivedraw`, choose Private, tap Create. Then in
+that repository: Settings → Pages → under Build and deployment, set
+Source to "GitHub Actions".** That is all. Tell Claude the repository
+exists.
+
+The first push has to come from this PC, and the one thing a session
+cannot do is sign you in: the next time you are at the PC, run
+`git push -u origin main` in a terminal in the project folder and
+finish the sign-in window that opens. After that once, every push is
+Claude's, the site rebuilds itself on each one, and it lives at
+`https://<your-username>.github.io/drivedraw/` about two minutes
+later -- HTTPS, so everything the LAN address lacks works there.
 
 The site is served from a sub-path named after the repository, which the
 build handles through `BASE_PATH`; the hash routes (`#/iso`) work

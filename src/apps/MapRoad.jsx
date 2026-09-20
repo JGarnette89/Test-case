@@ -34,6 +34,7 @@ import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
 import { drawSlider, drawWheelBar, drawSignals, drawReadout } from "../iso/hud.js";
 import { perfMeter } from "../iso/perf.js";
+import { loadSettings, setSetting } from "../settings.js";
 
 const LIMITS = [40, 50, 60];
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
@@ -115,6 +116,21 @@ export default function MapRoad() {
   };
 
   useEffect(() => { setWarnings(scene.current.loaded.warnings); }, []);
+
+  /* What the player chose last time (settings.js), applied once after
+     the first render, only where it differs from what shipped. */
+  useEffect(() => {
+    let live = true;
+    loadSettings().then((s) => {
+      if (!live) return;
+      const kmh = LIMITS.includes(s.limit) ? s.limit : limit;
+      const m = s.mode === "watch" ? "watch" : "drive";
+      if (kmh !== limit || m !== mode) restart(seed, kmh, m);
+      if (s.slider === "spring") input.current.state.spring = true;
+    });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -276,7 +292,7 @@ export default function MapRoad() {
           <button className="btn" style={S.btn} onClick={() => setZoom((z) => Math.min(4, z * 1.25))}><ZoomIn size={16} /></button>
           {[["drive", "you drive"], ["watch", "watch the traffic"]].map(([id, label]) => (
             <button key={id} className="btn" style={{ ...S.chip, borderColor: mode === id ? C.green : "rgba(255,255,255,0.12)", color: mode === id ? C.white : DIM }}
-              onClick={() => restart(seed, limit, id)}>{label}</button>
+              onClick={() => { setSetting("mode", id); restart(seed, limit, id); }}>{label}</button>
           ))}
           {mode === "watch" && <span style={S.label}>View</span>}
           {mode === "watch" && [["crossroads", "the crossroads"], ["tee", "the T"], ["fiveway", "the five-way"], ["overpass", "the overpass"], ["hill", "the hill"], ["car", "ride a car"]].map(([id, label]) => (
@@ -286,7 +302,7 @@ export default function MapRoad() {
           <span style={S.label}>Limit</span>
           {LIMITS.map((kmh) => (
             <button key={kmh} className="btn" style={{ ...S.chip, minWidth: 0, padding: "0 10px", borderColor: limit === kmh ? C.green : "rgba(255,255,255,0.12)", color: limit === kmh ? C.white : DIM }}
-              onClick={() => restart(seed, kmh)}>{kmh}</button>
+              onClick={() => { setSetting("limit", kmh); restart(seed, kmh); }}>{kmh}</button>
           ))}
           <span style={S.label}>keys: arrows or WASD, space brakes, q and e signal</span>
         </div>

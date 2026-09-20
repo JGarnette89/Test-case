@@ -542,45 +542,71 @@ felt rather than argued: **does the slider hold where it is left, or
 spring back to neutral when the thumb lifts?** Both are on the screen
 as a toggle.
 
-#### 1.1.1 Handover, 18 September evening -- where stage 1 stands
+#### 1.1.1 Where stage 1 stands -- 19 September, evening
 
-Committed and green (full suite, 33 checks): `f9f6da9` the production
-batch, `93053ba` the wheel slice. The tree was clean when this session
-ended; nothing was mid-change.
+**Built, committed, and green on the full suite (36 checks):**
 
-**Waiting on the maintainer, and nothing below should start before the
-first two land:**
-- the budget report from the Pixel 7 Pro (`#/iso`, "Run the budget
-  test", Copy report). On the same Wi-Fi tonight the dev server is at
-  `http://192.168.2.17:5173/`; SETUP.md 6 has the firewall note. The
-  report decides whether the cap is engineering (DPR cap, coarser
-  ground) or a design change. Do not guess it.
-- whether `#/wheel` feels right to drive, and slider hold vs spring.
-- a GitHub repository for the Pages deploy (his to create; publishing
-  needs his say).
+- **The map format and its loader** (`src/map/format.js`, `load.js`;
+  `57527ad`). Section 3 as written: thin, resample, the bend clamp on
+  the sim's own side-friction rule, the grade clamp by diffusion, ends
+  snapped within a lane width with the crossed road split, legs at
+  real bearings, edges, crossings without a node warned, a 256 m chunk
+  index. Only an empty map is refused. Stage 0 is the first map and
+  loads back within 5 mm of the hand-built roads, which `#/iso` and
+  `#/wheel` now run on.
+- **The sim on a road network** (`src/sim/graph.js`; `c0623eb`).
+  Section 2.4, the core refactor: intersections at any bearing with
+  any number of legs, and crossing.js's rules unchanged -- they ask the
+  layout what "on my right" and "oncoming" mean, in bearings. Proven by
+  equivalence: a crossroads from four map strokes IS the compass
+  crossroads, paths to the millimetre and the identical 68-pair
+  conflict table. Then a T, a five-way at 0/45/135/180/270, a loop
+  through four nodes with a bend and a hill, and an overpass, with
+  minutes of traffic through each and nobody driving through anybody.
+  The seam is the lane's own midpoint. Two cars on different levels
+  are not touching.
+- **The player drives the map, and the turn signal is the turn
+  commit** (`src/sim/drive.js`, `player.js`; `6bb818e`). The three
+  controls of 1.1 on `#/map`, in traffic, the player an ordinary
+  member of it. Indicate before the line and the car takes that
+  corner; no signal is straight on; past the line the turn is locked.
+  A bend is driven, the box is committed to. The signal means the exit
+  of its kind nearest a right angle; a T with no straight ahead and no
+  signal takes the gentlest turn; the edge of the map is the end of
+  the road.
+- **Settings** (`src/settings.js`) through the storage adapter: the
+  slider's manner, the traffic's speed, drive or watch -- kept across
+  visits, applied once after the first render.
 
-**The next increment** is the map format (section 3) and its loader
-with normalisation, then the sim on a graph with intersections at any
-bearing (section 2.4, the core refactor), then the turn-commit control
-on top of `src/iso/player.js`, then save/settings through
-`src/storage.js`. Build the map format first and load the stage-0
-roads through it, so `#/iso` and `#/wheel` become the first two maps
-rather than a parallel path.
+**Two domain questions surfaced, both flagged in the code:**
+- what counts as ONCOMING at a skewed crossing -- `ONCOMING_TOL`, 40
+  degrees, in graph.js: a five-way at 72 degrees has no oncoming pair
+  and every pair falls to the right-hand rule;
+- what a driver calls STRAIGHT ON where the road kinks -- 30 degrees:
+  the test map's bent road arrives at its crossroads 25 degrees off
+  square, and a driver does not signal for that.
 
-**Things that are not obvious from the diff:**
-- `src/iso/player.js` is the car in the ROAD'S frame (s, off, psi);
-  the graph refactor will need it in a lane's frame per edge, and the
-  road-end wrap in `Wheel.jsx` is the placeholder for a node.
-- `stepWithPlayer` in `src/iso/world.js` writes the player into
-  `worlds[0]` (the valley road, forward) only; on a graph the player's
-  world is whichever edge they are on.
-- `verify-wheel.mjs` caught two real bugs before anyone drove (a light
-  brake slower than coasting; a start inside a parked car). Keep adding
-  to it as the controls grow -- the feel is the phone's, the model is
-  the check's.
-- vite's watcher on this Windows machine misses the last of several
-  rapid writes; patch scripts must write each file ONCE (the session's
-  `patchlib.py` does), or `touch` the file a second later.
+**And one product question, felt rather than argued:** does the
+indicator-as-commit feel like driving? It is a tap in a top corner,
+which is a stalk; the car's line under the speed says what it is
+about to do and when it is committed.
+
+**Not yet in stage 1:** the real cap (the production-build sweep is
+Jay's to run; the instrument is ready at `#/iso`); per-road posted
+speeds in the sim (the loader carries them, every car drives at one
+limit); more than one lane each way; intersections drawn as junction
+surfaces with stop lines and signs (the sim knows where they are; the
+renderer draws overlapping ribbons); ground under a road that climbs;
+a candidate on the map. The editor is stage 2.
+
+**Not obvious from the diff:** a turn arc's radius is NOT floored at a
+car's lock, on purpose -- flooring it swung the arc wide of a 3.85 m
+corner into the next lane -- and the corner question stays open
+(DECISIONS.md 5.15.12); the sim's per-frame allocation is about 4 MB
+and is queued for its own commit; the servers a session starts die
+with it, so the production build is served by a detached process
+(`serve-preview.ps1` in the session scratchpad) until the deploy has a
+repository.
 
 #### 1.2 Production from here on, and the performance budget
 
