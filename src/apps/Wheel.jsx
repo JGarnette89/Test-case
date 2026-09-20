@@ -21,6 +21,7 @@ import { poseAt, LANE } from "../iso/road.js";
 import { newPlayer, stepPlayer, playerPose, touching } from "../sim/player.js";
 import { controls, SLIDER_W } from "../iso/controls.js";
 import { drawSlider, drawWheelBar, drawSignals } from "../iso/hud.js";
+import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter } from "../iso/perf.js";
 import { loadSettings, setSetting } from "../settings.js";
 
@@ -32,6 +33,7 @@ export default function Wheel() {
   const [seed, setSeed] = useState(1);
   const [limit, setLimit] = useState(60);
   const [spring, setSpring] = useState(false);
+  const [rotate, setRotate] = useState(true);   // the view turns with the car; off is the fixed view, for comparison
   /* NO REACT STATE IS WRITTEN FROM THE FRAME LOOP: the readout is
      drawn on the canvas. A state update from the loop cost 133-158 ms a
      time on the Pixel 7 Pro (IsoRoad.jsx, perf.js), and this one ran
@@ -46,7 +48,7 @@ export default function Wheel() {
   const me = useRef(newPlayer(START, LANE / 2, 0));
   const input = useRef(controls());
   const held = useRef(new Set());
-  const cam = useRef({ x: 0, y: 0, z: 0 });
+  const cam = useRef(newChase());
   const owed = useRef(0);
   const last = useRef(0);
   const raf = useRef(0);
@@ -58,7 +60,7 @@ export default function Wheel() {
     scene.current = clearAround(seedScene(s, kmh), START);
     me.current = newPlayer(START, LANE / 2, 0);
     input.current.state.steer = 0; input.current.state.slider = 0;
-    cam.current = { x: 0, y: 0, z: 0 };
+    cam.current = newChase();
     owed.current = 0;
     tally.current = { contacts: 0, laps: 0, flash: 0 };
   };
@@ -150,18 +152,11 @@ export default function Wheel() {
       const road = sc.valley;
       const pose = playerPose(me.current, road, poseAt);
 
-      /* THE CAMERA RIDES THE PLAYER and looks a second ahead, so the
-         road coming gets the screen at speed and the car sits central
-         at rest. Eased, and snapped on the first frame. */
-      const h = (pose.heading * Math.PI) / 180, look = Math.min(25, me.current.v * 1.0);
-      const want = { x: pose.x + Math.cos(h) * look, y: pose.y + Math.sin(h) * look, z: pose.z };
-      const ease = cam.current.x === 0 && cam.current.y === 0 ? 1 : 0.12;
-      cam.current.x += (want.x - cam.current.x) * ease;
-      cam.current.y += (want.y - cam.current.y) * ease;
-      cam.current.z += (want.z - cam.current.z) * ease;
-
-      const k = Math.max(3, size.w / 60);
-      const drew = drawFrame(ctx, size, { roads, terrain: sc.terrain, cam: cam.current, k, tilt: false, props: sc.props });
+      /* THE CHASE CAMERA (iso/chase.js): behind the car, leading it by
+         seconds of travel, the road ahead up the screen. */
+      cam.current = chaseStep(cam.current, { ...pose, v: me.current.v }, dt, { rotate });
+      const k = zoomFor(size.w, size.h, cam.current.lead);
+      const drew = drawFrame(ctx, size, { roads, terrain: sc.terrain, cam: cam.current, rot: cam.current.rot, k, tilt: false, props: sc.props });
       if (now - fpsAt > 250) {
         const sum = meter.current.summary(120);
         hud.current = { kmh: Math.round(me.current.v * 3.6), fps: sum.fps, offRoad: Math.abs(me.current.off) > road.width / 2 + 0.5, laps: tally.current.laps, cars: drew.cars };
@@ -173,7 +168,7 @@ export default function Wheel() {
     };
     tick(performance.now());
     return () => { cancelAnimationFrame(raf.current); window.removeEventListener("keydown", onKey); window.removeEventListener("keyup", onKey); };
-  }, [stopped, seed, limit]);
+  }, [stopped, seed, limit, rotate]);
 
   /* Pointer events straight off the canvas, captured so a drag that
      leaves it keeps steering. */
@@ -211,6 +206,8 @@ export default function Wheel() {
           ))}
           <button className="btn" style={{ ...S.chip, borderColor: spring ? C.blue : "rgba(255,255,255,0.12)", color: spring ? C.white : DIM }}
             onClick={() => { setSpring((s) => { setSetting("slider", !s ? "spring" : "hold"); return !s; }); }}>{spring ? "Slider springs back to neutral" : "Slider holds where it is left"}</button>
+          <button className="btn" style={{ ...S.chip, borderColor: rotate ? C.amber : "rgba(255,255,255,0.12)", color: rotate ? C.white : DIM }}
+            onClick={() => setRotate((r) => !r)}>{rotate ? "View turns with the car" : "Fixed view"}</button>
           <span style={S.label}>keys: arrows or WASD, space brakes</span>
         </div>
         <div style={S.note}>

@@ -19,7 +19,7 @@
    what has to be judged. The tilt toggle exists to show what pitching
    would buy if the level look reads wrong.
    ===================================================================== */
-import { depthOf, TOWARD_EYE, projector } from "./project.js";
+import { viewOf } from "./project.js";
 import { poseAt, groundAt as stage0Ground, LANE } from "./road.js";
 import { C } from "../theme.js";
 
@@ -71,14 +71,15 @@ function boxCorners(at, deg, grade, box, lift = 0) {
 /* Faces as corner indices, wound so the normal points outward. */
 const FACES = [[4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]];
 
-function paintBox(ctx, P, corners, colour) {
+function paintBox(ctx, view, corners, colour) {
+  const P = view.P;
   const faces = [];
   for (const f of FACES) {
     const p0 = corners[f[0]], p1 = corners[f[1]], p2 = corners[f[2]];
     const n = cross(sub(p1, p0), sub(p2, p0));
-    if (dot(n, TOWARD_EYE) <= 0) continue;
+    if (dot(n, view.eye) <= 0) continue;
     const cx = f.reduce((t, i) => t + corners[i].x, 0) / 4, cy = f.reduce((t, i) => t + corners[i].y, 0) / 4, cz = f.reduce((t, i) => t + corners[i].z, 0) / 4;
-    faces.push({ key: depthOf(cx, cy, cz), f, n });
+    faces.push({ key: view.key(cx, cy, cz), f, n });
   }
   faces.sort((a, b) => a.key - b.key);
   for (const { f, n } of faces) {
@@ -120,7 +121,11 @@ export function drawFrame(ctx, canvas, scene) {
   const groundAt = scene.groundAt ?? stage0Ground;
   const isDeck = (road, i) => road.pts[i].z - groundAt(road.pts[i].x, road.pts[i].y) > 1.0;
   const counts = { cells: 0, segments: 0, cars: 0, props: 0 };
-  const P = projector(k, cam, canvas);
+  /* The view: rotated by `scene.rot` degrees about the camera when a
+     chase camera asks for it, and the depth key with it. */
+  const view = viewOf(k, cam, scene.rot ?? 0, canvas, { centreY: scene.centreY ?? 0.55 });
+  const P = view.P, depthOf = view.key;
+  const rotDeg = scene.rot ?? 0;
   const margin = 40 * k;
   const onScreen = ([px, py]) => px > -margin && px < canvas.w + margin && py > -margin && py < canvas.h + margin;
   const items = [];
@@ -191,7 +196,7 @@ export function drawFrame(ctx, canvas, scene) {
           const top = { x: side[i].x * 0.85 + pts[i].x * 0.15, y: side[i].y * 0.85 + pts[i].y * 0.15, z: pts[i].z - 1.0 };
           const foot = { x: top.x, y: top.y, z: ground.z };
           const pier = boxCorners({ x: top.x, y: top.y, z: foot.z }, 0, 0, { l: 1.2, w: 1.2, h: top.z - foot.z });
-          items.push({ key: depthOf(top.x, top.y, foot.z) + 4, paint: () => paintBox(ctx, P, pier, "#8a8d93") });
+          items.push({ key: depthOf(top.x, top.y, foot.z) + 4, paint: () => paintBox(ctx, view, pier, "#8a8d93") });
         }
       }
     }
@@ -225,7 +230,7 @@ export function drawFrame(ctx, canvas, scene) {
          little larger than life, as every sign here is. */
       const post = boxCorners({ x: s.at.x, y: s.at.y, z: s.at.z ?? 0 }, s.heading, 0, { l: 0.12, w: 0.12, h: 1.7 });
       const face = boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
-      items.push({ key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 10, paint: () => { paintBox(ctx, P, post, "#9a9da3"); paintBox(ctx, P, face, s.kind === "stop" ? "#c8322b" : "#f2b84b"); } });
+      items.push({ key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 10, paint: () => { paintBox(ctx, view, post, "#9a9da3"); paintBox(ctx, view, face, s.kind === "stop" ? "#c8322b" : "#f2b84b"); } });
     }
   }
 
@@ -238,11 +243,13 @@ export function drawFrame(ctx, canvas, scene) {
     if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
     counts.cars++;
     const at = { x: a.x, y: a.y, z: a.z ?? 0 };
-    const deg = quantise(a.heading);
+    /* Quantised RELATIVE TO THE VIEW: a sprite set has 32 headings as
+       seen from the camera, so the step is taken in the rotated frame. */
+    const deg = quantise(a.heading + rotDeg) - rotDeg;
     const colour = a.colour ?? CAR_COLOURS[(a.n ?? 0) % CAR_COLOURS.length];
     const body = boxCorners(at, deg, 0, BODY);
     const cabin = boxCorners(at, deg, 0, CABIN, BODY.h);
-    items.push({ key: depthOf(at.x, at.y, at.z) + 10, paint: () => { paintBox(ctx, P, body, colour); paintBox(ctx, P, cabin, colour); } });
+    items.push({ key: depthOf(at.x, at.y, at.z) + 10, paint: () => { paintBox(ctx, view, body, colour); paintBox(ctx, view, cabin, colour); } });
   }
 
   for (const { road, cars = [] } of roads) {
@@ -255,7 +262,7 @@ export function drawFrame(ctx, canvas, scene) {
       const off = LANE / 2 + (car.weave ?? 0);
       const at = { x: p.x - Math.sin(h) * off, y: p.y + Math.cos(h) * off, z: p.z };
       /* A driven car points where its wheel says, not where the road does. */
-      const deg = quantise(roadHeading + (car.yaw ?? 0));
+      const deg = quantise(roadHeading + (car.yaw ?? 0) + rotDeg) - rotDeg;
       const grade = tilt ? (car.dir > 0 ? p.grade : -p.grade) : 0;
       const [px, py] = P(at.x, at.y, at.z);
       if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
@@ -268,7 +275,7 @@ export function drawFrame(ctx, canvas, scene) {
          nearer than the car's own centre -- so the car's key is pushed
          past that. A deck overlapping the car on screen is further still
          (project.js), so it still paints after. */
-      items.push({ key: depthOf(at.x, at.y, at.z) + 10, paint: () => { paintBox(ctx, P, body, colour); paintBox(ctx, P, cabin, colour); } });
+      items.push({ key: depthOf(at.x, at.y, at.z) + 10, paint: () => { paintBox(ctx, view, body, colour); paintBox(ctx, view, cabin, colour); } });
     }
   }
 
@@ -280,7 +287,7 @@ export function drawFrame(ctx, canvas, scene) {
     if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
     counts.props++;
     const box = boxCorners({ x: b.x, y: b.y, z }, b.heading, 0, { l: b.l, w: b.w, h: b.h });
-    items.push({ key: depthOf(b.x, b.y, z) + 10, paint: () => paintBox(ctx, P, box, "#7d8290") });
+    items.push({ key: depthOf(b.x, b.y, z) + 10, paint: () => paintBox(ctx, view, box, "#7d8290") });
   }
 
   items.sort((a, b) => a.key - b.key);

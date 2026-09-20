@@ -399,12 +399,37 @@ forty. This is the big one and it is where stage 0 goes first.
 - **Projection**: a fixed isometric (2:1 dimetric) with `z` lifting the
   point straight up on screen. World stays metric; the projection is one
   function; every drawable goes through it.
-- **The camera does not rotate.** Isometric worlds face one way (at most
-  the four quarter-turns some builders offer), and a city that always
-  faces the same way is a city you can learn — which is the design
-  pillar. The chase camera's "heading up" convention goes with the
-  top-down view; the camera follows a car's position and keeps the
-  world's orientation.
+- **The camera ROTATES with the car when the player drives -- reversed
+  on 20 September, on the first playtest.** The paragraph this replaces
+  said the camera does not rotate, because a city that always faces
+  the same way is a city you can learn. The maintainer's first drive
+  said "it's hard to see what's coming up, it's very hard to control
+  from the current perspective": with the world fixed, the road ahead
+  lay in whichever screen direction the car pointed, and on half the
+  headings the player drove toward the bottom of the screen. So the
+  driving view is a CHASE CAMERA (`src/iso/chase.js`): behind the car,
+  leading it by seconds of travel -- more road at 60 than at 20 --
+  eased so it never snaps, and TURNED so the road ahead is always up
+  the screen, the short way round, never faster than 120 degrees a
+  second. Watching the traffic keeps the fixed view; a fixed view
+  stays available as a toggle while driving, for the comparison.
+
+  The engineering call, on the merits: the alternatives were not
+  rotating (just judged undrivable), four or eight snapped rotations
+  (a jolt at every turn, and the same art cost as below), or free
+  rotation, which costs nothing today because everything the renderer
+  draws is a box the code builds and a box rotates for free.
+
+  **WHAT IT CONSTRAINS, AND IT BELONGS HERE BEFORE ART IS
+  COMMISSIONED (5.3):** scenery cannot be a single-view isometric
+  sprite. A building, a tree, a sign has to be rotation-tolerant --
+  faces painted onto a box the renderer extrudes (an artist paints a
+  wall and a roof, not a building), a set of views with the nearest
+  chosen, or a billboard that faces the camera. Car sprites are
+  unaffected: a 32-heading set is indexed by the car's heading
+  RELATIVE TO THE VIEW, which is what the renderer already quantises.
+  The learnable-city argument survives in a weaker form: landmarks
+  read from any side, and the map, when there is one, is north-up.
 - **Roads by code**: the centreline projected; the surface as a filled
   ribbon whose edges are offset in world space before projection (so a
   bend's edges are true curves, not sheared); markings as projected
@@ -412,13 +437,18 @@ forty. This is the big one and it is where stage 0 goes first.
   sidewalks the same way. Elevation makes a road's ribbon a strip that
   climbs; an overpass is a ribbon drawn after what it crosses.
 - **Sprites for everything with height**: vehicles at 32 headings (16 as
-  the floor), buildings, trees, props, people. Anchored at the base of
-  the footprint, sorted with everything else.
+  the floor), indexed by heading relative to the view; buildings and
+  props as painted faces on extruded boxes or as view sets, never a
+  single fixed-view sprite (the rotation decision above); trees and
+  people as billboards. Anchored at the base of the footprint, sorted
+  with everything else.
 - **Draw order** is the isometric painter's problem and it is the known
-  hard part: sort by ground depth (x + y), then elevation, per visible
-  chunk, per frame; a car under an overpass has to draw before the
-  overpass and a car on it after. Get this right in stage 0 with one hill
-  and one overpass before there are three hundred cars.
+  hard part: one key per drawable, its projection onto the line of
+  sight -- `x + y + z / LIFT` in the ROTATED frame -- per frame; a car
+  under an overpass draws before the overpass and a car on it after.
+  Got right in stage 0 with one hill and one overpass; the z weight
+  was 2 LIFT there, wrong by a factor of 1.5 and invisible by eye until
+  the rotation check derived it.
 - **Canvas, not SVG.** The app's rule has been React + SVG and no canvas,
   and it held because the old renderer drew one intersection. A city
   view of hundreds of sprites and ribbons re-sorted every frame is not an

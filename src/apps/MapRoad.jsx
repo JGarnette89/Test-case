@@ -34,6 +34,7 @@ import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
 import { drawSlider, drawWheelBar, drawSignals, drawReadout } from "../iso/hud.js";
+import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter } from "../iso/perf.js";
 import { loadSettings, setSetting } from "../settings.js";
 
@@ -93,11 +94,12 @@ export default function MapRoad() {
   const [mode, setMode] = useState("drive");        // "drive" or "watch"
   const [follow, setFollow] = useState("crossroads");   // watch mode: a place to look at, or "car" to ride one
   const [zoom, setZoom] = useState(1);
+  const [rotate, setRotate] = useState(true);   // driving: the view turns with the car; off is the fixed view, for comparison
   const [warnings, setWarnings] = useState([]);
   const [stopped, setStopped] = useState(false);     // after a contact, until restarted
 
   const scene = useRef(null);
-  const cam = useRef({ x: 0, y: 0, z: 0, id: null });
+  const cam = useRef({ ...newChase(), id: null });
   const owed = useRef(0);
   const last = useRef(0);
   const raf = useRef(0);
@@ -113,7 +115,7 @@ export default function MapRoad() {
     setSeed(s); setLimit(kmh); setMode(m); setStopped(false);
     scene.current = sceneFor(s, kmh, 2.0, m === "drive");
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
-    cam.current = { x: 0, y: 0, z: 0, id: null };
+    cam.current = { ...newChase(), id: null };
     owed.current = 0; contacts.current = 0; flash.current = 0;
   };
 
@@ -199,31 +201,33 @@ export default function MapRoad() {
 
       const actors = actorsOf(sc, playing && !stopped ? owed.current : 0);
 
-      /* THE CAMERA. Driving: it rides the player and looks a second
-         ahead. Watching: a fixed place -- one of each kind of node and
-         the overpass -- or a car, picking another when it leaves. It
-         never rotates. */
+      /* THE CAMERA. Driving: the chase camera (iso/chase.js), behind
+         the player, leading them by seconds of travel, the road ahead
+         up the screen. Watching: a fixed place -- one of each kind of
+         node and the overpass -- or a car, picking another when it
+         leaves, from the fixed isometric view. */
       const PLACES = {
         crossroads: { x: 400, y: 400, z: 0 }, tee: { x: 800, y: 400, z: 0 }, fiveway: { x: 400, y: 800, z: 0 },
         overpass: { x: 600, y: 800, z: 3 }, hill: { x: 600, y: 400, z: 3 },
       };
-      let want = PLACES[follow] ?? PLACES.crossroads;
+      let k, rot = 0;
       if (sc.me) {
         const p = driverPose(sc.me, sc.world.course);
-        const h = (p.heading * Math.PI) / 180, look = Math.min(25, sc.me.v * 1.0);
-        want = { x: p.x + Math.cos(h) * look, y: p.y + Math.sin(h) * look, z: p.z };
-      } else if (follow === "car") {
-        let target = actors.find((a) => a.id === cam.current.id);
-        if (!target) { target = actors[Math.floor(actors.length / 2)] ?? null; cam.current.id = target?.id ?? null; }
-        if (target) want = target;
+        cam.current = { ...chaseStep(cam.current, { ...p, v: sc.me.v }, dt, { rotate }), id: null };
+        k = zoomFor(size.w, size.h, cam.current.lead) * zoom;
+        rot = cam.current.rot;
+      } else {
+        let want = PLACES[follow] ?? PLACES.crossroads;
+        if (follow === "car") {
+          let target = actors.find((a) => a.id === cam.current.id);
+          if (!target) { target = actors[Math.floor(actors.length / 2)] ?? null; cam.current.id = target?.id ?? null; }
+          if (target) want = target;
+        }
+        const f = cam.current.snap ? 1 : 1 - Math.exp(-4 * dt);
+        cam.current = { ...cam.current, x: cam.current.x + (want.x - cam.current.x) * f, y: cam.current.y + (want.y - cam.current.y) * f, z: cam.current.z + ((want.z ?? 0) - cam.current.z) * f, rot: 0, snap: false };
+        k = Math.max(1, (size.w / (follow === "car" ? 60 : 110)) * zoom);
       }
-      const ease = cam.current.x === 0 && cam.current.y === 0 ? 1 : 0.12;
-      cam.current.x += (want.x - cam.current.x) * ease;
-      cam.current.y += (want.y - cam.current.y) * ease;
-      cam.current.z += ((want.z ?? 0) - cam.current.z) * ease;
-
-      const k = Math.max(1, (size.w / (sc.me || follow === "car" ? 60 : 110)) * zoom);
-      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, k, tilt: false, actors, groundAt: flat, junctions: sc.junctions });
+      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: flat, junctions: sc.junctions });
 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
@@ -260,7 +264,7 @@ export default function MapRoad() {
     };
     tick(performance.now());
     return () => { cancelAnimationFrame(raf.current); window.removeEventListener("keydown", onKey); window.removeEventListener("keyup", onKey); };
-  }, [playing, follow, zoom, seed, limit, mode, stopped]);
+  }, [playing, follow, zoom, seed, limit, mode, stopped, rotate]);
 
   const at = (e) => { const r = e.currentTarget.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top, { w: r.width, h: r.height }]; };
   const onDown = (e) => { e.currentTarget.setPointerCapture?.(e.pointerId); const [x, y, box] = at(e); input.current.pointer("down", e.pointerId, x, y, box, performance.now()); };
@@ -301,6 +305,10 @@ export default function MapRoad() {
             <button key={id} className="btn" style={{ ...S.chip, borderColor: follow === id ? C.amber : "rgba(255,255,255,0.12)", color: follow === id ? C.white : DIM }}
               onClick={() => { cam.current = { x: 0, y: 0, z: 0, id: null }; setFollow(id); }}>{label}</button>
           ))}
+          {mode === "drive" && (
+            <button className="btn" style={{ ...S.chip, borderColor: rotate ? C.amber : "rgba(255,255,255,0.12)", color: rotate ? C.white : DIM }}
+              onClick={() => setRotate((r) => !r)}>{rotate ? "View turns with the car" : "Fixed view"}</button>
+          )}
           <span style={S.label}>Limit</span>
           {LIMITS.map((kmh) => (
             <button key={kmh} className="btn" style={{ ...S.chip, minWidth: 0, padding: "0 10px", borderColor: limit === kmh ? C.green : "rgba(255,255,255,0.12)", color: limit === kmh ? C.white : DIM }}
