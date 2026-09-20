@@ -28,6 +28,7 @@ import { loadMap } from "../map/load.js";
 import { testMap1 } from "../map/samples.js";
 import { seedGraph, step, poseOf, DT } from "../sim/crossing.js";
 import { playerAt, stepDriver, driverPose, withDriver, aheadOf, routeForSignal } from "../sim/drive.js";
+import { junctionsOf } from "../sim/graph.js";
 import { touching } from "../sim/player.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
@@ -61,6 +62,7 @@ function sceneFor(seed, kmh, every, drive) {
     loaded,
     roads: loaded.roads.map((road) => ({ road, cars: [] })),
     terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground: flat }),
+    junctions: junctionsOf(world.course),
     world, me,
   };
 }
@@ -221,7 +223,7 @@ export default function MapRoad() {
       cam.current.z += ((want.z ?? 0) - cam.current.z) * ease;
 
       const k = Math.max(1, (size.w / (sc.me || follow === "car" ? 60 : 110)) * zoom);
-      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, k, tilt: false, actors, groundAt: flat });
+      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, k, tilt: false, actors, groundAt: flat, junctions: sc.junctions });
 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
@@ -323,10 +325,8 @@ export default function MapRoad() {
           <br />
           <b>What it deliberately does not do yet.</b> One lane each way.
           Nobody reads your signal but the car. Nothing is scored, nothing
-          is a fault. The edge of the map is the end of the road.
-          Intersections are drawn as overlapping road ribbons, without
-          stop lines or signs — the sim knows where the lines are; the
-          renderer does not draw them yet. Flat ground under a road that
+          is a fault. The edge of the map is the end of the road. Signs
+          are boxes on posts, not sprites. Flat ground under a road that
           climbs. Every car drives at the one limit chosen here.
         </div>
       </div>

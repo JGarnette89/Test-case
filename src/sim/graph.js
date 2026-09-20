@@ -375,6 +375,56 @@ export function routeFromGraph(course, k, leg, x) {
 /* Roads for a renderer: the loaded map's, as they are. */
 export const roadsOfGraph = (course) => course.roads;
 
+/* THE JUNCTIONS, FOR WHATEVER DRAWS THEM: per node, the surface where
+   the legs meet (a polygon through each leg's road edges at the box
+   edge), each controlled leg's STOP LINE across its inbound lane where
+   the sim actually holds a car (the path's stop point), and the sign
+   beside it. Derived from the same geometry the cars use, so what is
+   drawn is where the line is -- the screen said "stop at the line" and
+   drew none, which is the lie CLAUDE.md item 6 names. */
+export function junctionsOf(course) {
+  const out = [];
+  const roadOf = Object.fromEntries(course.roads.map((r) => [r.id, r]));
+  for (const spot of course.at) {
+    if (spot.through) continue;
+    const { legs, paths, place } = spot.layout;
+    const centre = place.at;
+    const corners = [];
+    const lines = [], signs = [];
+    for (const leg of Object.values(legs)) {
+      const r = roadOf[leg.road];
+      if (!r) continue;
+      /* The road's edges at the box edge: the ribbon sample nearest
+         boxHalf from this end. */
+      const n = r.pts.length;
+      const idx = (() => {
+        if (leg.end === "end") { let i = n - 1; while (i > 0 && r.length - r.at[i] < place.boxHalf) i--; return i; }
+        let i = 0; while (i < n - 1 && r.at[i] < place.boxHalf) i++; return i;
+      })();
+      corners.push(r.left[idx], r.right[idx]);
+      /* The stop line: across the inbound lane at the stop point of any
+         path out of this leg (they share the approach). */
+      const route = Object.keys(paths).find((k) => paths[k].from === leg.id);
+      if (!route) continue;
+      const p = paths[route];
+      const pose = poseAt(p, p.stopAt);
+      const h = (pose.rot * Math.PI) / 180, nx = -Math.sin(h), ny = Math.cos(h);   // right of travel
+      const z = poseOnGraph(course, course.at.indexOf(spot), route, p.stopAt).z ?? 0;
+      const lane = place.lane;
+      if (leg.control === "stop" || leg.control === "yield") {
+        lines.push({ kind: leg.control, a: { x: pose.x - nx * lane / 2, y: pose.y - ny * lane / 2, z }, b: { x: pose.x + nx * lane / 2, y: pose.y + ny * lane / 2, z } });
+        /* The sign stands at the right-hand edge of the lane, level with the line, facing the approaching driver. */
+        signs.push({ kind: leg.control, at: { x: pose.x + nx * (lane / 2 + 0.6), y: pose.y + ny * (lane / 2 + 0.6), z }, heading: pose.rot });
+      }
+    }
+    /* The surface: the corners in order round the centre. */
+    const c2 = { x: centre.x, y: centre.y };
+    corners.sort((p, q) => Math.atan2(p.y - c2.y, p.x - c2.x) - Math.atan2(q.y - c2.y, q.x - c2.x));
+    out.push({ node: spot.node, at: centre, surface: corners, lines, signs });
+  }
+  return out;
+}
+
 /* WHERE A CAR IS, WITH ITS HEIGHT: the path's pose plus z interpolated
    along the path's own points, for a renderer that draws elevation. */
 export function poseOnGraph(course, k, route, s) {

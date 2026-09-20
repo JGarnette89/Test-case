@@ -113,7 +113,7 @@ function seg(ctx, P, a, b) {
    smooth at the display's rate rather than at the sim's.
    ===================================================================== */
 export function drawFrame(ctx, canvas, scene) {
-  const { roads, terrain, cam, k, tilt, props = [], actors = [] } = scene;
+  const { roads, terrain, cam, k, tilt, props = [], actors = [], junctions = [] } = scene;
   /* THE GROUND IS THE SCENE'S, not stage 0's hill: a map supplies its
      own (flat, for now), and a deck is wherever a road stands more than
      a metre above whatever ground the scene has. */
@@ -194,6 +194,38 @@ export function drawFrame(ctx, canvas, scene) {
           items.push({ key: depthOf(top.x, top.y, foot.z) + 4, paint: () => paintBox(ctx, P, pier, "#8a8d93") });
         }
       }
+    }
+  }
+
+  /* JUNCTIONS: the surface where legs meet, painted over the ribbons
+     that run into the node so their centre lines stop at the box; the
+     stop lines where the sim holds a car; a sign beside each. Keyed a
+     hair past the nearest of its corners, which is past every ribbon
+     segment under it. */
+  for (const j of junctions) {
+    if (!j.surface.length || !onScreen(P(j.at.x, j.at.y, j.at.z ?? 0))) continue;
+    const key = Math.max(...j.surface.map((p) => depthOf(p.x, p.y, p.z ?? 0))) + 0.05;
+    counts.segments++;
+    items.push({ key, paint: () => {
+      ctx.beginPath();
+      j.surface.forEach((p, i) => { const [x, y] = P(p.x, p.y, p.z ?? 0); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+      ctx.closePath();
+      ctx.fillStyle = shade(C.asphalt, { x: 0, y: 0, z: 1 }, 0.45); ctx.fill();
+      ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke();
+      ctx.lineCap = "butt";
+      for (const l of j.lines) {
+        ctx.lineWidth = Math.max(1.5, 0.45 * k);
+        ctx.strokeStyle = l.kind === "stop" ? "rgba(250,250,242,0.95)" : "rgba(250,250,242,0.7)";
+        seg(ctx, P, l.a, l.b);
+      }
+    } });
+    for (const s of j.signs) {
+      /* A post and a face: the face a flat box at eye height, red for a
+         stop, turned to the driver it faces. Drawn as a map symbol, a
+         little larger than life, as every sign here is. */
+      const post = boxCorners({ x: s.at.x, y: s.at.y, z: s.at.z ?? 0 }, s.heading, 0, { l: 0.12, w: 0.12, h: 1.7 });
+      const face = boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
+      items.push({ key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 10, paint: () => { paintBox(ctx, P, post, "#9a9da3"); paintBox(ctx, P, face, s.kind === "stop" ? "#c8322b" : "#f2b84b"); } });
     }
   }
 
