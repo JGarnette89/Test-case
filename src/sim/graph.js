@@ -55,9 +55,15 @@ import { rng } from "../engine/index.js";
    not ruled on. Forty degrees so that anything a driver would call
    "straight ahead" is oncoming and a crossing at sixty is not. */
 export const ONCOMING_TOL = 40;
-/* A turn gentler than this is driven as straight on: the two lanes
-   are joined by a straight segment rather than an arc. */
-const STRAIGHT_TOL = 12;
+/* WHAT A DRIVER CALLS STRAIGHT ON. The test map's bent road arrives at
+   its crossroads 25 degrees off square -- a bow's tangent at its end --
+   and at twelve degrees there was no straight exit from the north, so
+   "no signal" became a right turn. A driver at a crossroads whose other
+   exits are right angles calls a 25 degree kink straight on, and does
+   not signal for it. Thirty degrees. Separate from ARC_FROM: whether to
+   BUILD an arc is geometry, and a 25 degree kink still wants one. */
+const STRAIGHT_TOL = 30;
+const ARC_FROM = 5;
 
 const norm = (d) => ((((d + 180) % 360) + 360) % 360) - 180;   // to (-180, 180]
 const bearingOf = (a, b) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
@@ -285,7 +291,7 @@ function pathBetween(place, A, B, meta) {
   const turn = norm((Math.atan2(outDir.y, outDir.x) - Math.atan2(inDir.y, inDir.x)) * 180 / Math.PI);
 
   let pts, iStop, iClear, exitFrom;
-  if (Math.abs(turn) < STRAIGHT_TOL) {
+  if (Math.abs(turn) < ARC_FROM) {
     /* Straight on: line to box edge to the way out. */
     pts = [...approach, exit0[0]];
     iStop = approach.length - 1;

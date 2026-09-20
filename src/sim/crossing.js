@@ -527,6 +527,11 @@ export function whatStops(me, world) {
 export function step(world) {
   const next = world.actors
     .map((raw) => {
+      /* A PLAYER AT THE WHEEL is an actor everybody else perceives,
+         yields to and follows, but nobody decides for: the screen
+         steps them from the controls and writes them in before each
+         tick (sim/drive.js), and hands them on at the seam itself. */
+      if (raw.player) return raw;
       /* THE DRIVER AS THEY ARE RIGHT NOW: their disposition under
          whatever instructions they are carrying (traffic.js,
          `underLoad`). Decided from, never written back -- the actor keeps
@@ -594,7 +599,7 @@ export function step(world) {
        A leg with nothing beyond it is still the edge of the world, and a
        course of one intersection is made entirely of those. */
     .map((me) => {
-      if (me.s <= pathOf(world, me).length) return me;
+      if (me.player || me.s <= pathOf(world, me).length) return me;
       const on = nextFor(world.course, me.k ?? 0, me.route, (k, side) => routeFor(world, me, k, side));
       if (!on) return null;
       return {

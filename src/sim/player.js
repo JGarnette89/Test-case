@@ -66,16 +66,56 @@ export function curvatureAt(road, poseAt, s, h = 2) {
    each. The heading integrates the yaw rate less the road's own turning
    under the car; the position integrates speed along the heading. */
 export function stepPlayer(me, input, road, poseAt, dt) {
+  return stepPlayerOn(me, input, {
+    length: road.length,
+    headingAt: (s) => poseAt(road, s).heading,
+    edges: { left: -road.width / 2, right: road.width / 2 },
+    box: null,
+  }, dt);
+}
+
+/* THE SAME TICK ALONG ANY PATH, given as its heading at a distance
+   along, the road's edges either side of the line the car is measured
+   from, and -- on a path through an intersection -- the BOX, between
+   the stop line and the way out.
+
+   A BEND IS DRIVEN; THE CORNER IS COMMITTED TO. On the road the path's
+   own turning drifts a car whose wheel is straight, which is what
+   makes a bend matter. Inside the box the car takes the arc the model
+   built for the turn it committed to (SIMULATOR.md 1.1: turns at
+   intersections are committed to, not steered), so the arc's
+   curvature does not act on the car and the wheel adjusts the line,
+   not the corner. */
+export function stepPlayerOn(me, input, geom, dt) {
   /* Off the road the grass drags hard and the car crawls: it can always
      come back, and nothing else about being there is modelled yet. */
-  const onRoad = Math.abs(me.off) <= road.width / 2 + 0.5;
+  const onRoad = me.off >= geom.edges.left - 0.5 && me.off <= geom.edges.right + 0.5;
   const a = accelFor(input.slider, me.v) - (onRoad ? 0 : 1.5);
   const v = Math.max(0, Math.min(onRoad ? V_MAX : V_MAX / 4, me.v + a * dt));
-  const kappa = curvatureAt(road, poseAt, me.s);
+  const inBox = geom.box && me.s >= geom.box[0] && me.s <= geom.box[1];
+  const kappa = inBox ? 0 : curvatureOf(geom, me.s, geom.box);
   const psi = me.psi + (yawRateFor(input.steer, v) - kappa * v * Math.cos(me.psi)) * dt;
   const s = me.s + v * Math.cos(psi) * dt;
   const off = me.off + v * Math.sin(psi) * dt;
   return { ...me, v, a, s, psi, off, steer: input.steer, slider: input.slider };
+}
+
+/* A path's curvature at s from its heading a little either side --
+   never sampled across the box, whose arc is the committed turn and
+   not the road: read across the stop line it drifted the car nearly a
+   metre before it got there. */
+function curvatureOf(geom, s, box = null, h = 2) {
+  let s0 = Math.max(0, s - h), s1 = Math.min(geom.length, s + h);
+  if (box) {
+    if (s < box[0]) s1 = Math.min(s1, box[0] - 0.01);
+    if (s > box[1]) s0 = Math.max(s0, box[1] + 0.01);
+  }
+  if (s1 - s0 < 0.5) return 0;
+  const a = geom.headingAt(s0), b = geom.headingAt(s1);
+  let d = b - a;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return (d * Math.PI) / 180 / (s1 - s0);
 }
 
 /* Where the car is in the world, for the renderer and the contact test. */

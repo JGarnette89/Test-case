@@ -18,8 +18,9 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import { seedScene, carsOf, stepWithPlayer, clearAround, DT } from "../iso/world.js";
 import { drawFrame } from "../iso/draw.js";
 import { poseAt, LANE } from "../iso/road.js";
-import { newPlayer, stepPlayer, playerPose, touching, NEUTRAL } from "../iso/player.js";
+import { newPlayer, stepPlayer, playerPose, touching } from "../sim/player.js";
 import { controls, SLIDER_W } from "../iso/controls.js";
+import { drawSlider, drawWheelBar, drawSignals } from "../iso/hud.js";
 import { perfMeter } from "../iso/perf.js";
 
 const LIMITS = [50, 60, 100];
@@ -80,6 +81,7 @@ export default function Wheel() {
     };
 
     const onKey = (e) => {
+      if (e.type === "keydown" && !e.repeat && (e.key === "q" || e.key === "e")) input.current.signal(e.key === "q" ? "left" : "right");
       if (e.type === "keydown") held.current.add(e.key); else held.current.delete(e.key);
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
     };
@@ -150,7 +152,7 @@ export default function Wheel() {
         hud.current = { kmh: Math.round(me.current.v * 3.6), fps: sum.fps, offRoad: Math.abs(me.current.off) > road.width / 2 + 0.5, laps: tally.current.laps, cars: drew.cars };
         fpsAt = now;
       }
-      drawControls(ctx, size, inp, tally.current, { ...hud.current, kmh: Math.round(me.current.v * 3.6), limit });
+      drawControls(ctx, size, inp, tally.current, { ...hud.current, kmh: Math.round(me.current.v * 3.6), limit, signal: input.current.state.signal, now });
       if (tally.current.flash > 0) tally.current.flash = Math.max(0, tally.current.flash - dt * 2);
       raf.current = requestAnimationFrame(tick);
     };
@@ -161,9 +163,9 @@ export default function Wheel() {
   /* Pointer events straight off the canvas, captured so a drag that
      leaves it keeps steering. */
   const at = (e) => { const r = e.currentTarget.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top, { w: r.width, h: r.height }]; };
-  const onDown = (e) => { e.currentTarget.setPointerCapture?.(e.pointerId); const [x, y, box] = at(e); input.current.pointer("down", e.pointerId, x, y, box); };
-  const onMove = (e) => { const [x, y, box] = at(e); input.current.pointer("move", e.pointerId, x, y, box); };
-  const onUp = (e) => { const [x, y, box] = at(e); input.current.pointer("up", e.pointerId, x, y, box); };
+  const onDown = (e) => { e.currentTarget.setPointerCapture?.(e.pointerId); const [x, y, box] = at(e); input.current.pointer("down", e.pointerId, x, y, box, performance.now()); };
+  const onMove = (e) => { const [x, y, box] = at(e); input.current.pointer("move", e.pointerId, x, y, box, performance.now()); };
+  const onUp = (e) => { const [x, y, box] = at(e); input.current.pointer("up", e.pointerId, x, y, box, performance.now()); };
 
   return (
     <div style={S.page}>
@@ -215,40 +217,22 @@ export default function Wheel() {
   );
 }
 
-/* THE CONTROLS AND THE READOUT ARE DRAWN ON THE CANVAS: the speed and
-   the state of play top left, the slider's track and thumb on the
-   right, the wheel's deflection along the bottom left, and a red wash
-   for a contact. Drawn after the world, so they are always on top. */
+/* THE CONTROLS AND THE READOUT ARE DRAWN ON THE CANVAS (iso/hud.js):
+   the speed and the state of play top centre, the slider on the
+   right, the wheel along the bottom left, the indicators in the top
+   corners -- nothing to turn into on this road, but the signal is the
+   turn commit on a map and the same control is here to be felt -- and
+   a red wash for a contact. */
 function drawControls(ctx, size, inp, tally, hud) {
-  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
   ctx.fillStyle = "#ffffff"; ctx.font = "700 26px system-ui, sans-serif";
-  ctx.fillText(String(hud.kmh), 10, 6);
-  const w = ctx.measureText(String(hud.kmh)).width;
+  ctx.fillText(`${hud.kmh}`, size.w / 2, 6);
   ctx.fillStyle = "rgba(230,232,236,0.8)"; ctx.font = "12px system-ui, sans-serif";
-  ctx.fillText(` km/h · limit ${hud.limit} · ${hud.cars} cars in view · ${hud.fps} fps${hud.laps > 0 ? ` · lap ${hud.laps + 1}` : ""}`, 10 + w, 16);
-  if (hud.offRoad) { ctx.fillStyle = "#F2B84B"; ctx.fillText("OFF THE ROAD", 10, 38); }
-  const margin = 24, x = size.w - SLIDER_W / 2, top = margin, bottom = size.h - margin, mid = (top + bottom) / 2;
-  /* The track: throttle above the band, brake below. */
-  ctx.lineCap = "round";
-  ctx.strokeStyle = "rgba(255,255,255,0.14)"; ctx.lineWidth = 10;
-  ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
-  const band = (NEUTRAL * (bottom - top)) / 2;
-  ctx.strokeStyle = "rgba(255,255,255,0.35)";
-  ctx.beginPath(); ctx.moveTo(x, mid - band); ctx.lineTo(x, mid + band); ctx.stroke();
-  /* The thumb, coloured by what it is doing. */
-  const y = mid - (inp.slider * (bottom - top)) / 2;
-  ctx.fillStyle = inp.slider > NEUTRAL ? "#6cc070" : inp.slider < -NEUTRAL ? "#e0574f" : "#cfd3da";
-  ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.font = "600 10px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(inp.slider > NEUTRAL ? "GO" : inp.slider < -NEUTRAL ? "BRK" : "--", x, y);
-  /* The wheel: a bar that fills left or right of centre. */
-  const wx = 24, wy = size.h - 22, ww = Math.min(180, size.w * 0.4);
-  ctx.strokeStyle = "rgba(255,255,255,0.14)"; ctx.lineWidth = 8;
-  ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + ww, wy); ctx.stroke();
-  ctx.strokeStyle = "#cfd3da";
-  ctx.beginPath(); ctx.moveTo(wx + ww / 2, wy); ctx.lineTo(wx + ww / 2 + (inp.steer * ww) / 2, wy); ctx.stroke();
-  ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = "600 10px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-  ctx.fillText("steer: drag here", wx, wy - 8);
+  ctx.fillText(`km/h · limit ${hud.limit} · ${hud.cars} cars in view · ${hud.fps} fps${hud.laps > 0 ? ` · lap ${hud.laps + 1}` : ""}`, size.w / 2, 38);
+  if (hud.offRoad) { ctx.fillStyle = "#F2B84B"; ctx.fillText("OFF THE ROAD", size.w / 2, 54); }
+  drawSlider(ctx, size, inp.slider);
+  drawWheelBar(ctx, size, inp.steer);
+  drawSignals(ctx, size, hud.signal, hud.now);
   if (tally.flash > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * tally.flash})`; ctx.fillRect(0, 0, size.w, size.h); }
 }
 

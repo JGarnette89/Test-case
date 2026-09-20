@@ -11,8 +11,8 @@
    yes for a car you hit and never for one a lane away; and the pointer
    arithmetic puts the thumb where it says.
    ===================================================================== */
-import { accelFor, yawRateFor, curvatureAt, stepPlayer, playerPose, touching, newPlayer, ACCEL_MAX, BRAKE_MAX, NEUTRAL } from "../src/iso/player.js";
-import { controls, sliderValue, STEER_TRAVEL, SLIDER_W } from "../src/iso/controls.js";
+import { accelFor, yawRateFor, curvatureAt, stepPlayer, playerPose, touching, newPlayer, ACCEL_MAX, BRAKE_MAX, NEUTRAL } from "../src/sim/player.js";
+import { controls, sliderValue, STEER_TRAVEL, SLIDER_W, SLIDER_TOP, SIGNAL_ZONE } from "../src/iso/controls.js";
 import { valleyRoad, poseAt, LANE } from "../src/iso/road.js";
 import { seedScene, stepWithPlayer, carsOf, DT } from "../src/iso/world.js";
 
@@ -118,11 +118,12 @@ const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (
 {
   const box = { w: 400, h: 600 };
   const c = controls();
-  c.pointer("down", 1, box.w - SLIDER_W / 2, 24, box);
+  c.pointer("down", 1, box.w - SLIDER_W / 2, SLIDER_TOP, box);
   check(c.state.slider === 1, "a thumb at the top of the track is full throttle");
-  c.pointer("move", 1, box.w - SLIDER_W / 2, 300, box);
+  const mid = (SLIDER_TOP + box.h - 24) / 2;
+  c.pointer("move", 1, box.w - SLIDER_W / 2, mid, box);
   check(c.state.slider === 0, "at the middle it is neutral");
-  c.pointer("up", 1, box.w - SLIDER_W / 2, 300, box);
+  c.pointer("up", 1, box.w - SLIDER_W / 2, mid, box);
   c.pointer("down", 2, 100, 300, box);
   c.pointer("move", 2, 100 + STEER_TRAVEL / 2, 300, box);
   check(c.state.steer === 0.5, "half a thumb-sweep right is half lock");
@@ -131,10 +132,27 @@ const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (
   c.pointer("up", 2, 0, 0, box);
   check(c.state.steer === 0, "the wheel centres when the thumb lifts");
   const hold = controls(), spring = controls({ spring: true });
-  hold.pointer("down", 1, box.w - 1, 24, box); hold.pointer("up", 1, box.w - 1, 24, box);
-  spring.pointer("down", 1, box.w - 1, 24, box); spring.pointer("up", 1, box.w - 1, 24, box);
+  hold.pointer("down", 1, box.w - 1, SLIDER_TOP, box); hold.pointer("up", 1, box.w - 1, SLIDER_TOP, box);
+  spring.pointer("down", 1, box.w - 1, SLIDER_TOP, box); spring.pointer("up", 1, box.w - 1, SLIDER_TOP, box);
   check(hold.state.slider === 1 && spring.state.slider === 0, "the slider holds where it is left, or springs back, as configured");
   check(sliderValue(0, box) === 1 && sliderValue(box.h, box) === -1, "above and below the track clamp to the ends");
+  /* The indicators: a tap in a top corner toggles that signal; a drag
+     from there steers and signals nothing; the other side switches. */
+  const s = controls();
+  s.pointer("down", 3, 20, 20, box, 1000); s.pointer("up", 3, 20, 20, box, 1100);
+  check(s.state.signal === "left", "a tap in the top-left corner signals left");
+  s.pointer("down", 4, box.w - 20, 20, box, 2000); s.pointer("up", 4, box.w - 20, 20, box, 2100);
+  check(s.state.signal === "right", "a tap top-right switches it to right");
+  s.pointer("down", 5, box.w - 20, 20, box, 3000); s.pointer("up", 5, box.w - 20, 20, box, 3100);
+  check(s.state.signal === null, "and tapping the same side again cancels it");
+  s.pointer("down", 6, 20, 20, box, 4000); s.pointer("move", 6, 20 + STEER_TRAVEL, 20, box, 4050);
+  check(s.state.steer === 1 && s.state.signal === null, "a drag that starts in the corner is steering, not a signal");
+  s.pointer("up", 6, 20 + STEER_TRAVEL, 20, box, 4100);
+  check(s.state.signal === null && s.state.steer === 0, "and lifting it signals nothing");
+  s.pointer("down", 7, 20, 20, box, 5000); s.pointer("up", 7, 20, 20, box, 5600);
+  check(s.state.signal === null, "a press held longer than a tap is not a tap");
+  check(s.signal("left") === "left" && s.signal("left") === null, "the keyboard's q and e toggle the same signal");
+  check(SIGNAL_ZONE.h < SLIDER_TOP, "the slider's track starts below the right-hand signal zone, so a thumb on it is never a signal");
 }
 
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }

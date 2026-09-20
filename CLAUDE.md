@@ -176,7 +176,8 @@ Eight things to know before your first change:
    | `src/apps/*`, `App.jsx`, `theme.js` | `verify-screens` | 6s |
    | `src/iso/*` | `verify-perf`, `verify-wheel`, `verify-map`, `verify-screens` | 8s |
    | `src/map/*` | `verify-map`, `verify-graph`, `verify-wheel`, `verify-perf`, `verify-screens` (the scene loads its roads through it) | ~50s |
-   | `src/sim/graph.js` | `verify-graph`, and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
+   | `src/sim/graph.js` | `verify-graph`, `verify-drive`, and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
+   | `src/sim/drive.js`, `src/sim/player.js`, `src/iso/hud.js`, `src/iso/controls.js` | `verify-drive`, `verify-wheel`, `verify-screens` | ~10s |
    | `src/sim/traffic.js` | the `src/sim/` five, plus `verify-wheel` (the player rides its step) | ~3m |
    | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens` | ~100s |
    | `src/frame.js` | `-screens`, `-camera`, `-clearance`, `-events`, `-world` | ~5m |
@@ -1972,11 +1973,12 @@ node tools/verify-perf.mjs         the budget ramp terminates, stops at the firs
 node tools/verify-wheel.mjs        the player at the wheel: a monotone pedal, a grip-limited wheel, a lane that can be held, honest contact
 node tools/verify-map.mjs          a map loads normalised and warned, never thrown; stage 0 is the first map and reproduces the hand-built roads
 node tools/verify-graph.mjs        the sim on a road network: the map's crossroads IS the compass crossroads; a T, a five-way, a loop, a bend, a hill and an overpass run the same rules
+node tools/verify-drive.mjs        the player on the map: the signal picks the exit it means and only before the line, the box is committed to, the road is driven, the traffic treats the player as its own
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All thirty-five must exit 0 **before a commit**. Between commits, run
+All thirty-six must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:
