@@ -803,17 +803,24 @@ at 24 rotations from 4 cameras, on the test map and on stage 0):
 706 misdrawn car-frames in 96 on the map -- 439 under roads, 128
 under junctions, 139 under the deck -- and 52 on stage 0's own road.
 
-**It was the roads getting wider, not the camera turning.** The key
-rotates with the view (`viewOf`, checked in verify-chase), and 46 of
-the misdrawings were at the fixed view. What broke was a constant
-nobody had named: every car was keyed 10 past its own centre so it
-would sort after the segment it stood on, whose key is the segment's
-nearest corner -- and 10 covers a 7.2 m road (9.7 at the worst
-orientation). A two-lane road across the view puts its nearest corner
-10.2 past a car in its middle; a junction surface 20 or more; stage
-0's hill adds the slope's height on top. Rotation only made every
-orientation happen; the fixed view already failed on the hill and at
-the junctions.
+**It was the roads getting wider, not the camera turning -- and not
+the seams.** The maintainer's correction, "the cars were disappearing
+occasionally on any view", pointed at the fixed view, and
+`tools/measure/paint.mjs` took the fixed view apart by case against
+the renderer as it was: on A-west, the road that runs ACROSS the
+view's depth axis, 113 of 113 cars were misdrawn, at segment seams
+and mid-segment alike; on A-north, along the axis, 0 of 113; on the
+bent road about half, wherever the bend turned across; in every box,
+every car. Seams made no difference because the renderer never looked
+one up: a car was keyed by its own centre, plus 10, and a segment by
+its nearest corner. That 10 covered a 7.2 m road (a far-lane car is
+at most 7.9 behind its segment's nearest corner) and not a 14.4 m one
+(15.1 for a car in the far lane of a road across the axis), and never
+a junction surface (20 or more). So the box was always wrong and the
+open road wrong whenever it ran across the view -- "consistently at
+intersections, occasionally while travelling" -- at any camera angle.
+The key does rotate with the view (`viewOf`, checked in
+verify-chase), so rotation only made every orientation happen.
 
 **The fix is a layer, not a bigger pad.** A flat surface at ground
 level cannot hide anything standing on or above it, whatever its
