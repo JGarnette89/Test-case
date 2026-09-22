@@ -179,7 +179,7 @@ Eight things to know before your first change:
    | `src/sim/graph.js` | `verify-graph`, `verify-drive`, and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
    | `src/map/format.js` (KINDS, lane defaults) | `verify-map`, `verify-graph`, `verify-drive`, `verify-screens` -- and READ the numbers the tests assert on, a lane count changes the leg count | ~1m |
    | `src/sim/drive.js`, `src/sim/player.js`, `src/iso/hud.js`, `src/iso/controls.js` | `verify-drive`, `verify-wheel`, `verify-screens` | ~10s |
-   | `src/iso/chase.js`, `src/iso/project.js`, `src/iso/draw.js` | `verify-chase`, `verify-perf`, `verify-wheel`, `verify-screens` | ~10s |
+   | `src/iso/chase.js`, `src/iso/project.js`, `src/iso/draw.js` | `verify-paint` FIRST (the painter's order, every rotation), `verify-chase`, `verify-perf`, `verify-wheel`, `verify-screens` | ~40s |
    | `src/sim/traffic.js` | the `src/sim/` five, plus `verify-wheel` (the player rides its step) | ~3m |
    | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens` | ~100s |
    | `src/frame.js` | `-screens`, `-camera`, `-clearance`, `-events`, `-world` | ~5m |
@@ -1996,11 +1996,12 @@ node tools/verify-map.mjs          a map loads normalised and warned, never thro
 node tools/verify-graph.mjs        the sim on a road network: the map's crossroads IS the compass crossroads; a T, a five-way, a loop, a bend, a hill and an overpass run the same rules
 node tools/verify-drive.mjs        the player on the map: the signal picks the exit it means and only before the line, the box is committed to, the road is driven, the traffic treats the player as its own
 node tools/verify-chase.mjs        the chase camera leads with speed, eases, turns the short way, keeps the car on screen, and the rotated view agrees with itself
+node tools/verify-paint.mjs        the painter's order: no car under the surface it stands on, none over a deck it is under, at every rotation, on both scenes
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All thirty-seven must exit 0 **before a commit**. Between commits, run
+All thirty-eight must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:

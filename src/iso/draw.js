@@ -5,9 +5,12 @@
    thousands of small polygons re-sorted every frame, which is not an SVG
    workload. Everything here is a "drawable" -- one depth key and one
    paint function -- collected, sorted by the key from project.js, and
-   painted back to front. That single rule is what has to survive the
-   overpass: a deck segment, a car under it, a car on it, the ground
-   under all three, each small enough to have one honest key.
+   painted back to front, IN TWO LAYERS: the floor (ground, roads at
+   ground level, junction surfaces), which nothing standing on it can
+   be hidden by; then everything with height, decks included, each
+   small enough to have one honest key. That is what has to survive the
+   overpass: a deck piece, a car under it, a car on it, the ground under
+   all three. verify-paint.mjs sweeps it at every rotation.
 
    CODE-DRAWN BOXES AT 32 HEADINGS, NOT SPRITES. Stage 0 draws a car as
    two boxes so the visual direction can be judged without an art
@@ -113,7 +116,7 @@ function seg(ctx, P, a, b) {
    already carried forward by the time since the last tick so motion is
    smooth at the display's rate rather than at the sim's.
    ===================================================================== */
-export function drawFrame(ctx, canvas, scene) {
+export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   const { roads, terrain, cam, k, tilt, props = [], actors = [], junctions = [] } = scene;
   /* THE GROUND IS THE SCENE'S, not stage 0's hill: a map supplies its
      own (flat, for now), and a deck is wherever a road stands more than
@@ -152,53 +155,102 @@ export function drawFrame(ctx, canvas, scene) {
     const zc = (a.z + b.z + c.z + d.z) / 4;
     const tone = mix(C.grass, "#9fb86a", Math.min(1, zc / 14));
     counts.cells++;
-    items.push({ key, paint: () => { quad(ctx, P, a, b, c, d); ctx.fillStyle = shade(tone, n, 0.35); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.5; ctx.stroke(); } });
+    items.push({ layer: 0, key, tag: audit && { kind: "cell", poly: [a, b, c, d] }, paint: () => { quad(ctx, P, a, b, c, d); ctx.fillStyle = shade(tone, n, 0.35); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.5; ctx.stroke(); } });
   }
 
+  /* THE FLOOR IS ITS OWN LAYER (22 September). The maintainer: "traffic
+     disappears under the intersections and occasionally under the road
+     while traveling." Every car used to carry a fixed pad of 10 past its
+     own centre so it would sort after the segment it stood on, whose
+     key is that segment's nearest corner. The pad was sized, without
+     anybody saying so, for a 7.2 m road: a two-lane road across the
+     view puts its nearest corner 10.2 key units past a car in its
+     middle, a junction surface 20 or more, and the sort put the car
+     first and the tarmac over it. Measured before the fix in
+     verify-paint.mjs: 706 misdrawn car-frames in 96, and 46 of them at
+     the fixed view, so the camera's rotation was not the cause, only
+     the thing that made every orientation happen. A bigger pad would
+     break at the next width.
+
+     So: a flat surface at ground level can never hide a thing standing
+     on or above it, whatever its size, and it is painted first. Ground
+     cells, ground-level road segments and junction surfaces are layer
+     0, sorted among themselves by the rules that keep tarmac over grass
+     and the box over the ribbons; everything with height -- cars,
+     signs, props, piers, and DECKS, which can hide what is under them
+     -- is layer 1, sorted by depth. A deck is cut into pieces no wider
+     than a lane and half a segment long, so its nearest corner is never
+     far from a car on it, and a car on a deck is keyed past the widest
+     piece's own key span, measured from the pieces as built rather than
+     typed. A car under a deck needs nothing: the piece over it is a
+     deck's height further into the screen by construction. */
+  const lerp = (p, q, t) => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, z: p.z + (q.z - p.z) * t });
+  let deckSpan = 0;   // the largest key span of any deck piece in view: how far past its centre a car on a deck must be keyed
   for (const { road } of roads) {
     const { pts, left, right } = road;
     for (let i = 0; i + 1 < pts.length; i++) {
       const a = left[i], b = left[i + 1], c = right[i + 1], d = right[i];
       if (!onScreen(P(a.x, a.y, a.z)) && !onScreen(P(c.x, c.y, c.z))) continue;
-      /* KEYED BY ITS NEAREST CORNER, the mirror of the ground's rule:
-         a segment follows every cell that reaches under it. */
-      const key = Math.max(depthOf(a.x, a.y, a.z), depthOf(b.x, b.y, b.z), depthOf(c.x, c.y, c.z), depthOf(d.x, d.y, d.z)) + 0.01;
       const n = cross(sub(b, a), sub(d, a));
       const deck = isDeck(road, i) && isDeck(road, i + 1);
       counts.segments++;
-      items.push({ key, paint: () => {
-        if (deck) {
-          /* The slab: its outer sides, a metre deep, so the deck reads as
-             a thing with thickness standing in the air rather than a
-             ribbon floating. */
-          const drop = (p) => ({ ...p, z: p.z - 1.0 });
-          for (const [e0, e1, out] of [[a, b, -1], [d, c, 1]]) {
-            quad(ctx, P, e0, e1, drop(e1), drop(e0));
-            const t = sub(e1, e0);
-            ctx.fillStyle = shade("#3b3f47", { x: -t.y * out, y: t.x * out, z: 0 }, 0.45); ctx.fill();
-          }
-        }
-        quad(ctx, P, a, b, c, d);
-        ctx.fillStyle = shade(C.asphalt, n, 0.45); ctx.fill();
-        ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke();   // hide the hairline between segments
+      /* The paint on the segment: its edges, the centre line with its
+         gaps, and the lines between lanes going the same way. */
+      const lines = () => {
         ctx.lineWidth = Math.max(1, 0.15 * k);
         ctx.strokeStyle = "rgba(250,250,242,0.8)";
         seg(ctx, P, a, b); seg(ctx, P, d, c);
         if (i % 3 !== 2) { ctx.strokeStyle = C.yellow; seg(ctx, P, pts[i], pts[i + 1]); }
-        /* Lines between lanes going the same way: white, broken. */
         if (road.laneLines && i % 2 === 0) { ctx.strokeStyle = "rgba(250,250,242,0.75)"; for (const line of road.laneLines) seg(ctx, P, line[i], line[i + 1]); }
-      } });
-      /* Piers at the ends of the span, so the deck visibly stands on
-         something -- and only at the ends, because the road it crosses
-         runs under the middle. */
-      const spanEnd = deck && (!(isDeck(road, i - 1) && i > 0) || !(i + 2 < pts.length && isDeck(road, i + 2)));
-      if (spanEnd) {
-        const ground = { x: pts[i].x, y: pts[i].y, z: 0 };
-        for (const side of [left, right]) {
-          const top = { x: side[i].x * 0.85 + pts[i].x * 0.15, y: side[i].y * 0.85 + pts[i].y * 0.15, z: pts[i].z - 1.0 };
-          const foot = { x: top.x, y: top.y, z: ground.z };
-          const pier = boxCorners({ x: top.x, y: top.y, z: foot.z }, 0, 0, { l: 1.2, w: 1.2, h: top.z - foot.z });
-          items.push({ key: depthOf(top.x, top.y, foot.z) + 4, paint: () => paintBox(ctx, view, pier, "#8a8d93") });
+      };
+      const fill = (p, q, r, s) => {
+        quad(ctx, P, p, q, r, s);
+        ctx.fillStyle = shade(C.asphalt, n, 0.45); ctx.fill();
+        ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke();   // hide the hairline between pieces
+      };
+      if (!deck) {
+        /* KEYED BY ITS NEAREST CORNER, the mirror of the ground's rule:
+           a segment follows every cell that reaches under it. */
+        const key = Math.max(depthOf(a.x, a.y, a.z), depthOf(b.x, b.y, b.z), depthOf(c.x, c.y, c.z), depthOf(d.x, d.y, d.z)) + 0.01;
+        items.push({ layer: 0, key, tag: audit && { kind: "road", id: `${road.id}#${i}`, poly: [a, b, c, d] }, paint: () => { fill(a, b, c, d); lines(); } });
+      } else {
+        const across = Math.max(1, Math.round(Math.hypot(d.x - a.x, d.y - a.y) / LANE));
+        const pieces = [];
+        for (let s = 0; s < across; s++) for (let h = 0; h < 2; h++) {
+          const L0 = lerp(a, b, h / 2), L1 = lerp(a, b, (h + 1) / 2), R0 = lerp(d, c, h / 2), R1 = lerp(d, c, (h + 1) / 2);
+          const pa = lerp(L0, R0, s / across), pb = lerp(L1, R1, s / across), pc = lerp(L1, R1, (s + 1) / across), pd = lerp(L0, R0, (s + 1) / across);
+          const keys = [pa, pb, pc, pd].map((p) => depthOf(p.x, p.y, p.z));
+          pieces.push({ pa, pb, pc, pd, key: Math.max(...keys) + 0.01, span: Math.max(...keys) - Math.min(...keys), outerL: s === 0, outerR: s === across - 1 });
+        }
+        for (const p of pieces) deckSpan = Math.max(deckSpan, p.span);
+        const last = pieces.reduce((m, p) => (p.key > m.key ? p : m), pieces[0]);
+        for (const p of pieces) {
+          items.push({ layer: 1, key: p.key, tag: audit && { kind: "deck", id: `${road.id}#${i}`, poly: [p.pa, p.pb, p.pc, p.pd] }, paint: () => {
+            /* The slab: its outer sides, a metre deep, so the deck reads as
+               a thing with thickness standing in the air rather than a
+               ribbon floating. */
+            const drop = (q) => ({ ...q, z: q.z - 1.0 });
+            for (const [e0, e1, out] of [...(p.outerL ? [[p.pa, p.pb, -1]] : []), ...(p.outerR ? [[p.pd, p.pc, 1]] : [])]) {
+              quad(ctx, P, e0, e1, drop(e1), drop(e0));
+              const t = sub(e1, e0);
+              ctx.fillStyle = shade("#3b3f47", { x: -t.y * out, y: t.x * out, z: 0 }, 0.45); ctx.fill();
+            }
+            fill(p.pa, p.pb, p.pc, p.pd);
+            if (p === last) lines();
+          } });
+        }
+        /* Piers at the ends of the span, so the deck visibly stands on
+           something -- and only at the ends, because the road it crosses
+           runs under the middle. */
+        const spanEnd = !(isDeck(road, i - 1) && i > 0) || !(i + 2 < pts.length && isDeck(road, i + 2));
+        if (spanEnd) {
+          const ground = { x: pts[i].x, y: pts[i].y, z: 0 };
+          for (const side of [left, right]) {
+            const top = { x: side[i].x * 0.85 + pts[i].x * 0.15, y: side[i].y * 0.85 + pts[i].y * 0.15, z: pts[i].z - 1.0 };
+            const foot = { x: top.x, y: top.y, z: ground.z };
+            const pier = boxCorners({ x: top.x, y: top.y, z: foot.z }, 0, 0, { l: 1.2, w: 1.2, h: top.z - foot.z });
+            items.push({ layer: 1, key: depthOf(top.x, top.y, foot.z) + 0.01, tag: audit && { kind: "pier", at: foot }, paint: () => paintBox(ctx, view, pier, "#8a8d93") });
+          }
         }
       }
     }
@@ -213,7 +265,7 @@ export function drawFrame(ctx, canvas, scene) {
     if (!j.surface.length || !onScreen(P(j.at.x, j.at.y, j.at.z ?? 0))) continue;
     const key = Math.max(...j.surface.map((p) => depthOf(p.x, p.y, p.z ?? 0))) + 0.05;
     counts.segments++;
-    items.push({ key, paint: () => {
+    items.push({ layer: 0, key, tag: audit && { kind: "junction", id: j.node, poly: j.surface.map((p) => ({ x: p.x, y: p.y, z: p.z ?? 0 })) }, paint: () => {
       ctx.beginPath();
       j.surface.forEach((p, i) => { const [x, y] = P(p.x, p.y, p.z ?? 0); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
       ctx.closePath();
@@ -232,7 +284,7 @@ export function drawFrame(ctx, canvas, scene) {
          little larger than life, as every sign here is. */
       const post = boxCorners({ x: s.at.x, y: s.at.y, z: s.at.z ?? 0 }, s.heading, 0, { l: 0.12, w: 0.12, h: 1.7 });
       const face = boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
-      items.push({ key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 10, paint: () => { paintBox(ctx, view, post, "#9a9da3"); paintBox(ctx, view, face, s.kind === "stop" ? "#c8322b" : "#f2b84b"); } });
+      items.push({ layer: 1, key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01, tag: audit && { kind: "sign", at: s.at }, paint: () => { paintBox(ctx, view, post, "#9a9da3"); paintBox(ctx, view, face, s.kind === "stop" ? "#c8322b" : "#f2b84b"); } });
     }
   }
 
@@ -240,6 +292,11 @@ export function drawFrame(ctx, canvas, scene) {
      a node, not at a distance along one road, so the sim hands the
      renderer where it is and which way it faces. Drawn exactly as the
      others, keyed the same way. */
+  /* A CAR'S KEY: its own centre, a hair past -- the floor is painted
+     already, so nothing at ground level needs allowing for. A car on a
+     deck is keyed past the widest deck piece's span, so it follows the
+     piece it stands on whatever the piece's orientation to the view. */
+  const carKey = (at) => depthOf(at.x, at.y, at.z) + (at.z - groundAt(at.x, at.y) > 1.0 ? deckSpan + 0.02 : 0.01);
   for (const a of actors) {
     const [px, py] = P(a.x, a.y, a.z ?? 0);
     if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
@@ -251,7 +308,7 @@ export function drawFrame(ctx, canvas, scene) {
     const colour = a.colour ?? CAR_COLOURS[(a.n ?? 0) % CAR_COLOURS.length];
     const body = boxCorners(at, deg, 0, BODY);
     const cabin = boxCorners(at, deg, 0, CABIN, BODY.h);
-    items.push({ key: depthOf(at.x, at.y, at.z) + 10, paint: () => { paintBox(ctx, view, body, colour); paintBox(ctx, view, cabin, colour); } });
+    items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, colour); paintBox(ctx, view, cabin, colour); } });
   }
 
   for (const { road, cars = [] } of roads) {
@@ -272,12 +329,7 @@ export function drawFrame(ctx, canvas, scene) {
       const colour = car.colour ?? CAR_COLOURS[car.n % CAR_COLOURS.length];
       const body = boxCorners(at, deg, grade, BODY);
       const cabin = boxCorners(at, deg, grade, CABIN, BODY.h);
-      /* A car follows the segment it stands on, whose key is that
-         segment's nearest corner -- up to a car length and a road width
-         nearer than the car's own centre -- so the car's key is pushed
-         past that. A deck overlapping the car on screen is further still
-         (project.js), so it still paints after. */
-      items.push({ key: depthOf(at.x, at.y, at.z) + 10, paint: () => { paintBox(ctx, view, body, colour); paintBox(ctx, view, cabin, colour); } });
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: car.n, at }, paint: () => { paintBox(ctx, view, body, colour); paintBox(ctx, view, cabin, colour); } });
     }
   }
 
@@ -289,10 +341,11 @@ export function drawFrame(ctx, canvas, scene) {
     if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
     counts.props++;
     const box = boxCorners({ x: b.x, y: b.y, z }, b.heading, 0, { l: b.l, w: b.w, h: b.h });
-    items.push({ key: depthOf(b.x, b.y, z) + 10, paint: () => paintBox(ctx, view, box, "#7d8290") });
+    items.push({ layer: 1, key: depthOf(b.x, b.y, z) + 0.01, tag: audit && { kind: "prop", at: { x: b.x, y: b.y, z } }, paint: () => paintBox(ctx, view, box, "#7d8290") });
   }
 
-  items.sort((a, b) => a.key - b.key);
+  /* The floor first, then everything with height; each by depth. */
+  items.sort((a, b) => a.layer - b.layer || a.key - b.key);
   for (const it of items) it.paint();
-  return { items: items.length, ...counts };
+  return { items: items.length, ...counts, ...(audit ? { order: items.map((it) => ({ ...it.tag, key: it.key })) } : {}) };
 }

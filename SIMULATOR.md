@@ -793,6 +793,46 @@ takes corners at whatever speed it arrives at (5.15.13); the player
 is judged, the NPCs are not yet. `SCRUB` (3 m/s^2 at the limit) is a
 design constant. Grade acts on the player only.
 
+#### 1.1.4 The depth sort, 22 September: the floor is its own layer
+
+The maintainer: "traffic disappears under the intersections and
+occasionally under the road while traveling." Diagnosed before it was
+touched, with a check that did not exist (`verify-paint.mjs`: every
+car in the frame against every surface whose footprint it is inside,
+at 24 rotations from 4 cameras, on the test map and on stage 0):
+706 misdrawn car-frames in 96 on the map -- 439 under roads, 128
+under junctions, 139 under the deck -- and 52 on stage 0's own road.
+
+**It was the roads getting wider, not the camera turning.** The key
+rotates with the view (`viewOf`, checked in verify-chase), and 46 of
+the misdrawings were at the fixed view. What broke was a constant
+nobody had named: every car was keyed 10 past its own centre so it
+would sort after the segment it stood on, whose key is the segment's
+nearest corner -- and 10 covers a 7.2 m road (9.7 at the worst
+orientation). A two-lane road across the view puts its nearest corner
+10.2 past a car in its middle; a junction surface 20 or more; stage
+0's hill adds the slope's height on top. Rotation only made every
+orientation happen; the fixed view already failed on the hill and at
+the junctions.
+
+**The fix is a layer, not a bigger pad.** A flat surface at ground
+level cannot hide anything standing on or above it, whatever its
+size, so ground cells, ground-level roads and junction surfaces are
+painted first, sorted among themselves by the rules that keep tarmac
+over grass and the box over the ribbons; everything with height --
+cars, signs, props, piers and decks -- is painted after, by depth. A
+deck can hide what is under it, so it stays in the second layer, cut
+into pieces no wider than a lane and half a segment long; a car on a
+deck is keyed past the widest piece's own key span, measured from the
+pieces as built; a car under a deck needs nothing, because the piece
+over it is a deck's height further in by construction. After: 0 of
+706, 0 of 52, and sabotaging either half of the rule fails the check
+(36 and 72 misdrawings when ground cars are keyed too far).
+
+What it does not do: hide a car behind a hill's crest (the terrain in
+front of a car is painted before it, as it always was), and it does
+not change the cost -- the same items, one extra sort key.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,
