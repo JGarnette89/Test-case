@@ -26,7 +26,7 @@
 import { drawFrame } from "../src/iso/draw.js";
 import { terrain, groundAt as stage0Ground } from "../src/iso/road.js";
 import { seedScene, stepScene, carsOf } from "../src/iso/world.js";
-import { loadMap } from "../src/map/load.js";
+import { loadMap, groundFor } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
 import { junctionsOf } from "../src/sim/graph.js";
 import { seedGraph, step, poseOf } from "../src/sim/crossing.js";
@@ -90,15 +90,20 @@ const summarise = (name, scene, canvas, cams) => {
     { id: "box-centre", x: 400, y: 400, z: 0, heading: 90 }, { id: "box-edge", x: 407, y: 396, z: 0, heading: 0 },
     { id: "five-way", x: 400, y: 800, z: 0, heading: 45 }, { id: "tee", x: 800, y: 402, z: 0, heading: 180 },
     { id: "a-north", x: 405.4, y: 300, z: 0, heading: 90 }, { id: "a-west", x: 300, y: 394.6, z: 0, heading: 0 },
+    /* On the hill: the road climbs 6 m and the land climbs with it, so this is NOT a deck and must not draw like one. */
+    ...(() => { const ab = loadMap(testMap1()).roads.find((r) => r.id === "A-B"); const top = ab.pts.reduce((m, q) => (q.z > m.z ? q : m), ab.pts[0]); return [{ id: "hilltop", x: top.x, y: top.y, z: top.z, heading: 0 }]; })(),
     { id: "on-deck", x: 601.8, y: 775, z: 7, heading: 90 }, { id: "under-deck", x: 600, y: 801.8, z: 0, heading: 0 },
     { id: "deck-edge", x: 598.2, y: 700, z: 7 * Math.sin((Math.PI * 100) / 350) ** 2, heading: -90 },
   ];
   const b = loaded.bounds;
+  /* The land the map implies, which is what the screen draws: it rises
+     with the hill road and stays under the overpass. */
+  const ground = groundFor(loaded, { cell: 20 });
   const scene = {
     roads: loaded.roads.map((road) => ({ road, cars: [] })),
-    terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground: () => 0 }),
+    terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground }),
     junctions: junctionsOf(world.course),
-    groundAt: () => 0, k: 5, tilt: false, actors: [...actors, ...placed],
+    groundAt: ground, k: 5, tilt: false, actors: [...actors, ...placed],
   };
   const canvas = { w: 1600, h: 1200 };
   const cams = [{ x: 400, y: 400, z: 0 }, { x: 600, y: 780, z: 3 }, { x: 800, y: 600, z: 0 }, { x: 400, y: 800, z: 0 }];

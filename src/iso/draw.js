@@ -122,7 +122,14 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      own (flat, for now), and a deck is wherever a road stands more than
      a metre above whatever ground the scene has. */
   const groundAt = scene.groundAt ?? stage0Ground;
-  const isDeck = (road, i) => road.pts[i].z - groundAt(road.pts[i].x, road.pts[i].y) > 1.0;
+  /* A DECK IS DECLARED, NOT INFERRED FROM HEIGHT. A loaded map says
+     which points of which road span another (load.js), which is the
+     quantity that actually matters; height above the ground was a
+     proxy for it, and it read a road CLIMBING a hill as a bridge in
+     the air the moment the land under it was flat. Roads that carry no
+     declaration -- anything hand-built rather than loaded -- keep the
+     height test. */
+  const isDeck = (road, i) => (typeof road.pts[i].bridge === "boolean" ? road.pts[i].bridge : road.pts[i].z - groundAt(road.pts[i].x, road.pts[i].y) > 1.0);
   const counts = { cells: 0, segments: 0, cars: 0, props: 0 };
   /* The view: rotated by `scene.rot` degrees about the camera when a
      chase camera asks for it, and the depth key with it. */

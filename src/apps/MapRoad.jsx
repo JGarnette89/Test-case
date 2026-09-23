@@ -24,7 +24,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
-import { loadMap } from "../map/load.js";
+import { loadMap, groundFor } from "../map/load.js";
 import { testMap1 } from "../map/samples.js";
 import { seedGraph, step, poseOf, DT } from "../sim/crossing.js";
 import { playerOn, stepDriver, driverPose, withDriver, aheadOf } from "../sim/drive.js";
@@ -41,12 +41,13 @@ import { loadSettings, setSetting } from "../settings.js";
 const LIMITS = [40, 50, 60];
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
 const DPR_CAP = 2;
-const flat = () => 0;
 const START = { road: "A-north", end: "end" };   // the player begins at the map's north edge, driving down to the crossroads
 
-/* The scene for one map: roads with their ribbons from the loader, a
-   flat ground over the map's bounds, the sim's world, and -- when
-   driving -- the player at the start. */
+/* The scene for one map: roads with their ribbons from the loader, the
+   land the roads imply (load.js `groundFor` -- a map carries no terrain
+   yet, so the land meets every road that is on it and stays under the
+   one that spans another), the sim's world, and -- when driving -- the
+   player at the start. */
 function sceneFor(seed, kmh, every, drive) {
   const loaded = loadMap(testMap1());
   if (!loaded.ok) throw new Error(`test map: ${loaded.error}`);
@@ -57,10 +58,12 @@ function sceneFor(seed, kmh, every, drive) {
     me = playerOn(world.course, START.road, START.end);   // the curb lane, driving down to the crossroads
     world = withDriver(world, me);
   }
+  const ground = groundFor(loaded, { cell: 20 });
   return {
     loaded,
+    ground,
     roads: loaded.roads.map((road) => ({ road, cars: [] })),
-    terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground: flat }),
+    terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground }),
     junctions: junctionsOf(world.course),
     world, me,
   };
@@ -226,7 +229,7 @@ export default function MapRoad() {
         cam.current = { ...cam.current, x: cam.current.x + (want.x - cam.current.x) * f, y: cam.current.y + (want.y - cam.current.y) * f, z: cam.current.z + ((want.z ?? 0) - cam.current.z) * f, rot: 0, snap: false };
         k = Math.max(1, (size.w / (follow === "car" ? 60 : 110)) * zoom);
       }
-      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: flat, junctions: sc.junctions });
+      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions });
 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);

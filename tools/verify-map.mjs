@@ -11,7 +11,8 @@
    that already exists. Loading stage 0 as a map must reproduce, to the
    centimetre, the roads iso/road.js builds by hand.
    ===================================================================== */
-import { loadMap, MAX_GRADE, SNAP, CLEARANCE_MIN, MIN_ROAD, THIN } from "../src/map/load.js";
+import { loadMap, groundFor, MAX_GRADE, SNAP, CLEARANCE_MIN, MIN_ROAD, THIN } from "../src/map/load.js";
+import { testMap1 } from "../src/map/samples.js";
 import { stage0Map, emptyMap, road, KINDS, CHUNK, LANE, SAMPLE } from "../src/map/format.js";
 import { valleyRoad, bridgeRoad, poseAt } from "../src/iso/road.js";
 import { radiusFor } from "../src/sim/course.js";
@@ -147,5 +148,54 @@ const line = (x0, y0, x1, y1, n = 20, z = 0) => Array.from({ length: n + 1 }, (_
   check(l.nodes.length >= 10 && l.nodes.length <= 16 && midRoad === 36, `ends that landed on a road became nodes and mid-road crossings became warnings, never intersections (${l.nodes.length} nodes, ${midRoad} crossings without a node)`);
 }
 
+/* THE LAND THE MAP IMPLIES, and which road is standing in the air.
+
+   A map carries no terrain (the editor's, stage 4), so the land is
+   what the roads say: it meets every road that is on it and stays
+   under the one that spans another. Before this the renderer guessed
+   from height -- anything more than a metre over the ground was a
+   bridge -- and with the ground flat that read the test map's 6 m hill
+   road as a slab in the air with piers under it. The quantity that
+   actually decides is which road spans which, which the loader knows
+   from its own crossings, so it says so. */
+{
+  const l = loadMap(testMap1());
+  const ground = groundFor(l, { cell: 20 });
+  const pts = l.roads.flatMap((r) => r.pts.map((p) => ({ ...p, road: r.id })));
+  check(pts.every((p) => typeof p.bridge === "boolean"), "every point of a loaded road says whether it is bridging, so a renderer never has to guess from height");
+
+  const c = l.crossings[0];
+  const over = l.roads.find((r) => r.id === c.over), under = l.roads.find((r) => r.id === c.roads.find((id) => id !== c.over));
+  check(l.crossings.length === 1 && c.over === "over" && over.pts.some((p) => p.bridge) && !under.pts.some((p) => p.bridge), `at the one crossing the upper road is the bridge and the lower one is not (${c.over} over ${under.id}, ${c.gap.toFixed(1)} m)`);
+  const span = over.pts.filter((p) => p.bridge).length * 5;
+  check(Math.abs(span - 2 * (c.gap / MAX_GRADE)) <= 10, `and the span is derived from the clearance rather than chosen: ${span} m, against the ${(2 * (c.gap / MAX_GRADE)).toFixed(0)} m a road ${c.gap.toFixed(1)} m up cannot have come down in at ${MAX_GRADE * 100}%`);
+
+  /* The land meets what is on it. The tolerance is the grid's own: a
+     20 m cell between two roads 6 m apart in height cannot be exact at
+     every sample, and the cases that matter -- a car's height, a
+     deck's -- are a metre and more. */
+  const on = pts.filter((p) => !p.bridge);
+  const off = on.map((p) => Math.abs(ground(p.x, p.y) - (p.z ?? 0)));
+  const worst = Math.max(...off), mean = off.reduce((s, d) => s + d, 0) / off.length;
+  check(mean < 0.15 && worst < 2, `the land meets every road that is on it: ${mean.toFixed(3)} m out on average over ${on.length} points, ${worst.toFixed(2)} m at worst (the bridge's own ramp)`);
+
+  const hill = l.roads.find((r) => r.id === "A-B");
+  const climb = Math.max(...hill.pts.map((p) => p.z ?? 0));
+  const clear = Math.max(...hill.pts.map((p) => (p.z ?? 0) - ground(p.x, p.y)));
+  check(climb > 5 && clear < 1 && !hill.pts.some((p) => p.bridge), `a road that CLIMBS is on the land, not over it: A-B rises ${climb.toFixed(1)} m and is never more than ${clear.toFixed(2)} m above the ground, and declares no bridge`);
+
+  const under_ = over.pts.filter((p) => p.bridge).map((p) => (p.z ?? 0) - ground(p.x, p.y));
+  check(Math.min(...under_) > CLEARANCE_MIN / 3 && Math.max(...under_) > CLEARANCE_MIN, `a road that SPANS is over the land, not on it: ${Math.min(...under_).toFixed(1)} to ${Math.max(...under_).toFixed(1)} m of air under the bridge`);
+
+  /* Sabotage: without the bridge exclusion the land would rise to meet
+     the overpass and bury the road underneath it. */
+  const naive = groundFor({ bounds: l.bounds, roads: l.roads.map((r) => ({ ...r, pts: r.pts.map((p) => ({ ...p, bridge: false })) })) }, { cell: 20 });
+  const buried = under.pts.filter((p) => naive(p.x, p.y) - (p.z ?? 0) > 1).length;
+  check(buried > 0, `and the exclusion is load-bearing: include the bridge's own points and the land rises over ${buried} points of the road beneath it`);
+
+  const t0 = Date.now(); groundFor(l, { cell: 20 }); const ms = Date.now() - t0;
+  check(ms < 250, `the land is solved once per map, in ${ms} ms`);
+}
+
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
-console.log("\nOK: a map loads normalised and warned, never thrown; stage 0 is the first map and it reproduces the hand-built roads.");
+console.log("\nOK: a map loads normalised and warned, never thrown; stage 0 is the first map and it reproduces the hand-built roads; and the land it implies meets what stands on it.");

@@ -287,11 +287,28 @@ export function loadMap(map) {
              shares it; it is one crossing. */
           if (crossings.some((c) => c.roads[0] === roads[i].id && c.roads[1] === roads[j].id && dist(c.at, at) < 1)) continue;
           const gap = Math.abs(at.z - zq);
-          crossings.push({ roads: [roads[i].id, roads[j].id], at, gap });
+          crossings.push({ roads: [roads[i].id, roads[j].id], at, gap, over: at.z >= zq ? roads[i].id : roads[j].id });
           if (gap < CLEARANCE_MIN) warn("cross-no-node", `roads ${roads[i].id} and ${roads[j].id} cross at (${at.x.toFixed(0)}, ${at.y.toFixed(0)}) with no intersection there and only ${gap.toFixed(1)} m between them`, at);
         }
       }
     }
+  }
+
+  /* WHICH ROAD IS BRIDGING, AND OVER HOW MUCH OF ITS LENGTH. The upper
+     road at a crossing is not sitting on the land there, and it cannot
+     have come down to the land any faster than its own steepest
+     allowed grade -- so `gap / MAX_GRADE` either side of the crossing
+     is span it cannot have been on the ground for. Derived from the
+     clearance rather than chosen, and it is what lets a renderer tell a
+     road CLIMBING a hill (the land rises with it) from one SPANNING
+     another (the land stays under it) without guessing from height,
+     which is what the renderer used to do. */
+  for (const r of roads) for (const p of r.pts) p.bridge = false;
+  for (const c of crossings) {
+    const r = roads.find((x) => x.id === c.over);
+    if (!r) continue;
+    const span = c.gap / MAX_GRADE;
+    for (const p of r.pts) if (dist(p, c.at) <= span) p.bridge = true;
   }
 
   /* The chunk index: every road sample knows its chunk. */
@@ -316,6 +333,56 @@ export function loadMap(map) {
 
   const bounds = map.bounds ?? { x: Math.min(...boxes.map((b) => b.x0)), y: Math.min(...boxes.map((b) => b.y0)), w: 0, h: 0 };
   return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, warnings };
+}
+
+/* THE LAND, WHERE THE MAP GIVES NONE.
+
+   A map is roads; the format carries no terrain, and terrain is the
+   editor's business (SIMULATOR.md 4). So until it does, THE LAND IS
+   WHAT THE ROADS SAY IT IS: it meets every road that is on it, and
+   between them it is the smoothest surface that does -- a Laplace
+   solve on a coarse grid, the roads pinned, everything else the
+   average of its neighbours. A bridging point (above) is left out, so
+   the land stays under an overpass and rises with a road that climbs.
+
+   The grid is as coarse as the ground mesh drawn from it, so a mesh
+   corner lands on a grid node and takes a road's own height exactly.
+   Returned as a sampler; built once per map. */
+export function groundFor(loaded, { cell = 20 } = {}) {
+  const b = loaded.bounds;
+  const nx = Math.max(2, Math.ceil(b.w / cell) + 1), ny = Math.max(2, Math.ceil(b.h / cell) + 1);
+  const sum = new Float64Array(nx * ny), hits = new Float64Array(nx * ny);
+  for (const r of loaded.roads) for (const p of r.pts) {
+    if (p.bridge) continue;
+    const i = Math.round((p.x - b.x) / cell), j = Math.round((p.y - b.y) / cell);
+    if (i < 0 || j < 0 || i >= nx || j >= ny) continue;
+    sum[j * nx + i] += p.z ?? 0; hits[j * nx + i] += 1;
+  }
+  let h = new Float64Array(nx * ny), next = new Float64Array(nx * ny);
+  const pinned = new Uint8Array(nx * ny);
+  for (let k = 0; k < h.length; k++) if (hits[k]) { h[k] = sum[k] / hits[k]; pinned[k] = 1; }
+  /* Enough passes for a road's height to reach the far corner: the
+     value spreads one cell a pass, and twice the grid settles it. */
+  const passes = 2 * Math.max(nx, ny);
+  for (let pass = 0; pass < passes; pass++) {
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i;
+      if (pinned[k]) { next[k] = h[k]; continue; }
+      let s = 0, c = 0;
+      if (i > 0) { s += h[k - 1]; c++; }
+      if (i + 1 < nx) { s += h[k + 1]; c++; }
+      if (j > 0) { s += h[k - nx]; c++; }
+      if (j + 1 < ny) { s += h[k + nx]; c++; }
+      next[k] = c ? s / c : h[k];
+    }
+    const t = h; h = next; next = t;
+  }
+  const at = (i, j) => h[Math.min(ny - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))];
+  return (x, y) => {
+    const u = (x - b.x) / cell, v = (y - b.y) / cell;
+    const i = Math.floor(u), j = Math.floor(v), fx = u - i, fy = v - j;
+    return (at(i, j) * (1 - fx) + at(i + 1, j) * fx) * (1 - fy) + (at(i, j + 1) * (1 - fx) + at(i + 1, j + 1) * fx) * fy;
+  };
 }
 
 /* One road by id, for callers holding a name rather than an object. */
