@@ -622,11 +622,10 @@ which is a stalk; the car's line under the speed says what it is
 about to do and when it is committed.
 
 **Not yet in stage 1:** the real cap (the production-build sweep is
-Jay's to run; the instrument is ready at `#/iso`); per-road posted
-speeds in the sim (the loader carries them, every car drives at one
-limit); ground under a road that climbs; a candidate on the map. The
-editor is stage 2. (Junction surfaces, the chase camera and more than
-one lane each way were on this list; 1.1.2 has them.)
+Jay's to run; the instrument is ready at `#/iso`); a candidate on the
+map. The editor is stage 2. (Junction surfaces, the chase camera and
+more than one lane each way were on this list; 1.1.2 has them. Ground
+under a road that climbs is 1.1.5; per-road posted speeds are 1.1.6.)
 
 **Not obvious from the diff:** a turn arc's radius is NOT floored at a
 car's lock, on purpose -- flooring it swung the arc wide of a 3.85 m
@@ -839,6 +838,135 @@ over it is a deck's height further in by construction. After: 0 of
 What it does not do: hide a car behind a hill's crest (the terrain in
 front of a car is painted before it, as it always was), and it does
 not change the cost -- the same items, one extra sort key.
+
+#### 1.1.5 The land the map implies, 23 September: a road that climbs is not a bridge
+
+Written by the session that hung on 22-23 September, committed
+unverified as a checkpoint by a stand-in agent (`443ddbe`), and found
+green afterwards on every check that runs -- `verify-map`,
+`verify-paint`, `verify-graph`, `verify-wheel`, `verify-chase` and
+`verify-perf` all pass. See 1.1.7 for what "every check that runs"
+means.
+
+**A map carries no terrain and the renderer was guessing.** Terrain is
+the editor's business (section 4), so until it exists the ground was
+flat -- and `isDeck` called anything more than a metre above the ground
+a bridge. With the ground flat, the test map's A-B road, which climbs
+6 m, read as a slab in the air with piers under it.
+
+**The quantity that actually decides is which road spans which, and the
+loader already knew it.** A crossing now records which road is `over`,
+and every road point carries a derived `bridge` flag spanning
+`gap / MAX_GRADE` either side -- the span a road that high cannot have
+come down to the land within, at its own steepest allowed grade. So it
+is derived from the clearance rather than chosen. `isDeck` reads the
+declaration; roads that carry none -- anything hand-built rather than
+loaded -- keep the height test.
+
+**And the land is what the roads say it is.** `groundFor` in
+`map/load.js`: a Laplace solve on a grid as coarse as the ground mesh
+drawn from it, with every non-bridging road point pinned and everything
+else the average of its neighbours. It meets every road that is on it
+(0.102 m out on average over 966 points, 1.66 m at worst, at the
+bridge's own ramp), rises with the hill -- A-B climbs 6.0 m and is
+never more than 0.62 m above the ground -- and leaves 2.3 to 6.3 m of
+air under the overpass. Solved once per map, in 4 ms.
+
+The exclusion is load-bearing and is checked by sabotage: include the
+bridge's own points and the land rises over 15 points of the road
+beneath it.
+
+**Still flat where nothing stands on it.** This is not terrain -- it is
+the smoothest surface the roads admit. Real land, and a hill with
+nothing on it, arrive with the editor.
+
+#### 1.1.6 A road is driven at the speed it posts, 23 September
+
+The last relic of the fixed road. `map/load.js` has derived a speed per
+road since the format existed -- the kind's default, the road's
+override, lowered where a bend cannot be taken at it -- and `seedGraph`
+threw it away and drove the whole map at one number, so a residential
+street and an arterial were the same road to drive.
+
+Every leg now carries its own road's posted speed, because the leg is
+what a car knows it is on; `postedAt` gives the limit for the road a
+route comes in on. A car is drawn already driving to the limit of the
+road it enters on, and the limit is re-derived at each node from the
+road it has just joined, through the same `wantedSpeed` the spawn used.
+
+**Off by default** (`seedGraph(..., { posted: true })`), so every
+existing caller gets the world it always got -- `verify-equivalence` is
+green and the test map's posted-50 roads measure identical either way,
+9 of 9. That partition is the evidence the change is confined.
+
+Two things decided rather than defaulted. `road.speed` still sizes the
+geometry -- `reachFor`, the warm-up, how much road there has to be --
+and under posted speeds it is the **fastest** road on the map, never an
+average: those are bounds, and a bound from the fastest road is long
+enough for every slower one. So turning this on can only make an
+approach generous, never short. And the limit changes at the **node**,
+not at the road boundary mid-box, which is where a driver reads the
+next road's sign anyway.
+
+Measured, controlled, one flag the only difference: C-A 47 -> 38 km/h
+and C-southeast 61 -> 49. C-A is worth noting -- it posts 40 only
+because the loader lowered it for its own bend, so the bend clamp now
+reaches the traffic rather than stopping at a warning. The limit moves
+and the DRIVER does not: boldness relative to the limit spreads 0.182
+against 0.160, because `caution` is the person.
+
+`verify-graph.mjs` section 7, sabotaged before being believed (stub
+`postedAt` to null and three checks fail).
+
+**Not wired to a screen.** `#/map` still passes its own kmh, so nothing
+Jay drives changes until he asks for it. The open question is his: should
+a 40 street feel like one, and is the bend clamp's 40 on C-A right?
+
+#### 1.1.7 What can and cannot be checked away from Jay's machine
+
+Established 23 September, in a Linux sandbox with the repository mounted
+and **no install permitted** (the installed packages are his Windows
+build; installing over them would break his machine).
+
+**35 of the 38 `.mjs` checks were run there and all 35 passed, and so
+did `verify-scoring.py`.** They are plain scripts over pure-JS source
+with no dependency beyond node, which is the property that makes this
+work and is worth keeping deliberately. Of the other three, two
+(`verify-world`, `verify-candidate`) run correctly and were simply not
+given the wall clock to finish -- see below -- and one cannot run at
+all.
+
+**`verify-screens.mjs` is the one that cannot run**, and it is the one
+that matters most for a component change: it bundles each screen with
+vite's own SSR build, and vite's native bindings (`rolldown`,
+`lightningcss-win32-x64-msvc`) are platform-specific. So an agent
+working away from Jay's machine can verify all of the engine and none
+of the screens -- which is exactly the blind spot CLAUDE.md's
+twenty-increment Examiner bug came out of. A change touching
+`src/apps/*`, `App.jsx` or `theme.js` should not be made there.
+
+Two practical notes for anyone working in such a sandbox. **Nothing
+survives between shell calls** -- background and detached processes are
+killed when the call returns -- and calls are capped at about three
+minutes, so `verify-world` (4 min) and `verify-candidate` (6.5 min)
+cannot be completed there; they start and emit progress normally, they
+simply do not fit. And the repository mount **permits create and rename
+but not unlink**, so git leaves `.git/*.lock` files behind and the next
+git write fails with "another git process seems to be running"; renaming
+the stale lock aside is what clears it.
+
+**And one thing that is not the sandbox's doing: the working tree's line
+endings have drifted to CRLF while every blob in the repository is LF.**
+Found on 23 September across 46 tracked files, docs and source alike.
+There is no `.gitattributes` and `core.autocrlf` is unset, so nothing is
+normalising anything and something on the Windows side is writing them
+out CRLF. The cost is that git reports those files as entirely rewritten
+-- the 22 September checkpoint reads as 24,900 insertions when five files
+actually changed -- which buries real work in noise and will spoil blame
+on all 46. `git diff --ignore-cr-at-eol` is the way to read such a diff
+until it is fixed; the fix is a `.gitattributes` with `* text=auto
+eol=lf` and one `git add --renormalize .` commit, and it is Jay's call
+because it touches every file in the repository.
 
 #### 1.2 Production from here on, and the performance budget
 
