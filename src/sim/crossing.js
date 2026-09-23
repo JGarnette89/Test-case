@@ -38,7 +38,7 @@ import {
   courseOf, laneSpan, nextFor, joinedTo, poseOn,
   radiusFor,
 } from "./course.js";
-import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph } from "./graph.js";
+import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } from "./graph.js";
 import { rng } from "../engine/index.js";
 import { REACTION_FLOOR } from "../engine/score.js";
 import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../engine/awareness.js";
@@ -602,8 +602,20 @@ export function step(world) {
       if (me.player || me.s <= pathOf(world, me).length) return me;
       const on = nextFor(world.course, me.k ?? 0, me.route, (k, side) => routeFor(world, me, k, side));
       if (!on) return null;
+      /* AND THE NEW ROAD'S LIMIT COMES WITH IT. A driver turning off an
+         arterial onto a residential street slows to that street's
+         posted speed, by the same `wantedSpeed` the spawn used, so a
+         bold driver is still bold and a timid one still timid -- it is
+         the LIMIT that moved, not the person. `caution` is the driver
+         and is carried untouched.
+
+         `underLoad` recomputes `v0` from the world's road for a loaded
+         candidate, so a loaded view is left alone here rather than
+         being corrected twice. */
+      const posted = world.road.posted && me.held == null ? postedAt(world.course, on.k, on.route) : null;
       return {
         ...me, k: on.k, route: on.route, s: 0,
+        ...(posted == null ? {} : { v0: wantedSpeed(posted, me.caution) }),
         /* How many intersections they have been through, which is what a
            plan is indexed by and what a section of a drive is counted
            in. Everybody carries it, not only a candidate. */
@@ -762,14 +774,21 @@ function routeFor(world, me, k, side) {
 function arriving(world, n) {
   const r = rng(world.seed * 31337 + n + 1);
   /* Traffic perceives the present unless perception is for everybody. */
-  const road = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
-  const who = driver(road, world.seed, n);
+  const base = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
   const where = edgeFor(world.course, r());
   /* The route out of that leg, drawn from the routes it offers: on the
      compass those are the three intents in INTENTS order, so the draw
      is the one it always was. */
   const routes = world.course.at[where.k].layout.routesFrom(where.side);
   const route = routes[Math.floor(r() * routes.length) % routes.length];
+  /* A car enters the world already driving to the limit of the road it
+     enters on, not to the map's fastest. Drawn BEFORE the driver so
+     `driver` derives `v0` from it once, rather than deriving it from
+     one number and having it corrected a line later -- two
+     implementations of one quantity is the recurring bug here. */
+  const posted = world.road.posted ? postedAt(world.course, where.k, route) : null;
+  const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6) };
+  const who = driver(road, world.seed, n);
   return {
     ...who,
     n,
@@ -902,12 +921,30 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false } = {}) {
-  const speed = kmh / 3.6;
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
+  /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
+     carried a speed per road since the format existed and the sim drove
+     every car at one number, which made a residential street and an
+     arterial the same road to drive. With `posted` the limit a car
+     drives to is the road's own (graph.js `postedAt`).
+
+     `road.speed` stays, and it is the FASTEST road on the map rather
+     than the argument: it is what sizes the geometry -- `reachFor`, the
+     warm-up, how much road there has to be -- and those are bounds. A
+     bound taken from the fastest road is long enough for every slower
+     one; taken from an average it would be short for the fastest, which
+     is the failure that actually bites. So `posted` can only ever make
+     the approach generous, never short, and no geometry moves that was
+     not meant to.
+
+     Off by default, so every existing caller passing a kmh gets exactly
+     the world it always got. */
+  const fastest = Math.max(...loaded.roads.map((r) => (r.speed ?? 50) / 3.6));
+  const speed = posted ? fastest : kmh / 3.6;
   const road = {
-    kmh, speed, lane: 3.6,
+    kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
   const w = { t: 0, tick: 0, seed, road, course, layout, every, spawned: 0, nextAt: 0, actors: [] };

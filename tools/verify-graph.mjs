@@ -17,7 +17,7 @@
    anybody.
    ===================================================================== */
 import { layoutFor, rightOf, OPPOSITE, SIDES, INTENTS, exitFor } from "../src/sim/intersection.js";
-import { onRightOf, oncoming, intentOf, graphOf, laneSpanOnGraph, laneForTurn, ONCOMING_TOL } from "../src/sim/graph.js";
+import { onRightOf, oncoming, intentOf, graphOf, laneSpanOnGraph, laneForTurn, postedAt, ONCOMING_TOL } from "../src/sim/graph.js";
 import { seedGraph, step, overlapping, delayed, poseOf, edgesOf } from "../src/sim/crossing.js";
 import { laneSpan } from "../src/sim/course.js";
 import { CAR, DT } from "../src/sim/traffic.js";
@@ -236,5 +236,95 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   check(span[0].lane === span[1].lane && Math.abs(span[0].along - 100) < 1e-9, "on a through lane a car's position along the lane is its position along the path");
 }
 
+/* 7. PER-ROAD POSTED SPEEDS: a residential street is not an arterial.
+
+   The loader has derived a speed per road since the format existed --
+   the kind's default, the road's override, lowered where a bend cannot
+   be taken at it -- and the sim threw it away and drove the whole map
+   at one number, which is the last relic of the fixed road
+   (SIMULATOR.md 1.1.1, "per-road posted speeds in the sim"). The
+   properties any correct version has to have, rather than a restatement
+   of the formula:
+
+     - OFF BY DEFAULT NOTHING MOVES. Every existing caller passes a kmh
+       and must get the world it always got, to the bit.
+     - THE LIMIT MOVES AND THE DRIVER DOES NOT. A car on a 40 road wants
+       less than the same car on a 50; the spread of boldness within a
+       road is untouched, because `caution` is the person.
+     - IT IS THE ROAD THEY ARE ON, not the road they started on: a car
+       that turns off a 50 onto a 40 slows.
+     - AND THE GEOMETRY CANNOT SHRINK. `road.speed` sizes the approach,
+       so under posted speeds it is the FASTEST road, never an average.
+
+   The comparison is controlled: one seed, one map, one tick count, the
+   only difference the flag. */
+{
+  const l = loadMap(testMap1());
+  const speeds = Object.fromEntries(l.roads.map((r) => [r.id, r.speed]));
+  check(new Set(Object.values(speeds)).size > 1 && speeds["C-southeast"] === 40 && speeds["C-A"] === 40,
+    `the test map posts more than one speed: collectors at 50, the residential diagonals at 40, and C-A lowered to 40 by its own bend (${new Set(Object.values(speeds)).size} distinct)`);
+
+  /* Every leg of every node carries its road's speed, so nothing
+     downstream has to look a road up by name. */
+  const g = graphOf(l);
+  const legs = g.at.flatMap((s) => Object.values(s.layout.legs));
+  check(legs.length > 0 && legs.every((L) => Math.abs(L.speed - speeds[L.road] / 3.6) < 1e-9),
+    `every one of ${legs.length} legs carries its own road's posted speed in m/s`);
+  check(postedAt(g, 0, Object.keys(g.at[0].layout.paths)[0]) > 0 && postedAt(g, 0, "nope/nope") === null,
+    "postedAt gives the speed of the road a route comes in on, and null where the course cannot say (a grid course keeps the world's one limit)");
+
+  const drive = (posted) => {
+    let w = seedGraph(3, 50, l, { every: 1.1, posted });
+    for (let i = 0; i < 1200; i++) w = step(w);
+    const by = {};
+    for (const a of w.actors) {
+      const L = w.course.at[a.k].layout.legs[w.course.at[a.k].layout.paths[a.route].from];
+      (by[L.road] ??= []).push(a.v0 * 3.6);
+    }
+    return { w, by };
+  };
+  const off = drive(false), on = drive(true);
+
+  check(off.w.road.kmh === 50 && on.w.road.kmh === 50 && on.w.road.speed >= Math.max(...Object.values(speeds)) / 3.6,
+    `the geometry speed is the fastest road (${(on.w.road.speed * 3.6).toFixed(0)} km/h), so an approach sized under posted speeds is never shorter than it was`);
+
+  /* Off, a car on the 40 roads wants the 50 the world was told; on, it
+     wants the 40 the sign says. Measured as the mean over the cars
+     actually there, which is what a driver on that street meets. */
+  const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
+  const slowRoads = Object.keys(speeds).filter((r) => speeds[r] === 40);
+  const fastRoads = Object.keys(speeds).filter((r) => speeds[r] === 50);
+  const movedDown = slowRoads.filter((r) => on.by[r] && off.by[r] && mean(on.by[r]) < mean(off.by[r]) - 3);
+  check(movedDown.length >= 2, `cars on the posted-40 roads want less than they did at one limit: ${movedDown.map((r) => `${r} ${mean(off.by[r]).toFixed(0)}->${mean(on.by[r]).toFixed(0)}`).join(", ")}`);
+  const unmoved = fastRoads.filter((r) => on.by[r] && off.by[r] && Math.abs(mean(on.by[r]) - mean(off.by[r])) < 0.5);
+  check(unmoved.length >= fastRoads.filter((r) => on.by[r] && off.by[r]).length - 1,
+    `and the posted-50 roads are where they were -- ${unmoved.length} of ${fastRoads.filter((r) => on.by[r] && off.by[r]).length} unchanged, which is the partition that says the change is confined to the roads whose sign differs`);
+
+  /* THE DRIVER IS UNTOUCHED: only the limit moved, so the spread of
+     boldness within one road is the same shape. `wantedSpeed` is
+     linear in the limit, so the ratio of v0 to the road's own speed is
+     the driver, and its spread must not narrow. */
+  const ratio = (d) => Object.entries(d.by).flatMap(([r, vs]) => vs.map((v) => v / speeds[r]));
+  const spread = (xs) => { const m = mean(xs); return Math.sqrt(mean(xs.map((x) => (x - m) ** 2))); };
+  check(Math.abs(spread(ratio(on)) - spread(ratio(off))) < 0.06,
+    `the driver is the driver: boldness relative to the limit spreads ${spread(ratio(off)).toFixed(3)} at one limit and ${spread(ratio(on)).toFixed(3)} at posted speeds -- the LIMIT moved, not the person`);
+
+  /* A car that goes round the loop meets more than one limit, so the
+     speed has to follow it rather than being set once at spawn. */
+  const travelled = on.w.actors.filter((a) => (a.leg ?? 0) >= 2);
+  const onSlow = travelled.filter((a) => {
+    const L = on.w.course.at[a.k].layout.legs[on.w.course.at[a.k].layout.paths[a.route].from];
+    return speeds[L.road] === 40;
+  });
+  check(travelled.length > 0 && onSlow.every((a) => a.v0 * 3.6 < 50 * 1.35),
+    `and it follows them along the way: ${travelled.length} cars had been through two or more nodes, and every one of them now on a 40 road wants a 40 road's speed, not the one it spawned with`);
+
+  /* SABOTAGE. If the flag did nothing, the two drives would be the same
+     drive -- which is exactly how a check like this passes for the
+     wrong reason (CLAUDE.md, cold start 3). */
+  const same = Object.keys(on.by).every((r) => off.by[r] && Math.abs(mean(on.by[r]) - mean(off.by[r])) < 0.5);
+  check(!same, "and the flag is load-bearing: with posted speeds off the same seed drives a measurably different world");
+}
+
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
-console.log("\nOK: the map's crossroads is the compass crossroads; a T, a five-way, a loop, a bend, a hill and an overpass run the same rules, and nobody drives through anybody.");
+console.log("\nOK: the map's crossroads is the compass crossroads; a T, a five-way, a loop, a bend, a hill and an overpass run the same rules, nobody drives through anybody, and a road is driven at the speed it posts.");

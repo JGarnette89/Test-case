@@ -244,6 +244,13 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
         legs[id] = {
           id, base, lane: i, lanes: count, inner: i === 0, curb: i === count - 1,
           road: r.id, end: l.end, bearing: l.bearing, control: ctl,
+          /* THE POSTED SPEED OF THE ROAD THIS LEG IS ON, in m/s. The
+             loader already derives it -- the kind's default, the road's
+             override, lowered where a bend cannot be taken at it
+             (map/load.js) -- and until now the sim threw it away and
+             drove the whole map at one limit. It rides on the leg
+             because the leg is what a car knows it is on. */
+          speed: (r.speed ?? 50) / 3.6,
           inLane, outLane,
           /* Arc positions on the two lanes: where the approach begins
              (the lane's midpoint, or the far edge) and where the exit
@@ -333,7 +340,7 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
       for (let i = 0; i < lanesOf(r); i++) {
         const L = lanes[`${r.id}:${dir}#${i}`];
         const id = `${r.id}:${dir}#${i}`;
-        const legs = { [id]: { id, base: `${r.id}:${dir}`, lane: i, lanes: lanesOf(r), inner: i === 0, curb: i === lanesOf(r) - 1, road: r.id, end: dir === "fwd" ? "end" : "start", bearing: bearingOf(L.pts[L.pts.length - 2], L.pts[L.pts.length - 1]) + 180, control: "none", inLane: L, outLane: L, inFrom: 0, outTo: L.length } };
+        const legs = { [id]: { id, base: `${r.id}:${dir}`, lane: i, lanes: lanesOf(r), inner: i === 0, curb: i === lanesOf(r) - 1, road: r.id, end: dir === "fwd" ? "end" : "start", bearing: bearingOf(L.pts[L.pts.length - 2], L.pts[L.pts.length - 1]) + 180, control: "none", speed: (r.speed ?? 50) / 3.6, inLane: L, outLane: L, inFrom: 0, outTo: L.length } };
         const path = { from: id, to: id, intent: "straight", pts: L.pts, at: L.at, length: L.length, stopAt: L.length, clearAt: L.length, laneIn: { id: L.id, at0: 0 }, laneOut: { id: L.id, at0: 0 } };
         at.push({ at: { x: 0, y: 0 }, node: id, through: true, layout: { place: { lane, boxHalf: lane, lineAt: lane + LINE_SETBACK, control: { [id]: "none" }, at: L.pts[L.pts.length - 1], reach: L.length }, paths: { [`${id}/${id}`]: path }, conflicts: {}, legs, routesFrom: (leg) => [`${leg}/${leg}`] } });
       }
@@ -430,6 +437,22 @@ export function laneSpanOnGraph(course, k, route, s) {
     { lane: p.laneIn.id, along: p.laneIn.at0 + sIn },
     { lane: p.laneOut.id, along: p.laneOut.at0 + sOut },
   ];
+}
+
+/* THE POSTED SPEED A CAR IS DRIVING TO, in m/s: the speed of the road
+   it came in on. A route is `from/to` and the car spends its approach
+   on `from`'s road, so that is the limit it has been driving to and
+   the one it is judged against. It changes at the NODE rather than
+   mid-box, which is where a driver reads the next road's sign anyway.
+
+   `null` where the course cannot say -- a grid course has no map under
+   it -- and the caller keeps the world's single limit, which is what
+   every compass course has always run on. */
+export function postedAt(course, k, route) {
+  const layout = course.at?.[k]?.layout;
+  const from = layout?.paths?.[route]?.from;
+  const s = from == null ? null : layout.legs?.[from]?.speed;
+  return typeof s === "number" && s > 0 ? s : null;
 }
 
 /* Every leg of every node with nothing beyond it: where traffic enters,
