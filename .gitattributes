@@ -1,0 +1,18 @@
+# LINE ENDINGS ARE LF IN THE REPOSITORY, whatever the working tree uses.
+#
+# Why this file exists: the maintainer's Windows checkout has
+# core.autocrlf=true, so files land in the tree with CRLF; an agent
+# working through a mount writes LF. Without a rule the two disagree and
+# every touched file reads as entirely rewritten -- one checkpoint commit
+# showed 24,900 insertions across 51 files when five files had actually
+# changed, and `git blame` on the other 46 now points at that commit
+# rather than at whoever wrote the line. Normalising once, here, stops it
+# recurring and is why the renormalise commit beside this file exists.
+* text=auto eol=lf
+
+# Binary, never touched.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
