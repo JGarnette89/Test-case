@@ -20,11 +20,12 @@ import { layoutFor, rightOf, OPPOSITE, SIDES, INTENTS, exitFor } from "../src/si
 import { onRightOf, oncoming, intentOf, graphOf, laneSpanOnGraph, laneForTurn, postedAt, ONCOMING_TOL } from "../src/sim/graph.js";
 import { seedGraph, step, overlapping, delayed, poseOf, edgesOf } from "../src/sim/crossing.js";
 import { laneSpan } from "../src/sim/course.js";
-import { CAR, DT } from "../src/sim/traffic.js";
+import { CAR, DT, HARSH_AT } from "../src/sim/traffic.js";
 import { loadMap } from "../src/map/load.js";
 import { emptyMap, road, stage0Map } from "../src/map/format.js";
 import { testMap1 } from "../src/map/samples.js";
 import { poseAt } from "../src/sim/intersection.js";
+import { cornerOf, cornerAccel } from "../src/sim/corner.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -406,6 +407,41 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
     }
   }
   check(worst.d >= CAR.width / 2, `no path comes within half a car of a car waiting at another road's line, at any of the test map's nodes (${checked} leg-path pairs; closest ${worst.d.toFixed(2)} m, ${worst.path} past ${worst.leg} at ${worst.node})`);
+}
+
+/* 10. THE TRAFFIC SLOWS FOR CORNERS (corner.js), by controlled
+   comparison: the same map, seed and car count, corner slowing on and
+   off. With it, turning cars reach the arc at the speed the player's own
+   cornering limit gives that arc; without it they took corners at road
+   speed. And the ratings are in it: a bold driver takes a corner hotter
+   than a timid one (confidence), and the harsh braking corners cause
+   comes from drivers who plan on braking late (braking). */
+{
+  const loaded = loadMap(testMap1());
+  const run = (corners) => {
+    let w = seedGraph(4, 50, loaded, { target: 120, posted: true, corners });
+    const entries = [];
+    let cornerHarsh = { poor: 0, sound: 0 };
+    for (let i = 0; i < 20 * 180; i++) {
+      const prev = new Map(w.actors.map((a) => [a.id, a]));
+      w = step(w);
+      for (const a of w.actors) {
+        const p = w.course.at[a.k].layout.paths[a.route], cn = cornerOf(p), was = prev.get(a.id);
+        if (cn && was && was.k === a.k && was.s < cn.from && a.s >= cn.from) entries.push({ v: a.v, grip: cn.grip, clean: cn.clean, caution: a.caution });
+        if (corners && was && -(a.a ?? 0) > HARSH_AT && cn && was.s < cn.from && cornerAccel(was, p) <= -HARSH_AT) cornerHarsh[was.brake > 3.5 ? "poor" : "sound"]++;
+      }
+    }
+    return { entries, cornerHarsh };
+  };
+  const off = run(false), on = run(true);
+  const past = (r) => r.entries.filter((e) => e.v > e.grip + 0.3).length / r.entries.length;
+  check(on.entries.length > 100 && past(on) < 0.1 && past(off) > 0.4,
+    `turning cars reach the arc within what the tyres can do: ${(100 * past(on)).toFixed(0)}% over the grip limit with corner slowing, ${(100 * past(off)).toFixed(0)}% without it (${on.entries.length} turns)`);
+  const mean = (xs) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : NaN);
+  const byBand = (lo, hi) => mean(on.entries.filter((e) => e.caution >= lo && e.caution < hi).map((e) => e.v / e.clean));
+  check(byBand(0, 0.7) > byBand(0.7, 1.3) && byBand(0.7, 1.3) > byBand(1.3, 3),
+    `confidence is in the corner: entry speed as a share of the clean speed -- bold ${byBand(0, 0.7).toFixed(2)}, middle ${byBand(0.7, 1.3).toFixed(2)}, timid ${byBand(1.3, 3).toFixed(2)}`);
+  check(on.cornerHarsh.poor > on.cornerHarsh.sound, `and braking is: harsh braking for a corner came from drivers who plan on braking late ${on.cornerHarsh.poor} times, from sound brakers ${on.cornerHarsh.sound}`);
 }
 
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }

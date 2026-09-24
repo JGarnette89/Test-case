@@ -1327,21 +1327,77 @@ the phone will show.
   their cars sat a lane off, in both lanes, until it caught up -- the
   exact trap CLAUDE.md names ("the rebase has to move everything on that
   clock"). Rebased now.
-- **Traffic does not slow for corners, and lane changing makes it
-  show.** With cars free to go round a waiting left-turner, more
-  left-turners reach the line at road speed, find the oncoming gap has
-  closed, and stand on the brakes: harsh braking at the signalised
-  crossroads rises from 3 car-ticks to 1383 in five minutes (0.4%),
-  almost none of it behind a cut-in. It is DECISIONS.md 5.15.13, the
-  corner-speed gap, and it is the next thing built -- with the same
-  derived cornering limit the player's car already uses. The amber check
-  in `verify-signal.mjs` runs with lane changes off until then, and says
-  why.
+- **Harsh braking at the signalised crossroads rose from 3 car-ticks to
+  1383 in five minutes with lane changes on.** The explanation first
+  recorded here -- left-turners reaching the line at road speed because
+  traffic does not slow for corners -- was only part of it, and the
+  correction is in 1.1.14: most of it was the amber decision not
+  sticking. Both are fixed there.
 
 Not built: changing lane to make a turn; returning to the right after
 passing (whether that is required on an urban multi-lane road is a
 traffic-law question for the maintainer, not assumed); signals on NPC
 lane changes, which is where knowledge would speak.
+
+#### 1.1.14 The traffic slows for corners, and an amber decision sticks -- 24 September
+
+Two fixes that lane changing (1.1.13) exposed, and one correction.
+
+**THE AMBER DECISION WAS NOT STICKY -- the larger of the two, and the
+first explanation missed it.** At an amber a driver who cannot stop
+comfortably carries on (signal.js). But the decision was re-made every
+tick, so when the red came seconds later a car still short of the line
+was ordered to stop there, and stood on the brakes two metres out.
+While traffic arrived at road speed it was through before the red and
+it hardly showed; once cars slowed for anything -- a turn, a car
+changing lane ahead -- it was the bulk of the harsh braking. Made
+sticky (crossing.js `amberGo`, cleared at the next intersection): at the
+signalised crossroads harsh braking goes from 1383 car-ticks to 23 in
+five minutes, with corner slowing off. 1.1.13's account put that
+number on left-turners arriving at speed; that was the smaller part.
+
+**THE TRAFFIC SLOWS FOR CORNERS** (`src/sim/corner.js`) -- DECISIONS.md
+5.15.13, open since stage 1 of the rebuild. Every turning path has its
+corner found once (where the arc starts and ends, its tightest
+curvature), and a driver slows to the speed they take it at: the
+player's own cornering limit on that arc (`CLEAN`, the maintainer's 26
+km/h on a 12.7 m left), scaled by confidence exactly as their road speed
+is -- a bold driver hotter, a timid one slower -- and never past what
+the tyres can do (`GRIP`). The slowing is a speed to be at by a place,
+the same physics as the player's brake marker: the deceleration needed
+builds until it reaches the rate this driver PLANS on braking at (the
+braking axis) and is then held, so a driver who leaves it late brakes
+harder into every corner, as they do at a stop line. It is a second
+constraint, and the car takes the harder of it and whatever is in front.
+
+Two versions were measured wrong first and are recorded in the module:
+the corner as the nearer of it and the car in front (a driver behind
+another car only began slowing when that car turned off), and the corner
+as a car standing at the arc (a driver already slow enough still braked
+hard closing on it, because the following model keeps a gap behind a
+car that never moves).
+
+Measured (`tools/measure/corners.mjs`, five minutes, corner slowing off
+-> on): on the test map at 120 cars, left turns reach the arc at a
+median 24 -> 20 km/h and at most 64 -> 32; right turns 29 -> 16 median
+and 75 -> 33 at most; turns entered faster than the tyres allow 51-77
+of ~110 -> 4-7. Harsh braking rises a little (test map 76 -> 128
+car-ticks, crossroads 23 -> 52), and the part the corner itself causes
+comes mostly from drivers who plan on braking late. The sim's cost does
+not move (within 1% at 120 and at 300 cars).
+
+`verify-graph.mjs` section 10: 1% of turns over the grip limit with
+corner slowing, 56% without; entry speed as a share of the clean speed
+bold 1.07, middle 0.93, timid 0.74; harsh braking for a corner from late
+brakers 8 times, sound ones 5 -- the weakest of the three separations,
+and reported as it is. `verify-signal.mjs` runs with lane changes and
+corners both on again, and its right-on-red claim now has to see the
+rule exercised (11 times on lighter traffic over two seeds) rather than
+passing on "0 of 0".
+
+What this does not decide: the tight right-turn radius (DECISIONS.md
+5.15.12, the T's right at 14 km/h) is still the maintainer's. This
+drives the arcs that exist at the speed they allow.
 
 #### 1.2 Production from here on, and the performance budget
 

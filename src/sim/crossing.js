@@ -41,6 +41,7 @@ import {
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } from "./graph.js";
 import { controlUnder, lightAt } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
+import { cornerAccel } from "./corner.js";
 import { rng } from "../engine/index.js";
 import { REACTION_FLOOR } from "../engine/score.js";
 import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../engine/awareness.js";
@@ -173,6 +174,16 @@ const UNDUE_AT = 4.0;
 function controlOf(actor, layout, path, t = 0) {
   const standing = layout.place.control[path.from];
   if (!layout.signal) return standing === "stop" ? "stop" : "none";
+  /* COMMITTED ON THE AMBER. A driver who found at the amber that they
+     could not stop comfortably carries on -- and that decision has to
+     STICK, or the red that follows seconds later orders them to stop two
+     metres from the line at speed. It did: with cars slowing for turns
+     (corner.js) a turning car committed on the amber was still short of
+     the line when the red came, and sound drivers stood on the brakes at
+     the line 183 times in five minutes. Entering on an amber you could
+     not stop for is what the rule asks; the red after it does not undo
+     it. */
+  if (actor.amberGo) return "none";
   return controlUnder(layout.signal, layout.legs[path.from]?.base, path.intent, t, {
     v: actor.v ?? 0,
     toLine: waitAt(path) - (actor.s ?? 0),
@@ -606,7 +617,10 @@ export function step(world) {
          its unloaded self, and the load is re-read every tick. */
       const me = underLoad(raw, world.road);
       const view = whatStops(me, world);
-      const a = decide(me, view);
+      /* THE CORNER (corner.js): on a map, a turning path slows the car to
+         the speed this driver takes it at, through the same following
+         model. The real `view` still decides right of way below. */
+      const a = Math.min(decide(me, view), world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity);
       const v = Math.max(0, me.v + a * DT);
       const s = me.s + v * DT;
       const mine = pathOf(world, me);
@@ -653,7 +667,12 @@ export function step(world) {
          the fault belongs to the confidence axis by construction.
 
          Frozen once they go, so what they did stays inspectable. */
-      const at = { ...raw, v, s, stoppedAt, going, accepted };
+      /* The amber decision, remembered (see `controlOf`): released at an
+         amber while still short of the line is committed to going. */
+      const amberGo = me.amberGo || (!!layoutOf(world, me).signal && s < waitAt(mine) + AT_LINE
+        && lightAt(layoutOf(world, me).signal, layoutOf(world, me).legs[mine.from]?.base, world.t) === "amber"
+        && controlOf(me, layoutOf(world, me), mine, world.t) === "none");
+      const at = { ...raw, v, s, stoppedAt, going, accepted, ...(amberGo ? { amberGo } : {}) };
       const sitting = stoppedAt != null && !going;
       /* How long the opening in front of them has been there this time,
          and -- latched -- when the first one they could have acted on
@@ -702,6 +721,7 @@ export function step(world) {
         stoppedAt: null, going: false, accepted: false,
         openFor: 0, openedAt: null,
         lc: null,   // a lane change finishes before the line; never carried over a seam
+        amberGo: false,   // an amber decision belongs to the intersection it was made at
       };
     })
     .filter(Boolean);
@@ -1018,7 +1038,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
@@ -1044,7 +1064,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, spawned: 0, nextAt: 0, actors: [] };
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, spawned: 0, nextAt: 0, actors: [] };
   /* Long enough for a car to have crossed the longest road twice: the
      sum of every road would be an upper bound and cost six seconds of
      seeding on a desktop for a kilometre-square map, which on a phone

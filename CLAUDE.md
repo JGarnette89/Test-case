@@ -179,6 +179,7 @@ Eight things to know before your first change:
    | `src/sim/graph.js` | `verify-graph`, `verify-drive`, `verify-signal`, and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
    | `src/sim/signal.js` | `verify-signal`, `verify-graph`, `verify-drive`, `verify-paint`, `verify-screens`, and the `src/sim/` five (crossing.js imports it) | ~4m |
    | `src/sim/lanechange.js` | `verify-lanes`, `verify-graph`, `verify-signal`, `verify-drive`, and the `src/sim/` five (crossing.js imports it) | ~7m |
+   | `src/sim/corner.js` | `verify-graph` (section 10), `verify-signal`, `verify-lanes`, `verify-drive`, and the `src/sim/` five (crossing.js imports it) | ~7m |
    | `src/map/format.js` (KINDS, lane defaults) | `verify-map`, `verify-graph`, `verify-drive`, `verify-screens` -- and READ the numbers the tests assert on, a lane count changes the leg count | ~1m |
    | `src/sim/drive.js`, `src/sim/player.js`, `src/iso/hud.js`, `src/iso/controls.js` | `verify-drive`, `verify-wheel`, `verify-screens` | ~10s |
    | `src/iso/chase.js`, `src/iso/project.js`, `src/iso/draw.js` | `verify-paint` FIRST (the painter's order, every rotation), `verify-chase`, `verify-perf`, `verify-wheel`, `verify-screens` | ~40s |
@@ -1619,6 +1620,7 @@ src/sim/marking.js       stage 3: deferred marking and the section sheet, fed to
 src/sim/graph.js         THE SIMULATOR (SIMULATOR.md): the sim on a road network -- nodes at any bearing, ONE LEG PER LANE, junction geometry
 src/sim/signal.js        traffic signals: phases derived from the geometry, and a light that resolves to the controls the sim already had plus HOLD
 src/sim/lanechange.js    lane changes: confidence decides whether and how tight, observation whether the gap was seen, steering how cleanly
+src/sim/corner.js        the traffic slows for corners: the player's own cornering limit on each arc, scaled by confidence, braked for at the driver's own rate
 src/sim/drive.js         the player on the map: the turn signal as the turn commit, lane changes by drifting
 src/sim/player.js        the car under the player's two controls: pedal, wheel, grip, contact
 src/map/format.js        the map format: roads as strokes in metres, KINDS with lanes per direction, chunks

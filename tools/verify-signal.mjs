@@ -125,17 +125,18 @@ for (const [name, legs] of [["crossroads", CROSS], ["five-way", FIVE]]) {
 /* 4. IN TRAFFIC: obeyed, not stranded, and nobody through anybody. */
 {
   const loaded = mapOf(CROSS);
-  /* LANE CHANGES OFF HERE, and said why: this section is about the
-     light, and with lane changes on, harsh braking at the line rises
-     from 3 car-ticks to 1383 in five minutes -- not from the amber and
-     not from cut-ins (9 of them), but from left-turners who, no longer
-     stuck behind each other, reach the line at road speed and stand on
-     the brakes when the oncoming gap closes, because nothing in the sim
-     slows a car for a corner (DECISIONS.md 5.15.13). That is a real
-     finding, recorded in SIMULATOR.md 1.1.13 and the next thing built;
-     it is not a property of the signal, and a check about the amber
-     that went red for it would be pointing at the wrong thing. */
-  let w = seedGraph(4, 50, loaded, { every: 1.6, laneChanges: false });
+  /* WITH EVERYTHING ON -- lane changes and cars slowing for corners --
+     because a check about the light has to hold in the traffic the light
+     actually meets. It was briefly run with lane changes off (24
+     September), when turning them on took harsh braking here from 3
+     car-ticks to 1383. The first explanation recorded for that --
+     left-turners reaching the line at speed -- was only part of it; most
+     was the amber decision not sticking: a car that rightly carried on
+     at an amber it could not stop for was ordered to stop by the red
+     that followed, two metres short of the line. Made sticky, it is 23
+     with corners off and about 50 with them on, most of that poor
+     brakers braking late for a turn, which is the braking axis. */
+  let w = seedGraph(4, 50, loaded, { every: 1.6 });
   const launches = [], delayedAtRed = new Set();
   let harsh = 0, ticks = 0, rightsOnRed = 0, stoppedFirst = 0;
   for (let i = 0; i < 20 * 300; i++) {
@@ -159,7 +160,25 @@ for (const [name, legs] of [["crossroads", CROSS], ["five-way", FIVE]]) {
   const onRed = launches.filter((l) => l.light === "red");
   check(launches.length > 20 && onRed.every((l) => l.intent === "right"),
     `five minutes, ${w.spawned} cars: of ${launches.length} launches from rest, the ${onRed.length} on a red are ALL right turns`);
-  check(rightsOnRed === 0 || stoppedFirst === rightsOnRed, `and every right taken on a red came to a full stop first (${stoppedFirst} of ${rightsOnRed})`);
+  /* RIGHT ON RED HAS TO HAPPEN TO BE CHECKED. At this demand the cross
+     street is too busy for a gap and it may not happen at all -- a
+     "(0 of 0)" that passes on nothing. So the claim is made on lighter
+     traffic too, where it does, and it must be seen there. */
+  let lightR = 0, lightStopped = 0, lightWrong = 0;
+  for (const seed of [7, 9]) {
+    let lw = seedGraph(seed, 50, loaded, { every: 3.5 });
+    for (let i = 0; i < 20 * 300; i++) {
+      const before = new Map(lw.actors.map((a) => [a.id, a]));
+      lw = step(lw);
+      for (const a of lw.actors) {
+        const L = lw.course.at[a.k ?? 0].layout, p = L.paths[a.route], was = before.get(a.id);
+        if (!was || was.going || !a.going || lightAt(L.signal, L.legs[p.from]?.base, lw.t) !== "red") continue;
+        if (p.intent !== "right") lightWrong++; else { lightR++; if (was.stoppedAt != null) lightStopped++; }
+      }
+    }
+  }
+  check(lightR + rightsOnRed > 0 && lightWrong === 0 && lightStopped + stoppedFirst === lightR + rightsOnRed,
+    `right on red happens and costs a stop: ${lightR + rightsOnRed} rights taken on a red (${rightsOnRed} at this demand, ${lightR} on lighter traffic over two seeds), every one after coming to a full stop, and nothing else launched on a red there (${lightWrong})`);
   check(delayedAtRed.size === 0, `the undue-delay clock never runs on a driver held at a red (${delayedAtRed.size} drivers) -- the trap, because a red road with nothing crossing it looks open to every test but the light`);
   check(harsh / Math.max(1, ticks) < 0.001, `and the amber does not make people stand on the brakes: ${harsh} harsh car-ticks in ${ticks} (${((100 * harsh) / Math.max(1, ticks)).toFixed(3)}%)`);
   const r = run(seedGraph(7, 50, loaded, { every: 1.2 }), 20 * 240);

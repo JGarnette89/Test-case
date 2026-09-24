@@ -1954,6 +1954,13 @@ whether the driver is bad at steering or not.
 
 ### 5.15.13 NOTHING IN THE SIM KNOWS A CORNER IS COMING
 
+**ADDRESSED, 24 September (SIMULATOR.md 1.1.14, `src/sim/corner.js`).**
+Traffic now slows to the speed the player's own cornering limit
+(`CLEAN`, derived from the maintainer's 26 km/h) gives the arc it is
+about to take, scaled by confidence and capped at grip, braking for it
+at the driver's own planned rate. What is below is the problem as it
+was recorded; 5.15.12, the tight-right radius, remains open and his.
+
 `decide` is the Intelligent Driver Model and its free term is
 `1 - (v/v0)^4`, where `v0` is the speed this driver wants on this road.
 There is no term for the road bending. So a car takes a turn at whatever

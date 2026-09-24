@@ -17,7 +17,7 @@
    ===================================================================== */
 const WHEELBASE = 2.7;                     // m, a passenger car
 const LOCK = (35 * Math.PI) / 180;         // full steering lock, at walking pace
-const GRIP = 6.0;                          // m/s^2 of sideways acceleration at full deflection: a road tyre's comfortable limit, not its edge
+export const GRIP = 6.0;                          // m/s^2 of sideways acceleration at full deflection: a road tyre's comfortable limit, not its edge
 export const BRAKE_MAX = 7.5;              // m/s^2 the brakes add at full brake, on top of what the road already takes: an emergency stop
 export const V_MAX = 33;                   // m/s, about 120 km/h: the car's, not the road's
 export const NEUTRAL = 0.12;               // the slider's coasting band either side of centre
