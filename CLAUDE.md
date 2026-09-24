@@ -45,6 +45,18 @@ is what you must not break.
 **[DRIVE-GUIDE.md](DRIVE-GUIDE.md)** is how to actually operate the game
 at `#/drive`, and what is knowingly missing from it.
 
+**[HANDOVER.md](HANDOVER.md) is the residue of the session that built
+signals, corner slowing, lane changing and keep-right (24 September),
+written as it was retired.** Not a summary -- these documents are the
+summary. It is the part that was only ever in one agent's head: traps
+that cost an hour and are invisible in the source, things that look
+wrong and are deliberate, constants chosen rather than derived, known
+sins in the order they should be fixed, measurements that informed a
+decision and never reached a document, and what that session was about
+to do next. Read it once before your first change, then treat it as a
+snapshot rather than a contract -- when an entry goes stale, correct it
+or delete it.
+
 Eight things to know before your first change:
 
 1. **NEVER AUTHOR THE ANSWER, and never author the fault.** Windows are
