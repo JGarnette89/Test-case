@@ -690,13 +690,30 @@ export function step(world) {
 
   const t = world.t + DT;
   let { spawned, nextAt, turnedAway = 0 } = world;
-  if (t >= nextAt) {
+  /* A POPULATION RATHER THAN A RATE, when the world is given one. The
+     maintainer asked for "a way for me to directly determine how many
+     cars are in the map", and a spawn interval does not say that: the
+     number on the road is what the interval, the map and the queues
+     happen to settle to. With a `target` the edges top the map up to it
+     -- an arrival every FILL seconds while there are fewer, none while
+     there are enough -- so the count on screen is the count he chose,
+     and a car leaving at one edge is replaced at another. */
+  const topUp = world.target != null;
+  const wanted = !topUp || next.length < world.target;
+  if (topUp && !wanted) nextAt = t;
+  if (wanted && t >= nextAt) {
     const car = arriving(world, spawned);
     const joining = joinAt(world, next, car);
     if (joining) {
       next.push(joining);
       spawned += 1;
-      nextAt = t + car.arriveIn;
+      nextAt = t + (topUp ? FILL : car.arriveIn);
+    } else if (topUp) {
+      /* No room on that leg this instant: try another next time. Not an
+         arrival turned away, because nobody was arriving -- the map is
+         only short of a car. */
+      spawned += 1;
+      nextAt = t + FILL;
     } else {
       /* NO ROOM ON THAT LEG, SO THAT ARRIVAL IS GONE. Holding it back
          until the leg clears would block every LATER arrival too --
@@ -983,7 +1000,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
@@ -1009,7 +1026,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, spawned: 0, nextAt: 0, actors: [] };
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, spawned: 0, nextAt: 0, actors: [] };
   /* Long enough for a car to have crossed the longest road twice: the
      sum of every road would be an upper bound and cost six seconds of
      seeding on a desktop for a kilometre-square map, which on a phone
@@ -1018,12 +1035,22 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
   return warmed(w, acrossIt);
 }
 
+/* How often the edges try to add a car when a world is short of its
+   target: fast enough that a map fills in well under a minute, slow
+   enough that one edge is not handed a platoon in a single tick. */
+export const FILL = 0.2;
+
 /* Run a fresh world until it has traffic on it, then put the clock
-   back to zero -- moving everything that is on that clock. */
+   back to zero -- moving everything that is on that clock. A world
+   with a target is warmed until it is nearly full rather than for a
+   fixed time, capped so a target the map cannot hold still returns. */
 function warmed(w0, acrossIt) {
   let w = w0;
   const warm = Math.round(Math.max(40, acrossIt) / DT);
-  for (let i = 0; i < warm; i++) w = step(w);
+  for (let i = 0; i < warm; i++) {
+    w = step(w);
+    if (w.target != null && i > 20 / DT && w.actors.length >= 0.95 * w.target) break;
+  }
   /* AND THE REBASE HAS TO MOVE EVERYTHING THAT IS ON THAT CLOCK, which
      is not only `t`. Drivers carry two instants -- when they stopped and
      when the opening in front of them appeared -- and leaving those at

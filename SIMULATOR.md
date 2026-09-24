@@ -1058,6 +1058,43 @@ misjudge. The first two are the obvious next steps for a traffic
 simulator; the last is exam content (a candidate running an amber is a
 real fault) and waits for the exam mode.
 
+#### 1.1.9 How many cars: a number the maintainer sets, 24 September
+
+"We know we can push the cars on screen, that needs to reflect in the
+available testing scenarios. Perhaps a way for me to directly determine
+how many cars are in the map." A spawn interval does not do that: the
+count on the road is whatever the interval, the map and the queues
+settle to. So a world can carry a TARGET (`seedGraph(..., { target })`):
+the edges top the map up to it, an arrival every `FILL` (0.2 s) while
+short and none while full, a car leaving at one edge replaced at
+another. Lowering it stops arrivals and lets the map drain through its
+exits -- nobody is deleted in front of the driver -- and the dial on
+`#/map` changes it LIVE rather than rebuilding the world. Kept across
+visits in settings.
+
+The range is measured (`tools/measure/density.mjs`, desk machine,
+posted speeds on):
+
+| cars | seeding | sim cost per 20 Hz tick | held over a minute |
+|---|---|---|---|
+| 30 | 0.4 s | 0.08 ms | 30 |
+| 120 | 0.5 s | 1.1 ms | 120 |
+| 200 | 1.6 s | 3.0 ms | 200 |
+| 300 | 2.1 s | 6.2 ms | 267 -- the map saturates |
+
+So the dial runs 10 to 300 and starts at 120, five times what the
+screen used to carry (the old rate put about 37 on it). The sim's cost
+is quadratic in the count, as the table shows, and a phone is several
+times slower than this machine: 300 is the stress end, not a default.
+What the renderer costs on top is the phone's question, and the
+instrument on `#/iso` still answers it.
+
+Checked in `verify-graph.mjs` section 8: 120 held at 119.9 on average,
+never below 116; the old rate carries 37, so it is the target doing it;
+lowered to 40, nobody arrives while the map is over it, it drains in
+92 s and then holds 40; raised to 200, it tops up within a minute, with
+nobody through anybody.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,

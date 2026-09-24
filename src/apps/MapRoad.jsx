@@ -48,11 +48,21 @@ const START = { road: "A-north", end: "end" };   // the player begins at the map
    yet, so the land meets every road that is on it and stays under the
    one that spans another), the sim's world, and -- when driving -- the
    player at the start. */
-function sceneFor(seed, kmh, every, drive) {
+/* THE CAR COUNT: the maintainer's own dial. The map is topped up to it
+   rather than fed at a rate (crossing.js `target`), so the number is
+   the number. The range is measured, not guessed (tools/measure/
+   density.mjs): the sim's own cost is 1.1 ms a tick at 120 cars and
+   6 ms at 300 on the desk machine, and 300 is where this map saturates
+   -- beyond it the edges cannot get cars in fast enough to hold the
+   count. The default is five times what the screen used to carry,
+   because the phone ran 114 cars at a locked 60 fps on the SLOW build. */
+export const CARS = { min: 10, max: 300, step: 10, start: 120 };
+
+function sceneFor(seed, kmh, every, drive, cars = CARS.start) {
   const loaded = loadMap(testMap1());
   if (!loaded.ok) throw new Error(`test map: ${loaded.error}`);
   const b = loaded.bounds;
-  let world = seedGraph(seed, kmh, loaded, { every });
+  let world = seedGraph(seed, kmh, loaded, { every, target: cars });
   let me = null;
   if (drive) {
     me = playerOn(world.course, START.road, START.end);   // the curb lane, driving down to the crossroads
@@ -111,11 +121,12 @@ export default function MapRoad() {
   const flash = useRef(0);
   const judged = useRef({ last: null, at: 0 });   // the last turn's verdict and when it landed, for the fade
   const contacts = useRef(0);
-  if (!scene.current) scene.current = sceneFor(1, 50, 2.0, true);
+  const [cars, setCars] = useState(CARS.start);
+  if (!scene.current) scene.current = sceneFor(1, 50, 2.0, true, CARS.start);
 
-  const restart = (s = seed, kmh = limit, m = mode) => {
-    setSeed(s); setLimit(kmh); setMode(m); setStopped(false);
-    scene.current = sceneFor(s, kmh, 2.0, m === "drive");
+  const restart = (s = seed, kmh = limit, m = mode, n = cars) => {
+    setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n);
+    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n);
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
     cam.current = { ...newChase(), id: null };
     owed.current = 0; contacts.current = 0; flash.current = 0;
@@ -131,7 +142,8 @@ export default function MapRoad() {
       if (!live) return;
       const kmh = LIMITS.includes(s.limit) ? s.limit : limit;
       const m = s.mode === "watch" ? "watch" : "drive";
-      if (kmh !== limit || m !== mode) restart(seed, kmh, m);
+      const n = Number.isFinite(s.cars) ? Math.max(CARS.min, Math.min(CARS.max, s.cars)) : cars;
+      if (kmh !== limit || m !== mode || n !== cars) restart(seed, kmh, m, n);
       if (s.slider === "spring") input.current.state.spring = true;
     });
     return () => { live = false; };
@@ -323,6 +335,14 @@ export default function MapRoad() {
             <button key={kmh} className="btn" style={{ ...S.chip, minWidth: 0, padding: "0 10px", borderColor: limit === kmh ? C.green : "rgba(255,255,255,0.12)", color: limit === kmh ? C.white : DIM }}
               onClick={() => { setSetting("limit", kmh); restart(seed, kmh); }}>{kmh}</button>
           ))}
+          {/* LIVE, not a restart: the edges top the map up to the new
+              count, or stop adding while cars leave, so moving the dial
+              never rebuilds the world under the driver. */}
+          <label style={{ ...S.label, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            Cars <b style={{ color: C.white, minWidth: 28, textAlign: "right" }}>{cars}</b>
+            <input type="range" min={CARS.min} max={CARS.max} step={CARS.step} value={cars} style={{ width: 140, fontSize: 16 }}
+              onChange={(e) => { const n = Number(e.target.value); setCars(n); setSetting("cars", n); if (scene.current) scene.current.world = { ...scene.current.world, target: n }; }} />
+          </label>
           <span style={S.label}>keys: arrows or WASD, space brakes, q and e signal</span>
         </div>
         {warnings.length > 0 && (

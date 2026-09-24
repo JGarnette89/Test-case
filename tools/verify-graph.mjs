@@ -326,5 +326,33 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   check(!same, "and the flag is load-bearing: with posted speeds off the same seed drives a measurably different world");
 }
 
+/* 8. HOW MANY CARS: a population the maintainer sets, rather than a rate
+   whose result nobody chose. The map is topped up to the target at its
+   edges; lowering the target stops arrivals and lets the map drain
+   through its exits rather than deleting anybody; and at the default
+   the map carries five times what the old rate put on it. */
+{
+  const loaded = loadMap(testMap1());
+  const held = (w, secs) => { let sum = 0, n = 0, lo = Infinity; for (let i = 0; i < secs * 20; i++) { w = step(w); if (i > 20) { sum += w.actors.length; n++; lo = Math.min(lo, w.actors.length); } } return { w, mean: sum / n, lo }; };
+  const at120 = held(seedGraph(3, 50, loaded, { target: 120 }), 60);
+  check(at120.w.actors.length >= 114 && at120.lo >= 108 && at120.mean <= 121, `a target of 120 holds 120: ${at120.mean.toFixed(1)} on average over a minute, never below ${at120.lo}`);
+  const old = held(seedGraph(3, 50, loaded, { every: 2.0 }), 60);
+  check(old.mean < 40, `and it is the target doing it: the rate the screen used to run carries ${old.mean.toFixed(0)}`);
+  let w = { ...at120.w, target: 40 };
+  let arrivedWhileOver = 0, drained = null;
+  for (let i = 0; i < 20 * 120; i++) {
+    const over = w.actors.length > 40, before = w.spawned;   /* at exactly 40 a car leaving this tick is rightly replaced */
+    w = step(w);
+    if (over && w.spawned > before) arrivedWhileOver++;
+    if (drained == null && w.actors.length <= 40) drained = w.t;
+  }
+  check(arrivedWhileOver === 0 && drained != null && Math.abs(w.actors.length - 40) <= 3,
+    `lowered to 40, nobody new arrives while the map is over it, it drains through its exits in ${(drained - at120.w.t)?.toFixed(0)}s with no car removed by hand, and then holds 40 (${w.actors.length})`);
+  let up = { ...w, target: 200 };
+  for (let i = 0; i < 20 * 60; i++) up = step(up);
+  check(up.actors.length >= 180, `and raised to 200 it tops up at the edges within a minute (${up.actors.length})`);
+  check(overlapping(up).length === 0, "with nobody driving through anybody at 200");
+}
+
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
 console.log("\nOK: the map's crossroads is the compass crossroads; a T, a five-way, a loop, a bend, a hill and an overpass run the same rules, nobody drives through anybody, and a road is driven at the speed it posts.");
