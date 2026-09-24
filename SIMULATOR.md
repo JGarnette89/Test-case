@@ -1380,6 +1380,49 @@ Still open: the real ceiling (somewhere above 154 cars), the cause of
 the 2642 ms frame (the next run's stall table says), and the floor
 device.
 
+##### 1.2.2 THE CEILING, MEASURED -- 24 September, Pixel 7 Pro, the production build over HTTPS
+
+The number stage 1 was waiting for, taken on the deployed site
+(`37d10a1`), so the build is the production one and the context is
+secure (the device is identified by client hints: Pixel 7 Pro,
+Android 17; canvas at DPR 2 on a 3.5 screen).
+
+| step | cars drawn | props | fps | p95 ms | worst ms | hitches | verdict |
+|---|---|---|---|---|---|---|---|
+| 2 | 78 | 0 | 61 | 16.7 | 16.8 | 0 | locked 60 |
+| 4 | 114 | 120 | 60 | 16.8 | 16.8 | 0 | locked 60 |
+| 5 | 158 | 200 | 61 | 16.7 | 16.8 | 0 | locked 60 |
+| 6 | 245 | 300 | 60 | 16.8 | 16.8 | 0 | locked 60 |
+| 7 | 322 | 400 | 57 | 25 | 33.4 | 0 | inside the budget, at its edge |
+| 8 | 482 | 500 | 48 | 25.1 | 41.7 | 0 | over: p95 past 25 ms |
+
+**The ceiling: about 320 cars drawn with 400 buildings inside the
+budget, and 245 with 300 at a locked 60 fps with nothing to spare
+spent.** Zero hitches at every load step -- the stutter class of bug
+found on 19 September is gone on the production build as well. The
+DOM probe (a React update from the frame loop, on purpose) still
+costs a 58 ms frame each time, so that rule still matters.
+
+What this does and does not measure. It is the RENDERER and stage 0's
+traffic (`#/iso`); the map's own sim is quadratic in the car count
+(1.1.9: 6.2 ms a tick at 300 on the desk machine, and a phone is
+several times slower), so the car count on `#/map` may meet the sim's
+cost before the renderer's. The `#/map` readout shows fps: the dial
+at 300 is the test. And "cars drawn" is cars on screen, not on the
+map -- the map holds more than the camera sees.
+
+What it means for the plan: the default of 120 on the map is well
+inside, the dial's 300 is at the renderer's edge, and a world of the
+size SIMULATOR.md 1 describes has room for dense traffic in view as
+long as the sim only works hard on what is near. That -- simulating
+far chunks cheaply -- is the performance question stage 5 (the city)
+will have to answer, not the renderer.
+
+The report's cap line read "held up to 322 cars... broke at step 1
+(DOM probe)", which contradicts itself: the probe hitches by design
+and was being counted as the break. Fixed in `perf.js` -- the probe
+is reported on its own line as the control it is.
+
 ### Stage 2 — the editor, first version
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,

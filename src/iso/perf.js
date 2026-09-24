@@ -313,7 +313,13 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
   const finish = () => {
     const strict = results.filter((x) => x.pass);
     const steadyOnes = results.filter((x) => x.steady);
-    const capOf = (list, key) => (list.length ? { ...list[list.length - 1], brokeAt: results.find((x) => !x[key])?.label ?? null } : null);
+    /* The DOM probe is a POSITIVE CONTROL -- it issues one React update a
+       second on purpose, so it hitches by design -- and it is never where
+       the budget "broke". Counting it made the 24 September report say
+       "held up to 322 cars; broke at step 1", which reads as a
+       contradiction and was one. Its own result is reported on its own
+       line instead. */
+    const capOf = (list, key) => (list.length ? { ...list[list.length - 1], brokeAt: results.find((x) => !x.probe && !x[key])?.label ?? null } : null);
     return { done: true, results, cap: capOf(strict, "pass"), steadyCap: capOf(steadyOnes, "steady") };
   };
   return {
@@ -386,6 +392,8 @@ export function reportText({ device, results, cap, steadyCap, canvas }) {
   } else {
     lines.push("stalls: none");
   }
+  const probe = results.find((x) => x.probe);
+  if (probe) lines.push(`dom probe (positive control, hitches on purpose): ${probe.hitches ?? 0} hitches -- ${(probe.hitches ?? 0) > 0 ? "the instrument still sees a React update from the frame loop, so the rule against them still matters on this device" : "NO hitches: either this device absorbs a React update per second, or the probe did not run"}`);
   lines.push(cap ? `cap (budget, no hitching): held up to ${cap.cars} cars drawn with ${cap.props} props (step ${cap.label}); broke at step ${cap.brokeAt ?? "-"}` : "cap (budget, no hitching): the budget did not hold at any step");
   lines.push(steadyCap ? `cap (steady state, stutter set aside): held up to ${steadyCap.cars} cars drawn with ${steadyCap.props} props (step ${steadyCap.label}); broke at step ${steadyCap.brokeAt ?? "-"}` : "cap (steady state): did not hold at any step");
   return lines.join("\n");
