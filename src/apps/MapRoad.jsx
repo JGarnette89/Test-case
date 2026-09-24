@@ -201,7 +201,8 @@ export default function MapRoad() {
         }
       }
 
-      const actors = actorsOf(sc, playing && !stopped ? owed.current : 0);
+      const carry = playing && !stopped ? owed.current : 0;
+      const actors = actorsOf(sc, carry);
 
       /* THE CAMERA. Driving: the chase camera (iso/chase.js), behind
          the player, leading them by seconds of travel, the road ahead
@@ -229,7 +230,7 @@ export default function MapRoad() {
         cam.current = { ...cam.current, x: cam.current.x + (want.x - cam.current.x) * f, y: cam.current.y + (want.y - cam.current.y) * f, z: cam.current.z + ((want.z ?? 0) - cam.current.z) * f, rot: 0, snap: false };
         k = Math.max(1, (size.w / (follow === "car" ? 60 : 110)) * zoom);
       }
-      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions });
+      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, t: sc.world.t + carry });
 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);

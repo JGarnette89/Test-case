@@ -8,6 +8,15 @@
    draws. Every stroke is a list of points in metres; the loader does
    the rest (map/load.js). Nothing here is geometry code -- it is the
    kind of file an editor will write.
+
+   THE FOUR NODES ARE FOUR DIFFERENT KINDS OF PLACE, on purpose (23
+   September): the maintainer asked for varied intersections to judge
+   the simulator by, and one control repeated over a whole map was the
+   limitation. A (the crossroads) is SIGNALISED, B (a T) is a two-way
+   stop on its minor leg, C (the five-way) is an all-way stop, and D
+   (a T) is UNCONTROLLED -- the through road runs and the rules do the
+   rest. Nobody had to add a mechanism for three of the four; they are
+   what the per-leg control always meant.
    ===================================================================== */
 import { emptyMap, road } from "./format.js";
 
@@ -42,12 +51,12 @@ export function testMap1() {
   m.bounds = { x: -50, y: -50, w: 1300, h: 1200 };
   const hill = (t) => 6 * Math.sin(Math.PI * t) ** 2;   // a 6 m rise in the middle of the A-B road
   m.roads.push(
-    road({ id: "A-north", kind: "collector", points: stroke({ x: 400, y: 0 }, A), control: { start: "none", end: "stop" } }),
-    road({ id: "A-west", kind: "collector", points: stroke({ x: 0, y: 400 }, A), control: { start: "none", end: "stop" } }),
-    road({ id: "A-B", kind: "collector", points: stroke(A, B, { z: hill }), control: { start: "stop", end: "stop" } }),
-    road({ id: "C-A", kind: "collector", points: stroke(C, A, { bow: 60 }), control: { start: "stop", end: "stop" } }),
+    road({ id: "A-north", kind: "collector", points: stroke({ x: 400, y: 0 }, A), control: { start: "none", end: "signal" } }),
+    road({ id: "A-west", kind: "collector", points: stroke({ x: 0, y: 400 }, A), control: { start: "none", end: "signal" } }),
+    road({ id: "A-B", kind: "collector", points: stroke(A, B, { z: hill }), control: { start: "signal", end: "stop" } }),
+    road({ id: "C-A", kind: "collector", points: stroke(C, A, { bow: 60 }), control: { start: "stop", end: "signal" } }),
     road({ id: "B-north", kind: "collector", points: stroke({ x: 800, y: 0 }, B), control: { start: "none", end: "none" } }),
-    road({ id: "B-D", kind: "collector", points: stroke(B, D), control: { start: "none", end: "stop" } }),
+    road({ id: "B-D", kind: "collector", points: stroke(B, D), control: { start: "none", end: "none" } }),
     road({ id: "C-west", kind: "collector", points: stroke({ x: 0, y: 800 }, C), control: { start: "none", end: "stop" } }),
     road({ id: "C-D", kind: "collector", points: stroke(C, D), control: { start: "stop", end: "none" } }),
     road({ id: "C-southeast", kind: "residential", points: stroke({ x: 700, y: 1100 }, C), control: { start: "none", end: "stop" } }),

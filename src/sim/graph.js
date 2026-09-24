@@ -43,6 +43,7 @@ import { turnPoints } from "../engine/paths.js";
 
 import { CAR, weaveRoom } from "./traffic.js";
 import { conflictsBetween, poseAt, LINE_SETBACK } from "./intersection.js";
+import { signalFor, isSignal } from "./signal.js";
 import { ribbonOf } from "../iso/road.js";
 import { rng } from "../engine/index.js";
 
@@ -286,6 +287,12 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
       A.lineAt = boxHalf * f + LINE_SETBACK;
     }
     const place = { lane, boxHalf, lineAt, control: Object.fromEntries(ids.map((id) => [id, legs[id].control])), at: n.at, reach: 0 };
+    /* A SIGNAL IS A CONTROL THAT CHANGES WITH TIME (signal.js). The
+       phases are derived from these legs' own bearings, so a node that
+       gains a leg gets the phase it needs and nobody writes a timing
+       plan down. Null where no leg is signalised, which is every node
+       the sim had before. */
+    const signal = signalFor(legs, ids, boxHalf);
     const paths = {};
     for (const from of ids) {
       const A = legs[from];
@@ -312,7 +319,7 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
     }
     const byFrom = {};
     for (const key of keys) (byFrom[paths[key].from] ??= []).push(key);
-    at.push({ at: { x: 0, y: 0 }, node: n.id, layout: { place, paths, conflicts, legs, routesFrom: (leg) => byFrom[leg] ?? [] } });
+    at.push({ at: { x: 0, y: 0 }, node: n.id, layout: { place, paths, conflicts, legs, signal, routesFrom: (leg) => byFrom[leg] ?? [] } });
   }
 
   /* Joins: a road between two nodes joins their two legs, lane by
@@ -520,16 +527,22 @@ export function junctionsOf(course) {
       const h = (pose.rot * Math.PI) / 180, nx = -Math.sin(h), ny = Math.cos(h);   // right of travel
       const z = poseOnGraph(course, course.at.indexOf(spot), route, p.stopAt).z ?? 0;
       const lane = place.lane;
-      if (leg.control === "stop" || leg.control === "yield") {
-        lines.push({ kind: leg.control, a: { x: pose.x - nx * lane / 2, y: pose.y - ny * lane / 2, z }, b: { x: pose.x + nx * lane / 2, y: pose.y + ny * lane / 2, z } });
-        /* One sign per road end, at the curb lane's right-hand edge, level with the line, facing the approaching driver. */
-        if (leg.curb) signs.push({ kind: leg.control, at: { x: pose.x + nx * (lane / 2 + 0.6), y: pose.y + ny * (lane / 2 + 0.6), z }, heading: pose.rot });
+      /* EVERY CONTROL THAT HOLDS A CAR HAS A LINE AND SOMETHING TO
+         READ. A signal's head carries its own `base` rather than a
+         colour, because the colour is a function of the clock and the
+         renderer is the only thing that knows what time it is
+         (signal.js `lightAt`). */
+      const lit = isSignal(leg.control);
+      if (leg.control === "stop" || leg.control === "yield" || lit) {
+        lines.push({ kind: lit ? "signal" : leg.control, a: { x: pose.x - nx * lane / 2, y: pose.y - ny * lane / 2, z }, b: { x: pose.x + nx * lane / 2, y: pose.y + ny * lane / 2, z } });
+        /* One per road end, at the curb lane's right-hand edge, level with the line, facing the approaching driver. */
+        if (leg.curb) signs.push({ kind: lit ? "signal" : leg.control, base: leg.base, at: { x: pose.x + nx * (lane / 2 + 0.6), y: pose.y + ny * (lane / 2 + 0.6), z }, heading: pose.rot });
       }
     }
     /* The surface: the corners in order round the centre. */
     const c2 = { x: centre.x, y: centre.y };
     corners.sort((p, q) => Math.atan2(p.y - c2.y, p.x - c2.x) - Math.atan2(q.y - c2.y, q.x - c2.x));
-    out.push({ node: spot.node, at: centre, surface: corners, lines, signs });
+    out.push({ node: spot.node, at: centre, surface: corners, lines, signs, signal: spot.layout.signal });
   }
   return out;
 }

@@ -23,6 +23,7 @@
    would buy if the level look reads wrong.
    ===================================================================== */
 import { viewOf } from "./project.js";
+import { lightAt } from "../sim/signal.js";
 import { poseAt, groundAt as stage0Ground, LANE } from "./road.js";
 import { C } from "../theme.js";
 
@@ -54,6 +55,11 @@ const HEADINGS = 32;
 const quantise = (deg) => Math.round(deg / (360 / HEADINGS)) * (360 / HEADINGS);
 
 const BODY = { l: 4.5, w: 1.8, h: 0.75 };
+/* A signal's lenses: the lit one, and the same colour asleep. Dark
+   enough to read as off at a glance and light enough that the head
+   still reads as three lenses rather than a black slab. */
+const LENS = { red: "#e4483c", amber: "#f2b84b", green: "#4fd07a" };
+const DARK = { red: "#4a2622", amber: "#4a3d22", green: "#22402e" };
 const CABIN = { l: 2.3, w: 1.55, h: 0.62, back: 0.25 };
 const CAR_COLOURS = [C.red, C.green, C.amber, C.blue, "#F2E8D5"];
 
@@ -288,10 +294,30 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     for (const s of j.signs) {
       /* A post and a face: the face a flat box at eye height, red for a
          stop, turned to the driver it faces. Drawn as a map symbol, a
-         little larger than life, as every sign here is. */
-      const post = boxCorners({ x: s.at.x, y: s.at.y, z: s.at.z ?? 0 }, s.heading, 0, { l: 0.12, w: 0.12, h: 1.7 });
-      const face = boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
-      items.push({ layer: 1, key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01, tag: audit && { kind: "sign", at: s.at }, paint: () => { paintBox(ctx, view, post, "#9a9da3"); paintBox(ctx, view, face, s.kind === "stop" ? "#c8322b" : "#f2b84b"); } });
+         little larger than life, as every sign here is.
+
+         A SIGNAL IS THE SAME POST WITH THREE LENSES, and the lit one is
+         read from the clock -- `lightAt` on the node's own plan, the
+         same call the sim's drivers obey, so the screen cannot show a
+         green to a driver the rules are holding. A state the engine can
+         produce and the screen cannot express is a lie about what
+         happened (CLAUDE.md), and a red nobody can see is exactly that. */
+      const isLight = s.kind === "signal";
+      const postH = isLight ? 2.6 : 1.7;
+      const post = boxCorners({ x: s.at.x, y: s.at.y, z: s.at.z ?? 0 }, s.heading, 0, { l: 0.12, w: 0.12, h: postH });
+      const lens = isLight ? ["red", "amber", "green"].map((c, i) => ({
+        c,
+        box: boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 0.9 - i * 0.42 }, s.heading + 90, 0, { l: 0.34, w: 0.12, h: 0.34 }),
+      })) : null;
+      const housing = isLight ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 0.06 }, s.heading + 90, 0, { l: 0.5, w: 0.16, h: 1.3 }) : null;
+      const face = isLight ? null : boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
+      items.push({ layer: 1, key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01, tag: audit && { kind: "sign", at: s.at }, paint: () => {
+        paintBox(ctx, view, post, "#9a9da3");
+        if (!isLight) { paintBox(ctx, view, face, s.kind === "stop" ? "#c8322b" : "#f2b84b"); return; }
+        paintBox(ctx, view, housing, "#2a2d33");
+        const lit = lightAt(j.signal, s.base, scene.t ?? 0);
+        for (const l of lens) paintBox(ctx, view, l.box, l.c === lit ? LENS[l.c] : DARK[l.c]);
+      } });
     }
   }
 

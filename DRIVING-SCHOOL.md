@@ -245,3 +245,39 @@ do not read as different places, thematic towns are not worth building.
 
 If both pass, the order in section 5 stands. If the first fails, the
 work is on the renderer and the camera, not on the school.
+
+## 7. The player's own driving, under the law -- recorded, not built
+
+The maintainer, 23 September, thinking aloud rather than asking for
+it: "the daytime phase of the game has a legal driving element to it
+requiring the user to more or less obey the law or risk a penalty
+(against whatever currency is affecting their overall progress, could
+be money to upgrade their driving school or their schools reputation
+for example)."
+
+What it implies, so it is not lost:
+
+- **Day and night phases.** Something happens by day that does not by
+  night; what night is for is not said yet.
+- **The school returns as the meta-layer.** Progress has a currency --
+  money for the school, or its reputation -- and the player's own
+  conduct on the road spends or earns it. That is this document's
+  framing reconnected to the simulator, rather than a separate game.
+- **It needs the law modelled, and most of that is the simulator's
+  work already under way.** Signals, stop signs, right of way, posted
+  speeds (SIMULATOR.md 1.1.6, 1.1.8): each is a rule the sim now
+  enforces on its own traffic, and a player who breaks one is
+  detectable by the same conditions. A red run is the HOLD state
+  ignored; a rolling stop is a stop leg left without `stoppedAt`;
+  speeding is the posted limit on the leg.
+- **It scores the player with the machinery that assesses candidates.**
+  The five axes and the fault vocabulary were built to mark somebody
+  else's driving, and nothing in them cares whose car it is (CLAUDE.md:
+  "the candidate is just a participant"). The player becomes a driver
+  who is also being examined -- which is a strong reason the assessment
+  machinery is shelved rather than deleted (SIMULATOR.md 2.2).
+
+Open, and the maintainer's: what "more or less" obeying means (a
+tolerance, or discretion by a police presence that has to see it);
+whether a penalty is per offence or per pattern; and what the night
+phase is.

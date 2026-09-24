@@ -968,6 +968,96 @@ until it is fixed; the fix is a `.gitattributes` with `* text=auto
 eol=lf` and one `git add --renormalize .` commit, and it is Jay's call
 because it touches every file in the repository.
 
+#### 1.1.8 The refocus, 23 September: back to the traffic simulator -- and traffic signals
+
+The maintainer drove 1.1.3 and liked it ("drives well", the throttle's
+hold band liked), then refocused the project in his own words: "the
+main project was to create a traffic simulator that happens to have a
+great driving system within it, let's get back to that." That is the
+ordering principle from here: the world and its traffic before more
+polish on the car. His list, in the order it is being built: varied
+intersections and traffic signals; a direct control on how many cars
+are on the map, with higher defaults; roads that feel different; a
+braking mechanic to match the throttle's; and the turn presentation.
+
+**Why signals come first, and why they fix the turn.** "Turning is
+awkward because the turn speed indicator encourages a smooth turn but
+every intersection is a full stop." The cornering model is right (he
+said so) and could not express itself: from a stop the speed through a
+corner is decided by how you pull away, not how you arrive. It only
+means something at an intersection you drive THROUGH -- a green, an
+uncontrolled leg, the through road of a two-way stop. So most of
+"turning feels awkward" is fixed by the map having places you do not
+stop at, and the presentation work comes after.
+
+**TRAFFIC SIGNALS (`src/sim/signal.js`), and the design rule that kept
+them from being a second rule system: a signal resolves, at every
+instant, to a control the sim already had plus ONE new state.** Green
+is an uncontrolled leg (a left turn still yields to the oncoming, which
+is exactly a permissive left and needed no new code). A red right turn
+is a stop sign -- which IS right-on-red: a full stop, then a gap, per
+the maintainer's earlier ruling. A red for anything else is the new
+state, HOLD: wait, gap or no gap. An amber holds a driver who can still
+stop comfortably and releases one who cannot, decided per car from its
+own speed and the sim's own braking rate, so the dilemma zone is
+physical rather than authored. `signal-no-right-on-red` is the posted
+exception, per approach.
+
+The phases are derived from the geometry: approaches on one axis share
+a phase because their straights do not conflict, so a crossroads gets
+two and a five-way three with nobody writing a number down. Amber is
+the reaction floor plus the time to shed the road's speed at the
+comfortable rate; all-red is the time to clear the box. GREEN_FOR (20
+s) is the one design constant, because how long a phase runs is a
+demand choice, not physics. The renderer draws the heads from the same
+`lightAt` the drivers obey, so the screen cannot show a green to a car
+the rules are holding.
+
+**Two bugs found by measuring rather than looking, both fixed:**
+
+- **A red was not a gap -- but nothing said so.** A car stopped at a
+  red with no conflicting traffic in front of it had "accepted" its
+  gap, because accepting was only ever about traffic: 20 of 56
+  launches from rest were on a red, 13 of them left turns. The light
+  now gates acceptance and the undue-delay clock both, so a driver
+  waiting properly at a red is never marked for the wait the light
+  imposed on them (the trap: a red road with nothing crossing it looks
+  open to every test but the light). After: every launch on a red is a
+  right turn, and every one came to a full stop first.
+- **At the green onset both queues are standing at the line**, and "a
+  stopped vehicle claims nothing" read the oncoming queue as an open
+  road: a left-turner and the oncoming straight launched in the same
+  tick and met in the box (one meeting, eight car-ticks, in five
+  minutes on the varied map). An oncoming car at rest at its line has
+  not given up its priority -- the exception the two-way stop already
+  made -- but ONLY for a left-turner who is also standing at their
+  line. Applied to one still rolling up, yielding switched on without
+  warning and 800 car-ticks of full braking appeared in five minutes,
+  against 4 without it. Narrowed, it is 3 and 0.
+
+**THE MAP IS FOUR KINDS OF PLACE** (`src/map/samples.js`): the
+crossroads is signalised, one T is a two-way stop on its minor leg, the
+five-way is an all-way stop, and the other T is uncontrolled. The drive
+starts heading south into the lights. Four minutes on it: 244 cars, no
+overlapping car-ticks.
+
+Checked in `tools/verify-signal.mjs`: phases derived; no two conflicting
+paths ever open at once, against the layout's own conflict table over
+the whole cycle, at a crossroads and a five-way; equal shares; the
+intervals derived; per-driver control directly (green, red, right on
+red, posted no-right-on-red, both sides of the amber dilemma); in five
+minutes of traffic only rights launch on red and only after stopping,
+the delay clock never runs at a red, harsh braking stays under 0.001%;
+and a controlled comparison -- one car alone at the line, the light the
+only difference -- that the HOLD is what does the work.
+
+What it does not do yet: offsets between signals (a green wave -- one
+`offset` on the plan), actuated signals that respond to queues,
+protected left arrows, pedestrian phases, and an amber the traffic can
+misjudge. The first two are the obvious next steps for a traffic
+simulator; the last is exam content (a candidate running an amber is a
+real fault) and waits for the exam mode.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,

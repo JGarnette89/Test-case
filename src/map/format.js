@@ -35,7 +35,11 @@ export const KINDS = {
   highway:     { speed: 100, lanes: 3, parking: "none" },
   service:     { speed: 30, lanes: 1, parking: "none" },
 };
-export const CONTROLS = ["stop", "yield", "none", "signal"];
+/* WHAT GOVERNS A ROAD END. `signal-no-right-on-red` is a posted sign
+   rather than a fifth kind of control: it is a signal, and the suffix
+   is how one approach says the turn is not permitted on its red, which
+   is per approach in the real world too (src/sim/signal.js). */
+export const CONTROLS = ["stop", "yield", "none", "signal", "signal-no-right-on-red"];
 export const ZONES = ["residential", "commercial", "industrial", "park", "water", "highway"];
 
 export function emptyMap(id = "untitled", name = "Untitled") {

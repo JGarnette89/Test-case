@@ -39,6 +39,7 @@ import {
   radiusFor,
 } from "./course.js";
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } from "./graph.js";
+import { controlUnder, lightAt } from "./signal.js";
 import { rng } from "../engine/index.js";
 import { REACTION_FLOOR } from "../engine/score.js";
 import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../engine/awareness.js";
@@ -153,9 +154,35 @@ const MOST_CAUTION = 2;
    opening, and marking somebody for missing it would punish physics. */
 const UNDUE_AT = 4.0;
 
-/* Does this leg stop? Control is per leg, so one intersection shape is
-   an all-way stop or a two-way stop depending only on this. */
-const stops = (layout, path) => layout.place.control[path.from] === "stop";
+/* WHAT CONTROL IS THIS DRIVER UNDER, RIGHT NOW.
+
+   Control used to be a standing fact about a leg, read straight off the
+   layout. A signal is a control that changes with time, so the question
+   is asked per driver per tick instead -- and it resolves to the
+   vocabulary that was already here plus one new state (signal.js):
+
+     "none"  the leg does not stop: an uncontrolled leg, or a green.
+     "stop"  stop, then take a gap: a stop sign, or a right on red.
+     "hold"  wait, gap or no gap. Only a red or an amber produces it,
+             and it is the only genuinely new thing a signal adds.
+
+   Everything below treats "hold" as stopping for right-of-way purposes,
+   because a car held at a red IS a car at a line claiming nothing --
+   what it must not do is go, and that is `whatStops`'s business. */
+function controlOf(actor, layout, path, t = 0) {
+  const standing = layout.place.control[path.from];
+  if (!layout.signal) return standing === "stop" ? "stop" : "none";
+  return controlUnder(layout.signal, layout.legs[path.from]?.base, path.intent, t, {
+    v: actor.v ?? 0,
+    toLine: waitAt(path) - (actor.s ?? 0),
+    standing,
+  });
+}
+
+/* Does this leg stop -- a sign, a red, or an amber this driver can
+   still make? Control is per leg, so one intersection shape is an
+   all-way stop or a two-way stop depending only on this. */
+const stops = (layout, path, actor = null, t = 0) => (actor ? controlOf(actor, layout, path, t) !== "none" : layout.place.control[path.from] === "stop");
 
 /* WHICH INTERSECTION AN ACTOR IS AT, AND WHICH PATH THROUGH IT.
 
@@ -280,7 +307,7 @@ function settle(me, them, mine, theirs, layout) {
           - both of us stop: the all-way stop, unchanged. Whoever
             stopped first goes.
    ===================================================================== */
-export function blockedBy(me, them, layout, caution = me.caution) {
+export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
   /* RIGHT OF WAY IS A QUESTION ABOUT ONE INTERSECTION. Two cars at
      different ones are half a kilometre apart and have nothing to settle
      between them; what they may have to do is FOLLOW each other, which is
@@ -316,7 +343,7 @@ export function blockedBy(me, them, layout, caution = me.caution) {
   if (them.going || them.s >= theirs.stopAt) return true;
   if (me.going || me.s >= mine.stopAt) return false;
 
-  const iStop = stops(layout, mine), theyStop = stops(layout, theirs);
+  const iStop = stops(layout, mine, me, t), theyStop = stops(layout, theirs, them, t);
 
   /* NEITHER OF US STOPS. Nobody has an arrival order to appeal to, so
      the standing rules do the work. Left-yields-to-oncoming comes FIRST
@@ -341,7 +368,26 @@ export function blockedBy(me, them, layout, caution = me.caution) {
        VEHICLE CLAIMS NOTHING. */
     const head = leftYields(mine, theirs, layout);
     if (head === false) return false;
-    if (head === true) return !hasGap(me, them, layout, caution);
+    /* AN ONCOMING CAR AT REST AT ITS LINE HAS NOT GIVEN UP ITS PRIORITY
+       -- the same exception the two-way stop already makes, and at a
+       signal it is not the exception but the ordinary case: when a
+       light goes green the whole queue is standing at the line, and
+       "a stopped vehicle claims nothing" read it as an open road. The
+       left-turner and the oncoming straight both launched in the same
+       tick and met in the box (verify-graph, five minutes on the varied
+       map: one such meeting, eight car-ticks). A car standing at its
+       line is about to go, and the left turn waits to see it go.
+
+       ONLY FOR A LEFT-TURNER WHO IS ALSO STANDING AT THEIR LINE, which
+       is the green-onset case and nothing wider. Applied to one still
+       rolling up, it made yielding depend on whether somebody across
+       the box happened to be at rest this tick -- a flag that switches
+       on without warning -- and drivers 1.7 m from the line at 17 km/h
+       found themselves suddenly held: 800 car-ticks at full braking in
+       five minutes, against 4 without the clause. A moving left-turner
+       is judged on the gap, as before, and the oncoming car claims the
+       road the moment it moves. */
+    if (head === true) return (me.stoppedAt != null && them.stoppedAt != null && !them.going) || !hasGap(me, them, layout, caution);
     const mineIn = hit.a - me.s;
     const theirsIn = layout.conflicts[them.route + "|" + me.route].a - them.s;
     const dm = mineIn / Math.max(me.v, 0.5), dt = theirsIn / Math.max(them.v, 0.5);
@@ -401,7 +447,12 @@ export function blockedBy(me, them, layout, caution = me.caution) {
    opening is. */
 export function openTo(me, world, caution) {
   const layout = layoutOf(world, me);
-  return !world.actors.some((t) => t.id !== me.id && blockedBy(me, t, layout, caution));
+  /* A RED IS NOT AN OPENING, and this is where that has to be said or
+     it is said nowhere: the undue-delay clock runs on `openTo`, so
+     without it every driver waiting properly at a red would be marked
+     for the wait the light imposed on them. */
+  if (controlOf(me, layout, layout.paths[me.route], world.t ?? 0) === "hold") return false;
+  return !world.actors.some((a) => a.id !== me.id && blockedBy(me, a, layout, caution, world.t ?? 0));
 }
 
 /* What is in this driver's way: the nearest of the car in front and the
@@ -500,9 +551,14 @@ export function whatStops(me, world) {
   const queued = leader != null && gap <= wantedGap(me, leader);
 
   const short = !me.going && me.s < waitAt(mine) + AT_LINE && me.s < mine.clearAt;
-  const held = short && others.some((t) => t.id !== me.id && blockedBy(me, t, layout));
+  const held = short && others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0));
+  /* THE THREE CONTROLS, AND THE ONLY PLACE THAT KNOWS A SIGNAL EXISTS.
+     A red or an unmakeable amber HOLDS -- gap or no gap; a sign or a
+     right on red waits for a stop and then a gap; a green or an
+     uncontrolled leg waits only for somebody. */
+  const under = controlOf(me, layout, mine, world.t ?? 0);
   if (short) {
-    const waiting = stops(layout, mine) ? (!me.stoppedAt || held) : held;
+    const waiting = under === "hold" ? true : under === "stop" ? (!me.stoppedAt || held) : held;
     if (waiting) {
       /* THE NOSE STOPS AT THE LINE, NOT THE MIDDLE OF THE CAR. `s` is a
          car's centre -- stage 0 defines the gap as `ahead - CAR.length`,
@@ -517,7 +573,7 @@ export function whatStops(me, world) {
       if (d < gap) { gap = d; leader = { id: "line", v: 0, headway: me.headway }; }
     }
   }
-  return { leader, gap, held, queued };
+  return { leader, gap, held, queued, hold: short && under === "hold" };
 }
 
 /* =====================================================================
@@ -562,7 +618,13 @@ export function step(world) {
          The gap they accepted already accounts for their own pull-away
          (`timeToCover` reads `me.v` and `me.v0`), so a gap that was
          adequate when they took it stays adequate. */
-      const accepted = me.accepted || (me.stoppedAt != null && !view.held);
+      /* AND A RED IS NOT A GAP. Accepting is about the traffic; the
+         light is about permission, and a driver with no conflicting
+         traffic in front of them at a red has a clear road and no right
+         to it. Without this a car stopped at a red launched the instant
+         nothing was crossing -- measured, 20 of 56 launches were on a
+         red, 13 of them left turns. */
+      const accepted = me.accepted || (me.stoppedAt != null && !view.held && !view.hold);
       /* `LAUNCHED` stays as the physical backstop, for a driver who
          never came to a decision because they never came to a stop. */
       const going = me.going || accepted || (stoppedAt != null && v > LAUNCHED);
