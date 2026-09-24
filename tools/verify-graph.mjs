@@ -221,7 +221,14 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   check(minSeamGap > 1.0, `the closest two cars on one lane across a seam came was ${minSeamGap.toFixed(2)} m of gap`);
   check(levelsCrossed > 0, `${levelsCrossed} car-ticks had two cars within a car's length in plan on different levels -- the overpass, and they are not overlaps`);
   const spawnedAtEdges = edgesOf(two.w.course).every((e) => !two.w.course.joins[`${e.k}|${e.side}`]);
-  check(spawnedAtEdges && edgesOf(two.w.course).length === 16, `traffic enters only at dangling ends, lane by lane: ${edgesOf(two.w.course).length} of them (five two-lane roads and two one-lane roads to the edge, the overpass's four lanes)`);
+  /* How many there should be, from the map rather than a literal: one
+     inbound lane per lane of every road end that meets no node. The
+     literal this replaced went stale the day the map gained an
+     arterial, which is what a literal about a map is for. */
+  const nodeAt = (p) => l.nodes.some((n) => Math.hypot(n.at.x - p.x, n.at.y - p.y) <= 4);
+  const dangling = l.roads.flatMap((r) => [r.pts[0], r.pts[r.pts.length - 1]].filter((p) => !nodeAt(p)).map(() => r.lanes));
+  const expected = dangling.reduce((s, n) => s + n, 0);
+  check(spawnedAtEdges && edgesOf(two.w.course).length === expected, `traffic enters only at dangling ends, lane by lane: ${edgesOf(two.w.course).length} of them, one per lane of the ${dangling.length} road ends that meet no node (${expected} expected)`);
 }
 
 /* 6. Stage 0's map through the graph: four lanes with nothing on them, driven end to end. */
@@ -261,8 +268,8 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
 {
   const l = loadMap(testMap1());
   const speeds = Object.fromEntries(l.roads.map((r) => [r.id, r.speed]));
-  check(new Set(Object.values(speeds)).size > 1 && speeds["C-southeast"] === 40 && speeds["C-A"] === 40,
-    `the test map posts more than one speed: collectors at 50, the residential diagonals at 40, and C-A lowered to 40 by its own bend (${new Set(Object.values(speeds)).size} distinct)`);
+  check(new Set(Object.values(speeds)).size === 3 && speeds["A-west"] === 60 && speeds["C-southeast"] === 40 && speeds["C-A"] === 40,
+    `the test map posts three speeds: the arterial at 60, collectors at 50, the residential streets at 40, and C-A lowered to 40 by its own bend (${[...new Set(Object.values(speeds))].sort().join(", ")})`);
 
   /* Every leg of every node carries its road's speed, so nothing
      downstream has to look a road up by name. */
@@ -273,8 +280,14 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   check(postedAt(g, 0, Object.keys(g.at[0].layout.paths)[0]) > 0 && postedAt(g, 0, "nope/nope") === null,
     "postedAt gives the speed of the road a route comes in on, and null where the course cannot say (a grid course keeps the world's one limit)");
 
+  /* The one limit the "off" world is told is the FASTEST road's, so
+     both worlds size their geometry identically and the flag is the
+     only difference. (When the fastest road was 50 this was 50; the map
+     gained a 60 arterial, and comparing against 50 then moved the
+     geometry too, which is not a controlled comparison.) */
+  const fastest = Math.max(...Object.values(speeds));
   const drive = (posted) => {
-    let w = seedGraph(3, 50, l, { every: 1.1, posted });
+    let w = seedGraph(3, fastest, l, { every: 1.1, posted });
     for (let i = 0; i < 1200; i++) w = step(w);
     const by = {};
     for (const a of w.actors) {
@@ -285,29 +298,34 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   };
   const off = drive(false), on = drive(true);
 
-  check(off.w.road.kmh === 50 && on.w.road.kmh === 50 && on.w.road.speed >= Math.max(...Object.values(speeds)) / 3.6,
+  check(off.w.road.kmh === fastest && on.w.road.kmh === fastest && Math.abs(on.w.road.speed - off.w.road.speed) < 1e-9,
     `the geometry speed is the fastest road (${(on.w.road.speed * 3.6).toFixed(0)} km/h), so an approach sized under posted speeds is never shorter than it was`);
 
   /* Off, a car on the 40 roads wants the 50 the world was told; on, it
      wants the 40 the sign says. Measured as the mean over the cars
      actually there, which is what a driver on that street meets. */
   const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
-  const slowRoads = Object.keys(speeds).filter((r) => speeds[r] === 40);
-  const fastRoads = Object.keys(speeds).filter((r) => speeds[r] === 50);
+  const slowRoads = Object.keys(speeds).filter((r) => speeds[r] < fastest);
+  const fastRoads = Object.keys(speeds).filter((r) => speeds[r] === fastest);
   const movedDown = slowRoads.filter((r) => on.by[r] && off.by[r] && mean(on.by[r]) < mean(off.by[r]) - 3);
-  check(movedDown.length >= 2, `cars on the posted-40 roads want less than they did at one limit: ${movedDown.map((r) => `${r} ${mean(off.by[r]).toFixed(0)}->${mean(on.by[r]).toFixed(0)}`).join(", ")}`);
+  check(movedDown.length >= 4, `cars on every road posted below ${fastest} want less than they did at one limit: ${movedDown.map((r) => `${r} ${mean(off.by[r]).toFixed(0)}->${mean(on.by[r]).toFixed(0)}`).join(", ")}`);
   const unmoved = fastRoads.filter((r) => on.by[r] && off.by[r] && Math.abs(mean(on.by[r]) - mean(off.by[r])) < 0.5);
   check(unmoved.length >= fastRoads.filter((r) => on.by[r] && off.by[r]).length - 1,
-    `and the posted-50 roads are where they were -- ${unmoved.length} of ${fastRoads.filter((r) => on.by[r] && off.by[r]).length} unchanged, which is the partition that says the change is confined to the roads whose sign differs`);
+    `and the posted-${fastest} roads are where they were -- ${unmoved.length} of ${fastRoads.filter((r) => on.by[r] && off.by[r]).length} unchanged, which is the partition that says the change is confined to the roads whose sign differs`);
 
   /* THE DRIVER IS UNTOUCHED: only the limit moved, so the spread of
      boldness within one road is the same shape. `wantedSpeed` is
      linear in the limit, so the ratio of v0 to the road's own speed is
      the driver, and its spread must not narrow. */
-  const ratio = (d) => Object.entries(d.by).flatMap(([r, vs]) => vs.map((v) => v / speeds[r]));
+  /* Boldness is relative to the limit IN FORCE: the one limit in the
+     "off" world, the road's own sign in the "on" one. Dividing both by
+     the posted sign was only harmless while nearly every road posted
+     the one limit; with an arterial on the map it mixed three limits
+     into the "off" spread and measured the map, not the driver. */
+  const ratio = (d, posted) => Object.entries(d.by).flatMap(([r, vs]) => vs.map((v) => v / (posted ? speeds[r] : fastest)));
   const spread = (xs) => { const m = mean(xs); return Math.sqrt(mean(xs.map((x) => (x - m) ** 2))); };
-  check(Math.abs(spread(ratio(on)) - spread(ratio(off))) < 0.06,
-    `the driver is the driver: boldness relative to the limit spreads ${spread(ratio(off)).toFixed(3)} at one limit and ${spread(ratio(on)).toFixed(3)} at posted speeds -- the LIMIT moved, not the person`);
+  check(Math.abs(spread(ratio(on, true)) - spread(ratio(off, false))) < 0.06,
+    `the driver is the driver: boldness relative to the limit in force spreads ${spread(ratio(off, false)).toFixed(3)} at one limit and ${spread(ratio(on, true)).toFixed(3)} at posted speeds -- the LIMIT moved, not the person`);
 
   /* A car that goes round the loop meets more than one limit, so the
      speed has to follow it rather than being set once at spawn. */
@@ -316,7 +334,7 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
     const L = on.w.course.at[a.k].layout.legs[on.w.course.at[a.k].layout.paths[a.route].from];
     return speeds[L.road] === 40;
   });
-  check(travelled.length > 0 && onSlow.every((a) => a.v0 * 3.6 < 50 * 1.35),
+  check(travelled.length > 0 && onSlow.every((a) => a.v0 * 3.6 < 40 * 1.35 + 0.01),
     `and it follows them along the way: ${travelled.length} cars had been through two or more nodes, and every one of them now on a 40 road wants a 40 road's speed, not the one it spawned with`);
 
   /* SABOTAGE. If the flag did nothing, the two drives would be the same

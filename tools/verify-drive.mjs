@@ -27,6 +27,10 @@ const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (
 const line = (a, b, n = 30) => Array.from({ length: n + 1 }, (_, i) => ({ x: a.x + ((b.x - a.x) * i) / n, y: a.y + ((b.y - a.y) * i) / n, z: 0 }));
 
 const loaded = loadMap(testMap1());
+/* A road end's curb lane, from the map rather than a literal: the map
+   gained a three-lane arterial and every "#1" that meant "the curb"
+   quietly started meaning "the middle". */
+const curbOf = (roadEnd) => `${roadEnd}#${loaded.roads.find((r) => r.id === roadEnd.split("|")[0]).lanes - 1}`;
 /* The player at a road end, in its curb lane. */
 const startAt = (world, legId) => {
   const [roadId, end] = legId.split("|");
@@ -58,11 +62,13 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   check(to(null).intent === "straight" && to("right").intent === "right" && to("left").intent === "straight", `at the crossroads from the north in the curb lane: no signal is straight on, right is ${to("right").to}, and a left signal has no route from this lane, so straight on`);
   const inner = A.paths[routeForSignal(A, "A-north|end#0", "left")];
   check(inner.intent === "left", `from the lane beside the centre line, left is ${inner.to}`);
-  const T = g.at.find((s) => s.node === "n1").layout;      // the T, arriving from A along A-B: the road goes north or south
-  const fromT = "A-B|end#1";
-  check(T.paths[routeForSignal(T, fromT, null)].intent !== "straight" || true, "at a T with no straight ahead the car has to pick a way");
-  const noSig = T.paths[routeForSignal(T, fromT, null)], left = T.paths[routeForSignal(T, "A-B|end#0", "left")], right = T.paths[routeForSignal(T, fromT, "right")];
-  check(left.intent === "left" && right.intent === "right" && noSig.intent !== "straight", `at the T arriving along the top road: left from the inner lane goes ${left.to}, right from the curb lane goes ${right.to}, and with no signal the car takes the turn its lane allows (${noSig.intent})`);
+  /* The T is D now -- B became a crossroads when the arterial was given
+     a way through it -- arriving from B, heading south: the road goes
+     east or west. */
+  const T = g.at.find((s) => s.node === "n3").layout;
+  const fromT = curbOf("B-D|end");
+  const noSig = T.paths[routeForSignal(T, fromT, null)], left = T.paths[routeForSignal(T, "B-D|end#0", "left")], right = T.paths[routeForSignal(T, fromT, "right")];
+  check(left.intent === "left" && right.intent === "right" && noSig.intent !== "straight", `at the T arriving from the north: left from the inner lane goes ${left.to}, right from the curb lane goes ${right.to}, and with no signal the car takes the turn its lane allows (${noSig.intent})`);
   const F = g.at.find((s) => s.node === "n2").layout;      // the five-way, arriving from the east along C-D, in the inner lane
   const fromF = "C-D|start#0";
   const lefts = F.routesFrom(fromF).filter((r) => F.paths[r].intent === "left");
@@ -81,7 +87,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
      before the line: left has no route from this lane (straight on stands), right does, then straight. */
   const r = drive(w0, me, 60, (m) => ({ steer: 0, slider: m.v < 8 ? 0.6 : 0.1, signal: m.s < 50 ? null : m.s < 120 ? "left" : m.s < 200 ? "right" : null }));
   const changed = r.record.filter((m, i) => i > 0 && m.route !== r.record[i - 1].route && m.k === r.record[i - 1].k);
-  check(changed.length === 2 && changed.every((m) => m.s <= path0.stopAt) && changed[0].route.endsWith("A-west|end#1") && r.record[r.record.length - 1].route.endsWith("C-A|end#1"), `the route follows the signal while the car is short of the line: a left the lane cannot make leaves it straight on, right takes the right, off takes it back -- ${changed.length} changes, all before ${path0.stopAt.toFixed(0)} m`);
+  check(changed.length === 2 && changed.every((m) => m.s <= path0.stopAt) && changed[0].route.endsWith(curbOf("A-west|end")) && r.record[r.record.length - 1].route.endsWith("C-A|end#1"), `the route follows the signal while the car is short of the line: a left the lane cannot make leaves it straight on, right takes the right, off takes it back -- ${changed.length} changes, all before ${path0.stopAt.toFixed(0)} m`);
   const committedAt = r.record.find((m) => m.s > path0.stopAt);
   const after = r.record.filter((m) => m.k === committedAt?.k && m.s > path0.stopAt);
   check(committedAt && after.every((m) => m.route === committedAt.route), "past the line the route no longer changes whatever the signal says");
@@ -113,7 +119,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   const worstOff = Math.max(...inBox.map((m) => Math.abs(m.off)));
   check(inBox.length > 10 && worstOff < 0.3, `through a right turn with the wheel straight the car holds the committed arc (${inBox.length} ticks in the box, at most ${worstOff.toFixed(2)} m off its line)`);
   const out = r.record[r.record.length - 1];
-  check(w0.course.at[out.k].layout.paths[out.route].to === "A-west|end#1" && out.leg === 0, `and comes out on the west road in its curb lane, which runs to the map's edge (${out.atEdge ? "reached" : "not yet reached"})`);
+  check(w0.course.at[out.k].layout.paths[out.route].to === curbOf("A-west|end") && out.leg === 0, `and comes out on the west road in its curb lane, which runs to the map's edge (${out.atEdge ? "reached" : "not yet reached"})`);
   /* The bend on C-A, wheel straight: the road turns out from under the car. */
   const meC = startAt(w0, "C-A|end");   // arriving at A from C, along the bend
   const rb = drive(w0, { ...meC, v: 12 }, 25, () => ({ steer: 0, slider: 0.4, signal: null }));
@@ -199,23 +205,35 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
     const layout = w0.course.at[k].layout, route = routeForSignal(layout, leg, sig), path = layout.paths[route];
     let me = { ...playerAt(w0, k, route), s: path.stopAt - 0.5, v: kmh / 3.6, signal: sig, going: true, accepted: true, off: 0 };
     let world = withDriver(w0, me), offMax = 0;
-    for (let i = 0; i < 400 && !me.lastTurn; i++) {
+    for (let i = 0; i < 1200 && !me.lastTurn; i++) {   /* a minute: a crawl round the wider arterial arc takes more than twenty seconds */
       me = stepDriver(me, { steer: 0, slider: holdAt(me.v, me.grade ?? 0) }, world, DT);   // held in the band: the speed is the entry speed unless the tyres take it
       world = withDriver(world, me);
       if (me.turn) offMax = Math.max(offMax, Math.abs(me.off));
     }
     return { ...me.lastTurn, offMax, vOut: me.v };
   };
-  const left = [12, 18, 24, 26, 30, 36, 40].map((kmh) => [kmh, through("A-north|end#0", "left", kmh)]);
-  const right = [12, 18, 22, 26, 30, 36].map((kmh) => [kmh, through("A-north|end#1", "right", kmh)]);
-  const say = (rows) => rows.map(([kmh, t]) => `${kmh}: ${t.verdict}`).join(", ");
-  check(left.every(([, t]) => t.verdict) && right.every(([, t]) => t.verdict), "a turn is judged as the car leaves the box, every time");
-  check(left.every(([kmh, t]) => kmh <= 26 ? t.verdict === "clean" : t.verdict !== "clean") && Math.round(left[0][1].vClean * 3.6) === 26, `the crossroads left is clean up to the maintainer's 26 km/h and not above it (${say(left)})`);
-  check(right.every(([kmh, t]) => kmh <= 22 ? t.verdict === "clean" : t.verdict !== "clean") && Math.round(right[0][1].vClean * 3.6) === 22, `the curb-lane right is clean up to his 22 km/h, which nobody typed in (${say(right)})`);
-  check(left.every(([, t], i) => i === 0 || RANK[t.verdict] >= RANK[left[i - 1][1].verdict]) && right.every(([, t], i) => i === 0 || RANK[t.verdict] >= RANK[right[i - 1][1].verdict]), "arriving faster never earns a better verdict");
-  const fast = left[left.length - 1][1], ok = left[2][1];
-  check(fast.verdict === "wide" && fast.offMax > 0.9 && ok.offMax < 0.05, `at 40 km/h the left runs wide -- ${fast.offMax.toFixed(2)} m off the line against ${ok.offMax.toFixed(2)} at 24 -- because the tyres cannot turn the car as hard as the arc asks`);
-  check(left.every(([kmh, t]) => t.verdict !== "clean" || Math.abs(t.vOut * 3.6 - kmh) < 1) && left.filter(([, t]) => t.verdict === "rough").every(([kmh, t]) => t.vOut * 3.6 < kmh - 0.5 || t.scrubbed < 0.3), `a clean turn carries its speed out; a rough one scrubs it (30 km/h in, ${(left[4][1].vOut * 3.6).toFixed(0)} out)`);
+  /* EACH CORNER AGAINST ITS OWN ARC. The clean speed is sqrt(CLEAN r)
+     for the arc the geometry built, so a left onto the three-lane
+     arterial -- a wider box, a wider arc -- rightly wants more than a
+     left onto a collector did. The speeds are sampled as fractions of
+     that corner's own clean speed, so the property is the model's and
+     not a number about one map; the maintainer's numbers anchor CLEAN
+     itself, at the end of this section. */
+  const probe = (leg, sig) => through(leg, sig, 10).vClean;
+  const sweep = (leg, sig) => { const vc = probe(leg, sig) * 3.6; return [0.45, 0.7, 0.95, 1.1, 1.3, 1.55].map((f) => [Math.round(f * vc * 10) / 10, f, through(leg, sig, f * vc)]); };
+  const left = sweep("A-north|end#0", "left"), right = sweep(curbOf("A-north|end"), "right");
+  const say = (rows) => rows.map(([kmh, , t]) => `${kmh}: ${t.verdict}`).join(", ");
+  check(left.every(([, , t]) => t.verdict) && right.every(([, , t]) => t.verdict), "a turn is judged as the car leaves the box, every time");
+  check(left.every(([, f, t]) => (f <= 0.95 ? t.verdict === "clean" : t.verdict !== "clean") || (f < 0.5 && t.verdict === "slow")),
+    `the crossroads left wants ${Math.round(left[0][2].vClean * 3.6)} km/h on its ${left[0][2].rMin.toFixed(1)} m arc: clean below it, not above (${say(left)})`);
+  check(right.every(([, f, t]) => (f <= 0.95 ? t.verdict === "clean" : t.verdict !== "clean") || (f < 0.5 && t.verdict === "slow")),
+    `the curb-lane right wants ${Math.round(right[0][2].vClean * 3.6)} km/h on its ${right[0][2].rMin.toFixed(1)} m arc: clean below it, not above (${say(right)})`);
+  check(left.every(([, , t], i) => i === 0 || RANK[t.verdict] >= RANK[left[i - 1][2].verdict]) && right.every(([, , t], i) => i === 0 || RANK[t.verdict] >= RANK[right[i - 1][2].verdict]), "arriving faster never earns a better verdict");
+  const [fastKmh, , fast] = left[left.length - 1], [okKmh, , ok] = left[2];
+  check(fast.verdict === "wide" && fast.offMax > 0.9 && ok.offMax < 0.05, `at ${fastKmh} km/h -- half again the clean speed -- the left runs wide, ${fast.offMax.toFixed(2)} m off the line against ${ok.offMax.toFixed(2)} at ${okKmh}, because the tyres cannot turn the car as hard as the arc asks`);
+  const roughRow = left.find(([, , t]) => t.verdict === "rough");
+  check(left.every(([kmh, , t]) => t.verdict !== "clean" || Math.abs(t.vOut * 3.6 - kmh) < 1) && roughRow && roughRow[2].vOut * 3.6 < roughRow[0] - 0.5,
+    `a clean turn carries its speed out; a rough one scrubs it (${roughRow?.[0]} km/h in, ${(roughRow?.[2].vOut * 3.6).toFixed(0)} out)`);
   const crawl = through("A-north|end#0", "left", 6);
   check(crawl.verdict === "slow", `and crawling round at 6 km/h is called what it is: ${crawl.verdict}`);
   const straight = (() => { const k = 0, layout = w0.course.at[k].layout, route = routeForSignal(layout, "A-north|end#1", null), path = layout.paths[route];

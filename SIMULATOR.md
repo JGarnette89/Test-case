@@ -1095,6 +1095,63 @@ lowered to 40, nobody arrives while the map is over it, it drains in
 92 s and then holds 40; raised to 200, it tops up within a minute, with
 nobody through anybody.
 
+#### 1.1.10 Roads that feel different, 24 September
+
+"We need different roads and they need to feel different to get a good
+sense." Three things, in the order they reach the driver's seat:
+
+- **Every road is driven at the speed it posts** -- the flag from 1.1.6
+  is on for `#/map`, so the traffic on the arterial runs at 60 and on
+  the residential streets at 40. The single "Limit" choice is gone; a
+  speed-limit sign sits beside the speedometer showing the limit of the
+  road you are on, red when you are more than 3 km/h over it.
+- **The map has three kinds of road** (`src/map/samples.js`): an
+  ARTERIAL east-west through the lights, three lanes each way at 60; the
+  loop's COLLECTORS at 50 with two; the streets off the five-way
+  RESIDENTIAL, one lane at 40. The arterial was given a road east of B
+  (B-east) so it runs straight through B rather than ending at a T, and
+  B became a crossroads with the arterial as its through road and the
+  collector stopping -- the two-way stop the map already had, now the
+  right way round for the roads it joins.
+- **The centre line says what kind of road it is**: a solid double
+  yellow on the arterial, the broken single on a collector, nothing on
+  a residential street -- the cheapest cue of the three and the one a
+  driver reads first.
+
+**A limit found on the way, and it is the maintainer's.** A three-lane
+approach into a T strands its middle lane: there is no straight ahead,
+and `laneForTurn` lets a right go only from the curb lane and a left
+only from beside the centre line. What the middle lane may do there is
+a road marking the format does not carry yet -- a lane-use arrow -- and
+a traffic-law question rather than something to guess, so the arterial
+was routed through crossroads instead of into a T. Surfaced, not
+decided.
+
+**The crossroads corners now want more speed, and that is correct.**
+The left from A-north now turns onto a three-lane road, so the box is
+wider and the arc is 17-18 m instead of 12.7: its clean speed is 31
+km/h, and the curb-lane right onto the arterial is 26. `CLEAN` has not
+moved -- it is still the maintainer's 26 km/h on a 12.7 m arc -- and the
+corner wants what that constant says an arc of this size wants. The
+table in 1.1.3 describes the old geometry. `verify-drive.mjs` section 6
+now checks every corner against its own arc rather than against a
+number about one map, which is what let this change without anybody
+touching the check's meaning.
+
+Checks restated against the new map rather than loosened: the entry
+count is derived from the map's own dangling road ends (a literal went
+stale the moment the map gained an arterial); the posted-speed
+comparison runs its "one limit" world at the fastest road's limit, so
+the flag is the only difference (comparing at 50 moved the geometry
+too); boldness is measured against the limit in force; and the T tests
+use D, the T that remains. Traffic on the new map: four minutes at 120
+cars and at 200, no overlapping car-ticks.
+
+What would make roads feel more different still, and is not built:
+parked cars along residential curbs (they narrow the street and hide
+what comes out of it -- the old engine built them, 1.1's segment
+hazards), sidewalks and roadside by zone, and lane-use arrows.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,

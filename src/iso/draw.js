@@ -213,7 +213,17 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
         ctx.lineWidth = Math.max(1, 0.15 * k);
         ctx.strokeStyle = "rgba(250,250,242,0.8)";
         seg(ctx, P, a, b); seg(ctx, P, d, c);
-        if (i % 3 !== 2) { ctx.strokeStyle = C.yellow; seg(ctx, P, pts[i], pts[i + 1]); }
+        /* THE CENTRE LINE SAYS WHAT KIND OF ROAD THIS IS, the way it does
+           on a real one: an arterial carries a solid double yellow, a
+           collector the broken single, a residential street nothing at
+           all. The cheapest of the cues that make three roads feel like
+           three kinds of place (SIMULATOR.md 1.1.10). */
+        if (road.kind === "arterial" || road.kind === "highway") {
+          const p0 = pts[i], p1 = pts[i + 1], len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+          const ox = (-(p1.y - p0.y) / len) * 0.14, oy = ((p1.x - p0.x) / len) * 0.14;
+          ctx.strokeStyle = C.yellow;
+          for (const s of [-1, 1]) seg(ctx, P, { x: p0.x + s * ox, y: p0.y + s * oy, z: p0.z }, { x: p1.x + s * ox, y: p1.y + s * oy, z: p1.z });
+        } else if (road.kind !== "residential" && i % 3 !== 2) { ctx.strokeStyle = C.yellow; seg(ctx, P, pts[i], pts[i + 1]); }
         if (road.laneLines && i % 2 === 0) { ctx.strokeStyle = "rgba(250,250,242,0.75)"; for (const line of road.laneLines) seg(ctx, P, line[i], line[i + 1]); }
       };
       const fill = (p, q, r, s) => {

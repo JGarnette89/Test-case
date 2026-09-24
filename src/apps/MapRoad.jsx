@@ -28,7 +28,7 @@ import { loadMap, groundFor } from "../map/load.js";
 import { testMap1 } from "../map/samples.js";
 import { seedGraph, step, poseOf, DT } from "../sim/crossing.js";
 import { playerOn, stepDriver, driverPose, withDriver, aheadOf } from "../sim/drive.js";
-import { junctionsOf } from "../sim/graph.js";
+import { junctionsOf, postedAt } from "../sim/graph.js";
 import { touching } from "../sim/player.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
@@ -62,7 +62,12 @@ function sceneFor(seed, kmh, every, drive, cars = CARS.start) {
   const loaded = loadMap(testMap1());
   if (!loaded.ok) throw new Error(`test map: ${loaded.error}`);
   const b = loaded.bounds;
-  let world = seedGraph(seed, kmh, loaded, { every, target: cars });
+  /* POSTED SPEEDS ON (SIMULATOR.md 1.1.6): every road is driven at the
+     limit it posts, so an arterial and a residential street are not the
+     same road to drive -- which is the first thing that makes them feel
+     different. The `kmh` passed in is then only what sizes the geometry
+     (the fastest road's), never what anybody drives at. */
+  let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true });
   let me = null;
   if (drive) {
     me = playerOn(world.course, START.road, START.end);   // the curb lane, driving down to the crossroads
@@ -246,7 +251,7 @@ export default function MapRoad() {
 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
-        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${sum.fps} fps · p95 ${sum.p95}ms · limit ${limit}`;
+        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${sum.fps} fps · p95 ${sum.p95}ms`;
         fpsAt = now;
       }
       if (sc.me) {
@@ -256,6 +261,21 @@ export default function MapRoad() {
         ctx.fillText(`${Math.round(me.v * 3.6)}`, size.w / 2, 6);
         ctx.fillStyle = "rgba(230,232,236,0.8)"; ctx.font = "12px system-ui, sans-serif";
         ctx.fillText("km/h", size.w / 2, 38);
+        /* THE LIMIT OF THE ROAD YOU ARE ON, as a sign beside the speed:
+           white face, black figure, red when you are over it by more
+           than a speedometer's error. It is the road's, from the same
+           posted speed the traffic drives to (graph.js postedAt). */
+        const posted = postedAt(sc.world.course, me.k, me.route);
+        if (posted) {
+          const lim = Math.round((posted * 3.6) / 10) * 10, over = me.v * 3.6 > lim + 3;
+          const sx = size.w / 2 + 46, sy = 8, sw = 30, sh = 38;
+          ctx.fillStyle = over ? "#e0574f" : "#f4f4f2"; ctx.fillRect(sx, sy, sw, sh);
+          ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.strokeRect(sx + 2, sy + 2, sw - 4, sh - 4);
+          ctx.fillStyle = over ? "#fff" : "#111"; ctx.font = "700 7px system-ui, sans-serif"; ctx.textBaseline = "top";
+          ctx.fillText("MAX", sx + sw / 2, sy + 5);
+          ctx.font = "700 15px system-ui, sans-serif"; ctx.fillText(String(lim), sx + sw / 2, sy + 15);
+          ctx.textBaseline = "top";
+        }
         /* WHAT THE CAR IS ABOUT TO DO, said back: the turn the signal
            has committed it to at the node ahead, and once past the line
            that it is committed. The feedback that makes the indicator a
@@ -330,11 +350,6 @@ export default function MapRoad() {
             <button className="btn" style={{ ...S.chip, borderColor: rotate ? C.amber : "rgba(255,255,255,0.12)", color: rotate ? C.white : DIM }}
               onClick={() => setRotate((r) => !r)}>{rotate ? "View turns with the car" : "Fixed view"}</button>
           )}
-          <span style={S.label}>Limit</span>
-          {LIMITS.map((kmh) => (
-            <button key={kmh} className="btn" style={{ ...S.chip, minWidth: 0, padding: "0 10px", borderColor: limit === kmh ? C.green : "rgba(255,255,255,0.12)", color: limit === kmh ? C.white : DIM }}
-              onClick={() => { setSetting("limit", kmh); restart(seed, kmh); }}>{kmh}</button>
-          ))}
           {/* LIVE, not a restart: the edges top the map up to the new
               count, or stop adding while cars leave, so moving the dial
               never rebuilds the world under the driver. */}
@@ -370,8 +385,10 @@ export default function MapRoad() {
           <b>What it deliberately does not do yet.</b> Nobody changes lane
           but you. Nobody reads your signal but the car. Nothing is scored, nothing
           is a fault. The edge of the map is the end of the road. Signs
-          are boxes on posts, not sprites. Flat ground under a road that
-          climbs. Every car drives at the one limit chosen here.
+          are boxes on posts, not sprites. The roads are three kinds -- an arterial through the lights at
+          60, collectors at 50, residential streets at 40 -- and every car,
+          yours included on the sign by the speed, is on the road's own
+          limit.
         </div>
       </div>
     </div>
