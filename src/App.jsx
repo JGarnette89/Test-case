@@ -72,14 +72,27 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
 
    Not accessible is not the same as deletable. Nothing here is removed
    without proving it unused first.
+
+   AND THE MENU SHOWS WHAT IS BEING TESTED LIVE, NOTHING ELSE. The
+   maintainer, 24 September: "there are many options in the submenu but
+   basically none are needed except whatever is being tested live." So
+   an entry is on the menu only if it carries `live: true` -- today the
+   map, which is the simulator as it stands, and the performance ramp,
+   which he runs on the phone. Every other entry stays in this array so
+   its hash still resolves: an earlier stage can be opened by address to
+   compare against, and verify-screens renders every route from its own
+   list whatever the menu shows, so an unlisted screen does not rot
+   unnoticed. A new screen goes live by earning the flag, and the one it
+   replaces loses it.
    ===================================================================== */
 const MODES = [
   {
     id: "map",
-    name: "Stage 1 — the map",
-    kicker: "The simulator — a road network, with traffic on it",
+    live: true,
+    name: "The map",
+    kicker: "Live — the simulator, drive it or watch it",
     blurb:
-      "A hand-written map: a loop with a hill, a T, a crossroads, a skewed five-way, an overpass. Loaded through the map format, run by the sim on a graph — intersections wherever roads meet, at whatever bearings, the same right-of-way rules — and drawn isometrically. Traffic enters at every dangling end and turns where it likes. No player yet: that is the next increment, with the turn-commit control.",
+      "The test map in traffic: signals, stop signs, a five-way, an overpass, multi-lane roads. Drive it yourself or watch; the Cars dial sets how many are on it. The traffic changes lane, keeps right and slows for corners by each driver's ratings.",
     Icon: Milestone,
     accent: C.amber,
     Component: MapRoad,
@@ -96,10 +109,11 @@ const MODES = [
   },
   {
     id: "iso",
-    name: "Stage 0 — isometric",
-    kicker: "The simulator — a curve, a hill, an overpass",
+    live: true,
+    name: "Performance",
+    kicker: "Live — the budget ramp, run on the phone",
     blurb:
-      "The traffic that already works, drawn isometrically on a road that bends and climbs, with a second road crossing over it on a bridge. Nothing else: no intersection, no player, no map, no sprites — the cars are code-drawn boxes at 32 headings. It exists to answer two questions by eye: does an isometric world with free-drawn curves and real height look right, and does the draw order survive an overpass. If either answer is no, everything after it changes.",
+      "The performance instrument: a ramp of loads on stage 0's isometric roads, held until the frame budget breaks, and a report to copy. Run it on the device being measured, from the production build.",
     Icon: Milestone,
     accent: C.amber,
     Component: IsoRoad,
@@ -228,9 +242,9 @@ const MODES = [
   })),
 ];
 
-/* What the menus actually offer. Everything else is reachable only by
-   typing its hash. */
-const LIVE = MODES.filter((m) => !m.legacy);
+/* What the menus actually offer: what is being tested live. Everything
+   else is reachable only by typing its hash. */
+const LIVE = MODES.filter((m) => m.live);
 
 /* --- Routing --------------------------------------------------------
    The hash, not state, is the source of truth: a reload keeps you where
@@ -399,16 +413,12 @@ function Home() {
         <div style={st.brandTitle}>
           RIGHT OF <span style={{ color: C.yellow }}>WAY</span>
         </div>
-        <div style={st.brandSub}>{partOfDay()}. You are the examiner.</div>
+        <div style={st.brandSub}>{partOfDay()}. The traffic simulator.</div>
       </div>
 
       <div style={st.premise}>
-        You sit in the passenger seat while a candidate drives a set course. You
-        give the directions, in time for them to be{" "}
-        <strong style={{ color: C.green }}>followed</strong>, and you mark what
-        they got wrong — on a sheet at the end of each section, not the instant
-        you see it. Nothing hidden can be marked, and you pay for the faults you
-        invent as well as the ones you miss.
+        What is being tested now. Earlier stages and the examiner game are
+        kept, and open by address for comparison.
       </div>
 
       <div style={st.cards}>
