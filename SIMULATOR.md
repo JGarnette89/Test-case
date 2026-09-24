@@ -1252,6 +1252,97 @@ That right turn at the T wants 14 km/h because its arc is 3.6 m -- the
 tight right-turn radius that is DECISIONS.md 5.15.12's open question,
 still the maintainer's to rule on.
 
+#### 1.1.13 Lane changes, from the ratings -- 24 September
+
+The brief: lane changing and overtaking "as behaviour arising from the
+ratings rather than as a manoeuvre the AI performs on cue", reading "as
+drivers with different temperaments, not one lane-change algorithm",
+without undoing the performance headroom. `src/sim/lanechange.js`.
+
+**Each part of the manoeuvre is decided by the axis that governs it.**
+- CONFIDENCE decides whether, and how tight. The speed gain it takes to
+  bother scales with `caution` (LC_GAIN, 2 m/s at caution 1, a flagged
+  design constant), and so does the gap taken, against stage 0's own
+  following model: a competent driver moves only into the gap the car
+  behind would leave them; a bold one takes as little as a third of it,
+  never less than 1.5 m bumper to bumper.
+- OBSERVATION decides whether the gap was seen. A car beside or just
+  behind in the target lane is the blind spot; a driver can skip the
+  check with a probability that grows with their observation deficit,
+  start into the space, register the car after their registration
+  delay (the old engine's REACTION_FLOOR + deficit x REGISTER_SPAN) and
+  swing back to the lane they left. The abort is the fault an examiner
+  would see; nobody touches.
+- STEERING decides how cleanly they arrive: the blend takes longer and
+  runs past the new lane's centre by up to half the room -- the weave's
+  own bound -- in proportion to the deficit.
+- And a rule that is not a rating: a driver never leaves the lane their
+  turn needs. Changing lane to MAKE a turn is a second behaviour, not
+  built.
+
+A clean change takes 3.8 s, derived: a smoothstep lateral move of one
+lane peaks at 6L/T^2 sideways, set to the road's own comfort limit
+(course.js LATERAL, 0.15 g). The car switches route at the START of the
+change and is in both lanes for following until it ends, so the car
+behind in the new lane eases off for it and the one in the old lane
+keeps seeing it. Decisions are made twice a second, staggered, and only
+for cars held up by a slower one -- which is most of why it is cheap.
+
+**Measured, three seeds, 200 cars, two and a half minutes each
+(`verify-lanes.mjs`):** 242 lane changes by 1174 drivers; per driver,
+bold 0.52, middle 0.28, timid 0.07 -- bold drivers change 7.9 times as
+often as timid ones; 14 changes by bold drivers took a gap a competent
+driver would refuse (tightest 0.39 of the requirement), none by drivers
+at or above competent caution; of the times a driver considered a change
+with somebody in the blind spot, poor observers failed to see them 22%
+of the time and good ones 2%, and 13 of 14 misses ended in an abort;
+overshoot 0.30 m for poor steerers against 0.05 for sound ones. No car
+changed out of its turn's lane, none was mid-change past a line, none
+jumped, none touched -- at 120, 200 and 300 cars.
+
+**The cost, by controlled comparison** (same map, seed and count, the
+behaviour off and on, warmed and interleaved): 5% of the sim's tick at
+120 cars, 2% at 300. It does not eat the headroom. Separately, and worth
+knowing: the arterial added in 1.1.10 made the map itself dearer --
+about 9 ms a tick at 300 cars on this machine against 6 before -- which
+is the map, not lane changing, and is what the `#/map` dial at 300 on
+the phone will show.
+
+**Three things lane changing found, fixed or recorded:**
+- **A stop line inside another road's turning path.** The crossroads'
+  north approach is crossed at a shallow angle by the bowed road, so its
+  line is set back 23.7 m -- and turns began at the line, so a left
+  from there swept a 25 m arc through the spot where westbound traffic
+  waits at its red (sixteen overlapping car-ticks in two minutes at 300
+  cars, visible only once lane changes filled that lane). A driver
+  released from a line that far back drives forward and turns at the
+  corner, so the arc now starts where an ordinary line would be (graph.js
+  `pathBetween`). At a square crossroads the two are the same point:
+  the compass equivalence is still exact. `verify-graph.mjs` section 9
+  now checks the general property at every node -- no path within half a
+  car of a car waiting at another road's line -- and fails (0.73 m) with
+  the old turn start put back.
+- **The warm-up clock.** Lane changes begun during the warm-up kept a
+  start time forty seconds in the future after the clock was reset, so
+  their cars sat a lane off, in both lanes, until it caught up -- the
+  exact trap CLAUDE.md names ("the rebase has to move everything on that
+  clock"). Rebased now.
+- **Traffic does not slow for corners, and lane changing makes it
+  show.** With cars free to go round a waiting left-turner, more
+  left-turners reach the line at road speed, find the oncoming gap has
+  closed, and stand on the brakes: harsh braking at the signalised
+  crossroads rises from 3 car-ticks to 1383 in five minutes (0.4%),
+  almost none of it behind a cut-in. It is DECISIONS.md 5.15.13, the
+  corner-speed gap, and it is the next thing built -- with the same
+  derived cornering limit the player's car already uses. The amber check
+  in `verify-signal.mjs` runs with lane changes off until then, and says
+  why.
+
+Not built: changing lane to make a turn; returning to the right after
+passing (whether that is required on an urban multi-lane road is a
+traffic-law question for the maintainer, not assumed); signals on NPC
+lane changes, which is where knowledge would speak.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,

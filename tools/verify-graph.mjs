@@ -24,6 +24,7 @@ import { CAR, DT } from "../src/sim/traffic.js";
 import { loadMap } from "../src/map/load.js";
 import { emptyMap, road, stage0Map } from "../src/map/format.js";
 import { testMap1 } from "../src/map/samples.js";
+import { poseAt } from "../src/sim/intersection.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -370,6 +371,41 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   for (let i = 0; i < 20 * 60; i++) up = step(up);
   check(up.actors.length >= 180, `and raised to 200 it tops up at the edges within a minute (${up.actors.length})`);
   check(overlapping(up).length === 0, "with nobody driving through anybody at 200");
+}
+
+/* 9. A WAITING CAR IS OUT OF EVERY OTHER PATH'S WAY. The general form of
+   the flaw lane changing exposed on 24 September: a left turn from a
+   set-back line swept a 25 m arc through the spot where the opposite
+   traffic waits at its red. Right of way cannot fix that -- a car
+   standing inside somebody's path is hit by them whoever has the green
+   -- so it is a property of the geometry, checked at every node of the
+   test map: no path from another road comes within half a car of a car
+   waiting at any lane's line. The editor will draw junctions nobody has
+   looked at, which is why it is checked as a property and not as the
+   one case that was found. */
+{
+  const g = graphOf(loadMap(testMap1()), { lane: 3.6 });
+  let worst = { d: Infinity }, checked = 0;
+  for (const spot of g.at) {
+    if (spot.through) continue;
+    const L = spot.layout;
+    for (const legId of Object.keys(L.legs)) {
+      const mine = Object.values(L.paths).find((p) => p.from === legId);
+      if (!mine) continue;
+      const c = poseAt(mine, mine.stopAt - CAR.length / 2), h = (c.rot * Math.PI) / 180, ux = Math.cos(h), uy = Math.sin(h);
+      for (const p of Object.values(L.paths)) {
+        if (L.legs[p.from].base === L.legs[legId].base) continue;
+        for (let s = 0; s <= p.length; s += 0.5) {
+          const q = poseAt(p, s), dx = q.x - c.x, dy = q.y - c.y;
+          const along = Math.abs(dx * ux + dy * uy) - CAR.length / 2, across = Math.abs(-dx * uy + dy * ux) - CAR.width / 2;
+          const d = Math.hypot(Math.max(0, along), Math.max(0, across));
+          if (d < worst.d) worst = { d, node: spot.node, leg: legId, path: `${p.from}->${p.to}` };
+        }
+        checked++;
+      }
+    }
+  }
+  check(worst.d >= CAR.width / 2, `no path comes within half a car of a car waiting at another road's line, at any of the test map's nodes (${checked} leg-path pairs; closest ${worst.d.toFixed(2)} m, ${worst.path} past ${worst.leg} at ${worst.node})`);
 }
 
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }

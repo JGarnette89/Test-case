@@ -40,6 +40,7 @@ import {
 } from "./course.js";
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } from "./graph.js";
 import { controlUnder, lightAt } from "./signal.js";
+import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { rng } from "../engine/index.js";
 import { REACTION_FLOOR } from "../engine/score.js";
 import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../engine/awareness.js";
@@ -502,8 +503,19 @@ export function whatStops(me, world) {
     }
 
     /* THE CAR IN FRONT ON MY OWN APPROACH. Same leg, same lane, so this
-       is stage 0's queue arriving unchanged. */
-    if (theirs.from === mine.from && them.s > me.s) {
+       is stage 0's queue arriving unchanged.
+
+       A CAR CHANGING LANE IS IN BOTH LANES until the blend is over
+       (lanechange.js): the followers in the lane it is entering see it
+       from the moment it starts, which is what makes them ease off for
+       a car cutting in, and the ones in the lane it is leaving keep
+       seeing it until it has gone -- and so does the changer, of the car
+       it was behind. Without the second half a car half across the lane
+       line is invisible to the car behind it. */
+    const shareLane = theirs.from === mine.from
+      || (changing(them.lc, world.t) && them.lc.fromLeg === mine.from)
+      || (changing(me.lc, world.t) && (theirs.from === me.lc.fromLeg || (changing(them.lc, world.t) && them.lc.fromLeg === me.lc.fromLeg)));
+    if (shareLane && them.s > me.s) {
       const d = them.s - me.s - CAR.length;
       if (d < gap) { gap = d; leader = them; }
     }
@@ -650,7 +662,12 @@ export function step(world) {
         ? (me.openFor || 0) + DT : 0;
       const openedAt = me.openedAt ?? (openFor >= REACTION_FLOOR ? world.t : null);
       const waited = sitting && openedAt != null ? world.t - openedAt : (me.waited || 0);
-      return { ...at, a, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
+      const out = { ...at, a, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
+      /* LANE CHANGES (lanechange.js): only where a leg has more than one
+         lane, so every course the sim had before is untouched. Decided
+         from `raw` for who they are -- the ratings, the caution -- and
+         from the tick's own view for what is in front of them. */
+      return world.course.graph && world.laneChanges !== false ? laneStep(world, { ...raw, v: me.v }, out, view) : out;
     })
     /* AND OFF THE END OF ONE PATH IS THE START OF THE NEXT, rather than
        the end of the world. The two intersections are placed so those are
@@ -684,6 +701,7 @@ export function step(world) {
         leg: (me.leg ?? 0) + 1,
         stoppedAt: null, going: false, accepted: false,
         openFor: 0, openedAt: null,
+        lc: null,   // a lane change finishes before the line; never carried over a seam
       };
     })
     .filter(Boolean);
@@ -1000,7 +1018,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
@@ -1026,7 +1044,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, spawned: 0, nextAt: 0, actors: [] };
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, spawned: 0, nextAt: 0, actors: [] };
   /* Long enough for a car to have crossed the longest road twice: the
      sum of every road would be an upper bound and cost six seconds of
      seeding on a desktop for a kilometre-square map, which on a phone
@@ -1069,7 +1087,15 @@ function warmed(w0, acrossIt) {
   const { past: _warm, ...rebased } = w;
   return {
     ...rebased, t: 0, tick: 0, nextAt: Math.max(0, w.nextAt - shift),
-    actors: w.actors.map((a) => ({ ...a, stoppedAt: back(a.stoppedAt), openedAt: back(a.openedAt) })),
+    /* ...and a lane change is on that clock too: one begun in the warm-up
+       kept a start forty seconds in the future, so its car sat a whole
+       lane off, in both lanes, until the clock caught up -- found as a
+       3.6 m jump at a seam (SIMULATOR.md 1.1.13). */
+    actors: w.actors.map((a) => ({
+      ...a, stoppedAt: back(a.stoppedAt), openedAt: back(a.openedAt),
+      lcDone: back(a.lcDone ?? null),
+      ...(a.lc ? { lc: { ...a.lc, t0: a.lc.t0 - shift } } : {}),
+    })),
   };
 }
 
@@ -1089,10 +1115,18 @@ export function poseOf(world, actor) {
   const p = world.course.graph
     ? poseOnGraph(world.course, actor.k ?? 0, actor.route, actor.s)
     : poseOn(world.course, actor.k ?? 0, actor.route, actor.s);
-  const off = strayOf(world, actor);
+  /* A LANE CHANGE IS WHERE THE CAR IS, NOT A STRAY: it is added here, to
+     the pose that is drawn and checked for overlap, and deliberately not
+     to `strayOf`, which is what the marking sheet reads as lane-keeping.
+     A car changing lane is not failing to hold one. The heading turns
+     with the move, so the car points across the lane line rather than
+     sliding sideways. */
+  const lat = actor.lc ? lateralOf(actor.lc, world.t) : 0;
+  const off = strayOf(world, actor) + lat;
   if (!off) return p;
   const a = (p.rot * Math.PI) / 180;
-  return { ...p, x: p.x - Math.sin(a) * off, y: p.y + Math.cos(a) * off };
+  const turn = lat ? (Math.atan2(lateralRate(actor.lc, world.t), Math.max(1, actor.v ?? 0)) * 180) / Math.PI : 0;
+  return { ...p, rot: p.rot + turn, x: p.x - Math.sin(a) * off, y: p.y + Math.cos(a) * off };
 }
 
 /* HOW FAR OFF THEIR LINE A DRIVER IS, signed, to the right. The one

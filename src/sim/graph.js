@@ -377,7 +377,22 @@ export function curbLegOf(course, roadId, end) {
 function pathBetween(place, A, B, meta) {
   const inL = A.inLane, outL = B.outLane;
   const stopS = inL.length - (A.lineAt ?? place.lineAt);       // the stop line, along the inbound lane
-  const approach = cut(inL, A.inFrom, stopS);
+  /* WHERE THE WHEEL TURNS IS NOT WHERE THE CAR WAITS. A leg crossed at a
+     shallow angle has its stop line set back (up to twice the box, see
+     the skew setback above) so that a WAITING car is clear of the lanes
+     that cross it -- but a driver released from a line that far back
+     does not start turning there, they drive forward and turn where the
+     corner is. Starting the arc at the set-back line made the arc's
+     radius the setback: at the test map's crossroads a left from the
+     north began 23.7 m out, swept a 25 m arc, and ran its last metres
+     through the spot where westbound traffic waits at its red --
+     measured as sixteen overlapping car-ticks in two minutes at 300
+     cars. So the arc starts where an ordinary line would be (the
+     node's own `lineAt`), after a straight run from the real one. At a
+     square crossroads the two are the same point and nothing moves. */
+  const turnS = Math.max(stopS, inL.length - place.lineAt);
+  const toLine = cut(inL, A.inFrom, stopS);
+  const approach = turnS > stopS + 0.01 ? [...toLine, ...cut(inL, stopS, turnS).slice(1)] : toLine;
   const stop = approach[approach.length - 1];
   const inDir = unit(approach[approach.length - 2] ?? inL.pts[inL.pts.length - 2], stop);
   const leaveS = Math.min(outL.length, B.boxHalf ?? place.boxHalf);   // the box edge, along the outbound lane
@@ -389,7 +404,7 @@ function pathBetween(place, A, B, meta) {
   if (Math.abs(turn) < ARC_FROM) {
     /* Straight on: line to box edge to the way out. */
     pts = [...approach, exit0[0]];
-    iStop = approach.length - 1;
+    iStop = toLine.length - 1;
     iClear = pts.length - 1;
     exitFrom = leaveS;
   } else {
@@ -414,7 +429,7 @@ function pathBetween(place, A, B, meta) {
     const arc = turnPoints(stop, corner ?? exit0[0], far, radius).map((p) => ({ ...p, z: stop.z ?? 0 }));
     arc.pop();
     pts = [...approach.slice(0, -1), ...arc];
-    iStop = approach.length - 1;
+    iStop = toLine.length - 1;
     iClear = pts.length - 1;
     /* The way out begins where the arc lands on the outbound lane. */
     exitFrom = Math.max(leaveS, nearestAlong(outL, pts[pts.length - 1]).s);

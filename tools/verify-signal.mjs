@@ -125,7 +125,17 @@ for (const [name, legs] of [["crossroads", CROSS], ["five-way", FIVE]]) {
 /* 4. IN TRAFFIC: obeyed, not stranded, and nobody through anybody. */
 {
   const loaded = mapOf(CROSS);
-  let w = seedGraph(4, 50, loaded, { every: 1.6 });
+  /* LANE CHANGES OFF HERE, and said why: this section is about the
+     light, and with lane changes on, harsh braking at the line rises
+     from 3 car-ticks to 1383 in five minutes -- not from the amber and
+     not from cut-ins (9 of them), but from left-turners who, no longer
+     stuck behind each other, reach the line at road speed and stand on
+     the brakes when the oncoming gap closes, because nothing in the sim
+     slows a car for a corner (DECISIONS.md 5.15.13). That is a real
+     finding, recorded in SIMULATOR.md 1.1.13 and the next thing built;
+     it is not a property of the signal, and a check about the amber
+     that went red for it would be pointing at the wrong thing. */
+  let w = seedGraph(4, 50, loaded, { every: 1.6, laneChanges: false });
   const launches = [], delayedAtRed = new Set();
   let harsh = 0, ticks = 0, rightsOnRed = 0, stoppedFirst = 0;
   for (let i = 0; i < 20 * 300; i++) {

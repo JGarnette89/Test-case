@@ -20,7 +20,7 @@ import { graphOf } from "../src/sim/graph.js";
 import { loadMap } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
-import { CAR, HARSH_AT, stoppingRoom } from "../src/sim/traffic.js";
+import { CAR, HARSH_AT, stoppingRoom, weaveRoom } from "../src/sim/traffic.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -117,7 +117,12 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   const r = drive(w0, me0, 80, (m) => ({ steer: 0, slider: m.v < 6 ? 0.6 : 0.05, signal: m.leg === 0 ? "right" : m.signal }));
   const inBox = r.record.filter((m) => { const p = w0.course.at[m.k].layout.paths[m.route]; return m.leg === 0 && m.s >= p.stopAt && m.s <= p.clearAt; });
   const worstOff = Math.max(...inBox.map((m) => Math.abs(m.off)));
-  check(inBox.length > 10 && worstOff < 0.3, `through a right turn with the wheel straight the car holds the committed arc (${inBox.length} ticks in the box, at most ${worstOff.toFixed(2)} m off its line)`);
+  /* Within the weave room -- half the air between a car and the next
+     lane -- which is the bound the conflict geometry is built on; a car
+     inside it is still on its line for everybody else. (It was 0.3 m, a
+     number nobody derived, until the turn began at the corner rather
+     than at a set-back line and the right turn got tighter: 0.39.) */
+  check(inBox.length > 10 && worstOff < weaveRoom(3.6), `through a right turn with the wheel straight the car holds the committed arc (${inBox.length} ticks in the box, at most ${worstOff.toFixed(2)} m off its line, against the ${weaveRoom(3.6).toFixed(2)} m weave room)`);
   const out = r.record[r.record.length - 1];
   check(w0.course.at[out.k].layout.paths[out.route].to === curbOf("A-west|end") && out.leg === 0, `and comes out on the west road in its curb lane, which runs to the map's edge (${out.atEdge ? "reached" : "not yet reached"})`);
   /* The bend on C-A, wheel straight: the road turns out from under the car. */
