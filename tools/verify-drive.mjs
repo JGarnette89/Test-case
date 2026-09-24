@@ -15,12 +15,12 @@
    ===================================================================== */
 import { seedGraph, step, poseOf, overlapping, DT } from "../src/sim/crossing.js";
 import { playerAt, playerOn, stepDriver, driverPose, withDriver, routeForSignal, aheadOf } from "../src/sim/drive.js";
-import { touching, holdAt, CLEAN } from "../src/sim/player.js";
+import { touching, holdAt, CLEAN, sliderFor, stopBand, accelFor } from "../src/sim/player.js";
 import { graphOf } from "../src/sim/graph.js";
 import { loadMap } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
-import { CAR } from "../src/sim/traffic.js";
+import { CAR, HARSH_AT, stoppingRoom } from "../src/sim/traffic.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -244,5 +244,83 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   check(Math.abs(CLEAN - (26 / 3.6) ** 2 / 12.7) < 0.05, `CLEAN is derived: ${CLEAN} m/s^2 is 26 km/h on a 12.7 m arc`);
 }
 
+/* 7. THE PRESSURE THAT STOPS YOU AT THE LINE. The maintainer liked the
+   throttle's hold band and said braking wanted "something similar";
+   the shape proposed, and built: a marker at the brake pressure that,
+   held, brings the car to rest exactly at the line. What any correct
+   version must do:
+     - the marker is exactly that pressure (v^2/2d, through accelFor);
+     - HOLD IT AND IT STAYS STILL, because a constant deceleration keeps
+       v^2/2d constant -- tracking it is a smooth stop at the line;
+     - leave it late and it slides DOWN the brake (more needed later);
+     - it appears only when the rules say stop, from the same
+       `whatStops` the traffic obeys;
+     - and the stop is judged on manner before position: tracking the
+       marker is a clean stop, stamping on the brake late is a harsh
+       one, a controlled stop short of the line is short. */
+{
+  /* The pure part. */
+  const v = 13.9, d = 40, b = stopBand(v, d);
+  check(Math.abs(accelFor(b.at, v) + (v * v) / (2 * d)) < 1e-6, `the marker is the pressure whose deceleration is v^2/2d: ${((v * v) / (2 * d)).toFixed(2)} m/s^2 for 50 km/h and 40 m`);
+  check(b.lo < b.at && stopBand(v, 20).at < b.at, "the band reaches down to a stop two metres short, and the closer the line the further down the marker sits");
+  check(stopBand(v, 8).can === false && stopBand(v, 20).can === true, `full brake cannot stop 50 km/h in 8 m (it needs ${((v * v) / (2 * (-accelFor(-1, v)))).toFixed(1)}), so the screen says so`);
+
+  /* In the world: a two-way stop on the map, empty, the player coming
+     down the stopping leg at 50 km/h. */
+  const w0 = empty(seedGraph(1, 50, loaded, { every: 2 }));
+  const legId = curbOf("B-north|end");
+  const k = w0.course.at.findIndex((s) => s.layout.legs[legId]);
+  const layout = w0.course.at[k].layout, route = routeForSignal(layout, legId, null), path = layout.paths[route];
+  const waitAt = path.stopAt - CAR.length / 2;
+  const run = (ctrl) => {
+    let me = { ...playerAt(w0, k, route), s: Math.max(0, waitAt - 140), v: 13.9, off: 0 }, world = withDriver(w0, me);
+    const marks = [];
+    for (let i = 0; i < 20 * 40 && !me.lastStop; i++) {
+      const ahead = aheadOf(me, w0.course, world);
+      if (ahead.stop) marks.push({ at: ahead.stop.at, d: ahead.stop.d, v: me.v });
+      me = stepDriver(me, { steer: 0, slider: ctrl(me, ahead.stop) }, world, DT);
+      world = withDriver(world, me);
+    }
+    return { me, marks };
+  };
+  const track = run((m, s) => (s ? s.at : holdAt(m.v)));
+  const drift = track.marks.length > 5 ? Math.max(...track.marks.slice(2, -8).map((x) => x.at)) - Math.min(...track.marks.slice(2, -8).map((x) => x.at)) : 1;
+  /* Held, it is not perfectly still, and should not be: the brake adds
+     to what the air takes, and the air takes less as the car slows, so
+     a fixed pressure decelerates a little less on the way in and the
+     marker eases down a few percent. That is the honest physics, and
+     it is why the statement below is a COMPARISON with leaving it late
+     rather than a threshold nobody derived. */
+  check(track.marks.length > 20, `approaching a stop sign at 50 km/h the marker appears ${track.marks[0]?.d.toFixed(0)} m out; held on, it moves ${(drift * 100).toFixed(1)}% of the slider over the whole approach`);
+  check(track.me.lastStop?.verdict === "clean" && Math.abs(track.me.lastStop.err) <= 2, `tracking it is a clean stop at the line (${track.me.lastStop?.verdict}, ${track.me.lastStop?.err.toFixed(2)} m from the line, peak ${track.me.lastStop?.peak.toFixed(1)} m/s^2)`);
+
+  /* Leave it late: hold speed until the marker is well down the brake,
+     then the marker has slid down -- more pressure the later you leave it. */
+  /* "Late" is defined by the sim's own line between controlled and
+     abrupt: the driver holds speed until the stop needs more than
+     HARSH_AT, which is exactly when it can no longer be a smooth one. */
+  const lateAt = (x) => x.d < (x.v * x.v) / (2 * HARSH_AT);
+  let stamped = false;   // a driver who stamps on the brake keeps it there until the car stops
+  const late = run((m, s) => { if (s && lateAt({ d: s.d, v: m.v })) stamped = true; return stamped ? -1 : holdAt(m.v); });
+  const early = late.marks[0]?.at, whenLate = late.marks.find(lateAt)?.at;
+  const slid = early - whenLate;
+  check(early != null && whenLate != null && slid > 5 * drift, `leave it late and the marker slides down the brake: from ${early?.toFixed(2)} when it appeared to ${whenLate?.toFixed(2)} by the time the driver moves -- ${(slid / drift).toFixed(0)} times as far as it moves for a driver holding it`);
+  check(late.me.lastStop?.verdict === "harsh" && late.me.lastStop.peak > HARSH_AT, `and stamping on it then is a harsh stop, whatever the position (${late.me.lastStop?.verdict}, peak ${late.me.lastStop?.peak.toFixed(1)} against ${HARSH_AT.toFixed(1)})`);
+
+  /* A controlled stop in the wrong place is a knowledge fault, not a braking one. */
+  const short = run((m, s) => (s ? sliderFor(-(m.v * m.v) / (2 * Math.max(0.5, s.d - 6)), m.v) : holdAt(m.v)));
+  check(short.me.lastStop?.verdict === "short", `a smooth stop aimed six metres short is called short, not harsh (${short.me.lastStop?.verdict}, ${short.me.lastStop?.err.toFixed(1)} m, peak ${short.me.lastStop?.peak.toFixed(1)})`);
+
+  /* Only when the rules say stop: the same approach with the stop sign
+     taken away -- the through road of the same crossroads -- shows no
+     marker at all. */
+  const through = curbOf("A-B|end");
+  const kt = w0.course.at.findIndex((s) => s.layout.legs[through]);
+  const rt = routeForSignal(w0.course.at[kt].layout, through, null), pt = w0.course.at[kt].layout.paths[rt];
+  let mt = { ...playerAt(w0, kt, rt), s: Math.max(0, pt.stopAt - 60), v: 13.9, off: 0 }, wt = withDriver(w0, mt), shown = 0;
+  for (let i = 0; i < 20 * 6; i++) { if (aheadOf(mt, w0.course, wt).stop) shown++; mt = stepDriver(mt, { steer: 0, slider: holdAt(mt.v) }, wt, DT); wt = withDriver(wt, mt); }
+  check(shown === 0, `on the through road of the same crossroads, with nothing to stop for, the marker never appears (${shown} ticks)`);
+}
+
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
-console.log("\nOK: the signal picks the exit it means and only before the line, the box is committed to and the road is driven, the seam is seamless, the corner has to be earned, and the traffic treats the player as its own.");
+console.log("\nOK: the signal picks the exit it means and only before the line, the box is committed to and the road is driven, the seam is seamless, the corner has to be earned, the stop marker holds still when held and slides when left late, and the traffic treats the player as its own.");

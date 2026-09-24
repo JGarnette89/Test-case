@@ -20,7 +20,9 @@
    and line come from the slider and the wheel (sim/player.js), and
    their route from the signal. Pure: the screen owns the state.
    ===================================================================== */
-import { stepPlayerOn, newPlayer, cornerSpeedFor } from "./player.js";
+import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand } from "./player.js";
+import { whatStops, AT_LINE } from "./crossing.js";
+import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
 import { poseOnGraph, intentOf, normDeg, curbLegOf } from "./graph.js";
 import { poseAt } from "./intersection.js";
 import { CAR, DT } from "./traffic.js";
@@ -169,7 +171,28 @@ export function stepDriver(me, input, world, dt = DT) {
   const nearLine = Math.abs(next.s - waitAt) < 2.5;
   const stoppedAt = next.stoppedAt ?? (next.v < AT_REST && nearLine ? world.t : null);
   const going = next.s > waitAt + 0.5 || (stoppedAt != null && next.v > LAUNCHED);
-  return { ...next, leg, atEdge, stoppedAt, going, accepted: going, yaw: (next.psi * 180) / Math.PI };
+
+  /* THE STOP, JUDGED -- the brake's version of the turn verdict. The
+     hardest the car braked on the way in is carried until it comes to
+     rest; a stop that ends near a LINE (not behind a car) is then
+     judged on the maintainer's own rule, MANNER BEFORE POSITION (CLAUDE.md,
+     the three-way stop split): abrupt is braking, whatever the position;
+     a controlled stop in the wrong place is short or over. `HARSH_AT`
+     is the sim's own -- twice the comfortable rate. */
+  let brakePeak = (next.a ?? 0) > 0.3 ? 0 : Math.max(me.brakePeak ?? 0, -(next.a ?? 0));
+  let lastStop = me.lastStop ?? null, stops = me.stops ?? null;
+  const cameToRest = (me.v ?? 0) >= AT_REST && next.v < AT_REST;
+  const err = next.s - waitAt;
+  /* Behind a car is not at a line: whoever is in front decides where
+     you stop, and the line's verdict would be about their position. */
+  const infront = world.actors.find((a) => a.id !== me.id && (a.k ?? 0) === next.k && a.route && layout.paths[a.route]?.from === path.from && a.s > next.s && a.s - next.s < CAR.length + 8);
+  if (cameToRest && next.s < path.stopAt + 1 && err > -12 && !infront) {
+    const verdict = brakePeak > HARSH_AT ? "harsh" : err > 0.3 ? "over" : err < -AT_LINE ? "short" : "clean";
+    lastStop = { verdict, err, peak: brakePeak, at: world.t };
+    stops = { ...(stops ?? {}), [verdict]: (stops?.[verdict] ?? 0) + 1 };
+  }
+  if (next.v > 1.0) brakePeak = 0;
+  return { ...next, leg, atEdge, stoppedAt, going, accepted: going, yaw: (next.psi * 180) / Math.PI, brakePeak, lastStop, stops };
 }
 
 /* THE PLAYER'S POSE IN THE WORLD, with the height of the road under
@@ -191,10 +214,31 @@ export function withDriver(world, me) {
    of turn the current route takes at the node ahead, its name, and --
    when the signal asks for a turn this lane cannot make -- which lane
    to move to. */
-export function aheadOf(me, course) {
+/* WHAT THE PLAYER MUST STOP FOR, AND WHERE: the same `whatStops` the
+   traffic obeys -- a stop sign until they have stopped, a red, an amber
+   they can still make, a car with the right of way, or a car standing
+   in front of them -- so the marker on the slider can never ask for a
+   stop the rules do not, or miss one they do. A moving leader is
+   following, not stopping, and gets no marker. Null when nothing is to
+   be stopped for, or it is still far enough off not to matter yet. */
+export function stopFor(me, world) {
+  if (!world || (me.v ?? 0) < 0.3) return null;
+  /* The player is judged as a COMPETENT driver would be: caution 1, the
+     sim's ordinary headway. They carry no rating of their own. */
+  const view = whatStops({ ...me, caution: me.caution ?? 1, headway: me.headway ?? 1.6 }, world);
+  if (!view.leader || (view.leader.v ?? 0) > 0.5) return null;
+  const line = view.leader.id === "line";
+  const d = line ? view.gap : view.gap - wantedGap({ v: 0 }, { v: 0 });
+  if (!(d > 0) || d > Math.max(15, 2.5 * stoppingRoom(me.v))) return null;
+  const band = stopBand(me.v, d, me.grade ?? 0, AT_LINE);
+  return band && { ...band, d, line };
+}
+
+export function aheadOf(me, course, world = null) {
   const spot = course.at[me.k];
   const path = spot.layout.paths[me.route];
-  if (spot.through) return { node: null, intent: "straight", committed: false, hint: null };
+  const stop = stopFor(me, world);
+  if (spot.through) return { node: null, intent: "straight", committed: false, hint: null, stop };
   let hint = null;
   if (me.signal && path.intent !== me.signal && me.s <= path.stopAt) {
     const leg = spot.layout.legs[path.from];
@@ -205,5 +249,5 @@ export function aheadOf(me, course) {
   /* The speed the committed corner wants, for the screen to show
      beside the speed the car is doing. */
   const cornerSpeed = cornerSpeedFor(geomOf(path, spot.layout.legs[path.from]));
-  return { node: spot.node, intent: path.intent, committed: me.s > path.stopAt, toLine: Math.max(0, path.stopAt - me.s), hint, lane: spot.layout.legs[path.from]?.lane, lanes: spot.layout.legs[path.from]?.lanes, cornerSpeed };
+  return { node: spot.node, intent: path.intent, committed: me.s > path.stopAt, toLine: Math.max(0, path.stopAt - me.s), hint, lane: spot.layout.legs[path.from]?.lane, lanes: spot.layout.legs[path.from]?.lanes, cornerSpeed, stop };
 }

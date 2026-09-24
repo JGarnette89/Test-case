@@ -18,7 +18,7 @@ const FONT = "600 10px system-ui, sans-serif";
    road climbs, and finding it is a readable act rather than guesswork
    -- and the thumb coloured by what it is doing. `v` and `grade` are
    the car's; without them the band is not drawn. */
-export function drawSlider(ctx, size, slider, v = null, grade = 0) {
+export function drawSlider(ctx, size, slider, v = null, grade = 0, stop = null) {
   const margin = 24, x = size.w - SLIDER_W / 2, top = SLIDER_TOP, bottom = size.h - margin, mid = (top + bottom) / 2;
   const yOf = (u) => mid - (u * (bottom - top)) / 2;
   ctx.lineCap = "round";
@@ -26,8 +26,26 @@ export function drawSlider(ctx, size, slider, v = null, grade = 0) {
   ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
   ctx.strokeStyle = "rgba(255,255,255,0.35)";
   ctx.beginPath(); ctx.moveTo(x, yOf(NEUTRAL)); ctx.lineTo(x, yOf(-NEUTRAL)); ctx.stroke();
-  let holding = false;
-  if (v != null) {
+  let holding = false, stopping = false;
+  /* THE STOP MARKER takes the hold band's place when there is something
+     to stop for (drive.js stopFor): the band is every pressure that
+     brings the car to rest at the line, the white bar the pressure that
+     puts it exactly there. Hold the thumb on the bar and the bar stays
+     still; leave it late and the bar slides down the brake. */
+  if (stop) {
+    stopping = slider >= stop.lo - 0.005 && slider <= stop.hi + 0.005;
+    const y0 = yOf(Math.min(1, stop.hi)), y1 = yOf(Math.max(-1, stop.lo));
+    ctx.strokeStyle = stopping ? "rgba(255,138,76,0.95)" : "rgba(255,138,76,0.6)"; ctx.lineWidth = 12;
+    ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, Math.max(y0 + 2, y1)); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.95)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x - 16, yOf(stop.at)); ctx.lineTo(x + 16, yOf(stop.at)); ctx.stroke();
+    ctx.fillStyle = "rgba(255,160,110,0.95)"; ctx.font = FONT; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    ctx.fillText(stop.line ? "stop at line" : "stop behind", x - 22, yOf(stop.at));
+    if (!stop.can) {
+      ctx.fillStyle = "#e0574f"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+      ctx.fillText("can't stop", x, bottom + 4);
+    }
+  } else if (v != null) {
     const band = holdBand(v, grade);
     holding = slider >= band.lo && slider <= band.hi;
     if (band.lo > 1) {
@@ -45,10 +63,21 @@ export function drawSlider(ctx, size, slider, v = null, grade = 0) {
     }
   }
   const y = yOf(slider);
-  ctx.fillStyle = holding ? "#6fb6ff" : slider > NEUTRAL ? "#6cc070" : slider < -NEUTRAL ? "#e0574f" : "#cfd3da";
+  ctx.fillStyle = stopping ? "#ff8a4c" : holding ? "#6fb6ff" : slider > NEUTRAL ? "#6cc070" : slider < -NEUTRAL ? "#e0574f" : "#cfd3da";
   ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.font = FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(holding ? "HOLD" : slider > NEUTRAL ? "GO" : slider < -NEUTRAL ? "BRK" : "--", x, y);
+  ctx.fillText(stopping ? "STOP" : holding ? "HOLD" : slider > NEUTRAL ? "GO" : slider < -NEUTRAL ? "BRK" : "--", x, y);
+}
+
+/* THE STOP, JUDGED (drive.js): manner before position, the maintainer's
+   own rule -- a harsh stop is a braking fault wherever it ends; a
+   controlled one in the wrong place is short or over the line. */
+export function drawStop(ctx, size, y, last, age) {
+  if (!last || age >= 3.5) return;
+  const word = { clean: "clean stop", harsh: `harsh stop -- ${last.peak.toFixed(1)} m/s² braking`, short: `stopped ${(-last.err).toFixed(1)} m short`, over: `over the line by ${last.err.toFixed(1)} m` }[last.verdict];
+  ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.font = "600 13px system-ui, sans-serif";
+  ctx.fillStyle = { clean: "#6cc070", harsh: "#e0574f", short: "#f2b84b", over: "#e0574f" }[last.verdict];
+  ctx.fillText(word, size.w / 2, y);
 }
 
 /* THE TURN, JUDGED: the corner's speed beside the car's while the turn

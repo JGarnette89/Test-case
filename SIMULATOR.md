@@ -1152,6 +1152,65 @@ parked cars along residential curbs (they narrow the street and hide
 what comes out of it -- the old engine built them, 1.1's segment
 hazards), sidewalks and roadside by zone, and lane-use arrows.
 
+#### 1.1.11 The brake's answer to the hold band: the pressure that stops you at the line, 24 September
+
+The maintainer liked the throttle's hold band and said braking needed
+"something similar" without yet knowing what. The shape proposed and
+built is the same one: a MOVING CORRECT VALUE the player tracks, drawn
+on the slider.
+
+A car at speed v with d metres to where it must be at rest needs a
+constant deceleration of v^2/2d; `stopBand` in `src/sim/player.js`
+inverts the pedal (`sliderFor`, a bisection on `accelFor`, which is
+monotone) to the slider position that gives it. **Hold the thumb on
+the white bar and the bar stays where it is**, because a constant
+deceleration keeps v^2/2d constant all the way in; leave it late and
+the bar slides down the brake -- the stop you need grows the later you
+start it. The orange band around it is every pressure that brings the
+car to rest between the line and two metres short of it (the sim's
+own `AT_LINE`, the reach within which the sim counts you as at the
+line). "can't stop" appears under the slider when full brake is no
+longer enough.
+
+**Two things beyond the proposal, and why.**
+
+- **The marker is for whatever the rules say to stop for, not only the
+  painted line.** It reads the same `whatStops` every car in the sim
+  obeys: a stop sign until you have stopped, a red, an amber you can
+  still make (so the amber dilemma is visible -- the marker appears if
+  you can stop and does not if you cannot), a car with the right of way,
+  or a car standing ahead of you, in which case it targets the
+  standstill gap behind it. A marker computed from the line alone would
+  ask a driver in a queue to stop inside the car in front. It never
+  appears where nothing is to be stopped for (checked on the through
+  road of the same crossroads: never, in six seconds of driving).
+- **The stop is judged, like the turn**, on the maintainer's own rule,
+  manner before position (CLAUDE.md, the three-way stop split): a stop
+  that braked harder than `HARSH_AT` (twice the comfortable rate) is
+  "harsh stop" whatever it ended; a controlled stop more than two metres
+  short is "stopped short"; one with the nose over the line is "over the
+  line"; otherwise "clean stop". Stops behind another car are not judged
+  -- where you stop there is the other car's doing. The verdict shares
+  the line under the speed with the turn verdict, and a running tally of
+  both sits under it.
+
+**The marker is not perfectly still when held, and that is the
+physics.** The brake adds to what the road and the air take, and the
+air takes less as the car slows, so a fixed pressure decelerates a
+little less on the way in: held from 89 m out at 50 km/h the bar eases
+down 5% of the slider over the whole approach. Making it perfectly
+still would mean a brake that commands a deceleration rather than a
+force, which no car has. Leaving it late moves it ten times as far.
+
+Checked in `verify-drive.mjs` section 7: the marker is exactly v^2/2d
+through the pedal; the band reaches two metres short; full brake cannot
+stop 50 km/h in 8 m and says so; on a stop-sign approach at 50 km/h the
+marker appears 89 m out, and tracking it is a clean stop 0.04 m from
+the line at a peak of 1.0 m/s^2; holding speed until the stop needs
+more than `HARSH_AT` makes the marker slide ten times as far and the
+stop is judged harsh at 7.8 m/s^2; a smooth stop aimed six metres short
+is judged short, not harsh; and on the through road there is no marker.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,

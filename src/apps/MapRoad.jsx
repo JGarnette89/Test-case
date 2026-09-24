@@ -33,7 +33,7 @@ import { touching } from "../sim/player.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
-import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner } from "../iso/hud.js";
+import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop } from "../iso/hud.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter } from "../iso/perf.js";
 import { loadSettings, setSetting } from "../settings.js";
@@ -125,6 +125,7 @@ export default function MapRoad() {
   const held = useRef(new Set());
   const flash = useRef(0);
   const judged = useRef({ last: null, at: 0 });   // the last turn's verdict and when it landed, for the fade
+  const judgedStop = useRef({ last: null, at: 0 });   // and the last stop's
   const contacts = useRef(0);
   const [cars, setCars] = useState(CARS.start);
   if (!scene.current) scene.current = sceneFor(1, 50, 2.0, true, CARS.start);
@@ -280,7 +281,7 @@ export default function MapRoad() {
            has committed it to at the node ahead, and once past the line
            that it is committed. The feedback that makes the indicator a
            control rather than a light. */
-        const ahead = aheadOf(me, sc.world.course);
+        const ahead = aheadOf(me, sc.world.course, sc.world);
         if (ahead.node) {
           const word = ahead.intent === "left" ? "turning left" : ahead.intent === "right" ? "turning right" : "straight on";
           ctx.fillStyle = ahead.committed ? "#6cc070" : me.signal ? "#f2b84b" : "rgba(230,232,236,0.6)";
@@ -290,10 +291,16 @@ export default function MapRoad() {
         if (me.atEdge) { ctx.fillStyle = "#F2B84B"; ctx.fillText("THE EDGE OF THE MAP — restart", size.w / 2, 72); }
         /* The corner's speed while a turn is ahead and not yet committed; the verdict for a few seconds after. */
         if (me.lastTurn !== judged.current.last) { judged.current = { last: me.lastTurn, at: now }; }
-        const tally = me.turns ? Object.entries(me.turns).map(([k, n]) => `${n} ${k}`).join(" · ") : "";
-        drawCorner(ctx, size, 86, Math.round(me.v * 3.6), ahead.node && ahead.intent !== "straight" && !ahead.committed ? ahead.cornerSpeed : null, me.lastTurn, (now - judged.current.at) / 1000);
-        if (tally) { ctx.fillStyle = "rgba(230,232,236,0.6)"; ctx.font = "12px system-ui, sans-serif"; ctx.fillText(`turns: ${tally}`, size.w / 2, 104); }
-        drawSlider(ctx, size, inp.slider, me.v, me.grade ?? 0);
+        if (me.lastStop !== judgedStop.current.last) { judgedStop.current = { last: me.lastStop, at: now }; }
+        const said = (o) => (o ? Object.entries(o).map(([k, n]) => `${n} ${k}`).join(" · ") : "");
+        const tally = [me.turns && `turns: ${said(me.turns)}`, me.stops && `stops: ${said(me.stops)}`].filter(Boolean).join("   ");
+        /* One verdict line: the corner's speed while a turn is ahead,
+           otherwise whichever of the turn and the stop was judged last. */
+        const turnAhead = ahead.node && ahead.intent !== "straight" && !ahead.committed ? ahead.cornerSpeed : null;
+        if (turnAhead == null && judgedStop.current.at > judged.current.at) drawStop(ctx, size, 86, me.lastStop, (now - judgedStop.current.at) / 1000);
+        else drawCorner(ctx, size, 86, Math.round(me.v * 3.6), turnAhead, me.lastTurn, (now - judged.current.at) / 1000);
+        if (tally) { ctx.fillStyle = "rgba(230,232,236,0.6)"; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillText(tally, size.w / 2, 104); }
+        drawSlider(ctx, size, inp.slider, me.v, me.grade ?? 0, ahead.stop);
         drawWheelBar(ctx, size, inp.steer);
         drawSignals(ctx, size, input.current.state.signal, now);
         drawReadout(ctx, readout.current, 8, size.h - 44);

@@ -93,6 +93,48 @@ export function accelFor(slider, v, grade = 0) {
   return top * ((slider - hi) / (1 - hi));
 }
 
+/* THE SLIDER POSITION FOR AN ACCELERATION: `accelFor` inverted. It is
+   monotone and continuous in the slider (checked), so a bisection finds
+   the one position that gives `a` at this speed and grade -- on the
+   brake, in the coast band, or even on the throttle when the road takes
+   more than the stop needs. Clamped to the slider's ends. */
+export function sliderFor(a, v, grade = 0) {
+  let lo = -1, hi = 1;
+  if (a <= accelFor(-1, v, grade)) return -1;
+  if (a >= accelFor(1, v, grade)) return 1;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (accelFor(mid, v, grade) < a) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/* THE PRESSURE THAT STOPS YOU AT THE LINE -- the brake's answer to the
+   throttle's hold band, and the same shape (the maintainer liked the
+   hold band; SIMULATOR.md 1.1.11).
+
+   A car at speed v with d metres to where it must be at rest needs a
+   constant deceleration of v^2 / 2d. `at` is the slider position that
+   gives it. The property that makes it a mechanic rather than a gauge:
+   HOLD THE SLIDER EXACTLY THERE AND THE MARKER STAYS STILL, because a
+   constant deceleration keeps v^2 / 2d constant all the way in. Brake
+   less and the stop you need grows -- the marker slides down the
+   slider, more pressure the later you leave it; brake more and it rises
+   toward you. Tracking it smoothly is the skill.
+
+   The band `[lo, at]` is every position that stops you between the
+   target and `tol` short of it -- "at the line" by the sim's own reach
+   (crossing.js AT_LINE). `can` is false when even full brake cannot
+   stop the car in time: the screen says so, the way the throttle says
+   it cannot hold a hill. */
+export function stopBand(v, d, grade = 0, tol = 2.0) {
+  if (v < 0.3 || d <= 0.05) return null;
+  const need = (dd) => -(v * v) / (2 * Math.max(0.05, dd));
+  const at = sliderFor(need(d), v, grade);
+  const lo = sliderFor(need(Math.max(0.05, d - tol)), v, grade);
+  return { at, lo, hi: at, can: accelFor(-1, v, grade) <= need(d) + 1e-9, need: -need(d) };
+}
+
 /* Yaw rate for a steering deflection in [-1, 1] at speed v. Two limits,
    the tighter wins: at walking pace the wheels' lock (a bicycle model),
    at speed the tyres' grip -- a car at 60 km/h cannot turn a 14 m
