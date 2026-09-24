@@ -48,9 +48,14 @@ export function emptyMap(id = "untitled", name = "Untitled") {
 
 /* A road as the editor draws it: a stroke of points and a kind. The
    loader fills what is missing from the kind. */
-export function road({ id, kind = "collector", points, lanes, oneWay = false, speed, parking, control = { start: "none", end: "none" } }) {
+/* `turns`, optional, per road end: what each lane arriving at that end
+   may do, one list per lane from the centre line out -- ["left"],
+   ["straight", "right"] and so on. Absent, the general rule applies
+   (sim/lanes.js); present, it overrides it, which is how a double left
+   or a right-turn-only curb lane is written. */
+export function road({ id, kind = "collector", points, lanes, oneWay = false, speed, parking, control = { start: "none", end: "none" }, turns }) {
   const k = KINDS[kind] ?? KINDS.collector;
-  return { id, kind, points, lanes: lanes ?? k.lanes, oneWay, speed: speed ?? k.speed, parking: parking ?? k.parking, control };
+  return { id, kind, points, lanes: lanes ?? k.lanes, oneWay, speed: speed ?? k.speed, parking: parking ?? k.parking, control, ...(turns ? { turns } : {}) };
 }
 
 /* STAGE 0 AS THE FIRST MAP. The valley road and the bridge road from

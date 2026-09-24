@@ -1399,6 +1399,119 @@ What this does not decide: the tight right-turn radius (DECISIONS.md
 5.15.12, the T's right at 14 km/h) is still the maintainer's. This
 drives the arcs that exist at the speed they allow.
 
+#### 1.1.15 Permitted movements and lane connectivity are the network's -- 24 September
+
+The maintainer's answers to three questions, and the generalisation they
+share, which is a CORRECTION to what was built:
+
+- Middle lane at a T: "should be able to turn left or right, and these
+  will always need to be connected to roads that can accommodate these
+  turns, or the lanes need to converge ahead of the intersection."
+- Turn lanes: "left turns should be from the lane beside the center
+  line (unless it's a double left turn intersection) and right turns
+  from the furthest right lane (again, unless it's a double turning
+  lane). the intersection and connecting roads really make the final
+  determination there, but in general left turns from the furthest
+  left, right from the far right."
+- The T's right at 14 km/h: fine provisionally, "real testing will give
+  the final say". Left alone; not derived further.
+
+**What was wrong.** One rule at every intersection (graph.js
+`laneForTurn`), whose straight-on branch sent a lane into "the nearest
+lane the road ahead has" -- so three lanes going straight into two
+merged two of them INSIDE the box, silently. The test map had two such
+places: both collectors into the five-way continue straight into
+one-lane residential streets.
+
+**What is built** (`src/sim/lanes.js`, wired into `graph.js`):
+- **A lane's permitted movements are a property it carries.** The
+  default is the maintainer's general rule (`defaultTurns`): left from
+  the lane beside the centre line, right from the curb lane, straight
+  from any, a one-lane approach may do everything, and a lane the rule
+  leaves with nothing -- the middle lane at a T -- turns either way. A
+  map overrides it per road end (`turns: { end: [[...], ...] }`, one
+  list per lane from the centre line out): a double left is two lanes
+  listing "left"; a right-turn-only curb lane lists only "right".
+- **Lanes land in order from their own side** (`receive`): the k-th left
+  lane into the k-th lane from the centre line, the k-th right lane into
+  the k-th from the curb, straight lanes in order from the centre (so a
+  left-only lane does not push the through lanes out of line).
+- **A lane with nowhere to land is an AUTHORING ERROR**, named by lane
+  and intersection, with what the author can do about it -- e.g. "at n0,
+  lane N|end#2 may go straight into S, which has 2 lanes to receive 3
+  straight lanes: give S more lanes, converge the lanes before the
+  intersection, or change what lane 2 may do". `graphOf(...).errors`
+  carries them; the graph is still built with the refused movement
+  simply not offered, so no car is sent into a wall, and it is the
+  editor's job to refuse to save a map that has any. Also refused: a
+  `turns` that does not list every lane, one naming a movement the
+  intersection does not offer, and a lane permitted nothing.
+- **The test map is fixed the way a real road would be**: the two
+  collectors' curb lanes at the five-way are marked right turn only.
+- **Restrictions are visible.** A lane the map restricts gets painted
+  arrows on its approach, and the line under the speed says "this lane
+  is right turn only" when you are in one with no signal on -- because a
+  car turned right where its driver meant to go straight, with nothing
+  on screen to say why, is a state the screen cannot express.
+
+Checked in `tools/verify-connect.mjs`: the general rule lane by lane; the
+pairing order; the refusals, each naming lane and intersection (three
+into two, a three-lane approach into a T of one-lane roads, a double
+left into one lane, malformed and impossible `turns`, a lane permitted
+nothing); a double left and a three-lane T into two-lane roads accepted;
+the test map clean, and refused at exactly its two curb lanes with the
+markings removed; and a double left used in traffic from both lanes,
+nobody through anybody.
+
+**WHAT IS NOT BUILT, AND WHAT IT NEEDS -- designed here because it is
+cheap to design in and expensive to retrofit.** The maintainer's other
+legal answer is "the lanes need to converge ahead of the intersection":
+a LANE COUNT THAT CHANGES ALONG A ROAD. It is the part most likely to
+bite, because today a road has one lane count from end to end, and
+every layer below assumes it.
+
+*The model needs:*
+1. **A lane count per direction as a profile along the road**, not one
+   number: sections with a count each, joined by TRANSITIONS -- a lane
+   that ENDS (which one: the curb lane, as a merge; or the inner one, as
+   a turn bay closing) over a taper, and a lane that BEGINS (a turn bay
+   opening before an intersection, the commonest reason an approach has
+   more lanes at the line than on the link).
+2. **Lanes as pieces between transitions**, not one per road end. The
+   graph's lane legs are the lanes present AT the node; a lane that ends
+   upstream is a lane with a MUST-LEAVE-BY point.
+3. **A forced lane change with a deadline** -- the car in a lane that
+   ends has to get out before the taper. This is the same machinery as a
+   driver changing lane to reach the lane their turn needs, which is the
+   next lane-change behaviour to be built (lanechange.js already carries
+   the gap acceptance, the blind-spot check and the blend); a lane drop
+   is that behaviour with the deadline set by the road instead of the
+   turn. So the next step there builds most of what lane drops need.
+4. **The connectivity check extended**: a lane may end at a taper
+   instead of landing in a destination, and the taper must be long
+   enough to merge in at the road's speed -- at least the distance a
+   clean lane change takes (`LC_TIME` times the posted speed, plus a
+   reaction's worth), derived from the same numbers the lane change
+   uses, so "converge ahead" is validated as well as permitted.
+
+*The map format needs:* `lanes` to accept a profile -- `{ fwd: [...],
+rev: [...] }`, each a list of `{ from, count, ends?: "curb"|"inner" }`
+sections by distance along the stroke -- alongside the plain number it
+takes today, which stays the one-section case; `turns` per road end
+(built); and a MAP_VERSION bump when the profile lands, because the
+loader will read old maps as one section and must not read new ones as
+old. The loader's surface and lane-line ribbons are built per section,
+narrowing over a taper, so the paint follows the lanes.
+
+*The editor needs:* lane count edited per section of a road, with a
+handle for where a lane ends or begins and a drawn taper; lane arrows
+at each approach as the way `turns` are edited (tap a lane, choose its
+arrows) -- the same arrows the renderer paints; and the connectivity
+errors shown on the map at the lane and intersection they name, with
+saving refused while any remain. Once people other than the maintainer
+draw maps this is what stops a map that works nowhere from being
+shared.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,

@@ -180,6 +180,7 @@ Eight things to know before your first change:
    | `src/sim/signal.js` | `verify-signal`, `verify-graph`, `verify-drive`, `verify-paint`, `verify-screens`, and the `src/sim/` five (crossing.js imports it) | ~4m |
    | `src/sim/lanechange.js` | `verify-lanes`, `verify-graph`, `verify-signal`, `verify-drive`, and the `src/sim/` five (crossing.js imports it) | ~7m |
    | `src/sim/corner.js` | `verify-graph` (section 10), `verify-signal`, `verify-lanes`, `verify-drive`, and the `src/sim/` five (crossing.js imports it) | ~7m |
+   | `src/sim/lanes.js` | `verify-connect`, `verify-graph`, `verify-drive`, `verify-signal`, `verify-lanes`, and the `src/sim/` five (graph.js imports it) | ~8m |
    | `src/map/format.js` (KINDS, lane defaults) | `verify-map`, `verify-graph`, `verify-drive`, `verify-screens` -- and READ the numbers the tests assert on, a lane count changes the leg count | ~1m |
    | `src/sim/drive.js`, `src/sim/player.js`, `src/iso/hud.js`, `src/iso/controls.js` | `verify-drive`, `verify-wheel`, `verify-screens` | ~10s |
    | `src/iso/chase.js`, `src/iso/project.js`, `src/iso/draw.js` | `verify-paint` FIRST (the painter's order, every rotation), `verify-chase`, `verify-perf`, `verify-wheel`, `verify-screens` | ~40s |
@@ -1621,6 +1622,7 @@ src/sim/graph.js         THE SIMULATOR (SIMULATOR.md): the sim on a road network
 src/sim/signal.js        traffic signals: phases derived from the geometry, and a light that resolves to the controls the sim already had plus HOLD
 src/sim/lanechange.js    lane changes: confidence decides whether and how tight, observation whether the gap was seen, steering how cleanly
 src/sim/corner.js        the traffic slows for corners: the player's own cornering limit on each arc, scaled by confidence, braked for at the driver's own rate
+src/sim/lanes.js         permitted movements per lane (the maintainer's general rule, overridable per road end) and connectivity: every lane must land, or the map is refused
 src/sim/drive.js         the player on the map: the turn signal as the turn commit, lane changes by drifting
 src/sim/player.js        the car under the player's two controls: pedal, wheel, grip, contact
 src/map/format.js        the map format: roads as strokes in metres, KINDS with lanes per direction, chunks
@@ -2005,11 +2007,12 @@ node tools/verify-chase.mjs        the chase camera leads with speed, eases, tur
 node tools/verify-paint.mjs        the painter's order: no car under the surface it stands on, none over a deck it is under, at every rotation, on both scenes
 node tools/verify-signal.mjs       traffic signals: phases derived and never conflicting, only rights go on red and only after stopping, a red is not undue delay, the amber is a physical dilemma
 node tools/verify-lanes.mjs        lane changes are temperament: confidence decides whether and how tight, observation whether it was seen, steering how cleanly; honest, touch-free, and a few percent of the sim
+node tools/verify-connect.mjs      permitted movements are the network's: the general rule by default, overridable per lane, and a lane with nowhere to land refused at authoring time, named by lane and intersection
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All forty must exit 0 **before a commit**. Between commits, run
+All forty-one must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:

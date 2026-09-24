@@ -174,7 +174,11 @@ export function loadMap(map) {
     const moved = clampGrade(raw.pts, raw.at);
     if (moved > 0.01) warn("grade-clamped", `road ${id}: a slope steeper than ${Math.round(MAX_GRADE * 100)}% was flattened by up to ${moved.toFixed(2)} m`);
     const control = { start: CONTROLS.includes(r.control?.start) ? r.control.start : "none", end: CONTROLS.includes(r.control?.end) ? r.control.end : "none" };
-    roads.push({ id, kind, lanes, oneWay, width, speed, parking: r.parking ?? KINDS[kind].parking, control, ...raw, ...surfaceOf(raw.pts, width, lanes) });
+    /* Per-lane permitted movements, passed through for the graph to check
+       against the node it arrives at (sim/lanes.js) -- only the graph
+       knows what movements an end offers. */
+    const turns = r.turns && typeof r.turns === "object" ? { start: r.turns.start ?? null, end: r.turns.end ?? null } : null;
+    roads.push({ id, kind, lanes, oneWay, width, speed, parking: r.parking ?? KINDS[kind].parking, control, ...(turns ? { turns } : {}), ...raw, ...surfaceOf(raw.pts, width, lanes) });
   }
   if (!roads.length) return { ok: false, error: "no drivable road", warnings };
 
@@ -224,11 +228,13 @@ export function loadMap(map) {
         /* Split the other road at the landing point. */
         const cut = q.i + 1;
         const aPts = [...o.pts.slice(0, cut), { ...q.at }], bPts = [{ ...q.at }, ...o.pts.slice(cut)];
-        const mk = (suffix, pts, controlStart, controlEnd) => {
+        /* Each half keeps its own original end's control and turns; the
+           new ends, at the node this split makes, get the general rule. */
+        const mk = (suffix, pts, controlStart, controlEnd, turnsStart, turnsEnd) => {
           const rs = resample(pts);
-          return { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, ...rs, ...surfaceOf(rs.pts, o.width, o.lanes) };
+          return { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, ...rs, ...surfaceOf(rs.pts, o.width, o.lanes) };
         };
-        const a = mk("#a", aPts, o.control.start, "none"), b = mk("#b", bPts, "none", o.control.end);
+        const a = mk("#a", aPts, o.control.start, "none", o.turns?.start ?? null, null), b = mk("#b", bPts, "none", o.control.end, null, o.turns?.end ?? null);
         roads.splice(roads.indexOf(o), 1, a, b);
         for (const n of nodes) for (const l of n.legs) if (l.road === o.id) l.road = l.end === "start" ? a.id : b.id;
         for (const k of [...joinedEnds]) if (k.startsWith(`${o.id}|`)) { joinedEnds.delete(k); joinedEnds.add(k.replace(`${o.id}|`, k.endsWith("|start") ? `${a.id}|` : `${b.id}|`)); }

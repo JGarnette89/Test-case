@@ -29,6 +29,16 @@
    neither the curb lane nor beside the centre line -- which lane may do
    what there is a road marking the format does not carry yet, and a
    rule for the maintainer rather than a guess.
+
+   AND LANES HAVE TO LAND (24 September, the maintainer's ruling: lanes
+   "always need to be connected to roads that can accommodate these
+   turns, or the lanes need to converge ahead of the intersection"). The
+   two collectors into the five-way each continue straight into a
+   one-lane residential street, so two lanes cannot both go straight on:
+   until the connectivity check existed they merged inside the box.
+   Their curb lanes are marked RIGHT TURN ONLY here (`turns`), which is
+   how a real road handles a lane that has nowhere to go straight into
+   -- and the test map carries a per-lane override because of it.
    ===================================================================== */
 import { emptyMap, road } from "./format.js";
 
@@ -66,12 +76,12 @@ export function testMap1() {
     road({ id: "A-north", kind: "collector", points: stroke({ x: 400, y: 0 }, A), control: { start: "none", end: "signal" } }),
     road({ id: "A-west", kind: "arterial", points: stroke({ x: 0, y: 400 }, A), control: { start: "none", end: "signal" } }),
     road({ id: "A-B", kind: "arterial", points: stroke(A, B, { z: hill }), control: { start: "signal", end: "none" } }),
-    road({ id: "C-A", kind: "collector", points: stroke(C, A, { bow: 60 }), control: { start: "stop", end: "signal" } }),
+    road({ id: "C-A", kind: "collector", points: stroke(C, A, { bow: 60 }), control: { start: "stop", end: "signal" }, turns: { start: [["left", "straight"], ["right"]] } }),
     road({ id: "B-north", kind: "collector", points: stroke({ x: 800, y: 0 }, B), control: { start: "none", end: "stop" } }),
     road({ id: "B-east", kind: "arterial", points: stroke(B, { x: 1200, y: 400 }), control: { start: "none", end: "none" } }),
     road({ id: "B-D", kind: "collector", points: stroke(B, D), control: { start: "stop", end: "none" } }),
     road({ id: "C-west", kind: "residential", points: stroke({ x: 0, y: 800 }, C), control: { start: "none", end: "stop" } }),
-    road({ id: "C-D", kind: "collector", points: stroke(C, D), control: { start: "stop", end: "none" } }),
+    road({ id: "C-D", kind: "collector", points: stroke(C, D), control: { start: "stop", end: "none" }, turns: { start: [["left", "straight"], ["right"]] } }),
     road({ id: "C-southeast", kind: "residential", points: stroke({ x: 700, y: 1100 }, C), control: { start: "none", end: "stop" } }),
     road({ id: "C-southwest", kind: "residential", points: stroke({ x: 100, y: 1100 }, C), control: { start: "none", end: "stop" } }),
     road({ id: "D-east", kind: "collector", points: stroke(D, { x: 1200, y: 800 }), control: { start: "none", end: "none" } }),

@@ -44,6 +44,7 @@ import { turnPoints } from "../engine/paths.js";
 import { CAR, weaveRoom } from "./traffic.js";
 import { conflictsBetween, poseAt, LINE_SETBACK } from "./intersection.js";
 import { signalFor, isSignal } from "./signal.js";
+import { defaultTurns, receive, checkTurns } from "./lanes.js";
 import { ribbonOf } from "../iso/road.js";
 import { rng } from "../engine/index.js";
 
@@ -127,12 +128,11 @@ export function laneAlong(road, dir, lane, index = 0) {
   return { id: `${road.id}:${dir > 0 ? "fwd" : "rev"}#${index}`, road: road.id, dir, index, pts: right, at, length: at[at.length - 1] };
 }
 
-/* WHICH LANE A TURN IS MADE FROM, AND INTO. The rule real driving
-   supplies: a right turn from the curb lane into the curb lane; a left
-   turn from the lane beside the centre line into the lane beside the
-   centre line; straight on stays in its lane, or the nearest the road
-   ahead has. A car in the wrong lane for a turn has no route for it --
-   which is what makes the lane a choice. */
+/* THE OLD SINGLE RULE, kept for what still asks it the old way. The
+   graph no longer uses it: permitted movements are per lane now and
+   connectivity is checked (lanes.js). Its straight-on branch -- "the
+   nearest lane the road ahead has" -- is exactly the silent merge
+   inside the box that the maintainer ruled out. */
 export function laneForTurn(kind, fromLeg, toLanes) {
   if (kind === "right") return fromLeg.curb ? toLanes - 1 : null;
   if (kind === "left") return fromLeg.inner ? 0 : null;
@@ -192,6 +192,12 @@ const unit = (a, b) => { const L = dist(a, b) || 1; return { x: (b.x - a.x) / L,
    convenience). */
 export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
   const roads = loaded.roads;
+  /* AUTHORING ERRORS: lanes whose permitted movement has nowhere to land,
+     named by lane and intersection (lanes.js). The graph is still built
+     -- the offending movement is simply not offered, so no car is sent
+     into a wall -- and it is the editor's job to refuse to save a map
+     that has any. */
+  const errors = [];
   const roadOf = Object.fromEntries(roads.map((r) => [r.id, r]));
   const lanesOf = (r) => Math.max(1, Math.round(r.lanes ?? 1));
   const lanes = {};
@@ -262,6 +268,41 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
       }
     }
     const ids = Object.keys(legs);
+
+    /* WHAT EACH LANE MAY DO HERE, AND WHERE IT LANDS (lanes.js). The
+       movements each approach has on offer, then each lane's permitted
+       ones -- the map's `turns` for that road end where it gives them,
+       the general rule where it does not -- then, for every exit, which
+       destination lane each permitting lane goes into. A lane that has
+       nowhere to land is an authoring error. */
+    const bases = [...new Set(ids.map((id) => legs[id].base))];
+    const first = (b) => ids.find((id) => legs[id].base === b);
+    const recv = {};
+    for (const a of bases) {
+      const A0 = legs[first(a)];
+      const exits = new Map();
+      for (const b of bases) if (b !== a) exits.set(b, intentOf({ legs }, first(a), first(b)));
+      const offered = new Set(exits.values());
+      const given = roadOf[A0.road]?.turns?.[A0.end];
+      const checked = checkTurns(given, A0.lanes, offered);
+      if (checked.why) errors.push({ code: "bad-turns", node: n.id, lane: a, message: `at ${n.id}, the turns given for ${a} ${checked.why}; the general rule is used instead` });
+      const turns = checked.turns ?? defaultTurns(A0.lanes, offered);
+      for (const id of ids) if (legs[id].base === a) legs[id].turns = turns[legs[id].lane];
+      turns.forEach((t, i) => { if (!t.length) errors.push({ code: "lane-goes-nowhere", node: n.id, lane: `${a}#${i}`, message: `at ${n.id}, lane ${a}#${i} is permitted no movement at all` }); });
+      for (const [b, move] of exits) {
+        const B0 = legs[first(b)];
+        const r = receive(turns, move, B0.lanes);
+        recv[`${a}>${b}`] = r.map;
+        for (const i of r.excess) {
+          const n0 = turns.filter((t) => t.includes(move)).length;
+          errors.push({
+            code: "unreceived-lane", node: n.id, lane: `${a}#${i}`, move, into: b,
+            message: `at ${n.id}, lane ${a}#${i} may go ${move} into ${B0.road}, which has ${B0.lanes} lane${B0.lanes === 1 ? "" : "s"} to receive ${n0} ${move} lane${n0 === 1 ? "" : "s"}: give ${B0.road} more lanes, converge the lanes before the intersection, or change what lane ${i} may do`,
+          });
+        }
+      }
+    }
+
     /* THE STOP LINE CLEARS THE CROSSING TRAFFIC ON A SKEWED LEG TOO. The
        box's half-width is measured along a leg's own axis, and on a leg
        that meets the crossing road at an angle that is not far enough:
@@ -300,10 +341,10 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
         const B = legs[to];
         if (B.base === A.base) continue;
         const kind = intentOf({ legs }, from, to);
-        /* The one lane a turn of this kind goes into from this lane, or
-           none: right turns from the curb lane, left turns from beside
-           the centre line, straight on in one's own lane. */
-        if (laneForTurn(kind, A, B.lanes) !== B.lane) continue;
+        /* The one lane this lane lands in for this movement, from the
+           permissions and pairing above -- or none, which is a lane that
+           may not make this movement, or one with nowhere to land. */
+        if (recv[`${A.base}>${B.base}`]?.[A.lane] !== B.lane) continue;
         paths[`${from}/${to}`] = pathBetween(place, A, B, { from, to, intent: kind });
       }
     }
@@ -354,7 +395,7 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
     }
   }
 
-  return { graph: true, n: at.length, at, joins, links, lanes, roads, map: loaded };
+  return { graph: true, n: at.length, at, joins, links, lanes, roads, map: loaded, errors };
 }
 
 /* The lane-leg a car should start on for a road end: the curb lane,
@@ -516,7 +557,7 @@ export function junctionsOf(course) {
     const { legs, paths, place } = spot.layout;
     const centre = place.at;
     const corners = [];
-    const lines = [], signs = [];
+    const lines = [], signs = [], arrows = [];
     const seenBase = new Set();
     for (const leg of Object.values(legs)) {
       const r = roadOf[leg.road];
@@ -547,6 +588,17 @@ export function junctionsOf(course) {
          colour, because the colour is a function of the clock and the
          renderer is the only thing that knows what time it is
          (signal.js `lightAt`). */
+      /* LANE ARROWS, where the map restricts a lane (`turns`): painted on
+         the approach a few metres before the line, the way a real road
+         marks a turn-only lane. A restriction the driver cannot see is
+         a car turned where they meant to go straight, with nothing to
+         say why -- a state the screen cannot express (CLAUDE.md). Lanes
+         on the general rule are not painted, as they are not on a real
+         road. */
+      if (roadOf[leg.road]?.turns?.[leg.end] && leg.turns) {
+        const ap = poseAt(p, Math.max(0, p.stopAt - 7));
+        arrows.push({ at: { x: ap.x, y: ap.y, z }, heading: ap.rot, moves: leg.turns.slice() });
+      }
       const lit = isSignal(leg.control);
       if (leg.control === "stop" || leg.control === "yield" || lit) {
         lines.push({ kind: lit ? "signal" : leg.control, a: { x: pose.x - nx * lane / 2, y: pose.y - ny * lane / 2, z }, b: { x: pose.x + nx * lane / 2, y: pose.y + ny * lane / 2, z } });
@@ -557,7 +609,7 @@ export function junctionsOf(course) {
     /* The surface: the corners in order round the centre. */
     const c2 = { x: centre.x, y: centre.y };
     corners.sort((p, q) => Math.atan2(p.y - c2.y, p.x - c2.x) - Math.atan2(q.y - c2.y, q.x - c2.x));
-    out.push({ node: spot.node, at: centre, surface: corners, lines, signs, signal: spot.layout.signal });
+    out.push({ node: spot.node, at: centre, surface: corners, lines, signs, arrows, signal: spot.layout.signal });
   }
   return out;
 }

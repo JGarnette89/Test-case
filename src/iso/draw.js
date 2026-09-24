@@ -301,6 +301,30 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
         seg(ctx, P, l.a, l.b);
       }
     } });
+    /* LANE ARROWS (graph.js junctionsOf): white road paint, one glyph per
+       restricted lane -- a stem, and a head for each movement the lane
+       may make, bent the way it goes. Painted after the whole floor
+       (layer 0.5) because they lie on a road segment whose own key can
+       be nearer than any point of the arrow. */
+    for (const ar of j.arrows ?? []) {
+      const h = (ar.heading * Math.PI) / 180, fx = Math.cos(h), fy = Math.sin(h), rx = -Math.sin(h), ry = Math.cos(h);
+      const pt = (f, r) => ({ x: ar.at.x + fx * f + rx * r, y: ar.at.y + fy * f + ry * r, z: ar.at.z ?? 0 });
+      items.push({ layer: 0.5, key: depthOf(ar.at.x, ar.at.y, ar.at.z ?? 0), paint: () => {
+        ctx.strokeStyle = "rgba(250,250,242,0.9)"; ctx.fillStyle = "rgba(250,250,242,0.9)";
+        ctx.lineWidth = Math.max(1.2, 0.22 * k); ctx.lineCap = "round";
+        seg(ctx, P, pt(-2.2, 0), pt(0.6, 0));
+        for (const m of ar.moves) {
+          const side = m === "left" ? -1 : m === "right" ? 1 : 0;
+          const tip = side ? pt(1.6, side * 1.1) : pt(2.4, 0);
+          const from = side ? pt(0.6, 0) : pt(0.6, 0);
+          seg(ctx, P, from, tip);
+          /* the head: two short strokes back from the tip */
+          const dx = tip.x - from.x, dy = tip.y - from.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+          const back = (a) => ({ x: tip.x - (ux * Math.cos(a) - uy * Math.sin(a)) * 0.7, y: tip.y - (uy * Math.cos(a) + ux * Math.sin(a)) * 0.7, z: tip.z });
+          seg(ctx, P, tip, back(0.6)); seg(ctx, P, tip, back(-0.6));
+        }
+      } });
+    }
     for (const s of j.signs) {
       /* A post and a face: the face a flat box at eye height, red for a
          stop, turned to the driver it faces. Drawn as a map symbol, a

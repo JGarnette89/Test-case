@@ -262,6 +262,15 @@ export function aheadOf(me, course, world = null) {
   const stop = stopFor(me, world) ?? (world ? cornerFor(me, course, null) : null);
   if (spot.through) return { node: null, intent: "straight", committed: false, hint: null, stop };
   let hint = null;
+  /* A RESTRICTED LANE, said aloud: with no signal on, the car means to go
+     straight -- and a lane marked for a turn only will take that turn.
+     The paint on the road says so too (graph.js lane arrows); this is
+     the line under the speed saying it before the arrows are in view. */
+  const legHere = spot.layout.legs[path.from];
+  if (!me.signal && path.intent !== "straight" && me.s <= path.stopAt && legHere?.turns && !legHere.turns.includes("straight")
+      && Object.values(spot.layout.paths).some((q) => q.intent === "straight" && spot.layout.legs[q.from]?.base === legHere.base)) {
+    hint = `this lane is ${path.intent} turn only`;
+  }
   if (me.signal && path.intent !== me.signal && me.s <= path.stopAt) {
     const leg = spot.layout.legs[path.from];
     const others = Object.values(spot.layout.legs).filter((l) => l.base === leg.base && l.id !== leg.id);
