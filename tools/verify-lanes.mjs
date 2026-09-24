@@ -55,7 +55,7 @@ function watch(seed, target, secs) {
       if (a.lc && !a.lc.abort && (!was || !was.lc || was.lc.t0 !== a.lc.t0)) {
         const fromPath = L.paths[a.lc.from];
         starts.push({ id: a.id, caution: a.caution, obs: deficitOf(a.ratings, "observation").deficit, steer: deficitOf(a.ratings, "steering").deficit,
-          gap: a.lc.gap, tight: a.lc.tight, missed: a.lc.missed, blind: a.lc.blind, ov: a.lc.ov, keptIntent: fromPath?.intent === p.intent });
+          gap: a.lc.gap, tight: a.lc.tight, missed: a.lc.missed, blind: a.lc.blind, mandatory: a.lc.mandatory, ov: a.lc.ov, keptIntent: fromPath?.intent === p.intent });
       }
       if (changing(a.lc, w.t) && a.s > p.stopAt) pastLine++;
       if (a.lc) worstPast = Math.max(worstPast, Math.abs(lateralOf(a.lc, w.t)) - Math.abs(a.lc.L0));
@@ -123,10 +123,27 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
 
 /* 4. The manoeuvre is honest. */
 {
-  check(starts.every((s) => s.keptIntent), "no driver ever left the lane their turn needs: every change kept the turn the car was making");
+  check(starts.filter((s) => !s.mandatory).every((s) => s.keptIntent), `no driver changed lane BY CHOICE out of the lane their turn needs: all ${starts.filter((s) => !s.mandatory).length} discretionary changes kept the turn the car was making (the ${starts.filter((s) => s.mandatory).length} made FOR a turn are checked below)`);
   check(runs.every((r) => r.pastLine === 0), `every change finished before the line (${runs.reduce((s, r) => s + r.pastLine, 0)} car-ticks mid-change past it)`);
   check(runs.every((r) => r.jumps === 0), `and no car jumped: the drawn position moves no further than the car drives in a tick (${runs.reduce((s, r) => s + r.jumps, 0)} jumps)`);
   check(Math.abs(LC_TIME - Math.sqrt((6 * 3.6) / (0.15 * 9.81))) < 1e-9, `a clean change takes ${LC_TIME.toFixed(1)} s, derived from the road's own sideways comfort limit`);
+}
+
+/* 4b. CHANGING LANE TO MAKE A TURN. A driver chooses where they are going
+   from everything the approach offers; if the lane they arrived in does
+   not make that movement they move over, with the same gap acceptance
+   and blind-spot check, or miss the turn if they cannot get over before
+   the line. Confidence is in it: a timid driver refuses gaps a bold one
+   takes, so misses more turns. */
+{
+  const need = drivers.reduce((s, d) => s + (d.turnsMet ?? 0) + (d.missedTurns ?? 0), 0);
+  const met = drivers.reduce((s, d) => s + (d.turnsMet ?? 0), 0), missedT = drivers.reduce((s, d) => s + (d.missedTurns ?? 0), 0);
+  const forTurn = starts.filter((s) => s.mandatory).length;
+  check(need > 30 && forTurn > 20 && met / need > 0.6,
+    `drivers in the wrong lane for their turn: ${need} of them, ${met} got over and made it (${(100 * met / need).toFixed(0)}%), ${missedT} could not before the line and went where their lane went; ${forTurn} lane changes were made for a turn`);
+  const missRate = (lo, hi) => { const g = drivers.filter((d) => d.caution >= lo && d.caution < hi); const n = g.reduce((s, d) => s + (d.turnsMet ?? 0) + (d.missedTurns ?? 0), 0); return { n, r: n ? g.reduce((s, d) => s + (d.missedTurns ?? 0), 0) / n : NaN }; };
+  const b = missRate(0, 0.7), tm = missRate(1.3, 3);
+  check(b.n >= 10 && tm.n >= 10 && tm.r > b.r, `and confidence decides who makes it: timid drivers missed ${(100 * tm.r).toFixed(0)}% of the turns they needed a lane for (${tm.n}), bold ones ${(100 * b.r).toFixed(0)}% (${b.n})`);
 }
 
 /* 5. Nobody through anybody, at the default and at the top of the dial. */

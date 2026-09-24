@@ -76,6 +76,8 @@ const BLIND_BEHIND = 10, BLIND_AHEAD = CAR.length;
 export const LC_EVERY = 10;
 /* Once changed, not again for this long: a driver settles in a lane. */
 const SETTLE = 6;
+/* The hardest a car brakes -- traffic.js's clamp, an emergency stop. */
+const MOST_BRAKE = 8.0;
 
 const smooth = (p) => (p <= 0 ? 0 : p >= 1 ? 1 : p * p * (3 - 2 * p));
 
@@ -153,13 +155,57 @@ export function laneStep(world, me, out, view) {
      possibly be wanted. The cheap tests first -- most cars fail the first
      line and cost nothing more. */
   if ((world.tick + (out.n ?? 0)) % LC_EVERY !== 0) return out;
-  if (out.going || out.stoppedAt != null || out.v < 3) return out;
-  if (out.lcDone != null && t - out.lcDone < SETTLE) return out;
   const path = layout.paths[out.route];
   const leg = layout.legs[path.from];
+  /* A WANT ALREADY MET: arriving in a lane that makes the movement this
+     driver is heading for, they take it. */
+  if (out.want && out.want.k === out.k) {
+    const met = layout.routesFrom(path.from).find((r) => layout.legs[layout.paths[r].to]?.base === out.want.to);
+    if (met && met !== out.route) return { ...out, route: met, s: out.s * (layout.paths[met].stopAt / path.stopAt), want: null, turnsMet: (out.turnsMet ?? 0) + 1 };
+    if (met) return { ...out, want: null, turnsMet: (out.turnsMet ?? 0) + 1 };
+  }
+  if (out.going || out.stoppedAt != null || out.v < 3) return out;
   if (!leg || (leg.lanes ?? 1) < 2) return out;
   const T0 = LC_TIME;
-  if (out.s < BLIND_BEHIND + 30 || path.stopAt - out.s < out.v * T0 * 1.5 + 15) return out;
+  if (out.s < BLIND_BEHIND + 30) return out;
+
+  /* THE LANE THE TURN NEEDS -- a MANDATORY change. The driver chose where
+     they are going at the last node (crossing.js `routeFor`), and the
+     lane they arrived in does not make that movement: they move toward
+     one that does, as soon as the gap lets them, with no speed gain
+     asked for. If it cannot be done before the line at this speed, they
+     give up and go where their lane goes -- a missed turn, which is what
+     a real driver who could not get over does, and counted. The same
+     machinery is what a lane that ENDS will need (SIMULATOR.md 1.1.15):
+     a forced change with a deadline set by the road instead of the turn. */
+  if (out.want && out.want.k === out.k) {
+    /* The deadline is THIS driver's: a poor steerer's blend takes longer,
+       and one begun with only a clean driver's distance left finished
+       past the line (verify-lanes). */
+    const mine = T0 * (1 + 0.5 * (deficitOf(out.ratings ?? {}, "steering").deficit ?? 0));
+    if (path.stopAt - out.s < out.v * mine * 1.2 + 10) return { ...out, want: null, missedTurns: (out.missedTurns ?? 0) + 1 };
+    const okLanes = Object.values(layout.legs).filter((l) => l.base === leg.base && layout.routesFrom(l.id).some((r) => layout.legs[layout.paths[r].to]?.base === out.want.to)).map((l) => l.lane);
+    if (!okLanes.length) return { ...out, want: null };
+    const nearest = okLanes.reduce((b, l) => (Math.abs(l - leg.lane) < Math.abs(b - leg.lane) ? l : b), okLanes[0]);
+    const dir = Math.sign(nearest - leg.lane);
+    const toLeg = `${leg.base}#${leg.lane + dir}`;
+    if (!layout.legs[toLeg]) return out;
+    const routes = layout.routesFrom(toLeg);
+    const route = routes.find((r) => layout.legs[layout.paths[r].to]?.base === out.want.to)
+      ?? routes.find((r) => layout.paths[r].intent === "straight") ?? routes[0];
+    if (!route) return out;
+    const s2 = out.s * (layout.paths[route].stopAt / path.stopAt);
+    return attempt(world, out, path, { dir, toLeg, route, s2, nb: neighbours(world, out, toLeg, s2), mandatory: true }, T0);
+  }
+
+  /* Room to finish before the line at THIS driver's pace: their own blend
+     time, and the speed they may be doing by the end of it. */
+  const ownT = T0 * (1 + 0.5 * (deficitOf(out.ratings ?? {}, "steering").deficit ?? 0));
+  if (path.stopAt - out.s < Math.max(out.v, out.v0 ?? out.v) * ownT * 1.2 + 15) return out;
+  /* A driver settles in a lane before choosing to leave it again. (A
+     change they NEED is not held back by this: the car crossing two
+     lanes for a turn goes on as soon as the first is done.) */
+  if (out.lcDone != null && t - out.lcDone < SETTLE) return out;
 
   /* THE MOTIVE: held back by a slower car in this lane. */
   const leader = view?.leader;
@@ -196,7 +242,14 @@ export function laneStep(world, me, out, view) {
     if (!best || gain > best.gain) best = { dir, to, toLeg, route, s2, nb, gain };
   }
   if (!best) return out;
+  return attempt(world, out, path, best, T0);
+}
 
+/* THE GAP, THE LOOK AND THE GO -- the same for a change a driver wants
+   and one they need. */
+function attempt(world, out, path, best, T0) {
+  const t = world.t;
+  const caution = out.caution ?? 1;
   /* THE GAP, AT THIS DRIVER'S CONFIDENCE. What the car behind in the
      target lane would want to leave them, and what they would want to
      leave the car ahead, both from stage 0's own following model,
@@ -206,8 +259,16 @@ export function laneStep(world, me, out, view) {
      scale says -- boldness is tight, not contact. */
   const kappa = Math.max(0.3, Math.min(1.7, caution));
   const { nb } = best;
+  /* ...AND A FLOOR FROM PHYSICS, whatever the temperament: the gap ahead
+     must let this car stop behind the car it moves in behind, and the gap
+     behind must let that car stop behind this one, at the hardest braking
+     a car can do. Without it a bold driver moving over for a turn cut in
+     three metres behind a car STANDING in a queue, at 14 km/h, and could
+     not stop in time -- 187 overlapping car-ticks at 300 cars. Boldness
+     is a tight gap, never one that cannot be survived. */
+  const stopIn = (v, vl) => Math.max(0, (v * v - vl * vl) / (2 * MOST_BRAKE));
   const leadGap = nb.ahead ? nb.da - CAR.length : Infinity;
-  const needLead = Math.max(1.5, kappa * wantedGap(out, nb.ahead ?? { v: out.v }));
+  const needLead = Math.max(1.5 + stopIn(out.v, nb.ahead?.v ?? out.v), kappa * wantedGap(out, nb.ahead ?? { v: out.v }));
 
   /* THE BLIND-SPOT CHECK, AT THIS DRIVER'S OBSERVATION. Drawn once per
      manoeuvre from the driver's own seed, so a run replays exactly. */
@@ -216,7 +277,7 @@ export function laneStep(world, me, out, view) {
   const inBlind = nb.behind && nb.db < BLIND_BEHIND;
   const missed = !!inBlind && r() < obs * 0.6;
   const lagGap = nb.behind ? nb.db - CAR.length : Infinity;
-  const needLag = Math.max(1.5, kappa * wantedGap(nb.behind ?? { v: 0 }, out));
+  const needLag = Math.max(1.5 + stopIn(nb.behind?.v ?? 0, out.v), kappa * wantedGap(nb.behind ?? { v: 0 }, out));
   if (leadGap < needLead) return out;
   /* Every time a driver got this far with somebody in the blind spot is
      an occasion to look or not -- counted whether they went or not, so
@@ -233,12 +294,13 @@ export function laneStep(world, me, out, view) {
     route: best.route,
     s: best.s2,
     lcCount: (out.lcCount ?? 0) + 1,
+    ...(best.mandatory ? { turnChanges: (out.turnChanges ?? 0) + 1 } : {}),
     lc: {
       from: out.route, fromLeg: path.from, t0: t,
       T: T0 * (1 + 0.5 * steer),
       L0, ov: weaveRoom(LANE) * steer,
       missed, blind: !!inBlind, noticeAfter: REACTION_FLOOR + obs * REGISTER_SPAN,
-      caution, gap: Math.min(leadGap, lagGap),
+      caution, gap: Math.min(leadGap, lagGap), mandatory: !!best.mandatory,
       /* How tight, against what a COMPETENT driver (caution 1) would
          need: below 1 is a gap they would have refused. */
       tight: Math.min(

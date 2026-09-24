@@ -472,8 +472,17 @@ function pathBetween(place, A, B, meta) {
     pts = [...approach.slice(0, -1), ...arc];
     iStop = toLine.length - 1;
     iClear = pts.length - 1;
-    /* The way out begins where the arc lands on the outbound lane. */
-    exitFrom = Math.max(leaveS, nearestAlong(outL, pts[pts.length - 1]).s);
+    /* The way out begins where the arc lands on the outbound lane --
+       WHEREVER that is. It used to be floored at the box edge, and where
+       an angled road makes the arc land short of it (A-north into C-A on
+       the test map: ten metres short) the path jumped from the arc's end
+       to the next lane point while `at0` said the box edge -- so every
+       position on the way out read ten metres AHEAD of the car, and the
+       car behind, reading the same car from the next node a tick later,
+       saw it leap ten metres back towards it. 29 paths on the test map,
+       found by the seam-following check. `clearAt` is the arc's end
+       either way; only the lane mapping moves. */
+    exitFrom = nearestAlong(outL, pts[pts.length - 1]).s;
   }
   const away = cut(outL, exitFrom, B.outTo);
   pts.push(...away.slice(1));

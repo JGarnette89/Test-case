@@ -467,7 +467,7 @@ export function openTo(me, world, caution) {
   return !world.actors.some((a) => a.id !== me.id && blockedBy(me, a, layout, caution, world.t ?? 0));
 }
 
-/* What is in this driver's way: the nearest of the car in front and the
+/* What is in this driver's way: the most constraining of the car in front and the
    line they are not allowed past yet. Both come back in the shape
    `decide` already understands, so nothing downstream knows the
    difference between a queue and a right-of-way. */
@@ -475,6 +475,21 @@ export function whatStops(me, world) {
   const layout = layoutOf(world, me);
   const mine = layout.paths[me.route];
   let leader = null, gap = Infinity;
+  /* THE ONE THAT CONSTRAINS ME MOST, NOT THE NEAREST. In a single queue
+     they are the same car, so nothing changes there. They differ when
+     the candidates are in different lanes or on different paths -- a
+     driver changing lane is in both (lanechange.js), and following a car
+     at 13 m/s eight metres ahead in the lane being left said nothing
+     about a STOPPED car seventeen metres ahead in the lane being
+     entered. Chosen by nearest, the stopped car counted only once it was
+     the nearer of the two, at 7.8 m and 12 m/s -- past stopping, and 180
+     overlaps in two minutes at 300 cars. The measure is the interaction
+     term `decide` itself reads, `wantedGap / gap`, so the leader picked
+     is by construction the one that brakes the driver hardest. */
+  const press = (d, them) => wantedGap(me, them) / Math.max(d, 0.01);
+  const consider = (d, them) => {
+    if (leader == null || press(d, them) > press(gap, leader)) { gap = d; leader = them; }
+  };
 
   /* MY LANE, AND HOW FAR ALONG IT I AM.
 
@@ -508,7 +523,7 @@ export function whatStops(me, world) {
         const on = theirSpan.find((t) => t.lane === my.lane);
         if (!on) continue;
         const d = on.along - my.along - CAR.length;
-        if (d >= 0 && d < gap) { gap = d; leader = them; }
+        if (d >= 0) consider(d, them);
       }
       continue;
     }
@@ -527,8 +542,7 @@ export function whatStops(me, world) {
       || (changing(them.lc, world.t) && them.lc.fromLeg === mine.from)
       || (changing(me.lc, world.t) && (theirs.from === me.lc.fromLeg || (changing(them.lc, world.t) && them.lc.fromLeg === me.lc.fromLeg)));
     if (shareLane && them.s > me.s) {
-      const d = them.s - me.s - CAR.length;
-      if (d < gap) { gap = d; leader = them; }
+      consider(them.s - me.s - CAR.length, them);
     }
 
     /* AND THE CAR IN FRONT ON MY WAY OUT, which is a different car and
@@ -547,9 +561,14 @@ export function whatStops(me, world) {
     if (theirs.to === mine.to && theirs.from !== mine.from) {
       const myLeft = mine.length - me.s;
       const theirLeft = theirs.length - them.s;
-      if (theirLeft < myLeft && me.s > mine.clearAt - CAR.length) {
-        const d = myLeft - theirLeft - CAR.length;
-        if (d < gap) { gap = d; leader = them; }
+      /* ...and only a car that is on its way out, past its own line. A car
+         still WAITING at its line has less of the shared path left than a
+         car already in the box -- its approach is shorter -- and read as
+         being in front, it held the car in the box, which held it at its
+         line: a gridlock at the five-way -- lowered from 120 cars to 40,
+         the map was still at 44 two minutes later. */
+      if (theirLeft < myLeft && me.s > mine.clearAt - CAR.length && them.s > theirs.stopAt) {
+        consider(myLeft - theirLeft - CAR.length, them);
       }
     }
   }
@@ -593,7 +612,7 @@ export function whatStops(me, world) {
          crossing car, and the waiting one was sticking into the box. */
       const d = waitAt(mine) - me.s;
       /* A stationary obstacle exactly where the driver must not pass. */
-      if (d < gap) { gap = d; leader = { id: "line", v: 0, headway: me.headway }; }
+      consider(d, { id: "line", v: 0, headway: me.headway });
     }
   }
   return { leader, gap, held, queued, hold: short && under === "hold" };
@@ -698,7 +717,8 @@ export function step(world) {
        course of one intersection is made entirely of those. */
     .map((me) => {
       if (me.player || me.s <= pathOf(world, me).length) return me;
-      const on = nextFor(world.course, me.k ?? 0, me.route, (k, side) => routeFor(world, me, k, side));
+      let wanted = null;
+      const on = nextFor(world.course, me.k ?? 0, me.route, (k, side) => { const w = wantFor(world, me, k, side); wanted = w.want; return w.route; });
       if (!on) return null;
       /* AND THE NEW ROAD'S LIMIT COMES WITH IT. A driver turning off an
          arterial onto a residential street slows to that street's
@@ -722,6 +742,7 @@ export function step(world) {
         openFor: 0, openedAt: null,
         lc: null,   // a lane change finishes before the line; never carried over a seam
         amberGo: false,   // an amber decision belongs to the intersection it was made at
+        want: wanted,     // where they are going here, if their lane does not get them there (wantFor)
       };
     })
     .filter(Boolean);
@@ -875,14 +896,52 @@ function edgeFor(course, x) {
    the routes are the three intents in INTENTS order, so the draw is
    the same draw. */
 function routeFor(world, me, k, side) {
+  return wantFor(world, me, k, side).route;
+}
+
+/* WHERE A DRIVER IS GOING AT THIS NODE, AND WHETHER THEIR LANE GETS THEM
+   THERE. With lanes that can change (a map, lane changes on), a driver
+   chooses an EXIT from everything the approach offers, whatever lane
+   they happen to arrive in -- a car that turned right into the curb
+   lane may want to turn left at the next one -- and if their lane does
+   not make that movement they take the route their lane does make for
+   now, and carry a `want` that lanechange.js acts on: move over, or miss
+   the turn. Before per-lane permissions (lanes.js) every car only ever
+   chose among its own lane's routes, so no car ever had to change lane
+   to make a turn and a restricted lane changed nothing about traffic.
+
+   Without lane changes, or on the compass, the old choice: among the
+   routes out of the lane arrived in. */
+function wantFor(world, me, k, side) {
   const layout = world.course.at[k].layout;
   const routes = layout.routesFrom(side);
-  if (me.plan) {
-    const want = me.plan[(me.leg ?? 0) + 1] ?? "straight";
-    return routes.find((r) => layout.paths[r].intent === want) ?? routes.find((r) => layout.paths[r].intent === "straight") ?? routes[0];
+  const lanesMove = !!world.course.graph && world.laneChanges !== false && layout.legs[side]?.base != null;
+  const exitOf = (r) => layout.legs[layout.paths[r].to]?.base ?? layout.paths[r].to;
+  if (!lanesMove) {
+    if (me.plan) {
+      const want = me.plan[(me.leg ?? 0) + 1] ?? "straight";
+      return { route: routes.find((r) => layout.paths[r].intent === want) ?? routes.find((r) => layout.paths[r].intent === "straight") ?? routes[0], want: null };
+    }
+    const r = rng(world.seed * 96181 + (me.n ?? 0) * 7919 + k + 1);
+    return { route: routes[Math.floor(r() * routes.length) % routes.length], want: null };
   }
-  const r = rng(world.seed * 96181 + (me.n ?? 0) * 7919 + k + 1);
-  return routes[Math.floor(r() * routes.length) % routes.length];
+  const base = layout.legs[side].base;
+  const all = Object.keys(layout.paths).filter((r) => layout.legs[layout.paths[r].from]?.base === base);
+  const exits = [...new Set(all.map(exitOf))];
+  let target;
+  if (me.plan) {
+    const intent = me.plan[(me.leg ?? 0) + 1] ?? "straight";
+    target = exitOf(all.find((r) => layout.paths[r].intent === intent) ?? all.find((r) => layout.paths[r].intent === "straight") ?? all[0]);
+  } else {
+    const r = rng(world.seed * 96181 + (me.n ?? 0) * 7919 + k + 1);
+    target = exits[Math.floor(r() * exits.length) % exits.length];
+  }
+  const mine = routes.find((r) => exitOf(r) === target);
+  if (mine) return { route: mine, want: null };
+  /* Not from this lane: for now, the way this lane goes -- straight on
+     if it can -- and the want to act on. */
+  const meanwhile = routes.find((r) => layout.paths[r].intent === "straight") ?? routes[0];
+  return { route: meanwhile, want: { k, to: target } };
 }
 
 /* A driver, on a leg, with somewhere to be. The person comes from stage

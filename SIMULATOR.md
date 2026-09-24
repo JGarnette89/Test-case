@@ -1482,11 +1482,14 @@ every layer below assumes it.
    upstream is a lane with a MUST-LEAVE-BY point.
 3. **A forced lane change with a deadline** -- the car in a lane that
    ends has to get out before the taper. This is the same machinery as a
-   driver changing lane to reach the lane their turn needs, which is the
-   next lane-change behaviour to be built (lanechange.js already carries
-   the gap acceptance, the blind-spot check and the blend); a lane drop
-   is that behaviour with the deadline set by the road instead of the
-   turn. So the next step there builds most of what lane drops need.
+   driver changing lane to reach the lane their turn needs -- BUILT, see
+   1.1.16: a mandatory change with a deadline, gap acceptance at the
+   driver's confidence, and a missed turn when it cannot be made. A lane
+   drop is that behaviour with the deadline set by the road instead of
+   the turn, and the one difference that matters: a missed turn has a
+   fallback (go where the lane goes) and a lane that ends does not, so a
+   driver who cannot get over must slow and wait for a gap at the taper
+   rather than give up.
 4. **The connectivity check extended**: a lane may end at a taper
    instead of landing in a destination, and the taper must be long
    enough to merge in at the road's speed -- at least the distance a
@@ -1511,6 +1514,78 @@ errors shown on the map at the lane and intersection they name, with
 saving refused while any remain. Once people other than the maintainer
 draw maps this is what stops a map that works nowhere from being
 shared.
+
+#### 1.1.16 Drivers change lane to make their turn, or miss it -- 24 September
+
+Permitted movements per lane (1.1.15) made a lane's turn a fact of the
+road, and exposed that no driver ever had to change lane for one: every
+car chose among its OWN lane's routes, so a restricted lane changed
+nothing about traffic. Now a driver arriving at a node chooses an EXIT
+from everything the approach offers (`wantFor` in crossing.js), and if
+the lane they are in does not make it they drive on in it for now and
+carry a `want`. lanechange.js acts on it:
+
+- **A mandatory change toward the nearest lane that makes the turn**,
+  with no speed gain asked for, through the same gap acceptance, blind
+  spot check and blend as a discretionary one -- so confidence decides
+  how tight a gap they will take to get over, and observation whether
+  they looked.
+- **A deadline set by the driver's own change**: if what is left before
+  the line is less than their own blend at this speed, they give up and
+  go where their lane goes. A MISSED TURN, counted, which is what a real
+  driver who could not get over does. The turn is not re-planned yet; a
+  car that missed simply carries on its lane's way.
+- **A physical floor under the gap**, whatever the boldness: the gap
+  must hold the difference in stopping distance at an emergency stop
+  (8 m/s^2) plus a metre and a half. Boldness is taking a gap a
+  competent driver would refuse, never one nobody could stop in.
+
+Measured over three seeds at 200 cars (`verify-lanes.mjs`): 276 drivers
+arrived in the wrong lane for their turn, 80% got over and made it;
+timid drivers missed 19% of those turns and bold ones 14%. That is the
+temperament showing where it matters -- the cautious driver who will
+not force their way into the turn lane goes the long way round.
+
+**A bug it exposed, in the following model, not the lane change.** At
+300 cars, 180 overlapping car-ticks in two minutes, every one at the
+five-way: a driver mid-change into the turn lane, followed the car
+ahead in the lane it was leaving (13 m/s, 8 m ahead) and not the car
+STOPPED 17 m ahead in the lane it was entering, because the leader was
+chosen as the NEAREST candidate. It counted only once it became the
+nearer, at 7.8 m and 12 m/s -- past stopping. The leader is now the
+candidate that constrains the driver most, by the interaction term
+`decide` itself reads (`wantedGap / gap`); in a single queue that is the
+nearest car, so nothing changes where nobody is changing lane or
+sharing an exit. After: 0 overlaps at 120, 200 and 300 cars.
+
+**And two more it exposed, both older than lane changing**, found by
+the checks the leader change had to pass:
+- *A gridlock at the five-way.* The shared-exit rule (two paths leaving
+  by the same leg follow by distance remaining) never asked whether the
+  other car had crossed its line. A car still WAITING at its line has
+  less of the shared path left than a car in the box, so it read as
+  being in front: it held the car in the box, which held it at its line.
+  Lowered from 120 to 40, the map was still at 44 two minutes later, a
+  queue at the five-way that could never clear. A car now
+  counts as in front on my way out only once it is past its own line.
+- *Ten metres of lane that did not exist.* Where an angled road makes a
+  turn's arc land on the outbound lane short of the box edge, the lane
+  offset was floored at the box edge while the path ran from where the
+  arc really landed -- so on 29 of the test map's paths every position
+  on the way out read up to 10.4 m ahead, and the car behind saw its
+  leader leap ten metres back towards it at the seam. It read short,
+  so it cost needless braking rather than contact, and it is the
+  recurring bug exactly: one distance, measured two ways. The exit now
+  starts where the arc lands; `clearAt` does not move. Residual: two
+  paths still read 0.58 m and 0.16 m ahead, the arc ending slightly off
+  the lane's centreline.
+
+**Cost, measured with the change:** lane changing is 9% of the sim tick
+at 120 cars (2.03 -> 2.21 ms) and 6% at 300 (10.10 -> 10.69 ms). At the
+320-car ceiling (1.2.2) that is about 0.6 ms of a 16.7 ms frame. It
+eats into the headroom rather than the ceiling: the ceiling was set by
+drawing, not by the sim, and was measured with lane changes off, so it
+wants re-measuring on the phone with this build.
 
 #### 1.2 Production from here on, and the performance budget
 

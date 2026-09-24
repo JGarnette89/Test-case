@@ -836,7 +836,11 @@ console.log("\n11. THE BEND");
   /* One showing per right-hand bend: the fault is the bend being driven
      wide, not the sinusoid crossing the floor. */
   console.log(`   ragged on the bent course: ${rB.bendsMet} right-hand bends met, ${rB.showings.length} showings, lengths ${rB.showings.map((f) => ((f.to ?? f.over) - f.from).toFixed(1)).join("/")}s`);
-  rB.showings.length <= rB.bendsMet && rB.showings.every((f) => (f.to ?? f.over) - f.from > 1)
+  /* Only CLOSED showings have a length. A run can end with the car still
+     on a bend, and the showing open then has run for however long was
+     left, not for as long as the bend: seed 4 ended 0.8 s into its tenth
+     bend once a change to following shifted the traffic's timing. */
+  rB.showings.length <= rB.bendsMet && rB.showings.filter((f) => f.to != null).every((f) => f.to - f.from > 1)
     ? ok("one showing per bend at most, each lasting seconds rather than a flicker of the weave")
     : fail("the wide line is being derived per weave crossing rather than per bend");
   /* THE SABOTAGE: the fault must vanish with its cause. Same seed, same
