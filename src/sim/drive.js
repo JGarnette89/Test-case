@@ -20,7 +20,7 @@
    and line come from the slider and the wheel (sim/player.js), and
    their route from the signal. Pure: the screen owns the state.
    ===================================================================== */
-import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand } from "./player.js";
+import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand } from "./player.js";
 import { whatStops, AT_LINE } from "./crossing.js";
 import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
 import { poseOnGraph, intentOf, normDeg, curbLegOf } from "./graph.js";
@@ -231,13 +231,35 @@ export function stopFor(me, world) {
   const d = line ? view.gap : view.gap - wantedGap({ v: 0 }, { v: 0 });
   if (!(d > 0) || d > Math.max(15, 2.5 * stoppingRoom(me.v))) return null;
   const band = stopBand(me.v, d, me.grade ?? 0, AT_LINE);
-  return band && { ...band, d, line };
+  return band && { ...band, d, line, kind: "stop" };
+}
+
+/* OR A CORNER TO SLOW FOR: when nothing is to be stopped for and the
+   committed route turns, the pressure that brings the car to the
+   corner's clean speed at the start of the arc. This is the turn's
+   presentation fixed at the root (SIMULATOR.md 1.1.12): the maintainer
+   found the speed advice "encourages a smooth turn but every
+   intersection is a full stop" -- so where a stop comes first, the stop
+   marker is shown and the corner advice is not, and where the car
+   drives through, the corner has a marker exactly like a stop's. */
+function cornerFor(me, course, stop) {
+  if (stop || (me.v ?? 0) < 0.3) return null;
+  const spot = course.at[me.k];
+  if (spot.through) return null;
+  const path = spot.layout.paths[me.route];
+  if (path.intent === "straight" || me.s > path.stopAt) return null;
+  const vc = cornerSpeedFor(geomOf(path, spot.layout.legs[path.from]));
+  if (vc == null) return null;
+  const d = path.stopAt - me.s;
+  if (d > Math.max(15, 2.5 * stoppingRoom(Math.max(0, me.v - vc)) + 10)) return null;
+  const band = slowBand(me.v, d, vc, me.grade ?? 0);
+  return band && { ...band, d, vc, kind: "corner" };
 }
 
 export function aheadOf(me, course, world = null) {
   const spot = course.at[me.k];
   const path = spot.layout.paths[me.route];
-  const stop = stopFor(me, world);
+  const stop = stopFor(me, world) ?? (world ? cornerFor(me, course, null) : null);
   if (spot.through) return { node: null, intent: "straight", committed: false, hint: null, stop };
   let hint = null;
   if (me.signal && path.intent !== me.signal && me.s <= path.stopAt) {
@@ -248,6 +270,8 @@ export function aheadOf(me, course, world = null) {
   }
   /* The speed the committed corner wants, for the screen to show
      beside the speed the car is doing. */
-  const cornerSpeed = cornerSpeedFor(geomOf(path, spot.layout.legs[path.from]));
+  /* No corner advice where a stop comes first: from rest the speed
+     through the corner is the pull-away's, not the approach's. */
+  const cornerSpeed = stop?.kind === "stop" ? null : cornerSpeedFor(geomOf(path, spot.layout.legs[path.from]));
   return { node: spot.node, intent: path.intent, committed: me.s > path.stopAt, toLine: Math.max(0, path.stopAt - me.s), hint, lane: spot.layout.legs[path.from]?.lane, lanes: spot.layout.legs[path.from]?.lanes, cornerSpeed, stop };
 }

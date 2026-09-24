@@ -135,6 +135,37 @@ export function stopBand(v, d, grade = 0, tol = 2.0) {
   return { at, lo, hi: at, can: accelFor(-1, v, grade) <= need(d) + 1e-9, need: -need(d) };
 }
 
+/* THE SAME MARKER FOR A CORNER: the pressure that brings the car down
+   to the corner's clean speed by the time it reaches the arc. A stop is
+   the special case where that speed is zero, so the brake has ONE
+   mechanic -- get to the speed you need where you need it -- and the
+   turn's speed advice is on the slider with it, where the thumb is,
+   rather than only in words at the top of the screen. The band is every
+   pressure that arrives between 80% of the clean speed and the clean
+   speed itself: slower than that is the crawl the turn verdict calls
+   slow. Null when the car is already at the bottom of the band -- there
+   is nothing more to brake for, and the hold band is the right advice.
+
+   THE BAR AIMS AT THE MIDDLE OF THE BAND, 90% of the clean speed, not
+   at its edge. The clean speed is the boundary of "clean" -- a hair over
+   it is a rough turn -- so a bar on the boundary rewarded a driver who
+   tracked it perfectly with a rough turn one time in two (measured:
+   15 km/h into a 14 km/h corner). A stop's bar can sit on the line
+   because the line has room past it before "over"; a corner's edge has
+   none. */
+export function slowBand(v, d, vEnd, grade = 0) {
+  /* Shown until the car is at the bottom of the band, not merely under
+     the clean speed: a marker that vanished at the clean speed left a
+     driver who had tracked it holding exactly that speed into the arc,
+     on the knife edge the bar was moved off. */
+  if (v <= 0.8 * vEnd || d <= 0.5) return null;
+  const need = (ve) => -(v * v - ve * ve) / (2 * d);
+  const at = sliderFor(need(0.9 * vEnd), v, grade);
+  const lo = sliderFor(need(0.8 * vEnd), v, grade);
+  const hi = sliderFor(need(vEnd), v, grade);
+  return { at, lo, hi, can: accelFor(-1, v, grade) <= need(vEnd) + 1e-9, need: -need(0.9 * vEnd) };
+}
+
 /* Yaw rate for a steering deflection in [-1, 1] at speed v. Two limits,
    the tighter wins: at walking pace the wheels' lock (a bicycle model),
    at speed the tyres' grip -- a car at 60 km/h cannot turn a 14 m

@@ -320,6 +320,39 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   let mt = { ...playerAt(w0, kt, rt), s: Math.max(0, pt.stopAt - 60), v: 13.9, off: 0 }, wt = withDriver(w0, mt), shown = 0;
   for (let i = 0; i < 20 * 6; i++) { if (aheadOf(mt, w0.course, wt).stop) shown++; mt = stepDriver(mt, { steer: 0, slider: holdAt(mt.v) }, wt, DT); wt = withDriver(wt, mt); }
   check(shown === 0, `on the through road of the same crossroads, with nothing to stop for, the marker never appears (${shown} ticks)`);
+
+  /* THE TURN'S PRESENTATION, fixed at the root: "the turn speed
+     indicator encourages a smooth turn but every intersection is a full
+     stop." Where a stop comes first there is no corner advice at all;
+     where the car drives through, the corner has a marker like a stop's
+     -- the pressure that brings it to the corner's clean speed at the
+     arc -- and tracking it is a clean turn that carries its speed. */
+  const stopLeg = curbOf("B-north|end");
+  const ks = w0.course.at.findIndex((s) => s.layout.legs[stopLeg]);
+  const rightAtStop = routeForSignal(w0.course.at[ks].layout, stopLeg, "right");
+  const ps = w0.course.at[ks].layout.paths[rightAtStop];
+  let ms = { ...playerAt(w0, ks, rightAtStop), s: ps.stopAt - 40, v: 13.9, off: 0, signal: "right" };
+  const aS = aheadOf(ms, w0.course, withDriver(w0, ms));
+  check(aS.intent === "right" && aS.cornerSpeed == null && aS.stop?.kind === "stop", `turning right at a stop sign: no corner advice, only the stop marker -- from rest the corner is the pull-away's, not the approach's`);
+
+  /* Through the uncontrolled T at D, turning right: nothing to stop for. */
+  const thruLeg = curbOf("B-D|end");
+  const kd = w0.course.at.findIndex((s) => s.layout.legs[thruLeg]);
+  const rightThru = routeForSignal(w0.course.at[kd].layout, thruLeg, "right");
+  const pd = w0.course.at[kd].layout.paths[rightThru];
+  let md = { ...playerAt(w0, kd, rightThru), s: Math.max(0, pd.stopAt - 120), v: 13.9, off: 0, signal: "right" }, wd = withDriver(w0, md);
+  let cornerShown = 0, vAtArc = null, vc = null;
+  for (let i = 0; i < 20 * 30 && !md.lastTurn; i++) {
+    const a = aheadOf(md, w0.course, wd);
+    if (a.stop?.kind === "corner") { cornerShown++; vc = a.stop.vc; }
+    const slider = a.stop?.kind === "corner" ? a.stop.at : holdAt(md.v, md.grade ?? 0);
+    const before = md.s;
+    md = stepDriver(md, { steer: 0, slider }, wd, DT); wd = withDriver(wd, md);
+    if (before <= pd.stopAt && md.s > pd.stopAt && md.k === kd) vAtArc = md.v;
+  }
+  check(cornerShown > 10 && vc != null && vAtArc != null && vAtArc <= vc * 1.02 && vAtArc >= vc * 0.8,
+    `turning right through the uncontrolled T at 50 km/h, the corner marker appears (${cornerShown} ticks), and tracking it arrives at the arc at ${(vAtArc * 3.6).toFixed(0)} km/h for a corner that wants ${(vc * 3.6).toFixed(0)}`);
+  check(md.lastTurn?.verdict === "clean", `and the turn is clean (${md.lastTurn?.verdict}, ${(md.lastTurn?.vPeak * 3.6).toFixed(0)} km/h through it)`);
 }
 
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }

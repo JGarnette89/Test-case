@@ -1211,6 +1211,47 @@ more than `HARSH_AT` makes the marker slide ten times as far and the
 stop is judged harsh at 7.8 m/s^2; a smooth stop aimed six metres short
 is judged short, not harsh; and on the through road there is no marker.
 
+#### 1.1.12 The turn's presentation: one braking mechanic, for stops and corners, 24 September
+
+"Turning is awkward because the turn speed indicator encourages a
+smooth turn but every intersection is a full stop. The cornering speed
+is correct, just the presentation needs work." Most of that was the map
+(1.1.8 gave it places you drive through). The rest was the advice
+itself, and it is fixed at the root rather than restyled:
+
+- **Where a stop comes first, there is no corner advice at all.** From
+  rest the speed through a corner is the pull-away's, not the
+  approach's; advice about arriving at 26 km/h on an approach that ends
+  at a stop sign was the contradiction the maintainer felt. The stop
+  marker (1.1.11) is shown instead.
+- **Where the car drives through a turn, the corner gets a marker on
+  the slider exactly like a stop's**, in teal instead of orange: the
+  pressure that brings the car down to the corner's speed by the start
+  of the arc (`slowBand`). A stop is the case where that speed is zero,
+  so braking has ONE mechanic -- get to the speed you need where you
+  need it -- and the turn's advice is where the thumb is, not only in
+  words at the top of the screen. The words stay, as the label.
+- **The bar aims at the middle of the clean band, 90% of the corner's
+  clean speed**, not the clean speed itself, which is the edge of
+  "clean": a bar on the edge rewarded a driver who tracked it perfectly
+  with a rough turn (measured: 15 km/h into a 14 km/h corner). And it
+  stays up until the car is at the bottom of the band, not merely under
+  the clean speed -- vanishing early left the driver holding the edge
+  speed into the arc.
+
+`CLEAN` is untouched; the cornering speeds are what the maintainer
+called correct. What moved is when the advice appears and where.
+
+Checked in `verify-drive.mjs` section 7: turning right at a stop sign
+shows no corner advice and only the stop marker; turning right through
+the uncontrolled T at 50 km/h, the corner marker appears and tracking
+it arrives at the arc at 13 km/h for a corner that wants 14, and the
+turn is judged clean.
+
+That right turn at the T wants 14 km/h because its arc is 3.6 m -- the
+tight right-turn radius that is DECISIONS.md 5.15.12's open question,
+still the maintainer's to rule on.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,

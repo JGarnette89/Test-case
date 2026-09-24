@@ -35,15 +35,18 @@ export function drawSlider(ctx, size, slider, v = null, grade = 0, stop = null) 
   if (stop) {
     stopping = slider >= stop.lo - 0.005 && slider <= stop.hi + 0.005;
     const y0 = yOf(Math.min(1, stop.hi)), y1 = yOf(Math.max(-1, stop.lo));
-    ctx.strokeStyle = stopping ? "rgba(255,138,76,0.95)" : "rgba(255,138,76,0.6)"; ctx.lineWidth = 12;
+    /* Orange to stop, teal to slow for a corner: the same mechanic, two
+       reasons, told apart at a glance. */
+    const hue = stop.kind === "corner" ? "76,208,190" : "255,138,76";
+    ctx.strokeStyle = stopping ? `rgba(${hue},0.95)` : `rgba(${hue},0.6)`; ctx.lineWidth = 12;
     ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, Math.max(y0 + 2, y1)); ctx.stroke();
     ctx.strokeStyle = "rgba(255,255,255,0.95)"; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(x - 16, yOf(stop.at)); ctx.lineTo(x + 16, yOf(stop.at)); ctx.stroke();
-    ctx.fillStyle = "rgba(255,160,110,0.95)"; ctx.font = FONT; ctx.textAlign = "right"; ctx.textBaseline = "middle";
-    ctx.fillText(stop.line ? "stop at line" : "stop behind", x - 22, yOf(stop.at));
+    ctx.fillStyle = `rgba(${hue},1)`; ctx.font = FONT; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    ctx.fillText(stop.kind === "corner" ? `corner ${Math.round(stop.vc * 3.6)}` : stop.line ? "stop at line" : "stop behind", x - 22, yOf(stop.at));
     if (!stop.can) {
       ctx.fillStyle = "#e0574f"; ctx.textAlign = "center"; ctx.textBaseline = "top";
-      ctx.fillText("can't stop", x, bottom + 4);
+      ctx.fillText(stop.kind === "corner" ? "too fast" : "can't stop", x, bottom + 4);
     }
   } else if (v != null) {
     const band = holdBand(v, grade);
@@ -63,10 +66,10 @@ export function drawSlider(ctx, size, slider, v = null, grade = 0, stop = null) 
     }
   }
   const y = yOf(slider);
-  ctx.fillStyle = stopping ? "#ff8a4c" : holding ? "#6fb6ff" : slider > NEUTRAL ? "#6cc070" : slider < -NEUTRAL ? "#e0574f" : "#cfd3da";
+  ctx.fillStyle = stopping ? (stop.kind === "corner" ? "#4cd0be" : "#ff8a4c") : holding ? "#6fb6ff" : slider > NEUTRAL ? "#6cc070" : slider < -NEUTRAL ? "#e0574f" : "#cfd3da";
   ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.font = FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(stopping ? "STOP" : holding ? "HOLD" : slider > NEUTRAL ? "GO" : slider < -NEUTRAL ? "BRK" : "--", x, y);
+  ctx.fillText(stopping ? (stop.kind === "corner" ? "SLOW" : "STOP") : holding ? "HOLD" : slider > NEUTRAL ? "GO" : slider < -NEUTRAL ? "BRK" : "--", x, y);
 }
 
 /* THE STOP, JUDGED (drive.js): manner before position, the maintainer's
