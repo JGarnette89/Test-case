@@ -143,11 +143,19 @@ GitHub Actions workflow (`.github/workflows/deploy.yml`) that builds and
 publishes the site to GitHub Pages on every push to `main`. What it
 needs from you, and it can be done from a phone:
 
-**On your phone, on github.com, signed in: tap the + at the top, New
-repository, name it `drivedraw`, choose Private, tap Create. Then in
-that repository: Settings → Pages → under Build and deployment, set
-Source to "GitHub Actions".** That is all. Tell Claude the repository
-exists.
+**Done, 24 September.** The repository is
+https://github.com/JGarnette89/Test-case (public -- GitHub Pages on a
+free plan needs it) and Pages is set to deploy from GitHub Actions. The
+site is https://jgarnette89.github.io/Test-case/ and rebuilds on every
+push to `main`.
+
+For the record, and for the next repository: the setting lives at
+`https://github.com/<owner>/<repo>/settings/pages` -- open that link in
+a phone's BROWSER, signed in, and set "Build and deployment" -> Source
+to "GitHub Actions". The GitHub mobile app has no repository settings
+at all, and a phone browser hides the Settings tab in the tab bar's
+overflow, which is why "Settings -> Pages" could not be found by
+following the words.
 
 The first push has to come from this PC, and the one thing a session
 cannot do is sign you in: the next time you are at the PC, run
