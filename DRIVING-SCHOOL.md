@@ -270,6 +270,19 @@ What it implies, so it is not lost:
   detectable by the same conditions. A red run is the HOLD state
   ignored; a rolling stop is a stop leg left without `stoppedAt`;
   speeding is the posted limit on the leg.
+- **Keeping right is the first law the sim judges CONTINUOUSLY**
+  (SIMULATOR.md 1.1.17, 24 September). The maintainer ruled that
+  moving back to the curb lane is "a measure of law adherence", with
+  its exceptions: overtaking, something in the way, an upcoming left.
+  The traffic now obeys it according to knowledge, and a candidate who
+  does not is marked `keepRight`. Lane hogging is exactly the kind of
+  offence this daytime layer would penalise, and the question is
+  already asked in the right shape for it: `reasonToStayOut` in
+  lanechange.js takes a car and the road and says whether it has a
+  reason to be where it is, and nothing in it cares whose car. Asking
+  it of the player's car each second is the whole of a lane-hogging
+  penalty's detection -- not built, because the player's car is driven
+  by the player and not by `laneStep`, so today nothing asks.
 - **It scores the player with the machinery that assesses candidates.**
   The five axes and the fault vocabulary were built to mark somebody
   else's driving, and nothing in them cares whose car it is (CLAUDE.md:

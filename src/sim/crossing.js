@@ -1097,7 +1097,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
@@ -1123,7 +1123,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, spawned: 0, nextAt: 0, actors: [] };
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, spawned: 0, nextAt: 0, actors: [] };
   /* Long enough for a car to have crossed the longest road twice: the
      sum of every road would be an upper bound and cost six seconds of
      seeding on a desktop for a kilometre-square map, which on a phone

@@ -1587,6 +1587,110 @@ eats into the headroom rather than the ceiling: the ceiling was set by
 drawing, not by the sim, and was measured with lane changes off, so it
 wants re-measuring on the phone with this build.
 
+#### 1.1.17 Keep right: the knowledge axis, continuously, on the link -- 24 September
+
+The maintainer's ruling, which makes returning to the curb lane law
+rather than style: "that would be a measure of law adherence, since in
+Ontario drivers should be moving into the driving (curb) lane unless
+there's something in the way or they are making an upcoming left turn."
+
+**WHY IT MATTERS MORE THAN IT LOOKS: it is the knowledge axis's first
+CONTINUOUS expression.** Knowledge has been the thinnest of the five
+for the whole project -- rolling stops and late signals, both momentary
+and both needing an intersection (CLAUDE.md, "an axis is only readable
+through errors it dominates"). Lane discipline is visible on every
+multi-lane road for as long as a driver is on it, which is exactly the
+content the link needed: the maintainer's ruling that the road between
+intersections is assessable territory rather than dead air (REBUILD.md
+8, DECISIONS.md 5.14.8). It also lands straight in the legal-compliance
+layer he proposed for the daytime phase -- lane hogging is precisely
+what that would penalise, and the detection is already in the right
+shape for it (DRIVING-SCHOOL.md 7).
+
+**What is built** (`lanechange.js`, `reasonToStayOut`; `marking.js`):
+- **The exceptions ARE the rule.** A driver out of the curb lane is
+  there for a reason, as a fact about the road right now, or failing to
+  keep right: `turn` (the lane to the right does not make the movement
+  this car is making here -- sitting left before a left is the law),
+  `passing` (somebody beside or just behind in that lane: the pass is
+  not finished), `inTheWay` (a slower car ahead there, near enough to
+  hold them up), and `noGap` (no gap to move back into that a COMPETENT
+  driver would take -- waiting for one is keeping right as soon as the
+  road allows). The fourth was not in the first version: without it
+  sound drivers were marked for a car a little further back than the
+  blind spot, 7 of their 162 occasions. A driver mid-change has a clock
+  that does not run.
+- **The return is a driver completing a manoeuvre, not a car snapping
+  back.** The clock starts when the reason passes; the prompt return is
+  `RETURN_AFTER` = one lane change's duration (3.8 s, a flagged design
+  constant) later, and knowledge stretches it: `RETURN_AFTER / (1 -
+  deficit)`. The traffic's median driver returns in 4.4 s; the
+  weak-on-knowledge quarter (deficit about 0.7) take 13 s, longer than
+  most of an approach, so they sit out there; a driver who does not
+  know the rule never returns. Continuous, no threshold typed in. The
+  move itself goes through the same gap acceptance and blind-spot check
+  as any change, so a poor observer can still start back into somebody.
+- **Markable, as KNOWLEDGE.** `keepRight` on the sheet: out of the curb
+  lane with no reason for longer than `KEEP_RIGHT_FAULT` = twice the
+  prompt return (7.6 s). By construction that is "slower back than a
+  driver at knowledge deficit 0.5"; every driver on the sound side of
+  the ratings' profile returns well inside it. A design constant and a
+  DOMAIN QUESTION for the maintainer: how long an examiner lets a
+  driver sit out of the curb lane before it is marked. The fault reads
+  the same `hogSince` the driver's own decision writes, so the sheet
+  and the car cannot disagree about whether there was a reason.
+
+**Measured** (`verify-lanes.mjs` section 7, three seeds, 150 s, 200
+cars; the measurement script is `tools/measure/keepright.mjs`):
+- A restatement of the exceptions written from the ruling -- not
+  imported -- agreed with the model on all 2035 decisions it judged
+  "no reason". Sabotaged by deleting the `inTheWay` exception from the
+  model, it disagreed on 694: the check can fail.
+- Weak-on-knowledge drivers were marked on 36% of 72 occasions out of
+  the curb lane with no reason; sound ones on 2% of 148. None of the
+  weak drivers moved back inside the threshold; the rest of their
+  occasions ended with the approach running out first -- which on the
+  screen is the car that stays out there.
+- 107 returns, the soonest 4.0 s after the reason passed, median 4.5 s.
+- Cruising out of the curb lane with no reason: 7.2% of the time with
+  the rule, 12.5% without it, same seeds. Out of the curb lane at all:
+  52% against 57% -- most of the traffic out there is correctly there;
+  the largest shares are a turn ahead that the curb lane does not make,
+  and the overpass's inner lanes, where nobody can change lane.
+- Every driver watched: 29 `keepRight` faults on the sheet, 26 on
+  weak-knowledge drivers and 3 on sound; with every driver's knowledge
+  made perfect, 3 -- the same count, so those are not knowledge's. Not
+  yet examined; the likeliest source is a timid driver refusing a gap a
+  competent one would take, which would be confidence showing through a
+  knowledge fault at 2% of occasions.
+- Cost: keeping right is 2-4% of the sim tick at 120 cars and 3-7% at
+  300 across three runs (the spread is run-to-run noise at this size);
+  lane changing in all, 10% at 120 and 8-12% at 300. At 300 cars that
+  is 1.2 ms of a 16.7 ms frame for all of lane changing, all of it
+  added since the phone's ceiling was measured (1.2.2), which had no
+  lane changes at all.
+
+**What it does not do, and what that costs on screen.** Lane changes
+happen only on the APPROACH half of each link -- the exit half, from the
+box to the link's midpoint, is filed under the node behind, and nobody
+changes lane there. So a driver who passes on the
+exit half cannot move back until the next approach begins, and the left
+lane clears more slowly than on a real road. That is the limit most
+worth lifting next if the left lane reads as too full. And the overpass's
+lanes are separate one-lane roads, so nobody changes lane on them at
+all; they are judged neither way.
+
+The CONFIDENCE check in `verify-lanes` now counts overtakes only. It
+had counted every lane change, and the day this landed it read 1.9x
+where it had read 3.3x. Measured by kind (seeds 3, 4, 5): overtakes
+separate bold from timid 5.0x with keeping right off and 8.1x with it
+on, while changes for a turn (1.2x, 0.9x) and returns to the curb lane
+(0.6x) do not separate by temperament at all -- they are the law and
+the route, not boldness -- and they drown the axis. A check whose
+quantity other behaviours had started to feed. The first attempt at
+the fix read 2.0x for a second reason: it joined lane changes to
+drivers by actor id across three seeds, and ids repeat between seeds.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,

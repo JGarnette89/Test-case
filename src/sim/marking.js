@@ -25,6 +25,13 @@
      wideLine      off their line by more than a driver could fail to
                    notice -- the old engine's own floor, POS_VISIBLE --
                    which only a bend can produce
+     keepRight     out of the curb lane with no reason -- not passing,
+                   nobody in the way, no turn the curb side cannot make --
+                   for longer than KEEP_RIGHT_FAULT (lanechange.js). A
+                   KNOWLEDGE fault, by the maintainer's ruling: "a measure
+                   of law adherence". Read from the same `hogSince` the
+                   driver's own decision writes, so the sheet and the car
+                   cannot disagree about whether there was a reason.
 
    THE FOURTH IS THE STEERING AXIS, AND IT COULD NOT BE ON THE SHEET
    UNTIL THE ROAD BENT. On a straight the weave is bounded at half the
@@ -49,6 +56,7 @@ import { sectionSheet } from "../engine/detect.js";
 import { POS_VISIBLE } from "../engine/faults.js";
 import { HARSH_AT, PX_PER_M } from "./traffic.js";
 import { AT_REST, AT_LINE, waitAt, pathOf, layoutOf, strayOf, wideAt } from "./crossing.js";
+import { KEEP_RIGHT_FAULT } from "./lanechange.js";
 
 /* The old engine's visibility floor is in pixels; the sim is in metres. */
 const OFF_LINE = POS_VISIBLE / PX_PER_M;
@@ -181,6 +189,18 @@ export function noticing(world) {
       changed = true;
     } else if (showing && !(wideAt(world, a) > 0)) {
       close(showing); changed = true;
+    }
+
+    /* --- keeping right: the knowledge axis on the link --- */
+    const hogging = a.hogSince != null && world.t - a.hogSince > KEEP_RIGHT_FAULT;
+    const outOfLane = open("keepRight");
+    if (hogging) {
+      faults = outOfLane
+        ? faults.map((x) => (x === outOfLane ? { ...x, over: world.t } : x))
+        : [...faults, { ...at, trait: "keepRight", from: world.t, to: null, over: world.t }];
+      changed = true;
+    } else if (outOfLane) {
+      close(outOfLane); changed = true;
     }
 
     if (next.trip !== me.trip || next.leg !== me.leg || next.rested !== me.rested || next.lined !== me.lined) {

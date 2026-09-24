@@ -1620,7 +1620,7 @@ src/sim/course.js        stage 3: intersections placed in one space, the roads b
 src/sim/marking.js       stage 3: deferred marking and the section sheet, fed to detect.js unchanged
 src/sim/graph.js         THE SIMULATOR (SIMULATOR.md): the sim on a road network -- nodes at any bearing, ONE LEG PER LANE, junction geometry
 src/sim/signal.js        traffic signals: phases derived from the geometry, and a light that resolves to the controls the sim already had plus HOLD
-src/sim/lanechange.js    lane changes: confidence decides whether and how tight, observation whether the gap was seen, steering how cleanly; and the change a turn needs, made or missed
+src/sim/lanechange.js    lane changes: confidence decides whether and how tight, observation whether the gap was seen, steering how cleanly; the change a turn needs, made or missed; and keeping right, knowledge's, with its exceptions
 src/sim/corner.js        the traffic slows for corners: the player's own cornering limit on each arc, scaled by confidence, braked for at the driver's own rate
 src/sim/lanes.js         permitted movements per lane (the maintainer's general rule, overridable per road end) and connectivity: every lane must land, or the map is refused
 src/sim/drive.js         the player on the map: the turn signal as the turn commit, lane changes by drifting
@@ -2006,7 +2006,7 @@ node tools/verify-drive.mjs        the player on the map: the signal picks the e
 node tools/verify-chase.mjs        the chase camera leads with speed, eases, turns the short way, keeps the car on screen, and the rotated view agrees with itself
 node tools/verify-paint.mjs        the painter's order: no car under the surface it stands on, none over a deck it is under, at every rotation, on both scenes
 node tools/verify-signal.mjs       traffic signals: phases derived and never conflicting, only rights go on red and only after stopping, a red is not undue delay, the amber is a physical dilemma
-node tools/verify-lanes.mjs        lane changes are temperament: confidence decides whether and how tight, observation whether it was seen, steering how cleanly; drivers get over for their turn or miss it; honest, touch-free, and a few percent of the sim
+node tools/verify-lanes.mjs        lane changes are temperament: confidence decides whether and how tight, observation whether it was seen, steering how cleanly; drivers get over for their turn or miss it; knowledge keeps them right, the exceptions restated from the ruling, and failing is markable; honest, touch-free, and a few percent of the sim
 node tools/verify-connect.mjs      permitted movements are the network's: the general rule by default, overridable per lane, and a lane with nowhere to land refused at authoring time, named by lane and intersection
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 python tools/verify-scoring.py     re-derives the scoring curve independently

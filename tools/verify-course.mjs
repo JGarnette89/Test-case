@@ -670,8 +670,13 @@ console.log("\n9. DEFERRED MARKING, AND THE SECTION SHEET");
   const traits = [...src.matchAll(/trait: "([a-zA-Z]+)"/g)].map((m) => m[1]);
   const named = [...new Set(traits)].sort();
   console.log(`   faults the sheet can derive today: ${named.join(", ")}`);
-  JSON.stringify(named) === JSON.stringify(["harshBraking", "rollingStop", "undueDelay", "wideLine"])
-    ? ok("the sheet derives exactly the four faults the sim holds as physical quantities, and nothing it would have to author")
+  /* keepRight joined on 24 September (SIMULATOR.md 1.1.17): out of the
+     curb lane with no reason, read from the `hogSince` the driver's own
+     decision writes -- a quantity the sim holds for its own reasons, as
+     the other four are, and the exceptions restated and checked in
+     verify-lanes section 7. A sixth name here is a decision, not a drift. */
+  JSON.stringify(named) === JSON.stringify(["harshBraking", "keepRight", "rollingStop", "undueDelay", "wideLine"])
+    ? ok("the sheet derives exactly the five faults the sim holds as physical quantities, and nothing it would have to author")
     : fail(`the sheet derives ${named.join(", ")}, which is not the list this stage can honestly stand behind`);
   /* The wide line is judged against the old engine's visibility floor,
      IMPORTED. A second 0.45 written here would be the two-implementations
