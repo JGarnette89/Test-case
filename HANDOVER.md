@@ -122,14 +122,12 @@ the literal *and say why in the comment beside it*, as `keepRight` did.
 
 ## 4. Known sins, in the order I would fix them
 
-1. **`MOST_BRAKE = 8.0` is now declared twice** — `traffic.js:162` and
-   `lanechange.js:80` — and is not exported from traffic.js. I
-   introduced the second copy. This is precisely the
-   two-implementations-of-one-quantity bug CLAUDE.md's cold-start item 2
-   is about, and I am flagging it rather than fixing it on the way out
-   because the fix (export it, import it, delete the local) needs
-   `verify-lanes` run behind it and that is 7m30s. **One commit, and it
-   should be the successor's first.**
+1. ~~**`MOST_BRAKE = 8.0` is declared twice.**~~ **FIXED by the
+   successor, and it was THREE times**: `corner.js` carried its own copy
+   too, with a comment saying it was traffic.js's. traffic.js exports it
+   now and both others import it. The lesson is the entry's own: the
+   list of copies was itself written from memory, and a grep found one
+   more.
 2. **Three `keepRight` faults survive knowledge being stripped.** 29
    faults on the sheet, 26 on weak-knowledge drivers; strip every
    driver's knowledge to perfect and 3 remain — the same 3. So those are
@@ -138,7 +136,10 @@ the literal *and say why in the comment beside it*, as `keepRight` did.
    leaking through a knowledge fault, at 2% of occasions) and **I did
    not verify that hypothesis.** It is labelled as a hypothesis in the
    document. Verify or replace it.
-3. **`tools/measure/reach.mjs` misclassifies `verify-screens`.** It
+3. ~~**`tools/measure/reach.mjs` misclassifies `verify-screens`.**~~
+   **FIXED**: it labels a check that renders the app `app`, and
+   `syms.mjs` beside it shows the live screens use src/engine/ by symbol,
+   so OLD no longer reads as "guards nothing live". The original entry: It
    builds the import graph from static `import ... from` and marks a
    check "OLD" when nothing in its closure reaches `src/sim`, `src/iso`
    or `src/map`. `verify-screens` imports vite and `react-dom/server`

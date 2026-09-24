@@ -48,7 +48,7 @@ import { deficitOf } from "../engine/ratings.js";
 import { rng } from "../engine/index.js";
 import { REACTION_FLOOR } from "../engine/score.js";
 import { REGISTER_SPAN } from "../engine/awareness.js";
-import { CAR, DT, wantedGap, weaveRoom } from "./traffic.js";
+import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom } from "./traffic.js";
 import { LATERAL } from "./course.js";
 
 const LANE = 3.6;
@@ -76,8 +76,6 @@ const BLIND_BEHIND = 10, BLIND_AHEAD = CAR.length;
 export const LC_EVERY = 10;
 /* Once changed, not again for this long: a driver settles in a lane. */
 const SETTLE = 6;
-/* The hardest a car brakes -- traffic.js's clamp, an emergency stop. */
-const MOST_BRAKE = 8.0;
 
 /* KEEP RIGHT: THE KNOWLEDGE AXIS, ON THE LINK. The maintainer's ruling
    (SIMULATOR.md 1.1.17): "that would be a measure of law adherence,

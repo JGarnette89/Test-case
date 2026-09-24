@@ -76,7 +76,14 @@ let oldLines = 0, oldN = 0;
 for (const t of tools.sort()) {
   const c = closure([t]);
   const sim = [...c].some((f) => /src[\\/](sim|iso|map)[\\/]/.test(f));
-  if (!sim) { oldLines += lines(t); oldN++; }
-  console.log(`  ${sim ? "sim " : "OLD "} ${String(lines(t)).padStart(5)}  ${rel(t)}`);
+  /* A check that bundles the app and renders it reaches every screen,
+     the live ones included, through a path this graph cannot see.
+     verify-screens is that check; labelling it OLD made it look deletable
+     while it was the only guard on #/map mounting. And OLD is not "guards
+     nothing live": the live screens import src/engine/ too, which
+     syms.mjs breaks down by symbol. */
+  const app = /react-dom\/server/.test(fs.readFileSync(t, "utf8"));
+  if (!sim && !app) { oldLines += lines(t); oldN++; }
+  console.log(`  ${app ? "app " : sim ? "sim " : "OLD "} ${String(lines(t)).padStart(5)}  ${rel(t)}`);
 }
-console.log(`  checks that reach nothing the rebuild runs on: ${oldN}, ${oldLines} lines`);
+console.log(`  checks that reach neither the rebuild nor the rendered app: ${oldN}, ${oldLines} lines`);

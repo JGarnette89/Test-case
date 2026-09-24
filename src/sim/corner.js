@@ -34,9 +34,8 @@
    ===================================================================== */
 import { poseAt } from "./intersection.js";
 import { CLEAN, GRIP } from "./player.js";
-import { wantedSpeed, decide } from "./traffic.js";
+import { wantedSpeed, decide, MOST_BRAKE } from "./traffic.js";
 
-const MOST_BRAKE = 8.0;   // traffic.js's clamp: nobody brakes harder than an emergency stop
 
 const norm = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
 /* Gentler than this is not a corner: a 150 m radius is a bend the road

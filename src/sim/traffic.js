@@ -159,7 +159,7 @@ const HEADWAY = 0.7;
 /* Bumper-to-bumper gap at a standstill. A real figure, not derived. */
 const STANDSTILL = 2.0;
 /* Nobody brakes harder than this. An emergency stop is about 8 m/s^2. */
-const MOST_BRAKE = 8.0;
+export const MOST_BRAKE = 8.0;
 
 /* =====================================================================
    Setting up
