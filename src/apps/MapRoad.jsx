@@ -229,7 +229,7 @@ export default function MapRoad() {
          leaves, from the fixed isometric view. */
       const PLACES = {
         crossroads: { x: 400, y: 400, z: 0 }, tee: { x: 800, y: 400, z: 0 }, fiveway: { x: 400, y: 800, z: 0 },
-        overpass: { x: 600, y: 800, z: 3 }, hill: { x: 600, y: 400, z: 3 },
+        overpass: { x: 600, y: 800, z: 3 }, hill: { x: 600, y: 400, z: 3 }, arterial: { x: 1250, y: 400, z: 0 },
       };
       let k, rot = 0;
       if (sc.me) {
@@ -285,7 +285,7 @@ export default function MapRoad() {
         if (ahead.node) {
           const word = ahead.intent === "left" ? "turning left" : ahead.intent === "right" ? "turning right" : "straight on";
           ctx.fillStyle = ahead.committed ? "#6cc070" : me.signal ? "#f2b84b" : "rgba(230,232,236,0.6)";
-          ctx.fillText(`${word} at the ${ahead.node === "n0" ? "crossroads" : ahead.node === "n1" ? "T" : ahead.node === "n2" ? "five-way" : "T"}${ahead.committed ? " — committed" : ` in ${Math.round(ahead.toLine)} m`}`, size.w / 2, 54);
+          ctx.fillText(`${word} at the ${ahead.node === "n0" ? "crossroads" : ahead.node === "n1" ? "T" : ahead.node === "n2" ? "five-way" : ahead.node === "n4" ? "arterial" : "T"}${ahead.committed ? " — committed" : ` in ${Math.round(ahead.toLine)} m`}`, size.w / 2, 54);
           if (ahead.hint) { ctx.fillStyle = "#f2b84b"; ctx.fillText(ahead.hint, size.w / 2, 70); }
         }
         if (me.atEdge) { ctx.fillStyle = "#F2B84B"; ctx.fillText("THE EDGE OF THE MAP — restart", size.w / 2, 72); }
@@ -349,7 +349,7 @@ export default function MapRoad() {
               onClick={() => { setSetting("mode", id); restart(seed, limit, id); }}>{label}</button>
           ))}
           {mode === "watch" && <span style={S.label}>View</span>}
-          {mode === "watch" && [["crossroads", "the crossroads"], ["tee", "the T"], ["fiveway", "the five-way"], ["overpass", "the overpass"], ["hill", "the hill"], ["car", "ride a car"]].map(([id, label]) => (
+          {mode === "watch" && [["crossroads", "the crossroads"], ["tee", "the T"], ["fiveway", "the five-way"], ["arterial", "the arterial"], ["overpass", "the overpass"], ["hill", "the hill"], ["car", "ride a car"]].map(([id, label]) => (
             <button key={id} className="btn" style={{ ...S.chip, borderColor: follow === id ? C.amber : "rgba(255,255,255,0.12)", color: follow === id ? C.white : DIM }}
               onClick={() => { cam.current = { x: 0, y: 0, z: 0, id: null }; setFollow(id); }}>{label}</button>
           ))}

@@ -1691,6 +1691,140 @@ quantity other behaviours had started to feed. The first attempt at
 the fix read 2.0x for a second reason: it joined lane changes to
 drivers by actor id across three seeds, and ids repeat between seeds.
 
+#### 1.1.18 A big arterial: turn bays, protected lefts, and a real spawn bug -- 25 September
+
+The maintainer, having run 300 cars on the test map: "300 cars seems to
+work, need advanced intersections to see it really work." Not more
+cars -- a richer place for them to be. The test map gains E, east of B:
+two three-lane arterials crossing under signals. Every approach differs
+on purpose, so one node shows every case: a DOUBLE LEFT and a right bay
+from the west, a left and a right bay from the north and east, a left
+bay alone from the south.
+
+**A TURN BAY IS A LANE THAT BEGINS**, the other half of the lane count
+that changes along a road SIMULATOR.md 1.1.15 designed and did not
+build (the half that ENDS -- a lane dropped into a merge -- is still
+open). `map/bays.js` is the geometry: a road end declares `bays: {
+left, right, length }`, and every lane on that approach -- through and
+bay alike -- runs the WHOLE road, lying exactly on its neighbour until
+a TAPER begins and easing across over it. That is what lets a bay be
+treated like any other lane everywhere the sim already reasons about
+lanes by comparing positions across two of them: nothing needed to
+learn "not yet a lane" as a separate state. The taper is derived, not
+typed: `changeTime(lane) + REACTION_FLOOR` at the road's own speed --
+the same numbers `LC_TIME` already uses for an ordinary change, moved
+to `core/motion.js` so both sides can call them without a cycle. A left
+bay opens the road's MEDIAN, so the double yellow ends up on the far
+side of it, painted the way a real one is; a right bay opens at the
+curb, one side only.
+
+**A BAY IS FOR ITS TURN.** Under the general rule (`lanes.js
+defaultTurns`) a left bay turns left and nothing else, a right bay
+right, and the through lanes then carry neither -- "the lane beside the
+centre line" the maintainer's ruling gives the left to IS the left bay
+where one exists. A car in a bay is placed by its POSITION across the
+approach (`pos`, centre line out), not by a lane number, because a bay
+sits between lanes without renumbering them; `graph.js` gives every
+node a `legAt(base, pos)` and every caller that used to reach for
+`leg.lane ± 1` now asks it instead. A bay with nowhere to make its own
+turn, or one drawn at a road end that joins no intersection, or one on
+a one-way road (no median to open, no oncoming to protect a left from)
+is refused at load with a warning, the same discipline connectivity
+already had.
+
+**A DRIVER IN A BAY IS THE MANDATORY LANE CHANGE THIS PROJECT ALREADY
+HAD** (1.1.16), asking for a leg one place further toward the centre or
+the curb instead of one lane number further, and refusing to move into
+a bay before it OPENS (`opensAt`, where the taper begins along the
+path) -- a want that cannot yet be granted is simply carried a little
+longer, exactly as a want the approach cannot grant at all already is.
+A discretionary change -- overtaking -- never enters a bay: a bay is
+for the turn it is signed for, never for getting past somebody. The
+BLEND itself needed one correction: `lateralOf`'s L0 assumed a lane
+change always crosses one whole lane, which is true everywhere except
+a car entering or leaving a bay ON its taper, where the two lanes are
+closer than that -- so `attempt()` now measures the real separation
+there and the car does not visibly jump.
+
+**A SIGNAL RESOLVES TO ONE MORE STATE: a LEADING PROTECTED-LEFT ARROW**
+(`signal.js`), and the design rule from 1.1.8 holds again -- every
+approach carrying `leftArrow` shows a green arrow at the head of its
+phase while every ball on the node is red, then amber, then an all-red,
+and only then the ordinary green, during which the left is permissive
+again. `movementLight(signal, base, intent, t)` is the one function
+every reader of the light now calls -- the drivers, the amber-commit
+memory, `verify-signal`, the renderer -- because a left obeys the arrow
+while it is lit and the ball otherwise, and nothing may read a
+different light than the one a driver actually would. A node with no
+approach posting an arrow runs the cycle it always did, to the tenth of
+a second.
+
+**A REAL BUG, FOUND BY MEASURING: for a car ENTERING the map at an
+edge, the exit was drawn from the routes the SPAWN LANE happened to
+offer, never from what the approach as a whole could reach.** Nothing
+enters the world in a turn bay -- edges are never bays (1.1.16's own
+rule) -- so no car spawned already wanting a bay's turn, and at the
+arterial not one left arrived from the three edge approaches in the
+first traffic run. `arriving()` now chooses like a car already at a
+node does (`wantFor`): an exit from everything the approach offers,
+carrying a `want` if the lane it starts in does not make it. This was
+never a bay-specific bug -- it was there for every restricted lane the
+map already had -- and fixing it moved the whole map's missed-turn rate
+from 31% to 22% at 300 cars on an unrelated measurement taken before
+and after, which is the size of what it was silently costing.
+
+**Measured** (`tools/measure/arterial.mjs`, `verify-bays.mjs`, three
+seeds, 300 cars, three minutes): 0 overlapping car-ticks map-wide; every
+left through E made from a left bay (157 of 157 across three seeds);
+nobody ever inside a bay before it opens; a bay used only for the turn
+it is signed for, never an overtake. A bay's lane lies on its
+neighbour's to within a centimetre before the taper and exactly one
+lane out over the storage, sampled along every bay at the node.
+
+**Cost.** The sim tick at 300 cars rose from a median 10.7 ms to
+13.5 ms (of the 50 ms real-time budget) -- the geometry a bay's lane
+now carries, evaluated for every car on an arterial approach whether or
+not a bay is in play. Seeding at 300 held near its old cost only
+because E's roads were drawn short (about 420 m, the test map's old
+longest) after a first 700 m draft nearly tripled it -- the warm-up is
+capped by the LONGEST road on the map (1.1.9), so one long road taxes
+seeding a map that never asked for one.
+
+**A THIRD FINDING, from getting `verify-lanes.mjs` green again after E
+landed: keep-right's aggregate margin genuinely narrows at a wide,
+busy node, and that is the node working as intended, not a fault in
+it.** Two of the suite's checks had gone red together and turned out to
+be two different things. `verify-lanes` section 2's abort/missed-check
+invariant was a real check bug -- `seedGraph`'s warm-up (1.1.9) hands
+back a world with some actors already mid-lane-change, a few already
+aborted, and the measurement window only starts counting `missed`
+starts from its own first tick, so 3-4 aborts a run had no start to be
+counted against; fixed by capturing each driver's abort count at the
+window's own start and comparing the delta, plus excluding a change
+already missed and in flight at that instant (`watch()`'s `aborts0`
+and `carriedMissed`).
+
+The OTHER failure, "the left lane clears," was not a bug. Compared
+directly on identical state, the model's `reasonToStayOut` and the
+check's own independent restatement of the ruling agree perfectly at
+E -- 0 disagreements across 1770 samples -- so the mechanism is sound.
+What moved is the POPULATION: node E is three lanes wide and carries
+about a third of the map's cruising volume, and being three lanes wide
+means a momentary open gap in the lane to the right is common even
+while the node is busy overall, which resets the return clock on every
+passing "reason" tick. E's own on/off ratio is still a real reduction
+(0.875 -- the rule still helps), just a weaker one than a narrower
+node gives, and it drags the map-wide aggregate from 0.68 (E excluded)
+to 0.79. The check's bound moved from 0.75 to 0.85, with the reasoning
+kept beside it rather than just the number, and
+`tools/measure/keepright.mjs --byNode` is what it was derived from.
+
+Still open, and the maintainer's calls: whether the double left's two
+lanes should read as visibly different in weight on screen (a real
+double-left often has one lane favoured), and whether a lane that ENDS
+-- 1.1.15's other half -- is worth building before or after the editor
+gives someone a way to draw one.
+
 #### 1.2 Production from here on, and the performance budget
 
 **The maintainer's direction, 18 September: this is a production app,

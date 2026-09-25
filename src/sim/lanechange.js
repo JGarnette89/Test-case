@@ -48,15 +48,26 @@ import { deficitOf } from "../core/driver.js";
 import { rng } from "../core/rng.js";
 import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
 import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom } from "./traffic.js";
-import { LATERAL } from "./course.js";
+import { changeTime } from "../core/motion.js";
+import { poseAt } from "./intersection.js";
+
+/* THE LANE BESIDE, by place across the approach (graph.js `legAt`):
+   `d` = -1 toward the centre line, +1 toward the curb. A turn bay sits
+   between lanes without renumbering them, so this -- never the id's
+   number -- is how a car finds its neighbour. */
+const beside = (layout, leg, d) =>
+  layout.legAt ? layout.legAt(leg.base, (leg.pos ?? leg.lane) + d) : (layout.legs[`${leg.base}#${leg.lane + d}`] ? `${leg.base}#${leg.lane + d}` : null);
+/* A turn bay is open to a car at `s` along its path only from where its
+   taper begins; before that its lane lies on its neighbour's. */
+const closedBay = (layout, legId, s) => {
+  const l = layout.legs[legId];
+  return !!l?.bay && s < (l.opensAt ?? 0);
+};
 
 const LANE = 3.6;
-/* HOW LONG A CLEAN CHANGE TAKES, derived rather than chosen: a smooth
-   (smoothstep) lateral move of one lane has its peak sideways
-   acceleration 6L/T^2 at the ends, and the road's own comfort limit for
-   sideways acceleration is course.js LATERAL (0.15 g -- what sizes a
-   bend). Solved for T: about 3.8 s for a 3.6 m lane. */
-export const LC_TIME = Math.sqrt((6 * LANE) / LATERAL);
+/* HOW LONG A CLEAN CHANGE TAKES: core/motion.js `changeTime`, for a lane
+   this wide -- about 3.8 s. */
+export const LC_TIME = changeTime(LANE);
 /* HOW MUCH FASTER THE NEXT LANE HAS TO BE to be worth it, for a driver
    at caution 1, in m/s -- scaled by caution, so a bold driver changes
    for less and a timid one for more. A design constant, flagged: how
@@ -126,9 +137,13 @@ export const KEEP_RIGHT_FAULT = 2 * RETURN_AFTER;
    overpass's lanes are separate one-lane roads, so nobody changes lane
    on them at all. */
 function reasonToStayOut(world, out, layout, path, leg, look, want) {
+  /* In a turn bay the reason is the turn; a left bay is the law, and a
+     right bay IS the curb side. */
+  if (leg.bay === "left") return "turn";
+  if (leg.bay === "right") return "curb";
   if (leg.lane >= (leg.lanes ?? 1) - 1) return "curb";
-  const toLeg = `${leg.base}#${leg.lane + 1}`;
-  if (!layout.legs[toLeg]) return "noLane";
+  const toLeg = beside(layout, leg, 1);
+  if (!toLeg || !layout.legs[toLeg]) return "noLane";
   const exitOf = (r) => layout.legs[layout.paths[r].to]?.base ?? layout.paths[r].to;
   const exit = exitOf(out.route);
   const route = layout.routesFrom(toLeg).find((r) => exitOf(r) === exit);
@@ -234,7 +249,7 @@ export function laneStep(world, me, out, view) {
     if (met) return { ...out, want: null, turnsMet: (out.turnsMet ?? 0) + 1 };
   }
   if (out.going || out.stoppedAt != null || out.v < 3) return quiet(out);
-  if (!leg || (leg.lanes ?? 1) < 2) return quiet(out);
+  if (!leg || (leg.across ?? leg.lanes ?? 1) < 2) return quiet(out);
   const T0 = LC_TIME;
   if (out.s < BLIND_BEHIND + 30) return quiet(out);
 
@@ -253,17 +268,20 @@ export function laneStep(world, me, out, view) {
        past the line (verify-lanes). */
     const mine = T0 * (1 + 0.5 * (deficitOf(out.ratings ?? {}, "steering").deficit ?? 0));
     if (path.stopAt - out.s < out.v * mine * 1.2 + 10) return { ...out, want: null, missedTurns: (out.missedTurns ?? 0) + 1 };
-    const okLanes = Object.values(layout.legs).filter((l) => l.base === leg.base && layout.routesFrom(l.id).some((r) => layout.legs[layout.paths[r].to]?.base === out.want.to)).map((l) => l.lane);
+    const here = leg.pos ?? leg.lane;
+    const okLanes = Object.values(layout.legs).filter((l) => l.base === leg.base && layout.routesFrom(l.id).some((r) => layout.legs[layout.paths[r].to]?.base === out.want.to)).map((l) => l.pos ?? l.lane);
     if (!okLanes.length) return { ...out, want: null };
-    const nearest = okLanes.reduce((b, l) => (Math.abs(l - leg.lane) < Math.abs(b - leg.lane) ? l : b), okLanes[0]);
-    const dir = Math.sign(nearest - leg.lane);
-    const toLeg = `${leg.base}#${leg.lane + dir}`;
-    if (!layout.legs[toLeg]) return out;
+    const nearest = okLanes.reduce((b, l) => (Math.abs(l - here) < Math.abs(b - here) ? l : b), okLanes[0]);
+    const dir = Math.sign(nearest - here);
+    const toLeg = beside(layout, leg, dir);
+    if (!toLeg || !layout.legs[toLeg]) return out;
     const routes = layout.routesFrom(toLeg);
     const route = routes.find((r) => layout.legs[layout.paths[r].to]?.base === out.want.to)
       ?? routes.find((r) => layout.paths[r].intent === "straight") ?? routes[0];
     if (!route) return out;
     const s2 = out.s * (layout.paths[route].stopAt / path.stopAt);
+    /* A bay not open yet: stay put and keep wanting it. */
+    if (closedBay(layout, toLeg, s2)) return out;
     return attempt(world, out, path, { dir, toLeg, route, s2, nb: neighbours(world, out, toLeg, s2), mandatory: true }, T0);
   }
 
@@ -316,10 +334,11 @@ export function laneStep(world, me, out, view) {
   const caution = out.caution ?? 1;
   let best = null;
   for (const dir of [-1, 1]) {
-    const to = leg.lane + dir;
-    if (to < 0 || to >= leg.lanes) continue;
-    const toLeg = `${leg.base}#${to}`;
-    if (!layout.legs[toLeg]) continue;
+    const toLeg = beside(layout, leg, dir);
+    if (!toLeg || !layout.legs[toLeg]) continue;
+    /* A turn bay is for the turn, never for getting past somebody. */
+    if (layout.legs[toLeg].bay) continue;
+    const to = layout.legs[toLeg].pos ?? layout.legs[toLeg].lane;
     /* ...and never out of the lane the turn needs. */
     const route = layout.routesFrom(toLeg).find((r) => layout.paths[r].intent === path.intent);
     if (!route) continue;
@@ -389,7 +408,16 @@ function attempt(world, out, path, best, T0) {
 
   /* GO. The steering axis decides the blend. */
   const steer = deficitOf(out.ratings ?? {}, "steering").deficit ?? 0;
-  const L0 = -best.dir * LANE;   // the old lane, relative to the new: moving right (to a higher index) leaves it on the left
+  /* The old lane, relative to the new: moving right (toward the curb)
+     leaves it on the left. A lane apart -- except into or out of a turn
+     bay on its taper, where the two lanes are closer than that, and the
+     blend has to start from where the car actually is or it would jump. */
+  const layoutHere = world.course.at[out.k ?? 0].layout;
+  const bayInvolved = !!(layoutHere.legs[path.from]?.bay || layoutHere.legs[best.toLeg]?.bay);
+  const sep = bayInvolved
+    ? Math.min(LANE, Math.hypot(poseAt(path, out.s).x - poseAt(layoutHere.paths[best.route], best.s2).x, poseAt(path, out.s).y - poseAt(layoutHere.paths[best.route], best.s2).y))
+    : LANE;
+  const L0 = -best.dir * sep;
   return {
     ...counted,
     route: best.route,

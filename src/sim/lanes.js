@@ -42,19 +42,31 @@
 export const MOVES = ["left", "straight", "right"];
 
 /* THE GENERAL RULE, for an approach of `count` lanes at a node offering
-   the movements in `exits`. Lane 0 is beside the centre line. */
-export function defaultTurns(count, exits) {
+   the movements in `exits`. Lane 0 is beside the centre line.
+
+   TURN BAYS (map/bays.js): the first `bays.left` positions are left bays
+   and the last `bays.right` right bays, and a bay is for its turn only --
+   a left bay turns left, a right bay turns right, neither goes straight.
+   Where there is a left bay it IS "the lane beside the centre line" the
+   maintainer's rule gives the left to, so the through lanes then carry
+   no left; the same for a right bay and the curb lane. With no bays this
+   is exactly the rule it always was. */
+export function defaultTurns(count, exits, bays = { left: 0, right: 0 }) {
   const out = [];
-  for (let i = 0; i < count; i++) {
+  const L = bays.left ?? 0, R = bays.right ?? 0;
+  for (let p = 0; p < L; p++) out.push(exits.has("left") ? ["left"] : []);
+  const through = count - L - R;
+  for (let i = 0; i < through; i++) {
     const t = [];
-    if (exits.has("left") && (i === 0 || count === 1)) t.push("left");
+    if (exits.has("left") && !L && (i === 0 || through === 1)) t.push("left");
     if (exits.has("straight")) t.push("straight");
-    if (exits.has("right") && (i === count - 1 || count === 1)) t.push("right");
+    if (exits.has("right") && !R && (i === through - 1 || through === 1)) t.push("right");
     /* A lane the rule leaves with nothing -- the middle lane at a T, where
        there is no straight on -- may turn either way (the maintainer). */
-    if (!t.length) { if (exits.has("left")) t.push("left"); if (exits.has("right")) t.push("right"); }
+    if (!t.length) { if (exits.has("left") && !L) t.push("left"); if (exits.has("right") && !R) t.push("right"); }
     out.push(t);
   }
+  for (let p = 0; p < R; p++) out.push(exits.has("right") ? ["right"] : []);
   return out;
 }
 

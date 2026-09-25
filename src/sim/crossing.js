@@ -39,7 +39,7 @@ import {
   radiusFor,
 } from "./course.js";
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } from "./graph.js";
-import { controlUnder, lightAt } from "./signal.js";
+import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel } from "./corner.js";
 import { rng } from "../core/rng.js";
@@ -688,7 +688,7 @@ export function step(world) {
       /* The amber decision, remembered (see `controlOf`): released at an
          amber while still short of the line is committed to going. */
       const amberGo = me.amberGo || (!!layoutOf(world, me).signal && s < waitAt(mine) + AT_LINE
-        && lightAt(layoutOf(world, me).signal, layoutOf(world, me).legs[mine.from]?.base, world.t) === "amber"
+        && movementLight(layoutOf(world, me).signal, layoutOf(world, me).legs[mine.from]?.base, mine.intent, world.t) === "amber"
         && controlOf(me, layoutOf(world, me), mine, world.t) === "none");
       const at = { ...raw, v, s, stoppedAt, going, accepted, ...(amberGo ? { amberGo } : {}) };
       const sitting = stoppedAt != null && !going;
@@ -955,7 +955,18 @@ function arriving(world, n) {
      compass those are the three intents in INTENTS order, so the draw
      is the one it always was. */
   const routes = world.course.at[where.k].layout.routesFrom(where.side);
-  const route = routes[Math.floor(r() * routes.length) % routes.length];
+  const drawn = routes[Math.floor(r() * routes.length) % routes.length];
+  /* ON A MAP, A CAR ENTERING CHOOSES LIKE ONE ARRIVING: an exit from
+     everything the approach offers, and a `want` if its lane does not
+     make it (wantFor). Drawing from the spawn lane's own routes meant a
+     car entering at an edge never turned where the turn is made from a
+     lane nobody enters in -- a turn bay -- and at the big arterial not one
+     left came from the three edge approaches (25 September). The draw
+     above is still taken, so every later draw is the one it was, and
+     the compass, where lanes do not change, keeps it. */
+  const lanesMove = !!world.course.graph && world.laneChanges !== false;
+  const chosen = lanesMove ? wantFor(world, { n }, where.k, where.side) : { route: drawn, want: null };
+  const route = chosen.route;
   /* A car enters the world already driving to the limit of the road it
      enters on, not to the map's fastest. Drawn BEFORE the driver so
      `driver` derives `v0` from it once, rather than deriving it from
@@ -969,6 +980,7 @@ function arriving(world, n) {
     n,
     k: where.k,
     route,
+    ...(chosen.want ? { want: chosen.want } : {}),
     leg: 0,
     s: 0,
     stoppedAt: null,

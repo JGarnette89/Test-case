@@ -186,12 +186,14 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   check(two.overlaps === 0 && two.w.spawned > 150 && lanesUsed.size === 2, `three minutes of traffic in both lanes at an all-way stop: ${two.w.spawned} cars, ${two.overlaps} overlapping car-ticks, lanes in use ${[...lanesUsed].sort().join(" and ")}`);
 }
 
-/* 5. The test map: a loop through four nodes joined by a bend and a hill, and an overpass. */
+/* 5. The test map: a loop through four nodes joined by a bend and a hill, an overpass, and
+   (25 September) the big arterial E east of B, which adds a fifth node and makes B-east a
+   fifth link. */
 {
   const l = loadMap(testMap1());
-  check(l.ok && l.nodes.length === 4 && l.crossings.length === 1 && l.crossings[0].gap > 4.5, `test map 1 loads: ${l.nodes.length} nodes, one crossing with ${l.crossings[0]?.gap.toFixed(1)} m of clearance (the overpass), ${l.warnings.length} warnings`);
+  check(l.ok && l.nodes.length === 5 && l.crossings.length === 1 && l.crossings[0].gap > 4.5, `test map 1 loads: ${l.nodes.length} nodes, one crossing with ${l.crossings[0]?.gap.toFixed(1)} m of clearance (the overpass), ${l.warnings.length} warnings`);
   const g = graphOf(l);
-  check(g.links.length === 4 && g.at.filter((s) => s.through).length === 4, `four roads join nodes to nodes (the loop), and the overpass is lanes with nothing on them, two each way (${g.links.length} links, ${g.at.filter((s) => s.through).length} through lanes)`);
+  check(g.links.length === 5 && g.at.filter((s) => s.through).length === 4, `four roads join the loop's nodes and B-east joins B to E, and the overpass is lanes with nothing on them, two each way (${g.links.length} links, ${g.at.filter((s) => s.through).length} through lanes)`);
   let legsMax = 0, seamJumps = 0, minSeamGap = Infinity, levelsCrossed = 0;
   const last = new Map();
   const two = runFor(seedGraph(7, 50, l), 300, (w) => {

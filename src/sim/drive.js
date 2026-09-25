@@ -66,7 +66,10 @@ export function playerOn(course, roadId, end) {
    the road's edges either side of this lane's centre, and the box,
    where the committed arc is followed rather than driven. */
 function geomOf(path, leg, lane = LANE) {
-  const mine = leg?.lane ?? 0, count = leg?.lanes ?? 1;
+  /* Place across the approach, bays included (graph.js `pos`, `across`);
+     the oncoming carriageway is the road's through lanes. With no bays
+     these are exactly the lane and the lane count. */
+  const mine = leg?.pos ?? leg?.lane ?? 0, count = leg?.lanes ?? 1, across = leg?.across ?? count;
   const [b0, b1] = [path.stopAt, path.clearAt];
   return {
     length: path.length,
@@ -88,7 +91,7 @@ function geomOf(path, leg, lane = LANE) {
     /* From this lane's centre: the lanes to the right of it and half of
        this one to the right edge; this half-lane, the lanes to the
        left and the whole oncoming carriageway to the left edge. */
-    edges: { left: -(0.5 + mine + count) * lane, right: (count - mine - 0.5) * lane },
+    edges: { left: -(0.5 + mine + count) * lane, right: (across - mine - 0.5) * lane },
     box: [path.stopAt, path.clearAt],
   };
 }
@@ -112,14 +115,19 @@ function laneChange(layout, me, path) {
   const leg = layout.legs[path.from];
   if (!leg || me.s > path.stopAt) return me;
   const lane = LANE;
-  let to = null;
-  if (me.off > lane / 2 && leg.lane + 1 < leg.lanes) to = leg.lane + 1;
-  else if (me.off < -lane / 2 && leg.lane > 0) to = leg.lane - 1;
-  if (to == null) return me;
-  const newLeg = `${leg.base}#${to}`;
-  if (!layout.legs[newLeg]) return me;
+  const here = leg.pos ?? leg.lane;
+  const d = me.off > lane / 2 ? 1 : me.off < -lane / 2 ? -1 : 0;
+  if (!d) return me;
+  const newLeg = layout.legAt ? layout.legAt(leg.base, here + d) : `${leg.base}#${leg.lane + d}`;
+  if (!newLeg || !layout.legs[newLeg]) return me;
   const route = routeForSignal(layout, newLeg, me.signal);
-  return { ...me, route, off: me.off - (to - leg.lane) * lane };
+  /* How far apart the two lanes really are here: a lane, except on a
+     turn bay's taper -- and a bay not yet a whole lane out is not yet a
+     lane to be in, so the car stays on its own until it is. */
+  const a = poseAt(path, me.s), b = poseAt(layout.paths[route], me.s);
+  const sep = Math.hypot(a.x - b.x, a.y - b.y);
+  if ((leg.bay || layout.legs[newLeg].bay) && sep < 0.9 * lane) return me;
+  return { ...me, route, off: me.off - d * (leg.bay || layout.legs[newLeg].bay ? sep : lane) };
 }
 
 /* ONE TICK OF THE PLAYER, in the world as it is: the car model along
@@ -282,5 +290,5 @@ export function aheadOf(me, course, world = null) {
   /* No corner advice where a stop comes first: from rest the speed
      through the corner is the pull-away's, not the approach's. */
   const cornerSpeed = stop?.kind === "stop" ? null : cornerSpeedFor(geomOf(path, spot.layout.legs[path.from]));
-  return { node: spot.node, intent: path.intent, committed: me.s > path.stopAt, toLine: Math.max(0, path.stopAt - me.s), hint, lane: spot.layout.legs[path.from]?.lane, lanes: spot.layout.legs[path.from]?.lanes, cornerSpeed, stop };
+  return { node: spot.node, intent: path.intent, committed: me.s > path.stopAt, toLine: Math.max(0, path.stopAt - me.s), hint, lane: spot.layout.legs[path.from]?.pos ?? spot.layout.legs[path.from]?.lane, lanes: spot.layout.legs[path.from]?.across ?? spot.layout.legs[path.from]?.lanes, cornerSpeed, stop };
 }

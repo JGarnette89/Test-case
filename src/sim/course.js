@@ -171,7 +171,10 @@ export function courseOf({ n, cols, rows = 1, kmh = 60, control = TWO_WAY, reach
    driver who cannot hold a line runs fully wide on a bend this tight and
    proportionally less on a gentler one.
    ===================================================================== */
-export const LATERAL = 0.15 * 9.81;
+/* LATERAL lives in core/motion.js -- a lane change and a turn bay's taper
+   are sized by it too -- and is re-exported here. */
+import { LATERAL } from "../core/motion.js";
+export { LATERAL };
 export const radiusFor = (speed) => (speed * speed) / LATERAL;
 
 /* =====================================================================

@@ -47,6 +47,7 @@ import { signalFor, isSignal } from "./signal.js";
 import { defaultTurns, receive, checkTurns } from "./lanes.js";
 import { ribbonOf } from "../iso/road.js";
 import { rng } from "../core/rng.js";
+import { hasBays, offsetsOf, offsetLine } from "../map/bays.js";
 
 /* HOW FAR FROM OPPOSITE STILL COUNTS AS ONCOMING. A left turn yields
    to the oncoming approach; at a skewed crossing "oncoming" is the leg
@@ -128,6 +129,41 @@ export function laneAlong(road, dir, lane, index = 0) {
   return { id: `${road.id}:${dir > 0 ? "fwd" : "rev"}#${index}`, road: road.id, dir, index, pts: right, at, length: at[at.length - 1] };
 }
 
+/* THE LANES OF A ROAD WITH TURN BAYS (map/bays.js): the through lanes,
+   which move out as the median opens, and each bay's own lane, which lies
+   on its neighbour until the taper and then eases across. Every lane runs
+   the whole road so that positions on two lanes compare by length the way
+   every lane change already does. `opensAt` is where, along the bay's
+   lane, the taper begins -- nobody enters a bay, or appears in one,
+   before it. */
+function lanesWithBays(road) {
+  const o = offsetsOf(road);
+  const out = {};
+  const mk = (dir, key, offs) => {
+    const fwd = dir === "fwd";
+    const pts = offsetLine(fwd ? road.pts : road.pts.slice().reverse(), fwd ? offs : offs.slice().reverse());
+    const at = [0];
+    for (let i = 1; i < pts.length; i++) at.push(at[i - 1] + dist(pts[i], pts[i - 1]));
+    return { id: `${road.id}:${dir}#${key}`, road: road.id, dir: fwd ? 1 : -1, index: key, pts, at, length: at[at.length - 1] };
+  };
+  for (const dir of ["fwd", "rev"]) {
+    o[dir].through.forEach((offs, i) => { out[`${road.id}:${dir}#${i}`] = mk(dir, i, offs); });
+    const open = o.open[dir === "fwd" ? "end" : "start"];
+    /* Sample order along THIS direction's travel. */
+    const seq = dir === "fwd" ? open : open.slice().reverse();
+    const first = seq.findIndex((f) => f > 1e-3);
+    for (const [side, list] of [["L", o[dir].left], ["R", o[dir].right]]) {
+      list.forEach((offs, j) => {
+        const L = mk(dir, `${side}${j}`, offs);
+        L.bay = side === "L" ? "left" : "right";
+        L.opensAt = first < 0 ? L.length : L.at[Math.max(0, first - 1)];
+        out[L.id] = L;
+      });
+    }
+  }
+  return out;
+}
+
 /* THE OLD SINGLE RULE, kept for what still asks it the old way. The
    graph no longer uses it: permitted movements are per lane now and
    connectivity is checked (lanes.js). Its straight-on branch -- "the
@@ -202,6 +238,7 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
   const lanesOf = (r) => Math.max(1, Math.round(r.lanes ?? 1));
   const lanes = {};
   for (const r of roads) {
+    if (hasBays(r)) { Object.assign(lanes, lanesWithBays(r)); continue; }
     for (let i = 0; i < lanesOf(r); i++) {
       lanes[`${r.id}:fwd#${i}`] = laneAlong(r, 1, lane, i);
       lanes[`${r.id}:rev#${i}`] = laneAlong(r, -1, lane, i);
@@ -229,7 +266,10 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
   for (const [k, n] of loaded.nodes.entries()) {
     /* THE BOX is as wide as the widest road meeting here, so the stop
        line on every leg sits clear of the crossing traffic's lanes. */
-    const widest = Math.max(1, ...n.legs.map((l) => (roadOf[l.road] ? lanesOf(roadOf[l.road]) : 1)));
+    /* Bays count: the box has to clear the widest approach AT THE LINE.
+       A node with no bays gets exactly what it always did. */
+    const baysHere = (l) => Object.keys(lanes).filter((id) => id.startsWith(`${l.road}:${l.end === "end" ? "fwd" : "rev"}#`) && /#[LR]\d+$/.test(id)).length;
+    const widest = Math.max(1, ...n.legs.map((l) => (roadOf[l.road] ? lanesOf(roadOf[l.road]) + baysHere(l) : 1)));
     const boxHalf = lane * widest;
     const lineAt = boxHalf + LINE_SETBACK;      // the stop line beyond the box, as intersection.js has it
     const legs = {};
@@ -242,6 +282,30 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
          map's own. */
       const ctl = control?.[base] ?? control?.["*"] ?? l.control ?? "none";
       const count = lanesOf(r);
+      /* TURN BAYS AT THIS END, for the direction arriving here: left bays
+         beside the centre line, right bays beside the curb (map/bays.js).
+         `pos` is a lane's place across the approach at the line, centre
+         line out -- the order a map's `turns` lists them in and the order
+         a lane change moves through. Through lanes keep `lane`, their
+         index on the link, so joins and every exit are untouched. */
+      const inDir = l.end === "end" ? "fwd" : "rev";
+      const leftBays = Object.keys(lanes).filter((id) => id.startsWith(`${r.id}:${inDir}#L`)).length;
+      const rightBays = Object.keys(lanes).filter((id) => id.startsWith(`${r.id}:${inDir}#R`)).length;
+      const across = leftBays + count + rightBays;
+      const bayLeg = (key, pos, kind) => {
+        const inLane = lanes[`${r.id}:${inDir}#${key}`];
+        const inFrom = seam ? inLane.length / 2 : 0;
+        const id = `${base}#${key}`;
+        legs[id] = {
+          id, base, lane: null, lanes: count, pos, across, bay: kind, inner: false, curb: false,
+          road: r.id, end: l.end, bearing: l.bearing, control: ctl, arrow: !!r.leftArrow?.[l.end],
+          speed: (r.speed ?? 50) / 3.6, inLane, outLane: null, inFrom, outTo: 0,
+          /* Along the PATH, whose s = 0 is `inFrom`. */
+          opensAt: Math.max(0, inLane.opensAt - inFrom),
+        };
+      };
+      for (let j = 0; j < leftBays; j++) bayLeg(`L${j}`, leftBays - 1 - j, "left");
+      for (let j = 0; j < rightBays; j++) bayLeg(`R${j}`, leftBays + count + j, "right");
       /* ONE LEG PER LANE: `road|end#i`. Travelling TOWARD the node on
          this road is the lane whose direction ends at this end. */
       for (let i = 0; i < count; i++) {
@@ -249,8 +313,8 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
         const outLane = lanes[`${r.id}:${l.end === "end" ? "rev" : "fwd"}#${i}`];
         const id = `${base}#${i}`;
         legs[id] = {
-          id, base, lane: i, lanes: count, inner: i === 0, curb: i === count - 1,
-          road: r.id, end: l.end, bearing: l.bearing, control: ctl,
+          id, base, lane: i, lanes: count, pos: leftBays + i, across, bay: null, inner: i === 0, curb: i === count - 1,
+          road: r.id, end: l.end, bearing: l.bearing, control: ctl, arrow: !!r.leftArrow?.[l.end],
           /* THE POSTED SPEED OF THE ROAD THIS LEG IS ON, in m/s. The
              loader already derives it -- the kind's default, the road's
              override, lowered where a bend cannot be taken at it
@@ -276,7 +340,8 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
        destination lane each permitting lane goes into. A lane that has
        nowhere to land is an authoring error. */
     const bases = [...new Set(ids.map((id) => legs[id].base))];
-    const first = (b) => ids.find((id) => legs[id].base === b);
+    /* A through lane of each approach: what an exit is measured by. */
+    const first = (b) => ids.find((id) => legs[id].base === b && !legs[id].bay);
     const recv = {};
     for (const a of bases) {
       const A0 = legs[first(a)];
@@ -284,10 +349,11 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
       for (const b of bases) if (b !== a) exits.set(b, intentOf({ legs }, first(a), first(b)));
       const offered = new Set(exits.values());
       const given = roadOf[A0.road]?.turns?.[A0.end];
-      const checked = checkTurns(given, A0.lanes, offered);
+      const checked = checkTurns(given, A0.across, offered);
       if (checked.why) errors.push({ code: "bad-turns", node: n.id, lane: a, message: `at ${n.id}, the turns given for ${a} ${checked.why}; the general rule is used instead` });
-      const turns = checked.turns ?? defaultTurns(A0.lanes, offered);
-      for (const id of ids) if (legs[id].base === a) legs[id].turns = turns[legs[id].lane];
+      const baysOf = (side) => ids.filter((id) => legs[id].base === a && legs[id].bay === side).length;
+      const turns = checked.turns ?? defaultTurns(A0.across, offered, { left: baysOf("left"), right: baysOf("right") });
+      for (const id of ids) if (legs[id].base === a) legs[id].turns = turns[legs[id].pos];
       turns.forEach((t, i) => { if (!t.length) errors.push({ code: "lane-goes-nowhere", node: n.id, lane: `${a}#${i}`, message: `at ${n.id}, lane ${a}#${i} is permitted no movement at all` }); });
       for (const [b, move] of exits) {
         const B0 = legs[first(b)];
@@ -344,7 +410,7 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
         /* The one lane this lane lands in for this movement, from the
            permissions and pairing above -- or none, which is a lane that
            may not make this movement, or one with nowhere to land. */
-        if (recv[`${A.base}>${B.base}`]?.[A.lane] !== B.lane) continue;
+        if (B.bay || recv[`${A.base}>${B.base}`]?.[A.pos] !== B.lane) continue;
         paths[`${from}/${to}`] = pathBetween(place, A, B, { from, to, intent: kind });
       }
     }
@@ -360,7 +426,12 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
     }
     const byFrom = {};
     for (const key of keys) (byFrom[paths[key].from] ??= []).push(key);
-    at.push({ at: { x: 0, y: 0 }, node: n.id, layout: { place, paths, conflicts, legs, signal, routesFrom: (leg) => byFrom[leg] ?? [] } });
+    /* The leg at a place across an approach, for anything that moves a car
+       sideways: `legAt(base, pos)`. Position, not the id's number -- a bay
+       sits between lanes without renumbering them. */
+    const byPos = {};
+    for (const id of ids) byPos[`${legs[id].base}@${legs[id].pos}`] = id;
+    at.push({ at: { x: 0, y: 0 }, node: n.id, layout: { place, paths, conflicts, legs, signal, routesFrom: (leg) => byFrom[leg] ?? [], legAt: (base, pos) => byPos[`${base}@${pos}`] ?? null } });
   }
 
   /* Joins: a road between two nodes joins their two legs, lane by
@@ -388,9 +459,9 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
       for (let i = 0; i < lanesOf(r); i++) {
         const L = lanes[`${r.id}:${dir}#${i}`];
         const id = `${r.id}:${dir}#${i}`;
-        const legs = { [id]: { id, base: `${r.id}:${dir}`, lane: i, lanes: lanesOf(r), inner: i === 0, curb: i === lanesOf(r) - 1, road: r.id, end: dir === "fwd" ? "end" : "start", bearing: bearingOf(L.pts[L.pts.length - 2], L.pts[L.pts.length - 1]) + 180, control: "none", speed: (r.speed ?? 50) / 3.6, inLane: L, outLane: L, inFrom: 0, outTo: L.length } };
+        const legs = { [id]: { id, base: `${r.id}:${dir}`, lane: i, lanes: lanesOf(r), pos: i, across: lanesOf(r), bay: null, inner: i === 0, curb: i === lanesOf(r) - 1, road: r.id, end: dir === "fwd" ? "end" : "start", bearing: bearingOf(L.pts[L.pts.length - 2], L.pts[L.pts.length - 1]) + 180, control: "none", speed: (r.speed ?? 50) / 3.6, inLane: L, outLane: L, inFrom: 0, outTo: L.length } };
         const path = { from: id, to: id, intent: "straight", pts: L.pts, at: L.at, length: L.length, stopAt: L.length, clearAt: L.length, laneIn: { id: L.id, at0: 0 }, laneOut: { id: L.id, at0: 0 } };
-        at.push({ at: { x: 0, y: 0 }, node: id, through: true, layout: { place: { lane, boxHalf: lane, lineAt: lane + LINE_SETBACK, control: { [id]: "none" }, at: L.pts[L.pts.length - 1], reach: L.length }, paths: { [`${id}/${id}`]: path }, conflicts: {}, legs, routesFrom: (leg) => [`${leg}/${leg}`] } });
+        at.push({ at: { x: 0, y: 0 }, node: id, through: true, layout: { place: { lane, boxHalf: lane, lineAt: lane + LINE_SETBACK, control: { [id]: "none" }, at: L.pts[L.pts.length - 1], reach: L.length }, paths: { [`${id}/${id}`]: path }, conflicts: {}, legs, routesFrom: (leg) => [`${leg}/${leg}`], legAt: () => null } });
       }
     }
   }
@@ -403,7 +474,7 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
 export function curbLegOf(course, roadId, end) {
   for (const [k, spot] of course.at.entries()) {
     for (const leg of Object.values(spot.layout.legs)) {
-      if (leg.road === roadId && leg.end === end && leg.curb && !spot.through) return { k, leg: leg.id };
+      if (leg.road === roadId && leg.end === end && leg.curb && !leg.bay && !spot.through) return { k, leg: leg.id };
     }
   }
   return null;
@@ -535,6 +606,7 @@ export function edgesOfGraph(course, busier = 2) {
   course.at.forEach((spot, k) => {
     for (const id of Object.keys(spot.layout.legs)) {
       if (course.joins[`${k}|${id}`]) continue;
+      if (spot.layout.legs[id].bay) continue;   // nobody appears in a turn bay
       out.push({ k, side: id, weight: spot.layout.legs[id].control === "stop" ? 1 : busier });
     }
   });
@@ -604,7 +676,7 @@ export function junctionsOf(course) {
          say why -- a state the screen cannot express (CLAUDE.md). Lanes
          on the general rule are not painted, as they are not on a real
          road. */
-      if (roadOf[leg.road]?.turns?.[leg.end] && leg.turns) {
+      if ((roadOf[leg.road]?.turns?.[leg.end] || leg.bay) && leg.turns) {
         const ap = poseAt(p, Math.max(0, p.stopAt - 7));
         arrows.push({ at: { x: ap.x, y: ap.y, z }, heading: ap.rot, moves: leg.turns.slice() });
       }
@@ -612,7 +684,7 @@ export function junctionsOf(course) {
       if (leg.control === "stop" || leg.control === "yield" || lit) {
         lines.push({ kind: lit ? "signal" : leg.control, a: { x: pose.x - nx * lane / 2, y: pose.y - ny * lane / 2, z }, b: { x: pose.x + nx * lane / 2, y: pose.y + ny * lane / 2, z } });
         /* One per road end, at the curb lane's right-hand edge, level with the line, facing the approaching driver. */
-        if (leg.curb) signs.push({ kind: lit ? "signal" : leg.control, base: leg.base, at: { x: pose.x + nx * (lane / 2 + 0.6), y: pose.y + ny * (lane / 2 + 0.6), z }, heading: pose.rot });
+        if (leg.pos === leg.across - 1) signs.push({ kind: lit ? "signal" : leg.control, base: leg.base, at: { x: pose.x + nx * (lane / 2 + 0.6), y: pose.y + ny * (lane / 2 + 0.6), z }, heading: pose.rot });
       }
     }
     /* The surface: the corners in order round the centre. */

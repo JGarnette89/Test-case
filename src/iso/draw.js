@@ -23,7 +23,7 @@
    would buy if the level look reads wrong.
    ===================================================================== */
 import { viewOf } from "./project.js";
-import { lightAt } from "../sim/signal.js";
+import { lightAt, arrowAt } from "../sim/signal.js";
 import { poseAt, groundAt as stage0Ground, LANE } from "./road.js";
 import { C } from "../theme.js";
 
@@ -218,13 +218,18 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
            collector the broken single, a residential street nothing at
            all. The cheapest of the cues that make three roads feel like
            three kinds of place (SIMULATOR.md 1.1.10). */
+        /* Where a turn bay opens the median, the line moves to its far
+           side (map/bays.js `centre`); elsewhere it is the centreline. */
+        const mid = road.centre ?? pts;
         if (road.kind === "arterial" || road.kind === "highway") {
-          const p0 = pts[i], p1 = pts[i + 1], len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+          const p0 = mid[i], p1 = mid[i + 1], len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
           const ox = (-(p1.y - p0.y) / len) * 0.14, oy = ((p1.x - p0.x) / len) * 0.14;
           ctx.strokeStyle = C.yellow;
           for (const s of [-1, 1]) seg(ctx, P, { x: p0.x + s * ox, y: p0.y + s * oy, z: p0.z }, { x: p1.x + s * ox, y: p1.y + s * oy, z: p1.z });
-        } else if (road.kind !== "residential" && i % 3 !== 2) { ctx.strokeStyle = C.yellow; seg(ctx, P, pts[i], pts[i + 1]); }
-        if (road.laneLines && i % 2 === 0) { ctx.strokeStyle = "rgba(250,250,242,0.75)"; for (const line of road.laneLines) seg(ctx, P, line[i], line[i + 1]); }
+        } else if (road.kind !== "residential" && i % 3 !== 2) { ctx.strokeStyle = C.yellow; seg(ctx, P, mid[i], mid[i + 1]); }
+        /* A null point is a stretch where the lanes either side are not
+           yet apart -- a bay lying on its neighbour before its taper. */
+        if (road.laneLines && i % 2 === 0) { ctx.strokeStyle = "rgba(250,250,242,0.75)"; for (const line of road.laneLines) if (line[i] && line[i + 1]) seg(ctx, P, line[i], line[i + 1]); }
       };
       const fill = (p, q, r, s) => {
         quad(ctx, P, p, q, r, s);
@@ -344,6 +349,12 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
         box: boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 0.9 - i * 0.42 }, s.heading + 90, 0, { l: 0.34, w: 0.12, h: 0.34 }),
       })) : null;
       const housing = isLight ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 0.06 }, s.heading + 90, 0, { l: 0.5, w: 0.16, h: 1.3 }) : null;
+      /* A PROTECTED LEFT has its own lens beside the stack, toward the
+         road -- lit green or amber by `arrowAt`, the same call the
+         left-turners obey (signal.js). */
+      const hasArrow = isLight && !!j.signal?.arrows?.[s.base];
+      const hr = ((s.heading + 90) * Math.PI) / 180;
+      const arrowLens = hasArrow ? boxCorners({ x: s.at.x - Math.cos(hr) * 0.45, y: s.at.y - Math.sin(hr) * 0.45, z: (s.at.z ?? 0) + postH + 0.06 }, s.heading + 90, 0, { l: 0.34, w: 0.12, h: 0.34 }) : null;
       const face = isLight ? null : boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
       items.push({ layer: 1, key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01, tag: audit && { kind: "sign", at: s.at }, paint: () => {
         paintBox(ctx, view, post, "#9a9da3");
@@ -351,6 +362,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
         paintBox(ctx, view, housing, "#2a2d33");
         const lit = lightAt(j.signal, s.base, scene.t ?? 0);
         for (const l of lens) paintBox(ctx, view, l.box, l.c === lit ? LENS[l.c] : DARK[l.c]);
+        if (arrowLens) { const a = arrowAt(j.signal, s.base, scene.t ?? 0); paintBox(ctx, view, arrowLens, a ? LENS[a] : DARK.green); }
       } });
     }
   }

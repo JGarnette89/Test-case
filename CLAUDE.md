@@ -202,12 +202,13 @@ Eight things to know before your first change:
    | `src/apps/*`, `App.jsx`, `theme.js` | `verify-screens` | 6s |
    | `src/iso/*` | `verify-perf`, `verify-wheel`, `verify-map`, `verify-screens` | 8s |
    | `src/map/*` | `verify-map`, `verify-graph`, `verify-wheel`, `verify-perf`, `verify-screens` (the scene loads its roads through it) | ~50s |
-   | `src/sim/graph.js` | `verify-graph`, `verify-drive`, `verify-signal`, and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
-   | `src/sim/signal.js` | `verify-signal`, `verify-graph`, `verify-drive`, `verify-paint`, `verify-screens`, and the `src/sim/` five (crossing.js imports it) | ~4m |
-   | `src/sim/lanechange.js` | `verify-lanes`, `verify-graph`, `verify-signal`, `verify-drive`, and the `src/sim/` five (crossing.js imports it) | ~7m |
+   | `src/sim/graph.js` | `verify-graph`, `verify-drive`, `verify-signal`, `verify-bays`, and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
+   | `src/sim/signal.js` | `verify-signal`, `verify-graph`, `verify-drive`, `verify-paint`, `verify-screens`, `verify-bays`, and the `src/sim/` five (crossing.js imports it) | ~4m |
+   | `src/sim/lanechange.js` | `verify-lanes`, `verify-graph`, `verify-signal`, `verify-drive`, `verify-bays`, and the `src/sim/` five (crossing.js imports it) | ~7m |
    | `src/sim/corner.js` | `verify-graph` (section 10), `verify-signal`, `verify-lanes`, `verify-drive`, and the `src/sim/` five (crossing.js imports it) | ~7m |
-   | `src/sim/lanes.js` | `verify-connect`, `verify-graph`, `verify-drive`, `verify-signal`, `verify-lanes`, and the `src/sim/` five (graph.js imports it) | ~8m |
+   | `src/sim/lanes.js` | `verify-connect`, `verify-graph`, `verify-drive`, `verify-signal`, `verify-lanes`, `verify-bays`, and the `src/sim/` five (graph.js imports it) | ~8m |
    | `src/map/format.js` (KINDS, lane defaults) | `verify-map`, `verify-graph`, `verify-drive`, `verify-screens` -- and READ the numbers the tests assert on, a lane count changes the leg count | ~1m |
+   | `src/map/bays.js`, `src/core/motion.js` | `verify-bays` FIRST, then `verify-map`, `verify-graph`, `verify-connect`, `verify-lanes`, `verify-signal`, `verify-drive`, `verify-screens` | ~9m |
    | `src/sim/drive.js`, `src/sim/player.js`, `src/iso/hud.js`, `src/iso/controls.js` | `verify-drive`, `verify-wheel`, `verify-screens` | ~10s |
    | `src/iso/chase.js`, `src/iso/project.js`, `src/iso/draw.js` | `verify-paint` FIRST (the painter's order, every rotation), `verify-chase`, `verify-perf`, `verify-wheel`, `verify-screens` | ~40s |
    | `src/sim/traffic.js` | the `src/sim/` five, plus `verify-wheel` (the player rides its step) | ~3m |
@@ -1659,6 +1660,7 @@ src/core/rng.js          one seeded random source (mulberry32), for everything
 src/core/turn.js         a turn is an arc tangent to both lanes, radius derived by the caller
 src/core/driver.js       a driver: the five axes, a deficit, how a character is drawn, caution, and load
 src/core/perception.js   how fast anybody reacts and registers: REACTION_FLOOR, REGISTER_*
+src/core/motion.js       how hard a road lets a car move sideways: LATERAL, changeTime
 src/sim/traffic.js       THE REBUILD, stage 0: a stepped world, and cars that follow each other
 src/sim/intersection.js  stage 1: paths through an intersection, and where two of them would meet
 src/sim/crossing.js      stage 1: who gives way, gap acceptance, and undue delay
@@ -1673,6 +1675,7 @@ src/sim/lanes.js         permitted movements per lane (the maintainer's general 
 src/sim/drive.js         the player on the map: the turn signal as the turn commit, lane changes by drifting
 src/sim/player.js        the car under the player's two controls: pedal, wheel, grip, contact
 src/map/format.js        the map format: roads as strokes in metres, KINDS with lanes per direction, chunks
+src/map/bays.js          turn bays: a lane that begins before an intersection, its taper derived from the lane change's own numbers
 src/map/load.js          loading a map: normalise, warn, never throw; the surface and lane lines; the graph
 src/map/samples.js       hand-written maps as data -- stage 0, and the test map #/map drives
 src/iso/project.js       the isometric projection and the one depth key everything sorts by
@@ -2043,12 +2046,13 @@ node tools/verify-paint.mjs        the painter's order: no car under the surface
 node tools/verify-signal.mjs       traffic signals: phases derived and never conflicting, only rights go on red and only after stopping, a red is not undue delay, the amber is a physical dilemma
 node tools/verify-lanes.mjs        lane changes are temperament: confidence decides whether and how tight, observation whether it was seen, steering how cleanly; drivers get over for their turn or miss it; knowledge keeps them right, the exceptions restated from the ruling, and failing is markable; honest, touch-free, and a few percent of the sim
 node tools/verify-connect.mjs      permitted movements are the network's: the general rule by default, overridable per lane, and a lane with nowhere to land refused at authoring time, named by lane and intersection
+node tools/verify-bays.mjs          turn bays: a lane lies on its neighbour until it opens and a lane out once it has, is for its turn only, and the traffic uses it for that turn and nothing else
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 node tools/verify-core.mjs         the live screens stand on src/core/ alone: core imports nothing outside itself, no live screen reaches the engine, no core name is declared twice
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All thirty-eight must exit 0 **before a commit**. Between commits, run
+All thirty-nine must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:
@@ -2223,6 +2227,27 @@ invisible to the encroachment fault because it only ever watches priors — in
   path it took; for anything else in that list, feature-test it, fall
   back, and tell the person when there is no fallback. The permanent
   answer is the HTTPS deploy (SETUP.md 6), which is a secure context.
+- **VERIFY FROM THE SERVER SIDE, NOT THE BROWSER SIDE.** The maintainer,
+  25 September, after the browser pane's approval prompts piled up: an
+  agent here cannot judge anything visual anyway -- no animation frames
+  are delivered and screenshots are not reliably available (Conventions
+  above, and CLAUDE.md item 7) -- so opening a real browser mostly
+  answers "does it throw", which is answerable far more cheaply. In
+  order:
+  1. `node tools/verify-screens.mjs` for "does it mount and render
+     without throwing" -- a headless SSR render of every route, written
+     for exactly this, and it has caught a real blank-screen bug before.
+  2. A plain HTTP fetch of the served JS for "is the right build being
+     served": `curl` the page, pull the `assets/index-*.js` name out of
+     it, fetch that and grep for the build stamp (`__BUILD__` in
+     `vite.config.js`). No browser involved.
+  3. The console/network readers on an already-open pane, only when
+     neither of the above can answer the question.
+  4. An actual browser (open a pane, screenshot, click) LAST, and say
+     why the first three could not answer it when reaching for one --
+     in practice this should be rare. Jay is the one who looks at
+     pixels; the job here is confirming the thing he opens is the thing
+     that was built, and that it does not throw.
 
 ## Known work in progress
 

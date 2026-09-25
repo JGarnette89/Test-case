@@ -11,7 +11,10 @@
    Coordinates: metres, origin top-left, y southward, as everywhere
    else in this project. Headings clockwise in plan, degrees.
    ===================================================================== */
-export const MAP_VERSION = 1;
+/* 2 (25 September): a road end may carry turn BAYS and a protected LEFT
+   ARROW (map/bays.js, sim/signal.js). A version-1 map has neither and
+   loads exactly as it did. */
+export const MAP_VERSION = 2;
 export const CHUNK = 256;          // metres per chunk edge (section 3.4)
 export const LANE = 3.6;           // metres; the lane width every road is built from
 export const SAMPLE = 5;           // metres between centreline samples after normalisation (the bend's step today)
@@ -52,10 +55,15 @@ export function emptyMap(id = "untitled", name = "Untitled") {
    may do, one list per lane from the centre line out -- ["left"],
    ["straight", "right"] and so on. Absent, the general rule applies
    (sim/lanes.js); present, it overrides it, which is how a double left
-   or a right-turn-only curb lane is written. */
-export function road({ id, kind = "collector", points, lanes, oneWay = false, speed, parking, control = { start: "none", end: "none" }, turns }) {
+   or a right-turn-only curb lane is written. With bays, the list covers
+   every lane at the line, bays included, centre line out.
+   `bays`, optional, per road end: { left, right, length } -- lanes that
+   open before that end for the traffic approaching it (map/bays.js).
+   `leftArrow`, optional, per road end: a protected left-turn arrow on
+   that approach's signal (sim/signal.js). */
+export function road({ id, kind = "collector", points, lanes, oneWay = false, speed, parking, control = { start: "none", end: "none" }, turns, bays, leftArrow }) {
   const k = KINDS[kind] ?? KINDS.collector;
-  return { id, kind, points, lanes: lanes ?? k.lanes, oneWay, speed: speed ?? k.speed, parking: parking ?? k.parking, control, ...(turns ? { turns } : {}) };
+  return { id, kind, points, lanes: lanes ?? k.lanes, oneWay, speed: speed ?? k.speed, parking: parking ?? k.parking, control, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}) };
 }
 
 /* STAGE 0 AS THE FIRST MAP. The valley road and the bridge road from

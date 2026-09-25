@@ -32,7 +32,8 @@
 import { loadMap } from "../src/map/load.js";
 import { emptyMap, road } from "../src/map/format.js";
 import { graphOf } from "../src/sim/graph.js";
-import { signalFor, lightAt, controlUnder, GREEN_FOR, PHASE_TOL } from "../src/sim/signal.js";
+import { signalFor, lightAt, arrowAt, movementLight, controlUnder, GREEN_FOR, PHASE_TOL } from "../src/sim/signal.js";
+import { testMap1 } from "../src/map/samples.js";
 import { seedGraph, step, run, overlapping, openTo, whatStops } from "../src/sim/crossing.js";
 import { CAR, HARSH_AT, stoppingRoom } from "../src/sim/traffic.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
@@ -74,13 +75,25 @@ const FIVE = [...CROSS, ["NE", { x: 830, y: 170 }]];
 /* 2. NO TWO CONFLICTING PATHS ARE EVER GREEN AT ONCE. Against the
    layout's own conflict table, over the whole cycle. A car that is
    NOT held may enter, so "green" here means "not red" -- an amber is
-   as permissive as a green for a driver already too close to stop. */
-for (const [name, legs] of [["crossroads", CROSS], ["five-way", FIVE]]) {
-  const L = graphOf(mapOf(legs), { lane: 3.6 }).at[0].layout;
+   as permissive as a green for a driver already too close to stop.
+
+   EACH PATH BY THE LIGHT ITS MOVEMENT OBEYS (`movementLight`): a left on
+   an arrowed approach reads the arrow while it is lit. Reading only the
+   ball here would pass at the big arterial without ever looking at an
+   arrow -- the check that passes for the wrong reason. The arterial is
+   the test map's E, with bays and a protected left on every approach. */
+const arterial = (() => { const g = graphOf(loadMap(testMap1()), { lane: 3.6 }); return g.at.find((s) => s.node === "n4").layout; })();
+for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[0].layout], ["five-way", graphOf(mapOf(FIVE), { lane: 3.6 }).at[0].layout], ["the arterial (E)", arterial]]) {
   const sig = L.signal;
-  let clashes = 0, worst = null, lit = {};
+  let clashes = 0, worst = null, lit = {}, arrowInstants = 0, unprotected = 0, strayOpen = null;
   for (let t = 0; t < sig.cycle; t += 0.05) {
-    const open = Object.values(L.paths).filter((p) => lightAt(sig, L.legs[p.from].base, t) !== "red");
+    const open = Object.values(L.paths).filter((p) => movementLight(sig, L.legs[p.from].base, p.intent, t) !== "red");
+    /* While any arrow is lit, the only paths open are lefts from arrowed approaches. */
+    if (Object.keys(sig.forBase).some((b) => arrowAt(sig, b, t))) {
+      arrowInstants++;
+      const stray = open.filter((p) => !(p.intent === "left" && sig.arrows?.[L.legs[p.from].base]));
+      if (stray.length) { unprotected++; strayOpen ??= `${stray[0].from}->${stray[0].to}`; }
+    }
     for (const a of open) for (const b of open) {
       if (a === b || a.from === b.from) continue;
       /* Two paths from legs in DIFFERENT phases, with a conflict. */
@@ -90,6 +103,9 @@ for (const [name, legs] of [["crossroads", CROSS], ["five-way", FIVE]]) {
     for (const b of Object.keys(sig.forBase)) if (lightAt(sig, b, t) !== "red") lit[b] = (lit[b] ?? 0) + 0.05;
   }
   check(clashes === 0, `${name}: no two conflicting paths are ever open at the same instant, over the whole ${sig.cycle.toFixed(1)}s cycle${worst ? ` (${worst})` : ""}`);
+  if (sig.arrows && Object.values(sig.arrows).some(Boolean)) {
+    check(arrowInstants > 0 && unprotected === 0, `${name}: while a left arrow is lit (${(arrowInstants * 0.05).toFixed(1)}s of the cycle) nothing is open but the arrowed lefts -- the left is protected${strayOpen ? ` (open: ${strayOpen})` : ""}`);
+  }
   const shares = Object.values(lit);
   check(shares.length === Object.keys(sig.forBase).length && Math.max(...shares) - Math.min(...shares) < 0.2,
     `${name}: every approach gets the same share of the cycle (${shares.map((x) => x.toFixed(1)).join(", ")}s of ${sig.cycle.toFixed(1)})`);

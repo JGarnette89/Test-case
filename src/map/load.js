@@ -20,6 +20,7 @@
    ===================================================================== */
 import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS } from "./format.js";
 import { ribbonOf } from "../iso/road.js";
+import { hasBays, baySurfaceOf, baysAt } from "./bays.js";
 
 /* A road's ribbon and, for more than one lane each way, the lines
    between lanes: the centreline offset a whole lane, two lanes, each
@@ -32,6 +33,10 @@ function surfaceOf(pts, width, lanes) {
   }
   return out;
 }
+/* A road's surface from the road itself: the plain ribbon, or -- where an
+   end carries turn bays -- the widening one (map/bays.js). A road with no
+   bays goes the old way, byte for byte. */
+const surfaceFor = (r) => (hasBays(r) ? baySurfaceOf(r) : surfaceOf(r.pts, r.width, r.lanes));
 import { radiusFor, LATERAL } from "../sim/course.js";
 
 export const THIN = 0.5;                 // m: points closer than this are one point
@@ -178,7 +183,19 @@ export function loadMap(map) {
        against the node it arrives at (sim/lanes.js) -- only the graph
        knows what movements an end offers. */
     const turns = r.turns && typeof r.turns === "object" ? { start: r.turns.start ?? null, end: r.turns.end ?? null } : null;
-    roads.push({ id, kind, lanes, oneWay, width, speed, parking: r.parking ?? KINDS[kind].parking, control, ...(turns ? { turns } : {}), ...raw, ...surfaceOf(raw.pts, width, lanes) });
+    /* Turn bays and left arrows, per road end (map/bays.js). A one-way
+       road has no median to open a bay into and no oncoming to protect a
+       left from; both are dropped with a warning rather than half-built. */
+    let bays = r.bays && typeof r.bays === "object" ? { start: r.bays.start ?? null, end: r.bays.end ?? null } : null;
+    if (bays && oneWay) { warn("bays-one-way", `road ${id}: turn bays on a one-way road are not supported; dropped`); bays = null; }
+    const leftArrow = r.leftArrow && typeof r.leftArrow === "object" ? { start: !!r.leftArrow.start, end: !!r.leftArrow.end } : null;
+    const built = { id, kind, lanes, oneWay, width, speed, parking: r.parking ?? KINDS[kind].parking, control, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}), ...raw };
+    /* A bay longer than its road cannot open: it and its taper must fit. */
+    for (const end of ["start", "end"]) {
+      const b = baysAt(built, end);
+      if (b && b.length + b.taper > raw.length) warn("bay-too-long", `road ${id}: the ${end} bay needs ${(b.length + b.taper).toFixed(0)} m (storage and taper) on a ${raw.length.toFixed(0)} m road`);
+    }
+    roads.push({ ...built, ...surfaceFor(built) });
   }
   if (!roads.length) return { ok: false, error: "no drivable road", warnings };
 
@@ -230,11 +247,14 @@ export function loadMap(map) {
         const aPts = [...o.pts.slice(0, cut), { ...q.at }], bPts = [{ ...q.at }, ...o.pts.slice(cut)];
         /* Each half keeps its own original end's control and turns; the
            new ends, at the node this split makes, get the general rule. */
-        const mk = (suffix, pts, controlStart, controlEnd, turnsStart, turnsEnd) => {
+        /* Bays and arrows likewise stay with the end that carried them. */
+        const mk = (suffix, pts, controlStart, controlEnd, turnsStart, turnsEnd, which) => {
           const rs = resample(pts);
-          return { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, ...rs, ...surfaceOf(rs.pts, o.width, o.lanes) };
+          const keep = (f) => (o[f] ? { [f]: { start: which === "a" ? o[f].start : null, end: which === "b" ? o[f].end : null } } : {});
+          const half = { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, ...keep("bays"), ...keep("leftArrow"), ...rs };
+          return { ...half, ...surfaceFor(half) };
         };
-        const a = mk("#a", aPts, o.control.start, "none", o.turns?.start ?? null, null), b = mk("#b", bPts, "none", o.control.end, null, o.turns?.end ?? null);
+        const a = mk("#a", aPts, o.control.start, "none", o.turns?.start ?? null, null, "a"), b = mk("#b", bPts, "none", o.control.end, null, o.turns?.end ?? null, "b");
         roads.splice(roads.indexOf(o), 1, a, b);
         for (const n of nodes) for (const l of n.legs) if (l.road === o.id) l.road = l.end === "start" ? a.id : b.id;
         for (const k of [...joinedEnds]) if (k.startsWith(`${o.id}|`)) { joinedEnds.delete(k); joinedEnds.add(k.replace(`${o.id}|`, k.endsWith("|start") ? `${a.id}|` : `${b.id}|`)); }
@@ -246,7 +266,8 @@ export function loadMap(map) {
       const pts = r.pts.slice();
       pts[end === "start" ? 0 : pts.length - 1] = { ...q.at };
       const rs = resample(pts);
-      Object.assign(r, rs, surfaceOf(rs.pts, r.width, r.lanes));
+      Object.assign(r, rs);
+      Object.assign(r, surfaceFor(r));
       joinedEnds.add(`${r.id}|${end}`);
       nodes.push(node);
       if (atEnd) warn("snapped-join", `road ${r.id}'s ${end} joined road ${o.id}'s ${atEnd} ${q.d.toFixed(2)} m away`, q.at);
@@ -271,6 +292,13 @@ export function loadMap(map) {
   }
   for (const r of roads) {
     r.edge = { start: !joinedEnds.has(`${r.id}|start`), end: !joinedEnds.has(`${r.id}|end`) };
+    /* A bay opens for an intersection; at an edge there is none, so the
+       road would widen toward nothing. Dropped, with a warning. */
+    if (r.bays) {
+      let changed = false;
+      for (const end of ["start", "end"]) if (r.bays[end] && r.edge[end]) { warn("bay-at-edge", `road ${r.id}: turn bays at its ${end}, which meets no intersection; dropped`); r.bays = { ...r.bays, [end]: null }; changed = true; }
+      if (changed) Object.assign(r, { centre: undefined }, surfaceFor(r));
+    }
   }
 
   /* 7. Roads that cross in plan without meeting: an overpass if there
