@@ -198,10 +198,12 @@ Eight things to know before your first change:
    | `src/iso/chase.js`, `src/iso/project.js`, `src/iso/draw.js` | `verify-paint` FIRST (the painter's order, every rotation), `verify-chase`, `verify-perf`, `verify-wheel`, `verify-screens` | ~40s |
    | `src/sim/traffic.js` | the `src/sim/` five, plus `verify-wheel` (the player rides its step) | ~3m |
    | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens` | ~100s |
+   | `src/core/*` | `verify-core` FIRST, then the full suite: the engine re-exports core and the sim imports it, so both sides can move | 18m |
    | `src/frame.js` | `-screens`, `-camera`, `-clearance`, `-events`, `-world` | ~5m |
    | `src/engine/detect.js` | `-detect`, `-faults`, `-outcome`, `-course` | ~2m |
    | `src/engine/paths.js` | `-equivalence` first, then `-turns`, `-roundabout`, `-detect`, `-outcome`, `-reaction` and the `src/sim/` five | ~4m |
    | `index.js`, `ratings.js`, `road.js`, `scenarios.js`, `score.js` | the full suite | 18m |
+   | `src/App.jsx`'s `live: true` flags, or any import in a live screen | `verify-core` (no live screen may reach `src/engine/`), `verify-screens` | 7s |
 
    Where the 18 minutes go: `verify-candidate` 6m39s, `verify-world`
    4m06s, `verify-roguelike` 1m31s, `verify-course` 63s, `-outcome` 43s,
@@ -1587,6 +1589,21 @@ course with a route, directions, marking and the section sheet. It imports from 
 where a thing was already solved (path shapes, the ratings model, the
 scoring floors) and never the other way round.
 
+**`src/core/` IS WHAT BOTH STAND ON, AND THE LIVE SCREENS STAND ON NOTHING
+ELSE.** On 24 September the live screens imported 4,052 lines of the old
+engine to use about fifteen things from six files -- the seeded random
+source, the turn arc, the driver model and its load curve, and the
+reaction and registration lags. Those moved, verbatim, to `src/core/`;
+the engine imports and re-exports them, so there is one definition and
+every engine caller is unchanged. `core` imports nothing outside itself,
+no screen marked `live` may reach `src/engine/`, and no name core exports
+may be declared anywhere else in `src/` -- all three checked in
+`verify-core.mjs`, each sabotaged once to prove it bites. The point is
+that any cut of the old engine is now a cut of the old engine, not of
+the simulator. `cautionOf` became one function taking RATINGS on the
+way (it had been two, one per side); `environments.js` and
+`MergeRush.jsx` had their own copies of `rng`, found by that check.
+
 **The engine is pure and the renderer is disposable.** `src/engine/` has no
 React, no SVG, no DOM and no colours in it. A renderer needs two calls:
 `simulate(scenario) -> { ego, actors, legalAt, priors }`, then
@@ -1624,6 +1641,10 @@ src/engine/traits.js     PLAYER car upgrades and consumables — not the driver 
 src/engine/roguelike.js  a run: stages, bosses, the branch, the Checkride, Insight
 src/engine/stages.js     the roguelike's stages and its roundabout graph, as data
 src/engine/bosses.js     hand-authored boss situations, as data
+src/core/rng.js          one seeded random source (mulberry32), for everything
+src/core/turn.js         a turn is an arc tangent to both lanes, radius derived by the caller
+src/core/driver.js       a driver: the five axes, a deficit, how a character is drawn, caution, and load
+src/core/perception.js   how fast anybody reacts and registers: REACTION_FLOOR, REGISTER_*
 src/sim/traffic.js       THE REBUILD, stage 0: a stepped world, and cars that follow each other
 src/sim/intersection.js  stage 1: paths through an intersection, and where two of them would meet
 src/sim/crossing.js      stage 1: who gives way, gap acceptance, and undue delay
@@ -2021,10 +2042,11 @@ node tools/verify-signal.mjs       traffic signals: phases derived and never con
 node tools/verify-lanes.mjs        lane changes are temperament: confidence decides whether and how tight, observation whether it was seen, steering how cleanly; drivers get over for their turn or miss it; knowledge keeps them right, the exceptions restated from the ruling, and failing is markable; honest, touch-free, and a few percent of the sim
 node tools/verify-connect.mjs      permitted movements are the network's: the general rule by default, overridable per lane, and a lane with nowhere to land refused at authoring time, named by lane and intersection
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
+node tools/verify-core.mjs         the live screens stand on src/core/ alone: core imports nothing outside itself, no live screen reaches the engine, no core name is declared twice
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All forty-one must exit 0 **before a commit**. Between commits, run
+All forty-two must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:
@@ -2479,6 +2501,12 @@ invisible to the encroachment fault because it only ever watches priors — in
   on it" — this is what that costs when nobody does. Open the page after
   touching a component: a build passing is not a screen rendering.
 - The timing renderer is the only one. 3D is the agreed direction, not started.
+- **Every screen ships to the phone whether it is on the menu or not.**
+  `App.jsx` imports all of them statically, so the one bundle is 568 KB
+  (186 KB gzipped) to show two live screens, measured 24 September.
+  Loading the unlisted routes with `React.lazy` would fix it. A start-up
+  cost rather than a frame cost, so noted rather than done; a cut of
+  the old screens shrinks it anyway.
 
 ## Do not
 

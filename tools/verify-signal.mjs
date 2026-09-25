@@ -35,7 +35,7 @@ import { graphOf } from "../src/sim/graph.js";
 import { signalFor, lightAt, controlUnder, GREEN_FOR, PHASE_TOL } from "../src/sim/signal.js";
 import { seedGraph, step, run, overlapping, openTo, whatStops } from "../src/sim/crossing.js";
 import { CAR, HARSH_AT, stoppingRoom } from "../src/sim/traffic.js";
-import { REACTION_FLOOR } from "../src/engine/score.js";
+import { REACTION_FLOOR } from "../src/core/perception.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };

@@ -33,9 +33,8 @@
    That removes a class of bug for free.
    ===================================================================== */
 
-import { composeDriver, deficitOf, lackingIn, LACKING_AT } from "../engine/ratings.js";
-import { rng, severityOf } from "../engine/index.js";
-import { pressureOf, skillUnderPressure } from "../engine/directions.js";
+import { composeDriver, deficitOf, lackingIn, LACKING_AT, severityOf, pressureOf, skillUnderPressure, cautionOf } from "../core/driver.js";
+import { rng } from "../core/rng.js";
 
 /* The project's scale, and the one thing here that must agree with the
    old engine while both exist: verify-sim checks it against `M(1)`. */
@@ -203,12 +202,6 @@ export const MOST_BRAKE = 8.0;
    them later.
    ===================================================================== */
 
-/* The whole of the confidence axis in one number: 1 at the optimum, 0
-   maximally bold, 2 maximally timid. Three lines, and the same three as
-   `cautionOf` in awareness.js -- which cannot be imported here without
-   dragging sight.js and most of the old engine with it. Written against
-   the SAME `deficitOf`, so there is one confidence model even while there
-   are two callers, and verify-sim asserts the two agree. */
 /* HOW LONG TO COVER `d` METRES, starting at `v` and pulling away at the
    same ACCEL everything else here uses, levelling off at `v0`.
 
@@ -228,12 +221,8 @@ export function timeToCover(v, d, v0) {
   return spent + (d - covered) / cap;
 }
 
-export function cautionOf(ratings) {
-  const { deficit, tail } = deficitOf(ratings, "confidence");
-  if (tail > 0) return Math.max(0, 1 - deficit);
-  if (tail < 0) return 1 + deficit;
-  return 1;
-}
+/* The whole of confidence in one number lives in core/driver.js. */
+export { cautionOf };
 
 /* THE TWO KNOBS THE FOLLOWING MODEL ALREADY HAD, now driven by who the
    driver is rather than by a random number.

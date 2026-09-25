@@ -371,11 +371,10 @@ console.log("\n8. THE MARGIN YOU LEAVE FOR WHAT YOU CANNOT SEE IS CONFIDENCE");
      quantity, two ends. */
   const C = (obs, conf) => ({ creep: 0, ratings: { observation: obs, confidence: conf, steering: 1, braking: 1, knowledge: 1 } });
 
-  cautionOf(C(1, CONFIDENT_ENOUGH)) === 1 &&
-  cautionOf(C(1, 1)) === 0 &&
-  cautionOf(C(1, 0)) === 2
-    ? ok("caution is the whole of confidence in one number: 1 at the optimum, 0 when maximally bold, 2 when maximally timid")
-    : fail(`caution does not span both tails: ${cautionOf(C(1, 0))} / ${cautionOf(C(1, CONFIDENT_ENOUGH))} / ${cautionOf(C(1, 1))}`);
+  /* That caution spans both tails -- 1, 0, 2 -- is a property of the
+     driver model in core/driver.js and is checked in verify-sim section 6,
+     beside the rest of how drivers are composed, so it survives the exam
+     machinery. What is checked here is what awareness does with it. */
 
   /* The allowance is not a constant. It is the candidate's own time to
      clear the intersection, because the way to become sure an unseen stretch

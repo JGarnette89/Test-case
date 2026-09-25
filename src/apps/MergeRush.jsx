@@ -22,6 +22,9 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { Play, RotateCcw, Home, Zap } from "lucide-react";
 import { C, FONT_D, FONT_U, shade } from "../theme.js";
+/* mulberry32 — the same small seeded RNG the rest of this project uses,
+   from src/core/ (not the engine, so this stays standalone). */
+import { rng } from "../core/rng.js";
 
 /* ---------------- layout constants ---------------- */
 const LANES = 3;
@@ -32,17 +35,6 @@ const PLAYER_Y = 560;
 const SPEED = 150;       // px/s the world scrolls toward the player
 const ITEM_GAP = 460;    // px between course items
 const START_CONVOY = 3;
-
-/* mulberry32 — the same small seeded RNG the rest of this project uses. */
-function rng(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /* ---------------- gate vocabulary ----------------
    Three sign families, matching real road-sign colour coding so a gate

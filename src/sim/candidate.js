@@ -28,8 +28,8 @@ import { driver } from "./traffic.js";
 import { INTENTS } from "./intersection.js";
 import { joinAt, edgesOf } from "./crossing.js";
 import { planRoute } from "./course.js";
-import { rng } from "../engine/index.js";
-import { AXES, CONFIDENT_ENOUGH } from "../engine/ratings.js";
+import { rng } from "../core/rng.js";
+import { AXES, CONFIDENT_ENOUGH } from "../core/driver.js";
 
 /* SOUND ON EVERY AXIS, and the base every profile is a departure from,
    so that what you are watching is one thing at a time rather than a

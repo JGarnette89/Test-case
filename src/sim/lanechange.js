@@ -44,10 +44,9 @@
    stays in the old one too, for following, until the blend is over
    (crossing.js `whatStops`).
    ===================================================================== */
-import { deficitOf } from "../engine/ratings.js";
-import { rng } from "../engine/index.js";
-import { REACTION_FLOOR } from "../engine/score.js";
-import { REGISTER_SPAN } from "../engine/awareness.js";
+import { deficitOf } from "../core/driver.js";
+import { rng } from "../core/rng.js";
+import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
 import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom } from "./traffic.js";
 import { LATERAL } from "./course.js";
 

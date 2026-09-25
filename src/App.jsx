@@ -29,9 +29,9 @@ import SimCourse from "./apps/SimCourse.jsx";
 import { ROUTES } from "./engine/routes.js";
 import { SCENARIOS } from "./engine/scenarios.js";
 import {
-  useProgress, isPassed, passedCount, bestScore, reset, isPersistent,
-  dailyResult, dailyStreak,
+  useProgress, isPassed, bestScore,
 } from "./progress.js";
+import { isPersistent } from "./storage.js";
 import { dayIndex } from "./engine/generate.js";
 import { simulate, safeAtFor } from "./engine/index.js";
 import { sequenceFor } from "./engine/actions.js";
@@ -55,23 +55,13 @@ const FONT_D = "'Rajdhani','Oswald','Arial Narrow',system-ui,sans-serif";
 const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
 
 /* =====================================================================
-   GAME MODES
+   SCREENS
 
-   THE EXAMINER GAME IS THE ONLY ONE. Maintainer's ruling: "from now on
-   the examiner game is the only priority, other game modes don't need to
-   be accessible at all."
-
-   So the driver-game entries below carry `legacy: true` and are NOT
-   LISTED anywhere - not on the home screen, not in the switcher. They
-   stay in this array because their hash routes still resolve, which is
-   the same arrangement MergeRush already lives under: kept, reachable if
-   you type it, presented nowhere. The modules behind them stay too, and
-   not out of sentiment - `RightOfWayTiming` holds the only renderer in
-   the project, and the examiner screens import `Road` and `Environment`
-   straight out of it.
-
-   Not accessible is not the same as deletable. Nothing here is removed
-   without proving it unused first.
+   Every screen the app can show, one entry each, and every entry's hash
+   route resolves whether or not the menu lists it. The project is a
+   traffic simulator first (SIMULATOR.md); the examiner game and the
+   driver game before it are shelved, not deleted, and their screens stay
+   here so they open by address for comparison.
 
    AND THE MENU SHOWS WHAT IS BEING TESTED LIVE, NOTHING ELSE. The
    maintainer, 24 September: "there are many options in the submenu but
@@ -181,7 +171,6 @@ const MODES = [
 
   {
     id: "timing",
-    legacy: true,
     name: "Timing",
     kicker: "Real time",
     blurb:
@@ -192,7 +181,6 @@ const MODES = [
   },
   {
     id: "daily",
-    legacy: true,
     name: "Today's intersection",
     kicker: "Daily",
     blurb:
@@ -204,7 +192,6 @@ const MODES = [
   },
   {
     id: "endless",
-    legacy: true,
     name: "Endless",
     kicker: "Generated",
     blurb:
@@ -216,7 +203,6 @@ const MODES = [
   },
   {
     id: "roguelike",
-    legacy: true,
     name: "Roguelike",
     kicker: "A driving test, roguelike",
     blurb:
@@ -231,7 +217,6 @@ const MODES = [
      one is an entry in engine/routes.js and nothing here. */
   ...ROUTES.map((r) => ({
     id: `drive-${r.id}`,
-    legacy: true,
     name: r.title,
     kicker: "Drive",
     blurb: r.blurb,
@@ -405,8 +390,6 @@ function LinkCard({ item, onClick, note }) {
 }
 
 function Home() {
-  const progress = useProgress();
-  const done = passedCount(progress);   // the footer's Reset progress offer
   return (
     <div style={st.launcher}>
       <div style={st.brand}>
@@ -443,14 +426,8 @@ function Home() {
       <div style={st.foot}>
         Runs entirely on this device. Nothing is sent anywhere.
         {!isPersistent && (
-          <> <strong style={{ color: C.amber }}>Progress will not survive a reload here</strong> — this
+          <> <strong style={{ color: C.amber }}>Settings will not survive a reload here</strong> — this
           browser is refusing to store anything.</>
-        )}
-        {done > 0 && (
-          <>
-            {" "}
-            <button className="shell-link" onClick={() => reset()}>Reset progress</button>
-          </>
         )}
       </div>
     </div>

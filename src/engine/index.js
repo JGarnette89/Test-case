@@ -33,6 +33,11 @@ import {
   stopPoint, exitPoint, exitSideFor, boxHalf, roadHalf,
 } from "./road.js";
 import { GRACE } from "./score.js";
+/* Moved to src/core/ so the live simulator can use them without the
+   engine; imported here and re-exported so every engine caller is
+   unchanged and there is still exactly one definition. */
+import { rng } from "../core/rng.js";
+import { SKILL_SPAN, severityOf } from "../core/driver.js";
 
 const SCALE = 20;
 const M = (v) => v * SCALE;
@@ -754,28 +759,6 @@ function basePose(p, t) {
    the conflict engine works out the consequences on its own — a wandering
    car genuinely does intrude, rather than being scripted to punish you.
    ===================================================================== */
-/* =====================================================================
-   DRIVER SKILL
-
-   A driver's composure right now, 0..1, where 1 is this driver at their
-   best. Skill does NOT decide which faults a driver has — their traits
-   do that, and a trait is a habit rather than a mistake. Skill decides
-   how badly the habit shows.
-
-   Kept as a multiplier anchored at 1 so `skill` absent, or 1, reproduces
-   every existing scenario exactly. Nothing in the shipped set sets it,
-   and nothing in the shipped set moves.
-
-   The reason this exists: the examiner may stack directions to buy back
-   their own attention, and stacking loads the candidate. A loaded driver
-   is a worse driver. See directions.js, where that trade is measured.
-
-   Note for whoever wires pressure into a live drive: the `pose` traits
-   below read skill at pose time, so they respond immediately, but the
-   `setup` traits are applied once in schedule(). Changing skill mid-drive
-   means re-scheduling, not mutating a participant in place.            */
-const SKILL_SPAN = 1.0;
-const severityOf = (p) => 1 + (1 - (p.skill ?? 1)) * SKILL_SPAN;
 
 const TRAITS = {
   wander: {
@@ -933,22 +916,6 @@ const TRAITS = {
   },
 };
 
-/* One seeded random source for the whole engine. mulberry32, and it was
-   written out identically in four separate files before this — the exact
-   duplication the project treats as a bug arriving early. Its first draw
-   is well distributed for small seeds, which a plain LCG's is not: a
-   naive one written for candidate.js returned ~0.236 for every seed in
-   sequence, so a 15% branch taken on the first draw never fired once in
-   200 candidates. */
-export function rng(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /* The one list of what habits exist. compose.js used to keep a literal
    copy of this and generate.js keeps a deliberate SUBSET (it predates
@@ -1398,7 +1365,7 @@ export {
   STOPS, EXITS, RIGHT_OF, OPPOSITE,
   PED_SETBACK, PED_OVERHANG, BAR_HALF, STOP_LINE_AT, STOP_GAP,
   basePose, TRAITS, TRAIT_KEYS, traitTells, poseAt, signalShowing,
-  SKILL_SPAN, severityOf,
+  SKILL_SPAN, severityOf, rng,
   extentsFor, poseFor, forwardClaim, boxesOverlap, conflicts,
   outranks, earliestClear, applyTraits, schedule,
 };

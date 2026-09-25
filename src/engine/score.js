@@ -11,10 +11,11 @@
    the situation from one who waited until it was obvious.
    ===================================================================== */
 
-/* Nobody reacts to a visual go-cue faster than this. Grading below it
-   would reward pressing on spec rather than reading the road, so anything
-   inside the floor is full marks. */
-export const REACTION_FLOOR = 0.35;
+
+/* REACTION_FLOOR lives in src/core/perception.js: the live traffic
+   reacts on it too. Imported and re-exported, one definition. */
+import { REACTION_FLOOR } from "../core/perception.js";
+export { REACTION_FLOOR };
 
 /* How long after the window opens before the score reaches nothing. Also
    the boundary between "took your time" and undue delay. */

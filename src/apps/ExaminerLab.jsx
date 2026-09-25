@@ -326,7 +326,7 @@ export default function ExaminerLab() {
               );
             })}
             <div style={S.dim}>
-              caution {cautionOf(driver).toFixed(2)}× · cannot see {(100 * unseenShare(sim, scn, sim.ego.departAt ?? 0, driver)).toFixed(0)}% of the approaches ·
+              caution {cautionOf(driver.ratings).toFixed(2)}× · cannot see {(100 * unseenShare(sim, scn, sim.ego.departAt ?? 0, driver)).toFixed(0)}% of the approaches ·
               holds {marginAt(sim, scn, driver, sim.ego.departAt ?? 0).toFixed(2)}s for it
             </div>
             <div style={S.dim}>

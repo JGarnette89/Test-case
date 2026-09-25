@@ -33,7 +33,7 @@ import { seedGraph, step, overlapping, poseOf } from "../src/sim/crossing.js";
 import { lateralOf, changing, LC_TIME, LC_EVERY, RETURN_AFTER, KEEP_RIGHT_FAULT } from "../src/sim/lanechange.js";
 import { weaveRoom, DT, CAR, wantedGap } from "../src/sim/traffic.js";
 import { noticing } from "../src/sim/marking.js";
-import { deficitOf } from "../src/engine/ratings.js";
+import { deficitOf } from "../src/core/driver.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };

@@ -20,7 +20,7 @@ import {
 } from "../src/sim/crossing.js";
 import { poseAt } from "../src/sim/intersection.js";
 import { PROFILES, profileOf, withCandidates, keepDriving } from "../src/sim/candidate.js";
-import { AXES } from "../src/engine/ratings.js";
+import { AXES } from "../src/core/driver.js";
 import fs from "node:fs";
 
 let problems = 0;

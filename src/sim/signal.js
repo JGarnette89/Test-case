@@ -54,7 +54,7 @@
                not a fact about physics. Flagged as such.
    ===================================================================== */
 import { CAR, stoppingRoom } from "./traffic.js";
-import { REACTION_FLOOR } from "../engine/score.js";
+import { REACTION_FLOOR } from "../core/perception.js";
 
 export const GREEN_FOR = 20;     // s: a design constant -- how long one phase runs
 export const PHASE_TOL = 40;     // deg: approaches within this of one axis run together

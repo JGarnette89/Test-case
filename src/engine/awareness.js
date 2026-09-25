@@ -35,37 +35,16 @@
    Pure. No React, no DOM, no colour.
    ===================================================================== */
 import { earliestClear, rng, poseAt, extentsFor, approachDecelOf, M, CX, CY, LANE, SET } from "./index.js";
-import { REACTION_FLOOR } from "./score.js";
+/* How fast anybody registers anything lives in src/core/perception.js,
+   because the live traffic perceives on the same lag. Re-exported. */
+import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
+import { cautionOf } from "../core/driver.js";
+export { REGISTER_FLOOR, REGISTER_SPAN, JITTER };
 import { approachDecel, MOST_GIVE } from "./paths.js";
 import { whatEgoSees, sightBlockersOf, eyePoint, creepPose, segmentHitsBox, visibility } from "./sight.js";
 import { deficitOf } from "./ratings.js";
 import { LEG, SIDES, hasLeg, specOf, laneOffset, controlsOf } from "./road.js";
 
-/* Nobody registers anything faster than they can react to it, so the
-   floor is the engine's existing REACTION_FLOOR rather than a new
-   number. A perfect observer therefore takes 0.35s — and measured, the
-   shortest lead any road user gives is 0.50s, so a perfect observer never
-   misses anything that was there to be seen. That property is the reason
-   the floor is not zero. */
-export const REGISTER_FLOOR = REACTION_FLOOR;
-
-/* How much longer a hopeless observer takes. DERIVED from how much
-   warning the world actually gives: across 48 scenes and 93 road users,
-   the lead from a road user becoming clear to the candidate's decision is
-   min 0.50s, p25 1.60s, median 3.75s, p75 5.40s.
-
-   Set to the p25 lead, so a maximally poor observer is still registering
-   about three quarters of the traffic and misses the quarter that gave
-   them least warning. Tying it to the median instead would have a bad
-   driver missing half of everything, which is not a driver, it is a
-   hazard — and the check measures the resulting miss rate rather than
-   trusting this comment. */
-export const REGISTER_SPAN = 1.6;
-
-/* Attention is not uniform: two cars appearing at the same moment are not
-   noticed at the same moment. Seeded per road user so it is a property of
-   the draw rather than of the frame. */
-export const JITTER = 0.6;
 
 const DT = 0.1;
 
@@ -314,14 +293,9 @@ export function crossingTimeOf(sim, horizon = 20) {
   return horizon;
 }
 
-/* 1 at the optimum, 0 when maximally bold, 2 when maximally timid. The
-   whole of confidence, in one number. */
-export function cautionOf(candidate) {
-  const { deficit, tail } = deficitOf(candidate?.ratings, "confidence");
-  if (tail > 0) return Math.max(0, 1 - deficit);   // bold: less margin
-  if (tail < 0) return 1 + deficit;                // timid: more
-  return 1;
-}
+/* The whole of confidence in one number is `cautionOf` in core/driver.js,
+   and it takes RATINGS, not a candidate. Re-exported. */
+export { cautionOf };
 
 /* The extra time this driver holds, at this instant, for road they cannot
    see. Zero at an intersection with a clear view whatever their confidence —
@@ -332,7 +306,7 @@ export function cautionOf(candidate) {
 export function marginAt(sim, scn, candidate, t, opts = {}) {
   const allowance = opts.allowance ?? crossingTimeOf(sim);
   const unseen = unseenShare(sim, scn, t, candidate);
-  return unseen * allowance * cautionOf(candidate);
+  return unseen * allowance * cautionOf(candidate?.ratings);
 }
 
 /* ---------------------------------------------------------------------
@@ -398,7 +372,7 @@ export function responseOnAwareness(sim, scn, candidate, seed = 1, opts = {}) {
   }
   if (soonest == null) return null;
 
-  const eases = Math.max(0, Math.min(1, cautionOf(candidate) / 2));
+  const eases = Math.max(0, Math.min(1, cautionOf(candidate?.ratings) / 2));
   if (eases <= 0) return null;                      // bold enough to press on
   return {
     from: Math.max(0, soonest - (ego.departAt ?? 0)),

@@ -34,7 +34,7 @@ import {
   layoutFor, poseAt, exitFor, SIDES, INTENTS, OPPOSITE, ALL_WAY, TWO_WAY,
   intersectionFor, axisOf,
 } from "./intersection.js";
-import { rng } from "../engine/index.js";
+import { rng } from "../core/rng.js";
 import { laneSpanOnGraph } from "./graph.js";
 
 /* Which way a car is travelling when it ARRIVES from a given side. A car

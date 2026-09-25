@@ -34,8 +34,10 @@
    ===================================================================== */
 import { sequenceFor, deriveWindows, SLOW_LEAD } from "./actions.js";
 import { PROPER_SIGNAL_LEAD, severityOf } from "./index.js";
-
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+/* The load curve lives in src/core/driver.js, beside the driver it
+   loads: the live traffic reads it every tick. Re-exported here. */
+import { PRESSURE_PER_EXTRA, SKILL_UNDER_LOAD, pressureOf, skillUnderPressure } from "../core/driver.js";
+export { PRESSURE_PER_EXTRA, SKILL_UNDER_LOAD, pressureOf, skillUnderPressure };
 
 /* How long between hearing an instruction and being able to start acting
    on it. Slower than reading a light — REACTION_FLOOR is 0.35s for a
@@ -44,13 +46,6 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
    number here that is a judgment rather than a derivation. */
 export const FOLLOW_LAG = 1.0;
 
-/* What each extra instruction the candidate is holding costs them, and
-   how much composure is on the table at full load. Both are tunable and
-   both are deliberately measured rather than asserted — verify-directions
-   reports what stacking actually does to fault size, so these can be set
-   against an observed consequence instead of a feeling. */
-export const PRESSURE_PER_EXTRA = 0.34;
-export const SKILL_UNDER_LOAD = 0.6;
 
 /* Silence means straight on. A candidate told nothing does not stop and
    does not guess: they carry on ahead. This is why a late instruction is
@@ -153,13 +148,6 @@ export function runwayNeeded(intent) {
    one they are currently executing. Zero is the unloaded case and costs
    nothing, which matters: the common, correct play must be free.
    ===================================================================== */
-export function pressureOf(held) {
-  return clamp(Math.max(0, held) * PRESSURE_PER_EXTRA, 0, 1);
-}
-
-export function skillUnderPressure(base = 1, pressure = 0) {
-  return clamp(base - pressure * SKILL_UNDER_LOAD, 0, 1);
-}
 
 /* The candidate as they actually are right now, for handing to simulate().
    Skill is a property of the driver, so it rides on the participant the

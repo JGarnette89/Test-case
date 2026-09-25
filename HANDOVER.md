@@ -251,7 +251,21 @@ detect 6s, faults 2s, wontstop 1.7s, everything else under a second.
    the menu, so nothing rots unnoticed. `verify-screens` was run and the
    home screen was looked at. If Jay wants it differently, the whole
    change is one flag and two blurbs.
-2. **The deletion report, never delivered.** Asked for as a report only,
+2. **The deletion report -- DELIVERED 24 September by the successor, and
+   it changed the picture below.** The live screens used ~15 symbols
+   from 6 engine files; those were extracted to `src/core/` (CLAUDE.md,
+   Architecture), so the live closure now contains no engine file at all
+   and `verify-core` holds it there. The cuts, from
+   `tools/measure/cuts.mjs`: dropping only the driver-game screens frees
+   nothing (the examiner screens import the old renderer); dropping the
+   examiner screens too (cut B, the recommended default, put to Jay)
+   frees 7,178 lines in 14 files and ~8m of suite; also dropping the
+   exam-mode engine (cut C, Jay's product call) frees 11,162 lines and
+   ~16m. `verify-candidate`'s driver-composition half moved to
+   `verify-sim` section 6 so it survives any cut. The predecessor's
+   original notes follow.
+
+   **The deletion report, as first measured.** Asked for as a report only,
    no deletions. The numbers, from `tools/measure/reach.mjs`:
    - `src/apps/DriveDraw.jsx`, **2,448 lines**, is reached by nothing —
      not the app, not any check. It is the only file in that state.

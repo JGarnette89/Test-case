@@ -26,7 +26,7 @@ import {
   withCandidates, keepDriving, toTell, tell, stillTellable, PROFILES,
 } from "../src/sim/candidate.js";
 import { noticing, mark, sheetFor, sectionDone, SECTION } from "../src/sim/marking.js";
-import { REACTION_FLOOR } from "../src/engine/score.js";
+import { REACTION_FLOOR } from "../src/core/perception.js";
 import fs from "node:fs";
 import {
   seedCourse, step, overlapping, whatStops, poseOf, reachFor, edgesOf, gapNeeded,
@@ -35,9 +35,8 @@ import {
 import {
   decide, wantedGap, PX_PER_M, underLoad, heldBy, weaveRoom, HARSH_AT, lagFor, timeToCover,
 } from "../src/sim/traffic.js";
-import { rng } from "../src/engine/index.js";
-import { pressureOf, skillUnderPressure } from "../src/engine/directions.js";
-import { severityOf } from "../src/engine/index.js";
+import { rng } from "../src/core/rng.js";
+import { pressureOf, skillUnderPressure, severityOf } from "../src/core/driver.js";
 
 let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);

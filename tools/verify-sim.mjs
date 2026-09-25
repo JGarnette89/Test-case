@@ -23,8 +23,10 @@ import {
   cautionOf as simCaution,
   ROAD, CAR, DT, M, PX_PER_M, ON_SCREEN,
 } from "../src/sim/traffic.js";
-import { composeDriver } from "../src/engine/ratings.js";
-import { cautionOf as engineCaution } from "../src/engine/awareness.js";
+import {
+  composeDriver, deficitOf, AXES, WEAK_AXES, COMPETENT_AT, LACKING_AT, CONFIDENT_ENOUGH,
+  strengthsOf, lackingIn, cautionOf,
+} from "../src/core/driver.js";
 import { readFileSync } from "node:fs";
 
 let problems = 0;
@@ -255,19 +257,16 @@ console.log("\n5. EVERY CAR IS A RATED DRIVER, AND THERE IS ONE DRIVER MODEL");
         "traffic LOOKS and the other for how a candidate is MARKED. See REBUILD.md 4.1.",
       ].join(" "));
 
-  /* AND CAUTION MEANS THE SAME THING IN BOTH PLACES. `cautionOf` cannot
-     be imported from awareness.js without dragging most of the old
-     engine along, so the sim has its own three lines against the same
-     `deficitOf`. Two callers, one model -- and this is what would catch
-     them parting company. */
-  let worst = 0;
-  for (let i = 1; i <= 200; i++) {
-    const d = composeDriver(i * 13);
-    worst = Math.max(worst, Math.abs(simCaution(d.ratings) - engineCaution(d)));
-  }
-  worst < 1e-12
-    ? ok(`and caution means the same in the sim as in the engine, across 200 drawn drivers`)
-    : fail(`the sim and the engine disagree about caution by up to ${worst.toFixed(4)} -- two confidence models have appeared`);
+  /* AND CAUTION IS ONE FUNCTION. This used to compare the sim's copy of
+     `cautionOf` against the engine's across 200 drivers, because the sim
+     could not import the engine's without the old engine coming too. Both
+     now ARE core/driver.js's, so that comparison would measure a function
+     against itself -- CLAUDE.md item 3's third shape. What keeps it one
+     function is verify-core, which fails if the name is declared anywhere
+     but core; checked here only that the sim uses that one. */
+  simCaution === cautionOf
+    ? ok("and caution is core's one `cautionOf`, the same function the engine re-exports")
+    : fail("the sim has its own `cautionOf` again -- two confidence models, which is the bug verify-core exists to stop");
 
   /* THE TRAFFIC IS A MIX OF PEOPLE, not one driver repeated. Measured on
      what a person would actually see: the spread of desired speeds, and
@@ -301,6 +300,75 @@ console.log("\n5. EVERY CAR IS A RATED DRIVER, AND THERE IS ONE DRIVER MODEL");
   boldest.v0 > meekest.v0 && boldest.headway < meekest.headway
     ? ok(`and the boldest wants ${(boldest.v0 * 3.6).toFixed(0)} km/h at ${boldest.headway.toFixed(2)}s where the meekest wants ${(meekest.v0 * 3.6).toFixed(0)} at ${meekest.headway.toFixed(2)}s -- one axis, both knobs`)
     : fail("boldness does not move speed and gap together, so a speeder and a tailgater are unrelated drivers rather than one person in two situations");
+}
+
+console.log("\n6. A DRIVER HAS A CHARACTER -- HOW EVERY CAR IS DRAWN");
+{
+  /* Moved from verify-candidate section 9 on 24 September, unchanged,
+     because every car in the live traffic is drawn by composeDriver and
+     these properties must survive the exam machinery being cut. */
+  /* Character, not uniform badness. A driver bad at everything is as
+     uninformative as one good at everything, and less fun to examine. */
+  const counts = {}, weakSizes = new Set();
+  for (let i = 1; i <= 500; i++) {
+    const d = composeDriver(i * 13);
+    weakSizes.add(d.weakOn.length);
+    for (const a of d.weakOn) counts[a] = (counts[a] || 0) + 1;
+  }
+  const [lo, hi] = WEAK_AXES;
+  [...weakSizes].every((n) => n >= lo && n <= hi)
+    ? ok(`every candidate is weak on ${lo}-${hi} axes, never on all of them and never on none`)
+    : fail(`candidates were drawn weak on ${[...weakSizes].sort().join(",")} axes, outside ${lo}-${hi}`);
+  const share = AXES.map((a) => (counts[a] || 0) / 500);
+  Math.min(...share) > 0.15
+    ? ok(`and no axis is a rarity: weakness lands on each of the five between ${(100 * Math.min(...share)).toFixed(0)}% and ${(100 * Math.max(...share)).toFixed(0)}% of the time`)
+    : fail(`one axis is weak in only ${(100 * Math.min(...share)).toFixed(0)}% of candidates`);
+
+  /* EVERY CANDIDATE HAS A REAL STRENGTH AND A REAL WEAKNESS. A driver
+     with a developed skill gives the player a contrast to read the
+     weakness against, so "bad at everything" is not the shape of every
+     difficult drive; and one with no weakness has nothing to find.
+
+     Both already held from drawing 1-2 weaknesses out of five axes. They
+     are asserted so that a later change to the ranges cannot quietly
+     break them, which is the only reason to check something that is true
+     by construction. */
+  let noStrength = 0, noWeakness = 0;
+  for (let i = 1; i <= 2000; i++) {
+    const d = composeDriver(i * 13);
+    if (!strengthsOf(d).length) noStrength++;
+    if (!lackingIn(d).length) noWeakness++;
+  }
+  noStrength === 0
+    ? ok(`every one of 2000 candidates has an axis at or above ${COMPETENT_AT} — however poor the rest, something is developed`)
+    : fail(`${noStrength} candidates have no developed skill at all`);
+  noWeakness === 0
+    ? ok(`and every one has an axis at or below ${LACKING_AT}, so there is always something to find as well as something to rule out`)
+    : fail(`${noWeakness} candidates have nothing genuinely weak, so the drive has no answer`);
+
+  /* Sound where they are sound. This is what separates a character from a
+     generally poor driver. */
+  let clean = 0, total = 0;
+  for (let i = 1; i <= 200; i++) {
+    const d = composeDriver(i * 13);
+    for (const a of AXES) {
+      if (d.weakOn.includes(a)) continue;
+      total++;
+      const { deficit } = deficitOf(d.ratings, a);
+      if (deficit < 0.3) clean++;
+    }
+  }
+  clean / total > 0.85
+    ? ok(`and where a candidate is sound they are properly sound (${(100 * clean / total).toFixed(0)}% of non-weak axes carry little deficit)`)
+    : fail(`only ${(100 * clean / total).toFixed(0)}% of supposedly sound axes are actually sound, so every driver is a bit bad at everything`);
+
+  /* Confidence is two-tailed and caution is the whole of it: 1 at the
+     optimum, 0 maximally bold, 2 maximally timid. Moved from
+     verify-awareness for the same reason. */
+  const R = (conf) => ({ observation: 1, confidence: conf, steering: 1, braking: 1, knowledge: 1 });
+  cautionOf(R(CONFIDENT_ENOUGH)) === 1 && cautionOf(R(1)) === 0 && cautionOf(R(0)) === 2
+    ? ok("caution is the whole of confidence in one number: 1 at the optimum, 0 when maximally bold, 2 when maximally timid")
+    : fail(`caution does not span both tails: ${cautionOf(R(0))} / ${cautionOf(R(CONFIDENT_ENOUGH))} / ${cautionOf(R(1))}`);
 }
 
 console.log("\n" + "=".repeat(70));

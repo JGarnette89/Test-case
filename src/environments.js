@@ -13,6 +13,7 @@
    daily has to be identical for everyone who plays it, and a scenario that
    redecorated itself on every retry would be its own distraction.
    ===================================================================== */
+import { rng } from "./core/rng.js";
 
 /* Item kinds the placer understands:
      block  a building — body plus a darker roof inset
@@ -76,16 +77,6 @@ function hashId(str) {
 
 export function environmentFor(scenarioId) {
   return ENVIRONMENTS[hashId(scenarioId) % ENVIRONMENTS.length];
-}
-
-function rng(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 /* =====================================================================

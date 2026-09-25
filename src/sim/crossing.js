@@ -42,9 +42,8 @@ import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } fro
 import { controlUnder, lightAt } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel } from "./corner.js";
-import { rng } from "../engine/index.js";
-import { REACTION_FLOOR } from "../engine/score.js";
-import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../engine/awareness.js";
+import { rng } from "../core/rng.js";
+import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
 
 /* =====================================================================
    PERCEPTION, STAGE 4: THE WORLD AS THIS DRIVER HAS TAKEN IT IN

@@ -18,7 +18,7 @@
 
    METRES AND SECONDS, like the rest of the sim.
    ===================================================================== */
-import { turnPoints } from "../engine/paths.js";
+import { turnPoints } from "../core/turn.js";
 import { CAR, weaveRoom } from "./traffic.js";
 
 export const SIDES = ["N", "E", "S", "W"];

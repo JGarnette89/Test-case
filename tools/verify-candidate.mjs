@@ -618,60 +618,12 @@ console.log("\n9. A CANDIDATE HAS A CHARACTER, AND ENOUGH TO FIND WITHOUT TOO MU
      from it rather than chosen — see the figure printed below. */
   const RECALL_BAND = [3, 4];
 
-  /* Character, not uniform badness. A driver bad at everything is as
-     uninformative as one good at everything, and less fun to examine. */
-  const counts = {}, weakSizes = new Set();
-  for (let i = 1; i <= 500; i++) {
-    const d = composeDriver(i * 13);
-    weakSizes.add(d.weakOn.length);
-    for (const a of d.weakOn) counts[a] = (counts[a] || 0) + 1;
-  }
-  const [lo, hi] = WEAK_AXES;
-  [...weakSizes].every((n) => n >= lo && n <= hi)
-    ? ok(`every candidate is weak on ${lo}-${hi} axes, never on all of them and never on none`)
-    : fail(`candidates were drawn weak on ${[...weakSizes].sort().join(",")} axes, outside ${lo}-${hi}`);
-  const share = AXES.map((a) => (counts[a] || 0) / 500);
-  Math.min(...share) > 0.15
-    ? ok(`and no axis is a rarity: weakness lands on each of the five between ${(100 * Math.min(...share)).toFixed(0)}% and ${(100 * Math.max(...share)).toFixed(0)}% of the time`)
-    : fail(`one axis is weak in only ${(100 * Math.min(...share)).toFixed(0)}% of candidates`);
-
-  /* EVERY CANDIDATE HAS A REAL STRENGTH AND A REAL WEAKNESS. A driver
-     with a developed skill gives the player a contrast to read the
-     weakness against, so "bad at everything" is not the shape of every
-     difficult drive; and one with no weakness has nothing to find.
-
-     Both already held from drawing 1-2 weaknesses out of five axes. They
-     are asserted so that a later change to the ranges cannot quietly
-     break them, which is the only reason to check something that is true
-     by construction. */
-  let noStrength = 0, noWeakness = 0;
-  for (let i = 1; i <= 2000; i++) {
-    const d = composeDriver(i * 13);
-    if (!strengthsOf(d).length) noStrength++;
-    if (!lackingIn(d).length) noWeakness++;
-  }
-  noStrength === 0
-    ? ok(`every one of 2000 candidates has an axis at or above ${COMPETENT_AT} — however poor the rest, something is developed`)
-    : fail(`${noStrength} candidates have no developed skill at all`);
-  noWeakness === 0
-    ? ok(`and every one has an axis at or below ${LACKING_AT}, so there is always something to find as well as something to rule out`)
-    : fail(`${noWeakness} candidates have nothing genuinely weak, so the drive has no answer`);
-
-  /* Sound where they are sound. This is what separates a character from a
-     generally poor driver. */
-  let clean = 0, total = 0;
-  for (let i = 1; i <= 200; i++) {
-    const d = composeDriver(i * 13);
-    for (const a of AXES) {
-      if (d.weakOn.includes(a)) continue;
-      total++;
-      const { deficit } = deficitOf(d.ratings, a);
-      if (deficit < 0.3) clean++;
-    }
-  }
-  clean / total > 0.85
-    ? ok(`and where a candidate is sound they are properly sound (${(100 * clean / total).toFixed(0)}% of non-weak axes carry little deficit)`)
-    : fail(`only ${(100 * clean / total).toFixed(0)}% of supposedly sound axes are actually sound, so every driver is a bit bad at everything`);
+  /* HOW A CANDIDATE IS DRAWN -- weak on one or two axes, always a real
+     strength and a real weakness, sound where sound -- is checked in
+     verify-sim section 6. Every car in the live traffic is drawn by the
+     same composeDriver, so those properties belong with the simulator's
+     checks and must not leave with the exam machinery. What stays here is
+     what that character produces on an examined drive. */
 
   /* What that produces on a real drive. */
   const N = 16;

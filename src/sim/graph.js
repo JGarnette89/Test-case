@@ -39,14 +39,14 @@
 
    Metres and seconds, like everything in src/sim/.
    ===================================================================== */
-import { turnPoints } from "../engine/paths.js";
+import { turnPoints } from "../core/turn.js";
 
 import { CAR, weaveRoom } from "./traffic.js";
 import { conflictsBetween, poseAt, LINE_SETBACK } from "./intersection.js";
 import { signalFor, isSignal } from "./signal.js";
 import { defaultTurns, receive, checkTurns } from "./lanes.js";
 import { ribbonOf } from "../iso/road.js";
-import { rng } from "../engine/index.js";
+import { rng } from "../core/rng.js";
 
 /* HOW FAR FROM OPPOSITE STILL COUNTS AS ONCOMING. A left turn yields
    to the oncoming approach; at a skewed crossing "oncoming" is the leg
