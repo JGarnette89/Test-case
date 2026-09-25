@@ -45,9 +45,6 @@ const SCREENS = [
      a mistake in the home screen or the switcher produced a blank page
      with every other check green. */
   { id: "App", file: "src/App.jsx", why: "the shell every route goes through" },
-  { id: "ExaminerDrive", file: "src/apps/ExaminerDrive.jsx", why: "the playable loop" },
-  { id: "ExaminerLab", file: "src/apps/ExaminerLab.jsx", why: "the bench behind it" },
-  { id: "RightOfWayTiming", file: "src/apps/RightOfWayTiming.jsx", why: "the only renderer there is" },
   { id: "MergeRush", file: "src/apps/MergeRush.jsx", why: "unwired, but reachable at #/merge-rush" },
 ];
 
@@ -141,15 +138,6 @@ try {
     ["#/crossing", "stage 1 of the rebuild"],
     ["#/candidates", "stage 2 of the rebuild"],
     ["#/course", "stage 3 of the rebuild"],
-    ["#/drive", "the examiner drive"],
-    ["#/examiner", "the examiner lab"],
-    ["#/timing", "timing (unlisted)"],
-    ["#/daily", "today's intersection (unlisted)"],
-    ["#/endless", "endless (unlisted)"],
-    ["#/roguelike", "roguelike (unlisted)"],
-    ["#/drives", "the drives submenu (unlisted)"],
-    ["#/tutorial", "the tutorial submenu (unlisted)"],
-    ["#/test", "the test menu"],
     ["#/merge-rush", "the unwired prototype"],
     ["#/nonsense", "an unknown route"],
   ];

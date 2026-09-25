@@ -258,8 +258,10 @@ detect 6s, faults 2s, wontstop 1.7s, everything else under a second.
    and `verify-core` holds it there. The cuts, from
    `tools/measure/cuts.mjs`: dropping only the driver-game screens frees
    nothing (the examiner screens import the old renderer); dropping the
-   examiner screens too (cut B, the recommended default, put to Jay)
-   frees 7,178 lines in 14 files and ~8m of suite; also dropping the
+   examiner screens too (cut B) frees 7,178 lines in 14 files -- CARRIED
+   OUT the same day on Jay's confirmation; it retired 4 checks, 3m00s of
+   suite, not the ~8m first estimated, because 11 of the 15 "driver-game"
+   checks guard files that survive the cut; also dropping the
    exam-mode engine (cut C, Jay's product call) frees 11,162 lines and
    ~16m. `verify-candidate`'s driver-composition half moved to
    `verify-sim` section 6 so it survives any cut. The predecessor's

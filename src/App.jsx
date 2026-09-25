@@ -1,18 +1,14 @@
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  Menu, X, Gauge, Milestone, ChevronRight, Lock, Check, ClipboardList,
-  CalendarDays, Shuffle, BookOpen, FlaskConical, Dices, Eye } from "lucide-react";
+import { Menu, X, Milestone, ChevronRight } from "lucide-react";
 
-/* DriveDraw is no longer part of this app. Its source is still in
-   src/apps/DriveDraw.jsx and still in git history — it is simply not wired
-   in. This project is the game now. */
-import RightOfWayTiming from "./apps/RightOfWayTiming.jsx";
-import ExaminerLab from "./apps/ExaminerLab.jsx";
-import ExaminerDrive from "./apps/ExaminerDrive.jsx";
+/* The driver game and the examiner game screens were removed on 24
+   September (cut B, the maintainer's call); they are in git history. The
+   exam-mode ENGINE they drove is kept for the exam mode's return
+   (SIMULATOR.md 2.2). */
 /* A between-stages minigame prototype — not on the home screen or in the
    mode switcher yet, deliberately. Reachable directly at #/merge-rush
    while it is still a standalone thing to look at, not a decision to
-   wire into the roguelike run. */
+   wire into anything. */
 import MergeRush from "./apps/MergeRush.jsx";
 /* STAGE 0 OF THE REBUILD. One road, six cars, following distance --
    nothing else, deliberately. See REBUILD.md. It is on the home screen
@@ -26,15 +22,7 @@ import ErrorBoundary from "./apps/ErrorBoundary.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
 import SimCandidates from "./apps/SimCandidates.jsx";
 import SimCourse from "./apps/SimCourse.jsx";
-import { ROUTES } from "./engine/routes.js";
-import { SCENARIOS } from "./engine/scenarios.js";
-import {
-  useProgress, isPassed, bestScore,
-} from "./progress.js";
 import { isPersistent } from "./storage.js";
-import { dayIndex } from "./engine/generate.js";
-import { simulate, safeAtFor } from "./engine/index.js";
-import { sequenceFor } from "./engine/actions.js";
 
 /* Palette and font stacks are copied from the apps rather than imported,
    because the apps keep theirs module-private. Keep them in step by eye. */
@@ -59,9 +47,9 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
 
    Every screen the app can show, one entry each, and every entry's hash
    route resolves whether or not the menu lists it. The project is a
-   traffic simulator first (SIMULATOR.md); the examiner game and the
-   driver game before it are shelved, not deleted, and their screens stay
-   here so they open by address for comparison.
+   traffic simulator first (SIMULATOR.md). The rebuild's earlier stages
+   stay here so they open by address for comparison; the driver game and
+   the examiner game screens are gone (cut B, 24 September).
 
    AND THE MENU SHOWS WHAT IS BEING TESTED LIVE, NOTHING ELSE. The
    maintainer, 24 September: "there are many options in the submenu but
@@ -148,83 +136,6 @@ const MODES = [
     accent: C.amber,
     Component: SimCourse,
   },
-  {
-    id: "drive",
-    name: "The drive",
-    kicker: "You are the examiner — the game",
-    blurb:
-      "A course of six intersections and one candidate driving it. Watch them, give the directions in time to be followed, and mark what you saw — on a sheet at the end of each section rather than the instant you see it, so the job is memory as well as attention. Directions given early buy back your attention and cost the candidate their concentration; that trade is the game. No intervention yet.",
-    Icon: ClipboardList,
-    accent: C.green,
-    Component: ExaminerDrive,
-  },
-  {
-    id: "examiner",
-    name: "Examiner lab",
-    kicker: "You are the examiner — the live direction",
-    blurb:
-      "The game this project is now. A candidate drives themselves, drawn with five skill ratings and weak on one or two of them; they register the traffic they happen to notice, decide when to go on that, and the world yields when they take a gap that was not theirs. The chase camera rides with them, occlusion decides what could have been seen, and every fault is derived rather than scripted. A bench rather than a finished game: it scores your marking, but there is no course, no directions to give and no debrief.",
-    Icon: Eye,
-    accent: C.blue,
-    Component: ExaminerLab,
-  },
-
-  {
-    id: "timing",
-    name: "Timing",
-    kicker: "Real time",
-    blurb:
-      "Traffic arrives on a schedule and you are one car in it. Press GO at the moment the road is legally yours. Too early is a failure to yield; too late is undue delay.",
-    Icon: Gauge,
-    accent: C.blue,
-    Component: RightOfWayTiming,
-  },
-  {
-    id: "daily",
-    name: "Today's intersection",
-    kicker: "Daily",
-    blurb:
-      "One generated situation a day, the same one for everyone. The date is the seed, so nothing has to be fetched or coordinated.",
-    Icon: CalendarDays,
-    accent: C.yellow,
-    Component: RightOfWayTiming,
-    props: { source: "daily" },
-  },
-  {
-    id: "endless",
-    name: "Endless",
-    kicker: "Generated",
-    blurb:
-      "Fresh situations, drawn and checked by the engine. Any draw whose window is trivial, impossible or unsafe is thrown away before you see it.",
-    Icon: Shuffle,
-    accent: C.green,
-    Component: RightOfWayTiming,
-    props: { source: "endless" },
-  },
-  {
-    id: "roguelike",
-    name: "Roguelike",
-    kicker: "A driving test, roguelike",
-    blurb:
-      "Named stages, each capped by a hand-authored boss, building to a four-intersection Checkride. Fit an upgrade to your car every few clean clears, pick your own order at the roundabout between stages, and one critical fault anywhere ends the run.",
-    Icon: Dices,
-    accent: C.amber,
-    Component: RightOfWayTiming,
-    props: { source: "roguelike" },
-  },
-
-  /* Routes are the same renderer with a drive plan handed to it, so adding
-     one is an entry in engine/routes.js and nothing here. */
-  ...ROUTES.map((r) => ({
-    id: `drive-${r.id}`,
-    name: r.title,
-    kicker: "Drive",
-    blurb: r.blurb,
-    Icon: Milestone,
-    accent: C.yellow,
-    Component: RightOfWayTiming,
-    props: { routeId: r.id },
-  })),
 ];
 
 /* What the menus actually offer: what is being tested live. Everything
@@ -235,9 +146,8 @@ const LIVE = MODES.filter((m) => m.live);
    The hash, not state, is the source of truth: a reload keeps you where
    you were and the browser Back button works, with no storage and no
    router dependency.                                                   */
-/* Two segments: the mode, and an optional thing to start it on —
-   #/timing/liar opens the timing mode already sitting at that situation,
-   which is how you get at one scenario directly. */
+/* Two segments: the screen, and an optional thing to start it on, handed
+   to the screen as `scenarioId`. */
 const readHash = () => {
   const [id = "", param = ""] = window.location.hash.replace(/^#\/?/, "").split("/");
   return { id, param: param || null };
@@ -258,10 +168,8 @@ function useRoute() {
 
 export default function App() {
   const { id, param } = useRoute();
-  const isTest = id === "test";
   const isPrototype = id === "merge-rush";
-  const submenu = isTest || isPrototype ? null : SUBMENUS.find((s) => s.id === id) || null;
-  const mode = isTest || isPrototype || submenu ? null : MODES.find((m) => m.id === id) || null;
+  const mode = isPrototype ? null : MODES.find((m) => m.id === id) || null;
   const [menuOpen, setMenuOpen] = useState(false);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -282,10 +190,8 @@ export default function App() {
     <>
       <Style />
 
-      {!mode && !submenu && !isTest && !isPrototype && <ErrorBoundary name="home"><Home /></ErrorBoundary>}
-      {isTest && <ErrorBoundary name="test menu"><TestMenu /></ErrorBoundary>}
+      {!mode && !isPrototype && <ErrorBoundary name="home"><Home /></ErrorBoundary>}
       {isPrototype && <ErrorBoundary name="merge rush"><MergeRush /></ErrorBoundary>}
-      {submenu && <ErrorBoundary name="submenu"><SubMenu id={submenu.id} /></ErrorBoundary>}
 
       {mode && (
         <>
@@ -315,63 +221,13 @@ export default function App() {
 }
 
 /* --- Home -----------------------------------------------------------
-   Nothing starts until the player chooses it. Landing straight in the
-   middle of a timed situation gives them no chance to read it, which is
-   the one thing this game is about.                                     */
+   Nothing starts until the player chooses it.                           */
 const partOfDay = () => {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
   if (h < 18) return "Good afternoon";
   return "Good evening";
 };
-
-function Section({ title, note, children }) {
-  return (
-    <div style={st.section}>
-      <div style={st.sectionHead}>{title}</div>
-      {note && <div style={st.sectionNote}>{note}</div>}
-      <div style={st.cards}>{children}</div>
-    </div>
-  );
-}
-
-function ModeCard({ mode }) {
-  return (
-    <button className="shell-card" style={st.card} onClick={() => go(mode.id)}>
-      <div style={{ ...st.cardIcon, color: mode.accent }}>
-        <mode.Icon size={22} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ ...st.cardKicker, color: mode.accent }}>{mode.kicker}</div>
-        <div style={st.cardName}>{mode.name}</div>
-        <div style={st.cardBlurb}>{mode.blurb}</div>
-      </div>
-      <ChevronRight size={18} style={{ color: C.dim, flexShrink: 0 }} />
-    </button>
-  );
-}
-
-/* Two things the player does most get a direct card. Everything else is a
-   folder — a home screen that lists every route and every mode is a menu
-   you have to read rather than one you can use. */
-const SUBMENUS = [
-  {
-    id: "drives",
-    name: "Take a drive",
-    kicker: "Routes",
-    accent: C.amber,
-    Icon: Milestone,
-    blurb: "Several intersections in one go. A collision ends the drive.",
-  },
-  {
-    id: "tutorial",
-    name: "Tutorial",
-    kicker: "Learn",
-    accent: C.green,
-    Icon: BookOpen,
-    blurb: "The set situations, one at a time, with the rule explained afterwards.",
-  },
-];
 
 function LinkCard({ item, onClick, note }) {
   return (
@@ -400,8 +256,8 @@ function Home() {
       </div>
 
       <div style={st.premise}>
-        What is being tested now. Earlier stages and the examiner game are
-        kept, and open by address for comparison.
+        What is being tested now. Earlier stages of the simulator open by
+        address for comparison.
       </div>
 
       <div style={st.cards}>
@@ -410,19 +266,6 @@ function Home() {
         ))}
       </div>
 
-      {/* Dev server only, so it cannot reach a tester's phone by accident.
-          The #/test route still works in a build if you type it. */}
-      {import.meta.env.DEV && (
-        <button className="shell-card" style={{ ...st.thinRow, borderStyle: "dashed" }} onClick={() => go("test")}>
-          <FlaskConical size={16} style={{ color: C.dim, flexShrink: 0 }} />
-          <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-            <div style={st.thinName}>Test menu</div>
-            <div style={st.thinBrief}>Every situation, ungated. Not in a production build.</div>
-          </div>
-          <ChevronRight size={16} style={{ color: C.dim, flexShrink: 0 }} />
-        </button>
-      )}
-
       <div style={st.foot}>
         Runs entirely on this device. Nothing is sent anywhere.
         {!isPersistent && (
@@ -430,171 +273,6 @@ function Home() {
           browser is refusing to store anything.</>
         )}
       </div>
-    </div>
-  );
-}
-
-/* --- Test menu ------------------------------------------------------
-   Every situation, ungated, with the facts you need to tell whether a
-   feature is working. Not the replay list: that one is the player's and
-   is deliberately locked and deliberately unnamed. This one is a tool.
-
-   Linked from home only while running the dev server, so it cannot leak
-   into a build a tester holds — but the route works anywhere, so it can
-   still be reached on purpose by typing it.                             */
-function featuresOf(scn) {
-  const tags = [];
-  if (scn.layout === "roundabout") tags.push("roundabout");
-  if (scn.control === "signal") tags.push("signals");
-  if (scn.actors.some((a) => a.kind === "ped")) tags.push("pedestrian");
-  if (scn.sightBlockers?.length) tags.push("blind corner");
-  const seq = sequenceFor(scn.manoeuvre ?? "straight");
-  if (seq.length > 1) tags.push(seq.join("+"));
-  const traits = [...new Set(scn.actors.flatMap((a) => a.traits || []))];
-  return { tags, traits };
-}
-
-function TestMenu() {
-  const rows = React.useMemo(
-    () =>
-      SCENARIOS.map((s) => {
-        let legalAt = null, safeAt = null, think = null;
-        try {
-          const sim = simulate(s);
-          legalAt = sim.legalAt;
-          safeAt = safeAtFor(sim);
-          think = Math.round((safeAt - s.ego.arriveAt) * 100) / 100;
-        } catch {
-          /* A scenario that will not simulate is exactly what this menu is
-             for finding, so it is listed rather than swallowed. */
-        }
-        return { s, legalAt, safeAt, think, ...featuresOf(s) };
-      }),
-    []
-  );
-
-  return (
-    <div style={st.launcher}>
-      <button className="shell-link" style={{ alignSelf: "flex-start" }} onClick={() => go(null)}>
-        ← Home
-      </button>
-
-      <div style={st.brand}>
-        <div style={{ ...st.brandTitle, fontSize: 28 }}>TEST MENU</div>
-        <div style={st.brandSub}>
-          Every situation, ungated. Shows the derived window so you can tell at a glance
-          whether a change moved something.
-        </div>
-      </div>
-
-      <Section title={`Situations (${SCENARIOS.length})`} note="Window and wait are derived live, not stored.">
-        {rows.map(({ s, legalAt, safeAt, think, tags, traits }) => (
-          <button key={s.id} className="shell-card" style={st.thinRow} onClick={() => go("timing", s.id)}>
-            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-              <div style={st.thinName}>{s.title}</div>
-              <div style={st.testMeta}>
-                <code style={st.thinId}>{s.id}</code>
-                {safeAt == null
-                  ? <span style={{ color: C.red }}>will not simulate</span>
-                  : <span>
-                      window {safeAt}s · waits {think}s
-                      {safeAt > legalAt + 0.01 && <span style={{ color: C.amber }}> (legal at {legalAt}s)</span>}
-                    </span>}
-              </div>
-              {(tags.length > 0 || traits.length > 0) && (
-                <div style={st.tagRow}>
-                  {tags.map((t) => <span key={t} style={st.tag}>{t}</span>)}
-                  {traits.map((t) => <span key={t} style={{ ...st.tag, color: C.amber, borderColor: "rgba(240,169,60,0.4)" }}>{t}</span>)}
-                </div>
-              )}
-            </div>
-            <ChevronRight size={16} style={{ color: C.dim, flexShrink: 0 }} />
-          </button>
-        ))}
-      </Section>
-
-      <Section title="Generated" note="Fresh each time — for checking the generator rather than a fixed case.">
-        <LinkCard item={MODES.find((m) => m.id === "daily")} onClick={() => go("daily")} />
-        <LinkCard item={MODES.find((m) => m.id === "endless")} onClick={() => go("endless")} />
-      </Section>
-
-      <Section title="Routes" note="Continuity, rotation and the run loop across several intersections.">
-        {MODES.filter((m) => m.kicker === "Drive").map((m) => <ModeCard key={m.id} mode={m} />)}
-      </Section>
-    </div>
-  );
-}
-
-/* --- Submenus -------------------------------------------------------
-   A folder from the home screen. Same shell, one level down, with a way
-   back that is always in the same place.                                */
-function SubMenu({ id }) {
-  const progress = useProgress();
-  const meta = SUBMENUS.find((s) => s.id === id);
-  const drives = MODES.filter((m) => m.kicker === "Drive");
-  const singles = MODES.filter((m) => m.kicker === "Real time");
-
-  const cleared = SCENARIOS.filter((s) => isPassed(progress, s.id));
-  const locked = SCENARIOS.length - cleared.length;
-
-  return (
-    <div style={st.launcher}>
-      <button className="shell-link" style={{ alignSelf: "flex-start" }} onClick={() => go(null)}>
-        ← Home
-      </button>
-
-      <div style={st.brand}>
-        <div style={{ ...st.brandTitle, fontSize: 28 }}>{meta.name.toUpperCase()}</div>
-        <div style={st.brandSub}>{meta.blurb}</div>
-      </div>
-
-      {id === "drives" && (
-        <div style={st.cards}>
-          {drives.map((m) => <ModeCard key={m.id} mode={m} />)}
-        </div>
-      )}
-
-      {id === "tutorial" && (
-        <>
-          <Section title="Work through them" note="Start here if you have not played before.">
-            {singles.map((m) => <ModeCard key={m.id} mode={m} />)}
-          </Section>
-
-          <Section
-            title="Replay a situation"
-            note={
-              cleared.length === 0
-                ? "Nothing yet. Clear a situation and it appears here to replay."
-                : "Situations you have driven cleanly. Go back for a better time."
-            }
-          >
-            {cleared.map((s) => (
-              <button key={s.id} className="shell-card" style={st.thinRow}
-                onClick={() => go("timing", s.id)}>
-                <Check size={15} style={{ color: C.green, flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                  <div style={st.thinName}>{s.title}</div>
-                  <div style={st.thinBrief}>{s.brief}</div>
-                </div>
-                <code style={st.thinId}>best {bestScore(progress, s.id)}</code>
-                <ChevronRight size={16} style={{ color: C.dim, flexShrink: 0 }} />
-              </button>
-            ))}
-
-            {/* Locked situations are counted, never named. Half of these turn
-                on not knowing what is coming — listing the titles would hand
-                the answer over before the player ever meets them. */}
-            {locked > 0 && (
-              <div style={st.lockedRow}>
-                <Lock size={15} style={{ color: C.dim, flexShrink: 0 }} />
-                <span>
-                  {locked} more {locked === 1 ? "situation" : "situations"} to find. They unlock as you clear them.
-                </span>
-              </div>
-            )}
-          </Section>
-        </>
-      )}
     </div>
   );
 }

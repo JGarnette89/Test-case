@@ -43,7 +43,21 @@ destroys what they protect. This file is the long-form history; that one
 is what you must not break.
 
 **[DRIVE-GUIDE.md](DRIVE-GUIDE.md)** is how to actually operate the game
-at `#/drive`, and what is knowingly missing from it.
+at `#/drive`, and what is knowingly missing from it. **`#/drive` no longer
+exists -- see the next paragraph.**
+
+**CUT B, 24 SEPTEMBER: THE OLD SCREENS ARE GONE.** The maintainer's call.
+Deleted: the driver game and examiner game screens (`RightOfWayTiming`,
+`ExaminerDrive`, `ExaminerLab`, `RoguelikeScreens`, `roadArt`,
+`timingStyles`, `DriveDraw`), the code that existed only to serve them
+(`generate.js`, `roguelike.js`, `stages.js`, `bosses.js`, `traits.js`,
+`environments.js`, `progress.js`), and the four checks whose subject went
+with them (`verify-generator`, `-roguelike`, `-stages`, `-playthrough`).
+All of it is in git history. KEPT: the exam-mode engine SIMULATOR.md 2.2
+says the exam mode returns to, and every check guarding a file that
+still exists. Much of this file below describes the deleted screens and
+the roguelike; read it as history. The live screens stand on
+`src/core/` and never on the engine (Architecture, and `verify-core`).
 
 **[HANDOVER.md](HANDOVER.md) is the residue of the session that built
 signals, corner slowing, lane changing and keep-right (24 September),
@@ -205,12 +219,17 @@ Eight things to know before your first change:
    | `index.js`, `ratings.js`, `road.js`, `scenarios.js`, `score.js` | the full suite | 18m |
    | `src/App.jsx`'s `live: true` flags, or any import in a live screen | `verify-core` (no live screen may reach `src/engine/`), `verify-screens` | 7s |
 
-   Where the 18 minutes go: `verify-candidate` 6m39s, `verify-world`
-   4m06s, `verify-roguelike` 1m31s, `verify-course` 63s, `-outcome` 43s,
-   `-generator` 33s, `-events` 31s, `-crossing` 19s, `-playthrough` 16s,
-   `-telling` 13s, `-screens` 6s; everything else under ten seconds. The
-   three long ones are old-engine checks that a `src/sim/` change cannot
-   reach.
+   **The table's 18m is from 10 September and is stale.** Measured 24
+   September, after cut B, run end to end: **26m51s** for 38 checks, of
+   which the sim side is 13m09s and the old engine 13m42s. Before cut B
+   it was 29m48s over 42 checks; the four checks that went with the
+   deleted code were 3m00s of it (`-roguelike` 1m35s, `-generator` 35s,
+   `-stages` 34s, `-playthrough` 16s). Where it goes now: `verify-lanes`
+   7m35s, `verify-candidate` 6m58s, `verify-world` 4m09s, `verify-course`
+   2m24s, `verify-graph` 1m38s, `-outcome` 45s, `-events` 33s, `-compose`
+   28s, `-crossing` 24s, `-telling` 22s, `-awareness` 18s, `-signal` 18s,
+   `-drive` 14s; everything else under twelve seconds. `candidate` and
+   `world` are old-engine checks a `src/sim/` change cannot reach.
 
    **WHAT DOES NOT CHANGE, AND IT MATTERS MORE THAN THE SAVINGS.**
    Measure before building. Report a failure rather than building over
@@ -1633,14 +1652,9 @@ src/engine/score.js      grading a press against a derived window
 src/engine/route.js      several intersections in one drive, and continuity
 src/engine/world.js      intersections placed in one coordinate space, and the roads between
 src/engine/tiles.js      road character, the tile library, route planning and pacing
-src/engine/generate.js   seeded scenario generation
 src/engine/compose.js    a brief in, a scene that measurably matches it out
 src/engine/scenarios.js  the set situations, as data
 src/engine/routes.js     drives, as data
-src/engine/traits.js     PLAYER car upgrades and consumables — not the driver traits above
-src/engine/roguelike.js  a run: stages, bosses, the branch, the Checkride, Insight
-src/engine/stages.js     the roguelike's stages and its roundabout graph, as data
-src/engine/bosses.js     hand-authored boss situations, as data
 src/core/rng.js          one seeded random source (mulberry32), for everything
 src/core/turn.js         a turn is an arc tangent to both lanes, radius derived by the caller
 src/core/driver.js       a driver: the five axes, a deficit, how a character is drawn, caution, and load
@@ -1675,16 +1689,8 @@ src/apps/MapRoad.jsx     STAGE 1 (#/map): drive the test map in traffic, or watc
 src/apps/Wheel.jsx       the wheel screen (#/wheel): the controls on stage 0's roads
 src/apps/IsoRoad.jsx     stage 0 (#/iso): the isometric world and the budget sweep
 src/theme.js             palette and type — the engine must never import this
-src/environments.js      city, suburban, rural scenery — renderer side only
 src/frame.js             the camera: frameFor and cameraFor — no React
 src/storage.js           adapter chain: artifact host, localStorage, memory
-src/progress.js          what the player has cleared, and the daily record
-src/apps/ExaminerDrive.jsx     the examiner game: watch, mark, direct, one candidate
-src/apps/ExaminerLab.jsx       the bench behind it — knobs exposed, scores nothing
-src/apps/RightOfWayTiming.jsx  the renderer — every mode is this one component
-src/apps/RoguelikeScreens.jsx  the run's own four screens: branch, draft, both endings
-src/apps/roadArt.jsx     SVG shared by the renderer and those screens
-src/apps/timingStyles.js the style objects both of the above use
 src/apps/MergeRush.jsx   a minigame prototype, deliberately not wired in
 ```
 
@@ -2003,16 +2009,12 @@ generator must be re-verified numerically before it is considered done.**
 ```
 node tools/verify-windows.mjs      every window; each trait removed on its own
 node tools/verify-route.mjs        rotation, continuity, run mechanics
-node tools/verify-generator.mjs    determinism, safety, spread, rejection rate
 node tools/verify-roundabout.mjs   direction, geometry, the exit tell
 node tools/verify-wontstop.mjs     a driver who fails to yield: tell, safety, the extended window
-node tools/verify-playthrough.mjs  every scenario at every press time
 node tools/verify-task.mjs         manoeuvres: order, deadlines, fault tiers
 node tools/verify-sight.mjs        occlusion, and the creep trade
 node tools/verify-compose.mjs      briefs produce scenes that match them
 node tools/verify-camera.mjs       the camera opens gradually, never shrinks, keeps a revealed actor in frame
-node tools/verify-roguelike.mjs    traits and Insight: the safety wall, the one-way dependency
-node tools/verify-stages.mjs       stages, bosses, the branch graph, a full run end to end
 node tools/verify-events.mjs       the crossing button and the emergency vehicle: rule, readable, worth reading, generated
 node tools/verify-turns.mjs        turns are steered, not cut: radius, lane discipline, and honest fault tells
 node tools/verify-faults.mjs       examiner: faults derive from a control, and the cone decides what was markable
@@ -2046,7 +2048,7 @@ node tools/verify-core.mjs         the live screens stand on src/core/ alone: co
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All forty-two must exit 0 **before a commit**. Between commits, run
+All thirty-eight must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:

@@ -17,8 +17,10 @@ function importsOf(file) {
   }
   return out;
 }
+/* Cut B was carried out on 24 September, so some entries below no longer
+   exist; they are skipped, and the numbers then describe the tree as it is. */
 function closure(entries) {
-  const seen = new Set(), st = entries.map((e) => path.normalize(path.join(ROOT, e)));
+  const seen = new Set(), st = entries.map((e) => path.normalize(path.join(ROOT, e))).filter((f) => fs.existsSync(f));
   while (st.length) { const f = st.pop(); if (seen.has(f)) continue; seen.add(f); st.push(...importsOf(f)); }
   return seen;
 }
@@ -48,5 +50,5 @@ for (const [name, keep] of Object.entries(cuts)) {
   console.log(`\n== ${name}\n   unreferenced: ${n} lines in ${dead.length} files`);
   for (const f of dead) console.log(`   ${String(lines(f)).padStart(5)}  ${f}`);
 }
-const tl = (xs) => xs.reduce((s, x) => s + lines(`tools/verify-${x}.mjs`), 0);
+const tl = (xs) => xs.filter((x) => fs.existsSync(path.join(ROOT, `tools/verify-${x}.mjs`))).reduce((s, x) => s + lines(`tools/verify-${x}.mjs`), 0);
 console.log(`\ncheck code: game ${tl(GAME_CHECKS)} lines, exam ${tl(EXAM_CHECKS)} lines, sim ${tl(SIM_CHECKS)} lines`);

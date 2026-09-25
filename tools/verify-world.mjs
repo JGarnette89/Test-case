@@ -648,7 +648,7 @@ console.log("\n10. A HAZARD IS ON THE ROAD IT IS ON");
       );
 }
 
-console.log("\n11. WHATEVER YOU ADD, SOMETHING HAS TO DRAW IT");
+console.log("\n11. A ROADSIDE OBJECT CARRIES THE SHAPE A RENDERER NEEDS");
 {
   /* Four times running, roadside content was built, measured and verified
      while NOTHING PUT IT ON SCREEN: the props and people (59 objects and
@@ -661,34 +661,14 @@ console.log("\n11. WHATEVER YOU ADD, SOMETHING HAS TO DRAW IT");
      verify-roguelike uses for the one-way dependency and verify-clearance
      for the reaction import -- cheap, and it fails on the thing that
      actually keeps going wrong rather than on a proxy for it. */
-  const src = readFileSync(new URL("../src/apps/ExaminerDrive.jsx", import.meta.url), "utf8");
-
-  /* Every kind of roadside object the engine can emit, gathered from the
-     engine rather than listed here -- a list would go stale exactly the
-     way the drawing did. */
-  const kinds = new Set();
+  /* The first half of this section read ExaminerDrive.jsx's colour table
+     and failed if the engine emitted a roadside kind nothing could draw.
+     That renderer was removed on 24 September (cut B) and nothing draws
+     this world now -- it is exercised only as the exam-mode checks' scene
+     source -- so the half that asked "does the screen draw it" has no
+     screen to ask. The rule it enforced is CLAUDE.md item 6 and applies
+     to whatever draws the map next. The shape half stays. */
   const legFor3 = () => ({ from: "S", intent: "straight" });
-  for (let seed = 1; seed <= 10; seed++) {
-    const plan = planDrive({ seed, length: 6 });
-    const drive = driveFromPlan(plan, { legFor: legFor3 });
-    drive.links.forEach((link, i) => {
-      const tile = plan[i]?.tile;
-      if (!tile) return;
-      for (const o of curbsideFor(tile, link, i * 13 + 1)) kinds.add(o.kind);
-      for (const o of drivewaysFor(tile, link, i * 13 + 1)) kinds.add(o.kind);
-    });
-  }
-  const table = src.slice(src.indexOf("const ROADSIDE_FILL"), src.indexOf("};", src.indexOf("const ROADSIDE_FILL")));
-  const missing = [...kinds].filter((k) => !table.includes(`${k}:`));
-  missing.length === 0
-    ? ok(`all ${kinds.size} kinds of roadside object the engine emits have a colour to be drawn in (${[...kinds].sort().join(", ")})`)
-    : fail(
-        `${missing.join(", ")} is emitted by the engine and the renderer has no colour for it.
-        This is the fourth time roadside content has been built, measured and
-        verified while nothing put it on screen. The rule is: whatever you add,
-        check what draws it. Add it to ROADSIDE_FILL in ExaminerDrive.jsx, or
-        say out loud that it is deliberately invisible.`
-      );
   /* And the drawing has to be given something it can draw: the renderer
      reads x, y, rot, hl, hw off every one of them. */
   let malformed = 0, seen = 0;
