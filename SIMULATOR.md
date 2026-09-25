@@ -1850,6 +1850,12 @@ cost before the renderer's. The `#/map` readout shows fps: the dial
 at 300 is the test. And "cars drawn" is cars on screen, not on the
 map -- the map holds more than the camera sees.
 
+**Run by the maintainer on his phone, 25 September: "300 cars seems to
+work, need advanced intersections to see it really work."** So 300 on
+the test map passes by feel, and the test map is now the limit on what
+300 cars can show rather than the phone -- the next stress is richer
+intersections, not more cars.
+
 What it means for the plan: the default of 120 on the map is well
 inside, the dial's 300 is at the renderer's edge, and a world of the
 size SIMULATOR.md 1 describes has room for dense traffic in view as
