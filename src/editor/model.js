@@ -101,13 +101,16 @@ export function setLeftArrow(map, roadId, end, on) {
    a person placing one means nearly every time -- else it sits square. */
 export function addProp(map, { kind = "house", at, face = 40 } = {}) {
   const id = nextId(map.props ?? [], "b");
-  const near = nearestOnRoad(map, at, { within: face });
-  let heading = 0;
-  if (near) {
-    const pts = map.roads.find((r) => r.id === near.road).points, p = pts[near.seg], q = pts[near.seg + 1];
-    heading = (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
-  }
+  const heading = headingToRoad(map, at, face) ?? 0;
   return { map: { ...map, props: [...(map.props ?? []), { id, kind, at: { x: at.x, y: at.y }, heading }] }, id };
+}
+/* The direction of the nearest road's segment within `face` metres of a
+   point, or null with none -- what "facing the street" means. */
+export function headingToRoad(map, at, face = 40) {
+  const near = nearestOnRoad(map, at, { within: face });
+  if (!near) return null;
+  const pts = map.roads.find((r) => r.id === near.road).points, p = pts[near.seg], q = pts[near.seg + 1];
+  return (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
 }
 export function setPropProps(map, id, patch) {
   return { ...map, props: (map.props ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)) };

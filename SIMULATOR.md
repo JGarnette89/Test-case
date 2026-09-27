@@ -569,7 +569,11 @@ filter a T offers approaches that are not road ends.
 matters": a Building tool (house, shop, apartment -- blockout sizes in
 `map/format.js` `PROP_KINDS`, each overridable) drops a footprint where
 tapped, turned to face the nearest road, and the panel sets kind,
-heading and size. The format always had `props`; nothing drew a map's
+heading and size. A building is moved by dragging it (held by the spot
+grabbed, drawn live, committed on release like a road point), and
+**Face nearest road** turns one moved to another street to face that
+one -- not automatically, since a heading set on purpose should
+survive a nudge. The format always had `props`; nothing drew a map's
 props and nothing stopped one standing on a road. Both fixed: `loadMap`
 normalises them and **drops any building whose footprint reaches a
 road's surface**, warned at the spot (the editor draws it red), because

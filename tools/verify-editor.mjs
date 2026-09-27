@@ -11,7 +11,7 @@ import {
   nearestRoadEnd, cumulative, serialize, parse,
   nearestOnRoad, splitRoad, joinCrossing, setRoadRamp, setRoadHump,
   deletePoint, subdivideRoad, smoothRoad,
-  addProp, setPropProps, deleteProp, propAt, footprintOf,
+  addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad,
 } from "../src/editor/model.js";
 import { validateDraft } from "../src/editor/validate.js";
 import { CLEARANCE_MIN } from "../src/map/load.js";
@@ -624,6 +624,24 @@ console.log("\n17. UNDO: ONE STEP PER INTENTION, AND NOTHING LOST GOING BACK AND
   let big = emptyHistory(), prev = newDraft();
   for (let i = 0; i < HISTORY_MAX + 20; i++) { const nx = addRoad(prev).map; big = record(big, prev, nx, i * COALESCE_MS * 2); prev = nx; }
   check(big.past.length === HISTORY_MAX, `history is capped at ${HISTORY_MAX}`);
+}
+
+console.log("\n18. A BUILDING MOVED TO ANOTHER STREET CAN BE TURNED TO FACE IT");
+{
+  /* Two streets at a corner: one east-west, one north-south. A house
+     placed on the first faces it; dragged to the second (the screen
+     commits a drag as setPropProps({ at })), "Face nearest road" turns
+     it to the second. */
+  let m = newDraft(); let a, b, h;
+  ({ map: m, id: a } = addRoad(m)); m = addPoint(m, a, { x: 0, y: 0 }); m = addPoint(m, a, { x: 200, y: 0 });
+  ({ map: m, id: b } = addRoad(m)); m = addPoint(m, b, { x: 200, y: 0 }); m = addPoint(m, b, { x: 200, y: 200 });
+  ({ map: m, id: h } = addProp(m, { at: { x: 60, y: 20 } }));
+  check(Math.abs(m.props[0].heading) < 1e-9, "placed beside the east-west street, it faces it (0°)");
+  m = setPropProps(m, h, { at: { x: 220, y: 120 } });
+  const to = headingToRoad(m, m.props[0].at);
+  check(Math.abs(to - 90) < 1e-9 && m.props[0].heading === 0, `moved beside the north-south one it keeps its heading until asked, and the nearest road now runs at ${to}°`);
+  check(headingToRoad(m, { x: 900, y: 900 }) === null, "with no road within 40 m there is nothing to face");
+  check(validateDraft(setPropProps(m, h, { heading: to })).loaded.props.length === 1, "turned, it is still off the road and kept");
 }
 
 console.log("\n" + "=".repeat(70));

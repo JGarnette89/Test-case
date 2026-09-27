@@ -53,7 +53,7 @@ import {
   setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
   nearestOnRoad, joinCrossing, setRoadRamp, setRoadHump, deletePoint, subdivideRoad, smoothRoad,
   addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse, setRoadTurns,
-  addProp, setPropProps, deleteProp, propAt, footprintOf,
+  addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../editor/library.js";
@@ -201,7 +201,9 @@ export default function Editor() {
        loader dropped for standing on a road is drawn in red, so the
        warning has something to point at. */
     const dropped = new Set((validation?.warnings ?? []).filter((w) => w.code === "prop-on-road").map((w) => `${w.at?.x},${w.at?.y}`));
-    for (const p of draft.props ?? []) {
+    const movingProp = v.dragging?.mode === "prop" && v.dragging.live ? v.dragging : null;
+    for (const p0 of draft.props ?? []) {
+      const p = movingProp && movingProp.prop.id === p0.id ? { ...p0, at: movingProp.live } : p0;
       const { l, w } = footprintOf(p);
       const a = ((p.heading ?? 0) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
       ctx.beginPath();
@@ -525,7 +527,13 @@ export default function Editor() {
     }
     if (v.pointers.size > 2) return;
     const hp = tool === "select" ? hitPoint(p.x, p.y) : null;
-    v.dragging = { mode: tool === "pan" ? "pan" : "pending", startPx: p, x0: v.x0, y0: v.y0, point: hp };
+    /* A press on a building, in the tools that can select one, grabs it:
+       a drag moves it (held by the spot grabbed, so it does not jump to
+       the finger), a tap still selects it. */
+    const w = toWorld(p.x, p.y);
+    const hb = !hp && (tool === "select" || tool === "building") ? propAt(draft, w) : null;
+    const grab = hb ? (() => { const q = draft.props.find((x) => x.id === hb); return { id: hb, dx: w.x - q.at.x, dy: w.y - q.at.y }; })() : null;
+    v.dragging = { mode: tool === "pan" ? "pan" : "pending", startPx: p, x0: v.x0, y0: v.y0, point: hp, prop: grab };
   };
   const onMove = (e) => {
     const p = at(e), v = view.current;
@@ -535,8 +543,9 @@ export default function Editor() {
     if (d?.mode === "pinch" && v.pointers.size >= 2) {
       const [a, b] = [...v.pointers.values()];
       Object.assign(v, pinchView(d.start, a, b));
-    } else if (d && (d.mode === "pending" || d.mode === "pan" || d.mode === "point")) {
-      if (d.mode === "pending" && !isTap(d.startPx, p)) d.mode = d.point ? "point" : "pan";
+    } else if (d && (d.mode === "pending" || d.mode === "pan" || d.mode === "point" || d.mode === "prop")) {
+      if (d.mode === "pending" && !isTap(d.startPx, p)) d.mode = d.point ? "point" : d.prop ? "prop" : "pan";
+      if (d.mode === "prop") d.live = { x: v.cursor.x - d.prop.dx, y: v.cursor.y - d.prop.dy };
       if (d.mode === "pan") {
         Object.assign(v, panView({ x0: d.x0, y0: d.y0, scale: v.scale }, d.startPx, p));
       } else if (d.mode === "point") {
@@ -564,6 +573,11 @@ export default function Editor() {
       const pt = snap ? snap.at : d.live;
       setDraft((m) => updatePoint(m, road, index, { x: pt.x, y: pt.y }));
       setSelected({ type: "road", id: road });
+    }
+    if (d?.mode === "prop" && d.live) {
+      const { id } = d.prop, to = { x: d.live.x, y: d.live.y };
+      setDraft((m) => setPropProps(m, id, { at: to }));
+      setSelected({ type: "prop", id });
     }
     v.dragging = null;
     paint();
@@ -752,6 +766,8 @@ export default function Editor() {
         )}
         {selProp && (
           <PropPanel key={selProp.id} prop={selProp}
+            canFace={headingToRoad(draft, selProp.at) != null}
+            onFace={() => setDraft((m) => { const h = headingToRoad(m, selProp.at); return h == null ? m : setPropProps(m, selProp.id, { heading: h }); })}
             onChange={(patch) => setDraft((m) => setPropProps(m, selProp.id, patch))}
             onDelete={() => { setDraft((m) => deleteProp(m, selProp.id)); setSelected(null); }} />
         )}
@@ -980,7 +996,7 @@ function RoadPanel({ road, end, approaches, onTurns, onChange, onControl, onBays
 
 /* A building: its kind, which way its long side runs, and its size --
    blank fields fall back to the kind's own. */
-function PropPanel({ prop, onChange, onDelete }) {
+function PropPanel({ prop, canFace, onFace, onChange, onDelete }) {
   const f = footprintOf(prop);
   const num = (key, v) => onChange({ [key]: v === "" ? undefined : Math.max(1, Math.min(200, Number(v) || 1)) });
   return (
@@ -1001,6 +1017,10 @@ function PropPanel({ prop, onChange, onDelete }) {
         <Field label="Long (m)"><input type="number" min={1} max={200} style={inputStyle} value={prop.l ?? ""} placeholder={String(f.l)} onChange={(e) => num("l", e.target.value)} /></Field>
         <Field label="Deep (m)"><input type="number" min={1} max={200} style={inputStyle} value={prop.w ?? ""} placeholder={String(f.w)} onChange={(e) => num("w", e.target.value)} /></Field>
         <Field label="Tall (m)"><input type="number" min={1} max={200} style={inputStyle} value={prop.h ?? ""} placeholder={String(f.h)} onChange={(e) => num("h", e.target.value)} /></Field>
+      </div>
+      <div style={S.row}>
+        <button className="btn" style={S.chip} disabled={!canFace} title={canFace ? "turn it to face the nearest road" : "no road within 40 m"} onClick={onFace}>Face nearest road</button>
+        <span style={{ fontSize: 11, color: DIM, alignSelf: "center" }}>Drag it on the map to move it.</span>
       </div>
     </div>
   );
