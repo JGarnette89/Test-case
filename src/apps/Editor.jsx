@@ -41,18 +41,19 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   Route, MousePointer2, Hexagon, Move, ZoomIn, ZoomOut,
-  Trash2, Download, Upload, FolderOpen, Play, CheckCircle2, AlertTriangle, Undo2, X, Save, Library,
+  Trash2, Download, Upload, FolderOpen, Play, CheckCircle2, AlertTriangle, Undo2, X, Save, Library, Building2,
 } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { readJSON, writeJSON } from "../storage.js";
 import { CLEARANCE_MIN } from "../map/load.js";
-import { KINDS, CONTROLS, ZONES } from "../map/format.js";
+import { KINDS, CONTROLS, ZONES, PROP_KINDS } from "../map/format.js";
 import { testMap1 } from "../map/samples.js";
 import {
   newDraft, addRoad, addPoint, updatePoint, removeLastPoint, deleteRoad,
   setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
   nearestOnRoad, joinCrossing, setRoadRamp, setRoadHump, deletePoint, subdivideRoad, smoothRoad,
   addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse, setRoadTurns,
+  addProp, setPropProps, deleteProp, propAt, footprintOf,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../editor/library.js";
@@ -85,11 +86,12 @@ export default function Editor() {
   const loadedAutosave = useRef(false);
 
   const [draft, setDraft] = useState(() => newDraft("draft", "Untitled map"));
-  const [tool, setTool] = useState("road");           // "road" | "select" | "zone" | "pan"
+  const [tool, setTool] = useState("road");           // "road" | "select" | "zone" | "building" | "pan"
+  const [newPropKind, setNewPropKind] = useState("house");
   const [newRoadKind, setNewRoadKind] = useState("collector");
   const [newZoneKind, setNewZoneKind] = useState("residential");
   const [drawing, setDrawing] = useState(null);        // { type: "road"|"zone", id }
-  const [selected, setSelected] = useState(null);       // { type: "road"|"zone", id }
+  const [selected, setSelected] = useState(null);       // { type: "road"|"zone"|"prop", id }
   const [validation, setValidation] = useState(null);
   const [driving, setDriving] = useState(false);
   const [fileError, setFileError] = useState(null);
@@ -166,6 +168,25 @@ export default function Editor() {
       ctx.strokeStyle = selected?.type === "zone" && selected.id === z.id ? C.white : col;
       ctx.lineWidth = selected?.type === "zone" && selected.id === z.id ? 2.5 : 1.5;
       ctx.stroke();
+    }
+
+    /* Buildings: the footprint as the loader will build it. One the
+       loader dropped for standing on a road is drawn in red, so the
+       warning has something to point at. */
+    const dropped = new Set((validation?.warnings ?? []).filter((w) => w.code === "prop-on-road").map((w) => `${w.at?.x},${w.at?.y}`));
+    for (const p of draft.props ?? []) {
+      const { l, w } = footprintOf(p);
+      const a = ((p.heading ?? 0) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+      ctx.beginPath();
+      [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([u, v], i) => {
+        const q = toScreen(p.at.x + (u * l / 2) * c - (v * w / 2) * s, p.at.y + (u * l / 2) * s + (v * w / 2) * c);
+        i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y);
+      });
+      ctx.closePath();
+      const bad = dropped.has(`${p.at.x},${p.at.y}`);
+      ctx.fillStyle = bad ? C.red + "55" : "rgba(160,166,180,0.55)"; ctx.fill();
+      const sel = selected?.type === "prop" && selected.id === p.id;
+      ctx.strokeStyle = sel ? C.white : bad ? C.red : "rgba(220,224,232,0.8)"; ctx.lineWidth = sel ? 2.5 : 1; ctx.stroke();
     }
 
     /* Nodes, once the draft loads -- where roads actually snap together,
@@ -430,6 +451,16 @@ export default function Editor() {
       }
       return;
     }
+    if (tool === "building") {
+      /* A tap on an existing building selects it rather than stacking a
+         second on top; anywhere else places one. */
+      const hit = propAt(draft, w);
+      if (hit) { setSelected({ type: "prop", id: hit }); return; }
+      const { map: m1, id } = addProp(draft, { kind: newPropKind, at: w });
+      setDraft(m1);
+      setSelected({ type: "prop", id });
+      return;
+    }
     if (tool === "select") {
       const hp = hitPoint(p.x, p.y);
       if (hp) {
@@ -440,6 +471,8 @@ export default function Editor() {
       }
       const hr = hitRoad(p.x, p.y);
       if (hr) { setSelected({ type: "road", id: hr }); return; }
+      const hb = propAt(draft, w);
+      if (hb) { setSelected({ type: "prop", id: hb }); return; }
       const hz = hitZone(w.x, w.y);
       if (hz) { setSelected({ type: "zone", id: hz }); return; }
       setSelected(null);
@@ -612,6 +645,7 @@ export default function Editor() {
 
   const selRoad = selected?.type === "road" ? roadOf(selected.id) : null;
   const selZone = selected?.type === "zone" ? zoneOf(selected.id) : null;
+  const selProp = selected?.type === "prop" ? (draft.props ?? []).find((p) => p.id === selected.id) ?? null : null;
 
   return (
     <div style={S.page}>
@@ -621,16 +655,21 @@ export default function Editor() {
       </div>
 
       <div style={S.toolbar}>
-        {[["road", "Draw road", Route], ["select", "Select / edit", MousePointer2], ["zone", "Draw zone", Hexagon], ["pan", "Pan", Move]].map(([id, label, Icon]) => (
+        {[["road", "Draw road", Route], ["select", "Select / edit", MousePointer2], ["zone", "Draw zone", Hexagon], ["building", "Place building", Building2], ["pan", "Pan", Move]].map(([id, label, Icon]) => (
           <button key={id} className="btn" title={label}
             style={{ ...S.btn, borderColor: tool === id ? C.amber : "rgba(255,255,255,0.12)", color: tool === id ? C.white : DIM }}
-            onClick={() => { if (drawing) finishDrawing(); if (id !== "select") setSelected(null); setTool(id); }}>
+            onClick={() => { if (drawing) finishDrawing(); if (id !== "select" && id !== "building") setSelected(null); setTool(id); }}>
             <Icon size={18} />
           </button>
         ))}
         {tool === "road" && (
           <select style={S.select} value={newRoadKind} onChange={(e) => setNewRoadKind(e.target.value)}>
             {Object.keys(KINDS).map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+        )}
+        {tool === "building" && (
+          <select style={S.select} value={newPropKind} onChange={(e) => setNewPropKind(e.target.value)}>
+            {Object.keys(PROP_KINDS).map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
         )}
         {tool === "zone" && (
@@ -672,6 +711,11 @@ export default function Editor() {
             onZ={(i, z) => setDraft((m) => setPointZ(m, selRoad.id, i, z))}
             onDelete={() => { setDraft((m) => deleteRoad(m, selRoad.id)); setSelected(null); }}
           />
+        )}
+        {selProp && (
+          <PropPanel key={selProp.id} prop={selProp}
+            onChange={(patch) => setDraft((m) => setPropProps(m, selProp.id, patch))}
+            onDelete={() => { setDraft((m) => deleteProp(m, selProp.id)); setSelected(null); }} />
         )}
         {selZone && (
           <ZonePanel zone={selZone}
@@ -891,6 +935,34 @@ function RoadPanel({ road, end, approaches, onTurns, onChange, onControl, onBays
             </span>
           </Field>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* A building: its kind, which way its long side runs, and its size --
+   blank fields fall back to the kind's own. */
+function PropPanel({ prop, onChange, onDelete }) {
+  const f = footprintOf(prop);
+  const num = (key, v) => onChange({ [key]: v === "" ? undefined : Math.max(1, Math.min(200, Number(v) || 1)) });
+  return (
+    <div style={S.card}>
+      <div style={S.cardHead}>
+        <span>Building · {prop.id}</span>
+        <button className="btn" style={S.iconBtn} onClick={onDelete} title="delete building"><Trash2 size={15} /></button>
+      </div>
+      <div style={S.row}>
+        <Field label="Kind">
+          <select style={inputStyle} value={prop.kind} onChange={(e) => onChange({ kind: e.target.value, l: undefined, w: undefined, h: undefined })}>
+            {Object.keys(PROP_KINDS).map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+        </Field>
+        <Field label="Heading (°)">
+          <input type="number" step={5} style={inputStyle} value={Math.round(prop.heading ?? 0)} onChange={(e) => onChange({ heading: Number(e.target.value) || 0 })} />
+        </Field>
+        <Field label="Long (m)"><input type="number" min={1} max={200} style={inputStyle} value={prop.l ?? ""} placeholder={String(f.l)} onChange={(e) => num("l", e.target.value)} /></Field>
+        <Field label="Deep (m)"><input type="number" min={1} max={200} style={inputStyle} value={prop.w ?? ""} placeholder={String(f.w)} onChange={(e) => num("w", e.target.value)} /></Field>
+        <Field label="Tall (m)"><input type="number" min={1} max={200} style={inputStyle} value={prop.h ?? ""} placeholder={String(f.h)} onChange={(e) => num("h", e.target.value)} /></Field>
       </div>
     </div>
   );

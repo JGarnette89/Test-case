@@ -49,6 +49,21 @@ export function emptyMap(id = "untitled", name = "Untitled") {
   return { id, name, version: MAP_VERSION, bounds: { x: 0, y: 0, w: CHUNK, h: CHUNK }, chunk: CHUNK, roads: [], nodes: [], zones: [], props: [], spawns: [] };
 }
 
+/* PROPS: things a person places by hand -- for now, buildings, as a
+   footprint and a height in metres. `at` is the footprint's centre,
+   `heading` the direction of its LONG side in degrees (0 = +x, the same
+   convention every heading here uses), and l/w/h override the kind's
+   own size. The kinds are blockout sizes, not architecture: a house on
+   a residential lot, a strip-mall shop, a mid-rise block. */
+export const PROP_KINDS = {
+  house: { l: 12, w: 9, h: 7 },
+  shop: { l: 22, w: 16, h: 5 },
+  apartment: { l: 32, w: 18, h: 20 },
+};
+export function prop({ id, kind = "house", at, heading = 0, l, w, h }) {
+  return { id, kind, at: { x: at.x, y: at.y }, heading, ...(l ? { l } : {}), ...(w ? { w } : {}), ...(h ? { h } : {}) };
+}
+
 /* A road as the editor draws it: a stroke of points and a kind. The
    loader fills what is missing from the kind. */
 /* `turns`, optional, per road end: what each lane arriving at that end

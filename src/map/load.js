@@ -18,7 +18,7 @@
 
    Pure. No React, no canvas, no colour.
    ===================================================================== */
-import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS } from "./format.js";
+import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS } from "./format.js";
 import { ribbonOf } from "../iso/road.js";
 import { hasBays, baySurfaceOf, baysAt } from "./bays.js";
 
@@ -147,6 +147,30 @@ function clampGrade(pts, at) {
 }
 
 /* ---- the load --------------------------------------------------------- */
+/* Does building `b`'s footprint reach road `r`'s surface? The road's
+   centre line walked in steps of at most a metre, each point taken into
+   the building's own frame and its distance to the footprint compared
+   with the road's half-width -- exact for a rectangle, where growing the
+   footprint by the half-width would square off the corners. A road with
+   turn bays is widened by two lanes throughout, which errs toward
+   keeping buildings off it. */
+function standsOn(b, r) {
+  const a = (b.heading * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+  const reach = r.width / 2 + (hasBays(r) ? 2 * LANE : 0);
+  const R = Math.hypot(b.l, b.w) / 2 + reach;
+  for (let i = 0; i + 1 < r.pts.length; i++) {
+    const p = r.pts[i], q = r.pts[i + 1];
+    if (Math.min(p.x, q.x) > b.at.x + R || Math.max(p.x, q.x) < b.at.x - R || Math.min(p.y, q.y) > b.at.y + R || Math.max(p.y, q.y) < b.at.y - R) continue;
+    const n = Math.max(1, Math.ceil(dist(p, q)));
+    for (let k = 0; k <= n; k++) {
+      const dx = p.x + ((q.x - p.x) * k) / n - b.at.x, dy = p.y + ((q.y - p.y) * k) / n - b.at.y;
+      const u = dx * c + dy * s, v = -dx * s + dy * c;
+      if (Math.hypot(Math.max(Math.abs(u) - b.l / 2, 0), Math.max(Math.abs(v) - b.w / 2, 0)) < reach) return true;
+    }
+  }
+  return false;
+}
+
 export function loadMap(map) {
   const warnings = [];
   const warn = (code, message, at = null, extra = {}) => warnings.push({ code, message, at, ...extra });
@@ -345,6 +369,31 @@ export function loadMap(map) {
     for (const p of r.pts) if (dist(p, c.at) <= span) p.bridge = true;
   }
 
+  /* PROPS, normalised like a road: an unknown kind is a house, a size is
+     clamped to something a building can be, and one with no position is
+     dropped. A building standing on a road's surface is DROPPED, with a
+     warning at the spot: nothing in the sim collides with a prop, so the
+     traffic would drive straight through it -- a state the sim would
+     produce and nothing could honestly draw (CLAUDE.md item 6). The test
+     is the plan only, so a building under an overpass deck is dropped
+     too; nothing here is elevated yet. */
+  const props = [];
+  const propIds = new Set();
+  (Array.isArray(map.props) ? map.props : []).forEach((pr, i) => {
+    let id = String(pr?.id ?? `prop${i}`);
+    const x = Number(pr?.at?.x), y = Number(pr?.at?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) { warn("prop-no-place", `prop ${id}: no position; dropped`); return; }
+    if (propIds.has(id)) id = `${id}~${i}`;
+    propIds.add(id);
+    const kind = PROP_KINDS[pr.kind] ? pr.kind : "house";
+    if (!PROP_KINDS[pr.kind]) warn("unknown-prop", `prop ${id}: kind "${pr.kind}" is not one of ${Object.keys(PROP_KINDS).join(", ")}; treated as a house`, { x, y });
+    const size = (f) => { const v = Number(pr[f]); return v > 0 ? Math.min(200, Math.max(1, v)) : PROP_KINDS[kind][f]; };
+    const built = { id, kind, at: { x, y }, heading: Number(pr.heading) || 0, l: size("l"), w: size("w"), h: size("h") };
+    const on = roads.find((r) => standsOn(built, r));
+    if (on) { warn("prop-on-road", `building ${id} stands on road ${on.id}; dropped -- the traffic would drive through it`, { x, y }); return; }
+    props.push(built);
+  });
+
   /* The chunk index: every road sample knows its chunk. */
   const chunks = new Map();
   const keyOf = (x, y) => `${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`;
@@ -359,14 +408,14 @@ export function loadMap(map) {
     });
     r.chunks = [...mine];
   }
-  for (const pr of map.props ?? []) {
-    const k = keyOf(Number(pr.at?.x) || 0, Number(pr.at?.y) || 0);
+  for (const pr of props) {
+    const k = keyOf(pr.at.x, pr.at.y);
     if (!chunks.has(k)) chunks.set(k, { roads: new Set(), samples: [], props: [] });
     chunks.get(k).props.push(pr);
   }
 
   const bounds = map.bounds ?? { x: Math.min(...boxes.map((b) => b.x0)), y: Math.min(...boxes.map((b) => b.y0)), w: 0, h: 0 };
-  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, warnings };
+  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, warnings };
 }
 
 /* THE LAND, WHERE THE MAP GIVES NONE.

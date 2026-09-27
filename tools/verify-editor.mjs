@@ -11,6 +11,7 @@ import {
   nearestRoadEnd, cumulative, serialize, parse,
   nearestOnRoad, splitRoad, joinCrossing, setRoadRamp, setRoadHump,
   deletePoint, subdivideRoad, smoothRoad,
+  addProp, setPropProps, deleteProp, propAt, footprintOf,
 } from "../src/editor/model.js";
 import { validateDraft } from "../src/editor/validate.js";
 import { CLEARANCE_MIN } from "../src/map/load.js";
@@ -540,6 +541,43 @@ console.log("\n15. LANE ARROWS: THE PANEL SHOWS WHAT THE SIM WILL DO, AND WRITES
   ({ map: t, id: d } = addRoad(t)); t = addPoint(t, d, { x: 100, y: 100 }); t = addPoint(t, d, { x: 100, y: 1.5 });
   const vt = validateDraft(t);
   check(vt.ok && Object.keys(vt.approaches).join() === `${d}|end`, `at a T the loader split, only the stem's own end is offered (${Object.keys(vt.approaches).join(", ")})`);
+}
+
+console.log("\n16. BUILDINGS: PLACED BY HAND, FACING THEIR STREET, AND NEVER ON THE ROAD");
+{
+  /* An arterial along y = 0 at 20 degrees, so "facing the road" is not
+     accidentally the default heading of 0. Its surface reaches 7.2 m
+     either side (two lanes each way). */
+  const ang = 20, rad = (ang * Math.PI) / 180, along = (d, off) => ({ x: d * Math.cos(rad) - off * Math.sin(rad), y: d * Math.sin(rad) + off * Math.cos(rad) });
+  let m = newDraft(); let r;
+  ({ map: m, id: r } = addRoad(m, { kind: "arterial" })); m = addPoint(m, r, along(0, 0)); m = addPoint(m, r, along(300, 0));
+  m = setRoadProps(m, r, { lanes: 2 });
+  let b1, b2, b3;
+  ({ map: m, id: b1 } = addProp(m, { kind: "house", at: along(100, 7.2 + 4.5 + 3) }));    // 3 m back from the curb
+  ({ map: m, id: b2 } = addProp(m, { kind: "shop", at: along(200, 7.2 + 8 - 2) }));       // 2 m over the curb
+  ({ map: m, id: b3 } = addProp(m, { kind: "apartment", at: { x: 1000, y: 1000 } }));    // nowhere near a road
+  const hd = m.props.map((p) => p.heading);
+  check(Math.abs(hd[0] - ang) < 1e-6 && Math.abs(hd[1] - ang) < 1e-6 && hd[2] === 0, `a building faces the nearest road (${hd[0].toFixed(1)}°, ${hd[1].toFixed(1)}°), and one with none near sits square (${hd[2]}°)`);
+  check(propAt(m, along(100, 7.2 + 4.5 + 3)) === b1 && propAt(m, along(100, 7.2 + 4.5 + 3 + 4)) === b1 && propAt(m, along(100, 7.2 + 4.5 + 3 + 5)) === null,
+    "a tap hits a building inside its footprint and not a metre past its back wall (9 m deep)");
+
+  const v = validateDraft(m);
+  const kept = v.loaded.props.map((p) => p.id).sort();
+  check(v.ok && kept.join() === [b1, b3].sort().join() && v.warnings.some((w) => w.code === "prop-on-road" && w.message.includes(b2)),
+    `loaded: the two off the road are kept (${kept.join(", ")}), the one 2 m over the curb is dropped with a warning at the spot`);
+  const lp = v.loaded.props.find((p) => p.id === b1);
+  const fp = footprintOf(m.props[0]);
+  check(lp.l === fp.l && lp.w === fp.w && lp.h === fp.h, `the editor's footprint is the loader's (${fp.l} x ${fp.w} x ${fp.h} m)`);
+  const moved = setPropProps(m, b2, { at: along(200, 7.2 + 8 + 1) });
+  check(validateDraft(moved).loaded.props.length === 3, "moved a metre back from the curb, it is kept");
+  check(validateDraft(setPropProps(m, b2, { w: 3 })).loaded.props.length === 3, "or made shallower, since the rule is the footprint and not the centre");
+  check(deleteProp(m, b1).props.length === 2 && JSON.stringify(parse(serialize(m)).props) === JSON.stringify(m.props), "delete removes one, and buildings round-trip through save");
+
+  /* And Drive it hands them to the renderer with the road still drivable. */
+  const L = loadMap(m);
+  let w = seedGraph(3, 50, L, { target: 10, posted: true });
+  const st = firstEdge(L), p0 = playerOn(w.course, st.road, st.end, { through: !!st.through });
+  check(!!p0 && L.props.length === 2, "a map with buildings still drives");
 }
 
 console.log("\n" + "=".repeat(70));

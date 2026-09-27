@@ -565,6 +565,22 @@ that leaves the override the wrong length drops it rather than leave
 the graph a list to refuse. Section 15, sabotaged: without the split
 filter a T offers approaches that are not road ends.
 
+**BUILDINGS, PLACED BY HAND.** The plan's "he hand-places where it
+matters": a Building tool (house, shop, apartment -- blockout sizes in
+`map/format.js` `PROP_KINDS`, each overridable) drops a footprint where
+tapped, turned to face the nearest road, and the panel sets kind,
+heading and size. The format always had `props`; nothing drew a map's
+props and nothing stopped one standing on a road. Both fixed: `loadMap`
+normalises them and **drops any building whose footprint reaches a
+road's surface**, warned at the spot (the editor draws it red), because
+nothing in the sim collides with a prop and the traffic would drive
+straight through it -- a state the renderer could not honestly draw
+(CLAUDE.md item 6). "Drive it" draws the rest as boxes. The test is
+plan-only for now, so a building under an overpass deck is dropped
+too. Buildings do not yet block anybody's sight; that waits on sight
+being modelled in the sim at all. `verify-editor.mjs` section 16 and
+`verify-map.mjs` section 6, both sabotaged.
+
 *Not touched, because already true*: free-drawn curves (a road is
 points placed wherever clicked, never a tile) and chunked loading
 (`map/load.js` already indexes every sample and prop by chunk at load

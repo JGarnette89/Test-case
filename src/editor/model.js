@@ -17,7 +17,7 @@
    exists rather than keeping a counter, which is what makes deleting a
    road and adding another safe without extra bookkeeping.
    ===================================================================== */
-import { emptyMap, road as makeRoad, KINDS, LANE } from "../map/format.js";
+import { emptyMap, road as makeRoad, KINDS, LANE, PROP_KINDS } from "../map/format.js";
 
 /* --- ids ---------------------------------------------------------- */
 function nextId(list, prefix) {
@@ -93,6 +93,44 @@ export function setRoadBays(map, roadId, end, bays) {
 }
 export function setLeftArrow(map, roadId, end, on) {
   return patchRoad(map, roadId, (r) => ({ ...r, leftArrow: { ...(r.leftArrow ?? { start: false, end: false }), [end]: on } }));
+}
+
+/* --- buildings ---------------------------------------------------------- */
+/* A building placed by hand. It faces the nearest road when there is one
+   within `face` metres -- a building's long side along its street is what
+   a person placing one means nearly every time -- else it sits square. */
+export function addProp(map, { kind = "house", at, face = 40 } = {}) {
+  const id = nextId(map.props ?? [], "b");
+  const near = nearestOnRoad(map, at, { within: face });
+  let heading = 0;
+  if (near) {
+    const pts = map.roads.find((r) => r.id === near.road).points, p = pts[near.seg], q = pts[near.seg + 1];
+    heading = (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
+  }
+  return { map: { ...map, props: [...(map.props ?? []), { id, kind, at: { x: at.x, y: at.y }, heading }] }, id };
+}
+export function setPropProps(map, id, patch) {
+  return { ...map, props: (map.props ?? []).map((p) => (p.id === id ? { ...p, ...patch } : p)) };
+}
+export function deleteProp(map, id) {
+  return { ...map, props: (map.props ?? []).filter((p) => p.id !== id) };
+}
+/* A prop's footprint as the loader will build it: the kind's size unless
+   overridden. */
+export function footprintOf(p) {
+  const k = PROP_KINDS[p.kind] ?? PROP_KINDS.house;
+  return { l: p.l ?? k.l, w: p.w ?? k.w, h: p.h ?? k.h };
+}
+/* The building under a point, the last placed first (the one drawn on
+   top). */
+export function propAt(map, pt) {
+  const list = map.props ?? [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const p = list[i], { l, w } = footprintOf(p);
+    const a = ((p.heading ?? 0) * Math.PI) / 180, dx = pt.x - p.at.x, dy = pt.y - p.at.y;
+    if (Math.abs(dx * Math.cos(a) + dy * Math.sin(a)) <= l / 2 && Math.abs(-dx * Math.sin(a) + dy * Math.cos(a)) <= w / 2) return p.id;
+  }
+  return null;
 }
 
 /* --- zones ------------------------------------------------------------ */

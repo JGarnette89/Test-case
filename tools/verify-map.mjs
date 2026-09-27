@@ -136,11 +136,13 @@ const line = (x0, y0, x1, y1, n = 20, z = 0) => Array.from({ length: n + 1 }, (_
   const m = emptyMap("city");
   for (let i = 0; i < 8; i++) m.roads.push(road({ id: `ew${i}`, points: line(0, i * 300, 2000, i * 300, 40) }));
   for (let i = 0; i < 8; i++) m.roads.push(road({ id: `ns${i}`, points: line(i * 300, 0, i * 300, 2000, 40) }));
-  m.props.push({ kind: "house", at: { x: 700, y: 900 }, heading: 0 });
+  m.props.push({ kind: "house", at: { x: 750, y: 850 }, heading: 0 });   // inside a block: the nearest road is 50 m off
+  m.props.push({ kind: "house", at: { x: 700, y: 900 }, heading: 0 });   // on road ew3 -- dropped
   const l = loadMap(m);
   const expected = Math.ceil(2100 / CHUNK) ** 2;   // the roads reach 2100 m on both axes
   check(l.ok && l.chunks.size >= expected - 4 && l.chunks.size <= expected, `a 2 km grid of roads indexes into about ${expected} chunks (${l.chunks.size})`);
-  check(l.chunks.get(`${Math.floor(700 / CHUNK)},${Math.floor(900 / CHUNK)}`).props.length === 1, "a prop is in its chunk");
+  check(l.chunks.get(`${Math.floor(750 / CHUNK)},${Math.floor(850 / CHUNK)}`).props.length === 1, "a prop is in its chunk");
+  check(l.props.length === 1 && codes(l).includes("prop-on-road"), "and a building standing on a road is dropped, warned -- the traffic would drive through it");
   const every = [...l.chunks.values()].every((c) => c.samples.every((s) => l.roads.find((r) => r.id === s.road)?.pts[s.i]));
   check(every, "every sample a chunk lists exists on its road");
   const midRoad = codes(l).filter((c) => c === "cross-no-node").length;
