@@ -226,7 +226,15 @@ const unit = (a, b) => { const L = dist(a, b) || 1; return { x: (b.x - a.x) / L,
    between legs, and lanes. `lane` is the lane width; `control` may
    override the map's per-end controls for every leg (a test's
    convenience). */
-export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
+/* `conflicts: false` skips the conflict table -- the footprint scan
+   between every pair of paths at every node, which is almost all of
+   this function's cost (594 of 600 ms on the test map, 25 September).
+   The EDITOR asks for it that way: what it needs from a graph is the
+   authoring errors (a lane with nowhere to land), and those are decided
+   before any path exists. A graph built without conflicts CANNOT BE
+   DRIVEN -- nothing would yield to anything -- so it is marked
+   `conflictsSkipped` and nothing that steps a world should accept one. */
+export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withConflicts = true } = {}) {
   const roads = loaded.roads;
   /* AUTHORING ERRORS: lanes whose permitted movement has nowhere to land,
      named by lane and intersection (lanes.js). The graph is still built
@@ -417,7 +425,7 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
     place.reach = Math.max(0, ...Object.values(paths).map((p) => p.stopAt));
     const conflicts = {};
     const keys = Object.keys(paths);
-    for (const ka of keys) {
+    if (withConflicts) for (const ka of keys) {
       for (const kb of keys) {
         if (ka === kb || paths[ka].from === paths[kb].from) continue;
         const hit = conflictsBetween(paths[ka], paths[kb], weaveRoom(lane));
@@ -466,15 +474,18 @@ export function graphOf(loaded, { lane = 3.6, control = null } = {}) {
     }
   }
 
-  return { graph: true, n: at.length, at, joins, links, lanes, roads, map: loaded, errors };
+  return { graph: true, n: at.length, at, joins, links, lanes, roads, map: loaded, errors, ...(withConflicts ? {} : { conflictsSkipped: true }) };
 }
 
 /* The lane-leg a car should start on for a road end: the curb lane,
    which is where a driver keeps to. */
-export function curbLegOf(course, roadId, end) {
+export function curbLegOf(course, roadId, end, { through = false } = {}) {
+  /* A through spot (a road with no node at either end) is only a start
+     when asked for one: on a road that meets a node, the approach INTO
+     it is the start, and a through spot never exists there anyway. */
   for (const [k, spot] of course.at.entries()) {
     for (const leg of Object.values(spot.layout.legs)) {
-      if (leg.road === roadId && leg.end === end && leg.curb && !leg.bay && !spot.through) return { k, leg: leg.id };
+      if (leg.road === roadId && leg.end === end && leg.curb && !leg.bay && !!spot.through === through) return { k, leg: leg.id };
     }
   }
   return null;

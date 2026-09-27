@@ -56,8 +56,8 @@ export function playerAt(course, k, route) {
 }
 
 /* The player at the start of a road, in its curb lane, with no signal. */
-export function playerOn(course, roadId, end) {
-  const at = curbLegOf(course, roadId, end);
+export function playerOn(course, roadId, end, opts) {
+  const at = curbLegOf(course, roadId, end, opts);
   if (!at) return null;
   return playerAt(course, at.k, routeForSignal(course.at[at.k].layout, at.leg, null));
 }

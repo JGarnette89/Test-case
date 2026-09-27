@@ -10,6 +10,7 @@ import {
   addZone, addZonePoint, setZoneProps, deleteZone,
   nearestRoadEnd, cumulative, serialize, parse,
   nearestOnRoad, splitRoad, joinCrossing, setRoadRamp, setRoadHump,
+  deletePoint, subdivideRoad, smoothRoad,
 } from "../src/editor/model.js";
 import { validateDraft } from "../src/editor/validate.js";
 import { CLEARANCE_MIN } from "../src/map/load.js";
@@ -231,30 +232,46 @@ console.log("\n7. \"DRIVE IT\" IS THE REAL PIPELINE, RUN HEADLESSLY");
   check(!!me && me.s > me0.s, `the player actually moves over 200 ticks of full throttle (${me0.s.toFixed(1)} m -> ${me?.s.toFixed(1)} m)`);
   check(world.actors.every((a) => a), "no null or undefined actor ever entered the world (withDriver with a real driver)");
 
-  /* AND THE REFUSAL IS CLEAN, NOT A CRASH: a map with no open end at
-     all -- a single closed loop -- has nowhere for firstEdge to find,
-     and the editor's own pre-flight (Editor.jsx computes `startAt`
-     the same way and disables "Drive it" without one) depends on that
-     being `null`, never a throw. */
+  /* A single closed loop: its two ends meet each other and no node, so
+     the loader marks both open and graphOf builds it as a through road
+     -- which is a start now, not the refusal it used to be. The
+     refusal that must stay clean is the empty map: nothing at all,
+     `null`, never a throw, since Editor.jsx disables "Drive it" on
+     exactly that. */
   const loop = emptyMap("loop", "closed loop");
   const ring = [];
   for (let a = 0; a <= 360; a += 30) ring.push({ x: 50 + 40 * Math.cos((a * Math.PI) / 180), y: 50 + 40 * Math.sin((a * Math.PI) / 180) });
   loop.roads.push(road({ id: "ring", kind: "collector", points: ring }));
   const loopLoaded = loadMap(loop);
   check(loopLoaded.ok, "a closed loop still loads on its own");
-  check(firstEdge(loopLoaded) === null, "and firstEdge correctly finds nowhere to start on it -- null, not a throw");
+  check(firstEdge(loopLoaded)?.through === true, "and it has a start, as a through road");
+  check(firstEdge(loadMap(emptyMap("none", "nothing"))) === null, "an empty map has nowhere to start -- null, not a throw");
 
-  /* stage0Map() is real content too (iso/road.js's own hand-built
-     roads), and its own known shape (SIMULATOR.md 2.4): two roads,
-     neither meeting the other, so BOTH ends of both are dangling and
-     graphOf builds pure through-lane spots with no node at all. That
-     is exactly the case `firstEdge`'s own comment names as unsupported
-     -- `curbLegOf` refuses a through spot on purpose -- so the correct,
-     documented answer here is null, not a start. Loads fine either
-     way. */
-  const s0 = loadMap(stage0Map());
-  check(s0.ok, "stage0Map() loads");
-  check(firstEdge(s0) === null, "and has no curb-leg start -- both roads are through lanes with no intersection, the one case firstEdge does not yet cover");
+  /* A road that meets nothing -- the first thing anybody draws, and
+     stage0Map()'s own shape (two roads, neither meeting the other) --
+     is a through spot with no node. "Drive it" has to work on it, so
+     firstEdge falls back to one, asked for by name (`through`), and
+     only when no road meets a node: on the test map above the start
+     is still the approach into an intersection. Driven the whole way:
+     the car reaches the far end and stops there, which is what every
+     open end does. Sabotaged: without the fallback this is null. */
+  check(!start.through, "on a map with an intersection the start is still an approach into it, never a through road");
+  for (const [name, raw] of [["one road drawn", (() => { let d, id; ({ map: d, id } = addRoad(newDraft())); d = addPoint(d, id, { x: 0, y: 0 }); return addPoint(d, id, { x: 300, y: 50 }); })()], ["stage0Map()", stage0Map()]]) {
+    const L = loadMap(raw);
+    const st = firstEdge(L);
+    let w = seedGraph(3, 50, L, { target: 10, posted: true });
+    const p0 = st && playerOn(w.course, st.road, st.end, { through: !!st.through });
+    check(!!st?.through && !!p0, `${name}: no intersection anywhere, and there is still somewhere to start (${st && `${st.road}|${st.end}, through`})`);
+    if (!p0) continue;
+    const len = L.roads.find((r) => r.id === st.road).length;
+    w = withDriver(w, p0); let q = p0;
+    for (let i = 0; i < 1200; i++) {
+      q = stepDriver({ ...q, signal: null }, { steer: 0, slider: 1 }, w, DT);
+      w = withDriver(w, q); w = step(w);
+      q = w.actors.find((a) => a.player) ?? q;
+    }
+    check(q.s > 0.5 * len && w.actors.every((a) => a), `${name}: a minute of full throttle drives it (${q.s.toFixed(0)} m of ${len.toFixed(0)}), nothing null in the world`);
+  }
 }
 
 console.log("\n8. AN OVERPASS IS AUTHORABLE, AND DISTINGUISHABLE FROM A TIGHT CROSSING");
@@ -429,6 +446,59 @@ console.log("\n12. JOINING ROADS THE WAY A PERSON MEANS, AND A WHOLE ROAD'S HEIG
   })();
   check(bridge.ok && bridge.warnings.every((w) => w.code !== "cross-no-node") && bridge.loaded.crossings[0]?.gap >= CLEARANCE_MIN,
     `and a hump over another road IS an overpass: one number turns a flat crossing into ${bridge.loaded.crossings[0]?.gap.toFixed(1)} m of clearance, no warning`);
+}
+
+console.log("\n13. VALIDATING A TAP IS FAST, AND LOSES NOTHING BY IT");
+{
+  /* validate.js builds its graph WITHOUT the conflict table (graph.js
+     `conflicts: false`), which is ~99% of graphOf's cost. That is only
+     honest if the authoring errors come out the same -- so compare them
+     on a map that HAS errors: the test map with its turn overrides left
+     out, which strands two collectors' curb lanes at the five-way. */
+  const hand = testMap1();
+  let m = newDraft();
+  for (const r of hand.roads) {
+    let id; ({ map: m, id } = addRoad(m, { kind: r.kind }));
+    for (const p of r.points) m = addPoint(m, id, p);
+    m = setRoadProps(m, id, { lanes: r.lanes, speed: r.speed, oneWay: r.oneWay });
+  }
+  const loaded = loadMap(m);
+  const full = graphOf(loaded), lite = graphOf(loaded, { conflicts: false });
+  check(full.errors.length > 0 && JSON.stringify(full.errors) === JSON.stringify(lite.errors),
+    `the same ${full.errors.length} authoring errors with and without the conflict table`);
+  check(lite.conflictsSkipped === true && !full.conflictsSkipped && Object.keys(full.at.find((s) => !s.through).layout.conflicts).length > 0,
+    "and the lite graph says so of itself, while the full one -- what Drive it and #/map build -- still has its conflicts");
+  const v = validateDraft(m);
+  check(JSON.stringify(v.errors) === JSON.stringify(full.errors), "validateDraft reports exactly those errors");
+  const t = [];
+  for (let i = 0; i < 5; i++) { const a = performance.now(); validateDraft(m); t.push(performance.now() - a); }
+  t.sort((a, b) => a - b);
+  check(t[2] < 60, `and it takes ${t[2].toFixed(1)} ms for ${m.roads.length} roads on this machine (a phone is 3-5x slower; the full graph took ~600)`);
+}
+
+console.log("\n14. RESHAPING: A TAPPED ZIGZAG BECOMES A ROAD A CAR CAN TAKE AT SPEED");
+{
+  let m = newDraft(); let r;
+  ({ map: m, id: r } = addRoad(m, { kind: "arterial" }));
+  for (const p of [{ x: 0, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 60 }, { x: 120, y: 60 }, { x: 120, y: 120 }]) m = addPoint(m, r, p);
+  const pts = (mm) => mm.roads[0].points;
+
+  let two; ({ map: two } = addRoad(newDraft())); two = addPoint(two, two.roads[0].id, { x: 0, y: 0 }); two = addPoint(two, two.roads[0].id, { x: 10, y: 0 });
+  check(pts(deletePoint(two, two.roads[0].id, 0)).length === 2, "deleting a point from a two-point road is refused -- a road keeps two");
+  check(pts(deletePoint(m, r, 2)).length === 4 && pts(deletePoint(m, r, 2)).every((q) => !(q.x === 60 && q.y === 60)), "and from a longer one it removes exactly that point");
+  const sub = pts(subdivideRoad(m, r));
+  check(sub.length === 9 && sub[1].x === 30 && sub[1].y === 0, `subdividing puts a point in the middle of every segment (${sub.length} points)`);
+
+  let sm = m;
+  for (let i = 0; i < 3; i++) sm = smoothRoad(sm, r);
+  const a = pts(m), b = pts(sm);
+  check(b[0].x === a[0].x && b[0].y === a[0].y && b.at(-1).x === a.at(-1).x && b.at(-1).y === a.at(-1).y, "smoothing keeps both ends exactly where they were, so a junction stays joined");
+
+  /* What it is FOR, measured by the loader's own bend rule: a road drawn
+     as right angles has its posted speed cut to what the corner allows;
+     smoothed, the corners open and the road keeps more of its speed. */
+  const raw = loadMap(m).roads[0], smooth = loadMap(sm).roads[0];
+  check(smooth.speed > raw.speed, `the loader posts the smoothed road faster: ${raw.speed} km/h as tapped, ${smooth.speed} km/h after three passes (arterial default 60)`);
 }
 
 console.log("\n" + "=".repeat(70));

@@ -13,7 +13,7 @@
    import lines at the top of each check ARE the dependency map").
    ===================================================================== */
 export function firstEdge(loaded) {
-  for (const r of loaded.roads) {
+  for (const r of loaded?.roads ?? []) {
     /* `curbLegOf(course, roadId, end)`'s `end` is which end of the ROAD
        touches a NODE -- the leg it returns is the whole approach INTO
        that node, however far back the road runs. So the drivable end
@@ -25,11 +25,17 @@ export function firstEdge(loaded) {
        there, so asking for one returns nothing and playerOn returns
        null; verify-editor.mjs section 7 is what caught it. A road with
        BOTH ends dangling (an isolated stretch with no node at all,
-       stage 0's own two roads' shape) is skipped: `curbLegOf` refuses
-       a through-only spot on purpose (`!spot.through`), and starting a
-       drive on one needs a different call, not yet wired here. */
+       stage 0's own two roads' shape) is only a start if no road meets
+       a node: it is the first thing anybody draws, and "Drive it" on it
+       has to work, but an intersection is the more interesting start
+       whenever there is one. The forward curb lane, from the road's
+       own start, asked for as a through spot (`curbLegOf` only hands
+       those out when asked). */
     if (r.edge?.start && !r.edge?.end) return { road: r.id, end: "end" };
     if (r.edge?.end && !r.edge?.start) return { road: r.id, end: "start" };
+  }
+  for (const r of loaded?.roads ?? []) {
+    if (r.edge?.start && r.edge?.end) return { road: r.id, end: "end", through: true };
   }
   return null;
 }

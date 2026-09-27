@@ -204,6 +204,56 @@ export function joinCrossing(map, roadA, roadB, at) {
   return m;
 }
 
+/* --- reshaping ---------------------------------------------------------- */
+/* A road drawn by tapping is straight segments; "free-drawn curves"
+   (SIMULATOR.md section 1) on a phone need a way to round them off and
+   to add or take away a point without redrawing the road. */
+
+/* Remove one point. A road keeps at least two, or it is not a road; a
+   request that would leave fewer is refused by returning the map
+   unchanged, the same "cannot, so nothing happens" the rest of the
+   model keeps. */
+export function deletePoint(map, roadId, index) {
+  return patchRoad(map, roadId, (r) => (r.points.length <= 2 ? r : { ...r, points: r.points.filter((_, i) => i !== index) }));
+}
+
+/* A point in the middle of every segment, height interpolated: more
+   handles to drag a straight road into a curve by. */
+export function subdivideRoad(map, roadId) {
+  return patchRoad(map, roadId, (r) => {
+    const out = [];
+    r.points.forEach((p, i) => {
+      out.push(p);
+      const q = r.points[i + 1];
+      if (q) out.push({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: ((p.z ?? 0) + (q.z ?? 0)) / 2 });
+    });
+    return { ...r, points: out };
+  });
+}
+
+/* ONE PASS OF CORNER-CUTTING (Chaikin): every segment replaced by its
+   quarter and three-quarter points, the two ENDS kept exactly where
+   they are -- they are where the road meets another road or the edge
+   of the map, and moving them would unjoin a junction. Each pass
+   rounds every corner further; a few turn a tapped zigzag into a road
+   a car can take at speed, which the loader's own bend check
+   (map/load.js `tightestBend`) then reads as a gentler radius. */
+export function smoothRoad(map, roadId) {
+  return patchRoad(map, roadId, (r) => {
+    const P = r.points;
+    if (P.length < 3) return r;
+    const lerp = (a, b, f) => ({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, z: (a.z ?? 0) + ((b.z ?? 0) - (a.z ?? 0)) * f });
+    const out = [P[0]];
+    for (let i = 0; i + 1 < P.length; i++) {
+      const a = P[i], b = P[i + 1];
+      if (i > 0) out.push(lerp(a, b, 0.25));
+      if (i + 2 < P.length) out.push(lerp(a, b, 0.75));
+    }
+    out.push(P[P.length - 1]);
+    return { ...r, points: out };
+  });
+}
+
 /* --- elevation, road-wide --------------------------------------------- */
 /* SECTION 4: "a height handle per point, or a road-wide ramp". Per-point
    fields are tedious on a phone for a bridge of twenty points; these

@@ -446,15 +446,15 @@ an optional `mapData` prop in place of the hardcoded test map; `#/map`
 itself is untouched (byte-identical render, confirmed by
 `verify-screens`).
 
-**WHAT V1 LEFT OUT, DELIBERATELY.** Per-lane turn overrides, turn bays
-and protected-left arrows exist in the format (the big arterial,
-1.1.18) but have no editor UI yet -- a map wanting them is still
-hand-authored in `map/samples.js`, matching the doc's own scope here
-("the editor's job at v1 is to make the blockout by hand"). A road with
-NO intersection anywhere (both ends dangling, stage 0's own shape) has
-no "Drive it" start yet either -- `curbLegOf` refuses a through-only
-spot on purpose, and starting a drive on one needs a different call;
-flagged in `map/edges.js` rather than silently unsupported.
+**WHAT V1 LEFT OUT, DELIBERATELY.** Per-lane turn overrides exist in
+the format but have no editor UI (turn bays and protected-left arrows
+do now -- see below). A road with NO intersection anywhere (both ends
+open: the first thing anybody draws, stage 0's own shape, a closed
+loop) had no "Drive it" start at first; it has now -- `firstEdge` falls
+back to a through road when no road meets a node, and `curbLegOf` hands
+out a through spot only when asked (`{ through: true }`). Section 7
+drives one to its far end; that check also caught `firstEdge` throwing
+on a map that failed to load.
 
 **A REAL BUG, CAUGHT HEADLESSLY, PER THE HOUSE RULE OF VERIFYING FROM
 THE SERVER SIDE.** `verify-screens.mjs` can only render the editor's
@@ -536,6 +536,21 @@ notes are counted in the validation panel rather than listed, since
 they are the joins that were drawn, not problems. `verify-editor.mjs`
 section 12, sabotaged: splitting only one of the two roads leaves a
 three-legged node and fails it.
+
+**CURVES YOU CAN ACTUALLY DRIVE, AND VALIDATION THAT KEEPS UP WITH A
+FINGER.** A road tapped out point by point is straight segments meeting
+at corners, and the loader rightly posts a cornered road at what its
+tightest corner allows -- a right-angle zigzag drawn as an arterial
+loads at 10 km/h. So a road can be reshaped: **Smooth** (one Chaikin
+pass, both ends held exactly where they are so a joined road stays
+joined; three passes take that zigzag to 15 km/h and a gentler sketch
+much further), **Add points** (a midpoint in every segment, more
+handles to drag a curve by), and **x** on any point (never below two).
+Section 14. Separately, validation ran on every tap and cost ~600 ms on
+the test map, almost all of it the graph's all-pairs conflict table --
+which validation never reads. `graphOf(loaded, { conflicts: false })`
+skips it (3 ms), and section 13 holds the lite graph to the full one:
+same nodes, same legs, same connectivity verdict.
 
 *Not touched, because already true*: free-drawn curves (a road is
 points placed wherever clicked, never a tile) and chunked loading

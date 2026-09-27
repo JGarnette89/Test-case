@@ -80,7 +80,7 @@ function sceneFor(seed, kmh, every, drive, cars = CARS.start, rawMap = null, sta
   let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true });
   let me = null;
   if (drive) {
-    me = playerOn(world.course, start.road, start.end);   // the curb lane, driving down to the crossroads
+    me = playerOn(world.course, start.road, start.end, { through: !!start.through });   // the curb lane, driving down to the crossroads
     /* A map with no drivable curb leg at its own chosen start -- a
        lone one-way road backwards, say -- refuses cleanly rather than
        pushing a null driver into the world, where every downstream

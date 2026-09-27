@@ -51,7 +51,7 @@ import { testMap1 } from "../map/samples.js";
 import {
   newDraft, addRoad, addPoint, updatePoint, removeLastPoint, deleteRoad,
   setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
-  nearestOnRoad, joinCrossing, setRoadRamp, setRoadHump,
+  nearestOnRoad, joinCrossing, setRoadRamp, setRoadHump, deletePoint, subdivideRoad, smoothRoad,
   addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
@@ -664,6 +664,9 @@ export default function Editor() {
             onArrow={(end, on) => setDraft((m) => setLeftArrow(m, selRoad.id, end, on))}
             onRamp={(z0, z1) => setDraft((m) => setRoadRamp(m, selRoad.id, z0, z1))}
             onHump={(peak) => setDraft((m) => setRoadHump(m, selRoad.id, peak))}
+            onSmooth={() => setDraft((m) => smoothRoad(m, selRoad.id))}
+            onSubdivide={() => setDraft((m) => subdivideRoad(m, selRoad.id))}
+            onDeletePoint={(i) => setDraft((m) => deletePoint(m, selRoad.id, i))}
             onZ={(i, z) => setDraft((m) => setPointZ(m, selRoad.id, i, z))}
             onDelete={() => { setDraft((m) => deleteRoad(m, selRoad.id)); setSelected(null); }}
           />
@@ -713,7 +716,7 @@ export default function Editor() {
         <button className="btn" style={{ ...S.chip, minHeight: 48, borderColor: validation?.ok ? C.green : "rgba(255,255,255,0.12)", color: validation?.ok ? C.white : DIM, opacity: validation?.ok ? 1 : 0.5 }}
           disabled={!validation?.ok} onClick={() => setDriving(true)}>
           <Play size={16} style={{ marginRight: 6 }} />
-          {validation?.ok ? (startAt ? "Drive it" : "Drive it — no open end to start from") : "Draw a road to drive it"}
+          {validation?.ok ? (startAt ? "Drive it" : "Drive it — nowhere to start from") : "Draw a road to drive it"}
         </button>
 
         <div style={S.note}>
@@ -784,7 +787,7 @@ function Approach({ road, end, active, onControl, onBays, onArrow }) {
   );
 }
 
-function RoadPanel({ road, end, onChange, onControl, onBays, onArrow, onZ, onRamp, onHump, onDelete }) {
+function RoadPanel({ road, end, onChange, onControl, onBays, onArrow, onZ, onRamp, onHump, onSmooth, onSubdivide, onDeletePoint, onDelete }) {
   const [ramp, setRamp] = React.useState({ z0: road.points[0]?.z ?? 0, z1: road.points.at(-1)?.z ?? 0, peak: 7 });
   const at = cumulative(road.points);
   const total = at.at(-1) ?? 0;
@@ -829,6 +832,13 @@ function RoadPanel({ road, end, onChange, onControl, onBays, onArrow, onZ, onRam
         <Field label="Bridge (m)"><input type="number" step={0.5} style={{ ...inputStyle, width: 64 }} value={ramp.peak} onChange={(e) => setRamp({ ...ramp, peak: Number(e.target.value) || 0 })} /></Field>
         <button className="btn" style={S.chip} onClick={() => onHump(ramp.peak)}>Hump</button>
       </div>
+      {/* Shape: a tapped road is straight segments; Smooth rounds its
+          corners (ends stay put, so a junction stays joined), Add points
+          gives more handles to drag it into a curve by. */}
+      <div style={S.row}>
+        <button className="btn" style={S.chip} disabled={road.points.length < 3} onClick={onSmooth}>Smooth</button>
+        <button className="btn" style={S.chip} onClick={onSubdivide}>Add points</button>
+      </div>
       {road.points.length >= 2 && (
         <svg width="100%" height="40" viewBox="0 0 100 40" preserveAspectRatio="none" style={{ background: "#22262c", borderRadius: 4 }}>
           <polyline fill="none" stroke={C.amber} strokeWidth="1.5" vectorEffect="non-scaling-stroke"
@@ -838,7 +848,10 @@ function RoadPanel({ road, end, onChange, onControl, onBays, onArrow, onZ, onRam
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {road.points.map((p, i) => (
           <Field key={i} label={`pt ${i} z (m)`}>
-            <input type="number" step={0.1} style={{ ...inputStyle, width: 64 }} value={p.z ?? 0} onChange={(e) => onZ(i, Number(e.target.value) || 0)} />
+            <span style={{ display: "inline-flex", gap: 2 }}>
+              <input type="number" step={0.1} style={{ ...inputStyle, width: 58 }} value={p.z ?? 0} onChange={(e) => onZ(i, Number(e.target.value) || 0)} />
+              <button className="btn" style={{ ...S.iconBtn, width: 28, height: 32 }} title="delete this point" disabled={road.points.length <= 2} onClick={() => onDeletePoint(i)}><X size={13} /></button>
+            </span>
           </Field>
         ))}
       </div>

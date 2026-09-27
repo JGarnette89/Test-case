@@ -46,7 +46,12 @@ export function validateDraft(map) {
   }
   if (!loaded.ok) return { ok: false, loaded: null, warnings: loaded.warnings, errors: [], reason: loaded.error };
   try {
-    const graph = graphOf(loaded);
+    /* Without the conflict table: the editor needs the authoring errors,
+       which are decided before any path exists, and the table is ~99% of
+       graphOf's cost -- 600 ms a tap on the test map on a desktop, two or
+       three seconds of frozen screen on a phone. "Drive it" builds its
+       own full graph through seedGraph, so nothing drives this one. */
+    const graph = graphOf(loaded, { conflicts: false });
     return { ok: true, loaded, warnings: loaded.warnings, errors: graph.errors };
   } catch (e) {
     return { ok: false, loaded, warnings: loaded.warnings, errors: [], crash: { stage: "graphOf", message: String(e?.message ?? e) } };
