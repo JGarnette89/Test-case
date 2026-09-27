@@ -150,6 +150,54 @@ assessment machinery first again, which is the mistake being corrected.
 Any decision about the controls is judged by one question: does it feel
 right to drive?
 
+#### 1.1.19 Auto-steer, and the one-dial framing — the maintainer's ruling, 25 September. Agreed, not built.
+
+**The player can switch on auto-steer: the car holds its lane and they
+keep throttle and brake. Switchable at will. An extension lets it drive
+entirely while they consult a map.**
+
+**Technically this is nearly free, and it should be recorded as such.**
+The AI drivers already hold a lane, keep a line and move over for a
+turn (1.1.13, 1.1.16, 1.1.17) — that is the whole of the steering axis
+of the existing driver model, already built and already driving every
+car on the map. Auto-steer is handing the player's own car to that same
+model for STEERING ONLY. No new system, no new control, nothing to
+design beyond deciding how the player's control surface reflects it
+(the lateral input goes idle, or is overridden, while the slider stays
+theirs).
+
+**The design rule that decides whether it works: AUTO-STEER MUST BE
+ADEQUATE, NOT OPTIMAL.** If it drives better than the player, it gets
+left on permanently and the steering control becomes dead content — the
+same failure shape as an assist that quietly makes the thing it assists
+with pointless. It should be competent and slightly dull: conservative
+through corners, will not take an opportunistic gap, will not overtake.
+Cruise control, not a chauffeur. That is a tuning question for whichever
+driver profile auto-steer is handed — a sound, unremarkable one, never
+the bold end of the confidence axis — not a new mechanic.
+
+**The structural point that unifies both this and the split above
+(R2-DESIGN.md §17), and the most important thing to write down here:
+THE PLAYER AND THE AI SHARE ONE DRIVER MODEL, AND EVERY MODE IS SIMPLY
+WHICH PARTS THE HUMAN HOLDS.**
+
+| mode | steering | pedals | route |
+|---|---|---|---|
+| full control | human | human | human |
+| auto-steer | AI | human | human |
+| map mode | AI | AI | human (watching) |
+| exam mode | AI | AI | human (holding the route, marking) |
+
+Four points on one dial, not four modes to build separately. This is
+the same move section 1.1 already made once — the turn-commit control
+turning out to be the direction-giving control in disguise, so the exam
+mode became a reinterpretation of the base game rather than a second
+build. Auto-steer and map mode generalise it: the exam mode is not a
+fourth thing to build, it is **a configuration of the dial that already
+exists** once auto-steer and the AI driver model exist for the player's
+own car. What section 1.1 found for the route/manner split, this finds
+for the whole control surface.
+
 ---
 
 ## 2. What survives, honestly

@@ -1433,3 +1433,174 @@ intervention IS, in law and on the sheet. That is now the blocking
 question rather than a distant one — contact is the largest untapped
 supply the generator has, and the accept test refuses it only because the
 game cannot yet respond to a collision.
+
+---
+
+## 17. R3 — knowledge splits into knowledge and compliance. The maintainer's ruling, 25 September. Agreed, not built.
+
+Jay's distinction, verbatim: *"well experienced drivers may know they are
+required to fully stop for a right turn on a red, but will roll through
+anyways. a new driver might not know that they can't do that and instead
+think it's right."*
+
+**KNOWLEDGE is whether the driver knows the rule. COMPLIANCE is whether
+they choose to follow a rule they know.** Genuinely independent axes —
+a driver can be strong on one and weak on the other in either direction —
+and every fault the current single axis produces is ambiguous between
+them. The rolling-stop entry in `CAUSES` already says this almost word
+for word without knowing it was two claims: *"a particularly poorly
+skilled driver would have to be completely unable to make their stop due
+to lack of control to make this anything other than a failure to obey
+traffic law."* That sentence IS the split, read one way for a driver who
+does not know and the other way for one who does.
+
+### This is not the usual thin-axis problem
+
+Observation arrived thin and had to have content invented for it — no
+trait was observation-dominant, and R2.2 had to build a whole perception
+layer (`awareness.js`) before the axis could speak at all (§4, §8 above).
+Knowledge is thin for the opposite reason: **it already carries the
+project's most content, and it is thin BECAUSE that content is split
+between two claims it cannot distinguish.** `cutsCorner`, `overshoot`,
+`lateSignal`, `rollingStop`, `brakesTooLate`, `noSignal`, `stopsShort` —
+seven of the ten trait-derived faults touch knowledge, more than any
+other axis — and §8.3 above measured exactly this entanglement without
+naming its cause: "75% of its evidence arrives attributed to another
+axis," the axis "speaks constantly and can never be heard on its own."
+Splitting it does not require inventing supply. **Both halves already
+have expression, on day one:**
+
+- **KNOWLEDGE keeps not-knowing-WHERE**: `cutsCorner`'s knowledge share
+  (not knowing how far into the intersection a left goes), `overshoot`
+  and `stopsShort` (not knowing where the stop line means you actually
+  stop), `brakesTooLate`'s knowledge share. These are misjudgements of
+  place, not choices — nothing to decide, nothing to comply with or
+  defy, so they stay knowledge outright.
+- **COMPLIANCE gets knowing-and-doing-it-anyway**: `rollingStop` is the
+  flagship case, Jay's own example, and the existing comment already
+  argues for treating it as "a failure to obey traffic law" rather than
+  a skill gap — which is compliance's definition exactly. **And it
+  reaches further than the trait table**: `keepRight` (SIMULATOR.md
+  1.1.17, "markable, as KNOWLEDGE") is a driver who knows to return to
+  the curb lane and does not bother — a clean, already-built,
+  already-measured compliance fault wearing a knowledge label. Speeding,
+  named as a compliance example, is not modelled yet but would land
+  here the moment it exists, not as new vocabulary needing a home.
+
+That is the opposite of observation's problem. This axis arrives with
+expression rather than needing content invented for it.
+
+### Model knowledge per rule, not as a scalar
+
+**A driver does not have 60% knowledge; they know some rules and not
+others.** `composeDriver` currently draws knowledge as one number in
+[0,1] the way it draws every axis but confidence. Under the split,
+knowledge stops being a scalar deficit and becomes a **set**: which
+rules, out of a small named vocabulary (stop for a right on red, where a
+left's swept path actually goes, when a lane ends, what a stop line
+means, keep right unless overtaking or turning...), this particular
+driver does not know. Compliance stays a scalar — there is no
+per-rule "chooses not to" set that means anything different from a
+standing disposition, the way there is no per-situation "confidence" —
+so the split is asymmetric: knowledge becomes a set, compliance stays a
+deficit like steering and braking.
+
+This is what makes the drivers **characterful rather than graded**: a
+candidate competent everywhere except roundabouts, or confidently wrong
+about exactly one sign, reads as a person with a specific gap rather
+than a diluted score. It is also far more legible than a number — "this
+driver does not know a right on red requires a stop" is a sentence a
+player can act on; "their knowledge is 0.4" is not — and it is what
+makes the teaching mechanic concrete rather than a spreadsheet (see
+DRIVING-SCHOOL.md §4.2, cross-referenced below): a lesson becomes
+"teach them this rule," not "raise a number by a delta."
+
+### The readability test, which decides whether the split is worth anything
+
+**COMPLIANCE IS SITUATIONAL. KNOWLEDGE IS CONSISTENT.** A driver who
+knows the rule and chooses to ignore it breaks it when it is convenient
+to — a quiet approach, nobody coming, no cost to cutting the corner. One
+who does not know the rule breaks it every time, INCLUDING when it costs
+them, because there is no judgement call happening at all; there is
+nothing to weigh. This is the design's own acceptance criterion, stated
+so it is checkable rather than merely asserted: for a fault to prove out
+as compliance rather than knowledge, its occasions have to correlate
+with low cost (little or no conflicting traffic, nobody who would be
+inconvenienced) and its ABSENCES have to occur on the SAME driver when
+the cost is real. A fault that fires just as often when it is expensive
+as when it is free is knowledge's, whatever axis a table says it is.
+The engine already has the quantity this needs — whether an occasion was
+genuinely contested is what `windowIsSafe`/`safeAtFor`-style reasoning
+and the encroachment machinery already ask — so this is a checkable
+property, not a new measurement to invent, when it comes to be built.
+
+### Two populations, one fault, two meanings
+
+**Regular traffic is experienced drivers: high knowledge (they know the
+rules), variable compliance (whether they bother).** **Learners are
+patchy knowledge with usually HIGH compliance** — trying hard, and still
+wrong, because trying hard does not fill in a rule you were never
+taught. The same fault committed by each means something different to a
+player watching: a rolling stop from ordinary traffic is a corner being
+cut; the identical rolling stop from a learner is a gap in what they
+were taught. This is DRIVING-SCHOOL.md §3's town-as-distribution idea
+(populations have a character, not an average) read at the level of a
+single axis rather than a whole driver, and it is why the split earns
+its place in that design specifically: a school's whole premise is
+teaching what a driver does not know, and "does not know" only exists
+once knowledge stops being a number everyone has 60% of.
+
+### What it implies for the attribution already built
+
+`CAUSES` (`src/core/driver.js`, formerly `ratings.js`) is, by this
+project's own rule, **the one table authored deliberately rather than
+derived** — "why did that driver do that" is a claim about people, and
+it is the maintainer's to rule on (§8.2 above, CLAUDE.md). The split
+changes what kind of table it has to be, not just its column count:
+
+- **`AXES` grows from five to six.** Every consumer that iterates it —
+  `dominantAxis`, `axisEvidence`, `vocabularyByAxis`, `WEAK_AXES`'s
+  1-2-of-N draw in `composeDriver`, the two-of-four-then-two-of-five
+  readability floor §8.3 and R2 §4 measured — needs re-deriving against
+  six, not assumed to still hold. Not done now; flagged so it is not
+  rediscovered as a mystery regression later.
+- **A fixed per-KIND weight stops being enough.** `cutsCorner: {
+  steering: 0.6, knowledge: 0.4 }` answers "how much of this fault-kind
+  is knowledge's" the same way for every driver who commits it. Once
+  knowledge is per-rule, some of that split has to become **conditional
+  on THIS driver's own knowledge state at draw time**: `rollingStop` is
+  knowledge's if the driver does not know the rule and compliance's if
+  they do, and a driver's per-rule set already resolves that question —
+  it does not need a second roll, only a lookup. This is a structural
+  change to how `CAUSES` is read, not a bigger table of the same shape.
+- **Compliance may not need a TRAIT roll of its own at all.** Steering,
+  braking and knowledge each bend a path or a manner and are stripped by
+  `faultWindow`'s controlled comparison the way every trait is. But a
+  compliance fault is not "the car did something different," it is "the
+  driver had the SAME decision point confidence already has — take the
+  gap or not — except gated on the rule being known, and chose the
+  convenient wrong answer." That is closer in shape to how confidence's
+  gap acceptance already works (a standing disposition deciding a live
+  choice) than to a trait bending a trajectory. Worth deciding, not
+  deciding here: whether compliance is a new trait kind at all, or a
+  second thing confidence-shaped decision points can check once a rule
+  is flagged known.
+- **Which existing entries move is the maintainer's to rule on, the
+  same as the table always has been.** Recorded as a starting position,
+  not a decision: `rollingStop` and `keepRight` read as compliance-heavy
+  on Jay's own example; `cutsCorner`, `overshoot`, `stopsShort`,
+  `brakesTooLate`'s knowledge share read as knowledge-only (nothing to
+  choose, only something to not know); `lateSignal` and `noSignal` are
+  genuinely ambiguous either way and are exactly the kind of case a
+  per-rule knowledge state exists to resolve rather than guess at.
+
+### Cross-references
+
+`DRIVING-SCHOOL.md` §4.2 ("A model of learning") already asks what a
+lesson moves and states plainly that knowledge is monotonic and can only
+improve — written before this split, and it changes what "improve" means
+for that one axis specifically: a lesson on knowledge is now "teach this
+driver this rule," concrete and per-rule, where a lesson on steering or
+braking is still a scalar delta. `DRIVER-IDENTITY.md`'s §8 table (the R1
+four-axis attribution) is superseded by this the same way §8 itself
+superseded traits — the findings hold, the representation does not.

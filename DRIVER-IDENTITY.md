@@ -11,6 +11,16 @@ continuous ratings; everything measured in §§1-6 still holds, because it
 was about the world honouring a plan rather than about how a driver is
 represented.
 
+**And §8.2's table is itself superseded the same way, 25 September.**
+Jay's ruling: knowledge splits into KNOWLEDGE (whether the driver knows
+a rule) and COMPLIANCE (whether they choose to follow one they know) —
+a real, already-visible distinction the four-axis table could not make
+(§8.2's own `cutsCorner` ruling, "a steering error combined with a
+knowledge error," was already gesturing at exactly this kind of
+compound cause). Agreed, not built. Full design, the readability test
+that decides whether it is worth building, and what it implies for
+`CAUSES`: `R2-DESIGN.md` §17.
+
 ---
 
 ## 1. What was actually wrong, measured first
