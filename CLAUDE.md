@@ -1683,6 +1683,7 @@ src/map/samples.js       hand-written maps as data -- stage 0, and the test map 
 src/map/edges.js         where a car starts on a map with no hardcoded start: the first dangling end
 src/editor/model.js      the editor's data model: pure functions over a map, nothing else -- the draft IS the format
 src/editor/validate.js   can a draft be driven yet: loadMap + graphOf, never letting a mid-edit map throw
+src/editor/library.js    multiple maps as data: named saves, list, open, delete -- separate from the one autosave slot
 src/iso/project.js       the isometric projection and the one depth key everything sorts by
 src/iso/draw.js          painting the world on a canvas: roads, junctions, boxes for cars, sorted once
 src/iso/chase.js         the chase camera: leads with speed, eases, turns with the car (SIMULATOR.md 5.2)
@@ -2055,7 +2056,7 @@ node tools/verify-connect.mjs      permitted movements are the network's: the ge
 node tools/verify-bays.mjs          turn bays: a lane lies on its neighbour until it opens and a lane out once it has, is for its turn only, and the traffic uses it for that turn and nothing else
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 node tools/verify-core.mjs         the live screens stand on src/core/ alone: core imports nothing outside itself, no live screen reaches the engine, no core name is declared twice
-node tools/verify-editor.mjs       the editor: the draft IS the map format, a hand-written map replayed through it round-trips exactly, snap preview finds an end and only an end, nothing drawn however badly can throw validation, and Drive it is the real pipeline run headlessly
+node tools/verify-editor.mjs       the editor: the draft IS the map format, a hand-written map replayed through it round-trips exactly, snap preview finds an end and only an end, nothing drawn however badly can throw validation, Drive it is the real pipeline run headlessly, an overpass is authorable and distinguishable from a refused tight crossing, and the map library never collides on id or leaves a stale entry openable
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 

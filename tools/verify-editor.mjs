@@ -11,6 +11,8 @@ import {
   nearestRoadEnd, cumulative, serialize, parse,
 } from "../src/editor/model.js";
 import { validateDraft } from "../src/editor/validate.js";
+import { CLEARANCE_MIN } from "../src/map/load.js";
+import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../src/editor/library.js";
 import { testMap1 } from "../src/map/samples.js";
 import { loadMap } from "../src/map/load.js";
 import { LANE, CONTROLS, emptyMap, road, stage0Map } from "../src/map/format.js";
@@ -249,6 +251,66 @@ console.log("\n7. \"DRIVE IT\" IS THE REAL PIPELINE, RUN HEADLESSLY");
   const s0 = loadMap(stage0Map());
   check(s0.ok, "stage0Map() loads");
   check(firstEdge(s0) === null, "and has no curb-leg start -- both roads are through lanes with no intersection, the one case firstEdge does not yet cover");
+}
+
+console.log("\n8. AN OVERPASS IS AUTHORABLE, AND DISTINGUISHABLE FROM A TIGHT CROSSING");
+{
+  /* SIMULATOR.md section 1: elevation including overpasses is part of
+     what the editor has to be able to draw. Two roads crossing in
+     plan with no node -- an overpass is exactly that, at a real
+     clearance -- and load.js already carries the whole rule
+     (CLAUDE.md, "an approach is deceleration"'s sibling for elevation:
+     one quantity, not re-derived at the editor). This is the editor's
+     own operations producing both the good case and the one load.js
+     is right to refuse, so the canvas (Editor.jsx's own overpass gap,
+     drawn from this same `crossings` list) has real data to draw. */
+  const crossing = (zLow, zHigh) => {
+    let m = newDraft(); let a, b;
+    ({ map: m, id: a } = addRoad(m, { kind: "arterial" }));
+    m = addPoint(m, a, { x: 0, y: 50 }); m = addPoint(m, a, { x: 100, y: 50 });
+    ({ map: m, id: b } = addRoad(m, { kind: "collector" }));
+    m = addPoint(m, b, { x: 50, y: 0 }); m = setPointZ(m, b, 0, zHigh);
+    m = addPoint(m, b, { x: 50, y: 2 }); m = setPointZ(m, b, 1, zHigh);
+    m = addPoint(m, b, { x: 50, y: 100 }); m = setPointZ(m, b, 2, zHigh);
+    return validateDraft(m);
+  };
+  const over = crossing(0, CLEARANCE_MIN + 3);
+  check(over.ok && over.warnings.every((w) => w.code !== "cross-no-node") && over.loaded.crossings.length === 1 && over.loaded.crossings[0].gap >= CLEARANCE_MIN,
+    `a real overpass (${CLEARANCE_MIN + 3} m clear) loads with no crossing warning, and one crossing is recorded with its gap (${over.loaded?.crossings?.[0]?.gap} m)`);
+  const tight = crossing(0, 1);
+  check(tight.ok && tight.warnings.some((w) => w.code === "cross-no-node") && tight.loaded.crossings[0].gap < CLEARANCE_MIN,
+    `and the identical shape at 1 m of clearance is refused as an overpass -- still loads, but warned, which is what tells the editor not to draw a gap there`);
+}
+
+console.log("\n9. THE LIBRARY: MULTIPLE MAPS AS DATA, NOT ONE SCRATCH SLOT");
+{
+  let d1; ({ map: d1 } = addRoad(newDraft())); d1 = addPoint(d1, d1.roads[0].id, { x: 0, y: 0 }); d1 = addPoint(d1, d1.roads[0].id, { x: 20, y: 0 });
+  const saved1 = await saveMap(d1, "First sketch");
+  const saved2 = await saveMap(d1, "Second sketch");
+  check(saved1.id !== saved2.id, `two saves never collide on id (${saved1.id}, ${saved2.id})`);
+  const list = await listMaps();
+  check(list.some((e) => e.id === saved1.id && e.name === "First sketch") && list.some((e) => e.id === saved2.id && e.name === "Second sketch"),
+    `both are listed, by name (${list.length} in the library)`);
+  const reopened = await openMap(saved1.id);
+  check(JSON.stringify(reopened) === JSON.stringify(saved1), "opening a saved map returns exactly what was saved");
+  const resaved = await saveMap({ ...d1, roads: [] }, "First sketch", saved1.id);
+  check(resaved.id === saved1.id, "saving again with the same id overwrites in place rather than creating a second entry");
+  const listAfter = await listMaps();
+  check(listAfter.filter((e) => e.id === saved1.id).length === 1, "and the library still lists it once, not twice");
+  await deleteMap(saved2.id);
+  check((await listMaps()).every((e) => e.id !== saved2.id), "delete removes it from the index");
+  check((await openMap(saved2.id)) === null, "and opening a deleted map returns null, not a throw");
+
+  /* THE INDEX CAN GO STALE -- sabotaged directly, not by construction:
+     an index entry whose map key never existed (or was removed some
+     other way) must not surface as an openable map. */
+  const before = await listMaps();
+  await import("../src/storage.js").then(({ writeJSON }) => writeJSON("row.editor.library.v1", [...before, { id: "ghost-id", name: "a stale entry", savedAt: Date.now() }]));
+  const withGhost = await listMaps();
+  check(withGhost.some((e) => e.id === "ghost-id"), "the sabotage actually planted a stale entry");
+  const pruned = await prunedList();
+  check(pruned.every((e) => e.id !== "ghost-id") && (await listMaps()).every((e) => e.id !== "ghost-id"),
+    "prunedList removes an entry whose map is gone, and the index it wrote back stays pruned");
 }
 
 console.log("\n" + "=".repeat(70));

@@ -41,10 +41,11 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   Route, MousePointer2, Hexagon, Move, ZoomIn, ZoomOut,
-  Trash2, Download, Upload, FolderOpen, Play, CheckCircle2, AlertTriangle, Undo2, X,
+  Trash2, Download, Upload, FolderOpen, Play, CheckCircle2, AlertTriangle, Undo2, X, Save, Library,
 } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { readJSON, writeJSON } from "../storage.js";
+import { CLEARANCE_MIN } from "../map/load.js";
 import { KINDS, CONTROLS, ZONES } from "../map/format.js";
 import { testMap1 } from "../map/samples.js";
 import {
@@ -53,6 +54,7 @@ import {
   addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
+import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../editor/library.js";
 import MapRoad from "./MapRoad.jsx";
 import { firstEdge } from "../map/edges.js";
 import ErrorBoundary from "./ErrorBoundary.jsx";
@@ -89,8 +91,15 @@ export default function Editor() {
   const [validation, setValidation] = useState(null);
   const [driving, setDriving] = useState(false);
   const [fileError, setFileError] = useState(null);
+  const [mapName, setMapName] = useState("Untitled map");
+  const [savedId, setSavedId] = useState(null);          // the library id this draft was last saved/opened as, null for never-saved
+  const [library, setLibrary] = useState([]);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [, force] = useState(0);
   const redraw = useCallback(() => force((n) => n + 1), []);
+
+  const refreshLibrary = useCallback(() => { prunedList().then(setLibrary); }, []);
+  useEffect(() => { refreshLibrary(); }, [refreshLibrary]);
 
   if (!view.current) view.current = makeView(draft);
 
@@ -102,7 +111,7 @@ export default function Editor() {
     let live = true;
     readJSON(AUTOSAVE_KEY, null).then((saved) => {
       if (!live) return;
-      if (saved && Array.isArray(saved.roads)) { setDraft(saved); view.current = makeView(saved); }
+      if (saved && Array.isArray(saved.roads)) { setDraft(saved); setMapName(saved.name ?? "Untitled map"); view.current = makeView(saved); }
       loadedAutosave.current = true;
     });
     return () => { live = false; };
@@ -183,6 +192,44 @@ export default function Editor() {
       if (isSel || isDraw) {
         ctx.fillStyle = C.white;
         for (const p of r.points) { const s = toScreen(p.x, p.y); ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, 7); ctx.fill(); }
+      }
+    }
+
+    /* OVERPASSES: a gap in the plan drawing of whichever road is
+       UNDER, at every crossing with real clearance -- the one thing a
+       flat top-down view cannot show for free, since two lines
+       crossing read identically whether they are one road passing
+       over another or the same road joined. `crossings` is
+       load.js's own computed quantity (`over`, `gap`, `CLEARANCE_MIN`),
+       not re-derived here; a crossing UNDER clearance stays a plain
+       overlap on screen, which is correct -- load.js is refusing to
+       call it an overpass either, and it is already in the warning
+       list below for that reason. */
+    if (validation?.ok) {
+      for (const c of validation.loaded.crossings) {
+        if (c.gap < CLEARANCE_MIN) continue;
+        const underId = c.roads.find((id) => id !== c.over);
+        const under = validation.loaded.roads.find((r) => r.id === underId);
+        if (!under) continue;
+        let i = 0, best = Infinity;
+        for (let j = 0; j < under.pts.length; j++) { const d = Math.hypot(under.pts[j].x - c.at.x, under.pts[j].y - c.at.y); if (d < best) { best = d; i = j; } }
+        const a = under.pts[Math.max(0, i - 1)], b = under.pts[Math.min(under.pts.length - 1, i + 1)];
+        const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len, ny = dx / len;   // perpendicular to the road, in world units
+        /* A canvas stroke's WIDTH runs perpendicular to the path it
+           traces. So the eraser's own path runs perpendicular to the
+           road (a short reach, `half`, just enough to clear the
+           road's full drawn thickness) and its LINE WIDTH -- along the
+           road -- is what actually sets how long the visible break is:
+           a fixed 12 screen px, not scaled by the road's own width, so
+           a six-lane arterial does not get a gap wide enough to read
+           as a second intersection. */
+        const roadPx = Math.max(2, Math.min(10, (under.lanes ?? 1) * (under.oneWay ? 1 : 2) * v.scale * 0.6));
+        const half = (roadPx / 2 + 2) / v.scale;
+        const p1 = toScreen(c.at.x + nx * half, c.at.y + ny * half), p2 = toScreen(c.at.x - nx * half, c.at.y - ny * half);
+        ctx.strokeStyle = "#1b1e23";
+        ctx.lineWidth = 12;
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
       }
     }
 
@@ -384,10 +431,12 @@ export default function Editor() {
 
   /* --- save / load ------------------------------------------------------ */
   const download = () => {
-    const blob = new Blob([serialize(draft)], { type: "application/json" });
+    const named = { ...draft, name: mapName || draft.name };
+    const blob = new Blob([serialize(named)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `${draft.id || "map"}.json`; a.click();
+    const file = (mapName || draft.id || "map").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "map";
+    a.href = url; a.download = `${file}.json`; a.click();
     URL.revokeObjectURL(url);
   };
   const openFile = (e) => {
@@ -398,14 +447,37 @@ export default function Editor() {
     reader.onload = () => {
       const m = parse(String(reader.result));
       if (!m) { setFileError(`"${file.name}" is not a map this editor can read.`); return; }
-      setFileError(null); setDraft(m); setSelected(null); setDrawing(null);
+      setFileError(null); setDraft(m); setSelected(null); setDrawing(null); setSavedId(null); setMapName(m.name ?? "Opened map");
       view.current = makeView(m);
     };
     reader.readAsText(file);
   };
   const loadSample = (which) => {
     const m = which === "test" ? testMap1() : newDraft();
-    setDraft(m); setSelected(null); setDrawing(null); view.current = makeView(m);
+    setDraft(m); setSelected(null); setDrawing(null); setSavedId(null); setMapName(m.name ?? "Untitled map"); view.current = makeView(m);
+  };
+
+  /* --- library ----------------------------------------------------------
+     Separate from autosave: autosave is one scratch slot that follows
+     WHATEVER is on screen so a reload never loses work; the library is
+     "multiple maps as data" (SIMULATOR.md section 4/1) -- named,
+     switchable, and kept until deleted on purpose. Saving again under
+     the id a draft was opened from overwrites it in place; the first
+     save of a fresh draft gets a new one. */
+  const doSave = () => {
+    saveMap(draft, mapName || "Untitled map", savedId).then((saved) => {
+      setSavedId(saved.id); setDraft((d) => ({ ...d, id: saved.id, name: saved.name })); refreshLibrary();
+    });
+  };
+  const doOpen = (id) => {
+    openMap(id).then((m) => {
+      if (!m) { refreshLibrary(); return; }   // pruned since the list was drawn
+      setDraft(m); setSelected(null); setDrawing(null); setSavedId(id); setMapName(m.name ?? "Untitled map"); setShowLibrary(false);
+      view.current = makeView(m);
+    });
+  };
+  const doDelete = (id) => {
+    deleteMap(id).then(() => { if (id === savedId) setSavedId(null); refreshLibrary(); });
   };
 
   const startAt = validation?.ok ? firstEdge(validation.loaded) : null;
@@ -492,9 +564,33 @@ export default function Editor() {
 
         <ValidatePanel validation={validation} onJump={jumpTo} />
 
+        <div style={S.card}>
+          <div style={S.cardHead}><span>This map</span></div>
+          <div style={S.row}>
+            <input style={{ ...inputStyle, flex: 1, minWidth: 140 }} value={mapName} onChange={(e) => setMapName(e.target.value)} placeholder="Name this map" />
+            <button className="btn" style={S.chip} onClick={doSave}><Save size={15} style={{ marginRight: 6 }} />{savedId ? "Save" : "Save to library"}</button>
+            <button className="btn" style={{ ...S.chip, borderColor: showLibrary ? C.amber : "rgba(255,255,255,0.12)" }} onClick={() => { setShowLibrary((s) => !s); if (!showLibrary) refreshLibrary(); }}>
+              <Library size={15} style={{ marginRight: 6 }} />My maps{library.length ? ` (${library.length})` : ""}
+            </button>
+          </div>
+          {showLibrary && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflow: "auto" }}>
+              {library.length === 0 && <div style={S.note}>Nothing saved yet — Save to library keeps this draft under a name, as many as you like, separate from the autosave that just follows what's on screen.</div>}
+              {library.map((e) => (
+                <div key={e.id} style={{ ...S.warnRow, justifyContent: "space-between" }}>
+                  <button className="btn" style={{ background: "transparent", border: "none", color: e.id === savedId ? C.amber : TEXT, textAlign: "left", flex: 1, fontFamily: FONT_D, fontSize: 13, minHeight: 32 }} onClick={() => doOpen(e.id)}>
+                    {e.name || "(untitled)"}{e.id === savedId ? " · open" : ""}
+                  </button>
+                  <button className="btn" style={S.iconBtn} title="delete" onClick={() => doDelete(e.id)}><Trash2 size={14} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div style={S.row}>
-          <button className="btn" style={S.chip} onClick={download}><Download size={15} style={{ marginRight: 6 }} />Save (download)</button>
-          <button className="btn" style={S.chip} onClick={() => fileRef.current?.click()}><Upload size={15} style={{ marginRight: 6 }} />Open</button>
+          <button className="btn" style={S.chip} onClick={download}><Download size={15} style={{ marginRight: 6 }} />Download JSON</button>
+          <button className="btn" style={S.chip} onClick={() => fileRef.current?.click()}><Upload size={15} style={{ marginRight: 6 }} />Open a file</button>
           <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={openFile} />
           <button className="btn" style={S.chip} onClick={() => loadSample("test")}><FolderOpen size={15} style={{ marginRight: 6 }} />Load test map 1</button>
           <button className="btn" style={S.chip} onClick={() => loadSample("blank")}>New blank map</button>
@@ -512,7 +608,10 @@ export default function Editor() {
           near another road's end to join and finish automatically).
           Select: drag a point to move it, click a road or zone to edit
           its properties below. Wheel to zoom, Pan to move around.
-          Autosaves as you go.
+          Two roads crossing at real clearance, one raised in elevation,
+          draw as an overpass — a gap opens in the lower one where the
+          higher one crosses. Autosaves as you go; "Save to library"
+          keeps a named copy on top of that, as many as you like.
         </div>
       </div>
     </div>

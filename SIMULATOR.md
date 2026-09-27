@@ -484,6 +484,32 @@ none threw and none crashed validation. Whether drawing a road is
 pleasant enough to draw eight square kilometres of them is the
 maintainer's question to answer by using it, not one a check can.
 
+**TWO MORE OF THE PLAN'S OWN REQUIREMENTS, CHECKED AND SATISFIED, THE
+SAME SESSION.** *Elevation including overpasses*: two roads can cross
+in plan at a real clearance and load clean, one crossing recorded in
+`loaded.crossings` (`verify-editor.mjs` section 8) -- but a flat
+top-down plan view cannot show WHICH road is on top for free, so the
+canvas now draws a short gap in the UNDER road's line at every crossing
+with real clearance, computed from that same `crossings` list rather
+than re-derived. *Multiple maps as data, throwaway test maps
+first-class*: `src/editor/library.js` -- named saves, a list, open,
+delete -- separate from the single autosave slot that just follows
+whatever is on screen. Building it caught a second real bug the same
+way: the first id generator was `Date.now()` alone, which collided
+when two saves landed in the same millisecond (exactly what the
+check's own back-to-back saves did) and the second silently overwrote
+the first rather than creating a new entry. Fixed the way
+`editor/model.js`'s own `nextId` already does it -- checked against
+what exists, never just trusted to be unique (`verify-editor.mjs`
+section 9, sabotaged to confirm it fails without the fix).
+
+*Not touched, because already true*: free-drawn curves (a road is
+points placed wherever clicked, never a tile) and chunked loading
+(`map/load.js` already indexes every sample and prop by chunk at load
+time; nothing about the editor needed to change for it, and consuming
+that index for culled rendering or bounded neighbour queries is stage
+5/6's question, not stage 2's).
+
 ---
 
 ## 5. The renderer
