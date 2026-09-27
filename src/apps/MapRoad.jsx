@@ -26,6 +26,7 @@ import { Play, Pause, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { loadMap, groundFor } from "../map/load.js";
 import { testMap1 } from "../map/samples.js";
+import { firstEdge } from "../map/edges.js";
 import { seedGraph, step, poseOf, DT } from "../sim/crossing.js";
 import { playerOn, stepDriver, driverPose, withDriver, aheadOf } from "../sim/drive.js";
 import { junctionsOf, postedAt } from "../sim/graph.js";
@@ -58,10 +59,19 @@ const START = { road: "A-north", end: "end" };   // the player begins at the map
    because the phone ran 114 cars at a locked 60 fps on the SLOW build. */
 export const CARS = { min: 10, max: 300, step: 10, start: 120 };
 
-function sceneFor(seed, kmh, every, drive, cars = CARS.start) {
-  const loaded = loadMap(testMap1());
-  if (!loaded.ok) throw new Error(`test map: ${loaded.error}`);
+/* THE EDITOR DRIVES THE SAME SCREEN (src/apps/Editor.jsx "drive it"):
+   `rawMap`, unloaded, in place of the hardcoded test map, and
+   `startAt` for where the player begins on it. With neither, this is
+   exactly the call it always was -- testMap1(), the hardcoded START --
+   so #/map is untouched. Without an explicit `startAt` on a supplied
+   map, the player starts at the first edge `loadMap` finds
+   (`map/edges.js` -- a plain module, not this one, so a headless check
+   can ask the same question without Node trying to parse JSX). */
+function sceneFor(seed, kmh, every, drive, cars = CARS.start, rawMap = null, startAt = null) {
+  const loaded = loadMap(rawMap ?? testMap1());
+  if (!loaded.ok) throw new Error(`${rawMap ? "map" : "test map"}: ${loaded.error}`);
   const b = loaded.bounds;
+  const start = rawMap ? (startAt ?? firstEdge(loaded) ?? START) : START;
   /* POSTED SPEEDS ON (SIMULATOR.md 1.1.6): every road is driven at the
      limit it posts, so an arterial and a residential street are not the
      same road to drive -- which is the first thing that makes them feel
@@ -70,13 +80,21 @@ function sceneFor(seed, kmh, every, drive, cars = CARS.start) {
   let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true });
   let me = null;
   if (drive) {
-    me = playerOn(world.course, START.road, START.end);   // the curb lane, driving down to the crossroads
+    me = playerOn(world.course, start.road, start.end);   // the curb lane, driving down to the crossroads
+    /* A map with no drivable curb leg at its own chosen start -- a
+       lone one-way road backwards, say -- refuses cleanly rather than
+       pushing a null driver into the world, where every downstream
+       reader of `a.player` would throw on it instead. The editor
+       catches this and says so; #/map's own hardcoded start can never
+       hit it. */
+    if (!me) throw new Error("nowhere to start driving from on this map");
     world = withDriver(world, me);
   }
   const ground = groundFor(loaded, { cell: 20 });
   return {
     loaded,
     ground,
+    centre: { x: b.x + b.w / 2, y: b.y + b.h / 2 },
     roads: loaded.roads.map((road) => ({ road, cars: [] })),
     terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground }),
     junctions: junctionsOf(world.course),
@@ -102,13 +120,13 @@ function actorsOf(scene, carry) {
   return out;
 }
 
-export default function MapRoad() {
+export default function MapRoad({ mapData = null, startAt = null } = {}) {
   const canvasRef = useRef(null);
   const [seed, setSeed] = useState(1);
   const [limit, setLimit] = useState(50);
   const [playing, setPlaying] = useState(true);
   const [mode, setMode] = useState("drive");        // "drive" or "watch"
-  const [follow, setFollow] = useState("crossroads");   // watch mode: a place to look at, or "car" to ride one
+  const [follow, setFollow] = useState(mapData ? "car" : "crossroads");   // watch mode: a place to look at, or "car" to ride one; the named places are the test map's own, so a supplied map starts on "car" instead
   const [zoom, setZoom] = useState(1);
   const [rotate, setRotate] = useState(true);   // driving: the view turns with the car; off is the fixed view, for comparison
   const [warnings, setWarnings] = useState([]);
@@ -128,11 +146,11 @@ export default function MapRoad() {
   const judgedStop = useRef({ last: null, at: 0 });   // and the last stop's
   const contacts = useRef(0);
   const [cars, setCars] = useState(CARS.start);
-  if (!scene.current) scene.current = sceneFor(1, 50, 2.0, true, CARS.start);
+  if (!scene.current) scene.current = sceneFor(1, 50, 2.0, true, CARS.start, mapData, startAt);
 
   const restart = (s = seed, kmh = limit, m = mode, n = cars) => {
     setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n);
-    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n);
+    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt);
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
     cam.current = { ...newChase(), id: null };
     owed.current = 0; contacts.current = 0; flash.current = 0;
@@ -238,7 +256,7 @@ export default function MapRoad() {
         k = zoomFor(size.w, size.h, cam.current.lead) * zoom;
         rot = cam.current.rot;
       } else {
-        let want = PLACES[follow] ?? PLACES.crossroads;
+        let want = PLACES[follow] ?? { x: sc.centre.x, y: sc.centre.y, z: 0 };
         if (follow === "car") {
           let target = actors.find((a) => a.id === cam.current.id);
           if (!target) { target = actors[Math.floor(actors.length / 2)] ?? null; cam.current.id = target?.id ?? null; }

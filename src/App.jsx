@@ -18,6 +18,7 @@ import SimRoad from "./apps/SimRoad.jsx";
 import IsoRoad from "./apps/IsoRoad.jsx";
 import Wheel from "./apps/Wheel.jsx";
 import MapRoad from "./apps/MapRoad.jsx";
+import Editor from "./apps/Editor.jsx";
 import ErrorBoundary from "./apps/ErrorBoundary.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
 import SimCandidates from "./apps/SimCandidates.jsx";
@@ -74,6 +75,17 @@ const MODES = [
     Icon: Milestone,
     accent: C.amber,
     Component: MapRoad,
+  },
+  {
+    id: "editor",
+    live: true,
+    name: "Editor",
+    kicker: "Live — draw a map, drive it",
+    blurb:
+      "Draw roads by clicking points, set kind, lanes, speed, one-way, parking and elevation, mark control per approach, draw zones. Validate shows what the loader found; Drive it switches to the same screen #/map runs, on the map you just drew. Autosaves as you go.",
+    Icon: Milestone,
+    accent: C.green,
+    Component: Editor,
   },
   {
     id: "wheel",

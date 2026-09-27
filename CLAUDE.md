@@ -200,6 +200,8 @@ Eight things to know before your first change:
    | `*.md` | nothing | 0 |
    | `tools/verify-X.mjs` | X | |
    | `src/apps/*`, `App.jsx`, `theme.js` | `verify-screens` | 6s |
+   | `src/editor/*`, `src/map/edges.js` | `verify-editor` FIRST (it is the one check written against them directly), then `verify-screens` (renders `#/editor`'s initial state) | ~2s |
+   | `src/apps/MapRoad.jsx` (`sceneFor`, the `mapData`/`startAt` props) | `verify-editor` (replays the same loadMap/seedGraph/firstEdge/playerOn pipeline `sceneFor` uses, on a drawn map, headlessly -- this is what caught `firstEdge` pointing at the wrong end), `verify-drive`, `verify-wheel`, `verify-screens` | ~20s |
    | `src/iso/*` | `verify-perf`, `verify-wheel`, `verify-map`, `verify-screens` | 8s |
    | `src/map/*` | `verify-map`, `verify-graph`, `verify-wheel`, `verify-perf`, `verify-screens` (the scene loads its roads through it) | ~50s |
    | `src/sim/graph.js` | `verify-graph`, `verify-drive`, `verify-signal`, `verify-bays`, and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
@@ -1678,6 +1680,9 @@ src/map/format.js        the map format: roads as strokes in metres, KINDS with 
 src/map/bays.js          turn bays: a lane that begins before an intersection, its taper derived from the lane change's own numbers
 src/map/load.js          loading a map: normalise, warn, never throw; the surface and lane lines; the graph
 src/map/samples.js       hand-written maps as data -- stage 0, and the test map #/map drives
+src/map/edges.js         where a car starts on a map with no hardcoded start: the first dangling end
+src/editor/model.js      the editor's data model: pure functions over a map, nothing else -- the draft IS the format
+src/editor/validate.js   can a draft be driven yet: loadMap + graphOf, never letting a mid-edit map throw
 src/iso/project.js       the isometric projection and the one depth key everything sorts by
 src/iso/draw.js          painting the world on a canvas: roads, junctions, boxes for cars, sorted once
 src/iso/chase.js         the chase camera: leads with speed, eases, turns with the car (SIMULATOR.md 5.2)
@@ -1688,7 +1693,8 @@ src/iso/road.js          stage 0's hand-built roads (a map now reproduces them)
 src/iso/world.js         stage 0's traffic on those roads
 src/settings.js          the player's settings, through the storage adapter
 src/copy.js              copy to the clipboard over plain HTTP: clipboard, execCommand, then select
-src/apps/MapRoad.jsx     STAGE 1 (#/map): drive the test map in traffic, or watch it
+src/apps/MapRoad.jsx     STAGE 1 (#/map): drive the test map in traffic, or watch it -- and, given a `mapData` prop, whatever map the editor built
+src/apps/Editor.jsx      STAGE 2 (#/editor): draw roads and zones, set kinds/lanes/speed/elevation/control, validate, save, Drive it
 src/apps/Wheel.jsx       the wheel screen (#/wheel): the controls on stage 0's roads
 src/apps/IsoRoad.jsx     stage 0 (#/iso): the isometric world and the budget sweep
 src/theme.js             palette and type — the engine must never import this
@@ -2049,10 +2055,11 @@ node tools/verify-connect.mjs      permitted movements are the network's: the ge
 node tools/verify-bays.mjs          turn bays: a lane lies on its neighbour until it opens and a lane out once it has, is for its turn only, and the traffic uses it for that turn and nothing else
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 node tools/verify-core.mjs         the live screens stand on src/core/ alone: core imports nothing outside itself, no live screen reaches the engine, no core name is declared twice
+node tools/verify-editor.mjs       the editor: the draft IS the map format, a hand-written map replayed through it round-trips exactly, snap preview finds an end and only an end, nothing drawn however badly can throw validation, and Drive it is the real pipeline run headlessly
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All thirty-nine must exit 0 **before a commit**. Between commits, run
+All forty must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:

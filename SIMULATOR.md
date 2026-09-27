@@ -404,6 +404,12 @@ sample and every prop knows its chunk. Two things read the index:
 
 ## 4. The editor, first version
 
+**BUILT, 27 September** (`src/apps/Editor.jsx`, `src/editor/model.js`,
+`src/editor/validate.js`, `src/map/edges.js`, `tools/verify-editor.mjs`),
+against exactly this list. What follows is the spec it was built to;
+what actually shipped, what it deliberately left out, and the real bug
+finding it is recorded at the end of the section.
+
 The minimum that lets the maintainer draw a road network with kinds and
 elevation and drive it, at `#/editor`:
 
@@ -428,6 +434,55 @@ loader the game uses, from the first day. The generation inside shapes —
 local streets filling a district, buildings along frontages, parking and
 props — is stage 5; the editor's job at v1 is to make the blockout by
 hand.
+
+**THE DRAFT IS THE MAP.** `editor/model.js`'s functions are pure and
+return exactly the shape `map/format.js` already defines -- addRoad,
+addPoint, setRoadProps, setRoadControl, setPointZ, addZone and their
+opposites -- so save is `JSON.stringify` with nothing editor-specific to
+strip, and the format stays the one thing the editor and the simulator
+agree on rather than gaining a second, editor-only shape. "Drive it"
+reuses `MapRoad.jsx` -- the same screen `#/map` runs -- which now takes
+an optional `mapData` prop in place of the hardcoded test map; `#/map`
+itself is untouched (byte-identical render, confirmed by
+`verify-screens`).
+
+**WHAT V1 LEFT OUT, DELIBERATELY.** Per-lane turn overrides, turn bays
+and protected-left arrows exist in the format (the big arterial,
+1.1.18) but have no editor UI yet -- a map wanting them is still
+hand-authored in `map/samples.js`, matching the doc's own scope here
+("the editor's job at v1 is to make the blockout by hand"). A road with
+NO intersection anywhere (both ends dangling, stage 0's own shape) has
+no "Drive it" start yet either -- `curbLegOf` refuses a through-only
+spot on purpose, and starting a drive on one needs a different call;
+flagged in `map/edges.js` rather than silently unsupported.
+
+**A REAL BUG, CAUGHT HEADLESSLY, PER THE HOUSE RULE OF VERIFYING FROM
+THE SERVER SIDE.** `verify-screens.mjs` can only render the editor's
+INITIAL state under SSR -- it cannot click "Drive it" -- so
+`verify-editor.mjs` section 7 runs the exact pipeline `MapRoad`'s
+`sceneFor` uses (loadMap, seedGraph, find an open end, playerOn,
+withDriver, step) directly, against a map drawn through the editor's
+own operations rather than hand-authored. It found that the first
+version of "where does a car start" pointed at the WRONG end of the
+road: `curbLegOf`'s `end` argument names which end of the road touches
+a node, not which end is the dangling one a car enters from, and the
+two are opposite. Getting it backwards meant `playerOn` returned null
+and a null actor reached `withDriver`, which every downstream reader of
+`a.player` would have thrown on -- not on the hardcoded test map (its
+own start was always correct by construction) but on the very first map
+someone actually draws. A real browser would eventually have found
+this by clicking "Drive it" once; the headless pipeline test found it
+without one, which is the whole point of verifying this way.
+
+**Can a badly drawn map break the sim?** Tried directly, in
+`verify-editor.mjs` section 4: an empty draft, a road with zero or one
+point, coincident points, a NaN coordinate from a stray event, a road
+that loops back and crosses itself, a nonsense control string, a
+negative lane count, turn bays on a one-way road, a crest steeper than
+any road allows, a zone with no polygon -- eleven adversarial drafts,
+none threw and none crashed validation. Whether drawing a road is
+pleasant enough to draw eight square kilometres of them is the
+maintainer's question to answer by using it, not one a check can.
 
 ---
 
@@ -2050,7 +2105,7 @@ The report's cap line read "held up to 322 cars... broke at step 1
 and was being counted as the break. Fixed in `perf.js` -- the probe
 is reported on its own line as the control it is.
 
-### Stage 2 — the editor, first version
+### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,
 validate, save, drive — in one screen.
@@ -2059,8 +2114,11 @@ validate, save, drive — in one screen.
 the same session. The first throwaway test maps are his.
 *The question:* can a badly drawn map break the sim? (Try to.) Is
 drawing a road pleasant enough that he will draw eight square
-kilometres of them?
-*Cost:* one to two weeks.
+kilometres of them? -- the first half is answered (eleven adversarial
+drafts, none broke validation, section 4 above); the second is his to
+answer by using it.
+*Cost:* one to two weeks estimated; shipped in one session, v1 scope
+(section 4 above says what that leaves out).
 
 ### Stage 3 — the exam mode, as a reinterpretation
 
