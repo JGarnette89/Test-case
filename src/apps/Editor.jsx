@@ -50,11 +50,12 @@ import { KINDS, CONTROLS, ZONES } from "../map/format.js";
 import { testMap1 } from "../map/samples.js";
 import {
   newDraft, addRoad, addPoint, updatePoint, removeLastPoint, deleteRoad,
-  setRoadProps, setRoadControl, setPointZ, nearestRoadEnd, cumulative,
+  setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
   addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../editor/library.js";
+import { zoomAbout as zoomView, pinchView, panView, isTap, TAP_PX } from "../editor/gesture.js";
 import MapRoad from "./MapRoad.jsx";
 import { firstEdge } from "../map/edges.js";
 import ErrorBoundary from "./ErrorBoundary.jsx";
@@ -174,9 +175,16 @@ export default function Editor() {
       for (const n of validation.loaded.nodes) { const s = toScreen(n.at.x, n.at.y); ctx.beginPath(); ctx.arc(s.x, s.y, 3.5, 0, 7); ctx.fill(); }
     }
 
-    /* Roads. */
-    for (const r of draft.roads) {
-      if (r.points.length < 2) continue;
+    /* Roads -- with the point being dragged drawn where the finger is,
+       not where it was: the drag lives in the ref until release, so
+       reading `draft` alone would leave the road still until then. */
+    const drag = v.dragging?.mode === "point" && v.dragging.live ? v.dragging : null;
+    const ptsOf = (r) => (drag && drag.point.road === r.id
+      ? r.points.map((p, i) => (i === drag.point.index ? { ...p, x: drag.live.x, y: drag.live.y } : p))
+      : r.points);
+    for (const r0 of draft.roads) {
+      if (r0.points.length < 2) continue;
+      const r = { ...r0, points: ptsOf(r0) };
       const isSel = selected?.type === "road" && selected.id === r.id;
       const isDraw = drawing?.type === "road" && drawing.id === r.id;
       ctx.beginPath();
@@ -192,6 +200,14 @@ export default function Editor() {
       if (isSel || isDraw) {
         ctx.fillStyle = C.white;
         for (const p of r.points) { const s = toScreen(p.x, p.y); ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, 7); ctx.fill(); }
+      }
+      /* The selected APPROACH: a ring on the end whose control, bays
+         and arrow the panel is showing. */
+      if (isSel && selected.end) {
+        const p = selected.end === "start" ? r.points[0] : r.points.at(-1);
+        const s = toScreen(p.x, p.y);
+        ctx.strokeStyle = C.amber; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(s.x, s.y, 10, 0, 7); ctx.stroke();
       }
     }
 
@@ -346,12 +362,26 @@ export default function Editor() {
     return null;
   };
 
-  const onDown = (e) => {
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    const p = at(e), w = toWorld(p.x, p.y);
-    if (tool === "pan") { view.current.dragging = { mode: "pan", startPx: p, x0: view.current.x0, y0: view.current.y0 }; return; }
+  /* --- pointer: a phone first ------------------------------------------
+     Jay draws on a phone, so every gesture has to work with fingers and
+     no modifier keys:
+       - a TAP places a point (road, zone) or selects (select);
+       - a one-finger DRAG pans, in any tool -- except starting on a
+         point in the select tool, which drags that point;
+       - TWO fingers pinch-zoom and pan together, in any tool;
+       - a tap on a road's END in the select tool selects that APPROACH,
+         for its control, bays and arrow (SIMULATOR.md 4: "control per
+         approach set by clicking the approach").
+     So a point is placed on RELEASE, not on press: a press that turns
+     into a drag or a pinch must not have already dropped a point where
+     the finger first landed. TAP_PX is how far a finger may wander and
+     still be a tap. */
+  const zoomAbout = (px, py, factor) => { Object.assign(view.current, zoomView(view.current, px, py, factor)); };
+
+  const tapAt = (p) => {
+    const w = toWorld(p.x, p.y);
     if (tool === "road") {
-      const snap = nearestRoadEnd(draft, w, { within: 6 / view.current.scale, excludeRoad: drawing?.id });
+      const snap = nearestRoadEnd(draft, w, { within: SNAP_PX / view.current.scale, excludeRoad: drawing?.id });
       const pt = snap ? snap.at : { x: w.x, y: w.y, z: 0 };
       if (!drawing) {
         /* `addRoad` is pure and returns its new id synchronously --
@@ -362,6 +392,11 @@ export default function Editor() {
         setDraft(addPoint(m1, id, pt));
         setDrawing({ type: "road", id });
       } else {
+        /* A second tap on the same spot (a double-tap, or a double-click
+           on a desktop) finishes rather than adding a point on top of
+           the last one, which the loader would only thin away again. */
+        const last = roadOf(drawing.id)?.points.at(-1);
+        if (last && Math.hypot(last.x - pt.x, last.y - pt.y) * view.current.scale < TAP_PX) { finishDrawing(); return; }
         setDraft(addPoint(draft, drawing.id, pt));
         if (snap) finishDrawing(false);   // joining another road's end is a natural stop
       }
@@ -373,13 +408,20 @@ export default function Editor() {
         setDraft(addZonePoint(m1, id, w));
         setDrawing({ type: "zone", id });
       } else {
+        const last = zoneOf(drawing.id)?.polygon.at(-1);
+        if (last && Math.hypot(last.x - w.x, last.y - w.y) * view.current.scale < TAP_PX) { finishDrawing(); return; }
         setDraft(addZonePoint(draft, drawing.id, w));
       }
       return;
     }
     if (tool === "select") {
       const hp = hitPoint(p.x, p.y);
-      if (hp) { view.current.dragging = { mode: "point", ...hp }; setSelected({ type: "road", id: hp.road }); return; }
+      if (hp) {
+        const r = roadOf(hp.road);
+        const end = hp.index === 0 ? "start" : hp.index === r.points.length - 1 ? "end" : null;
+        setSelected({ type: "road", id: hp.road, end });
+        return;
+      }
       const hr = hitRoad(p.x, p.y);
       if (hr) { setSelected({ type: "road", id: hr }); return; }
       const hz = hitZone(w.x, w.y);
@@ -387,39 +429,80 @@ export default function Editor() {
       setSelected(null);
     }
   };
+
+  const onDown = (e) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const p = at(e);
+    const v = view.current;
+    v.pointers = v.pointers ?? new Map();
+    v.pointers.set(e.pointerId, p);
+    if (v.pointers.size === 2) {
+      /* A second finger: whatever the first was doing becomes a pinch. */
+      const [a, b] = [...v.pointers.values()];
+      v.dragging = { mode: "pinch", start: { a, b, view: { x0: v.x0, y0: v.y0, scale: v.scale } } };
+      return;
+    }
+    if (v.pointers.size > 2) return;
+    const hp = tool === "select" ? hitPoint(p.x, p.y) : null;
+    v.dragging = { mode: tool === "pan" ? "pan" : "pending", startPx: p, x0: v.x0, y0: v.y0, point: hp };
+  };
   const onMove = (e) => {
-    const p = at(e), w = toWorld(p.x, p.y);
-    view.current.cursor = w;
-    const d = view.current.dragging;
-    if (d?.mode === "pan") {
-      view.current.x0 = d.x0 - (p.x - d.startPx.x) / view.current.scale;
-      view.current.y0 = d.y0 - (p.y - d.startPx.y) / view.current.scale;
-    } else if (d?.mode === "point") {
-      /* Live, in the ref only -- committed on release. */
-      d.live = w;
+    const p = at(e), v = view.current;
+    v.cursor = toWorld(p.x, p.y);
+    if (v.pointers?.has(e.pointerId)) v.pointers.set(e.pointerId, p);
+    const d = v.dragging;
+    if (d?.mode === "pinch" && v.pointers.size >= 2) {
+      const [a, b] = [...v.pointers.values()];
+      Object.assign(v, pinchView(d.start, a, b));
+    } else if (d && (d.mode === "pending" || d.mode === "pan" || d.mode === "point")) {
+      if (d.mode === "pending" && !isTap(d.startPx, p)) d.mode = d.point ? "point" : "pan";
+      if (d.mode === "pan") {
+        Object.assign(v, panView({ x0: d.x0, y0: d.y0, scale: v.scale }, d.startPx, p));
+      } else if (d.mode === "point") {
+        /* Live, in the ref only -- committed on release, drawn now. */
+        d.live = v.cursor;
+      }
     }
     paint();
   };
-  const onUp = () => {
-    const d = view.current.dragging;
+  const onUp = (e) => {
+    const v = view.current, d = v.dragging;
+    v.pointers?.delete(e.pointerId);
+    if (d?.mode === "pinch") {
+      /* Lifting one finger of a pinch ends the gesture; nothing is
+         placed, and the other finger does not become a stray tap. */
+      if ((v.pointers?.size ?? 0) === 0) v.dragging = null;
+      return;
+    }
+    if (d?.mode === "pending") tapAt(d.startPx);
     if (d?.mode === "point" && d.live) {
-      const snap = (d.index === 0 || d.index === roadOf(d.road)?.points.length - 1)
-        ? nearestRoadEnd(draft, d.live, { within: 6 / view.current.scale, excludeRoad: d.road })
+      const { road, index } = d.point;
+      const snap = (index === 0 || index === roadOf(road)?.points.length - 1)
+        ? nearestRoadEnd(draft, d.live, { within: SNAP_PX / v.scale, excludeRoad: road })
         : null;
       const pt = snap ? snap.at : d.live;
-      setDraft((m) => updatePoint(m, d.road, d.index, pt));
+      setDraft((m) => updatePoint(m, road, index, { x: pt.x, y: pt.y }));
+      setSelected({ type: "road", id: road });
     }
-    view.current.dragging = null;
-  };
-  const onWheel = (e) => {
-    e.preventDefault();
-    const p = at({ currentTarget: e.currentTarget, clientX: e.clientX, clientY: e.clientY });
-    const before = toWorld(p.x, p.y);
-    view.current.scale = Math.max(0.3, Math.min(20, view.current.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
-    const after = toWorld(p.x, p.y);
-    view.current.x0 += before.x - after.x; view.current.y0 += before.y - after.y;
+    v.dragging = null;
     paint();
   };
+  /* The wheel, NATIVE and non-passive: React attaches its own wheel
+     listener passive, so `preventDefault` there cannot stop the page
+     scrolling under the canvas while zooming it. */
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const r = canvas.getBoundingClientRect();
+      zoomAbout(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+      paint();
+    };
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paint, driving]);
 
   const jumpTo = (pt) => {
     if (!pt) return;
@@ -537,20 +620,22 @@ export default function Editor() {
           </>
         )}
         <span style={{ flex: 1 }} />
-        <button className="btn" style={S.btn} onClick={() => { view.current.scale = Math.max(0.3, view.current.scale / 1.25); paint(); }}><ZoomOut size={16} /></button>
-        <button className="btn" style={S.btn} onClick={() => { view.current.scale = Math.min(20, view.current.scale * 1.25); paint(); }}><ZoomIn size={16} /></button>
+        <button className="btn" style={S.btn} onClick={() => { const c = canvasRef.current; zoomAbout((c?.clientWidth ?? 0) / 2, (c?.clientHeight ?? 0) / 2, 1 / 1.25); paint(); }}><ZoomOut size={16} /></button>
+        <button className="btn" style={S.btn} onClick={() => { const c = canvasRef.current; zoomAbout((c?.clientWidth ?? 0) / 2, (c?.clientHeight ?? 0) / 2, 1.25); paint(); }}><ZoomIn size={16} /></button>
       </div>
 
       <div style={S.view}>
         <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }}
-          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel} />
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
       </div>
 
       <div style={S.panel}>
         {selRoad && (
-          <RoadPanel road={selRoad}
+          <RoadPanel road={selRoad} end={selected?.end ?? null}
             onChange={(patch) => setDraft((m) => setRoadProps(m, selRoad.id, patch))}
             onControl={(end, v) => setDraft((m) => setRoadControl(m, selRoad.id, end, v))}
+            onBays={(end, b) => setDraft((m) => setRoadBays(m, selRoad.id, end, b))}
+            onArrow={(end, on) => setDraft((m) => setLeftArrow(m, selRoad.id, end, on))}
             onZ={(i, z) => setDraft((m) => setPointZ(m, selRoad.id, i, z))}
             onDelete={() => { setDraft((m) => deleteRoad(m, selRoad.id)); setSelected(null); }}
           />
@@ -629,7 +714,49 @@ function Field({ label, children }) {
 }
 const inputStyle = { minHeight: 32, fontSize: 16, background: "#22262c", color: TEXT, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, padding: "2px 6px" };
 
-function RoadPanel({ road, onChange, onControl, onZ, onDelete }) {
+/* ONE APPROACH -- a road end where it meets an intersection: how it is
+   controlled, the turn bays that open before it, and whether its signal
+   shows a protected left. Everything the big arterial at E was hand-
+   authored with (map/bays.js, sim/signal.js), now drawable. A bay is
+   meaningless at an end that meets no intersection, and the loader
+   drops it there with a warning; the panel does not second-guess that,
+   it lets Validate say so. */
+function Approach({ road, end, active, onControl, onBays, onArrow }) {
+  const b = road.bays?.[end] ?? null;
+  const left = b?.left ?? 0, right = b?.right ?? 0;
+  const ctl = road.control?.[end] ?? "none";
+  const lit = typeof ctl === "string" && ctl.startsWith("signal");
+  const setBays = (l, r) => onBays(end, l || r ? { left: l, right: r } : null);
+  return (
+    <div style={{ ...S.approach, borderColor: active ? C.amber : "rgba(255,255,255,0.10)" }}>
+      <div style={{ fontFamily: FONT_D, fontSize: 12, color: active ? C.amber : DIM }}>Approach at the {end} {active ? "· selected" : ""}</div>
+      <div style={S.row}>
+        <Field label="Control">
+          <select style={inputStyle} value={ctl} onChange={(e) => onControl(end, e.target.value)}>
+            {CONTROLS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+        <Field label="Left bays">
+          <select style={inputStyle} value={left} onChange={(e) => setBays(Number(e.target.value), right)}>
+            <option value={0}>none</option><option value={1}>1</option><option value={2}>2 (double left)</option>
+          </select>
+        </Field>
+        <Field label="Right bay">
+          <select style={inputStyle} value={right} onChange={(e) => setBays(left, Number(e.target.value))}>
+            <option value={0}>none</option><option value={1}>1</option>
+          </select>
+        </Field>
+        <Field label="Left arrow">
+          <input type="checkbox" disabled={!lit} title={lit ? "a protected left arrow on this signal" : "only a signal has an arrow"}
+            style={{ width: 22, height: 22, marginTop: 4, opacity: lit ? 1 : 0.4 }}
+            checked={!!road.leftArrow?.[end] && lit} onChange={(e) => onArrow(end, e.target.checked)} />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
+function RoadPanel({ road, end, onChange, onControl, onBays, onArrow, onZ, onDelete }) {
   const at = cumulative(road.points);
   const total = at.at(-1) ?? 0;
   const zs = road.points.map((p) => p.z ?? 0);
@@ -657,18 +784,9 @@ function RoadPanel({ road, onChange, onControl, onZ, onDelete }) {
           <input type="checkbox" style={{ width: 22, height: 22, marginTop: 4 }} checked={!!road.oneWay} onChange={(e) => onChange({ oneWay: e.target.checked })} />
         </Field>
       </div>
-      <div style={S.row}>
-        <Field label="Control at start">
-          <select style={inputStyle} value={road.control?.start ?? "none"} onChange={(e) => onControl("start", e.target.value)}>
-            {CONTROLS.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </Field>
-        <Field label="Control at end">
-          <select style={inputStyle} value={road.control?.end ?? "none"} onChange={(e) => onControl("end", e.target.value)}>
-            {CONTROLS.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </Field>
-      </div>
+      {["start", "end"].map((e) => (
+        <Approach key={e} road={road} end={e} active={end === e} onControl={onControl} onBays={onBays} onArrow={onArrow} />
+      ))}
 
       <div style={{ fontFamily: FONT_D, fontSize: 12, color: DIM, marginTop: 4 }}>Elevation ({total.toFixed(0)} m long)</div>
       {road.points.length >= 2 && (
@@ -709,6 +827,10 @@ function ZonePanel({ zone, onChange, onDelete }) {
   );
 }
 
+/* A loader WARNING carries its own location (`at`); a graph ERROR --
+   a lane with nowhere to land, a bad turns list -- names its NODE
+   instead, since the lane is inside it. Both jump: the node's own
+   location stands in for the error's. */
 function ValidatePanel({ validation, onJump }) {
   if (!validation) return null;
   const items = [...(validation.warnings ?? []).map((w) => ({ ...w, kind: "warning" })), ...(validation.errors ?? []).map((e) => ({ ...e, kind: "error" }))];
@@ -722,7 +844,7 @@ function ValidatePanel({ validation, onJump }) {
       {items.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 140, overflow: "auto" }}>
           {items.map((it, i) => (
-            <button key={i} className="btn" style={S.warnRow} onClick={() => onJump(it.at)}>
+            <button key={i} className="btn" style={S.warnRow} onClick={() => onJump(it.at ?? validation.loaded?.nodes.find((n) => n.id === it.node)?.at)}>
               <span style={{ color: it.kind === "error" ? C.red : C.amber, fontFamily: FONT_D, fontSize: 11, textTransform: "uppercase" }}>{it.kind}</span>
               <span style={{ fontSize: 12, color: TEXT, textAlign: "left", flex: 1 }}>{it.message}</span>
             </button>
@@ -749,6 +871,7 @@ const S = {
   note: { fontFamily: FONT_U, fontSize: 12, color: DIM, lineHeight: 1.45 },
   card: { display: "flex", flexDirection: "column", gap: 8, padding: 10, borderRadius: 8, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)" },
   cardHead: { display: "flex", alignItems: "center", justifyContent: "space-between", fontFamily: FONT_D, fontSize: 13, color: TEXT },
+  approach: { display: "flex", flexDirection: "column", gap: 6, padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.10)" },
   warnRow: { display: "flex", gap: 8, alignItems: "center", padding: "6px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", minHeight: 32, textAlign: "left" },
   driveBack: { position: "fixed", top: 10, left: 10, zIndex: 20, minHeight: 44, padding: "0 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(20,22,26,0.85)", color: C.white, fontFamily: FONT_D, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 },
 };

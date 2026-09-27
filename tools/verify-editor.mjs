@@ -13,6 +13,9 @@ import {
 import { validateDraft } from "../src/editor/validate.js";
 import { CLEARANCE_MIN } from "../src/map/load.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../src/editor/library.js";
+import { zoomAbout, pinchView, panView, isTap, toWorld as viewToWorld } from "../src/editor/gesture.js";
+import { graphOf } from "../src/sim/graph.js";
+import { overlapping } from "../src/sim/crossing.js";
 import { testMap1 } from "../src/map/samples.js";
 import { loadMap } from "../src/map/load.js";
 import { LANE, CONTROLS, emptyMap, road, stage0Map } from "../src/map/format.js";
@@ -311,6 +314,65 @@ console.log("\n9. THE LIBRARY: MULTIPLE MAPS AS DATA, NOT ONE SCRATCH SLOT");
   const pruned = await prunedList();
   check(pruned.every((e) => e.id !== "ghost-id") && (await listMaps()).every((e) => e.id !== "ghost-id"),
     "prunedList removes an entry whose map is gone, and the index it wrote back stays pruned");
+}
+
+console.log("\n10. THE VIEW DOES WHAT A THUMB EXPECTS -- COMPUTED, SINCE IT CANNOT BE WATCHED HERE");
+{
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const v = { x0: 100, y0: 50, scale: 4 };
+  const under = viewToWorld(v, 120, 80);
+  const z = zoomAbout(v, 120, 80, 1.5);
+  const after = viewToWorld(z, 120, 80);
+  check(near(z.scale, 6) && near(under.x, after.x) && near(under.y, after.y), "zooming keeps the world point under the cursor exactly where it was");
+  check(zoomAbout(v, 0, 0, 1000).scale === 20 && zoomAbout(v, 0, 0, 1e-6).scale === 0.3, "and the scale is clamped at both ends");
+
+  /* A pinch: two fingers spreading to twice their distance about the
+     same midpoint doubles the scale and keeps the world under that
+     midpoint still; the same fingers both moving 30 px right, apart
+     unchanged, pan by 30 px of world and do not zoom at all. */
+  const start = { a: { x: 100, y: 100 }, b: { x: 200, y: 100 }, view: v };
+  const mid = viewToWorld(v, 150, 100);
+  const spread = pinchView(start, { x: 50, y: 100 }, { x: 250, y: 100 });
+  const midAfter = viewToWorld(spread, 150, 100);
+  check(near(spread.scale, 8) && near(mid.x, midAfter.x) && near(mid.y, midAfter.y), "a pinch spreading 2x doubles the zoom about the fingers, the world under them unmoved");
+  const slide = pinchView(start, { x: 130, y: 100 }, { x: 230, y: 100 });
+  check(near(slide.scale, 4) && near(viewToWorld(slide, 180, 100).x, mid.x), "two fingers sliding together pan without zooming, the world following the fingers");
+
+  const panned = panView(v, { x: 10, y: 10 }, { x: 50, y: 30 });
+  check(near(viewToWorld(panned, 50, 30).x, viewToWorld(v, 10, 10).x) && near(viewToWorld(panned, 50, 30).y, viewToWorld(v, 10, 10).y), "a one-finger drag carries the world point under the finger with it");
+  check(isTap({ x: 0, y: 0 }, { x: 5, y: 5 }) && !isTap({ x: 0, y: 0 }, { x: 9, y: 0 }), "a finger that wanders a few pixels still taps; one that travels is a drag, and places nothing");
+}
+
+console.log("\n11. A BIG ARTERIAL DRAWN ENTIRELY THROUGH THE EDITOR'S OWN APPROACH CONTROLS");
+{
+  /* Node E was hand-authored in map/samples.js; the editor now has the
+     same three controls per approach -- a signal, turn bays, a protected
+     left arrow -- so the same intersection can be DRAWN. This builds one
+     from nothing but those operations and asks the sim what it made. */
+  let m = newDraft("art", "arterial");
+  const C = { x: 500, y: 500 };
+  const arms = [["n", { x: 500, y: 80 }], ["s", { x: 500, y: 920 }], ["e", { x: 920, y: 500 }], ["w", { x: 80, y: 500 }]];
+  for (const [, far] of arms) {
+    let id; ({ map: m, id } = addRoad(m, { kind: "arterial" }));
+    for (let i = 0; i <= 20; i++) m = addPoint(m, id, { x: far.x + ((C.x - far.x) * i) / 20, y: far.y + ((C.y - far.y) * i) / 20 });
+    m = setRoadControl(m, id, "end", "signal");
+    m = setRoadBays(m, id, "end", { left: 1, right: 1 });
+    m = setLeftArrow(m, id, "end", true);
+  }
+  const v = validateDraft(m);
+  check(v.ok && v.errors.length === 0, `it loads, and every lane lands (${v.errors.length} connectivity errors)`);
+  const g = graphOf(v.loaded);
+  const node = g.at.find((spot) => !spot.through);
+  const bays = Object.values(node.layout.legs).filter((l) => l.bay);
+  check(bays.length === 8, `it has the bays that were asked for: ${bays.length} (a left and a right on each of four approaches)`);
+  check(node.layout.signal && Object.values(node.layout.signal.arrows).every(Boolean) && node.layout.signal.lead.every((x) => x > 0),
+    "and its signal runs a protected left on every approach, from the arrows ticked");
+  const lefts = Object.values(node.layout.paths).filter((p) => p.intent === "left");
+  check(lefts.length > 0 && lefts.every((p) => node.layout.legs[p.from].bay === "left"), `every left is made from a left bay (${lefts.length} paths)`);
+  let w = seedGraph(3, 60, v.loaded, { target: 60, posted: true });
+  let overlaps = 0;
+  for (let i = 0; i < 20 * 60; i++) { w = step(w); if (i % 5 === 0) overlaps += overlapping(w).length; }
+  check(overlaps === 0, `a minute of traffic through it at 60 cars: ${overlaps} overlapping car-ticks`);
 }
 
 console.log("\n" + "=".repeat(70));

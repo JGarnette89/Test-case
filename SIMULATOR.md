@@ -503,6 +503,24 @@ the first rather than creating a new entry. Fixed the way
 what exists, never just trusted to be unique (`verify-editor.mjs`
 section 9, sabotaged to confirm it fails without the fix).
 
+**THE REST OF SECTION 4'S LIST, AND THE PHONE.** Control per approach
+is set by tapping the approach: in the select tool a tap on a road's END
+selects that approach (ringed on the canvas) and the panel shows it --
+control, left bays (none, one, or two for a double left), a right bay,
+and the protected left arrow, enabled only on a signal. So an
+intersection like the test map's E, hand-authored in `map/samples.js`,
+can now be drawn: `verify-editor.mjs` section 11 builds one from those
+operations alone and gets eight bays, a protected left on every
+approach, every left from a bay, and a minute of traffic with no
+overlaps. Connectivity errors now jump to their intersection (they
+carry a node, not a location). And the canvas is usable with fingers:
+a tap places or selects, a one-finger drag pans in any tool, two
+fingers pinch-zoom, dragging a point moves it live, a double-tap
+finishes a road -- points are placed on RELEASE, so a press that turns
+into a drag or a pinch never drops a stray point. The view geometry
+(`editor/gesture.js`) is pure and checked in section 10, since a canvas
+gesture is exactly the thing this environment cannot watch.
+
 *Not touched, because already true*: free-drawn curves (a road is
 points placed wherever clicked, never a tile) and chunked loading
 (`map/load.js` already indexes every sample and prop by chunk at load
