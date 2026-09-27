@@ -53,10 +53,12 @@ console.log("\n1. THE MODEL IS PURE, AND OPERATIONS COMPOSE");
   check(m.roads[0].lanes === 2 && m.roads[0].speed === 50 && m.roads[0].kind === "arterial", "a property patch changes only the named fields");
   m = setRoadControl(m, a, "end", "signal");
   check(m.roads[0].control.end === "signal" && m.roads[0].control.start === "none", "control is per end");
-  m = setRoadTurns(m, a, "end", [["left"], ["right"]]);
   m = setRoadBays(m, a, "end", { left: 1, right: 0, length: 40 });
+  m = setRoadTurns(m, a, "end", [["left"], ["straight"], ["right"]]);
   m = setLeftArrow(m, a, "end", true);
-  check(m.roads[0].turns.end.length === 2 && m.roads[0].bays.end.left === 1 && m.roads[0].leftArrow.end === true, "turns, bays and left-arrow are per end and independent of each other");
+  check(m.roads[0].turns.end.length === 3 && m.roads[0].bays.end.left === 1 && m.roads[0].leftArrow.end === true && m.roads[0].turns.start == null, "turns, bays and left-arrow are per end and independent of each other");
+  check(setRoadBays(m, a, "end", { left: 1, right: 0, length: 60 }).roads[0].turns.end.length === 3, "a bay change that leaves the lanes at the line alone keeps the turns override");
+  check(setRoadBays(m, a, "end", null).roads[0].turns.end == null, "one that changes how many lanes are at the line drops it, rather than leave a wrong-length list for the graph to refuse");
 
   ({ map: m, id: b } = addZone(m, { kind: "park" }));
   m = addZonePoint(m, b, { x: 0, y: 0 });
@@ -499,6 +501,45 @@ console.log("\n14. RESHAPING: A TAPPED ZIGZAG BECOMES A ROAD A CAR CAN TAKE AT S
      smoothed, the corners open and the road keeps more of its speed. */
   const raw = loadMap(m).roads[0], smooth = loadMap(sm).roads[0];
   check(smooth.speed > raw.speed, `the loader posts the smoothed road faster: ${raw.speed} km/h as tapped, ${smooth.speed} km/h after three passes (arterial default 60)`);
+}
+
+console.log("\n15. LANE ARROWS: THE PANEL SHOWS WHAT THE SIM WILL DO, AND WRITES THE FORMAT'S OWN OVERRIDE");
+{
+  /* A crossroads of two-lane roads, drawn and joined through the
+     editor's own operations. */
+  let m = newDraft(); let a, b;
+  ({ map: m, id: a } = addRoad(m, { kind: "arterial" })); m = addPoint(m, a, { x: 0, y: 100 }); m = addPoint(m, a, { x: 200, y: 100 });
+  ({ map: m, id: b } = addRoad(m, { kind: "arterial" })); m = addPoint(m, b, { x: 100, y: 0 }); m = addPoint(m, b, { x: 100, y: 200 });
+  m = setRoadProps(m, a, { lanes: 2 }); m = setRoadProps(m, b, { lanes: 2 });
+  const cr = validateDraft(m).loaded.crossings[0];
+  m = joinCrossing(m, a, b, cr.at);
+  const v = validateDraft(m);
+  const keys = Object.keys(v.approaches ?? {}).sort();
+  check(v.ok && keys.length === 4 && keys.every((k) => !k.includes("#")), `every approach into the node is keyed by a DRAFT road end (${keys.join(", ")})`);
+  const k0 = keys[0], [r0, e0] = k0.split("|");
+  const rule = v.approaches[k0];
+  check(!rule.given && JSON.stringify(rule.turns) === JSON.stringify([["left", "straight"], ["straight", "right"]]) && rule.offered.length === 3,
+    `untouched, it shows the general rule: ${JSON.stringify(rule.turns)}`);
+
+  /* A left-only centre lane, set through the model the toggles call. */
+  const want = [["left"], ["straight", "right"]];
+  const m2 = setRoadTurns(m, r0, e0, want);
+  const v2 = validateDraft(m2);
+  check(v2.approaches[k0].given && JSON.stringify(v2.approaches[k0].turns) === JSON.stringify(want) && v2.errors.length === 0,
+    "an override is what the graph then uses, with no authoring error");
+  const full = graphOf(v2.loaded);
+  const legs = full.at.flatMap((s) => Object.values(s.layout.legs)).filter((l) => l.road.split("#")[0] === r0 && l.end === e0);
+  check(legs.length === 2 && legs.every((l) => JSON.stringify(l.turns) === JSON.stringify(want[l.pos])), "and the FULL graph -- the one Drive it builds -- gives each lane exactly that");
+  check(!validateDraft(setRoadTurns(m2, r0, e0, null)).approaches[k0].given, "Reset to rule clears it");
+  check(setRoadProps(m2, r0, { lanes: 3 }).roads.find((r) => r.id === r0).turns[e0] == null, "changing the lane count drops an override that would now be the wrong length");
+
+  /* A T made by the loader's own split: the approaches at the node the
+     split made are not draft road ends, and are not offered. */
+  let t = newDraft(); let c, d;
+  ({ map: t, id: c } = addRoad(t)); t = addPoint(t, c, { x: 0, y: 0 }); t = addPoint(t, c, { x: 200, y: 0 });
+  ({ map: t, id: d } = addRoad(t)); t = addPoint(t, d, { x: 100, y: 100 }); t = addPoint(t, d, { x: 100, y: 1.5 });
+  const vt = validateDraft(t);
+  check(vt.ok && Object.keys(vt.approaches).join() === `${d}|end`, `at a T the loader split, only the stem's own end is offered (${Object.keys(vt.approaches).join(", ")})`);
 }
 
 console.log("\n" + "=".repeat(70));

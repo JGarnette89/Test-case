@@ -67,8 +67,20 @@ export function deleteRoad(map, roadId) {
    `road()`'s own kind-fills-blanks rule only applies to a field that
    was never given, and a patch here is exactly the fields the caller
    names, same discipline. */
+/* A turns override lists one entry per lane at the line -- the road's
+   lanes plus that end's bays -- so a change to either can leave it the
+   wrong length, which the graph would refuse and replace with the
+   general rule anyway. Such an override is dropped here instead, so the
+   panel shows the rule rather than an error; one that still fits stays. */
+const atLine = (r, end) => (r.lanes ?? 1) + (r.bays?.[end]?.left ?? 0) + (r.bays?.[end]?.right ?? 0);
+function fitTurns(r) {
+  if (!r.turns) return r;
+  const turns = { ...r.turns };
+  for (const end of ["start", "end"]) if (turns[end] && turns[end].length !== atLine(r, end)) turns[end] = null;
+  return { ...r, turns };
+}
 export function setRoadProps(map, roadId, patch) {
-  return patchRoad(map, roadId, (r) => ({ ...r, ...patch }));
+  return patchRoad(map, roadId, (r) => fitTurns({ ...r, ...patch }));
 }
 export function setRoadControl(map, roadId, end, control) {
   return patchRoad(map, roadId, (r) => ({ ...r, control: { ...r.control, [end]: control } }));
@@ -77,7 +89,7 @@ export function setRoadTurns(map, roadId, end, turns) {
   return patchRoad(map, roadId, (r) => ({ ...r, turns: { ...(r.turns ?? { start: null, end: null }), [end]: turns } }));
 }
 export function setRoadBays(map, roadId, end, bays) {
-  return patchRoad(map, roadId, (r) => ({ ...r, bays: { ...(r.bays ?? { start: null, end: null }), [end]: bays } }));
+  return patchRoad(map, roadId, (r) => fitTurns({ ...r, bays: { ...(r.bays ?? { start: null, end: null }), [end]: bays } }));
 }
 export function setLeftArrow(map, roadId, end, on) {
   return patchRoad(map, roadId, (r) => ({ ...r, leftArrow: { ...(r.leftArrow ?? { start: false, end: false }), [end]: on } }));

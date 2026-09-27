@@ -31,7 +31,24 @@ function readyFor(map) {
   return { ...map, roads: map.roads.filter((r) => r.points.length >= 2), zones: (map.zones ?? []).filter((z) => z.polygon.length >= 3) };
 }
 
-/* `{ ok, loaded, errors, warnings, crash }`. `crash` is set only if
+/* THE APPROACHES, KEYED BY THE DRAFT'S OWN ROAD ENDS. The loader names
+   a road it split at a T `id#a` (keeps the original start) and `id#b`
+   (keeps the original end), and splits again the same way, so a piece's
+   start is the draft road's start only if every suffix is `#a`, and its
+   end the draft's end only if every suffix is `#b`. An approach at a
+   node the split made is not a draft road end at all, and is left out:
+   the format's `turns` are per road end, and that end has none. */
+export function approachesOf(list = []) {
+  const out = {};
+  for (const a of list) {
+    const [draft, ...parts] = a.road.split("#");
+    const want = a.end === "start" ? "a" : "b";
+    if (parts.every((p) => p === want)) out[`${draft}|${a.end}`] = a;
+  }
+  return out;
+}
+
+/* `{ ok, loaded, errors, warnings, approaches, crash }`. `crash` is set only if
    something in `loadMap`/`graphOf` threw despite the guard above --
    which validate.mjs's own adversarial battery exists to find, so this
    module can be fixed rather than the screen taught to survive it. */
@@ -52,7 +69,7 @@ export function validateDraft(map) {
        three seconds of frozen screen on a phone. "Drive it" builds its
        own full graph through seedGraph, so nothing drives this one. */
     const graph = graphOf(loaded, { conflicts: false });
-    return { ok: true, loaded, warnings: loaded.warnings, errors: graph.errors };
+    return { ok: true, loaded, warnings: loaded.warnings, errors: graph.errors, approaches: approachesOf(graph.approaches) };
   } catch (e) {
     return { ok: false, loaded, warnings: loaded.warnings, errors: [], crash: { stage: "graphOf", message: String(e?.message ?? e) } };
   }

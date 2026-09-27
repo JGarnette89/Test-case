@@ -242,6 +242,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
      into a wall -- and it is the editor's job to refuse to save a map
      that has any. */
   const errors = [];
+  const approaches = [];   // per approach: what it offers and what each lane may do, for the editor
   const roadOf = Object.fromEntries(roads.map((r) => [r.id, r]));
   const lanesOf = (r) => Math.max(1, Math.round(r.lanes ?? 1));
   const lanes = {};
@@ -362,6 +363,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
       const baysOf = (side) => ids.filter((id) => legs[id].base === a && legs[id].bay === side).length;
       const turns = checked.turns ?? defaultTurns(A0.across, offered, { left: baysOf("left"), right: baysOf("right") });
       for (const id of ids) if (legs[id].base === a) legs[id].turns = turns[legs[id].pos];
+      approaches.push({ node: n.id, road: A0.road, end: A0.end, offered: [...offered], turns: turns.map((t) => t.slice()), given: !!checked.turns });
       turns.forEach((t, i) => { if (!t.length) errors.push({ code: "lane-goes-nowhere", node: n.id, lane: `${a}#${i}`, message: `at ${n.id}, lane ${a}#${i} is permitted no movement at all` }); });
       for (const [b, move] of exits) {
         const B0 = legs[first(b)];
@@ -474,7 +476,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
     }
   }
 
-  return { graph: true, n: at.length, at, joins, links, lanes, roads, map: loaded, errors, ...(withConflicts ? {} : { conflictsSkipped: true }) };
+  return { graph: true, n: at.length, at, joins, links, lanes, roads, map: loaded, errors, approaches, ...(withConflicts ? {} : { conflictsSkipped: true }) };
 }
 
 /* The lane-leg a car should start on for a road end: the curb lane,

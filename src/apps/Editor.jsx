@@ -52,7 +52,7 @@ import {
   newDraft, addRoad, addPoint, updatePoint, removeLastPoint, deleteRoad,
   setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
   nearestOnRoad, joinCrossing, setRoadRamp, setRoadHump, deletePoint, subdivideRoad, smoothRoad,
-  addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse,
+  addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse, setRoadTurns,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../editor/library.js";
@@ -661,6 +661,8 @@ export default function Editor() {
             onChange={(patch) => setDraft((m) => setRoadProps(m, selRoad.id, patch))}
             onControl={(end, v) => setDraft((m) => setRoadControl(m, selRoad.id, end, v))}
             onBays={(end, b) => setDraft((m) => setRoadBays(m, selRoad.id, end, b))}
+            approaches={validation?.approaches}
+            onTurns={(end, t) => setDraft((m) => setRoadTurns(m, selRoad.id, end, t))}
             onArrow={(end, on) => setDraft((m) => setLeftArrow(m, selRoad.id, end, on))}
             onRamp={(z0, z1) => setDraft((m) => setRoadRamp(m, selRoad.id, z0, z1))}
             onHump={(peak) => setDraft((m) => setRoadHump(m, selRoad.id, peak))}
@@ -752,7 +754,41 @@ const inputStyle = { minHeight: 32, fontSize: 16, background: "#22262c", color: 
    meaningless at an end that meets no intersection, and the loader
    drops it there with a warning; the panel does not second-guess that,
    it lets Validate say so. */
-function Approach({ road, end, active, onControl, onBays, onArrow }) {
+/* LANE ARROWS: one group per lane at the line, centre line out, showing
+   what the SIM will let that lane do -- the general rule until a toggle is
+   touched, then the road end's own override, which is exactly the
+   format's `turns`. A movement the intersection does not offer is not a
+   button. Only an approach into a node has any of this. */
+const MOVE_GLYPH = { left: "←", straight: "↑", right: "→" };
+function LaneTurns({ info, onTurns }) {
+  if (!info) return null;
+  const toggle = (i, mv) => {
+    const next = info.turns.map((t, k) => (k !== i ? t.slice() : t.includes(mv) ? t.filter((x) => x !== mv) : [...t, mv]));
+    onTurns(next.map((t) => ["left", "straight", "right"].filter((m) => t.includes(m))));
+  };
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ fontSize: 11, color: DIM, marginBottom: 4 }}>
+        Lanes at the line, centre → curb · {info.given ? "set here" : "general rule"}
+        {info.given && <span role="button" style={{ ...S.joinBtn, marginLeft: 8, padding: "2px 6px" }} onClick={() => onTurns(null)}>Reset to rule</span>}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {info.turns.map((t, i) => (
+          <span key={i} style={{ display: "inline-flex", gap: 2, padding: 2, borderRadius: 6, border: `1px solid ${t.length ? "rgba(255,255,255,0.15)" : C.red}` }}>
+            {["left", "straight", "right"].filter((m) => info.offered.includes(m)).map((m) => (
+              <button key={m} className="btn" title={`lane ${i}: ${m}`} onClick={() => toggle(i, m)}
+                style={{ width: 32, height: 32, borderRadius: 4, border: "none", fontSize: 16, background: t.includes(m) ? (info.given ? C.amber : "rgba(255,255,255,0.22)") : "transparent", color: t.includes(m) ? "#000" : DIM }}>
+                {MOVE_GLYPH[m]}
+              </button>
+            ))}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Approach({ road, end, active, onControl, onBays, onArrow, info, onTurns }) {
   const b = road.bays?.[end] ?? null;
   const left = b?.left ?? 0, right = b?.right ?? 0;
   const ctl = road.control?.[end] ?? "none";
@@ -783,11 +819,12 @@ function Approach({ road, end, active, onControl, onBays, onArrow }) {
             checked={!!road.leftArrow?.[end] && lit} onChange={(e) => onArrow(end, e.target.checked)} />
         </Field>
       </div>
+      <LaneTurns info={info} onTurns={(t) => onTurns(end, t)} />
     </div>
   );
 }
 
-function RoadPanel({ road, end, onChange, onControl, onBays, onArrow, onZ, onRamp, onHump, onSmooth, onSubdivide, onDeletePoint, onDelete }) {
+function RoadPanel({ road, end, approaches, onTurns, onChange, onControl, onBays, onArrow, onZ, onRamp, onHump, onSmooth, onSubdivide, onDeletePoint, onDelete }) {
   const [ramp, setRamp] = React.useState({ z0: road.points[0]?.z ?? 0, z1: road.points.at(-1)?.z ?? 0, peak: 7 });
   const at = cumulative(road.points);
   const total = at.at(-1) ?? 0;
@@ -817,7 +854,7 @@ function RoadPanel({ road, end, onChange, onControl, onBays, onArrow, onZ, onRam
         </Field>
       </div>
       {["start", "end"].map((e) => (
-        <Approach key={e} road={road} end={e} active={end === e} onControl={onControl} onBays={onBays} onArrow={onArrow} />
+        <Approach key={e} road={road} end={e} active={end === e} onControl={onControl} onBays={onBays} onArrow={onArrow} info={approaches?.[`${road.id}|${e}`]} onTurns={onTurns} />
       ))}
 
       <div style={{ fontFamily: FONT_D, fontSize: 12, color: DIM, marginTop: 4 }}>Elevation ({total.toFixed(0)} m long)</div>

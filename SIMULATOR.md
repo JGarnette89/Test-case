@@ -446,9 +446,9 @@ an optional `mapData` prop in place of the hardcoded test map; `#/map`
 itself is untouched (byte-identical render, confirmed by
 `verify-screens`).
 
-**WHAT V1 LEFT OUT, DELIBERATELY.** Per-lane turn overrides exist in
-the format but have no editor UI (turn bays and protected-left arrows
-do now -- see below). A road with NO intersection anywhere (both ends
+**WHAT V1 LEFT OUT, DELIBERATELY.** Nothing of section 4's list now;
+per-lane turn overrides, turn bays and protected-left arrows all have
+editor UI (below). A road with NO intersection anywhere (both ends
 open: the first thing anybody draws, stage 0's own shape, a closed
 loop) had no "Drive it" start at first; it has now -- `firstEdge` falls
 back to a through road when no road meets a node, and `curbLegOf` hands
@@ -551,6 +551,19 @@ the test map, almost all of it the graph's all-pairs conflict table --
 which validation never reads. `graphOf(loaded, { conflicts: false })`
 skips it (3 ms), and section 13 holds the lite graph to the full one:
 same nodes, same legs, same connectivity verdict.
+
+**LANE ARROWS.** Each approach into an intersection shows its lanes at
+the line, centre out, as ← ↑ → toggles -- the movements the
+intersection offers, lit for what each lane may do. Untouched, that is
+the general rule as the graph applies it (`graphOf` now records each
+approach's offer and the turns in force, and `validateDraft` maps them
+back to the draft's own road ends -- an approach at a node the loader
+made by splitting a road is not a road end and has no `turns` to set,
+so it is not offered). Touching one writes the format's own `turns`
+for that end; **Reset to rule** clears it. A change of lanes or bays
+that leaves the override the wrong length drops it rather than leave
+the graph a list to refuse. Section 15, sabotaged: without the split
+filter a T offers approaches that are not road ends.
 
 *Not touched, because already true*: free-drawn curves (a road is
 points placed wherever clicked, never a tile) and chunked loading
