@@ -9,6 +9,7 @@ import {
   setRoadProps, setRoadControl, setRoadTurns, setRoadBays, setLeftArrow,
   addZone, addZonePoint, setZoneProps, deleteZone,
   nearestRoadEnd, cumulative, serialize, parse,
+  nearestOnRoad, splitRoad, joinCrossing, setRoadRamp, setRoadHump,
 } from "../src/editor/model.js";
 import { validateDraft } from "../src/editor/validate.js";
 import { CLEARANCE_MIN } from "../src/map/load.js";
@@ -373,6 +374,61 @@ console.log("\n11. A BIG ARTERIAL DRAWN ENTIRELY THROUGH THE EDITOR'S OWN APPROA
   let overlaps = 0;
   for (let i = 0; i < 20 * 60; i++) { w = step(w); if (i % 5 === 0) overlaps += overlapping(w).length; }
   check(overlaps === 0, `a minute of traffic through it at 60 cars: ${overlaps} overlapping car-ticks`);
+}
+
+console.log("\n12. JOINING ROADS THE WAY A PERSON MEANS, AND A WHOLE ROAD'S HEIGHT FROM TWO NUMBERS");
+{
+  /* A T: a road ending 2.5 m off the MIDDLE of another -- a fingertip's
+     error on a phone, just inside the loader's own 3.6 m -- snapped onto
+     the line by the editor, so the join is certain. */
+  let m = newDraft(); let a, b, c;
+  ({ map: m, id: a } = addRoad(m)); for (let i = 0; i <= 10; i++) m = addPoint(m, a, { x: i * 20, y: 100 });
+  ({ map: m, id: b } = addRoad(m)); m = addPoint(m, b, { x: 103, y: 0 });
+  const snap = nearestOnRoad(m, { x: 103, y: 97.5 }, { within: 6, excludeRoad: b });
+  check(snap && snap.road === a && Math.abs(snap.at.y - 100) < 1e-9, `a point beside the middle of a road snaps onto its line (${snap?.d.toFixed(1)} m off)`);
+  m = addPoint(m, b, snap.at);
+  const t = validateDraft(m);
+  check(t.ok && t.loaded.nodes.length === 1 && t.loaded.nodes[0].legs.length === 3, `and the loader makes a T of it: one node, ${t.loaded.nodes[0]?.legs.length} legs`);
+
+  /* A crossroads: a road drawn straight across both, at the same height
+     -- the loader warns, rightly, since it cannot know an overpass was
+     not meant. joinCrossing is the fix that warning offers. */
+  ({ map: m, id: c } = addRoad(m)); for (let i = 0; i <= 10; i++) m = addPoint(m, c, { x: 150, y: i * 20 });
+  const before = validateDraft(m);
+  const cr = before.loaded.crossings.find((x) => x.gap < CLEARANCE_MIN);
+  check(before.warnings.some((w) => w.code === "cross-no-node") && cr, "a road drawn across another at one height is warned, and the crossing recorded");
+  const draftIds = cr.roads.map((id) => id.split("#")[0]);
+  check(draftIds.includes(a) && draftIds.includes(c), `the crossing's roads map back to the draft's own ids (${cr.roads.join(", ")} -> ${draftIds.join(", ")})`);
+  const joined = joinCrossing(m, draftIds[0], draftIds[1], cr.at);
+  const after = validateDraft(joined);
+  const legs = after.loaded.nodes.map((n) => n.legs.length).sort();
+  check(after.ok && after.warnings.every((w) => w.code !== "cross-no-node") && after.errors.length === 0 && legs.includes(4),
+    `joined: the warning is gone, a four-legged node is there (node legs ${legs.join(", ")}), and every lane lands`);
+
+  /* splitRoad keeps each end's own fields on the half that has that end. */
+  let s1 = newDraft(); let r;
+  ({ map: s1, id: r } = addRoad(s1)); s1 = addPoint(s1, r, { x: 0, y: 0 }); s1 = addPoint(s1, r, { x: 100, y: 0 });
+  s1 = setRoadControl(s1, r, "start", "stop"); s1 = setRoadControl(s1, r, "end", "signal"); s1 = setLeftArrow(s1, r, "end", true);
+  const sp = splitRoad(s1, r, 0, { x: 40, y: 0 });
+  const [h1, h2] = sp.ids.map((id) => sp.map.roads.find((x) => x.id === id));
+  check(sp.ids[0] !== sp.ids[1] && h1.control.start === "stop" && h1.control.end === "none" && h2.control.start === "none" && h2.control.end === "signal" && h2.leftArrow.end === true && !h1.leftArrow.end,
+    "a split keeps the start's control on the first half and the end's control and arrow on the second, with a fresh id");
+
+  /* Elevation from two numbers. */
+  let e = newDraft(); let q;
+  ({ map: e, id: q } = addRoad(e)); for (let i = 0; i <= 10; i++) e = addPoint(e, q, { x: i * 10, y: 0 });
+  const ramp = setRoadRamp(e, q, 0, 8).roads[0].points.map((p) => p.z);
+  check(ramp[0] === 0 && ramp[10] === 8 && Math.abs(ramp[5] - 4) < 1e-9, `a ramp runs straight from start to end by distance (0, ${ramp[5]}, ${ramp[10]})`);
+  const hump = setRoadHump(e, q, 7).roads[0].points.map((p) => p.z);
+  check(hump[0] === 0 && Math.abs(hump[10]) < 1e-9 && Math.abs(hump[5] - 7) < 1e-9, `a hump rises by its peak in the middle and meets the ground at both ends (${hump[5]})`);
+  const bridge = (() => {
+    let mm = newDraft(); let lo, hi;
+    ({ map: mm, id: lo } = addRoad(mm)); mm = addPoint(mm, lo, { x: 0, y: 50 }); mm = addPoint(mm, lo, { x: 100, y: 50 });
+    ({ map: mm, id: hi } = addRoad(mm)); for (let i = 0; i <= 10; i++) mm = addPoint(mm, hi, { x: 50, y: i * 20 - 50 });
+    return validateDraft(setRoadHump(mm, hi, 7));
+  })();
+  check(bridge.ok && bridge.warnings.every((w) => w.code !== "cross-no-node") && bridge.loaded.crossings[0]?.gap >= CLEARANCE_MIN,
+    `and a hump over another road IS an overpass: one number turns a flat crossing into ${bridge.loaded.crossings[0]?.gap.toFixed(1)} m of clearance, no warning`);
 }
 
 console.log("\n" + "=".repeat(70));

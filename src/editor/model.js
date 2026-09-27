@@ -107,13 +107,14 @@ export function deleteZone(map, zoneId) {
 /* THE LIVE FEEDBACK WHILE DRAWING, not the authority. `map/load.js`
    still does the real snapping at validate/save/drive time -- splitting
    a road a new one lands on the middle of, creating the node, writing
-   the warning. This only answers "is there an END nearby to click
-   toward", cheap enough to run every frame the pointer moves: it
-   checks the road ENDS on the map (what a road drawn a little short of
-   another will actually join), not every point on every road, which is
-   what load.js's own `nearestOn` sweep is for and is not free to redo
-   on each pointer move. Returns the nearest end within `within`
-   metres, or null. */
+   the warning. This answers "is there an END nearby to click toward";
+   `nearestOnRoad` below answers the same for a point on a LINE (a T),
+   and the editor asks this first, since joining end to end is the
+   commoner intent and an end sitting on a line would otherwise be
+   indistinguishable from the line. Both sweep every segment of every
+   road per pointer move, which is cheap at a blockout's size (hundreds
+   of segments) and would want the chunk index (section 3.4) at a
+   city's. Returns the nearest end within `within` metres, or null. */
 export function nearestRoadEnd(map, pt, { within = LANE, excludeRoad = null } = {}) {
   let best = null;
   for (const r of map.roads) {
@@ -139,6 +140,90 @@ export function cumulative(points) {
     at.push(at[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y));
   }
   return at;
+}
+
+/* --- joining roads ------------------------------------------------------ */
+/* THE NEAREST POINT ON ANY ROAD'S LINE, not only its ends: what a road
+   drawn to finish on the MIDDLE of another -- a T -- has to land on.
+   `map/load.js` joins such an end by splitting the other road, but only
+   within SNAP (a lane width, 3.6 m), which a fingertip on a phone
+   misses as often as it hits; snapping the placed point exactly onto
+   the line here makes the loader's join certain rather than lucky.
+   Returns `{ road, seg, at, d }` -- `seg` the segment index, `at` the
+   point with z interpolated -- or null beyond `within`. */
+export function nearestOnRoad(map, pt, { within = LANE, excludeRoad = null } = {}) {
+  let best = null;
+  for (const r of map.roads) {
+    if (r.id === excludeRoad || r.points.length < 2) continue;
+    for (let i = 0; i + 1 < r.points.length; i++) {
+      const a = r.points[i], b = r.points[i + 1];
+      const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1;
+      const f = Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / L2));
+      const at = { x: a.x + dx * f, y: a.y + dy * f, z: (a.z ?? 0) + ((b.z ?? 0) - (a.z ?? 0)) * f };
+      const d = Math.hypot(at.x - pt.x, at.y - pt.y);
+      if (d <= within && (!best || d < best.d)) best = { road: r.id, seg: i, f, at, d };
+    }
+  }
+  return best;
+}
+
+/* SPLIT A ROAD IN TWO at a point on segment `seg`. The first half keeps
+   the id and everything at its START; the second gets a fresh id and
+   everything at its END; the new ends meet at the split with no control
+   of their own, the same rule `map/load.js` applies when it splits a
+   road an end has snapped onto. Per-end fields (control, turns, bays,
+   leftArrow) go with the end that carried them. */
+export function splitRoad(map, roadId, seg, at) {
+  const r = map.roads.find((x) => x.id === roadId);
+  if (!r || seg < 0 || seg >= r.points.length - 1) return { map, ids: [roadId] };
+  const p = { x: at.x, y: at.y, z: at.z ?? 0 };
+  const newId = nextId(map.roads, "road");
+  const keep = (f, which) => (r[f] ? { [f]: { start: which === "a" ? r[f].start ?? null : null, end: which === "b" ? r[f].end ?? null : null } } : {});
+  const a = { ...r, points: [...r.points.slice(0, seg + 1), p], control: { start: r.control?.start ?? "none", end: "none" }, ...keep("turns", "a"), ...keep("bays", "a"), ...keep("leftArrow", "a") };
+  const b = { ...r, id: newId, points: [p, ...r.points.slice(seg + 1)], control: { start: "none", end: r.control?.end ?? "none" }, ...keep("turns", "b"), ...keep("bays", "b"), ...keep("leftArrow", "b") };
+  const roads = map.roads.flatMap((x) => (x.id === roadId ? [a, b] : [x]));
+  return { map: { ...map, roads }, ids: [roadId, newId] };
+}
+
+/* MAKE AN INTERSECTION WHERE TWO ROADS CROSS. The format connects roads
+   only at nodes (section 3.1): two roads drawn across each other are an
+   overpass if one is high enough and a warning if not, never silently a
+   junction -- because the editor cannot tell which was meant. When it
+   WAS meant, this is the fix the warning offers: split both roads at
+   the crossing, so four ends meet at one point and the loader makes the
+   node. Both roads are brought to the same height there, the lower of
+   the two, since a junction is one surface. */
+export function joinCrossing(map, roadA, roadB, at) {
+  const onA = nearestOnRoad({ roads: map.roads.filter((r) => r.id === roadA) }, at, { within: Infinity });
+  const onB = nearestOnRoad({ roads: map.roads.filter((r) => r.id === roadB) }, at, { within: Infinity });
+  if (!onA || !onB) return map;
+  const z = Math.min(onA.at.z, onB.at.z);
+  const p = { x: at.x, y: at.y, z };
+  let m = splitRoad(map, roadA, onA.seg, p).map;
+  m = splitRoad(m, roadB, onB.seg, p).map;
+  return m;
+}
+
+/* --- elevation, road-wide --------------------------------------------- */
+/* SECTION 4: "a height handle per point, or a road-wide ramp". Per-point
+   fields are tedious on a phone for a bridge of twenty points; these
+   set a whole road's profile from two numbers, by distance along it.
+   RAMP: straight from `z0` at the start to `z1` at the end. HUMP: a
+   rise of `peak` over whatever the ends already are, highest in the
+   middle and flat where it meets the ground at each end -- the shape
+   of an overpass, and the same sin^2 the test map's own hill uses. */
+export function setRoadRamp(map, roadId, z0, z1) {
+  return patchRoad(map, roadId, (r) => {
+    const at = cumulative(r.points), L = at.at(-1) || 1;
+    return { ...r, points: r.points.map((p, i) => ({ ...p, z: z0 + (z1 - z0) * (at[i] / L) })) };
+  });
+}
+export function setRoadHump(map, roadId, peak) {
+  return patchRoad(map, roadId, (r) => {
+    const at = cumulative(r.points), L = at.at(-1) || 1;
+    const z0 = r.points[0]?.z ?? 0, z1 = r.points.at(-1)?.z ?? 0;
+    return { ...r, points: r.points.map((p, i) => { const t = at[i] / L; return { ...p, z: z0 + (z1 - z0) * t + peak * Math.sin(Math.PI * t) ** 2 }; }) };
+  });
 }
 
 /* --- new / serialize -------------------------------------------------- */

@@ -521,6 +521,22 @@ into a drag or a pinch never drops a stray point. The view geometry
 (`editor/gesture.js`) is pure and checked in section 10, since a canvas
 gesture is exactly the thing this environment cannot watch.
 
+**JOINING THE WAY A PERSON MEANS.** A tap near the middle of another
+road snaps onto its line (a blue ring previews it; green for an end),
+so a T joins for certain rather than by a fingertip's luck against the
+loader's 3.6 m. A road drawn straight across another at one height is
+still a warning -- the editor cannot know an overpass was not meant --
+but the warning now carries its fix, **Make intersection**, which splits
+both roads at the crossing so four ends meet and the loader makes the
+node (`editor/model.js` `joinCrossing`). And a whole road's height is
+two numbers: a straight ramp between its ends, or a hump over them --
+a bridge is one number, and a hump of 7 m over another road turns a
+warned crossing into an overpass with no warning. The loader's own join
+notes are counted in the validation panel rather than listed, since
+they are the joins that were drawn, not problems. `verify-editor.mjs`
+section 12, sabotaged: splitting only one of the two roads leaves a
+three-legged node and fails it.
+
 *Not touched, because already true*: free-drawn curves (a road is
 points placed wherever clicked, never a tile) and chunked loading
 (`map/load.js` already indexes every sample and prop by chunk at load

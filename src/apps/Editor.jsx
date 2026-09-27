@@ -51,6 +51,7 @@ import { testMap1 } from "../map/samples.js";
 import {
   newDraft, addRoad, addPoint, updatePoint, removeLastPoint, deleteRoad,
   setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
+  nearestOnRoad, joinCrossing, setRoadRamp, setRoadHump,
   addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
@@ -261,10 +262,15 @@ export default function Editor() {
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
       }
       if (drawing.type === "road") {
-        const snap = nearestRoadEnd(draft, v.cursor, { within: 6, excludeRoad: drawing.id });
+        /* Green for an end, blue for a line (a T): what the next tap
+           will join, before it is made. */
+        const within = SNAP_PX / v.scale;
+        const end = nearestRoadEnd(draft, v.cursor, { within, excludeRoad: drawing.id });
+        const on = end ? null : nearestOnRoad(draft, v.cursor, { within, excludeRoad: drawing.id });
+        const snap = end ?? on;
         if (snap) {
           const s = toScreen(snap.at.x, snap.at.y);
-          ctx.strokeStyle = C.green; ctx.lineWidth = 2;
+          ctx.strokeStyle = end ? C.green : C.blue; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, 7); ctx.stroke();
         }
       }
@@ -378,10 +384,20 @@ export default function Editor() {
      still be a tap. */
   const zoomAbout = (px, py, factor) => { Object.assign(view.current, zoomView(view.current, px, py, factor)); };
 
+  /* WHERE A TAP JOINS: another road's END first, else a point on
+     another road's LINE -- a T -- snapped exactly onto it so the
+     loader's own join is certain rather than a fingertip's luck. */
+  const snapFor = (w, exclude) => {
+    const within = SNAP_PX / view.current.scale;
+    const end = nearestRoadEnd(draft, w, { within, excludeRoad: exclude });
+    if (end) return { kind: "end", at: end.at };
+    const on = nearestOnRoad(draft, w, { within, excludeRoad: exclude });
+    return on ? { kind: "line", at: on.at } : null;
+  };
   const tapAt = (p) => {
     const w = toWorld(p.x, p.y);
     if (tool === "road") {
-      const snap = nearestRoadEnd(draft, w, { within: SNAP_PX / view.current.scale, excludeRoad: drawing?.id });
+      const snap = snapFor(w, drawing?.id);
       const pt = snap ? snap.at : { x: w.x, y: w.y, z: 0 };
       if (!drawing) {
         /* `addRoad` is pure and returns its new id synchronously --
@@ -398,7 +414,7 @@ export default function Editor() {
         const last = roadOf(drawing.id)?.points.at(-1);
         if (last && Math.hypot(last.x - pt.x, last.y - pt.y) * view.current.scale < TAP_PX) { finishDrawing(); return; }
         setDraft(addPoint(draft, drawing.id, pt));
-        if (snap) finishDrawing(false);   // joining another road's end is a natural stop
+        if (snap) finishDrawing(false);   // joining another road, at an end or mid-line, is a natural stop
       }
       return;
     }
@@ -504,6 +520,16 @@ export default function Editor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paint, driving]);
 
+  /* The loader names roads by its own split ids ("road0#b" once a T has
+     split road0); the draft's own road is the part before the first "#".
+     The crossing at `at` is found in the loader's own list, not guessed. */
+  const joinAt = (at) => {
+    const c = validation?.loaded?.crossings.find((x) => Math.hypot(x.at.x - at.x, x.at.y - at.y) < 0.5);
+    if (!c) return;
+    const [a, b] = c.roads.map((id) => id.split("#")[0]);
+    if (a === b) return;
+    setDraft((m) => joinCrossing(m, a, b, c.at));
+  };
   const jumpTo = (pt) => {
     if (!pt) return;
     view.current.x0 = pt.x - 60; view.current.y0 = pt.y - 60; view.current.scale = Math.max(view.current.scale, 3);
@@ -631,11 +657,13 @@ export default function Editor() {
 
       <div style={S.panel}>
         {selRoad && (
-          <RoadPanel road={selRoad} end={selected?.end ?? null}
+          <RoadPanel key={selRoad.id} road={selRoad} end={selected?.end ?? null}
             onChange={(patch) => setDraft((m) => setRoadProps(m, selRoad.id, patch))}
             onControl={(end, v) => setDraft((m) => setRoadControl(m, selRoad.id, end, v))}
             onBays={(end, b) => setDraft((m) => setRoadBays(m, selRoad.id, end, b))}
             onArrow={(end, on) => setDraft((m) => setLeftArrow(m, selRoad.id, end, on))}
+            onRamp={(z0, z1) => setDraft((m) => setRoadRamp(m, selRoad.id, z0, z1))}
+            onHump={(peak) => setDraft((m) => setRoadHump(m, selRoad.id, peak))}
             onZ={(i, z) => setDraft((m) => setPointZ(m, selRoad.id, i, z))}
             onDelete={() => { setDraft((m) => deleteRoad(m, selRoad.id)); setSelected(null); }}
           />
@@ -647,7 +675,7 @@ export default function Editor() {
           />
         )}
 
-        <ValidatePanel validation={validation} onJump={jumpTo} />
+        <ValidatePanel validation={validation} onJump={jumpTo} onJoin={joinAt} />
 
         <div style={S.card}>
           <div style={S.cardHead}><span>This map</span></div>
@@ -756,7 +784,8 @@ function Approach({ road, end, active, onControl, onBays, onArrow }) {
   );
 }
 
-function RoadPanel({ road, end, onChange, onControl, onBays, onArrow, onZ, onDelete }) {
+function RoadPanel({ road, end, onChange, onControl, onBays, onArrow, onZ, onRamp, onHump, onDelete }) {
+  const [ramp, setRamp] = React.useState({ z0: road.points[0]?.z ?? 0, z1: road.points.at(-1)?.z ?? 0, peak: 7 });
   const at = cumulative(road.points);
   const total = at.at(-1) ?? 0;
   const zs = road.points.map((p) => p.z ?? 0);
@@ -789,6 +818,17 @@ function RoadPanel({ road, end, onChange, onControl, onBays, onArrow, onZ, onDel
       ))}
 
       <div style={{ fontFamily: FONT_D, fontSize: 12, color: DIM, marginTop: 4 }}>Elevation ({total.toFixed(0)} m long)</div>
+      {/* A whole road's height from two numbers (section 4's "road-wide
+          ramp"): a straight ramp between its ends, or a hump over what
+          the ends already are -- a bridge over another road is one
+          number, 7 m being comfortably over the loader's clearance. */}
+      <div style={S.row}>
+        <Field label="Ramp from (m)"><input type="number" step={0.5} style={{ ...inputStyle, width: 64 }} value={ramp.z0} onChange={(e) => setRamp({ ...ramp, z0: Number(e.target.value) || 0 })} /></Field>
+        <Field label="to (m)"><input type="number" step={0.5} style={{ ...inputStyle, width: 64 }} value={ramp.z1} onChange={(e) => setRamp({ ...ramp, z1: Number(e.target.value) || 0 })} /></Field>
+        <button className="btn" style={S.chip} onClick={() => onRamp(ramp.z0, ramp.z1)}>Ramp</button>
+        <Field label="Bridge (m)"><input type="number" step={0.5} style={{ ...inputStyle, width: 64 }} value={ramp.peak} onChange={(e) => setRamp({ ...ramp, peak: Number(e.target.value) || 0 })} /></Field>
+        <button className="btn" style={S.chip} onClick={() => onHump(ramp.peak)}>Hump</button>
+      </div>
       {road.points.length >= 2 && (
         <svg width="100%" height="40" viewBox="0 0 100 40" preserveAspectRatio="none" style={{ background: "#22262c", borderRadius: 4 }}>
           <polyline fill="none" stroke={C.amber} strokeWidth="1.5" vectorEffect="non-scaling-stroke"
@@ -831,14 +871,20 @@ function ZonePanel({ zone, onChange, onDelete }) {
    a lane with nowhere to land, a bad turns list -- names its NODE
    instead, since the lane is inside it. Both jump: the node's own
    location stands in for the error's. */
-function ValidatePanel({ validation, onJump }) {
+/* The loader's JOIN notes (`snapped-join`, `snapped-split`) are the
+   join the person drew, not a problem, so they are counted, not listed
+   -- a list of every T on the map would bury the warnings that matter.
+   A crossing with no intersection offers its fix: make it one. */
+const JOIN_NOTES = new Set(["snapped-join", "snapped-split"]);
+function ValidatePanel({ validation, onJump, onJoin }) {
   if (!validation) return null;
-  const items = [...(validation.warnings ?? []).map((w) => ({ ...w, kind: "warning" })), ...(validation.errors ?? []).map((e) => ({ ...e, kind: "error" }))];
+  const joins = (validation.warnings ?? []).filter((w) => JOIN_NOTES.has(w.code)).length;
+  const items = [...(validation.warnings ?? []).filter((w) => !JOIN_NOTES.has(w.code)).map((w) => ({ ...w, kind: "warning" })), ...(validation.errors ?? []).map((e) => ({ ...e, kind: "error" }))];
   return (
     <div style={S.card}>
       <div style={S.cardHead}>
         {validation.ok
-          ? <span style={{ color: C.green, display: "flex", alignItems: "center", gap: 6 }}><CheckCircle2 size={15} /> Loads clean{items.length ? `, ${items.length} note${items.length === 1 ? "" : "s"}` : ""}</span>
+          ? <span style={{ color: C.green, display: "flex", alignItems: "center", gap: 6 }}><CheckCircle2 size={15} /> Loads{items.length ? `, ${items.length} to look at` : " clean"}{joins ? ` · ${joins} join${joins === 1 ? "" : "s"} made` : ""}</span>
           : <span style={{ color: validation.crash ? C.red : DIM, display: "flex", alignItems: "center", gap: 6 }}><AlertTriangle size={15} /> {validation.crash ? `Internal error (${validation.crash.stage}): ${validation.crash.message}` : validation.reason ?? "Not ready to validate yet"}</span>}
       </div>
       {items.length > 0 && (
@@ -847,6 +893,9 @@ function ValidatePanel({ validation, onJump }) {
             <button key={i} className="btn" style={S.warnRow} onClick={() => onJump(it.at ?? validation.loaded?.nodes.find((n) => n.id === it.node)?.at)}>
               <span style={{ color: it.kind === "error" ? C.red : C.amber, fontFamily: FONT_D, fontSize: 11, textTransform: "uppercase" }}>{it.kind}</span>
               <span style={{ fontSize: 12, color: TEXT, textAlign: "left", flex: 1 }}>{it.message}</span>
+              {it.code === "cross-no-node" && onJoin && (
+                <span role="button" style={S.joinBtn} onClick={(e) => { e.stopPropagation(); onJoin(it.at); }}>Make intersection</span>
+              )}
             </button>
           ))}
         </div>
@@ -871,6 +920,7 @@ const S = {
   note: { fontFamily: FONT_U, fontSize: 12, color: DIM, lineHeight: 1.45 },
   card: { display: "flex", flexDirection: "column", gap: 8, padding: 10, borderRadius: 8, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)" },
   cardHead: { display: "flex", alignItems: "center", justifyContent: "space-between", fontFamily: FONT_D, fontSize: 13, color: TEXT },
+  joinBtn: { padding: "4px 8px", borderRadius: 6, border: `1px solid ${C.green}`, color: C.green, fontFamily: FONT_D, fontSize: 12, whiteSpace: "nowrap" },
   approach: { display: "flex", flexDirection: "column", gap: 6, padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.10)" },
   warnRow: { display: "flex", gap: 8, alignItems: "center", padding: "6px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", minHeight: 32, textAlign: "left" },
   driveBack: { position: "fixed", top: 10, left: 10, zIndex: 20, minHeight: 44, padding: "0 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(20,22,26,0.85)", color: C.white, fontFamily: FONT_D, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 },
