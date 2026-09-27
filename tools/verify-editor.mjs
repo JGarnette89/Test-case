@@ -26,6 +26,7 @@ import { seedGraph, step } from "../src/sim/crossing.js";
 import { playerOn, withDriver, driverPose, stepDriver } from "../src/sim/drive.js";
 import { DT } from "../src/sim/traffic.js";
 import { firstEdge } from "../src/map/edges.js";
+import { emptyHistory, record, undo as undoStep, redo as redoStep, changeKey, COALESCE_MS, HISTORY_MAX } from "../src/editor/history.js";
 
 let failed = 0;
 const ok = (s) => console.log(`  ok   ${s}`);
@@ -578,6 +579,51 @@ console.log("\n16. BUILDINGS: PLACED BY HAND, FACING THEIR STREET, AND NEVER ON 
   let w = seedGraph(3, 50, L, { target: 10, posted: true });
   const st = firstEdge(L), p0 = playerOn(w.course, st.road, st.end, { through: !!st.through });
   check(!!p0 && L.props.length === 2, "a map with buildings still drives");
+}
+
+console.log("\n17. UNDO: ONE STEP PER INTENTION, AND NOTHING LOST GOING BACK AND FORTH");
+{
+  /* Replays edits the way the screen's effect records them: each draft
+     against the one before, with a clock. */
+  let h = emptyHistory(), t = 0;
+  const seq = [newDraft()];
+  const apply = (fn, dt) => { const prev = seq.at(-1), now = fn(prev); t += dt; h = record(h, prev, now, t); seq.push(now); return now; };
+  let r;
+  apply((m) => { const o = addRoad(m, { kind: "collector" }); r = o.id; return o.map; }, 1000);
+  for (let i = 0; i < 5; i++) apply((m) => addPoint(m, r, { x: i * 30, y: 0 }), 150);     // five fast taps
+  for (const kmh of [6, 60]) apply((m) => setRoadProps(m, r, { speed: kmh }), 120);       // typing "60"
+  apply((m) => setRoadProps(m, r, { kind: "arterial" }), 2000);
+  check(h.past.length === 8, `five fast taps are five steps, typing "60" is one, a kind change later is one more, after the road itself (${h.past.length} steps in all)`);
+
+  let cur = seq.at(-1), u;
+  u = undoStep(h, cur); h = u.history; cur = u.draft;
+  check(cur.roads[0].kind === "collector" && cur.roads[0].speed === 60, "undo takes back the kind change alone");
+  u = undoStep(h, cur); h = u.history; cur = u.draft;
+  check(cur.roads[0].speed !== 60 && cur.roads[0].speed !== 6 && cur.roads[0].points.length === 5, `and then the whole of the typing, back to the speed before it (${cur.roads[0].speed} km/h)`);
+  u = undoStep(h, cur); h = u.history; cur = u.draft;
+  check(cur.roads[0].points.length === 4, "and then exactly one tapped point");
+  for (let i = 0; i < 3; i++) { u = redoStep(h, cur); h = u.history; cur = u.draft; }
+  check(cur === seq.at(-1), "redo all the way returns the identical draft, not a copy");
+  check(redoStep(h, cur) === null, "and there is nothing past it");
+
+  /* A new edit after an undo drops the redo branch. */
+  u = undoStep(h, cur); h = u.history; cur = u.draft;
+  const fork = setRoadProps(cur, r, { lanes: 3 }); h = record(h, cur, fork, t += 5000); cur = fork;
+  check(h.future.length === 0 && redoStep(h, cur) === null, "an edit after an undo clears redo");
+  let all = h; let steps = 0;
+  while ((u = undoStep(all, cur))) { all = u.history; cur = u.draft; steps++; }
+  check(cur === seq[0] && steps === all.future.length, `and undo all the way reaches the empty draft (${steps} steps)`);
+
+  /* The key is by reference: a move of a point is coalescible, adding
+     one never is, and two different objects never merge. */
+  const m0 = seq.at(-1);
+  check(changeKey(m0, updatePoint(m0, r, 1, { x: 3 })) === `roads:${r}` && changeKey(m0, addPoint(m0, r, { x: 999, y: 0 })) === null, "moving a point can merge; adding one cannot");
+  const b = addRoad(m0).map;
+  check(changeKey(m0, b) === null && changeKey(b, setRoadProps(setRoadProps(b, r, { speed: 40 }), b.roads[1].id, { speed: 40 })) === null, "a new road, or an edit touching two, stands alone");
+
+  let big = emptyHistory(), prev = newDraft();
+  for (let i = 0; i < HISTORY_MAX + 20; i++) { const nx = addRoad(prev).map; big = record(big, prev, nx, i * COALESCE_MS * 2); prev = nx; }
+  check(big.past.length === HISTORY_MAX, `history is capped at ${HISTORY_MAX}`);
 }
 
 console.log("\n" + "=".repeat(70));

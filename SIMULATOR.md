@@ -581,6 +581,17 @@ too. Buildings do not yet block anybody's sight; that waits on sight
 being modelled in the sim at all. `verify-editor.mjs` section 16 and
 `verify-map.mjs` section 6, both sabotaged.
 
+**UNDO AND REDO, FOR THE WHOLE DRAFT.** Toolbar buttons and
+Ctrl/Cmd+Z, Ctrl+Shift+Z, Ctrl+Y (`editor/history.js`). The model is
+pure, so history is a list of maps -- nothing inverse to keep in step
+as the model grows. Consecutive edits merge into one step only when
+they touch the same single object, leave its point count alone, and
+land within 600 ms: typing "60" into a speed field is one step, five
+fast taps of a road are five. Opening, loading or starting a map
+starts history afresh. `verify-editor.mjs` section 17, sabotaged both
+ways (no coalescing splits the typing; coalescing across a point
+change swallows the taps).
+
 *Not touched, because already true*: free-drawn curves (a road is
 points placed wherever clicked, never a tile) and chunked loading
 (`map/load.js` already indexes every sample and prop by chunk at load

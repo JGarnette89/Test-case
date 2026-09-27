@@ -41,7 +41,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   Route, MousePointer2, Hexagon, Move, ZoomIn, ZoomOut,
-  Trash2, Download, Upload, FolderOpen, Play, CheckCircle2, AlertTriangle, Undo2, X, Save, Library, Building2,
+  Trash2, Download, Upload, FolderOpen, Play, CheckCircle2, AlertTriangle, Undo2, Redo2, X, Save, Library, Building2,
 } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { readJSON, writeJSON } from "../storage.js";
@@ -61,6 +61,7 @@ import { zoomAbout as zoomView, pinchView, panView, isTap, TAP_PX } from "../edi
 import MapRoad from "./MapRoad.jsx";
 import { firstEdge } from "../map/edges.js";
 import ErrorBoundary from "./ErrorBoundary.jsx";
+import { emptyHistory, record, undo as undoStep, redo as redoStep } from "../editor/history.js";
 
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
 const AUTOSAVE_KEY = "row.editor.draft.v1";
@@ -86,6 +87,18 @@ export default function Editor() {
   const loadedAutosave = useRef(false);
 
   const [draft, setDraft] = useState(() => newDraft("draft", "Untitled map"));
+  /* HISTORY (editor/history.js): every committed draft change is recorded
+     against the one before it, except the ones history itself makes (an
+     undo, a redo) and a whole new map arriving (autosave, open, new),
+     which start history afresh -- undoing into a different map would be
+     a surprise, not an undo. The ref holds the list; the state is only
+     what the two buttons need to know. */
+  const hist = useRef(emptyHistory());
+  const prevDraft = useRef(draft);
+  const skipHistory = useRef(true);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const [canStep, setCanStep] = useState([false, false]);
   const [tool, setTool] = useState("road");           // "road" | "select" | "zone" | "building" | "pan"
   const [newPropKind, setNewPropKind] = useState("house");
   const [newRoadKind, setNewRoadKind] = useState("collector");
@@ -115,7 +128,7 @@ export default function Editor() {
     let live = true;
     readJSON(AUTOSAVE_KEY, null).then((saved) => {
       if (!live) return;
-      if (saved && Array.isArray(saved.roads)) { setDraft(saved); setMapName(saved.name ?? "Untitled map"); view.current = makeView(saved); }
+      if (saved && Array.isArray(saved.roads)) { freshHistory(); setDraft(saved); setMapName(saved.name ?? "Untitled map"); view.current = makeView(saved); }
       loadedAutosave.current = true;
     });
     return () => { live = false; };
@@ -127,6 +140,20 @@ export default function Editor() {
      yet" is exactly what the maintainer needs to see change as he
      draws, not something he has to remember to ask for. */
   useEffect(() => { setValidation(validateDraft(draft)); }, [draft]);
+
+  useEffect(() => {
+    if (skipHistory.current) skipHistory.current = false;
+    else hist.current = record(hist.current, prevDraft.current, draft, Date.now());
+    prevDraft.current = draft;
+    setCanStep([hist.current.past.length > 0, hist.current.future.length > 0]);
+  }, [draft]);
+  const freshHistory = () => { hist.current = emptyHistory(); skipHistory.current = true; };
+  const stepHistory = (back) => {
+    const r = (back ? undoStep : redoStep)(hist.current, draftRef.current);
+    if (!r) return;
+    hist.current = r.history; skipHistory.current = true;
+    setDraft(r.draft);
+  };
 
   const roadOf = (id) => draft.roads.find((r) => r.id === id);
   const zoneOf = (id) => (draft.zones ?? []).find((z) => z.id === id);
@@ -345,6 +372,11 @@ export default function Editor() {
       if (e.key === "Escape") cancelDrawing();
       if (e.key === "Enter") finishDrawing();
       if (e.key === "Backspace" && drawing?.type === "road") undoPoint();
+      /* Undo and redo of the whole draft -- not while drawing, where the
+         road's own point undo is the one meant. */
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !drawing && e.key.toLowerCase() === "z") { e.preventDefault(); stepHistory(!e.shiftKey); }
+      if (mod && !drawing && e.key.toLowerCase() === "y") { e.preventDefault(); stepHistory(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -589,14 +621,14 @@ export default function Editor() {
     reader.onload = () => {
       const m = parse(String(reader.result));
       if (!m) { setFileError(`"${file.name}" is not a map this editor can read.`); return; }
-      setFileError(null); setDraft(m); setSelected(null); setDrawing(null); setSavedId(null); setMapName(m.name ?? "Opened map");
+      setFileError(null); freshHistory(); setDraft(m); setSelected(null); setDrawing(null); setSavedId(null); setMapName(m.name ?? "Opened map");
       view.current = makeView(m);
     };
     reader.readAsText(file);
   };
   const loadSample = (which) => {
     const m = which === "test" ? testMap1() : newDraft();
-    setDraft(m); setSelected(null); setDrawing(null); setSavedId(null); setMapName(m.name ?? "Untitled map"); view.current = makeView(m);
+    freshHistory(); setDraft(m); setSelected(null); setDrawing(null); setSavedId(null); setMapName(m.name ?? "Untitled map"); view.current = makeView(m);
   };
 
   /* --- library ----------------------------------------------------------
@@ -614,7 +646,7 @@ export default function Editor() {
   const doOpen = (id) => {
     openMap(id).then((m) => {
       if (!m) { refreshLibrary(); return; }   // pruned since the list was drawn
-      setDraft(m); setSelected(null); setDrawing(null); setSavedId(id); setMapName(m.name ?? "Untitled map"); setShowLibrary(false);
+      freshHistory(); setDraft(m); setSelected(null); setDrawing(null); setSavedId(id); setMapName(m.name ?? "Untitled map"); setShowLibrary(false);
       view.current = makeView(m);
     });
   };
@@ -682,6 +714,12 @@ export default function Editor() {
             <button className="btn" style={S.chip} onClick={() => finishDrawing()}>Finish</button>
             {drawing.type === "road" && <button className="btn" style={S.btn} title="undo last point" onClick={undoPoint}><Undo2 size={16} /></button>}
             <button className="btn" style={S.btn} title="cancel" onClick={cancelDrawing}><X size={16} /></button>
+          </>
+        )}
+        {!drawing && (
+          <>
+            <button className="btn" style={{ ...S.btn, opacity: canStep[0] ? 1 : 0.35 }} title="undo" disabled={!canStep[0]} onClick={() => stepHistory(true)}><Undo2 size={16} /></button>
+            <button className="btn" style={{ ...S.btn, opacity: canStep[1] ? 1 : 0.35 }} title="redo" disabled={!canStep[1]} onClick={() => stepHistory(false)}><Redo2 size={16} /></button>
           </>
         )}
         <span style={{ flex: 1 }} />
