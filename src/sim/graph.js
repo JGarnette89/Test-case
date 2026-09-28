@@ -713,7 +713,12 @@ export function junctionsOf(course) {
       if (leg.control === "stop" || leg.control === "yield" || lit) {
         lines.push({ kind: lit ? "signal" : leg.control, a: { x: pose.x - nx * lane / 2, y: pose.y - ny * lane / 2, z }, b: { x: pose.x + nx * lane / 2, y: pose.y + ny * lane / 2, z } });
         /* One per road end, at the curb lane's right-hand edge, level with the line, facing the approaching driver. */
-        if (leg.pos === leg.across - 1) signs.push({ kind: lit ? "signal" : leg.control, base: leg.base, at: { x: pose.x + nx * (lane / 2 + 0.6), y: pose.y + ny * (lane / 2 + 0.6), z }, heading: pose.rot });
+        /* A sign stands where the map puts it: `back` metres before the line
+           along the approach (map/load.js `signAt`), level with it by default. */
+        const back = lit ? 0 : (r.signAt?.[leg.end]?.back ?? 0);
+        const sp = back ? poseAt(p, Math.max(0, p.stopAt - back)) : pose;
+        const sh = (sp.rot * Math.PI) / 180, sx = -Math.sin(sh), sy = Math.cos(sh);
+        if (leg.pos === leg.across - 1) signs.push({ kind: lit ? "signal" : leg.control, base: leg.base, at: { x: sp.x + sx * (lane / 2 + 0.6), y: sp.y + sy * (lane / 2 + 0.6), z }, heading: sp.rot });
       }
     }
     /* The surface: the corners in order round the centre. */

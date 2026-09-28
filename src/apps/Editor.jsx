@@ -54,7 +54,7 @@ import {
   setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
   nearestOnRoad, joinCrossing, setRoadRamp, setRoadHump, deletePoint, subdivideRoad, smoothRoad,
   addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse, setRoadTurns,
-  addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad,
+  addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad, setSignBack, controlAt,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../editor/library.js";
@@ -754,6 +754,8 @@ export default function Editor() {
             onChange={(patch) => setDraft((m) => setRoadProps(m, selRoad.id, patch))}
             onControl={(end, v) => setDraft((m) => setRoadControl(m, selRoad.id, end, v))}
             onBays={(end, b) => setDraft((m) => setRoadBays(m, selRoad.id, end, b))}
+            signs={draft.signs}
+            onSignBack={(end, back) => setDraft((m) => setSignBack(m, selRoad.id, end, back))}
             approaches={validation?.approaches}
             onTurns={(end, t) => setDraft((m) => setRoadTurns(m, selRoad.id, end, t))}
             onArrow={(end, on) => setDraft((m) => setLeftArrow(m, selRoad.id, end, on))}
@@ -896,10 +898,12 @@ function LaneTurns({ info, onTurns }) {
   );
 }
 
-function Approach({ road, end, active, onControl, onBays, onArrow, info, onTurns }) {
+function Approach({ road, end, active, onControl, onBays, onArrow, info, onTurns, sign, rule, onSignBack }) {
   const b = road.bays?.[end] ?? null;
   const left = b?.left ?? 0, right = b?.right ?? 0;
-  const ctl = road.control?.[end] ?? "none";
+  /* The rule at this approach: its sign where there is one (model.js
+     `controlAt`), the road end's own control otherwise. */
+  const ctl = rule ?? road.control?.[end] ?? "none";
   const lit = typeof ctl === "string" && ctl.startsWith("signal");
   const setBays = (l, r) => onBays(end, l || r ? { left: l, right: r } : null);
   return (
@@ -911,6 +915,12 @@ function Approach({ road, end, active, onControl, onBays, onArrow, info, onTurns
             {CONTROLS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
+        {sign && (
+          <Field label="Sign set back (m)">
+            <input type="number" min={0} max={40} step={1} style={{ ...inputStyle, width: 64 }} value={sign.back ?? 0}
+              title="how far before the stop line the sign stands" onChange={(e) => onSignBack(end, e.target.value)} />
+          </Field>
+        )}
         <Field label="Left bays">
           <select style={inputStyle} value={left} onChange={(e) => setBays(Number(e.target.value), right)}>
             <option value={0}>none</option><option value={1}>1</option><option value={2}>2 (double left)</option>
@@ -932,7 +942,7 @@ function Approach({ road, end, active, onControl, onBays, onArrow, info, onTurns
   );
 }
 
-function RoadPanel({ road, end, approaches, onTurns, onChange, onControl, onBays, onArrow, onZ, onRamp, onHump, onSmooth, onSubdivide, onDeletePoint, onDelete }) {
+function RoadPanel({ road, end, approaches, signs, onSignBack, onTurns, onChange, onControl, onBays, onArrow, onZ, onRamp, onHump, onSmooth, onSubdivide, onDeletePoint, onDelete }) {
   const [ramp, setRamp] = React.useState({ z0: road.points[0]?.z ?? 0, z1: road.points.at(-1)?.z ?? 0, peak: 7 });
   const at = cumulative(road.points);
   const total = at.at(-1) ?? 0;
@@ -962,7 +972,9 @@ function RoadPanel({ road, end, approaches, onTurns, onChange, onControl, onBays
         </Field>
       </div>
       {["start", "end"].map((e) => (
-        <Approach key={e} road={road} end={e} active={end === e} onControl={onControl} onBays={onBays} onArrow={onArrow} info={approaches?.[`${road.id}|${e}`]} onTurns={onTurns} />
+        <Approach key={e} road={road} end={e} active={end === e} onControl={onControl} onBays={onBays} onArrow={onArrow} info={approaches?.[`${road.id}|${e}`]} onTurns={onTurns}
+          sign={(signs ?? []).find((q) => q.road === road.id && q.end === e && (q.kind === "stop" || q.kind === "yield")) ?? null}
+          rule={controlAt({ signs }, road, e)} onSignBack={onSignBack} />
       ))}
 
       <div style={{ fontFamily: FONT_D, fontSize: 12, color: DIM, marginTop: 4 }}>Elevation ({total.toFixed(0)} m long)</div>

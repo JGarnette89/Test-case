@@ -44,6 +44,7 @@ import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel } from "./corner.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
+import { knownControl, theirControl } from "./reading.js";
 import { parkingOf, initialParked } from "./parking.js";
 import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
 
@@ -223,7 +224,7 @@ const UNDUE_AT = 4.0;
    because a car held at a red IS a car at a line claiming nothing --
    what it must not do is go, and that is `whatStops`'s business. */
 function controlOf(actor, layout, path, t = 0) {
-  const standing = layout.place.control[path.from];
+  const standing = knownControl(actor, layout, path);
   if (!layout.signal) return standing === "stop" ? "stop" : "none";
   /* COMMITTED ON THE AMBER. A driver who found at the amber that they
      could not stop comfortably carries on -- and that decision has to
@@ -245,7 +246,7 @@ function controlOf(actor, layout, path, t = 0) {
 /* Does this leg stop -- a sign, a red, or an amber this driver can
    still make? Control is per leg, so one intersection shape is an
    all-way stop or a two-way stop depending only on this. */
-const stops = (layout, path, actor = null, t = 0) => (actor ? controlOf(actor, layout, path, t) !== "none" : layout.place.control[path.from] === "stop");
+const stops = (layout, path, actor = null, t = 0) => (actor ? controlOf(actor, layout, path, t) !== "none" : theirControl(layout, path) === "stop");
 
 /* WHICH INTERSECTION AN ACTOR IS AT, AND WHICH PATH THROUGH IT.
 

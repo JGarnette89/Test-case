@@ -9,7 +9,7 @@ import {
   setRoadProps, setRoadControl, setRoadTurns, setRoadBays, setLeftArrow,
   addZone, addZonePoint, setZoneProps, deleteZone,
   nearestRoadEnd, cumulative, serialize, parse,
-  nearestOnRoad, splitRoad, joinCrossing, setRoadRamp, setRoadHump,
+  nearestOnRoad, splitRoad, joinCrossing, setRoadRamp, setRoadHump, controlAt,
   deletePoint, subdivideRoad, smoothRoad,
   addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad,
 } from "../src/editor/model.js";
@@ -432,7 +432,9 @@ console.log("\n12. JOINING ROADS THE WAY A PERSON MEANS, AND A WHOLE ROAD'S HEIG
   s1 = setRoadControl(s1, r, "start", "stop"); s1 = setRoadControl(s1, r, "end", "signal"); s1 = setLeftArrow(s1, r, "end", true);
   const sp = splitRoad(s1, r, 0, { x: 40, y: 0 });
   const [h1, h2] = sp.ids.map((id) => sp.map.roads.find((x) => x.id === id));
-  check(sp.ids[0] !== sp.ids[1] && h1.control.start === "stop" && h1.control.end === "none" && h2.control.start === "none" && h2.control.end === "signal" && h2.leftArrow.end === true && !h1.leftArrow.end,
+  /* A stop is a SIGN standing at its road end now (model.js `controlAt`
+     reads it), so the rule at each end is read where it lives. */
+  check(sp.ids[0] !== sp.ids[1] && controlAt(sp.map, h1, "start") === "stop" && controlAt(sp.map, h1, "end") === "none" && controlAt(sp.map, h2, "start") === "none" && controlAt(sp.map, h2, "end") === "signal" && h2.leftArrow.end === true && !h1.leftArrow.end,
     "a split keeps the start's control on the first half and the end's control and arrow on the second, with a fresh id");
 
   /* Elevation from two numbers. */

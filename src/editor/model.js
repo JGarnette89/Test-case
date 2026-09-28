@@ -60,7 +60,7 @@ export function setPointZ(map, roadId, index, z) {
   return updatePoint(map, roadId, index, { z });
 }
 export function deleteRoad(map, roadId) {
-  return { ...map, roads: map.roads.filter((r) => r.id !== roadId) };
+  return { ...map, roads: map.roads.filter((r) => r.id !== roadId), ...(map.signs ? { signs: map.signs.filter((s) => s.road !== roadId) } : {}) };
 }
 /* A property patch: kind, lanes, oneWay, speed, parking. Changing kind
    does NOT overwrite lanes/speed/parking the author already set --
@@ -82,8 +82,28 @@ function fitTurns(r) {
 export function setRoadProps(map, roadId, patch) {
   return patchRoad(map, roadId, (r) => fitTurns({ ...r, ...patch }));
 }
+/* THE CONTROL AT AN APPROACH, as the editor writes it: a stop or yield is
+   a SIGN standing there (map/format.js `signs`), anything else -- a
+   signal, nothing -- is the road end's own control, and the sign that was
+   there is taken away. The plate is left alone: it belongs to a signal. */
 export function setRoadControl(map, roadId, end, control) {
-  return patchRoad(map, roadId, (r) => ({ ...r, control: { ...r.control, [end]: control } }));
+  const sign = control === "stop" || control === "yield";
+  const others = (map.signs ?? []).filter((s) => !(s.road === roadId && s.end === end && (s.kind === "stop" || s.kind === "yield")));
+  const was = (map.signs ?? []).find((s) => s.road === roadId && s.end === end && (s.kind === "stop" || s.kind === "yield"));
+  const signs = sign ? [...others, { id: was?.id ?? nextId(map.signs ?? [], "sign"), kind: control, road: roadId, end, back: was?.back ?? 0 }] : others;
+  const m = patchRoad(map, roadId, (r) => ({ ...r, control: { ...r.control, [end]: sign ? "none" : control } }));
+  return { ...m, signs };
+}
+/* How far before the line an approach's sign stands. */
+export function setSignBack(map, roadId, end, back) {
+  return { ...map, signs: (map.signs ?? []).map((s) => (s.road === roadId && s.end === end && (s.kind === "stop" || s.kind === "yield") ? { ...s, back: Math.max(0, Number(back) || 0) } : s)) };
+}
+/* The rule at an approach as the editor shows it: the sign if there is
+   one, the road end's own control otherwise (shorthand from a map written
+   before signs). */
+export function controlAt(map, road, end) {
+  const s = (map.signs ?? []).find((q) => q.road === road.id && q.end === end && (q.kind === "stop" || q.kind === "yield"));
+  return s ? s.kind : road.control?.[end] ?? "none";
 }
 export function setRoadTurns(map, roadId, end, turns) {
   return patchRoad(map, roadId, (r) => ({ ...r, turns: { ...(r.turns ?? { start: null, end: null }), [end]: turns } }));
@@ -235,7 +255,10 @@ export function splitRoad(map, roadId, seg, at) {
   const a = { ...r, points: [...r.points.slice(0, seg + 1), p], control: { start: r.control?.start ?? "none", end: "none" }, ...keep("turns", "a"), ...keep("bays", "a"), ...keep("leftArrow", "a") };
   const b = { ...r, id: newId, points: [p, ...r.points.slice(seg + 1)], control: { start: "none", end: r.control?.end ?? "none" }, ...keep("turns", "b"), ...keep("bays", "b"), ...keep("leftArrow", "b") };
   const roads = map.roads.flatMap((x) => (x.id === roadId ? [a, b] : [x]));
-  return { map: { ...map, roads }, ids: [roadId, newId] };
+  /* A sign stands at a road END: the one at the old end now stands at the
+     second half's, and the new ends where the split is have none. */
+  const signs = map.signs?.map((s) => (s.road === roadId && s.end === "end" ? { ...s, road: newId } : s));
+  return { map: { ...map, roads, ...(signs ? { signs } : {}) }, ids: [roadId, newId] };
 }
 
 /* MAKE AN INTERSECTION WHERE TWO ROADS CROSS. The format connects roads

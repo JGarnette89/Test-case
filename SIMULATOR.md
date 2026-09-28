@@ -2485,6 +2485,41 @@ traffic is identical with or without them. Still absent: pulling in and
 out is a sideways step of 3 m at rest, not a manoeuvre, and there are no
 driveways.
 
+**SIGNS AS OBJECTS, FIRST PART -- BUILT, 28 September** (`signs` in the
+format, the loader's `signAt`, `sim/reading.js`, the editor's approach
+panel, `tools/verify-signs.mjs`). The maintainer's request: signs at the
+road's edge that drivers have to read, where before they "just know".
+Two changes of very different size, and this is the first:
+
+- **A sign is an object and it IS the rule at its approach** -- one
+  source of truth. `signs: [{ id, kind, road, end, back }]`; a road end's
+  `control` of stop or yield is SHORTHAND the loader expands into the
+  sign, so every map written before loads unchanged. Where a sign and the
+  shorthand disagree the sign wins, warned; a stop or yield sign on a
+  signal's approach is refused, warned; the no-right-on-red plate makes a
+  signal no-right-on-red and is warned anywhere else. Signs are resolved
+  onto a road's ends before the loader splits it at a T, so a sign keeps
+  its end. The editor now writes signs, not shorthand, sets them back
+  from the line, and keeps them at their end through its own splits.
+- **A driver learns a rule in one place** (`sim/reading.js`): the rule at
+  their own approach and the rule at somebody else's (right of way) --
+  two different acts of perception. TODAY A PERFECT READER, and the
+  traffic on every test map is identical tick for tick whether its rules
+  are written as signs or as shorthand (196 signs on the city). This is
+  where observation lands: a sign too far to read, hidden, missed, or
+  known by heart to a local.
+
+**Waiting on the maintainer's rulings, and not built:** speed-limit signs
+(what an unsigned road means, and whether a limit carries through an
+intersection or after a turn), a stop sign on its own mid-block, whether
+locals know their own district's signs without reading them, which kinds
+come first, and what YIELD means -- it is still treated exactly like no
+control, which is a gap found while designing this.
+
+**The second change is observation** -- drivers who can miss or not yet
+see a sign -- and it waits on contact having an outcome, because a driver
+who misses a stop sign drives into the cross traffic.
+
 **TEST MAPS WITH SECTIONS -- BUILT, 28 September** (`#/tests`,
 `sections` in the format, `TEST_MAPS` in `map/samples.js`). The
 maintainer tests from a phone, and drawing in the editor there is slow,

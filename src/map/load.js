@@ -18,7 +18,7 @@
 
    Pure. No React, no canvas, no colour.
    ===================================================================== */
-import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS, ZONES, CHARACTERS, PARK_W } from "./format.js";
+import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS, ZONES, CHARACTERS, PARK_W, SIGN_KINDS, SIGN_BACK_MAX } from "./format.js";
 import { ribbonOf } from "../iso/road.js";
 import { hasBays, baySurfaceOf, baysAt } from "./bays.js";
 
@@ -176,6 +176,21 @@ export function loadMap(map) {
   const warn = (code, message, at = null, extra = {}) => warnings.push({ code, message, at, ...extra });
   if (!map || !Array.isArray(map.roads)) return { ok: false, error: "not a map: no roads array", warnings };
 
+  /* SIGNS, by the road end they stand at. Resolved onto each road's own
+     control BEFORE any road is split at a T, so a sign follows its end
+     onto the right half exactly as the control always has. */
+  const signsAt = new Map();
+  const drawnIds = new Set((map.roads ?? []).map((r) => String(r?.id)));
+  (Array.isArray(map.signs) ? map.signs : []).forEach((sg, i) => {
+    const id = String(sg?.id ?? `sign${i}`);
+    if (!SIGN_KINDS.includes(sg?.kind)) { warn("unknown-sign", `sign ${id}: kind "${sg?.kind}" is not one of ${SIGN_KINDS.join(", ")}; dropped`); return; }
+    if (!drawnIds.has(String(sg.road)) || (sg.end !== "start" && sg.end !== "end")) { warn("sign-no-road", `sign ${id}: stands at no road end on the map; dropped`); return; }
+    const back = Math.max(0, Math.min(SIGN_BACK_MAX, Number(sg.back) || 0));
+    const key = `${sg.road}|${sg.end}`;
+    if (!signsAt.has(key)) signsAt.set(key, []);
+    signsAt.get(key).push({ id, kind: sg.kind, back });
+  });
+
   /* Roads: fill from the kind, thin, drop the short, resample, clamp. */
   let roads = [];
   const seen = new Set();
@@ -203,6 +218,29 @@ export function loadMap(map) {
     const moved = clampGrade(raw.pts, raw.at);
     if (moved > 0.01) warn("grade-clamped", `road ${id}: a slope steeper than ${Math.round(MAX_GRADE * 100)}% was flattened by up to ${moved.toFixed(2)} m`);
     const control = { start: CONTROLS.includes(r.control?.start) ? r.control.start : "none", end: CONTROLS.includes(r.control?.end) ? r.control.end : "none" };
+    /* THE SIGN AT EACH END, AND THE CONTROL IT MAKES. A stop or yield sign
+       is the control at its approach; a stop or yield control with no sign
+       is shorthand, and the sign is made for it (`implicit`). Where they
+       disagree the sign wins, warned; a stop or yield sign on a signal's
+       approach is refused, warned, since the light governs; the
+       no-right-on-red plate means something only on a signal. */
+    const signAt = { start: null, end: null };
+    for (const e of ["start", "end"]) {
+      const here = signsAt.get(`${String(r.id)}|${e}`) ?? [];
+      const rule = here.find((q) => q.kind === "stop") ?? here.find((q) => q.kind === "yield");
+      const plate = here.find((q) => q.kind === "no-right-on-red");
+      const lit = control[e] === "signal" || control[e] === "signal-no-right-on-red";
+      if (rule && lit) warn("sign-at-signal", `road ${id}: a ${rule.kind} sign at its ${e} is on a signal's approach; the signal governs, the sign is ignored`);
+      else if (rule) {
+        if ((control[e] === "stop" || control[e] === "yield") && control[e] !== rule.kind) warn("control-vs-sign", `road ${id}: its ${e} says ${control[e]} and a ${rule.kind} sign stands there; the sign governs`);
+        control[e] = rule.kind;
+        signAt[e] = { ...rule };
+      } else if (control[e] === "stop" || control[e] === "yield") signAt[e] = { id: `${id}:${e}`, kind: control[e], back: 0, implicit: true };
+      if (plate) {
+        if (control[e] === "signal") control[e] = "signal-no-right-on-red";
+        else if (!lit) warn("plate-without-signal", `road ${id}: a no-right-on-red plate at its ${e} has no signal; ignored`);
+      }
+    }
     /* Per-lane permitted movements, passed through for the graph to check
        against the node it arrives at (sim/lanes.js) -- only the graph
        knows what movements an end offers. */
@@ -220,7 +258,7 @@ export function loadMap(map) {
        traffic drives by are unchanged; `outer` is what is drawn and what
        a building has to keep off. */
     const outer = parking === "parallel" && !oneWay && !bays ? width + 2 * PARK_W : width;
-    const built = { id, kind, lanes, oneWay, width, outer, speed, parking, control, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}), ...raw };
+    const built = { id, kind, lanes, oneWay, width, outer, speed, parking, control, signAt, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}), ...raw };
     /* A bay longer than its road cannot open: it and its taper must fit. */
     for (const end of ["start", "end"]) {
       const b = baysAt(built, end);
@@ -282,7 +320,7 @@ export function loadMap(map) {
         const mk = (suffix, pts, controlStart, controlEnd, turnsStart, turnsEnd, which) => {
           const rs = resample(pts);
           const keep = (f) => (o[f] ? { [f]: { start: which === "a" ? o[f].start : null, end: which === "b" ? o[f].end : null } } : {});
-          const half = { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, ...keep("bays"), ...keep("leftArrow"), ...rs };
+          const half = { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, signAt: { start: which === "a" ? o.signAt?.start ?? null : null, end: which === "b" ? o.signAt?.end ?? null : null }, ...keep("bays"), ...keep("leftArrow"), ...rs };
           return { ...half, ...surfaceFor(half) };
         };
         const a = mk("#a", aPts, o.control.start, "none", o.turns?.start ?? null, null, "a"), b = mk("#b", bPts, "none", o.control.end, null, o.turns?.end ?? null, "b");
@@ -453,7 +491,9 @@ export function loadMap(map) {
   }
 
   const bounds = map.bounds ?? { x: Math.min(...boxes.map((b) => b.x0)), y: Math.min(...boxes.map((b) => b.y0)), w: 0, h: 0 };
-  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, warnings };
+  /* Every sign on the map, where it stands: the list the editor shows. */
+  const signs = roads.flatMap((r) => ["start", "end"].filter((e) => r.signAt?.[e]).map((e) => ({ ...r.signAt[e], road: r.id, end: e })));
+  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, warnings };
 }
 
 /* THE LAND, WHERE THE MAP GIVES NONE.

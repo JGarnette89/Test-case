@@ -43,6 +43,15 @@ export const KINDS = {
    is how one approach says the turn is not permitted on its red, which
    is per approach in the real world too (src/sim/signal.js). */
 export const CONTROLS = ["stop", "yield", "none", "signal", "signal-no-right-on-red"];
+/* SIGNS AS OBJECTS (SIMULATOR.md, signs): a sign stands at a road end --
+   the approach it governs -- set `back` metres before the line. A map
+   lists them in `signs: [{ id, kind, road, end, back }]`; a road's
+   `control` of stop or yield is SHORTHAND for the sign, which the loader
+   expands, so every map written before signs existed loads unchanged.
+   `no-right-on-red` is the plate on a signal's approach. Speed and warning
+   signs are the next kinds and wait on the maintainer's rulings. */
+export const SIGN_KINDS = ["stop", "yield", "no-right-on-red"];
+export const SIGN_BACK_MAX = 40;   // metres: further back than this a sign stops reading as the intersection's
 export const ZONES = ["residential", "commercial", "industrial", "park", "water", "highway"];
 /* WHO DRIVES HERE: a district's character (sim/towns.js says what each
    means to the driver model). Only characters the model can express are
