@@ -802,6 +802,30 @@ export function junctionsOf(course) {
       const at = { x: r.pts[i].x - Math.sin(fh) * off, y: r.pts[i].y + Math.cos(fh) * off, z: r.pts[i].z ?? 0 };
       signs.push(nl.end === "end" ? { kind: "do-not-enter", at, heading: face } : { kind: "one-way", at, heading: face + 90, flow });
     }
+    /* SPEED LIMIT SIGNS (the maintainer's sign list, eighth), derived from
+       what each road posts. Unsigned is 50 (his ruling), so a road leaving
+       this intersection gets a sign where its limit is not 50, or where a
+       road meeting it here posts something else -- a driver coming
+       straight through would otherwise carry that road's limit onto it.
+       Drawn only: the traffic already drives each road at its own posted
+       speed. A limit that a driver CARRIES through intersections until the
+       next sign (his second ruling) is driver state, and not built. */
+    const here = (course.map?.nodes ?? []).find((q) => q.id === spot.node)?.legs ?? [];
+    const kmhOf = (r) => Math.round(r?.speed ?? 50);
+    for (const nl of here) {
+      const r = roadOf[nl.road];
+      if (!r || r.pts.length < 2 || (r.oneWay && nl.end === "end")) continue;
+      const others = here.filter((q) => q !== nl).map((q) => kmhOf(roadOf[q.road]));
+      if (kmhOf(r) === 50 && others.every((v) => v === 50)) continue;
+      const along = place.boxHalf + 18;
+      const i = nl.end === "end"
+        ? (() => { let k = r.pts.length - 1; while (k > 1 && r.length - r.at[k] < along) k--; return k; })()
+        : (() => { let k = 0; while (k < r.pts.length - 2 && r.at[k] < along) k++; return k; })();
+      const a = r.pts[Math.max(0, i - 1)], b = r.pts[Math.min(r.pts.length - 1, i + 1)];
+      const out = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + (nl.end === "end" ? 180 : 0);   // travelling away from this node
+      const oh = (out * Math.PI) / 180, off = (r.outer ?? r.width) / 2 + 0.6;
+      signs.push({ kind: "speed-limit", kmh: kmhOf(r), road: r.id, at: { x: r.pts[i].x - Math.sin(oh) * off, y: r.pts[i].y + Math.cos(oh) * off, z: r.pts[i].z ?? 0 }, heading: out });
+    }
     /* The surface: the corners in order round the centre. */
     const c2 = { x: centre.x, y: centre.y };
     corners.sort((p, q) => Math.atan2(p.y - c2.y, p.x - c2.x) - Math.atan2(q.y - c2.y, q.x - c2.x));

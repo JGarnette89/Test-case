@@ -358,6 +358,8 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const face = isLight ? null : boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
       /* The ALL-WAY plate: a white tab under the octagon (graph.js). */
       /* NO LEFT TURN: a white face crossed by a red band -- a map symbol. */
+      /* SPEED LIMIT: a white board, taller than wide, the number drawn on it. */
+      const speedBoard = s.kind === "speed-limit" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.6 }, s.heading + 90, 0, { l: 0.75, w: 0.1, h: 0.9 }) : null;
       /* ONE WAY: a black board along the road with a white bar (graph.js
          derives it from the road's `oneWay`); DO NOT ENTER: red, white bar. */
       const oneWay = s.kind === "one-way" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.9 }, s.heading + 90, 0, { l: 1.3, w: 0.1, h: 0.45 }) : null;
@@ -366,6 +368,16 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const plate = s.allWay ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.3 }, s.heading + 90, 0, { l: 0.7, w: 0.1, h: 0.3 }) : null;
       items.push({ layer: 1, key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01, tag: audit && { kind: "sign", at: s.at }, paint: () => {
         paintBox(ctx, view, post, "#9a9da3");
+        if (s.kind === "speed-limit") {
+          paintBox(ctx, view, speedBoard, "#f4f4ee");
+          /* The number, projected onto the board's centre and sized to it. */
+          const [cx, cy] = view.P(s.at.x, s.at.y, (s.at.z ?? 0) + 2.0);
+          const [, ty] = view.P(s.at.x, s.at.y, (s.at.z ?? 0) + 2.35);
+          const px = Math.max(6, Math.abs(cy - ty) * 1.1);
+          ctx.fillStyle = "#1c1d20"; ctx.font = `700 ${px.toFixed(0)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(String(s.kmh), cx, cy);
+          return;
+        }
         if (s.kind === "do-not-enter") { paintBox(ctx, view, face, "#c8322b"); paintBox(ctx, view, band, "#f4f4ee"); return; }
         if (s.kind === "one-way") { paintBox(ctx, view, oneWay, "#1c1d20"); paintBox(ctx, view, oneWayBar, "#f4f4ee"); return; }
         if (s.kind === "no-left-turn") { paintBox(ctx, view, face, "#f4f4ee"); paintBox(ctx, view, band, "#c8322b"); return; }

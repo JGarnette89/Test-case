@@ -2544,7 +2544,17 @@ with a default; he took the defaults for five and ruled on one):
    `oneWay` like the all-way plate: ONE WAY beside the mouth where a
    one-way street leaves an intersection, DO NOT ENTER facing anybody who
    would turn into it the wrong way where it arrives (verify-signs
-   section 10). Left: speed limit, school zone, curve ahead.
+   section 10). **Speed limit signs are DRAWN**, derived from what each
+   road posts: at a road's entrance from an intersection where its limit
+   is not 50, or where a road meeting it there posts something else (17 on
+   test map 1; 280 on the city, because every residential street posts 40
+   and a driver turning onto one would otherwise assume 50 -- an AREA
+   limit posted at the district's entrances is the likely real answer, and
+   is the maintainer's call). The traffic still drives each road at its own
+   posted speed; a limit CARRIED through intersections until the next sign
+   (ruling 2) is driver state, not built -- and it is where a knowledge-weak
+   driver who misses or forgets a limit would live. verify-signs section
+   11. Left: school zone, curve ahead.
 6. **Yield means:** slow, give way to traffic on the other road and anyone
    crossing, stop only if needed, and go without stopping when there is a
    safe gap -- a stop sign without the full stop. **BUILT 28 September**

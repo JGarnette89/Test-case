@@ -287,6 +287,27 @@ console.log("\n10. ONE WAY AND DO NOT ENTER: DERIVED FROM THE ROAD, AT EACH END 
     `DO NOT ENTER at the far end facing the wrong way in (x ${dne[0]?.at.x.toFixed(0)}, facing ${norm(dne[0]?.heading ?? 0).toFixed(0)} deg), ONE WAY at the near end pointing with the traffic (x ${ow[0]?.at.x.toFixed(0)}, flow ${norm(ow[0]?.flow ?? 0).toFixed(0)} deg)`);
 }
 
+console.log("\n11. SPEED LIMIT SIGNS: WHAT EACH ROAD POSTS, WHERE A DRIVER ENTERS IT, AND ONLY WHERE THE LIMIT IS NEWS");
+{
+  const L = loadMap(TEST_MAPS.find((t) => t.id === "test-1").build());
+  const c = graphOf(L, { lane: 3.6 });
+  const roadOf = Object.fromEntries(c.roads.map((r) => [r.id, r]));
+  const js = junctionsOf(c);
+  const speed = js.flatMap((j) => j.signs.filter((q) => q.kind === "speed-limit"));
+  const honest = speed.every((q) => q.kmh === Math.round(roadOf[q.road].speed));
+  /* No sign where the road is 50 and so is everything meeting it. */
+  let quiet = 0, noisy = 0;
+  js.forEach((j, idx) => {
+    const spot = c.at.find((a) => a.node === j.node) ?? c.at[idx];
+    const legs = (L.nodes.find((n) => n.id === spot?.node)?.legs ?? []);
+    const all50 = legs.every((l) => Math.round(roadOf[l.road]?.speed ?? 50) === 50);
+    if (all50) (j.signs.some((q) => q.kind === "speed-limit") ? noisy++ : quiet++);
+  });
+  const kinds = [...new Set(speed.map((q) => q.kmh))].sort((a, b) => a - b);
+  check(speed.length > 0 && honest && noisy === 0,
+    `${speed.length} speed signs on test map 1 (${kinds.join(", ")} km/h), each saying what its road posts, and none at the ${quiet} intersections where everything is 50`);
+}
+
 console.log(`\n${"=".repeat(70)}`);
 console.log(failed ? `${failed} FAILURE(S)` : "OK: a sign is the rule at its approach and the traffic is identical for it, disagreements are said, a sign keeps its end through a split and stands where it is put, the editor writes signs, and a driver learns a rule in one place.");
 process.exit(failed ? 1 : 0);
