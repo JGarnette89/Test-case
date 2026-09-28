@@ -309,6 +309,30 @@ console.log("\n10. A DISTRICT'S CHARACTER: WHO DRIVES THERE");
   check(bad.zones[0].character === "ordinary" && bad.warnings.some((x) => x.code === "unknown-character"), "a character the model does not know is warned and treated as ordinary");
 }
 
+console.log("\n11. THE NEIGHBOUR INDEX CHANGES NOTHING BUT THE COST");
+{
+  /* Each car asks only the cars at its own intersection and the ones
+     joined to it (crossing.js `nearNode`). The rules say nobody else can
+     matter; this holds them to it: the same world stepped with the index
+     and without, from the same state, must stay identical, tick for tick,
+     on the city and on the test map (signals, bays, a five-way, an
+     overpass). */
+  const same = (loaded, cars, ticks) => {
+    const w0 = seedGraph(3, 60, loaded, { target: cars, posted: true });
+    let a = w0, b = { ...w0, noIndex: true };
+    for (let i = 0; i < ticks; i++) {
+      a = step(a); b = step(b);
+      if (JSON.stringify(a.actors) !== JSON.stringify(b.actors)) return { ok: false, at: i, cars: a.actors.length };
+    }
+    return { ok: true, cars: a.actors.length };
+  };
+  const c = same(L, 250, 1200), t = same(loadMap(testMap1()), 150, 1200);
+  check(c.ok && t.ok, `a minute of the city at ${c.cars} cars and of the test map at ${t.cars}: identical with the index and without${c.ok && t.ok ? "" : ` -- diverged at tick ${c.ok ? t.at : c.at}`}`);
+  const time = (loaded, cars, noIndex) => { let w = { ...seedGraph(3, 60, loaded, { target: cars, posted: true }), noIndex }; const t0 = performance.now(); for (let i = 0; i < 200; i++) w = step(w); return (performance.now() - t0) / 200; };
+  const slow = time(L, 300, true), fast = time(L, 300, false);
+  check(fast < slow / 3, `and it is what makes a city affordable: ${fast.toFixed(2)} ms a step at 300 cars against ${slow.toFixed(2)} ms scanning everybody`);
+}
+
 console.log(`\n${"=".repeat(70)}`);
 console.log(failed ? `${failed} FAILURE(S)` : "OK: streets fill a district deterministically, join the roads around it, never dangle or strand, follow the established controls, keep junctions far enough apart for the graph, and a closed map no longer takes the sim down.");
 process.exit(failed ? 1 : 0);

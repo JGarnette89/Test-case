@@ -346,8 +346,19 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
    count, the behaviour on and off, warmed and interleaved so neither
    pays for the other's cold start. */
 {
-  const tick = (target, laneChanges, seed, keepRight = true) => {
-    let w = seedGraph(seed, 50, loaded, { target, posted: true, laneChanges, keepRight });
+  /* MEASURED WITH THE NEIGHBOUR INDEX OFF, AND WHY (28 September). The 20%
+     bound below is a SHARE of a step, and it was calibrated on a sim in
+     which every car scanned every other car. The neighbour index
+     (crossing.js `nearNode`) then halved the rest of the step -- 11.2 to
+     5.8 ms at 300 cars -- while lane changing itself got cheaper, 1.88 to
+     1.27 ms (tools/measure/lane-cost.mjs). The share rose from 17% to 22%
+     because the denominator shrank, and the check failed for making the
+     sim faster. Rather than move the bound, the share is measured on the
+     sim it was calibrated on (`noIndex`), where it still means what it
+     meant; and the index gets its own assertion below: it must never make
+     lane changing cost MORE milliseconds than scanning everybody did. */
+  const tick = (target, laneChanges, seed, keepRight = true, noIndex = true) => {
+    let w = { ...seedGraph(seed, 50, loaded, { target, posted: true, laneChanges, keepRight }), noIndex };
     const ts = [];
     for (let i = 0; i < 20 * 60; i++) { const a = performance.now(); w = step(w); ts.push(performance.now() - a); }
     ts.sort((x, y) => x - y);
@@ -358,7 +369,14 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
     const on = [], off = [];
     for (const seed of [3, 5]) { off.push(tick(target, false, seed)); on.push(tick(target, true, seed)); }
     const cost = mean(on) / mean(off) - 1;
-    check(cost < 0.2, `at ${target} cars lane changing costs the sim ${(cost * 100).toFixed(0)}% (${mean(off).toFixed(2)} -> ${mean(on).toFixed(2)} ms a tick, median)`);
+    check(cost < 0.2, `at ${target} cars lane changing costs the sim ${(cost * 100).toFixed(0)}% (${mean(off).toFixed(2)} -> ${mean(on).toFixed(2)} ms a tick, median, every car scanning everybody)`);
+    if (target === 300) {
+      const onI = [], offI = [];
+      for (const seed of [3, 5]) { offI.push(tick(target, false, seed, true, false)); onI.push(tick(target, true, seed, true, false)); }
+      const added = mean(onI) - mean(offI), addedBefore = mean(on) - mean(off);
+      /* 15%: two median timings on a shared desk machine wobble by about that much between runs. */
+      check(added <= addedBefore * 1.15, `and with the neighbour index it costs no more: ${added.toFixed(2)} ms a tick added, against ${addedBefore.toFixed(2)} ms scanning everybody`);
+    }
     /* ...of which keeping right is part: the same comparison with only it off. */
     const noKeep = [];
     for (const seed of [3, 5]) noKeep.push(tick(target, true, seed, false));

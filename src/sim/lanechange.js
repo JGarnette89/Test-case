@@ -50,6 +50,7 @@ import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
 import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom } from "./traffic.js";
 import { changeTime } from "../core/motion.js";
 import { poseAt } from "./intersection.js";
+import { atNode } from "./crossing.js";
 
 /* THE LANE BESIDE, by place across the approach (graph.js `legAt`):
    `d` = -1 toward the centre line, +1 toward the curb. A turn bay sits
@@ -183,7 +184,7 @@ export const changing = (lc, t) => !!lc && t < lc.t0 + lc.T;
 function neighbours(world, me, legId, s) {
   let ahead = null, behind = null, da = Infinity, db = Infinity;
   const layout = world.course.at[me.k ?? 0].layout;
-  for (const a of world.actors) {
+  for (const a of atNode(world, world.actors, me.k ?? 0)) {
     if (a.id === me.id || (a.k ?? 0) !== (me.k ?? 0)) continue;
     const from = layout.paths[a.route]?.from;
     const inLane = from === legId || (changing(a.lc, world.t) && a.lc.fromLeg === legId);

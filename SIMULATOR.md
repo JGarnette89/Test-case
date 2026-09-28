@@ -2463,13 +2463,32 @@ against 0.69 s. `TOWN_PULL` = 6 is a flagged design constant. Not
 expressible yet, and absent from the list: "nobody is looking" (needs
 perception on) and "nobody signals" (the driver model has no signals).
 
-**Measured for 5.5, not yet acted on:** 6.7 ms a tick on the desk
-machine at 200 cars on the stand-in city (1.4 by 0.9 km), which at
-20 Hz is fine on the desk and a question on the phone.
-*The question:* is it learnable? Can he find the back street he found
-yesterday? Does the traffic feel alive at every density the districts
-ask for? And, with the player at the wheel: is it good to drive?
-*Cost:* three to four weeks.
+**5.5, THE NEIGHBOUR INDEX -- BUILT, 28 September** (`nearNode` /
+`atNode` in `crossing.js`, `tools/measure/city-perf.mjs`). Measured
+first: on the stand-in city every car asked every other car about
+itself, so a step cost 1.7 ms at 100 cars, 8.2 at 200 and 18 at 300 on
+the desk machine, four fifths of it that scan -- quadratic, and over a
+phone's share of a 50 ms tick at a city's traffic. The rules already
+bound who can matter: right of way is settled only between cars at the
+same intersection, and following across a boundary runs along a lane,
+which joins two neighbouring intersections only. So each car asks the
+cars at its own node and the joined ones, from a per-node list built once
+per tick. Measured after: 0.5 ms at 100, 1.25 at 200, 2.4 at 300 --
+7.6 times faster at 300 and widening with size. EXACT, not approximate:
+the same worlds stepped with the index and without stay identical tick
+for tick for a minute on the city and on the test map, and dropping the
+joined nodes from the index diverges at the first tick with 1,580
+overlaps (`verify-generate` section 11). What is still unmeasured is the
+phone itself at city scale; the numbers above are the desk machine's.
+
+**One check changed with it, deliberately and on the record.** `verify-lanes`
+bounds lane changing at 20% of a step. The index halved the rest of the
+step and lane changing got cheaper too (1.88 to 1.27 ms at 300 cars), but
+its SHARE rose to 22% because the denominator shrank. The bound was not
+moved: the share is now measured on the sim it was calibrated on (index
+off, 18%), and a new assertion requires the index never to make lane
+changing cost more milliseconds than scanning everybody did (1.40 against
+2.03 ms). `tools/measure/lane-cost.mjs` has both measurements.
 
 ### Stage 6 — a world with things in it
 

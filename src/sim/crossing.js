@@ -90,6 +90,56 @@ const LAG_TICKS = Math.ceil((PERCEIVE.floor + PERCEIVE.span * (1 + PERCEIVE.jitt
 /* The actors as this driver currently has them: the present, or the
    committed state from their lag ago. Never further back than the world
    remembers, so a driver in a freshly made world sees the present. */
+/* =====================================================================
+   WHO CAN MATTER TO A CAR AT NODE k (SIMULATOR.md stage 5, the spatial
+   index). Every scan here asked every car about every other car on the
+   map, which is quadratic: measured on the stand-in city, 8 ms a step at
+   200 cars and 18 ms at 300, four fifths of it this scan -- over a
+   phone's budget at a city's traffic. But the rules already say who can
+   matter. Right of way is settled only between cars at the SAME
+   intersection (`blockedBy` returns false otherwise), and following
+   across a boundary is along a lane, and a lane runs between two
+   neighbouring intersections only. So a car at k need only ask the cars
+   at k and at the nodes joined to k: the same answer, from a list built
+   once per list of cars rather than scanned whole for every car.
+
+   Exact, not approximate: `verify-generate` runs the same worlds with the
+   index on and off and asks for the identical world, tick for tick.
+   `world.noIndex` switches it off for exactly that. */
+const hoodCache = new WeakMap();
+function hoodOf(course, k) {
+  let m = hoodCache.get(course);
+  if (!m) {
+    m = new Map();
+    for (let i = 0; i < course.at.length; i++) m.set(i, new Set([i]));
+    for (const l of course.links ?? []) { m.get(l.a)?.add(l.b); m.get(l.b)?.add(l.a); }
+    hoodCache.set(course, m);
+  }
+  return m.get(k) ?? new Set([k]);
+}
+const byKCache = new WeakMap();
+function byK(list) {
+  let m = byKCache.get(list);
+  if (!m) {
+    m = new Map();
+    for (const a of list) { const k = a.k ?? 0; if (!m.has(k)) m.set(k, []); m.get(k).push(a); }
+    byKCache.set(list, m);
+  }
+  return m;
+}
+/* The cars in `list` at node k alone. */
+export function atNode(world, list, k) {
+  if (world.noIndex || !world.course?.graph) return list;
+  return byK(list).get(k) ?? [];
+}
+/* The cars in `list` at node k and the nodes joined to it. */
+export function nearNode(world, list, k) {
+  if (world.noIndex || !world.course?.graph) return list;
+  const m = byK(list), out = [];
+  for (const j of hoodOf(world.course, k)) { const xs = m.get(j); if (xs) for (const a of xs) out.push(a); }
+  return out;
+}
+
 export function seenBy(world, me) {
   const back = Math.round((me.lag ?? 0) / DT);
   if (!back || !world.past?.length) return world.actors;
@@ -464,7 +514,7 @@ export function openTo(me, world, caution) {
      without it every driver waiting properly at a red would be marked
      for the wait the light imposed on them. */
   if (controlOf(me, layout, layout.paths[me.route], world.t ?? 0) === "hold") return false;
-  return !world.actors.some((a) => a.id !== me.id && blockedBy(me, a, layout, caution, world.t ?? 0));
+  return !atNode(world, world.actors, me.k ?? 0).some((a) => a.id !== me.id && blockedBy(me, a, layout, caution, world.t ?? 0));
 }
 
 /* What is in this driver's way: the most constraining of the car in front and the
@@ -506,7 +556,7 @@ export function whatStops(me, world) {
 
   /* Everybody else, as THIS driver has them -- the present for a driver
      with no lag, their lag ago otherwise. */
-  const others = seenBy(world, me);
+  const others = nearNode(world, seenBy(world, me), mineAt);
   for (const them of others) {
     if (them.id === me.id) continue;
     const theirs = pathOf(world, them);
