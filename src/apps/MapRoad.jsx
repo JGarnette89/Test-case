@@ -38,7 +38,7 @@ import { terrain } from "../iso/road.js";
 import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop } from "../iso/hud.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter } from "../iso/perf.js";
-import { loadSettings, setSetting } from "../settings.js";
+import { loadSettings, setSetting, settings } from "../settings.js";
 
 const LIMITS = [40, 50, 60];
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
@@ -58,7 +58,9 @@ export const START = { road: "A-north", end: "end" };   // the player begins at 
    -- beyond it the edges cannot get cars in fast enough to hold the
    count. The default is five times what the screen used to carry,
    because the phone ran 114 cars at a locked 60 fps on the SLOW build. */
-export const CARS = { min: 10, max: 300, step: 10, start: 120 };
+/* How many cars a map gets: map/cars.js, where a check can hold it. */
+export { CARS, carsFor, carsMaxFor } from "../map/cars.js";
+import { CARS, carsFor, carsMaxFor } from "../map/cars.js";
 
 /* THE EDITOR DRIVES THE SAME SCREEN (src/apps/Editor.jsx "drive it"):
    `rawMap`, unloaded, in place of the hardcoded test map, and
@@ -68,8 +70,9 @@ export const CARS = { min: 10, max: 300, step: 10, start: 120 };
    map, the player starts at the first edge `loadMap` finds
    (`map/edges.js` -- a plain module, not this one, so a headless check
    can ask the same question without Node trying to parse JSX). */
-export function sceneFor(seed, kmh, every, drive, cars = CARS.start, rawMap = null, startAt = null) {
+export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null) {
   const loaded = loadMap(rawMap ?? testMap1());
+  if (cars == null) cars = carsFor(loaded);
   if (!loaded.ok) throw new Error(`${rawMap ? "map" : "test map"}: ${loaded.error}`);
   const b = loaded.bounds;
   const start = rawMap ? (startAt ?? firstEdge(loaded) ?? START) : START;
@@ -158,8 +161,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const judged = useRef({ last: null, at: 0 });   // the last turn's verdict and when it landed, for the fade
   const judgedStop = useRef({ last: null, at: 0 });   // and the last stop's
   const contacts = useRef(0);
-  const [cars, setCars] = useState(CARS.start);
-  if (!scene.current) scene.current = sceneFor(1, 50, 2.0, (initialMode ?? "drive") === "drive", CARS.start, mapData, startAt);
+  if (!scene.current) scene.current = sceneFor(1, 50, 2.0, (initialMode ?? "drive") === "drive", null, mapData, startAt);
+  const [cars, setCars] = useState(scene.current.world.target);
+  const mapId = scene.current.loaded.id;
+  const carsMax = carsMaxFor(scene.current.loaded);
 
   const restart = (s = seed, kmh = limit, m = mode, n = cars) => {
     setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n);
@@ -179,7 +184,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       if (!live) return;
       const kmh = LIMITS.includes(s.limit) ? s.limit : limit;
       const m = initialMode ?? (s.mode === "watch" ? "watch" : "drive");
-      const n = Number.isFinite(s.cars) ? Math.max(CARS.min, Math.min(CARS.max, s.cars)) : cars;
+      /* This map's own saved count; test map 1 also honours the one saved
+         before counts were per map. */
+      const saved = s.carsByMap?.[mapId] ?? (mapId === "test-1" ? s.cars : undefined);
+      const n = Number.isFinite(saved) ? Math.max(CARS.min, Math.min(carsMax, saved)) : cars;
       if (kmh !== limit || m !== mode || n !== cars) restart(seed, kmh, m, n);
       if (s.slider === "spring") input.current.state.spring = true;
     });
@@ -408,8 +416,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               never rebuilds the world under the driver. */}
           <label style={{ ...S.label, display: "inline-flex", alignItems: "center", gap: 8 }}>
             Cars <b style={{ color: C.white, minWidth: 28, textAlign: "right" }}>{cars}</b>
-            <input type="range" min={CARS.min} max={CARS.max} step={CARS.step} value={cars} style={{ width: 140, fontSize: 16 }}
-              onChange={(e) => { const n = Number(e.target.value); setCars(n); setSetting("cars", n); if (scene.current) scene.current.world = { ...scene.current.world, target: n }; }} />
+            <input type="range" min={CARS.min} max={carsMax} step={CARS.step} value={cars} style={{ width: 140, fontSize: 16 }}
+              onChange={(e) => { const n = Number(e.target.value); setCars(n); setSetting("carsByMap", { ...(settings().carsByMap ?? {}), [mapId]: n }); if (scene.current) scene.current.world = { ...scene.current.world, target: n }; }} />
           </label>
           <span style={S.label}>keys: arrows or WASD, space brakes, q and e signal</span>
         </div>

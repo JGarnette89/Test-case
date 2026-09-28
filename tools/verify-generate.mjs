@@ -35,6 +35,8 @@ import { touching } from "../src/sim/player.js";
 import { PARK_W, LANE } from "../src/map/format.js";
 import { poseOf } from "../src/sim/crossing.js";
 import { TEST_MAPS } from "../src/map/samples.js";
+import { carsFor, carsMaxFor, DENSITY } from "../src/map/cars.js";
+import { DT } from "../src/sim/traffic.js";
 import { playerOn } from "../src/sim/drive.js";
 import { poseAt, cornersOf, boxesOverlap } from "../src/sim/intersection.js";
 import { CAR } from "../src/sim/traffic.js";
@@ -277,7 +279,11 @@ console.log("\n9. TRAFFIC FROM INSIDE THE CITY: PULLING OUT, PULLING IN");
      network, so every car on it has to come from its districts. */
   const closed = { ...city, roads: city.roads.filter((r) => !r.id.startsWith("out-")) };
   const lc = loadMap(closed);
-  let w = seedGraph(1, 60, lc, { target: 150, posted: true });
+  /* Seeded at 100 and asked for 150 on the clock, so there are fifty
+     pull-outs to watch: the warm-up now fills a world before its first
+     frame, and one seeded at 150 opened full and offered only the
+     turnover (28 on this seed). */
+  let w = { ...seedGraph(1, 60, lc, { target: 100, posted: true }), target: 150 };
   check(districtStreetsOf(w.course).length > 50 && districtShare(w.course) === 1, `a closed city: ${districtStreetsOf(w.course).length} curb lanes on district streets, and every arrival comes from them`);
   let over = 0, appeared = 0, badAppear = 0, pulledIn = 0, vanishedMoving = 0, launchedHeld = 0;
   let prev = new Map(w.actors.map((a) => [a.id, a]));
@@ -463,6 +469,23 @@ console.log("\n13. THE TEST MAPS: EVERY SECTION OPENS, TO WATCH AND TO DRIVE");
   check(bad.length === 0 && sections >= 10 && drives >= 4, `${TEST_MAPS.length} test maps, ${sections} sections, every one somewhere on its map with something to judge, and all ${drives} starts drivable${bad.length ? `: ${bad.join("; ")}` : ""}`);
   const t1 = loadMap(TEST_MAPS.find((t) => t.id === "test-1").build());
   check(["crossroads", "tee", "fiveway", "arterial", "overpass", "hill"].every((id) => t1.sections.some((q) => q.id === id)), "test map 1 carries the six places #/map used to hard-code, under the same names");
+}
+
+console.log("\n15. HOW MANY CARS A MAP GETS: ITS OWN ROAD, AT ONE DENSITY");
+{
+  /* The maintainer found the city nearly empty: 120 moving cars, the count
+     chosen for test map 1, over 2.5 times the road. */
+  const t1 = loadMap(TEST_MAPS.find((t) => t.id === "test-1").build());
+  const cy = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
+  check(carsFor(t1) === 120, `test map 1 keeps the 120 it always had (${t1.laneKm.toFixed(1)} lane-km)`);
+  const per = (l) => carsFor(l) / l.laneKm;
+  check(carsFor(cy) >= 280 && Math.abs(per(cy) - per(t1)) / per(t1) < 0.05, `the city gets ${carsFor(cy)} over its ${cy.laneKm.toFixed(1)} lane-km -- the same density, ${per(cy).toFixed(1)} against ${per(t1).toFixed(1)} per lane-km`);
+  check(carsMaxFor(cy) > carsFor(cy) && carsMaxFor(t1) >= 300, `and the dial goes above the default on both (city up to ${carsMaxFor(cy)}, test map 1 up to ${carsMaxFor(t1)})`);
+  /* Asking is not getting: the city has to actually fill to it. */
+  let w = seedGraph(1, 50, cy, { every: 2, target: carsFor(cy), posted: true });
+  let low = Infinity;
+  for (let i = 0; i < 60 / DT; i++) { w = step(w); if (i > 20 / DT) low = Math.min(low, w.actors.length); }
+  check(low >= 0.95 * carsFor(cy), `and it fills: after twenty seconds the city never has fewer than ${low} moving cars of ${carsFor(cy)}`);
 }
 
 console.log(`\n${"=".repeat(70)}`);

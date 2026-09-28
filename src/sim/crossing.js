@@ -593,7 +593,16 @@ export function whatStops(me, world) {
     const shareLane = theirs.from === mine.from
       || (changing(them.lc, world.t) && them.lc.fromLeg === mine.from)
       || (changing(me.lc, world.t) && (theirs.from === me.lc.fromLeg || (changing(them.lc, world.t) && them.lc.fromLeg === me.lc.fromLeg)));
-    if (shareLane && them.s > me.s) {
+    /* EXCEPT THE CAR THEY MISSED. A driver who skipped the blind-spot
+       check has not registered the car beside them, and until they do
+       (lanechange.js, the abort) they cannot brake for it either. They
+       did: measured (28 September, tools/measure/lane-crash-trace.mjs),
+       a changer who missed a car level with them followed it as a leader
+       at MOST_BRAKE, fell back while the time-driven blend carried on
+       across, and was nearly sideways and into it 1.2 s later, before the
+       notice that would have swung them back. */
+    const unseen = me.lc?.missed && !me.lc.abort && them.id === me.lc.unseen && world.t < me.lc.t0 + me.lc.noticeAfter;
+    if (shareLane && them.s > me.s && !unseen) {
       consider(them.s - me.s - CAR.length, them);
     }
 
@@ -881,13 +890,13 @@ export function step(world) {
     if (joining) {
       next.push(joining);
       spawned += 1;
-      nextAt = t + (topUp ? FILL : (car?.arriveIn ?? world.every));
+      nextAt = t + (topUp ? (world.fill ?? FILL) : (car?.arriveIn ?? world.every));
     } else if (topUp) {
       /* No room on that leg this instant: try another next time. Not an
          arrival turned away, because nobody was arriving -- the map is
          only short of a car. */
       spawned += 1;
-      nextAt = t + FILL;
+      nextAt = t + (world.fill ?? FILL);
     } else {
       /* NO ROOM ON THAT LEG, SO THAT ARRIVAL IS GONE. Holding it back
          until the leg clears would block every LATER arrival too --
@@ -1416,7 +1425,14 @@ export const FILL = 0.2;
    with a target is warmed until it is nearly full rather than for a
    fixed time, capped so a target the map cannot hold still returns. */
 function warmed(w0, acrossIt) {
-  let w = w0;
+  /* THE WARM-UP FILLS AS FAST AS THE ROAD WILL TAKE IT: a car a tick,
+     every one still through `joinAt`'s room test. FILL is paced for a
+     person watching -- and it is one interval for every map, so the city,
+     with 300 to fill and 222 places to fill from, opened at 152 and took
+     a further minute to reach its count at FILL's 5 a second (28
+     September, tools/measure/fill.mjs). Nobody watches the warm-up; the
+     only thing that bounds it is room on the road. */
+  let w = { ...w0, fill: DT };
   const warm = Math.round(Math.max(40, acrossIt) / DT);
   for (let i = 0; i < warm; i++) {
     w = step(w);
@@ -1437,7 +1453,7 @@ function warmed(w0, acrossIt) {
      lagged driver reading a warm-up snapshot would compare a stopped-at
      instant a hundred seconds out. The first lag's worth of ticks after
      seeding sees the present instead, which `seenBy` does on its own. */
-  const { past: _warm, ...rebased } = w;
+  const { past: _warm, fill: _fill, ...rebased } = w;
   return {
     ...rebased, t: 0, tick: 0, nextAt: Math.max(0, w.nextAt - shift),
     /* ...and a lane change is on that clock too: one begun in the warm-up

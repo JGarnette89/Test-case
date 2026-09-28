@@ -430,6 +430,9 @@ function attempt(world, out, path, best, T0) {
       T: T0 * (1 + 0.5 * steer),
       L0, ov: weaveRoom(LANE) * steer,
       missed, blind: !!inBlind, noticeAfter: REACTION_FLOOR + obs * REGISTER_SPAN,
+      /* Who they missed: until they notice, they do not brake for that car
+         either (crossing.js, following). */
+      unseen: missed ? nb.behind.id : null,
       caution, gap: Math.min(leadGap, lagGap), mandatory: !!best.mandatory, keepRight: !!best.keepRight,
       /* How tight, against what a COMPETENT driver (caution 1) would
          need: below 1 is a gap they would have refused. */

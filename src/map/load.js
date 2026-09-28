@@ -491,9 +491,13 @@ export function loadMap(map) {
   }
 
   const bounds = map.bounds ?? { x: Math.min(...boxes.map((b) => b.x0)), y: Math.min(...boxes.map((b) => b.y0)), w: 0, h: 0 };
+  /* HOW MUCH ROAD THERE IS TO FILL, in lane-kilometres: what a car count
+     has to be read against. 120 cars is a busy test map 1 (28 lane-km)
+     and an empty city (71). */
+  const laneKm = roads.reduce((s, r) => s + r.length * (r.lanes ?? 1) * (r.oneWay ? 1 : 2), 0) / 1000;
   /* Every sign on the map, where it stands: the list the editor shows. */
   const signs = roads.flatMap((r) => ["start", "end"].filter((e) => r.signAt?.[e]).map((e) => ({ ...r.signAt[e], road: r.id, end: e })));
-  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, warnings };
+  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, laneKm, warnings };
 }
 
 /* THE LAND, WHERE THE MAP GIVES NONE.

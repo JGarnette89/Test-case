@@ -41,7 +41,7 @@ const SAID = { left: "Turn left", right: "Turn right" };
 /* The ride, built on #/map's own scene with nobody at the wheel, and the
    candidate put where the player would start. */
 function rideFor(seed, profile) {
-  const sc = sceneFor(seed, 50, 2.0, false, CARS.start);
+  const sc = sceneFor(seed, 50, 2.0, false);
   const world = candidateOn(sc.world, { profile, road: START.road, end: START.end });
   if (!world) throw new Error("nowhere to put the candidate on this map");
   return { ...sc, world, profile };

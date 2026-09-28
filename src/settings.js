@@ -16,7 +16,8 @@ export const DEFAULTS = {
   slider: "hold",       // "hold" | "spring": whether the slider stays where it is left
   limit: 50,            // km/h the traffic drives at, where a screen offers a choice
   mode: "drive",        // "drive" | "watch" on the map
-  cars: 120,            // how many cars the map is kept topped up to (the maintainer: "a way for me to directly determine how many cars are in the map")
+  cars: 120,            // how many cars the map is kept topped up to (the maintainer: "a way for me to directly determine how many cars are in the map") -- test map 1's; kept for it
+  carsByMap: {},        // the same, PER MAP: a count chosen for one map is not a count for another (the city has 2.5x test map 1's road)
 };
 
 let current = { ...DEFAULTS };
