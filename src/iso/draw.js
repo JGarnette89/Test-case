@@ -62,6 +62,7 @@ const LENS = { red: "#e4483c", amber: "#f2b84b", green: "#4fd07a" };
 const DARK = { red: "#4a2622", amber: "#4a3d22", green: "#22402e" };
 const CABIN = { l: 2.3, w: 1.55, h: 0.62, back: 0.25 };
 const CAR_COLOURS = [C.red, C.green, C.amber, C.blue, "#F2E8D5"];
+const PED_COLOURS = ["#3a6fd8", "#d85a3a", "#2e9a5a", "#9a4fd0", "#d8b43a"];
 
 /* The eight corners of a box centred at `at`, heading `deg`, pitched by
    `grade` (rise over run) about its lateral axis, resting on its base. */
@@ -408,6 +409,14 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     /* Quantised RELATIVE TO THE VIEW: a sprite set has 32 headings as
        seen from the camera, so the step is taken in the rotated frame. */
     const deg = quantise(a.heading + rotDeg) - rotDeg;
+    /* A PERSON: a narrow upright box, 0.5 m square and 1.7 m tall. */
+    if (a.ped) {
+      /* Struck: lying on the road, flashing like a wreck's hazards. */
+      const person = a.struck ? boxCorners(at, deg, 0, { l: 1.7, w: 0.5, h: 0.3 }) : boxCorners(at, deg, 0, { l: 0.5, w: 0.5, h: 1.7 });
+      const colour = a.struck ? (Math.floor((scene.t ?? 0) * 2) % 2 ? "#ff8a1e" : "#5a2a08") : PED_COLOURS[(a.n ?? 0) % PED_COLOURS.length];
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "ped", id: a.id, at }, paint: () => paintBox(ctx, view, person, colour) });
+      continue;
+    }
     const colour = a.colour ?? CAR_COLOURS[(a.n ?? 0) % CAR_COLOURS.length];
     const body = boxCorners(at, deg, 0, BODY);
     const cabin = boxCorners(at, deg, 0, CABIN, BODY.h);

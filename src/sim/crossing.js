@@ -42,6 +42,7 @@ import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } fro
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel, speedBy } from "./corner.js";
+import { stepPeds, heldAhead } from "./peds.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
@@ -604,6 +605,9 @@ export function openTo(me, world, caution) {
      without it every driver waiting properly at a red would be marked
      for the wait the light imposed on them. */
   if (controlOf(me, layout, layout.paths[me.route], world.t ?? 0) === "hold") return false;
+  /* Nor is a crosswalk somebody holds where this driver would cross it:
+     waiting for them is not undue delay. */
+  if (heldAhead(world, me, layout.paths[me.route])) return false;
   return !atNode(world, world.actors, me.k ?? 0).some((a) => a.id !== me.id && blockedBy(me, a, layout, caution, world.t ?? 0));
 }
 
@@ -747,7 +751,13 @@ export function whatStops(me, world) {
   const queued = leader != null && gap <= wantedGap(me, leader);
 
   const short = !me.going && me.s < waitAt(mine) + AT_LINE && me.s < mine.clearAt;
-  const held = short && others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0));
+  /* SOMEBODY ON A CROSSWALK THIS CAR WOULD CROSS, on the half it would
+     cross it (peds.js, the near-half rule): short of the line they hold
+     the car at the line; past it -- in the box, turning across the exit
+     crosswalk -- they are an obstacle it stops short of. */
+  const walker = heldAhead(world, me, mine);
+  const held = short && (!!walker || others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0)));
+  if (walker && !short) consider(walker.s - me.s - CAR.length / 2 - 0.5, { id: "ped", v: 0, headway: me.headway });
   /* THE THREE CONTROLS, AND THE ONLY PLACE THAT KNOWS A SIGNAL EXISTS.
      A red or an unmakeable amber HOLDS -- gap or no gap; a sign or a
      right on red waits for a stop and then a gap; a green or an
@@ -1035,7 +1045,9 @@ export function step(world) {
   const past = world.road.perceive
     ? [world.actors, ...(world.past ?? [])].slice(0, LAG_TICKS)
     : world.past;
-  return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}) };
+  /* EVERYBODY ON FOOT (peds.js), deciding from the traffic as it now is. */
+  const walked = world.course.graph ? stepPeds({ ...world, t, tick: world.tick + 1, actors: next }) : null;
+  return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walked : {}) };
 }
 
 /* JOINING THE ROAD, AT THE SPEED THE ROAD IS DOING.
@@ -1544,6 +1556,7 @@ function warmed(w0, acrossIt) {
   const { past: _warm, fill: _fill, ...rebased } = w;
   return {
     ...rebased, t: 0, tick: 0, nextAt: Math.max(0, w.nextAt - shift),
+    ...(w.peds ? { peds: w.peds.map((p) => ({ ...p, since: back(p.since) })) } : {}),
     /* ...and a lane change is on that clock too: one begun in the warm-up
        kept a start forty seconds in the future, so its car sat a whole
        lane off, in both lanes, until the clock caught up -- found as a

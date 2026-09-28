@@ -222,10 +222,34 @@ export function testSigns() {
   return m;
 }
 
+/* PEDESTRIANS: a four-way stop and an uncontrolled crossroads on one
+   collector, a crosswalk on every road end of both (sim/peds.js). */
+export function testPeds() {
+  const S = { x: 400, y: 400 }, U = { x: 1000, y: 400 };
+  const m = emptyMap("test-peds", "Pedestrians -- crosswalks at a four-way stop and an uncontrolled crossroads");
+  m.bounds = { x: -50, y: -50, w: 1500, h: 900 };
+  const both = { start: true, end: true }, atEnd = { start: false, end: true };
+  m.roads.push(
+    road({ id: "west", points: stroke({ x: 0, y: 400 }, S), control: { start: "none", end: "stop" }, crosswalk: atEnd }),
+    road({ id: "middle", points: stroke(S, U), control: { start: "stop", end: "none" }, crosswalk: both }),
+    road({ id: "east", points: stroke({ x: 1400, y: 400 }, U), crosswalk: atEnd }),
+    road({ id: "S-north", kind: "residential", points: stroke({ x: 400, y: 0 }, S), control: { start: "none", end: "stop" }, crosswalk: atEnd }),
+    road({ id: "S-south", kind: "residential", points: stroke({ x: 400, y: 800 }, S), control: { start: "none", end: "stop" }, crosswalk: atEnd }),
+    road({ id: "U-north", kind: "residential", points: stroke({ x: 1000, y: 0 }, U), crosswalk: atEnd }),
+    road({ id: "U-south", kind: "residential", points: stroke({ x: 1000, y: 800 }, U), crosswalk: atEnd }),
+  );
+  m.sections = [
+    { id: "stop", name: "the four-way stop", look: S, start: { road: "S-south", end: "end" }, judge: "People step off only when the cars could stop; drivers wait for them -- but go once they are past the middle, onto the far half (the near-half rule). A turning car waits behind the crosswalk, not on it." },
+    { id: "uncontrolled", name: "the uncontrolled crossroads", look: U, start: { road: "U-south", end: "end" }, judge: "The same with no signs: through traffic slows and waits for people already crossing." },
+  ];
+  return m;
+}
+
 /* THE TEST MAPS, for the Test maps screen: each builds its map on demand
    (the city is generated, so it is built only when opened). */
 export const TEST_MAPS = [
   { id: "city", name: "Stand-in city", blurb: "Two neighbourhoods with their own drivers, parked cars, buildings, an arterial loop and a collector on signals.", build: testCityReady },
+  { id: "test-peds", name: "Pedestrians", blurb: "Crosswalks at a four-way stop and at an uncontrolled crossroads, and the people who walk them.", build: testPeds },
   { id: "test-signs", name: "Signs", blurb: "A yield crossroads and an uncontrolled crossroads on one through road.", build: testSigns },
   { id: "test-1", name: "Test map 1", blurb: "The loop, the T, the crossroads, the five-way, the overpass and the big arterial.", build: testMap1 },
 ];

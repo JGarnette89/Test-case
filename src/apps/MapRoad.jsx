@@ -21,6 +21,7 @@
    the controls are drawn on the canvas, React draws the chrome and the
    contact banner, which is an event.
    ===================================================================== */
+import { pedPose, pedAt, strikePed } from "../sim/peds.js";
 import React, { useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
@@ -133,6 +134,8 @@ export function actorsOf(scene, carry) {
     const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;
     out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash });
   }
+  /* PEOPLE ON FOOT (sim/peds.js): waiting at the curb or crossing. */
+  for (const q of w.peds ?? []) out.push({ id: q.id, n: q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });
   return out;
 }
 
@@ -263,6 +266,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             }
             /* A parked car is as solid as a moving one. */
             if (!hit && w.parked && contactWith(w.course, w.parked, mine, touching)) hit = true;
+            /* And a person on foot: they fall where they are (sim/peds.js). */
+            const struck = hit ? null : pedAt(w, mine);
+            if (struck) { hit = true; w = strikePed(w, struck); sc.world = w; }
             if (hit) { contacts.current++; flash.current = 1; setStopped(true); break; }
           }
         }
@@ -291,7 +297,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         let want = PLACES[follow] ?? { x: sc.centre.x, y: sc.centre.y, z: 0 };
         if (follow === "car") {
           let target = actors.find((a) => a.id === cam.current.id);
-          if (!target) { target = actors[Math.floor(actors.length / 2)] ?? null; cam.current.id = target?.id ?? null; }
+          if (!target) { const cars = actors.filter((a) => !a.ped); target = cars[Math.floor(cars.length / 2)] ?? null; cam.current.id = target?.id ?? null; }
           if (target) want = target;
         }
         const f = cam.current.snap ? 1 : 1 - Math.exp(-4 * dt);

@@ -2672,10 +2672,26 @@ approach). There is no room for one in the 2.05 m between a stop line and
 the box, so where a road end has one its approach's stop line moves back by
 the crosswalk's width (CROSSWALK_W, 3 m) and nothing else moves -- a map
 without crosswalks is the map it was, and every existing map has none.
-Drawn as continental bars from the box edge out. Next: pedestrians who walk
-them, drivers who yield to them (the near-half rule, DECISIONS.md 5.4,
-including a turning car at the EXIT crosswalk), then the maintainer's
-mid-block stop for a crossing (SIMULATOR.md 5 ruling 3). verify-peds.
+Drawn as continental bars from the box edge out.
+
+**Pedestrians, same day** (`sim/peds.js`). People appear at each
+crosswalk's curb every PED_EVERY (25 s, flagged) on average, step off only
+when every car that would cross their path could stop comfortably, and
+walk at 1.35 m/s. A crossing pedestrian holds the HALF of the road they are
+on, and the next half within a step of the middle (DECISIONS.md 5.4); a car
+short of its line is held at it, one already past is stopped short of the
+crosswalk -- and waits behind the first crosswalk on its path, never on it,
+when a later one (a turn's exit crosswalk) is held. "The way is open" counts
+them, so waiting for somebody on foot is never undue delay. The player's
+car against a person: they are struck, lie where they fell, flashing, for
+the 45 s a wreck stands, and the traffic stops for them. Measured on the
+walked crossroads, four minutes: 29 people across at each control, the
+longest curb wait 8.6 s, no touches -- and the same traffic told to ignore
+them hits them 15 car-ticks. One measurement misled first: a car 0.35 m
+short of the paint was counted as on it, and people waited 108 s for it.
+The "Pedestrians" test map. Not yet: heedless pedestrians, drivers who miss
+them (they are always seen), crosswalks away from intersections, and the
+maintainer's mid-block stop for a crossing (ruling 3). verify-peds.
 
 
 The content the axes have been waiting for, rebuilt on the map rather

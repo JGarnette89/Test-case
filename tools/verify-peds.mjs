@@ -6,11 +6,19 @@
         else moves; it is drawn as bars across the road between the box
         and the line; the editor writes it and keeps it through a split;
         and the traffic waits clear of it.
+     2. People walk them, stepping off only when every car could stop;
+        the traffic yields to them on the half they hold (the near-half
+        rule) and never touches them -- because it yields; waiting for
+        them is never undue delay; a map without crosswalks is unchanged.
+     3. The player's car against a person: found, struck, left lying where
+        they fell and waited for by the traffic, then cleared.
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { emptyMap, road, CROSSWALK_W } from "../src/map/format.js";
 import { graphOf, junctionsOf } from "../src/sim/graph.js";
-import { seedGraph, step, overlapping, pathOf, poseOf } from "../src/sim/crossing.js";
+import { seedGraph, step, overlapping, pathOf, poseOf, openTo } from "../src/sim/crossing.js";
+import { crosswalksOf, bandOn, heldAhead, pedAt, pedPose, strikePed } from "../src/sim/peds.js";
+import { walkedCrossroads, touching } from "./measure/peds.mjs";
 import { DT, CAR } from "../src/sim/traffic.js";
 import { setCrosswalk, splitRoad } from "../src/editor/model.js";
 
@@ -77,6 +85,76 @@ console.log("\n1. A CROSSWALK: MAP DATA, THE LINE MOVES BACK BY ITS WIDTH, NOTHI
   check(waiting > 100 && over === 0 && (w.crashes ?? []).length === 0 && onIt === 0, `three minutes of traffic: ${waiting} car-ticks waiting on the south approach, and none with its nose on the crosswalk (${onIt}), ${over} overlaps, ${(w.crashes ?? []).length} crashes`);
 }
 
+console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- ON THE HALF THEY HOLD");
+{
+  const run = (ctl, seed, ignorePeds = false) => {
+    let w = { ...seedGraph(seed, 50, loadMap(walkedCrossroads(ctl)), { target: 40, posted: true }), ...(ignorePeds ? { ignorePeds } : {}) };
+    const cws = crosswalksOf(w.course);
+    const L = w.course.at.find((a) => !a.through).layout;
+    const out = { crossed: 0, touch: 0, over: 0, longest: 0, otherHalf: 0, delayed: 0 };
+    for (let i = 0; i < 240 / DT; i++) {
+      const before = new Map((w.peds ?? []).map((q) => [q.id, q]));
+      const cars = new Map(w.actors.map((a) => [a.id, a]));
+      w = step(w);
+      const now = new Set((w.peds ?? []).map((q) => q.id));
+      for (const [id, q] of before) if (!now.has(id) && q.state === "crossing") out.crossed++;
+      for (const q of w.peds ?? []) if (q.state === "waiting") out.longest = Math.max(out.longest, w.t - q.since);
+      if (i % 5 === 0) { out.touch += touching(w).length; out.over += overlapping(w).length; }
+      /* A car driving over a crosswalk while somebody is on the OTHER half
+         of it: the near-half rule letting a driver go, which a rule holding
+         the whole crosswalk never would. */
+      for (const a of w.actors) {
+        const was = cars.get(a.id);
+        if (!was || was.k !== a.k || w.course.at[a.k].through) continue;
+        const path = L.paths[a.route];
+        for (const cw of cws) {
+          const band = bandOn(path, cw);
+          if (!band || !(was.s < band.s && a.s >= band.s)) continue;
+          if ((w.peds ?? []).some((q) => q.cw === cw.i && q.state === "crossing")) out.otherHalf++;
+        }
+        /* Waiting for somebody on foot is never undue delay. */
+        if (!w.ignorePeds && a.v < 0.3 && heldAhead(w, a, path) && openTo(a, w, 1)) out.delayed++;
+      }
+    }
+    out.crashes = (w.crashes ?? []).length;
+    return out;
+  };
+  const stop = run("stop", 3), none = run("none", 5), blind = run("stop", 3, true);
+  check(stop.crossed >= 20 && none.crossed >= 20 && Math.max(stop.longest, none.longest) < 60,
+    `four minutes each: ${stop.crossed} people across at the all-way stop and ${none.crossed} at the uncontrolled crossroads, nobody waiting at the curb longer than ${Math.max(stop.longest, none.longest).toFixed(1)} s`);
+  check(stop.touch === 0 && none.touch === 0 && stop.over === 0 && none.over === 0 && stop.crashes === 0 && none.crashes === 0,
+    "no car touches anybody on foot, and no car touches another car");
+  check(blind.touch > 0, `and it is the yielding doing it: the same traffic with drivers told to ignore people on foot drives into them ${blind.touch} car-ticks`);
+  check(stop.otherHalf + none.otherHalf > 0, `the near-half rule: ${stop.otherHalf + none.otherHalf} times a car crossed a crosswalk while somebody was still on its other half`);
+  check(stop.delayed + none.delayed === 0, "and a driver waiting for somebody on foot is never counted as delaying");
+  let w = seedGraph(3, 50, loadMap(crossroads()), { target: 40, posted: true });
+  for (let i = 0; i < 400; i++) w = step(w);
+  check(!("peds" in w), "a map with no crosswalk has nobody on foot and its world carries nothing new");
+}
+
+console.log("\n3. THE PLAYER'S CAR AGAINST A PERSON: FOUND, STRUCK, LEFT WHERE THEY FELL, WAITED FOR, CLEARED");
+{
+  let w = seedGraph(3, 50, loadMap(walkedCrossroads("stop")), { target: 20, posted: true });
+  let who = null;
+  for (let i = 0; i < 4000 && !who; i++) { w = step(w); who = (w.peds ?? []).find((q) => q.state === "crossing" && q.u > 3) ?? null; }
+  const at = pedPose(w, who);
+  const car = { x: at.x + 1.0, y: at.y, heading: 0 };
+  const found = pedAt(w, car), missed = pedAt(w, { x: at.x + 6, y: at.y, heading: 0 });
+  check(found === who.id && missed === null, "a car standing over somebody finds them, and one six metres off finds nobody");
+  w = strikePed(w, who.id);
+  const cw = crosswalksOf(w.course)[who.cw];
+  const L = w.course.at.find((a) => !a.through).layout;
+  const crossing = Object.values(L.paths).filter((pa) => bandOn(pa, cw));
+  const before = pedPose(w, w.peds.find((q) => q.id === who.id));
+  for (let i = 0; i < 20 / DT; i++) w = step(w);
+  const lying = w.peds.find((q) => q.id === who.id);
+  const still = lying && Math.hypot(pedPose(w, lying).x - before.x, pedPose(w, lying).y - before.y) < 1e-9;
+  const waited = crossing.every((pa) => heldAhead(w, { k: cw.k, s: 0 }, pa) != null);
+  check(lying?.state === "struck" && still && waited, `twenty seconds on they are still where they fell, and every one of the ${crossing.length} paths over that crosswalk is held for them`);
+  for (let i = 0; i < 30 / DT; i++) w = step(w);
+  check(!w.peds.some((q) => q.id === who.id), "and after the time a wreck stands, they are cleared");
+}
+
 console.log(`\n${"=".repeat(70)}`);
-console.log(failed ? `${failed} FAILURE(S)` : "OK: a crosswalk is map data, moves only its own approach's line, is drawn where it is, and the traffic waits clear of it.");
+console.log(failed ? `${failed} FAILURE(S)` : "OK: a crosswalk moves only its own line and is drawn where it is; people walk it, the traffic yields on the half they hold and never touches them, waiting for them is never undue delay, and somebody the player hits lies where they fell and is waited for.");
 process.exit(failed ? 1 : 0);
