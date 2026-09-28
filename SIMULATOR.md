@@ -2397,6 +2397,22 @@ before it existed:
   nowhere to arrive from. It now gets no arrivals. Traffic from inside
   the districts (5.6) is what makes a closed city live.
 
+**5.2, BUILDINGS ALONG THE FRONTAGES -- BUILT, 28 September**
+(`fillLots` in `map/generate.js`, "Place buildings" on the zone
+panel). Lots along both sides of every street in the district, a
+building on each lot the density fills, facing its street across a
+front yard: houses at 18 m frontage behind a 7 m yard in a residential
+district, shops at 30 m behind 12 m in a commercial one, bigger boxes in
+an industrial one. Houses do not front an arterial -- a residential lot
+backs onto one -- and every intersection keeps its corners clear.
+**Whether a building is off the road is the loader's own test**
+(`standsOn`, exported rather than written twice), so the loader keeps
+every building the generator places: 787 on the stand-in city, none
+dropped, none overlapping, every one facing a street it fronts.
+Buildings are drawn and kept off the road; they still hide nothing from
+anybody, which waits on sight in the sim (the editor limit recorded in
+CLAUDE.md).
+
 **Measured for 5.5, not yet acted on:** 6.7 ms a tick on the desk
 machine at 200 cars on the stand-in city (1.4 by 0.9 km), which at
 20 Hz is fine on the desk and a question on the phone.

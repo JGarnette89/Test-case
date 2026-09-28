@@ -22,7 +22,8 @@
 import { loadMap } from "../src/map/load.js";
 import { testCity0 } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
-import { fillZone, clearZone, BLOCKS, SNAP, alignWithin } from "../src/map/generate.js";
+import { fillZone, clearZone, BLOCKS, SNAP, alignWithin, fillLots, clearLots, LOTS } from "../src/map/generate.js";
+import { standsOn } from "../src/map/load.js";
 import { graphOf } from "../src/sim/graph.js";
 import { seedGraph, step, overlapping } from "../src/sim/crossing.js";
 
@@ -152,6 +153,57 @@ console.log("\n7. A MAP WITH NO OPEN END");
   let w = null, threw = null;
   try { w = seedGraph(1, 50, lc, { target: 50, posted: true }); for (let i = 0; i < 200; i++) w = step(w); } catch (e) { threw = e.message; }
   check(!threw && w.actors.length === 0, `a closed square of roads: no throw, and nobody arrives, since there is nowhere to arrive from (${threw ?? `${w.actors.length} cars`})`);
+}
+
+console.log("\n8. BUILDINGS ALONG THE FRONTAGES");
+{
+  let m = city;
+  const reports = {};
+  for (const z of ["west", "east"]) { const r = fillLots(m, z); m = r.map; reports[z] = r.report; }
+  const gen = m.props.filter((p) => p.gen);
+  const lm = loadMap(m);
+  check(gen.length > 300 && lm.props.length === m.props.length && !lm.warnings.some((w) => w.code === "prop-on-road"),
+    `${gen.length} buildings (${reports.west.buildings} houses, ${reports.east.buildings} shops), and the loader keeps every one: the generator asks the loader's own off-the-road test`);
+  const foot = lm.props.map((p) => ({ at: p.at, heading: p.heading, l: p.l, w: p.w }));
+  const corners = (f) => { const t = (f.heading * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t); return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => ({ x: f.at.x + (u * f.l / 2) * c - (v * f.w / 2) * s, y: f.at.y + (u * f.l / 2) * s + (v * f.w / 2) * c })); };
+  const sep = (A, B) => { for (const poly of [A, B]) for (let i = 0; i < 4; i++) { const p = poly[i], q = poly[(i + 1) % 4], n = { x: q.y - p.y, y: p.x - q.x }; const pa = A.map((v) => v.x * n.x + v.y * n.y), pb = B.map((v) => v.x * n.x + v.y * n.y); if (Math.max(...pa) <= Math.min(...pb) + 1e-6 || Math.max(...pb) <= Math.min(...pa) + 1e-6) return true; } return false; };
+  let hits = 0; const cs = foot.map(corners);
+  for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) if (Math.hypot(foot[i].at.x - foot[j].at.x, foot[i].at.y - foot[j].at.y) < 60 && !sep(cs[i], cs[j])) hits++;
+  check(hits === 0, `no two buildings overlap (${hits} pairs)`);
+  const zones = Object.fromEntries(m.zones.map((z) => [z.id, z]));
+  const kinds = gen.every((p) => p.kind === LOTS[zones[p.gen].kind].kind);
+  check(kinds, "houses in the residential district, shops in the commercial one");
+  /* FACING ITS STREET: the long side runs along a road it stands exactly
+     a front yard back from. Not "the nearest road" -- a corner house can
+     be nearer the cross street, and a house backing onto an arterial
+     nearer the arterial, and both are right. */
+  let facing = 0;
+  const zoneOfId = Object.fromEntries(gen.map((p) => [p.id, p.gen]));
+  for (const p of lm.props.filter((q) => zoneOfId[q.id])) {
+    const lot = LOTS[zones[zoneOfId[p.id]].kind];
+    const fronts = lm.roads.some((r) => {
+      if (lot.backs.includes(r.kind)) return false;
+      const want = r.width / 2 + lot.yard + p.w / 2;
+      for (let i = 0; i + 1 < r.pts.length; i++) {
+        const a = r.pts[i], b = r.pts[i + 1], L2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+        const f = Math.max(0, Math.min(1, ((p.at.x - a.x) * (b.x - a.x) + (p.at.y - a.y) * (b.y - a.y)) / L2));
+        const d = Math.hypot(p.at.x - a.x - (b.x - a.x) * f, p.at.y - a.y - (b.y - a.y) * f);
+        const h = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI, diff = Math.abs(((p.heading - h) % 180 + 540) % 180);
+        if (Math.abs(d - want) < 0.5 && Math.min(diff, 180 - diff) < 1) return true;
+      }
+      return false;
+    });
+    if (fronts) facing++;
+  }
+  check(facing === gen.length, `every building faces a street it fronts, a front yard back from it (${facing} of ${gen.length})`);
+  const noHouseOnArterial = lm.props.filter((p) => p.kind === "house").every((p) => !lm.roads.filter((r) => r.kind === "arterial").some((r) => standsOn({ ...p, l: p.l, w: p.w + 2 * (LOTS.residential.yard + 1) }, r)));
+  check(noHouseOnArterial, "no house fronts an arterial -- a residential lot backs onto one");
+  const once = fillLots(city, "west").map;
+  check(JSON.stringify(fillLots(once, "west").map) === JSON.stringify(once) && JSON.stringify(clearLots(clearLots(m, "west"), "east").props) === JSON.stringify(city.props ?? []),
+    "placing a district's buildings again with nothing around it changed changes nothing, and clearing gives back exactly what was there");
+  let w = seedGraph(1, 60, lm, { target: 200, posted: true }), over = 0;
+  for (let i = 0; i < 1200; i++) { w = step(w); if (i % 10 === 0) over += overlapping(w).length; }
+  check(over === 0 && w.actors.length > 150, `and the city with its buildings still drives: a minute at 200 cars, ${over} overlaps`);
 }
 
 console.log(`\n${"=".repeat(70)}`);

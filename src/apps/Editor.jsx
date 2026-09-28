@@ -48,7 +48,7 @@ import { readJSON, writeJSON } from "../storage.js";
 import { CLEARANCE_MIN } from "../map/load.js";
 import { KINDS, CONTROLS, ZONES, PROP_KINDS } from "../map/format.js";
 import { testMap1, testCity0 } from "../map/samples.js";
-import { fillZone, clearZone, BLOCKS } from "../map/generate.js";
+import { fillZone, clearZone, BLOCKS, fillLots, clearLots, LOTS } from "../map/generate.js";
 import {
   newDraft, addRoad, addPoint, updatePoint, removeLastPoint, deleteRoad,
   setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
@@ -778,6 +778,9 @@ export default function Editor() {
             generated={draft.roads.filter((r) => r.gen === selZone.id).length}
             onGenerate={() => { const r = fillZone(draft, selZone.id); setDraft(r.map); setGenReport({ zone: selZone.id, ...r.report }); }}
             onClear={() => { setDraft((m) => clearZone(m, selZone.id)); setGenReport(null); }}
+            buildings={(draft.props ?? []).filter((p) => p.gen === selZone.id).length}
+            onLots={() => { const r = fillLots(draft, selZone.id); setDraft(r.map); setGenReport({ zone: selZone.id, lots: true, ...r.report }); }}
+            onClearLots={() => { setDraft((m) => clearLots(m, selZone.id)); setGenReport(null); }}
             report={genReport?.zone === selZone.id ? genReport : null}
             onChange={(patch) => setDraft((m) => setZoneProps(m, selZone.id, patch))}
             onDelete={() => { setDraft((m) => deleteZone(m, selZone.id)); setSelected(null); }}
@@ -1033,8 +1036,8 @@ function PropPanel({ prop, canFace, onFace, onChange, onDelete }) {
   );
 }
 
-function ZonePanel({ zone, generated = 0, report = null, onGenerate, onClear, onChange, onDelete }) {
-  const subdivides = !!BLOCKS[zone.kind];
+function ZonePanel({ zone, generated = 0, buildings = 0, report = null, onGenerate, onClear, onLots, onClearLots, onChange, onDelete }) {
+  const subdivides = !!BLOCKS[zone.kind], hasLots = !!LOTS[zone.kind];
   return (
     <div style={S.card}>
       <div style={S.cardHead}>
@@ -1060,9 +1063,19 @@ function ZonePanel({ zone, generated = 0, report = null, onGenerate, onClear, on
         </button>
         {generated > 0 && <button className="btn" style={S.chip} onClick={onClear}>Clear streets ({generated})</button>}
       </div>
+      {/* BUILDINGS ALONG THE FRONTAGES (map/generate.js fillLots): after
+          the streets, since they front the streets. */}
+      <div style={S.row}>
+        <button className="btn" style={S.chip} disabled={!hasLots} title={hasLots ? "put buildings along every street in this district, facing it" : `a ${zone.kind} zone has no lots`} onClick={onLots}>
+          {buildings ? "Place buildings again" : "Place buildings"}
+        </button>
+        {buildings > 0 && <button className="btn" style={S.chip} onClick={onClearLots}>Clear buildings ({buildings})</button>}
+      </div>
       {report && (
         <div style={{ fontSize: 12, color: DIM }}>
-          {report.reason ?? `${report.streets} streets as ${report.roads} road pieces${report.dropped ? `; ${report.dropped} dropped that could not reach a road` : ""}. Hand-edit them freely; generating again replaces them.`}
+          {report.reason ?? (report.lots
+            ? `${report.buildings} buildings on ${report.lots} lots. Move or delete any by hand; placing again replaces them.`
+            : `${report.streets} streets as ${report.roads} road pieces${report.dropped ? `; ${report.dropped} dropped that could not reach a road` : ""}. Hand-edit them freely; generating again replaces them.`)}
         </div>
       )}
     </div>

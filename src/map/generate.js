@@ -38,7 +38,9 @@
 
    Pure. No React, no DOM.
    ===================================================================== */
-import { road as makeRoad, LANE, KINDS } from "./format.js";
+import { road as makeRoad, LANE, KINDS, PROP_KINDS } from "./format.js";
+import { loadMap, standsOn } from "./load.js";
+import { rng } from "../core/rng.js";
 import { LINE_SETBACK } from "../sim/intersection.js";
 import { CAR } from "../sim/traffic.js";
 
@@ -280,4 +282,110 @@ export function fillZone(map, zoneId, { seed = 1 } = {}) {
 /* The streets a zone generated, gone. */
 export function clearZone(map, zoneId) {
   return { ...map, roads: map.roads.filter((r) => r.gen !== zoneId) };
+}
+
+/* =====================================================================
+   5.2: BUILDINGS ALONG THE FRONTAGES.
+
+   Lots along both sides of every street in a district, a building on
+   each lot the district's density fills, facing its street across a
+   front yard. What stands where is decided HERE, but whether a building
+   is off the road is the LOADER's test (`standsOn`, map/load.js) -- the
+   same one that drops a hand-placed building standing on a road -- so a
+   generated building is never one the loader would refuse. Two
+   implementations of "on the road" would drift the first time either was
+   tuned.
+
+   Which streets have frontage: every road inside the district, except
+   that houses do not front an arterial or a highway -- a residential lot
+   backs onto one, which is why the subdivision's own streets exist.
+   Shops front anything. Corners are kept clear by a radius round every
+   intersection, so a building never stands in the box or the first car
+   length of an approach.
+
+   Tagged with the zone (`gen`), like the streets: cleared and placed
+   again as one.
+   ===================================================================== */
+export const LOTS = {
+  residential: { kind: "house", frontage: 18, yard: 7, backs: ["arterial", "highway"] },
+  commercial: { kind: "shop", frontage: 30, yard: 12, backs: ["highway"] },
+  industrial: { kind: "shop", frontage: 45, yard: 15, backs: ["highway"], l: 40, w: 30, h: 9 },
+};
+
+const inPoly = (poly, p) => {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+};
+/* Two footprints overlap: separating axes, the four edge normals. */
+function overlaps(a, b) {
+  const corners = (f) => {
+    const t = (f.heading * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
+    return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => ({ x: f.at.x + (u * f.l / 2) * c - (v * f.w / 2) * s, y: f.at.y + (u * f.l / 2) * s + (v * f.w / 2) * c }));
+  };
+  const A = corners(a), B = corners(b);
+  for (const poly of [A, B]) {
+    for (let i = 0; i < 4; i++) {
+      const p = poly[i], q = poly[(i + 1) % 4], n = { x: q.y - p.y, y: p.x - q.x };
+      const proj = (P) => P.map((v) => v.x * n.x + v.y * n.y);
+      const pa = proj(A), pb = proj(B);
+      if (Math.max(...pa) < Math.min(...pb) || Math.max(...pb) < Math.min(...pa)) return false;
+    }
+  }
+  return true;
+}
+
+/* `{ map, report }`: the district's buildings, replacing any it had. */
+export function fillLots(map, zoneId) {
+  const zone = (map.zones ?? []).find((z) => z.id === zoneId);
+  const keptProps = (map.props ?? []).filter((p) => p.gen !== zoneId);
+  const lot = zone && LOTS[zone.kind];
+  const report = { buildings: 0, lots: 0, reason: null };
+  if (!zone || (zone.polygon ?? []).length < 3) return { map: { ...map, props: keptProps }, report: { ...report, reason: "the zone has no area" } };
+  if (!lot) return { map: { ...map, props: keptProps }, report: { ...report, reason: `a ${zone.kind} zone has no lots` } };
+  const loaded = loadMap({ ...map, props: [] });
+  if (!loaded.ok) return { map: { ...map, props: keptProps }, report: { ...report, reason: "the map does not load yet" } };
+  const size = { ...PROP_KINDS[lot.kind], ...(lot.l ? { l: lot.l, w: lot.w, h: lot.h } : {}) };
+  const clearOf = loaded.nodes.map((n) => n.at);
+  const fill = 0.55 + 0.4 * Math.max(0, Math.min(1, zone.density ?? 0.5));
+  const r = rng([...zoneId].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7));
+  const placed = [...keptProps.map((p) => ({ at: p.at, heading: p.heading ?? 0, l: p.l ?? PROP_KINDS[p.kind]?.l ?? 12, w: p.w ?? PROP_KINDS[p.kind]?.w ?? 9 }))];
+  const props = [];
+  let n = 0;
+  for (const road of loaded.roads) {
+    if (lot.backs.includes(road.kind)) continue;
+    const half = road.width / 2;
+    const corner = half + size.l / 2 + CAR.length + LANE * 2;   // keep the box, the stop line and a car length clear
+    for (let s = size.l / 2; s + size.l / 2 <= road.length; s += lot.frontage) {
+      const i = Math.min(road.pts.length - 2, Math.floor(s / road.step));
+      const p = road.pts[i], q = road.pts[i + 1];
+      const f = (s - road.at[i]) / Math.max(1e-6, road.at[i + 1] - road.at[i]);
+      const c = { x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f };
+      const heading = (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
+      const nx = -(q.y - p.y), ny = q.x - p.x, nl = Math.hypot(nx, ny) || 1;
+      for (const side of [1, -1]) {
+        report.lots++;
+        if (r() > fill) continue;
+        const off = half + lot.yard + size.w / 2;
+        const at = { x: c.x + (side * nx * off) / nl, y: c.y + (side * ny * off) / nl };
+        if (!inPoly(zone.polygon, at)) continue;
+        if (clearOf.some((j) => Math.hypot(j.x - at.x, j.y - at.y) < corner)) continue;
+        const b = { at, heading, l: size.l, w: size.w, h: size.h };
+        if (loaded.roads.some((rd) => standsOn(b, rd))) continue;
+        if (placed.some((o) => overlaps(o, b))) continue;
+        placed.push(b);
+        props.push({ id: `${zoneId}~b${n++}`, kind: lot.kind, at, heading, ...(lot.l ? { l: size.l, w: size.w, h: size.h } : {}), gen: zoneId });
+      }
+    }
+  }
+  report.buildings = props.length;
+  return { map: { ...map, props: [...keptProps, ...props] }, report };
+}
+
+/* The buildings a zone generated, gone. */
+export function clearLots(map, zoneId) {
+  return { ...map, props: (map.props ?? []).filter((p) => p.gen !== zoneId) };
 }

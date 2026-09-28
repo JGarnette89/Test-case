@@ -154,7 +154,7 @@ function clampGrade(pts, at) {
    footprint by the half-width would square off the corners. A road with
    turn bays is widened by two lanes throughout, which errs toward
    keeping buildings off it. */
-function standsOn(b, r) {
+export function standsOn(b, r) {
   const a = (b.heading * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
   const reach = r.width / 2 + (hasBays(r) ? 2 * LANE : 0);
   const R = Math.hypot(b.l, b.w) / 2 + reach;
