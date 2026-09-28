@@ -2320,6 +2320,45 @@ increment).** A gap misjudged by a second only matters where gaps are
 close to the margin, and at the course's spawn rate none are. The axis
 is built; its supply is content.
 
+### 5.16.3 ATTENTION IS INTERMITTENT, NOT LATE (28 September)
+
+**5.16.2's model was wrong, and it was the crash outcome that showed
+it.** Switched on for everybody once contact had a response, a
+constant lag -- every driver living their registration delay behind the
+world -- crashed 8 and 13 times in three minutes on test map 1 and the
+city, and most of those crashes were between drivers of NEAR-PERFECT
+observation: two drivers at 0.41 and 0.42 s drove into each other in a
+box. Carrying the stale picture forward at each car's speed (nobody
+believes a moving car has stopped) made it worse, 13 and 22, nearly all
+poor observers rear-ending every queue they met. The registration delay
+was measured as the time to notice a NEWLY VISIBLE road user; nobody
+lives that far behind a car they are already watching.
+
+**So a driver looks away** -- mirror, dash, radio, a thought -- every
+LOOK_EVERY (6 s, a design constant, flagged) for their `lag`, at a phase
+of their own; while away they act on the picture from when they looked
+away, carried forward; while looking they see the present
+(`sim/attention.js`, `seenBy`). A sharp observer's glance is 0.4 s, a
+poor one's up to 2.9 s. Measured: 2 and 3 crashes in three minutes, and
+the same traffic with nobody looking away has none -- the crashes are
+the glances' doing, not a side effect (`verify-observation` section 3).
+LOOK_EVERY was NOT tuned to that rate; observation is never calibrated
+by outcome (4.4).
+
+**Signs are read only while looking, and on a clear road that is always
+in time.** The shortest clear view of any sign on the maps is 5.6 s at
+the posted speed, against the longest glance of 2.91 s, so nobody misses
+one -- poor observer or sound. That is the finding, stated rather than
+tuned away: a sign is missed where its view is cut short, which is SIGHT
+LINES (a van, a building, a crest), the next piece. The check holds the
+arithmetic, so a map with a shorter view fails it and its misses are
+then real. A local knows their own district's signs without reading
+them (maintainer's ruling).
+
+**Still off by default**, behind "Drivers look away" on the map screen,
+because what a crash between two traffic cars means for play is not
+decided; the crash itself is drawn and stays where it happened (5.12).
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately

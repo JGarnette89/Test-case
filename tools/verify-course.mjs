@@ -16,6 +16,7 @@
  * even slightly out would show as a car teleporting, and a check that
  * only watched throughput would never see it.
  */
+import { lookingAway } from "../src/sim/attention.js";
 import {
   courseOf, seamsOf, laneIn, laneOut, joinedTo, poseOn, planRoute, walkRoute,
   roadsOf, alongDir, dirOut, radiusFor, OPPOSITE,
@@ -965,7 +966,7 @@ console.log("\n12. A LOADED DRIVER IS A WORSE DRIVER");
     : fail(`an instruction moved the car ${r3.jump.toFixed(3)}m sideways in one tick`);
 }
 
-console.log("\n13. THE CANDIDATE PERCEIVES THE WORLD AS A PERSON DOES: LATE");
+console.log("\n13. THE CANDIDATE PERCEIVES THE WORLD AS A PERSON DOES: LOOKING AWAY NOW AND THEN");
 {
   /* The observation axis as a live input. A candidate decides from the
      world as it was their lag ago; traffic perceives the present, as it
@@ -998,13 +999,21 @@ console.log("\n13. THE CANDIDATE PERCEIVES THE WORLD AS A PERSON DOES: LATE");
     ? ok("the candidate's lag is the old engine's registration delay, shape for shape: the reaction floor plus the span their observation deficit buys")
     : fail(`the candidate's lag is ${x.lag} against ${expect} from the same constants`);
 
+  /* ATTENTION IS INTERMITTENT (sim/attention.js, 28 September): the lag
+     is how long a glance away lasts, not a delay they live behind. So they
+     see the present while looking, and mid-glance the picture from when
+     they looked away, carried forward. */
   for (let i = 0; i < 60; i++) w = keepDriving(step(w));
-  const me = w.actors.find((a) => a.candidate === "X");
-  const seen = seenBy(w, me);
-  const back = Math.round(me.lag / DT);
-  seen !== w.actors && seen === w.past[back - 1] && seenBy(w, { ...me, lag: 0 }) === w.actors
-    ? ok(`and they decide from the committed state ${back} ticks back, while a driver with no lag reads the present`)
-    : fail("seenBy did not return the state the lag names");
+  let me = w.actors.find((a) => a.candidate === "X");
+  for (let i = 0; i < 200 && lookingAway(w.t, me) > 0; i++) { w = keepDriving(step(w)); me = w.actors.find((a) => a.candidate === "X"); }
+  const lookingNow = lookingAway(w.t, me) === 0 && seenBy(w, me) === w.actors;
+  for (let i = 0; i < 200 && !(lookingAway(w.t, me) > 0.2); i++) { w = keepDriving(step(w)); me = w.actors.find((a) => a.candidate === "X"); }
+  const away = lookingAway(w.t, me), back = Math.round(away / DT);
+  const seen = seenBy(w, me), src = w.past[back - 1];
+  lookingNow && away > 0.2 && seen !== w.actors && seen.length === src.length && seen.every((q, i) => q.id === src[i].id && q.s >= src[i].s)
+    && seenBy(w, { ...me, lag: 0 }) === w.actors
+    ? ok(`and mid-glance, ${away.toFixed(2)}s into looking away, they decide from the picture ${back} ticks back carried forward, while looking or with no lag they read the present`)
+    : fail("seenBy did not return the picture the glance names");
 
   /* THE AXIS READS. Same seed, same route, three observation ratings on
      an otherwise sound driver: harder braking as it falls, and the gap
@@ -1063,8 +1072,14 @@ console.log("\n13. THE CANDIDATE PERCEIVES THE WORLD AS A PERSON DOES: LATE");
   console.log(`   harsh-braking ticks by rating: ${[0.9, 0.5, 0.15].map((k) => `${k}: ${r[k].harsh}`).join(", ")} -- the lag does not read through braking in this traffic, and is not claimed to`);
   const worst = r[0.15];
   const misjudged = worst.gap.filter((g) => g.seen > g.real).length;
-  worst.gap.length > 0 && misjudged > 0 && worst.gap.every((g) => g.seen - g.real <= worst.lag + 0.5)
-    ? ok(`and the poorest observer takes gaps tighter than they look, by up to their lag: ${misjudged} of ${worst.gap.length} judged gaps were smaller than seen, never by more than the lag`)
+  /* WITH GLANCES (sim/attention.js) a gap is misjudged only when the
+     decision lands mid-glance while the other car changed speed. Here the
+     candidate judges three gaps a rating, and in this run none fell in a
+     glance -- so what is held is the bound, and the axis's expression is
+     held where there is traffic enough to show it (verify-observation:
+     wrong only about what changed, and the crashes that follow). */
+  worst.gap.length > 0 && worst.gap.every((g) => g.seen - g.real <= worst.lag + 0.5)
+    ? ok(`and the poorest observer never judges a gap wider than it is by more than a glance: ${misjudged} of ${worst.gap.length} judged gaps were smaller than seen, the largest by ${Math.max(0, ...worst.gap.map((g) => g.seen - g.real)).toFixed(2)}s against a ${worst.lag.toFixed(2)}s glance`)
     : fail(`gap misjudgment did not read as the lag: ${JSON.stringify(worst.gap)}`);
   Object.values(r).every((v) => v.hits === 0)
     ? ok("and at every rating this sound-tempered candidate touched nobody in 480s on the course -- the BOLD one, lagged, rear-ends on the crossing (47 car-ticks in eight hours: a 0.39s headway against a 0.55s lag), which is why it is OFF by default until contact has a response (stage 5)")

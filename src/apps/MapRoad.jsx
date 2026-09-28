@@ -70,7 +70,7 @@ import { CARS, carsFor, carsMaxFor } from "../map/cars.js";
    map, the player starts at the first edge `loadMap` finds
    (`map/edges.js` -- a plain module, not this one, so a headless check
    can ask the same question without Node trying to parse JSX). */
-export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null) {
+export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false) {
   const loaded = loadMap(rawMap ?? testMap1());
   if (cars == null) cars = carsFor(loaded);
   if (!loaded.ok) throw new Error(`${rawMap ? "map" : "test map"}: ${loaded.error}`);
@@ -81,7 +81,11 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
      same road to drive -- which is the first thing that makes them feel
      different. The `kmh` passed in is then only what sizes the geometry
      (the fastest road's), never what anybody drives at. */
-  let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true });
+  /* DRIVERS WHO LOOK AWAY (sim/attention.js): everybody glances off the
+     road now and then, for as long as their observation lets them, and
+     misses what changed meanwhile. Off by default -- it makes crashes,
+     which stay where they happened for the player to see. */
+  let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true, perceive: !!lookAway });
   let me = null;
   if (drive) {
     me = playerOn(world.course, start.road, start.end, { through: !!start.through });   // the curb lane, driving down to the crossroads
@@ -141,6 +145,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [seed, setSeed] = useState(1);
   const [limit, setLimit] = useState(50);
   const [playing, setPlaying] = useState(true);
+  const [lookAway, setLookAway] = useState(false);
   const [mode, setMode] = useState(initialMode ?? "drive");        // "drive" or "watch"
   const [follow, setFollow] = useState(initialFollow ?? (mapData ? "car" : "crossroads"));   // watch mode: a section of the map to look at, or "car" to ride one
   const [zoom, setZoom] = useState(1);
@@ -166,9 +171,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const mapId = scene.current.loaded.id;
   const carsMax = carsMaxFor(scene.current.loaded);
 
-  const restart = (s = seed, kmh = limit, m = mode, n = cars) => {
-    setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n);
-    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt);
+  const restart = (s = seed, kmh = limit, m = mode, n = cars, look = lookAway) => {
+    setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n); setLookAway(look);
+    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look);
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
     cam.current = { ...newChase(), id: null };
     owed.current = 0; contacts.current = 0; flash.current = 0;
@@ -188,7 +193,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
          before counts were per map. */
       const saved = s.carsByMap?.[mapId] ?? (mapId === "test-1" ? s.cars : undefined);
       const n = Number.isFinite(saved) ? Math.max(CARS.min, Math.min(carsMax, saved)) : cars;
-      if (kmh !== limit || m !== mode || n !== cars) restart(seed, kmh, m, n);
+      const look = s.lookAway === true;
+      if (kmh !== limit || m !== mode || n !== cars || look !== lookAway) restart(seed, kmh, m, n, look);
       if (s.slider === "spring") input.current.state.spring = true;
     });
     return () => { live = false; };
@@ -419,6 +425,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             <input type="range" min={CARS.min} max={carsMax} step={CARS.step} value={cars} style={{ width: 140, fontSize: 16 }}
               onChange={(e) => { const n = Number(e.target.value); setCars(n); setSetting("carsByMap", { ...(settings().carsByMap ?? {}), [mapId]: n }); if (scene.current) scene.current.world = { ...scene.current.world, target: n }; }} />
           </label>
+          {/* A restart: a world keeps its drivers' recent past only when they can look away. */}
+          <button className="btn" style={{ ...S.chip, borderColor: lookAway ? C.amber : "rgba(255,255,255,0.12)", color: lookAway ? C.white : DIM }}
+            onClick={() => { setSetting("lookAway", !lookAway); restart(seed, limit, mode, cars, !lookAway); }}>
+            {lookAway ? "Drivers look away: on" : "Drivers look away: off"}</button>
           <span style={S.label}>keys: arrows or WASD, space brakes, q and e signal</span>
         </div>
         {warnings.length > 0 && (

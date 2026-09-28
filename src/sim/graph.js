@@ -247,6 +247,11 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
   const errors = [];
   const approaches = [];   // per approach: what it offers and what each lane may do, for the editor
   const roadOf = Object.fromEntries(roads.map((r) => [r.id, r]));
+  /* The district a road runs through (its middle), for who is a local on
+     it (sim/reading.js). */
+  const districts = (loaded.zones ?? []).filter((z) => z.kind === "residential" || z.kind === "commercial" || z.kind === "industrial");
+  const inside = (poly, p) => { let o = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) o = !o; } return o; };
+  const zoneOf = (r) => { if (!districts.length) return null; const m = r.pts[Math.floor(r.pts.length / 2)]; return districts.find((z) => inside(z.polygon, m))?.id ?? null; };
   const lanesOf = (r) => Math.max(1, Math.round(r.lanes ?? 1));
   const lanes = {};
   for (const r of roads) {
@@ -310,7 +315,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
         const id = `${base}#${key}`;
         legs[id] = {
           id, base, lane: null, lanes: count, pos, across, bay: kind, inner: false, curb: false,
-          road: r.id, end: l.end, bearing: l.bearing, control: ctl, arrow: !!r.leftArrow?.[l.end],
+          road: r.id, end: l.end, bearing: l.bearing, control: ctl, arrow: !!r.leftArrow?.[l.end], sign: r.signAt?.[l.end] ?? null, zone: zoneOf(r),
           speed: (r.speed ?? 50) / 3.6, inLane, outLane: null, inFrom, outTo: 0,
           /* Along the PATH, whose s = 0 is `inFrom`. */
           opensAt: Math.max(0, inLane.opensAt - inFrom),
@@ -326,7 +331,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
         const id = `${base}#${i}`;
         legs[id] = {
           id, base, lane: i, lanes: count, pos: leftBays + i, across, bay: null, inner: i === 0, curb: i === count - 1,
-          road: r.id, end: l.end, bearing: l.bearing, control: ctl, arrow: !!r.leftArrow?.[l.end],
+          road: r.id, end: l.end, bearing: l.bearing, control: ctl, arrow: !!r.leftArrow?.[l.end], sign: r.signAt?.[l.end] ?? null, zone: zoneOf(r),
           /* THE POSTED SPEED OF THE ROAD THIS LEG IS ON, in m/s. The
              loader already derives it -- the kind's default, the road's
              override, lowered where a bend cannot be taken at it

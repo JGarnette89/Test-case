@@ -45,6 +45,7 @@ import { cornerAccel } from "./corner.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
+import { lookingAway } from "./attention.js";
 import { parkingOf, initialParked } from "./parking.js";
 import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
 
@@ -55,9 +56,13 @@ import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/p
    from what happened. In the old engine that was a query after the fact
    -- a registration delay per road user, and a departure decided on the
    set the driver had taken in. Here it is the actor's actual input: a
-   driver decides from the world as it was `lag` seconds ago, so a poor
-   observer pulls out on a gap that has since closed and brakes for a
-   leader that slowed a moment back, and neither is scripted.
+   driver looks away now and then, for `lag` seconds, and decides
+   meanwhile from the picture they had, carried forward
+   (sim/attention.js) -- so a poor observer pulls out on a gap that closed
+   while they were looking at the mirror and brakes late for a leader
+   that slowed, and neither is scripted. (Until 28 September `lag` was a
+   constant delay, every driver living that far behind the world; the
+   measurements below are of that model.)
 
    The world keeps its last few committed states for exactly this, and
    only when perception is switched on (`road.perceive`), so the default
@@ -142,10 +147,35 @@ export function nearNode(world, list, k) {
   return out;
 }
 
+/* The present, while they are looking; while they are looking away, the
+   picture they had when they looked away, carried forward
+   (sim/attention.js). */
 export function seenBy(world, me) {
-  const back = Math.round((me.lag ?? 0) / DT);
+  const back = Math.round(lookingAway(world.t, me) / DT);
   if (!back || !world.past?.length) return world.actors;
-  return world.past[Math.min(back, world.past.length) - 1];
+  const i = Math.min(back, world.past.length);
+  return carriedForward(world, world.past[i - 1], i * DT);
+}
+
+/* WHAT A DRIVER WHO LOOKED AWAY STILL BELIEVES about another car: where it
+   was when they looked away, CARRIED FORWARD at the speed it had then --
+   not where it was, frozen. Nobody acts on a car being where it was a
+   moment ago; everybody assumes a moving car carries on moving. So the
+   picture is wrong exactly where somebody CHANGED what they were doing.
+   Along the car's own path, never past its end: a seam is a decision the
+   perceiver cannot know. Cached per remembered tick and interval, so every
+   driver who looked away at the same instant shares one list (and the
+   neighbour index its buckets). */
+const carriedCache = new WeakMap();
+function carriedForward(world, snap, ago) {
+  let byAgo = carriedCache.get(snap);
+  if (!byAgo) { byAgo = new Map(); carriedCache.set(snap, byAgo); }
+  let out = byAgo.get(ago);
+  if (!out) {
+    out = snap.map((a) => (a.player || a.crash || !(a.v > 0) ? a : { ...a, s: Math.min(a.s + a.v * ago, pathOf(world, a).length) }));
+    byAgo.set(ago, out);
+  }
+  return out;
 }
 
 /* Slow enough to count as stopped. Not zero: a car creeping at a
@@ -223,8 +253,10 @@ const UNDUE_AT = 4.0;
    Everything below treats "hold" as stopping for right-of-way purposes,
    because a car held at a red IS a car at a line claiming nothing --
    what it must not do is go, and that is `whatStops`'s business. */
-function controlOf(actor, layout, path, t = 0) {
-  const standing = knownControl(actor, layout, path);
+/* `viewer` is who is asking: the actor about their own approach reads it
+   (sim/reading.js); anybody else expects the rule as posted. */
+function controlOf(actor, layout, path, t = 0, viewer = actor) {
+  const standing = viewer === actor ? knownControl(actor, layout, path, t) : theirControl(layout, path);
   if (!layout.signal) return standing === "stop" ? "stop" : "none";
   /* COMMITTED ON THE AMBER. A driver who found at the amber that they
      could not stop comfortably carries on -- and that decision has to
@@ -246,7 +278,7 @@ function controlOf(actor, layout, path, t = 0) {
 /* Does this leg stop -- a sign, a red, or an amber this driver can
    still make? Control is per leg, so one intersection shape is an
    all-way stop or a two-way stop depending only on this. */
-const stops = (layout, path, actor = null, t = 0) => (actor ? controlOf(actor, layout, path, t) !== "none" : theirControl(layout, path) === "stop");
+const stops = (layout, path, actor = null, t = 0, viewer = actor) => (actor ? controlOf(actor, layout, path, t, viewer) !== "none" : theirControl(layout, path) === "stop");
 
 /* WHICH INTERSECTION AN ACTOR IS AT, AND WHICH PATH THROUGH IT.
 
@@ -407,7 +439,8 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
   if (them.going || them.s >= theirs.stopAt) return true;
   if (me.going || me.s >= mine.stopAt) return false;
 
-  const iStop = stops(layout, mine, me, t), theyStop = stops(layout, theirs, them, t);
+  /* What I expect of them is their posted rule, not whether they read it. */
+  const iStop = stops(layout, mine, me, t), theyStop = stops(layout, theirs, them, t, me);
 
   /* NEITHER OF US STOPS. Nobody has an arrival order to appeal to, so
      the standing rules do the work. Left-yields-to-oncoming comes FIRST

@@ -119,7 +119,7 @@ console.log("\n6. A DRIVER LEARNS A RULE IN ONE PLACE");
 {
   const src = fs.readFileSync(new URL("../src/sim/crossing.js", import.meta.url), "utf8");
   const direct = (src.match(/place\.control\[/g) ?? []).length;
-  check(src.includes("knownControl(actor, layout, path)") && src.includes("theirControl(layout, path)") && direct === 1,
+  check(src.includes("knownControl(actor, layout, path") && src.includes("theirControl(layout, path)") && direct === 1,
     `crossing.js asks sim/reading.js for every driver's rule; the one direct read left is where traffic spawns, which is not a driver's question (${direct})`);
 }
 
