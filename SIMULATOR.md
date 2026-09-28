@@ -2527,7 +2527,12 @@ with a default; he took the defaults for five and ruled on one):
    drivers from elsewhere have to read every one.
 5. **Sign kinds, in this order:** stop, yield, all-way plate, no right on
    red, no left turn, one way, do not enter, speed limit, school zone,
-   curve ahead with advisory speed.
+   curve ahead with advisory speed. **Stop, yield and the all-way plate
+   are built** (28 September). The plate is DERIVED, never placed: it
+   hangs under every stop sign at an intersection where every approach
+   stops, because a plate authored on its own could disagree with the
+   controls it describes (verify-signs section 8). The "Signs" test map
+   has a yield crossroads and an uncontrolled one side by side.
 6. **Yield means:** slow, give way to traffic on the other road and anyone
    crossing, stop only if needed, and go without stopping when there is a
    safe gap -- a stop sign without the full stop. **BUILT 28 September**

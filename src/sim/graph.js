@@ -759,7 +759,12 @@ export function junctionsOf(course) {
         const back = lit ? 0 : (r.signAt?.[leg.end]?.back ?? 0);
         const sp = back ? poseAt(p, Math.max(0, p.stopAt - back)) : pose;
         const sh = (sp.rot * Math.PI) / 180, sx = -Math.sin(sh), sy = Math.cos(sh);
-        if (leg.pos === leg.across - 1) signs.push({ kind: lit ? "signal" : leg.control, base: leg.base, at: { x: sp.x + sx * (lane / 2 + 0.6), y: sp.y + sy * (lane / 2 + 0.6), z }, heading: sp.rot });
+        /* THE ALL-WAY PLATE under a stop sign where every approach stops
+           (the maintainer's sign list, third). Derived, never placed: it
+           can only say what the controls already say, and a plate
+           authored separately could disagree with them. */
+        const allWay = leg.control === "stop" && Object.values(spot.layout.legs).every((q) => q.control === "stop");
+        if (leg.pos === leg.across - 1) signs.push({ kind: lit ? "signal" : leg.control, base: leg.base, at: { x: sp.x + sx * (lane / 2 + 0.6), y: sp.y + sy * (lane / 2 + 0.6), z }, heading: sp.rot, ...(allWay ? { allWay } : {}) });
       }
     }
     /* The surface: the corners in order round the centre. */

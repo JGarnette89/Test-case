@@ -198,9 +198,34 @@ export function testCityReady() {
   return m;
 }
 
+/* SIGNS: a yield crossroads and an uncontrolled one on the same through
+   road, so the two can be watched side by side (DECISIONS.md 5.16.4). The
+   yield is on the side street's two approaches; the uncontrolled crossroads
+   has no sign anywhere. */
+export function testSigns() {
+  const Y = { x: 400, y: 400 }, U = { x: 1000, y: 400 };
+  const m = emptyMap("test-signs", "Signs -- a yield crossroads and an uncontrolled one");
+  m.bounds = { x: -50, y: -50, w: 1500, h: 900 };
+  m.roads.push(
+    road({ id: "west", kind: "collector", points: stroke({ x: 0, y: 400 }, Y) }),
+    road({ id: "middle", kind: "collector", points: stroke(Y, U) }),
+    road({ id: "east", kind: "collector", points: stroke(U, { x: 1400, y: 400 }) }),
+    road({ id: "Y-north", kind: "residential", points: stroke({ x: 400, y: 0 }, Y), control: { start: "none", end: "yield" } }),
+    road({ id: "Y-south", kind: "residential", points: stroke({ x: 400, y: 800 }, Y), control: { start: "none", end: "yield" } }),
+    road({ id: "U-north", kind: "residential", points: stroke({ x: 1000, y: 0 }, U) }),
+    road({ id: "U-south", kind: "residential", points: stroke({ x: 1000, y: 800 }, U) }),
+  );
+  m.sections = [
+    { id: "yield", name: "the yield", look: Y, start: { road: "Y-south", end: "end" }, judge: "Side-street drivers slow to about 20 km/h, give way to the through road, and roll through without stopping when it is clear. The through road never waits for them." },
+    { id: "uncontrolled", name: "the uncontrolled crossroads", look: U, start: { road: "U-south", end: "end" }, judge: "No signs: whoever gets there first goes, cars that arrive together defer to the one on their right, and it never locks up." },
+  ];
+  return m;
+}
+
 /* THE TEST MAPS, for the Test maps screen: each builds its map on demand
    (the city is generated, so it is built only when opened). */
 export const TEST_MAPS = [
   { id: "city", name: "Stand-in city", blurb: "Two neighbourhoods with their own drivers, parked cars, buildings, an arterial loop and a collector on signals.", build: testCityReady },
+  { id: "test-signs", name: "Signs", blurb: "A yield crossroads and an uncontrolled crossroads on one through road.", build: testSigns },
   { id: "test-1", name: "Test map 1", blurb: "The loop, the T, the crossroads, the five-way, the overpass and the big arterial.", build: testMap1 },
 ];

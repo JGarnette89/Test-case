@@ -204,6 +204,21 @@ console.log("\n7. A YIELD SIGN: SLOW, GIVE WAY, STOP ONLY IF NEEDED (the maintai
     `AN UNCONTROLLED CROSSROADS DOES NOT LOCK: ${none.minor.length} minor-road crossings in four minutes at 40 cars -- it was 1, every head car waiting for the car on its right round the circle, or for a car queued at rest behind somebody`);
 }
 
+console.log("\n8. THE ALL-WAY PLATE: DERIVED, UNDER EVERY STOP WHERE EVERY APPROACH STOPS, NOWHERE ELSE");
+{
+  const L = loadMap(TEST_MAPS.find((t) => t.id === "test-1").build());
+  const c = graphOf(L, { lane: 3.6 });
+  let right = 0, wrong = 0, stops = 0;
+  const js = junctionsOf(c);
+  js.forEach((j) => {
+    const spot = c.at.find((a) => a.node === j.node) ?? c.at[js.indexOf(j)];
+    const every = Object.values(spot?.layout?.legs ?? {}).every((q) => q.control === "stop");
+    for (const s of j.signs) if (s.kind === "stop") { stops++; (!!s.allWay === every ? right++ : wrong++); }
+  });
+  check(stops > 0 && wrong === 0 && js.some((j) => j.signs.some((s) => s.kind === "stop" && !s.allWay)) && js.some((j) => j.signs.some((s) => s.allWay)),
+    `${stops} stop signs on test map 1: the plate on every one at an intersection where all approaches stop, and on none where the cross road runs through (${wrong} wrong)`);
+}
+
 console.log(`\n${"=".repeat(70)}`);
 console.log(failed ? `${failed} FAILURE(S)` : "OK: a sign is the rule at its approach and the traffic is identical for it, disagreements are said, a sign keeps its end through a split and stands where it is put, the editor writes signs, and a driver learns a rule in one place.");
 process.exit(failed ? 1 : 0);
