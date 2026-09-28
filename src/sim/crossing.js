@@ -41,7 +41,7 @@ import {
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } from "./graph.js";
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
-import { cornerAccel } from "./corner.js";
+import { cornerAccel, speedBy } from "./corner.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
@@ -257,7 +257,7 @@ const UNDUE_AT = 4.0;
    (sim/reading.js); anybody else expects the rule as posted. */
 function controlOf(actor, layout, path, t = 0, viewer = actor) {
   const standing = viewer === actor ? knownControl(actor, layout, path, t) : theirControl(layout, path);
-  if (!layout.signal) return standing === "stop" ? "stop" : "none";
+  if (!layout.signal) return standing === "stop" || standing === "yield" ? standing : "none";
   /* COMMITTED ON THE AMBER. A driver who found at the amber that they
      could not stop comfortably carries on -- and that decision has to
      STICK, or the red that follows seconds later orders them to stop two
@@ -300,6 +300,23 @@ export const pathOf = (world, a) => layoutOf(world, a).paths[a.route];
    was total deadlock: nobody was ever recorded as having stopped, so
    nobody ever got priority, so nobody ever moved. */
 const waitAt = (path) => path.stopAt - CAR.length / 2;
+
+/* THE YIELD APPROACH: slow, so as to be able to give way. A driver who has
+   read a yield sign arrives at the line no faster than YIELD_AT, scaled by
+   their temperament exactly as their road speed and their corners are
+   (traffic.js `wantedSpeed`) -- so a bold driver arrives hotter, which is
+   theirs to be marked for -- braking for it at the rate they plan on
+   (corner.js `speedBy`). With nobody to give way to they carry on at that
+   speed; with somebody, the line holds them (`whatStops`), from a speed a
+   comfortable stop can be made from. YIELD_AT is a design constant,
+   flagged: the maintainer's ruling says slow, not how slow. */
+export const YIELD_AT = 20 / 3.6;
+function yieldAccel(me, world) {
+  if (me.going || me.crash) return Infinity;
+  const layout = layoutOf(world, me), path = layout.paths[me.route];
+  if (!path || me.s > waitAt(path) || controlOf(me, layout, path, world.t ?? 0) !== "yield") return Infinity;
+  return speedBy(me, wantedSpeed(YIELD_AT, me.caution ?? 1), waitAt(path));
+}
 
 /* =====================================================================
    THE GAP A DRIVER ACCEPTS IS DERIVED, NOT ASKED FOR.
@@ -440,7 +457,16 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
   if (me.going || me.s >= mine.stopAt) return false;
 
   /* What I expect of them is their posted rule, not whether they read it. */
-  const iStop = stops(layout, mine, me, t), theyStop = stops(layout, theirs, them, t, me);
+  const iCtl = controlOf(me, layout, mine, t), theyCtl = controlOf(them, layout, theirs, t, me);
+  const iStop = iCtl !== "none", theyStop = theyCtl !== "none";
+  /* A YIELD SIGN (the maintainer's ruling: slow, give way, stop only if
+     needed) gives way to a road with no sign exactly as a stop does, by
+     gap acceptance -- the two branches below -- but it makes no stop to
+     be ordered by. So where a yield meets another yield or a stop, neither
+     is the through road and there is no stopping order to appeal to: they
+     meet as equals, under the rules of an uncontrolled crossing. A default,
+     flagged for the maintainer; no map mixes them yet. */
+  const equals = (!iStop && !theyStop) || (iStop && theyStop && (iCtl === "yield" || theyCtl === "yield"));
 
   /* NEITHER OF US STOPS. Nobody has an arrival order to appeal to, so
      the standing rules do the work. Left-yields-to-oncoming comes FIRST
@@ -450,7 +476,7 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
      ordering is made of stops. With nobody stopping there is no such
      ordering, and a left turn yields to the oncoming whether it got
      there first or not. */
-  if (!iStop && !theyStop) {
+  if (equals) {
     /* AND YIELDING IS GAP ACCEPTANCE HERE TOO, which is the unification
        worth having: the rules decide WHO has to find a gap, and finding
        one is always the same act. Reading "a left turn yields to the
@@ -463,6 +489,29 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
        CLAUDE.md already states the rule this restores: A MOVING VEHICLE
        CLAIMS THE ROAD AHEAD OF IT, PROPORTIONAL TO SPEED. A STOPPED
        VEHICLE CLAIMS NOTHING. */
+    /* BOTH STANDING AT OUR LINES, AND NO LIGHT: "whoever gets there
+       first" is whoever STOPPED first. Read as distance over speed, two
+       cars at rest arrive at the same moment -- both at the 0.5 m/s floor
+       -- and every head car at a busy uncontrolled crossroads fell through
+       to the car on its right, all the way round: measured (28 September,
+       tools/measure/deadlock.mjs), one car across in four minutes at 40
+       cars. Standing at the line is what an all-way stop is made of, and
+       it is ordered the same way, arrivals together falling to the
+       left-turn rule and then the right. Not at a signal, where standing
+       at the red says nothing about who has the green. */
+    if (!layout.signal && me.stoppedAt != null && them.stoppedAt != null && !them.going) {
+      if (them.stoppedAt < me.stoppedAt - SAME_MOMENT) return true;
+      if (me.stoppedAt < them.stoppedAt - SAME_MOMENT) return false;
+      const tied = leftYields(mine, theirs, layout);
+      if (tied != null) return tied;
+      return settle(me, them, mine, theirs, layout);
+    }
+    /* AND A CAR AT REST THAT IS NOT AT ITS LINE -- queued behind somebody
+       -- claims nothing: it is not arriving, it is waiting for the car in
+       front. Distance over the 0.5 m/s floor had it arriving before a car
+       standing at its own line, which then waited for a car that could not
+       move until the jam cleared: the same four minutes, one car in six. */
+    if (them.stoppedAt == null && them.v < AT_REST) return false;
     const head = leftYields(mine, theirs, layout);
     if (head === false) return false;
     /* AN ONCOMING CAR AT REST AT ITS LINE HAS NOT GIVEN UP ITS PRIORITY
@@ -485,6 +534,12 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
        is judged on the gap, as before, and the oncoming car claims the
        road the moment it moves. */
     if (head === true) return (me.stoppedAt != null && them.stoppedAt != null && !them.going) || !hasGap(me, them, layout, caution);
+    /* AND ONE STANDING AT MY LINE, AGAINST A CAR STILL MOVING: I am there
+       first, and the question is only whether I have the gap. Arrival as
+       distance over the 0.5 m/s floor made 15 m at rest thirty seconds
+       away, so a car 108 m off at 50 km/h arrived "first", and a steady
+       stream held a car at its line for three minutes. */
+    if (!layout.signal && me.stoppedAt != null && me.v < AT_REST) return !hasGap(me, them, layout, caution);
     const mineIn = hit.a - me.s;
     const theirsIn = layout.conflicts[them.route + "|" + me.route].a - them.s;
     const dm = mineIn / Math.max(me.v, 0.5), dt = theirsIn / Math.max(them.v, 0.5);
@@ -751,7 +806,7 @@ export function step(world) {
       /* THE CORNER (corner.js): on a map, a turning path slows the car to
          the speed this driver takes it at, through the same following
          model. The real `view` still decides right of way below. */
-      const a = Math.min(told, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity);
+      const a = Math.min(told, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world));
       const v = Math.max(0, me.v + a * DT);
       const s = me.s + v * DT;
       const mine = pathOf(world, me);

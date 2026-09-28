@@ -91,12 +91,18 @@ export const cornerSpeedOf = (corner, me) => Math.min(corner.grip, wantedSpeed(c
 export function cornerAccel(me, path) {
   const corner = cornerOf(path);
   if (!corner || me.s > corner.to) return Infinity;
-  const vc = cornerSpeedOf(corner, me);
-  if (me.s >= corner.from - 0.5) {
+  return speedBy(me, cornerSpeedOf(corner, me), corner.from);
+}
+
+/* A SPEED TO BE AT, BY A PLACE, as above: the acceleration that has this
+   driver at `vc` by `at` braking at the rate they plan on, and held to it
+   from there. The corner uses it, and so does a yield line (crossing.js). */
+export function speedBy(me, vc, at) {
+  if (me.s >= at - 0.5) {
     if (me.v <= vc) return Infinity;
     return decide({ ...me, v0: vc }, { leader: null, gap: Infinity });
   }
-  const d = corner.from - me.s;
+  const d = at - me.s;
   const need = (me.v * me.v - vc * vc) / (2 * d);
   if (need < (me.brake ?? 2.7)) return Infinity;
   return -Math.min(MOST_BRAKE, need);

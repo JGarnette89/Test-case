@@ -2359,7 +2359,34 @@ them (maintainer's ruling).
 because what a crash between two traffic cars means for play is not
 decided; the crash itself is drawn and stays where it happened (5.12).
 
-## 6. ENCROACHMENT: entitled space, not forced evasive action
+### 5.16.4 A YIELD SIGN, AND THE UNCONTROLLED CROSSROADS UNDER IT (28 September)
+
+**The editor could place a yield sign and the traffic ignored it** -- a
+yield resolved to "none", an uncontrolled approach. The maintainer's
+ruling: slow, give way, stop only if needed. So a yield gives way to a
+road with no sign by the same gap acceptance a stop does, with no stop
+of its own; the approach slows to YIELD_AT (20 km/h, a design constant,
+flagged -- the ruling says slow, not how slow) scaled by temperament,
+through the corner's own "speed by a place" (`speedBy`). Where a yield
+meets a yield or a stop neither is the through road and there is no
+stopping order: they meet as equals under the uncontrolled rules (a
+default, flagged; no map mixes them).
+
+**Building it on the uncontrolled crossroads found that crossroads
+locked**: one car across in four minutes at 40 cars. Arrival was
+distance over speed floored at 0.5 m/s, so every car standing at its
+line arrived "together" and the right-hand rule ran round the circle;
+a car queued at rest behind somebody "arrived" before a car standing at
+its own line; and a car standing at its line lost to anything moving
+within thirty seconds. Three rules, each an existing one read properly:
+standing at the line, first to stop goes (the all-way stop's order, not
+at a signal); a car at rest short of its line claims nothing (a stopped
+vehicle claims nothing); and a car standing at its line against a moving
+one is a question of the gap (finding a gap is always the same act).
+Now 43 crossings, as against 17 with stop signs. verify-signs section 7,
+three sabotages.
+
+
 
 **The standard is intrusion on entitled space, and it is deliberately
 STRICTER than collision avoidance.** Turning within a fraction of a second

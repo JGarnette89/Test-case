@@ -22,7 +22,9 @@ import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
 import { graphOf, junctionsOf } from "../src/sim/graph.js";
-import { seedGraph, step } from "../src/sim/crossing.js";
+import { seedGraph, step, pathOf, whatStops, blockedBy, overlapping, YIELD_AT } from "../src/sim/crossing.js";
+import { DT, CAR, wantedSpeed } from "../src/sim/traffic.js";
+import { yieldCross } from "./measure/yield.mjs";
 import { newDraft, addRoad, addPoint, setRoadControl, setSignBack, splitRoad, deleteRoad, controlAt } from "../src/editor/model.js";
 
 let failed = 0;
@@ -121,6 +123,85 @@ console.log("\n6. A DRIVER LEARNS A RULE IN ONE PLACE");
   const direct = (src.match(/place\.control\[/g) ?? []).length;
   check(src.includes("knownControl(actor, layout, path") && src.includes("theirControl(layout, path)") && direct === 1,
     `crossing.js asks sim/reading.js for every driver's rule; the one direct read left is where traffic spawns, which is not a driver's question (${direct})`);
+}
+
+console.log("\n7. A YIELD SIGN: SLOW, GIVE WAY, STOP ONLY IF NEEDED (the maintainer's ruling)");
+{
+  /* A through road east-west, yield signs on the minor road's two
+     approaches (tools/measure/yield.mjs). */
+  const run = (ctl, cars, seed, secs = 240) => {
+    let w = seedGraph(seed, 50, loadMap(yieldCross(ctl)), { target: cars, posted: true });
+    const out = { minor: [], idleStops: 0, rests: 0, throughHeldByUncommitted: 0, crashes: 0, over: 0 };
+    const low = new Map(), idle = new Map();
+    for (let i = 0; i < secs / DT; i++) {
+      const before = new Map(w.actors.map((a) => [a.id, a]));
+      w = step(w);
+      const L = w.course.at[0].layout;
+      for (const a of w.actors) {
+        const was = before.get(a.id);
+        if (!was || was.k !== a.k || was.route !== a.route || a.crash || w.course.at[a.k].through) continue;
+        const p = pathOf(w, a), leg = L.legs[p.from], minor = leg.road === "n" || leg.road === "s";
+        const key = `${a.id}@${a.k}`;
+        if (a.s < p.stopAt && a.s > p.stopAt - 40) low.set(key, Math.min(low.get(key) ?? Infinity, a.v));
+        /* At the line: the car's nose within a car length of it. */
+        if (minor && a.s < p.stopAt && a.s > p.stopAt - CAR.length && a.v < 0.3) {
+          const why = whatStops(a, w);
+          if (why.held || why.queued) idle.set(key, 0);
+          else { const n = (idle.get(key) ?? 0) + DT; idle.set(key, n); if (n > 1.0 && n - DT <= 1.0) out.idleStops++; }
+        }
+        /* The through road gives way to a yield-road car only once that
+           car is committed -- past its line or launched. */
+        if (!minor && a.s < p.stopAt) {
+          for (const b of w.actors) {
+            if (b.id === a.id || b.k !== a.k || b.crash) continue;
+            const bp = pathOf(w, b), bl = L.legs[bp.from];
+            if (!(bl.road === "n" || bl.road === "s") || b.going || b.s >= bp.stopAt) continue;
+            if (blockedBy(a, b, L, a.caution, w.t)) out.throughHeldByUncommitted++;
+          }
+        }
+        /* Its speed as its NOSE reaches the line (centre half a car short). */
+        const nose = p.stopAt - CAR.length / 2;
+        if (minor && was.s < nose && a.s >= nose) out.minor.push({ v: a.v, stopped: (low.get(key) ?? a.v) < 0.3, caution: a.caution, straight: p.intent === "straight" });
+      }
+      if (i % 5 === 0) out.over += overlapping(w).filter((o) => !(w.actors.find((x) => x.id === o.a)?.crash)).length;
+    }
+    out.crashes = (w.crashes ?? []).length;
+    return out;
+  };
+  const light = run("yield", 8, 3), busy = run("yield", 40, 3), stop = run("stop", 40, 3), none = run("none", 40, 3);
+  /* Temperament needs more drivers than one light run has at its tails. */
+  const more = [5, 9].map((seed) => run("yield", 8, seed));
+  const rolled = light.minor.filter((m) => !m.stopped).length;
+  check(light.minor.length >= 10 && rolled > 0 && light.idleStops === 0,
+    `in light traffic ${rolled} of ${light.minor.length} yield-road cars crossed without stopping, and not one stood at the line for more than a second with nobody to give way to`);
+  const kmh = (v) => (v * 3.6).toFixed(0);
+  const moving = [...light.minor, ...busy.minor, ...more.flatMap((r) => r.minor)].filter((m) => !m.stopped);
+  const fastest = Math.max(...moving.map((m) => m.v));
+  const comp = moving.filter((m) => Math.abs(m.caution - 1) < 0.15).map((m) => m.v);
+  const bold = moving.filter((m) => m.caution < 0.7).map((m) => m.v), timid = moving.filter((m) => m.caution > 1.3).map((m) => m.v);
+  const mean = (xs) => xs.reduce((q, x) => q + x, 0) / Math.max(1, xs.length);
+  /* The approach is the corner's (corner.js `speedBy`): it brakes at the
+     driver's planned rate to their target and eases into it rather than
+     landing on it, so what is held is arriving within 1 m/s of it -- and
+     the comparison that says the slowing is the sign's: the same traffic
+     with no sign at all. */
+  const over = Math.max(...moving.map((m) => m.v - wantedSpeed(YIELD_AT, m.caution)));
+  /* Straight across only: a turning car slows for its corner sign or no sign. */
+  const med = (xs) => { const q = [...xs].sort((x, y) => x - y); return q[Math.floor(q.length / 2)]; };
+  const free = med(none.minor.filter((m) => !m.stopped && m.straight).map((m) => m.v)), signed = med(moving.filter((m) => m.straight).map((m) => m.v));
+  check(moving.length > 10 && over <= 1.0 && signed < free,
+    `and slowed: every one reached the line within ${over.toFixed(2)} m/s of YIELD_AT (${kmh(YIELD_AT)} km/h, a flagged design constant) scaled by their temperament, the fastest at ${kmh(fastest)} km/h -- going straight across, a median ${kmh(signed)} km/h, against ${kmh(free)} on the same road with no sign`);
+  check(bold.length >= 5 && timid.length >= 5 && mean(bold) > mean(timid),
+    `a bold driver arrives hotter than a timid one: ${kmh(mean(bold))} against ${kmh(mean(timid))} km/h (${bold.length} and ${timid.length} crossings)`);
+  check(busy.minor.filter((m) => m.stopped).length > 0 && busy.idleStops === 0,
+    `in busy traffic they stop when they have to give way (${busy.minor.filter((m) => m.stopped).length} of ${busy.minor.length}), and still never for nobody`);
+  check([light, busy, ...more].every((r) => r.throughHeldByUncommitted === 0 && r.idleStops === 0),
+    "the through road never waits for a yield-road car that has not committed -- it has the right of way");
+  check([light, busy, stop, none].every((r) => r.crashes === 0 && r.over === 0), "nobody touches, at any control");
+  check(busy.minor.length > stop.minor.length,
+    `and giving way costs less than stopping: ${busy.minor.length} yield-road crossings in four minutes against ${stop.minor.length} with stop signs, same traffic`);
+  check(none.minor.length >= 30,
+    `AN UNCONTROLLED CROSSROADS DOES NOT LOCK: ${none.minor.length} minor-road crossings in four minutes at 40 cars -- it was 1, every head car waiting for the car on its right round the circle, or for a car queued at rest behind somebody`);
 }
 
 console.log(`\n${"=".repeat(70)}`);

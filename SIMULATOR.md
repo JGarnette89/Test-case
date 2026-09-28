@@ -2530,13 +2530,20 @@ with a default; he took the defaults for five and ruled on one):
    curve ahead with advisory speed.
 6. **Yield means:** slow, give way to traffic on the other road and anyone
    crossing, stop only if needed, and go without stopping when there is a
-   safe gap -- a stop sign without the full stop. Still treated like no
-   control in the sim, a gap found while designing this; built with the
-   sign kinds.
+   safe gap -- a stop sign without the full stop. **BUILT 28 September**
+   (DECISIONS.md 5.16.4): gap acceptance without a stop, the approach
+   slowed to YIELD_AT (20 km/h, flagged) by temperament -- and building
+   it found the uncontrolled crossroads under it locked, now fixed.
+   Pedestrians in "anyone crossing" wait on pedestrians in the sim.
 
 **The second change is observation** -- drivers who can miss or not yet
-see a sign -- and it waits on contact having an outcome, because a driver
-who misses a stop sign drives into the cross traffic.
+see a sign. **BUILT 28 September** (DECISIONS.md 5.16.3), behind "Drivers
+look away" on the map screen: attention is intermittent, not late, and
+signs are read only while looking. On today's maps nobody misses a sign
+-- every one is in view longer than the longest glance -- and buildings
+cut no sight line from any stop or yield line on the city
+(tools/measure/sight.mjs): what would hide a sign is a crest or a short
+view round a bend, the next piece of sight.
 
 **WHEN TWO CARS COLLIDE -- BUILT, 28 September** (`contactsIn`,
 `crashWith`, `CRASH_CLEAR` in `crossing.js`; `tools/verify-crashes.mjs`).
