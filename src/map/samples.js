@@ -111,3 +111,36 @@ export function testMap1() {
   );
   return m;
 }
+
+/* A STAND-IN FOR THE MAINTAINER'S BLOCKOUT (SIMULATOR.md stage 5) --
+   throwaway, and labelled as one, so generation inside districts has
+   something to be built and checked against before his own exists. The
+   shape of a blockout and nothing more: an arterial loop about 1.4 by
+   0.9 km, a collector through the middle on signals, the big roads
+   running on out of the city at the corners, and two districts --
+   residential to the west, commercial to the east -- with NO streets in
+   them. Generating the streets is the editor's job (map/generate.js). */
+export function testCity0() {
+  const m = emptyMap("city0", "Stand-in city (blockout only)");
+  const P = (x, y) => ({ x, y, z: 0 });
+  m.roads.push(
+    road({ id: "art-n", kind: "arterial", points: [P(0, 0), P(700, 0)] }),
+    road({ id: "art-n2", kind: "arterial", points: [P(700, 0), P(1400, 0)] }),
+    road({ id: "art-e", kind: "arterial", points: [P(1400, 0), P(1400, 900)] }),
+    road({ id: "art-s2", kind: "arterial", points: [P(1400, 900), P(700, 900)] }),
+    road({ id: "art-s", kind: "arterial", points: [P(700, 900), P(0, 900)] }),
+    road({ id: "art-w", kind: "arterial", points: [P(0, 900), P(0, 0)] }),
+    road({ id: "col", kind: "collector", points: [P(700, 0), P(700, 900)], control: { start: "signal", end: "signal" } }),
+    road({ id: "out-nw", kind: "arterial", points: [P(0, 0), P(-250, -250)] }),
+    road({ id: "out-ne", kind: "arterial", points: [P(1400, 0), P(1650, -250)] }),
+    road({ id: "out-se", kind: "arterial", points: [P(1400, 900), P(1650, 1150)] }),
+    road({ id: "out-sw", kind: "arterial", points: [P(0, 900), P(-250, 1150)] }),
+    road({ id: "out-n", kind: "collector", points: [P(700, 0), P(700, -300)] }),
+    road({ id: "out-s", kind: "collector", points: [P(700, 900), P(700, 1200)] }),
+  );
+  m.zones.push(
+    { id: "west", kind: "residential", density: 0.5, polygon: [P(0, 0), P(700, 0), P(700, 900), P(0, 900)] },
+    { id: "east", kind: "commercial", density: 0.5, polygon: [P(700, 0), P(1400, 0), P(1400, 900), P(700, 900)] },
+  );
+  return m;
+}

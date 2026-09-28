@@ -771,7 +771,7 @@ export function step(world) {
   if (topUp && !wanted) nextAt = t;
   if (wanted && t >= nextAt) {
     const car = arriving(world, spawned);
-    const joining = joinAt(world, next, car);
+    const joining = car && joinAt(world, next, car);
     if (joining) {
       next.push(joining);
       spawned += 1;
@@ -797,7 +797,7 @@ export function step(world) {
          offered and what got in is visible. */
       spawned += 1;
       turnedAway += 1;
-      nextAt = t + car.arriveIn;
+      nextAt = t + (car?.arriveIn ?? world.every);
     }
   }
   /* What the world remembers of itself, for drivers who perceive it
@@ -964,6 +964,11 @@ function arriving(world, n) {
   /* Traffic perceives the present unless perception is for everybody. */
   const base = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
   const where = edgeFor(world.course, r());
+  /* A MAP WITH NO OPEN END -- a closed network, every road meeting
+     another at both ends -- has nowhere for anybody to arrive from. No
+     arrival, rather than a throw: traffic from inside the districts is
+     SIMULATOR.md stage 5's, and until then such a map is simply empty. */
+  if (!where) return null;
   /* The route out of that leg, drawn from the routes it offers: on the
      compass those are the three intents in INTENTS order, so the draw
      is the one it always was. */

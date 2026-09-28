@@ -204,7 +204,7 @@ Eight things to know before your first change:
    | `src/apps/MapRoad.jsx` (`sceneFor`, the `mapData`/`startAt` props) | `verify-editor` (replays the same loadMap/seedGraph/firstEdge/playerOn pipeline `sceneFor` uses, on a drawn map, headlessly -- this is what caught `firstEdge` pointing at the wrong end), `verify-drive`, `verify-wheel`, `verify-screens` | ~20s |
    | `src/iso/*` | `verify-perf`, `verify-wheel`, `verify-map`, `verify-screens` | 8s |
    | `src/map/*` | `verify-map`, `verify-graph`, `verify-wheel`, `verify-perf`, `verify-editor` (validation and Drive it load through it), `verify-screens` (the scene loads its roads through it) | ~50s |
-   | `src/sim/graph.js` | `verify-graph`, `verify-drive`, `verify-signal`, `verify-bays`, `verify-editor` (validation calls `graphOf` with `conflicts: false` and section 13 holds it to the full graph), and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
+   | `src/sim/graph.js` | `verify-graph`, `verify-drive`, `verify-signal`, `verify-bays`, `verify-generate` (junctions too close), `verify-editor` (validation calls `graphOf` with `conflicts: false` and section 13 holds it to the full graph), and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
    | `src/sim/signal.js` | `verify-signal`, `verify-graph`, `verify-drive`, `verify-paint`, `verify-screens`, `verify-bays`, and the `src/sim/` five (crossing.js imports it) | ~4m |
    | `src/sim/lanechange.js` | `verify-lanes`, `verify-graph`, `verify-signal`, `verify-drive`, `verify-bays`, and the `src/sim/` five (crossing.js imports it) | ~7m |
    | `src/sim/corner.js` | `verify-graph` (section 10), `verify-signal`, `verify-lanes`, `verify-drive`, and the `src/sim/` five (crossing.js imports it) | ~7m |
@@ -214,7 +214,8 @@ Eight things to know before your first change:
    | `src/sim/drive.js`, `src/sim/player.js`, `src/iso/hud.js`, `src/iso/controls.js` | `verify-drive`, `verify-wheel`, `verify-screens` | ~10s |
    | `src/iso/chase.js`, `src/iso/project.js`, `src/iso/draw.js` | `verify-paint` FIRST (the painter's order, every rotation), `verify-chase`, `verify-perf`, `verify-wheel`, `verify-screens` | ~40s |
    | `src/sim/traffic.js` | the `src/sim/` five, plus `verify-wheel` (the player rides its step) | ~3m |
-   | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens`, `-exam` (exam.js rides on crossing, drive, graph, corner and the candidate profiles) | ~100s |
+   | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens`, `-exam` (exam.js rides on crossing, drive, graph, corner and the candidate profiles), `-generate` (a generated city is the biggest network any check drives) | ~2m |
+   | `src/map/generate.js`, `src/map/samples.js` `testCity0` | `verify-generate` FIRST, then `verify-editor`, `verify-screens` | ~40s |
    | `src/sim/exam.js`, `src/apps/ExamRide.jsx` | `verify-exam` FIRST, then `verify-screens` (renders `#/exam`) and `verify-core` (a live screen) | ~10s |
    | `src/core/*` | `verify-core` FIRST, then the full suite: the engine re-exports core and the sim imports it, so both sides can move | 18m |
    | `src/frame.js` | `-screens`, `-camera`, `-clearance`, `-events`, `-world` | ~5m |
@@ -1682,6 +1683,7 @@ src/map/format.js        the map format: roads as strokes in metres, KINDS with 
 src/map/bays.js          turn bays: a lane that begins before an intersection, its taper derived from the lane change's own numbers
 src/map/load.js          loading a map: normalise, warn, never throw; the surface and lane lines; the graph
 src/map/samples.js       hand-written maps as data -- stage 0, and the test map #/map drives
+src/map/generate.js      STAGE 5: detail generated inside the maintainer's shapes -- local streets filling a district, joined to the roads around it
 src/map/edges.js         where a car starts on a map with no hardcoded start: the first dangling end
 src/editor/model.js      the editor's data model: pure functions over a map, nothing else -- the draft IS the format
 src/editor/validate.js   can a draft be driven yet: loadMap + graphOf, never letting a mid-edit map throw
@@ -2063,10 +2065,11 @@ node tools/verify-equivalence.mjs  nothing moved that was not meant to
 node tools/verify-core.mjs         the live screens stand on src/core/ alone: core imports nothing outside itself, no live screen reaches the engine, no core name is declared twice
 node tools/verify-editor.mjs       the editor: the draft IS the map format, a hand-written map replayed through it round-trips exactly, snap preview finds an end and only an end, nothing drawn however badly can throw validation, Drive it is the real pipeline run headlessly, an overpass is authorable and distinguishable from a refused tight crossing, the map library never collides on id or leaves a stale entry openable, pinch and zoom keep the world under the fingers, an arterial drawn through the approach controls (signal, bays, arrow) comes out with bay legs, protected lefts, and traffic that runs clean, and a T, a made crossroads and a hump-made overpass all come out as the loader should see them, validation runs the graph without its conflict table (the editor validates on every tap) and still agrees with the full graph on every node and leg, and a road tapped as right angles comes out faster once smoothed, with its ends unmoved, and a map with no intersection at all still has somewhere to start driving, and the lane arrows show what the graph applies and write the format's own per-end override, and a building faces its street, keeps off the road (the loader drops one that does not), and still drives, and undo takes one intention per step and loses nothing going back and forth
 node tools/verify-exam.mjs         stage 3, the exam mode: silence is straight on, a direction in time is taken, a late one is not by the corner's own arithmetic, past the line it is for the next, easing slows them by their own braking and the bottom of the slider is the instructor's brake, and with no hand on them nothing changes
+node tools/verify-generate.mjs     stage 5, streets inside a district: deterministic and replacing, a network the sim accepts with traffic that never overlaps, no street dangling or stranded, controls by the established rules (T stem stops, local crossroads all-way, nothing drawn is changed), junctions never closer than the graph can hold -- and said so by name when drawn that way -- and a closed map that no longer takes the sim down
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All forty-two must exit 0 **before a commit**. Between commits, run
+All forty-three must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:

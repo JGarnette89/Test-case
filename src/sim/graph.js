@@ -453,6 +453,18 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
       const id = links.length;
       const aBase = a.leg.id ?? `${r.id}|start`, bBase = b.leg.id ?? `${r.id}|end`;
       links.push({ id, road: r.id, a: a.k, aSide: aBase, b: b.k, bSide: bBase });
+      /* TWO INTERSECTIONS TOO CLOSE TO BOTH BE INTERSECTIONS. The road
+         between them has to hold both stop lines -- each leg's own
+         `lineAt`, the box and the setback, skew included -- and one car
+         waiting between them. Shorter and the two boxes run into each
+         other, which no path through either is built for. An authoring
+         error, named by both nodes, like a lane with nowhere to land. */
+      const lineOf = (k, base) => Math.max(0, ...Object.values(at[k].layout.legs).filter((l) => l.base === base).map((l) => l.lineAt ?? 0));
+      const need = lineOf(a.k, aBase) + lineOf(b.k, bBase) + CAR.length;
+      if (r.length < need) {
+        const na = at[a.k].node, nb = at[b.k].node;
+        errors.push({ code: "junctions-too-close", node: na, other: nb, road: r.id, message: `${na} and ${nb} are ${r.length.toFixed(0)} m apart on ${r.id}; two intersections need ${need.toFixed(0)} m between them here (both stop lines and a car) -- move one, or make them one intersection` });
+      }
       for (let i = 0; i < lanesOf(r); i++) {
         joins[`${a.k}|${aBase}#${i}`] = { k: b.k, side: `${bBase}#${i}`, link: id };
         joins[`${b.k}|${bBase}#${i}`] = { k: a.k, side: `${aBase}#${i}`, link: id };
@@ -550,7 +562,11 @@ function pathBetween(place, A, B, meta) {
        what a driver actually does at that corner is the maintainer's
        and still open. */
     const radius = d / Math.tan((Math.abs(turn) * Math.PI) / 360);
-    const far = { x: corner.x + outDir.x * 30, y: corner.y + outDir.y * 30 };
+    /* No corner is a turn whose two lane lines never cross: the same
+       fallback `d` above and `turnPoints` below already take, which this
+       line alone did not -- it threw, on two junctions 10 m apart. */
+    const c0 = corner ?? exit0[0];
+    const far = { x: c0.x + outDir.x * 30, y: c0.y + outDir.y * 30 };
     const arc = turnPoints(stop, corner ?? exit0[0], far, radius).map((p) => ({ ...p, z: stop.z ?? 0 }));
     arc.pop();
     pts = [...approach.slice(0, -1), ...arc];

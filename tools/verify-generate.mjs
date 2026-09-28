@@ -1,0 +1,159 @@
+/* =====================================================================
+   STAGE 5, FIRST PIECE: STREETS GENERATED INSIDE A DISTRICT
+   (src/map/generate.js). Properties any correct version must have:
+
+     1. deterministic, and generating again REPLACES rather than adds;
+     2. the result is a street network the sim accepts -- it loads, the
+        graph raises no authoring error, and traffic runs on it without
+        anybody driving through anybody;
+     3. no street dangles: a loose end is the edge of the world to the
+        loader, and a spawn point in the middle of a city is a lie;
+     4. streets stay in their district, and one that cannot reach a road
+        is dropped, not left as an island;
+     5. controls follow the established rules: the minor street stops
+        where it meets a bigger road, a T's stem stops and its through
+        street runs, a crossroads of two local streets is an all-way
+        stop -- and no road the maintainer drew has its control changed;
+     6. two junctions are never generated closer than the graph can hold,
+        and the graph says so, by name, when a person draws them closer
+        by hand -- rather than throwing, which it used to;
+     7. a map with no open end at all does not take the sim down.
+   ===================================================================== */
+import { loadMap } from "../src/map/load.js";
+import { testCity0 } from "../src/map/samples.js";
+import { emptyMap, road } from "../src/map/format.js";
+import { fillZone, clearZone, BLOCKS, SNAP, alignWithin } from "../src/map/generate.js";
+import { graphOf } from "../src/sim/graph.js";
+import { seedGraph, step, overlapping } from "../src/sim/crossing.js";
+
+let failed = 0;
+const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
+const P = (x, y) => ({ x, y, z: 0 });
+const both = (m) => fillZone(fillZone(m, "west").map, "east").map;
+
+console.log("\n1. DETERMINISTIC, AND AGAIN REPLACES");
+{
+  const base = testCity0();
+  const a = both(base), b = both(base);
+  check(JSON.stringify(a) === JSON.stringify(b), "the same shapes give the same streets");
+  const west = fillZone(base, "west").map;
+  check(JSON.stringify(fillZone(west, "west").map) === JSON.stringify(west), "generating a district again with nothing around it changed changes nothing: it replaces, never adds");
+  /* Regenerating the west AFTER the east exists is not "nothing changed":
+     the east's streets are new junctions on the collector they share,
+     and the west lines up with them -- which is the point. What must
+     hold is that the result is still a network the sim accepts. */
+  const again = fillZone(a, "west").map;
+  check(again.roads.filter((r) => r.gen === "west").length > 0 && graphOf(loadMap(again), { conflicts: false }).errors.length === 0, "regenerated after its neighbour, a district lines up with the neighbour's streets and the city still has no authoring error");
+  const cleared = clearZone(clearZone(a, "west"), "east");
+  check(JSON.stringify(cleared.roads) === JSON.stringify(base.roads), "clearing both districts gives back exactly the blockout");
+  const gen = a.roads.filter((r) => r.gen);
+  check(gen.length > 40 && gen.every((r) => r.kind === "residential" && (r.gen === "west" || r.gen === "east")), `${gen.length} road pieces, all local streets, each tagged with its district`);
+  const denser = fillZone(testCity0(), "west").map, sparser = fillZone({ ...testCity0(), zones: testCity0().zones.map((z) => (z.id === "west" ? { ...z, density: 0.1 } : z)) }, "west").map;
+  check(denser.roads.length > sparser.roads.length, `a denser district gets smaller blocks (${denser.roads.length} roads at 0.5, ${sparser.roads.length} at 0.1)`);
+}
+
+console.log("\n2. A NETWORK THE SIM ACCEPTS");
+const city = both(testCity0());
+const L = loadMap(city);
+{
+  check(L.ok, `the stand-in city loads (${L.nodes.length} intersections, ${L.roads.length} road pieces)`);
+  const G = graphOf(L);
+  check(G.errors.length === 0, `the graph raises no authoring error (${G.errors.map((e) => e.code).join(", ") || "none"})`);
+  let w = seedGraph(1, 60, L, { target: 200, posted: true });
+  let over = 0;
+  for (let i = 0; i < 2400; i++) { w = step(w); if (i % 10 === 0) over += overlapping(w).length; }
+  check(w.actors.length > 150 && over === 0, `two minutes at 200 cars: ${w.actors.length} on the map, ${over} overlaps`);
+}
+
+console.log("\n3. NO STREET DANGLES");
+{
+  const loose = L.roads.filter((r) => (r.edge?.start || r.edge?.end) && !r.id.startsWith("out-"));
+  check(loose.length === 0, `the only open ends are the roads leaving the city (${L.roads.filter((r) => r.edge?.start || r.edge?.end).length}, all out-*)`);
+}
+
+console.log("\n4. STREETS STAY IN THEIR DISTRICT; ISLANDS ARE DROPPED");
+{
+  const inside = (poly, p, pad) => {
+    const xs = poly.map((q) => q.x), ys = poly.map((q) => q.y);
+    return p.x >= Math.min(...xs) - pad && p.x <= Math.max(...xs) + pad && p.y >= Math.min(...ys) - pad && p.y <= Math.max(...ys) + pad;
+  };
+  const zones = Object.fromEntries(city.zones.map((z) => [z.id, z]));
+  check(city.roads.filter((r) => r.gen).every((r) => r.points.every((p) => inside(zones[r.gen].polygon, p, SNAP))), "every generated point is inside its district, or on the road at its edge");
+  const lonely = emptyMap("lonely");
+  lonely.roads.push(road({ id: "far", kind: "collector", points: [P(2000, 0), P(2400, 0)] }));
+  lonely.zones.push({ id: "z", kind: "residential", density: 0.5, polygon: [P(0, 0), P(500, 0), P(500, 500), P(0, 500)] });
+  const r = fillZone(lonely, "z");
+  check(r.map.roads.length === 1 && r.report.dropped > 0, `a district with no road near it gets nothing: ${r.report.dropped} streets dropped as an island`);
+  const park = fillZone({ ...testCity0(), zones: [{ id: "p", kind: "park", polygon: [P(0, 0), P(700, 0), P(700, 900), P(0, 900)] }] }, "p");
+  check(park.map.roads.every((x) => !x.gen) && /not subdivided/.test(park.report.reason) && !BLOCKS.park, "a park is not subdivided, and says so");
+}
+
+console.log("\n5. CONTROLS BY THE ESTABLISHED RULES");
+{
+  const base = testCity0();
+  const drawn = Object.fromEntries(base.roads.map((r) => [r.id, r.control]));
+  check(city.roads.filter((r) => !r.gen).every((r) => JSON.stringify(r.control) === JSON.stringify(drawn[r.id])), "no road the maintainer drew has its control changed");
+  let tees = 0, crosses = 0, bigger = 0, bad = [];
+  for (const n of L.nodes) {
+    const legs = n.legs;
+    const gen = legs.filter((l) => city.roads.find((r) => r.id === l.road.split("#")[0])?.gen);
+    const drawnLegs = legs.length - gen.length;
+    const stops = legs.filter((l) => l.control === "stop");
+    if (drawnLegs > 0 && gen.length > 0) { bigger++; if (!gen.every((l) => l.control === "stop")) bad.push(`${n.id}: a street meets a bigger road without stopping`); }
+    if (drawnLegs === 0 && legs.length === 4) { crosses++; if (stops.length !== 4) bad.push(`${n.id}: a local crossroads with ${stops.length} stops`); }
+    if (drawnLegs === 0 && legs.length === 3) { tees++; if (stops.length !== 1) bad.push(`${n.id}: a local T with ${stops.length} stops`); }
+  }
+  check(bad.length === 0 && bigger > 0 && crosses > 0, `${bigger} streets onto a bigger road (stop), ${crosses} local crossroads (all-way), ${tees} local T's (stem stops)${bad.length ? `: ${bad.slice(0, 3).join("; ")}` : ""}`);
+}
+
+{
+  /* The stand-in's districts are rectangles bounded by roads on every
+     side, which makes crossroads and no T's -- so the T rule above could
+     pass having never been asked. A district with one edge that has no
+     road forces them: streets reaching it are trimmed back to their last
+     crossing, and that crossing is a T. */
+  const m = emptyMap("open-edge");
+  m.roads.push(road({ id: "n", kind: "collector", points: [P(0, 0), P(700, 0)] }), road({ id: "e", kind: "collector", points: [P(700, 0), P(700, 900)] }), road({ id: "s", kind: "collector", points: [P(700, 900), P(0, 900)] }));
+  m.zones.push({ id: "z", kind: "residential", density: 0.5, polygon: [P(0, 0), P(700, 0), P(700, 900), P(0, 900)] });
+  const g = fillZone(m, "z").map, lo = loadMap(g);
+  const genIds = new Set(g.roads.filter((r) => r.gen).map((r) => r.id));
+  const tees = lo.nodes.filter((n) => n.legs.length === 3 && n.legs.every((l) => genIds.has(l.road.split("#")[0])));
+  check(tees.length > 0 && tees.every((n) => n.legs.filter((l) => l.control === "stop").length === 1) && graphOf(lo, { conflicts: false }).errors.length === 0,
+    `a district with an edge that has no road: ${tees.length} local T's, each with exactly its stem stopping, and no authoring error`);
+  check(lo.roads.filter((r) => genIds.has(r.id.split("#")[0]) && (r.edge?.start || r.edge?.end)).length === 0, "and the streets that reached the open edge were trimmed back rather than left dangling");
+}
+
+console.log("\n6. JUNCTIONS NEVER TOO CLOSE, AND SAID SO WHEN DRAWN THAT WAY");
+{
+  /* The two districts meet the collector from both sides at different
+     block spacings: unaligned, T's land 10 m apart on it. */
+  const col = L.roads.filter((r) => r.id.startsWith("col"));
+  check(col.every((r) => r.length >= alignWithin(2) / 2) && graphOf(L, { conflicts: false }).errors.every((e) => e.code !== "junctions-too-close"),
+    `every piece of the collector between junctions is long enough (shortest ${Math.min(...col.map((r) => r.length)).toFixed(0)} m)`);
+  /* Drawn by hand: two T's onto one road, 10 m apart. It used to throw
+     inside the graph (a turn whose lane lines never cross); it must be
+     an authoring error naming both. */
+  const m = emptyMap("jog");
+  m.roads.push(road({ id: "main", kind: "collector", points: [P(0, 0), P(400, 0)] }));
+  m.roads.push(road({ id: "n", kind: "residential", points: [P(200, -150), P(200, 0)], control: { start: "none", end: "stop" } }));
+  m.roads.push(road({ id: "s", kind: "residential", points: [P(210, 150), P(210, 0)], control: { start: "none", end: "stop" } }));
+  const lj = loadMap(m);
+  let g = null, threw = null;
+  try { g = graphOf(lj); } catch (e) { threw = e.message; }
+  const close = g?.errors.find((e) => e.code === "junctions-too-close");
+  check(!threw && !!close && close.node && close.other, `two T's drawn 10 m apart: no throw, and an authoring error naming both -- "${close?.message ?? threw}"`);
+}
+
+console.log("\n7. A MAP WITH NO OPEN END");
+{
+  const m = emptyMap("closed");
+  m.roads.push(road({ id: "a", points: [P(0, 0), P(300, 0)] }), road({ id: "b", points: [P(300, 0), P(300, 300)] }), road({ id: "c", points: [P(300, 300), P(0, 300)] }), road({ id: "d", points: [P(0, 300), P(0, 0)] }));
+  const lc = loadMap(m);
+  let w = null, threw = null;
+  try { w = seedGraph(1, 50, lc, { target: 50, posted: true }); for (let i = 0; i < 200; i++) w = step(w); } catch (e) { threw = e.message; }
+  check(!threw && w.actors.length === 0, `a closed square of roads: no throw, and nobody arrives, since there is nowhere to arrive from (${threw ?? `${w.actors.length} cars`})`);
+}
+
+console.log(`\n${"=".repeat(70)}`);
+console.log(failed ? `${failed} FAILURE(S)` : "OK: streets fill a district deterministically, join the roads around it, never dangle or strand, follow the established controls, keep junctions far enough apart for the graph, and a closed map no longer takes the sim down.");
+process.exit(failed ? 1 : 0);

@@ -47,7 +47,8 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import { readJSON, writeJSON } from "../storage.js";
 import { CLEARANCE_MIN } from "../map/load.js";
 import { KINDS, CONTROLS, ZONES, PROP_KINDS } from "../map/format.js";
-import { testMap1 } from "../map/samples.js";
+import { testMap1, testCity0 } from "../map/samples.js";
+import { fillZone, clearZone, BLOCKS } from "../map/generate.js";
 import {
   newDraft, addRoad, addPoint, updatePoint, removeLastPoint, deleteRoad,
   setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
@@ -109,6 +110,7 @@ export default function Editor() {
   const [driving, setDriving] = useState(false);
   const [fileError, setFileError] = useState(null);
   const [mapName, setMapName] = useState("Untitled map");
+  const [genReport, setGenReport] = useState(null);   // what the last Generate streets made, for the zone panel to say
   const [savedId, setSavedId] = useState(null);          // the library id this draft was last saved/opened as, null for never-saved
   const [library, setLibrary] = useState([]);
   const [showLibrary, setShowLibrary] = useState(false);
@@ -641,7 +643,7 @@ export default function Editor() {
     reader.readAsText(file);
   };
   const loadSample = (which) => {
-    const m = which === "test" ? testMap1() : newDraft();
+    const m = which === "test" ? testMap1() : which === "city" ? testCity0() : newDraft();
     freshHistory(); setDraft(m); setSelected(null); setDrawing(null); setSavedId(null); setMapName(m.name ?? "Untitled map"); view.current = makeView(m);
   };
 
@@ -773,6 +775,10 @@ export default function Editor() {
         )}
         {selZone && (
           <ZonePanel zone={selZone}
+            generated={draft.roads.filter((r) => r.gen === selZone.id).length}
+            onGenerate={() => { const r = fillZone(draft, selZone.id); setDraft(r.map); setGenReport({ zone: selZone.id, ...r.report }); }}
+            onClear={() => { setDraft((m) => clearZone(m, selZone.id)); setGenReport(null); }}
+            report={genReport?.zone === selZone.id ? genReport : null}
             onChange={(patch) => setDraft((m) => setZoneProps(m, selZone.id, patch))}
             onDelete={() => { setDraft((m) => deleteZone(m, selZone.id)); setSelected(null); }}
           />
@@ -809,6 +815,7 @@ export default function Editor() {
           <button className="btn" style={S.chip} onClick={() => fileRef.current?.click()}><Upload size={15} style={{ marginRight: 6 }} />Open a file</button>
           <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={openFile} />
           <button className="btn" style={S.chip} onClick={() => loadSample("test")}><FolderOpen size={15} style={{ marginRight: 6 }} />Load test map 1</button>
+          <button className="btn" style={S.chip} onClick={() => loadSample("city")}><FolderOpen size={15} style={{ marginRight: 6 }} />Load stand-in city</button>
           <button className="btn" style={S.chip} onClick={() => loadSample("blank")}>New blank map</button>
         </div>
         {fileError && <div style={{ ...S.note, color: C.red }}>{fileError}</div>}
@@ -1026,7 +1033,8 @@ function PropPanel({ prop, canFace, onFace, onChange, onDelete }) {
   );
 }
 
-function ZonePanel({ zone, onChange, onDelete }) {
+function ZonePanel({ zone, generated = 0, report = null, onGenerate, onClear, onChange, onDelete }) {
+  const subdivides = !!BLOCKS[zone.kind];
   return (
     <div style={S.card}>
       <div style={S.cardHead}>
@@ -1043,6 +1051,20 @@ function ZonePanel({ zone, onChange, onDelete }) {
           <input type="number" min={0} max={1} step={0.05} style={inputStyle} value={zone.density ?? 0.5} onChange={(e) => onChange({ density: Math.max(0, Math.min(1, Number(e.target.value) || 0)) })} />
         </Field>
       </div>
+      {/* STREETS INSIDE THE DISTRICT (map/generate.js): ordinary roads,
+          tagged with this zone, so they can be edited by hand, cleared, or
+          generated again after the shape or the density changes. */}
+      <div style={S.row}>
+        <button className="btn" style={S.chip} disabled={!subdivides} title={subdivides ? "fill this district with local streets joined to the roads around it" : `a ${zone.kind} zone is not subdivided`} onClick={onGenerate}>
+          {generated ? "Generate streets again" : "Generate streets"}
+        </button>
+        {generated > 0 && <button className="btn" style={S.chip} onClick={onClear}>Clear streets ({generated})</button>}
+      </div>
+      {report && (
+        <div style={{ fontSize: 12, color: DIM }}>
+          {report.reason ?? `${report.streets} streets as ${report.roads} road pieces${report.dropped ? `; ${report.dropped} dropped that could not reach a road` : ""}. Hand-edit them freely; generating again replaces them.`}
+        </div>
+      )}
     </div>
   );
 }

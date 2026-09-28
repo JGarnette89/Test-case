@@ -2352,6 +2352,54 @@ traffic from every edge and from the districts.
 
 *Deliverable:* the first version of the 8 km² city, driveable end to
 end, never the same drive twice.
+
+**In increments, each something to look at** (27 September): 5.1
+streets inside a district; 5.2 buildings along frontages; 5.3 parking
+and props; 5.4 the town profile per district; 5.5 the spatial index and
+the phone at city scale; 5.6 traffic from the districts and every edge.
+Until the maintainer's own blockout exists, `testCity0()` in
+`map/samples.js` stands in for it -- an arterial loop, a collector, two
+districts with no streets in them -- and is labelled as a stand-in.
+
+**5.1, STREETS INSIDE A DISTRICT -- BUILT, 28 September**
+(`src/map/generate.js`, editor zone panel "Generate streets",
+`tools/verify-generate.mjs`). A grid aligned to the district's longest
+edge, blocks sized by kind and density (residential about 110 by 220
+m), clipped to the polygon. A street ends ON the road at the district's
+edge if one is within 25 m, and otherwise is trimmed back to its last
+junction -- never left dangling, since a loose end is a map edge where
+traffic spawns. Streets that reach no road are dropped as islands. The
+output is ordinary roads tagged with their zone: fixed, learnable,
+hand-editable, regenerated or undone like anything drawn. Controls
+follow the established T rule (the minor street stops where it meets a
+bigger road; a T's stem stops and the through street runs), and **a
+crossroads of two local streets is an all-way stop -- a map-design
+default, the maintainer's to overrule.** On the stand-in: 98 road
+pieces, 78 intersections, no authoring error, 200 cars for two minutes
+with no overlap.
+
+Two latent sim bugs it found, both reachable by hand in the editor
+before it existed:
+
+- **Two junctions 10 m apart crashed the graph.** The districts either
+  side of the collector meet it at different block spacings, so T's
+  landed 10 m apart; the road piece between was shorter than the box,
+  and a straight-through read as a U-turn whose lane lines never cross.
+  `pathBetween` handled that null corner in two places and read it
+  unguarded in a third -- the recurring bug, two implementations of one
+  quantity. Fixed, and the real problem is now an AUTHORING ERROR,
+  `junctions-too-close`, named by both nodes: the road between two
+  intersections must hold both stop lines (each leg's own `lineAt`) and
+  a car. The generator aligns a street to a junction already on the
+  road within that distance (with the graph's own skew allowance), so
+  two T's from either side become one crossroads.
+- **A map with no open end crashed spawning** -- a closed network had
+  nowhere to arrive from. It now gets no arrivals. Traffic from inside
+  the districts (5.6) is what makes a closed city live.
+
+**Measured for 5.5, not yet acted on:** 6.7 ms a tick on the desk
+machine at 200 cars on the stand-in city (1.4 by 0.9 km), which at
+20 Hz is fine on the desk and a question on the phone.
 *The question:* is it learnable? Can he find the back street he found
 yesterday? Does the traffic feel alive at every density the districts
 ask for? And, with the player at the wheel: is it good to drive?
