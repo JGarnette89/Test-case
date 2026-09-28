@@ -50,7 +50,7 @@ export const CONTROLS = ["stop", "yield", "none", "signal", "signal-no-right-on-
    expands, so every map written before signs existed loads unchanged.
    `no-right-on-red` is the plate on a signal's approach. Speed and warning
    signs are the next kinds and wait on the maintainer's rulings. */
-export const SIGN_KINDS = ["stop", "yield", "no-right-on-red"];
+export const SIGN_KINDS = ["stop", "yield", "no-right-on-red", "no-left-turn"];
 export const SIGN_BACK_MAX = 40;   // metres: further back than this a sign stops reading as the intersection's
 export const ZONES = ["residential", "commercial", "industrial", "park", "water", "highway"];
 /* WHO DRIVES HERE: a district's character (sim/towns.js says what each

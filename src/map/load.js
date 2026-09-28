@@ -225,10 +225,15 @@ export function loadMap(map) {
        approach is refused, warned, since the light governs; the
        no-right-on-red plate means something only on a signal. */
     const signAt = { start: null, end: null };
+    /* A NO-LEFT-TURN sign at an end: that approach offers no left (the
+       graph takes it off what the intersection offers, sim/graph.js). */
+    const noLeft = { start: null, end: null };
     for (const e of ["start", "end"]) {
       const here = signsAt.get(`${String(r.id)}|${e}`) ?? [];
       const rule = here.find((q) => q.kind === "stop") ?? here.find((q) => q.kind === "yield");
       const plate = here.find((q) => q.kind === "no-right-on-red");
+      const noLeftSign = here.find((q) => q.kind === "no-left-turn");
+      if (noLeftSign) noLeft[e] = { id: noLeftSign.id };
       const lit = control[e] === "signal" || control[e] === "signal-no-right-on-red";
       if (rule && lit) warn("sign-at-signal", `road ${id}: a ${rule.kind} sign at its ${e} is on a signal's approach; the signal governs, the sign is ignored`);
       else if (rule) {
@@ -258,7 +263,7 @@ export function loadMap(map) {
        traffic drives by are unchanged; `outer` is what is drawn and what
        a building has to keep off. */
     const outer = parking === "parallel" && !oneWay && !bays ? width + 2 * PARK_W : width;
-    const built = { id, kind, lanes, oneWay, width, outer, speed, parking, control, signAt, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}), ...raw };
+    const built = { id, kind, lanes, oneWay, width, outer, speed, parking, control, signAt, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}), ...(noLeft.start || noLeft.end ? { noLeft } : {}), ...raw };
     /* A bay longer than its road cannot open: it and its taper must fit. */
     for (const end of ["start", "end"]) {
       const b = baysAt(built, end);
@@ -320,7 +325,7 @@ export function loadMap(map) {
         const mk = (suffix, pts, controlStart, controlEnd, turnsStart, turnsEnd, which) => {
           const rs = resample(pts);
           const keep = (f) => (o[f] ? { [f]: { start: which === "a" ? o[f].start : null, end: which === "b" ? o[f].end : null } } : {});
-          const half = { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, signAt: { start: which === "a" ? o.signAt?.start ?? null : null, end: which === "b" ? o.signAt?.end ?? null : null }, ...keep("bays"), ...keep("leftArrow"), ...rs };
+          const half = { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, signAt: { start: which === "a" ? o.signAt?.start ?? null : null, end: which === "b" ? o.signAt?.end ?? null : null }, ...keep("bays"), ...keep("leftArrow"), ...keep("noLeft"), ...rs };
           return { ...half, ...surfaceFor(half) };
         };
         const a = mk("#a", aPts, o.control.start, "none", o.turns?.start ?? null, null, "a"), b = mk("#b", bPts, "none", o.control.end, null, o.turns?.end ?? null, "b");
@@ -496,7 +501,10 @@ export function loadMap(map) {
      and an empty city (71). */
   const laneKm = roads.reduce((s, r) => s + r.length * (r.lanes ?? 1) * (r.oneWay ? 1 : 2), 0) / 1000;
   /* Every sign on the map, where it stands: the list the editor shows. */
-  const signs = roads.flatMap((r) => ["start", "end"].filter((e) => r.signAt?.[e]).map((e) => ({ ...r.signAt[e], road: r.id, end: e })));
+  const signs = [
+    ...roads.flatMap((r) => ["start", "end"].filter((e) => r.signAt?.[e]).map((e) => ({ ...r.signAt[e], road: r.id, end: e }))),
+    ...roads.flatMap((r) => ["start", "end"].filter((e) => r.noLeft?.[e]).map((e) => ({ id: r.noLeft[e].id, kind: "no-left-turn", back: 0, road: r.id, end: e }))),
+  ];
   return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, laneKm, warnings };
 }
 

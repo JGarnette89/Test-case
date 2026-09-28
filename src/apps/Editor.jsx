@@ -54,7 +54,7 @@ import {
   setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
   nearestOnRoad, joinCrossing, setRoadRamp, setRoadHump, deletePoint, subdivideRoad, smoothRoad,
   addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse, setRoadTurns,
-  addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad, setSignBack, controlAt,
+  addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad, setSignBack, controlAt, setNoLeft, noLeftAt,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../editor/library.js";
@@ -759,6 +759,7 @@ export default function Editor() {
             approaches={validation?.approaches}
             onTurns={(end, t) => setDraft((m) => setRoadTurns(m, selRoad.id, end, t))}
             onArrow={(end, on) => setDraft((m) => setLeftArrow(m, selRoad.id, end, on))}
+            onNoLeft={(end, on) => setDraft((m) => setNoLeft(m, selRoad.id, end, on))}
             onRamp={(z0, z1) => setDraft((m) => setRoadRamp(m, selRoad.id, z0, z1))}
             onHump={(peak) => setDraft((m) => setRoadHump(m, selRoad.id, peak))}
             onSmooth={() => setDraft((m) => smoothRoad(m, selRoad.id))}
@@ -898,7 +899,7 @@ function LaneTurns({ info, onTurns }) {
   );
 }
 
-function Approach({ road, end, active, onControl, onBays, onArrow, info, onTurns, sign, rule, onSignBack }) {
+function Approach({ road, end, active, onControl, onBays, onArrow, info, onTurns, sign, rule, onSignBack, noLeft, onNoLeft }) {
   const b = road.bays?.[end] ?? null;
   const left = b?.left ?? 0, right = b?.right ?? 0;
   /* The rule at this approach: its sign where there is one (model.js
@@ -936,13 +937,17 @@ function Approach({ road, end, active, onControl, onBays, onArrow, info, onTurns
             style={{ width: 22, height: 22, marginTop: 4, opacity: lit ? 1 : 0.4 }}
             checked={!!road.leftArrow?.[end] && lit} onChange={(e) => onArrow(end, e.target.checked)} />
         </Field>
+        <Field label="No left turn">
+          <input type="checkbox" title="a no-left-turn sign: nobody turns left from this approach"
+            style={{ width: 22, height: 22, marginTop: 4 }} checked={!!noLeft} onChange={(e) => onNoLeft(end, e.target.checked)} />
+        </Field>
       </div>
       <LaneTurns info={info} onTurns={(t) => onTurns(end, t)} />
     </div>
   );
 }
 
-function RoadPanel({ road, end, approaches, signs, onSignBack, onTurns, onChange, onControl, onBays, onArrow, onZ, onRamp, onHump, onSmooth, onSubdivide, onDeletePoint, onDelete }) {
+function RoadPanel({ road, end, approaches, signs, onSignBack, onNoLeft, onTurns, onChange, onControl, onBays, onArrow, onZ, onRamp, onHump, onSmooth, onSubdivide, onDeletePoint, onDelete }) {
   const [ramp, setRamp] = React.useState({ z0: road.points[0]?.z ?? 0, z1: road.points.at(-1)?.z ?? 0, peak: 7 });
   const at = cumulative(road.points);
   const total = at.at(-1) ?? 0;
@@ -974,7 +979,8 @@ function RoadPanel({ road, end, approaches, signs, onSignBack, onTurns, onChange
       {["start", "end"].map((e) => (
         <Approach key={e} road={road} end={e} active={end === e} onControl={onControl} onBays={onBays} onArrow={onArrow} info={approaches?.[`${road.id}|${e}`]} onTurns={onTurns}
           sign={(signs ?? []).find((q) => q.road === road.id && q.end === e && (q.kind === "stop" || q.kind === "yield")) ?? null}
-          rule={controlAt({ signs }, road, e)} onSignBack={onSignBack} />
+          rule={controlAt({ signs }, road, e)} onSignBack={onSignBack}
+          noLeft={noLeftAt({ signs }, road, e)} onNoLeft={onNoLeft} />
       ))}
 
       <div style={{ fontFamily: FONT_D, fontSize: 12, color: DIM, marginTop: 4 }}>Elevation ({total.toFixed(0)} m long)</div>

@@ -105,6 +105,12 @@ export function controlAt(map, road, end) {
   const s = (map.signs ?? []).find((q) => q.road === road.id && q.end === end && (q.kind === "stop" || q.kind === "yield"));
   return s ? s.kind : road.control?.[end] ?? "none";
 }
+/* A NO-LEFT-TURN sign at an approach, on or off. */
+export function setNoLeft(map, roadId, end, on) {
+  const others = (map.signs ?? []).filter((s) => !(s.road === roadId && s.end === end && s.kind === "no-left-turn"));
+  return { ...map, signs: on ? [...others, { id: nextId(map.signs ?? [], "sign"), kind: "no-left-turn", road: roadId, end, back: 0 }] : others };
+}
+export const noLeftAt = (map, road, end) => (map.signs ?? []).some((q) => q.road === road.id && q.end === end && q.kind === "no-left-turn");
 export function setRoadTurns(map, roadId, end, turns) {
   return patchRoad(map, roadId, (r) => ({ ...r, turns: { ...(r.turns ?? { start: null, end: null }), [end]: turns } }));
 }

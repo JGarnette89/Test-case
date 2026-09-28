@@ -375,6 +375,12 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
       const turnOf = (b) => Math.abs(norm(legs[first(b)].bearing - (legs[first(a)].bearing + 180)));
       for (const b of bases) if (b !== a && turnOf(b) <= HAIRPIN) exits.set(b, intentOf({ legs }, first(a), first(b)));
       const offered = new Set(exits.values());
+      /* A NO-LEFT-TURN SIGN (the maintainer's sign list, fifth) takes the
+         left off what this approach is offered, before any lane is given
+         its movements: the general rule then gives nobody a left, and a
+         map's own `turns` that still list one are refused by name like any
+         other movement the approach does not have. */
+      if (roadOf[A0.road]?.noLeft?.[A0.end]) offered.delete("left");
       const given = roadOf[A0.road]?.turns?.[A0.end];
       const checked = checkTurns(given, A0.across, offered);
       if (checked.why) errors.push({ code: "bad-turns", node: n.id, lane: a, message: `at ${n.id}, the turns given for ${a} ${checked.why}; the general rule is used instead` });
@@ -749,6 +755,13 @@ export function junctionsOf(course) {
       if ((roadOf[leg.road]?.turns?.[leg.end] || leg.bay) && leg.turns) {
         const ap = poseAt(p, Math.max(0, p.stopAt - 7));
         arrows.push({ at: { x: ap.x, y: ap.y, z }, heading: ap.rot, moves: leg.turns.slice() });
+      }
+      /* The NO-LEFT-TURN sign: on the curb side, eight metres before the
+         line, so it reads before the stop or yield sign at the line. */
+      if (r.noLeft?.[leg.end] && leg.pos === leg.across - 1) {
+        const np = poseAt(p, Math.max(0, p.stopAt - 8));
+        const nh = (np.rot * Math.PI) / 180;
+        signs.push({ kind: "no-left-turn", base: leg.base, at: { x: np.x - Math.sin(nh) * (lane / 2 + 0.6), y: np.y + Math.cos(nh) * (lane / 2 + 0.6), z }, heading: np.rot });
       }
       const lit = isSignal(leg.control);
       if (leg.control === "stop" || leg.control === "yield" || lit) {

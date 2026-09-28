@@ -25,7 +25,7 @@ import { graphOf, junctionsOf } from "../src/sim/graph.js";
 import { seedGraph, step, pathOf, whatStops, blockedBy, overlapping, YIELD_AT } from "../src/sim/crossing.js";
 import { DT, CAR, wantedSpeed } from "../src/sim/traffic.js";
 import { yieldCross } from "./measure/yield.mjs";
-import { newDraft, addRoad, addPoint, setRoadControl, setSignBack, splitRoad, deleteRoad, controlAt } from "../src/editor/model.js";
+import { newDraft, addRoad, addPoint, setRoadControl, setSignBack, splitRoad, deleteRoad, controlAt, setNoLeft } from "../src/editor/model.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -217,6 +217,49 @@ console.log("\n8. THE ALL-WAY PLATE: DERIVED, UNDER EVERY STOP WHERE EVERY APPRO
   });
   check(stops > 0 && wrong === 0 && js.some((j) => j.signs.some((s) => s.kind === "stop" && !s.allWay)) && js.some((j) => j.signs.some((s) => s.allWay)),
     `${stops} stop signs on test map 1: the plate on every one at an intersection where all approaches stop, and on none where the cross road runs through (${wrong} wrong)`);
+}
+
+console.log("\n9. A NO-LEFT-TURN SIGN: NOBODY TURNS LEFT FROM THAT APPROACH, EVERYBODY ELSE STILL DOES");
+{
+  /* A crossroads of collectors; the sign on the south approach only. */
+  const base = () => {
+    const m = emptyMap("noleft");
+    m.bounds = { x: 0, y: 0, w: 600, h: 600 };
+    m.roads.push(
+      road({ id: "w", points: [P(0, 300), P(300, 300)] }), road({ id: "e", points: [P(300, 300), P(600, 300)] }),
+      road({ id: "n", points: [P(300, 0), P(300, 300)], control: { start: "none", end: "stop" } }),
+      road({ id: "s", points: [P(300, 600), P(300, 300)], control: { start: "none", end: "stop" } }),
+    );
+    return m;
+  };
+  let draft = setNoLeft(base(), "s", "end", true);
+  const L = loadMap(draft);
+  const c = graphOf(L, { lane: 3.6 });
+  const spot = c.at.find((a) => !a.through);
+  const lay = spot.layout;
+  const byRoad = (rid) => Object.keys(lay.legs).filter((id) => lay.legs[id].road === rid && !lay.legs[id].bay);
+  const lefts = (rid) => byRoad(rid).filter((id) => (lay.legs[id].turns ?? []).includes("left")).length;
+  check(draft.signs.some((q) => q.kind === "no-left-turn") && L.roads.find((r) => r.id === "s").noLeft?.end && lefts("s") === 0 && lefts("n") > 0 && lefts("w") > 0,
+    `the editor puts the sign at the south approach, the loader carries it, and no lane of that approach is given a left (${lefts("n")} still on the north, ${lefts("w")} on the west)`);
+  check(junctionsOf(c).some((j) => j.signs.some((q) => q.kind === "no-left-turn")), "and it is drawn, beside that approach");
+  let w = seedGraph(3, 50, L, { target: 40, posted: true });
+  const turned = { s: 0, other: 0 };
+  for (let i = 0; i < 240 / DT; i++) {
+    const before = new Map(w.actors.map((a) => [a.id, a]));
+    w = step(w);
+    for (const a of w.actors) {
+      const was = before.get(a.id);
+      if (!was || was.k !== a.k || c.at[a.k].through) continue;
+      const pa = lay.paths[a.route];
+      if (!pa || pa.intent !== "left" || !(was.s < pa.stopAt && a.s >= pa.stopAt)) continue;
+      if (lay.legs[pa.from].road === "s") turned.s++; else turned.other++;
+    }
+  }
+  check(turned.s === 0 && turned.other > 5, `four minutes of traffic: ${turned.s} lefts from the signed approach, ${turned.other} from the others`);
+  const told = loadMap({ ...draft, roads: draft.roads.map((r) => (r.id === "s" ? { ...r, turns: { start: null, end: [["left", "straight"], ["straight", "right"]] } } : r)) });
+  const errs = graphOf(told, { lane: 3.6 }).errors ?? [];
+  check(errs.some((e) => e.code === "bad-turns" && /s/.test(e.lane)), `and a map whose own lane turns still give that approach a left is told so by name: ${errs.find((e) => e.code === "bad-turns")?.message ?? "no error"}`);
+  check(!setNoLeft(draft, "s", "end", false).signs.some((q) => q.kind === "no-left-turn") && lefts("n") > 0, "and taking the sign away takes it away");
 }
 
 console.log(`\n${"=".repeat(70)}`);

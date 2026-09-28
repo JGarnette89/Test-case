@@ -2532,7 +2532,14 @@ with a default; he took the defaults for five and ruled on one):
    hangs under every stop sign at an intersection where every approach
    stops, because a plate authored on its own could disagree with the
    controls it describes (verify-signs section 8). The "Signs" test map
-   has a yield crossroads and an uncontrolled one side by side.
+   has a yield crossroads and an uncontrolled one side by side. **No
+   right on red** was already a plate on a signal. **No left turn is
+   built**: placed per approach in the editor, drawn eight metres before
+   the line, and it takes the left off what that approach is offered
+   BEFORE lanes get their movements -- so nobody is given a left there,
+   and a map whose own lane turns still list one is refused by name
+   (verify-signs section 9). Drivers obey it; a knowledge-weak driver
+   ignoring it waits on routes that plan past the next intersection.
 6. **Yield means:** slow, give way to traffic on the other road and anyone
    crossing, stop only if needed, and go without stopping when there is a
    safe gap -- a stop sign without the full stop. **BUILT 28 September**

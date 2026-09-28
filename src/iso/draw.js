@@ -357,9 +357,12 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const arrowLens = hasArrow ? boxCorners({ x: s.at.x - Math.cos(hr) * 0.45, y: s.at.y - Math.sin(hr) * 0.45, z: (s.at.z ?? 0) + postH + 0.06 }, s.heading + 90, 0, { l: 0.34, w: 0.12, h: 0.34 }) : null;
       const face = isLight ? null : boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
       /* The ALL-WAY plate: a white tab under the octagon (graph.js). */
+      /* NO LEFT TURN: a white face crossed by a red band -- a map symbol. */
+      const band = s.kind === "no-left-turn" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 2.08 }, s.heading + 90, 0, { l: 0.95, w: 0.14, h: 0.14 }) : null;
       const plate = s.allWay ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.3 }, s.heading + 90, 0, { l: 0.7, w: 0.1, h: 0.3 }) : null;
       items.push({ layer: 1, key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01, tag: audit && { kind: "sign", at: s.at }, paint: () => {
         paintBox(ctx, view, post, "#9a9da3");
+        if (s.kind === "no-left-turn") { paintBox(ctx, view, face, "#f4f4ee"); paintBox(ctx, view, band, "#c8322b"); return; }
         if (!isLight) { if (plate) paintBox(ctx, view, plate, "#f4f4ee"); paintBox(ctx, view, face, s.kind === "stop" ? "#c8322b" : "#f2b84b"); return; }
         paintBox(ctx, view, housing, "#2a2d33");
         const lit = lightAt(j.signal, s.base, scene.t ?? 0);
