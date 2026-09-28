@@ -17,7 +17,7 @@
    anybody.
    ===================================================================== */
 import { layoutFor, rightOf, OPPOSITE, SIDES, INTENTS, exitFor } from "../src/sim/intersection.js";
-import { onRightOf, oncoming, intentOf, graphOf, laneSpanOnGraph, laneForTurn, postedAt, ONCOMING_TOL } from "../src/sim/graph.js";
+import { onRightOf, oncoming, intentOf, graphOf, laneSpanOnGraph, laneForTurn, postedAt, ONCOMING_TOL, HAIRPIN } from "../src/sim/graph.js";
 import { seedGraph, step, overlapping, delayed, poseOf, edgesOf } from "../src/sim/crossing.js";
 import { laneSpan } from "../src/sim/course.js";
 import { CAR, DT, HARSH_AT } from "../src/sim/traffic.js";
@@ -140,7 +140,14 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   const gf = graphOf(f);
   const nf = gf.at.find((s) => !s.through).layout;
   const legs = Object.keys(nf.legs);
-  check(legs.length === 5 && Object.keys(nf.paths).length === 20, `a five-way has five legs and twenty paths (${legs.length}, ${Object.keys(nf.paths).length})`);
+  /* Every ordered pair of legs is a path EXCEPT a hairpin -- a turn
+     sharper than HAIRPIN, which the sim does not offer (graph.js, 28
+     September: its arc curled back into its own queue). Counted from the
+     legs' own bearings rather than typed in: it was "twenty" when every
+     pair was a path. */
+  const sharp = (a, b) => Math.abs((((nf.legs[b].bearing - (nf.legs[a].bearing + 180)) % 360) + 540) % 360 - 180) > HAIRPIN;
+  const offered = legs.flatMap((a) => legs.filter((b) => b !== a && !sharp(a, b))).length;
+  check(legs.length === 5 && Object.keys(nf.paths).length === offered && offered < 20, `a five-way has five legs and a path for every pair of them but the hairpins (${legs.length} legs, ${Object.keys(nf.paths).length} paths, ${20 - offered} hairpins left out)`);
   let total = 0, decided = 0, opposite = 0;
   for (const a of legs) for (const b of legs) {
     if (a >= b) continue;

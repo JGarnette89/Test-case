@@ -126,7 +126,7 @@ export default function ExamRide() {
         while (owed.current >= DT) {
           owed.current -= DT;
           sc.world = step(withIntervention(sc.world, hand));
-          if (!candidateOf(sc.world)) { endedRef.current = true; setEnded(true); break; }
+          if (!candidateOf(sc.world) || candidateOf(sc.world).crash) { endedRef.current = true; setEnded(true); break; }
         }
       }
 
@@ -236,10 +236,21 @@ export default function ExamRide() {
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
         {ended && (
           <div style={S.banner}>
-            <div style={{ fontFamily: FONT_D, fontSize: 18, fontWeight: 700 }}>They drove off the map.</div>
-            <div style={{ fontFamily: FONT_U, fontSize: 13, color: DIM, margin: "4px 0 10px" }}>
-              The edge of the map is the end of the drive for now.{choice === "surprise" ? ` That was ${who.name}: ${who.watch}.` : ""}
-            </div>
+            {candidateOf(scene.current.world)?.crash ? (
+              <>
+                <div style={{ fontFamily: FONT_D, fontSize: 18, fontWeight: 700, color: "#ff8a1e" }}>They collided.</div>
+                <div style={{ fontFamily: FONT_U, fontSize: 13, color: DIM, margin: "4px 0 10px" }}>
+                  The drive ends at a collision. What taking the wheel earlier would have meant is still Jay's question.{choice === "surprise" ? ` That was ${who.name}: ${who.watch}.` : ""}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontFamily: FONT_D, fontSize: 18, fontWeight: 700 }}>They drove off the map.</div>
+                <div style={{ fontFamily: FONT_U, fontSize: 13, color: DIM, margin: "4px 0 10px" }}>
+                  The edge of the map is the end of the drive for now.{choice === "surprise" ? ` That was ${who.name}: ${who.watch}.` : ""}
+                </div>
+              </>
+            )}
             <button className="btn" style={S.chip} onClick={() => restart(seed + 1)}>Another drive</button>
           </div>
         )}

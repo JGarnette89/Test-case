@@ -27,7 +27,7 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import { loadMap, groundFor } from "../map/load.js";
 import { testMap1 } from "../map/samples.js";
 import { firstEdge } from "../map/edges.js";
-import { seedGraph, step, poseOf, DT } from "../sim/crossing.js";
+import { seedGraph, step, poseOf, DT, crashWith } from "../sim/crossing.js";
 import { playerOn, stepDriver, driverPose, withDriver, aheadOf } from "../sim/drive.js";
 import { junctionsOf, postedAt } from "../sim/graph.js";
 import { touching } from "../sim/player.js";
@@ -121,7 +121,10 @@ export function actorsOf(scene, carry) {
       continue;
     }
     const p = poseOf(w, { ...a, s: Math.min(a.s + a.v * carry, w.course.at[a.k].layout.paths[a.route].length) });
-    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour: a.colour });
+    /* A CRASHED car flashes its hazards: orange and dark, twice a second,
+       so a wreck is never just another stopped car. */
+    const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;
+    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash });
   }
   return out;
 }
@@ -240,7 +243,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             for (const a of w.actors) {
               if (a.player) continue;
               const p = poseOf(w, a);
-              if (touching(mine, { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot })) hit = true;
+              /* The car the player hit has crashed too -- it stops and is
+                 logged -- rather than driving on through them. */
+              if (touching(mine, { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot })) { hit = true; w = crashWith(w, a.id, { x: p.x, y: p.y, z: p.z ?? 0 }); sc.world = w; }
             }
             /* A parked car is as solid as a moving one. */
             if (!hit && w.parked && contactWith(w.course, w.parked, mine, touching)) hit = true;
@@ -260,6 +265,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       /* The places are the map's own sections (map/samples.js), not a
          table here. */
       const PLACES = Object.fromEntries((sc.loaded.sections ?? []).map((q) => [q.id, q.look]));
+      const lastCrash = sc.world.crashes?.at(-1) ?? null;
+      if (lastCrash) PLACES.crash = lastCrash.at;
       let k, rot = 0;
       if (sc.me) {
         const p = driverPose(sc.me, sc.world.course);
@@ -281,8 +288,18 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
-        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${sum.fps} fps · p95 ${sum.p95}ms`;
+        const nCrash = sc.world.crashes?.length ?? 0;
+        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms`;
         fpsAt = now;
+      }
+      /* A CRASH ANYWHERE IS SAID, for eight seconds, with where it is from
+         here -- the screen never lets one happen unseen. */
+      if (lastCrash && sc.world.t - lastCrash.t < 8) {
+        const from = sc.me ? driverPose(sc.me, sc.world.course) : cam.current;
+        const d = Math.round(Math.hypot(lastCrash.at.x - from.x, lastCrash.at.y - from.y));
+        ctx.fillStyle = "rgba(20,22,26,0.85)"; ctx.fillRect(size.w / 2 - 130, size.h - 64, 260, 26);
+        ctx.fillStyle = "#ff8a1e"; ctx.font = "600 13px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(`Crash ${d < 15 ? "here" : `${d} m away`}${sc.me ? "" : " -- View: the last crash"}`, size.w / 2, size.h - 51);
       }
       if (sc.me) {
         const me = sc.me;
@@ -378,7 +395,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               onClick={() => { setSetting("mode", id); restart(seed, limit, id); }}>{label}</button>
           ))}
           {mode === "watch" && <span style={S.label}>View</span>}
-          {mode === "watch" && [...(scene.current.loaded.sections ?? []).map((q) => [q.id, q.name]), ["car", "ride a car"]].map(([id, label]) => (
+          {mode === "watch" && [...(scene.current.loaded.sections ?? []).map((q) => [q.id, q.name]), ["car", "ride a car"], ["crash", "the last crash"]].map(([id, label]) => (
             <button key={id} className="btn" style={{ ...S.chip, borderColor: follow === id ? C.amber : "rgba(255,255,255,0.12)", color: follow === id ? C.white : DIM }}
               onClick={() => { cam.current = { x: 0, y: 0, z: 0, id: null }; setFollow(id); }}>{label}</button>
           ))}

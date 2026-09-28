@@ -69,13 +69,19 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   const fromT = curbOf("B-D|end");
   const noSig = T.paths[routeForSignal(T, fromT, null)], left = T.paths[routeForSignal(T, "B-D|end#0", "left")], right = T.paths[routeForSignal(T, fromT, "right")];
   check(left.intent === "left" && right.intent === "right" && noSig.intent !== "straight", `at the T arriving from the north: left from the inner lane goes ${left.to}, right from the curb lane goes ${right.to}, and with no signal the car takes the turn its lane allows (${noSig.intent})`);
-  const F = g.at.find((s) => s.node === "n2").layout;      // the five-way, arriving from the east along C-D, in the inner lane
-  const fromF = "C-D|start#0";
+  /* The five-way, arriving from the south-east. This was the approach
+     from the east, whose two lefts were 45 and 135 degrees -- and a 135
+     degree turn is a hairpin the sim no longer offers (graph.js HAIRPIN,
+     28 September: its arc curled back into its own queue), so that
+     approach has one left now. From the south-east the lefts are 90 and 45
+     degrees, which asks the same question: which exit does "left" mean? */
+  const F = g.at.find((s) => s.node === "n2").layout;
+  const fromF = "C-southeast|end#0";
   const lefts = F.routesFrom(fromF).filter((r) => F.paths[r].intent === "left");
-  check(lefts.length >= 2, `arriving at the five-way from the east there are ${lefts.length} exits that are lefts`);
+  check(lefts.length >= 2, `arriving at the five-way from the south-east there are ${lefts.length} exits that are lefts`);
   const chosen = F.paths[routeForSignal(F, fromF, "left")];
   const turnOf = (p) => { let d = F.legs[p.to].bearing - (F.legs[fromF].bearing + 180); while (d > 180) d -= 360; while (d < -180) d += 360; return d; };
-  check(lefts.every((r) => Math.abs(turnOf(F.paths[r]) + 90) >= Math.abs(turnOf(chosen) + 90)) && chosen.to === "C-southwest|end#0", `and "left" means the one nearest a right angle, the gentler of two equally far (${turnOf(chosen).toFixed(0)} degrees, to ${chosen.to})`);
+  check(lefts.every((r) => Math.abs(turnOf(F.paths[r]) + 90) >= Math.abs(turnOf(chosen) + 90)) && Math.abs(Math.abs(turnOf(chosen)) - 90) < 5, `and "left" means the one nearest a right angle (${turnOf(chosen).toFixed(0)} degrees, to ${chosen.to}), not the 45 degree one`);
 }
 
 /* 2. The signal can be changed before the line and not after; it is spent by the turn. */

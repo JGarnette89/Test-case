@@ -197,10 +197,16 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
     `right on red happens and costs a stop: ${lightR + rightsOnRed} rights taken on a red (${rightsOnRed} at this demand, ${lightR} on lighter traffic over two seeds), every one after coming to a full stop, and nothing else launched on a red there (${lightWrong})`);
   check(delayedAtRed.size === 0, `the undue-delay clock never runs on a driver held at a red (${delayedAtRed.size} drivers) -- the trap, because a red road with nothing crossing it looks open to every test but the light`);
   check(harsh / Math.max(1, ticks) < 0.001, `and the amber does not make people stand on the brakes: ${harsh} harsh car-ticks in ${ticks} (${((100 * harsh) / Math.max(1, ticks)).toFixed(3)}%)`);
+  /* EVERY CONTACT IN THE FOUR MINUTES, not whatever overlaps on the last
+     tick. This read only the final tick, and three crashes in four minutes
+     at the five-way went unseen until contact became a crash that stays
+     where it happened (28 September): a waiting car inside the other
+     road's exit lane, and 135-degree hairpins curling back into their own
+     queue. The world's crash log counts them all. */
   const r = run(seedGraph(7, 50, loaded, { every: 1.2 }), 20 * 240);
-  check(overlapping(r).length === 0 && r.spawned > 200, `four minutes at a signalised crossroads: ${r.spawned} cars, ${overlapping(r).length} overlapping car-ticks`);
+  check(overlapping(r).length === 0 && (r.crashes ?? []).length === 0 && r.spawned > 200, `four minutes at a signalised crossroads: ${r.spawned} cars, ${(r.crashes ?? []).length} crashes in all`);
   const five = run(seedGraph(9, 50, mapOf(FIVE), { every: 1.4 }), 20 * 240);
-  check(overlapping(five).length === 0 && five.spawned > 150, `four minutes at a signalised five-way: ${five.spawned} cars, ${overlapping(five).length} overlapping car-ticks`);
+  check(overlapping(five).length === 0 && (five.crashes ?? []).length === 0 && five.spawned > 150, `four minutes at a signalised five-way: ${five.spawned} cars, ${(five.crashes ?? []).length} crashes in all`);
 }
 
 /* 5. THE HOLD IS WHAT DOES THE WORK, by controlled comparison rather

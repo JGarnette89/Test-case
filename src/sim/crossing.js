@@ -688,6 +688,8 @@ export function step(world) {
          steps them from the controls and writes them in before each
          tick (sim/drive.js), and hands them on at the seam itself. */
       if (raw.player) return raw;
+      /* CRASHED: stopped where it hit, deciding nothing, until cleared. */
+      if (raw.crash) return raw.v === 0 && raw.a === 0 ? raw : { ...raw, v: 0, a: 0 };
       /* THE DRIVER AS THEY ARE RIGHT NOW: their disposition under
          whatever instructions they are carrying (traffic.js,
          `underLoad`). Decided from, never written back -- the actor keeps
@@ -797,6 +799,9 @@ export function step(world) {
       /* HOME: at rest where they meant to pull in, and gone. Never while
          moving -- a car vanishing at speed is a state nothing could
          honestly draw. */
+      /* A crash is cleared -- towed, details exchanged -- after CRASH_CLEAR,
+         and until then it is where it is, not crossing any seam. */
+      if (me.crash) return world.t - me.crash.t >= CRASH_CLEAR ? null : me;
       if (me.leaveAt != null && !me.player && !me.candidate && me.v < 0.3 && me.s >= me.leaveAt - CAR.length - 3) {
         if (me.parkSlot) parkedNow.push(me);
         return null;
@@ -903,6 +908,25 @@ export function step(world) {
   }
   /* What the world remembers of itself, for drivers who perceive it
      late. Only with perception on: a world without it keeps nothing. */
+  /* CONTACT IS A CRASH, AND A CRASH IS RECORDED (DECISIONS.md 5.12: a
+     state the sim can produce and the screen cannot show is a lie). Any
+     two cars whose footprints now overlap have crashed: both stop where
+     they are and stay, an obstacle, until cleared, and the world logs it
+     with where it happened so a screen can say so and take you there.
+     `verify-crashes` holds the invariant: no two cars ever overlap unless
+     they are a recorded crash. */
+  let crashes = world.crashes;
+  const hits = contactsIn({ ...world, actors: next });
+  if (hits.length) {
+    const hit = new Map();
+    for (const c of hits) { if (!hit.has(c.a)) hit.set(c.a, c); if (!hit.has(c.b)) hit.set(c.b, c); }
+    for (let i = 0; i < next.length; i++) {
+      const c = hit.get(next[i].id);
+      if (c && !next[i].crash && !next[i].player) next[i] = { ...next[i], v: 0, a: 0, crash: { t: world.t + DT, with: c.a === next[i].id ? c.b : c.a, at: c.at } };
+    }
+    crashes = [...(crashes ?? []), ...hits.filter((c) => c.fresh).map((c) => ({ t: world.t + DT, a: c.a, b: c.b, at: c.at }))].slice(-50);
+  }
+
   /* WHO IS PARKED NOW: the cars that pulled in, and not the one that
      pulled out. A new object only when something changed. */
   let parked = world.parked;
@@ -914,7 +938,7 @@ export function step(world) {
   const past = world.road.perceive
     ? [world.actors, ...(world.past ?? [])].slice(0, LAG_TICKS)
     : world.past;
-  return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(past ? { past } : {}) };
+  return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}) };
 }
 
 /* JOINING THE ROAD, AT THE SPEED THE ROAD IS DOING.
@@ -1515,6 +1539,44 @@ export function wideAt(world, actor) {
 
    A check that reports overlaps where there are none is worse than no
    check, because it trains you to ignore it. */
+/* HOW LONG A CRASH STANDS IN THE ROAD before it is cleared: details
+   exchanged, the cars moved. A design constant, flagged -- long enough to
+   be seen and to back traffic up, short enough that a map does not fill
+   with wrecks. */
+export const CRASH_CLEAR = 45;
+
+/* Pairs of cars in contact now, among cars that could meet (the neighbour
+   index), on the same level; `fresh` when this is not a crash already
+   recorded between the same two. The player is left out: the screen tests
+   the player with the player's own pose (MapRoad) and calls `crashWith`. */
+export function contactsIn(world) {
+  const out = [];
+  const pose = new Map();
+  const poseFor = (a) => { if (!pose.has(a.id)) { const p = poseOf(world, a); pose.set(a.id, { p, box: cornersOf(p) }); } return pose.get(a.id); };
+  for (const a of world.actors) {
+    if (a.player) continue;
+    for (const b of nearNode(world, world.actors, a.k ?? 0)) {
+      if (b.player || !(a.id < b.id)) continue;
+      const A = poseFor(a), B = poseFor(b);
+      if (Math.abs(A.p.x - B.p.x) > 6 || Math.abs(A.p.y - B.p.y) > 6) continue;
+      if (Math.abs((A.p.z ?? 0) - (B.p.z ?? 0)) > 2.0) continue;
+      if (!boxesOverlap(A.box, B.box)) continue;
+      const known = a.crash?.with === b.id || b.crash?.with === a.id;
+      out.push({ a: a.id, b: b.id, at: { x: (A.p.x + B.p.x) / 2, y: (A.p.y + B.p.y) / 2, z: A.p.z ?? 0 }, fresh: !known });
+    }
+  }
+  return out;
+}
+
+/* The car the player hit has crashed too: it stops, and it is logged. */
+export function crashWith(world, id, at) {
+  const t = world.t;
+  let found = false;
+  const actors = world.actors.map((a) => { if (a.id !== id || a.crash) return a; found = true; return { ...a, v: 0, a: 0, crash: { t, with: "player", at } }; });
+  if (!found) return world;
+  return { ...world, actors, crashes: [...(world.crashes ?? []), { t, a: "player", b: id, at }].slice(-50) };
+}
+
 export function overlapping(world) {
   const out = [];
   const at = world.actors.map((a) => {

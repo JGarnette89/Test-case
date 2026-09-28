@@ -234,6 +234,9 @@ const unit = (a, b) => { const L = dist(a, b) || 1; return { x: (b.x - a.x) / L,
    before any path exists. A graph built without conflicts CANNOT BE
    DRIVEN -- nothing would yield to anything -- so it is marked
    `conflictsSkipped` and nothing that steps a world should accept one. */
+/* The sharpest turn offered at a node, in degrees off straight ahead. */
+export const HAIRPIN = 120;
+
 export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withConflicts = true } = {}) {
   const roads = loaded.roads;
   /* AUTHORING ERRORS: lanes whose permitted movement has nowhere to land,
@@ -355,7 +358,17 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
     for (const a of bases) {
       const A0 = legs[first(a)];
       const exits = new Map();
-      for (const b of bases) if (b !== a) exits.set(b, intentOf({ legs }, first(a), first(b)));
+      /* NO HAIRPINS (28 September). At a leg that meets another at 45
+         degrees, "right" onto it is a 135 degree turn, and the arc the sim
+         builds for it curls back across its own approach lane into the car
+         queued behind -- measured at the signal check's five-way, the day
+         contact became a crash that stays where it happened. Following
+         cannot protect that car: along the path the two look well apart.
+         So a turn sharper than HAIRPIN is not offered and drivers use the
+         other exits. The maintainer is asked whether such turns are
+         normally allowed; this is the default until he answers. */
+      const turnOf = (b) => Math.abs(norm(legs[first(b)].bearing - (legs[first(a)].bearing + 180)));
+      for (const b of bases) if (b !== a && turnOf(b) <= HAIRPIN) exits.set(b, intentOf({ legs }, first(a), first(b)));
       const offered = new Set(exits.values());
       const given = roadOf[A0.road]?.turns?.[A0.end];
       const checked = checkTurns(given, A0.across, offered);
@@ -388,20 +401,43 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
        box's, divided by the sine of the smallest angle to any leg that
        actually crosses it -- 1 at a right angle, 1.41 at 45 degrees,
        capped at 2 for a fork -- with the legs that run parallel to it
-       (its own opposite) left out, since they do not cross its lane. */
+       (its own opposite) left out, since they do not cross its lane.
+
+       AND THAT WAS STILL SHORT, BY THE OTHER ROAD'S WIDTH (28 September).
+       It scaled this box by the angle but never asked how wide the OTHER
+       road is: at a 45 degree leg between two two-lane roads the two
+       surfaces overlap out to 17.4 m from the centre and the line sat at
+       12.2, so a car waiting there stood in the other road's exit lane and
+       northbound traffic ran into it -- found the day contact became a
+       crash that stays where it happened (the check that looked had only
+       ever read the last tick of four minutes). The line now stands where
+       this approach's surface stops overlapping the other road's: the
+       distance D along this leg at which D sin(theta) - wA cos(theta)
+       reaches wB, i.e. D = (wB + wA cos(theta)) / sin(theta), wA and wB the
+       two roads' half-widths. At a right angle that is wB, so a square
+       crossroads does not move.
+
+       ONLY THE LINE MOVES. The leg's box -- where its exit begins, and so
+       the shape of every turn arc into it -- stays the angle-scaled one it
+       was: the first version moved both, the player's committed right
+       turn came off its arc by 0.77 m against a 0.45 m bound, and nothing
+       about the turns was wrong. The waiting position was. */
+    const halfOf = (leg) => lane * (roadOf[leg.road] ? lanesOf(roadOf[leg.road]) + baysHere(leg) : 1);
     for (const id of ids) {
       const A = legs[id];
-      let sinMin = 1;
+      let sinMin = 1, need = 0;
       for (const other of ids) {
         const B = legs[other];
         if (B.base === A.base) continue;
         const theta = Math.abs(norm(B.bearing - A.bearing));
         if (theta < 15 || theta > 165) continue;           // parallel or oncoming: does not cross this lane
-        sinMin = Math.min(sinMin, Math.sin((theta * Math.PI) / 180));
+        const t = (theta * Math.PI) / 180;
+        sinMin = Math.min(sinMin, Math.sin(t));
+        need = Math.max(need, (halfOf(B) + halfOf(A) * Math.cos(t)) / Math.sin(t));
       }
       const f = 1 / Math.max(sinMin, 0.5);
       A.boxHalf = boxHalf * f;
-      A.lineAt = boxHalf * f + LINE_SETBACK;
+      A.lineAt = Math.max(boxHalf * f, need) + LINE_SETBACK;
     }
     const place = { lane, boxHalf, lineAt, control: Object.fromEntries(ids.map((id) => [id, legs[id].control])), at: n.at, reach: 0 };
     /* A SIGNAL IS A CONTROL THAT CHANGES WITH TIME (signal.js). The

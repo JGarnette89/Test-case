@@ -2509,16 +2509,83 @@ Two changes of very different size, and this is the first:
   where observation lands: a sign too far to read, hidden, missed, or
   known by heart to a local.
 
-**Waiting on the maintainer's rulings, and not built:** speed-limit signs
-(what an unsigned road means, and whether a limit carries through an
-intersection or after a turn), a stop sign on its own mid-block, whether
-locals know their own district's signs without reading them, which kinds
-come first, and what YIELD means -- it is still treated exactly like no
-control, which is a gap found while designing this.
+**The maintainer's rulings, 28 September** (asked as six questions, each
+with a default; he took the defaults for five and ruled on one):
+
+1. **An unsigned road is 50 km/h** anywhere in the city (Ontario's
+   built-up default); a road runs faster only where a sign says so.
+2. **A speed limit holds until the next speed sign**, through
+   intersections; after turning onto a street with no sign yet a driver
+   assumes 50.
+3. **A STOP SIGN CAN STAND MID-ROAD**, at a crossing that serves
+   pedestrians -- a school zone, say -- without giving cars another route,
+   and it must still do its job: stop traffic for that crossing. So a
+   mid-block stop is a real feature, not a placement error; it needs
+   pedestrians and crossings in the sim, which do not exist yet, and is
+   planned after observation.
+4. **Locals know their own district's signs without reading them**;
+   drivers from elsewhere have to read every one.
+5. **Sign kinds, in this order:** stop, yield, all-way plate, no right on
+   red, no left turn, one way, do not enter, speed limit, school zone,
+   curve ahead with advisory speed.
+6. **Yield means:** slow, give way to traffic on the other road and anyone
+   crossing, stop only if needed, and go without stopping when there is a
+   safe gap -- a stop sign without the full stop. Still treated like no
+   control in the sim, a gap found while designing this; built with the
+   sign kinds.
 
 **The second change is observation** -- drivers who can miss or not yet
 see a sign -- and it waits on contact having an outcome, because a driver
 who misses a stop sign drives into the cross traffic.
+
+**WHEN TWO CARS COLLIDE -- BUILT, 28 September** (`contactsIn`,
+`crashWith`, `CRASH_CLEAR` in `crossing.js`; `tools/verify-crashes.mjs`).
+The first half of the observation work: a driver cannot be allowed to
+miss something until missing it has a visible outcome (DECISIONS.md
+5.12). Contact between any two cars is now a CRASH: both stop where they
+hit, deciding nothing, and stand in the road -- traffic queues behind a
+wreck -- until cleared after 45 s (a flagged design constant); the world
+logs it once with where it happened. The car the player hits crashes too,
+where before it drove on through them. It is never unseen: a wreck flashes
+its hazards, the readout counts crashes, a banner says where the last one
+is from here for eight seconds, watch mode has "the last crash" as a
+view, and in exam mode the candidate colliding ends the drive with that
+said. The invariant held in heavy traffic with everybody perceiving late
+-- where crashes actually happen: no two cars ever overlap unless they are
+a recorded crash (sabotaged: 279 silent overlaps). The default traffic
+still never crashes.
+
+**IT FOUND CRASHES THE DEFAULT TRAFFIC HAD BEEN HAVING UNSEEN.** The
+signal check's five-way -- two-lane roads, one leg at 45 degrees --
+crashed three times in four minutes in DEFAULT traffic, and every check
+had called it clean: the one that looked read only the last tick of the
+four minutes, and a pass-through lasting a tick or two was never on it.
+A wreck now stays where it happened, and it showed. Two geometry bugs,
+both fixed:
+
+- **A skewed approach's stop line was too close.** Its setback scaled
+  the box by the angle and never asked how wide the OTHER road is: at 45
+  degrees the two surfaces overlap to 17.4 m and the line sat at 12.2, so
+  waiting cars stood in the other road's exit lane. The line now stands
+  where this approach's surface stops overlapping the other road's, D =
+  (wB + wA cos theta) / sin theta -- exactly the old box at a right angle,
+  so no square intersection moved. Only the LINE moves: the leg's box, and with it where the exit begins and every turn's arc, stays as it was -- a first version moved both and the player's committed right turn came off its arc.
+- **Hairpins.** "Right" from the east leg onto the 45 degree leg is a 135
+  degree turn, and its arc curls back across its own approach into the
+  car queued behind, which following cannot protect (along the path they
+  look apart). Turns sharper than 120 degrees (`HAIRPIN`) are not offered.
+  **A question for the maintainer**: whether such a turn is normally
+  allowed at a real five-way; not offering it is the default meanwhile.
+
+After both: no crashes in four minutes of default traffic on the
+five-way, the crossroads, test map 1 or the city at 300 cars, and the
+signal check now counts every crash in the run rather than one tick.
+
+**And the measurement that decides the next step:** with everybody
+perceiving late, crashes run at 8 in three minutes on test map 1 and 13
+on the city -- far more than believable. Late perception cannot simply be
+switched on for all traffic; why it crashes that often is the first
+question of the observation work.
 
 **TEST MAPS WITH SECTIONS -- BUILT, 28 September** (`#/tests`,
 `sections` in the format, `TEST_MAPS` in `map/samples.js`). The
