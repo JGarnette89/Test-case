@@ -2413,6 +2413,37 @@ Buildings are drawn and kept off the road; they still hide nothing from
 anybody, which waits on sight in the sim (the editor limit recorded in
 CLAUDE.md).
 
+**5.6, TRAFFIC FROM INSIDE THE CITY -- BUILT, 28 September**
+(`crossing.js`, the loader now passes zones through). Taken before 5.3
+because a closed city -- every road meeting another at both ends -- had
+no traffic at all. A car can now PULL OUT from the curb on a district
+street (a non-arterial road inside a residential, commercial or
+industrial zone): it appears at rest, and only where the lane is clear
+a car's length ahead and, behind, by as much as the car behind would
+want and needs to stop. Every car carries a trip length (3 to 10
+intersections, from its own random stream); once spent, on a district
+street, it picks a spot far enough ahead to stop for comfortably, slows
+to it through the ordinary following model -- a stopped phantom at the
+curb, no new braking law -- and is removed only at rest. On a closed
+stand-in city at 150 cars: filled to 150 in two minutes, 76 pulled out,
+43 pulled in, none vanished moving, no overlaps. With districts and
+edges both present half the arrivals come from each
+(`DISTRICT_SHARE`, a flagged design constant the town profile will
+own); a map with no districts is untouched.
+
+**A real sim bug it exposed, and the fix.** A rolling-stop driver counts
+as stopped below 2.2 m/s, and the launch backstop fires above 1.5 m/s,
+so the instant a rolling stopper's stop latched it was called LAUNCHED --
+even while traffic was holding it and it was still braking to a real
+stop. With traffic heading into the districts, many more cars turn left
+off an arterial across oncoming traffic, and one bold rolling stopper
+was declared going at 2.0 m/s mid-yield; the oncoming car stood on the
+brakes for a car now "committed" in its path and they met. The rule was
+already written down -- held by traffic, a rolling stopper stops like
+everybody else -- and the backstop now waits until nothing holds them.
+Checked directly on the open city, where it happened (sabotaged: one
+held launch, one overlap).
+
 **Measured for 5.5, not yet acted on:** 6.7 ms a tick on the desk
 machine at 200 cars on the stand-in city (1.4 by 0.9 km), which at
 20 Hz is fine on the desk and a question on the phone.

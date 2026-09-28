@@ -18,7 +18,7 @@
 
    Pure. No React, no canvas, no colour.
    ===================================================================== */
-import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS } from "./format.js";
+import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS, ZONES } from "./format.js";
 import { ribbonOf } from "../iso/road.js";
 import { hasBays, baySurfaceOf, baysAt } from "./bays.js";
 
@@ -394,6 +394,18 @@ export function loadMap(map) {
     props.push(built);
   });
 
+  /* ZONES, normalised: a polygon of at least three finite points and a
+     kind the format knows, or dropped with a warning. The sim reads them
+     for where the districts are (crossing.js: traffic from inside them). */
+  const zones = [];
+  (Array.isArray(map.zones) ? map.zones : []).forEach((z, i) => {
+    const id = String(z?.id ?? `zone${i}`);
+    const polygon = (Array.isArray(z?.polygon) ? z.polygon : []).map((p) => ({ x: Number(p?.x), y: Number(p?.y) })).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+    if (polygon.length < 3) { warn("zone-no-area", `zone ${id}: fewer than three points; dropped`); return; }
+    if (!ZONES.includes(z.kind)) { warn("unknown-zone", `zone ${id}: kind "${z.kind}" is not one of ${ZONES.join(", ")}; dropped`, polygon[0]); return; }
+    zones.push({ id, kind: z.kind, polygon, density: Math.max(0, Math.min(1, Number.isFinite(Number(z.density)) ? Number(z.density) : 0.5)) });
+  });
+
   /* The chunk index: every road sample knows its chunk. */
   const chunks = new Map();
   const keyOf = (x, y) => `${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`;
@@ -415,7 +427,7 @@ export function loadMap(map) {
   }
 
   const bounds = map.bounds ?? { x: Math.min(...boxes.map((b) => b.x0)), y: Math.min(...boxes.map((b) => b.y0)), w: 0, h: 0 };
-  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, warnings };
+  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, warnings };
 }
 
 /* THE LAND, WHERE THE MAP GIVES NONE.

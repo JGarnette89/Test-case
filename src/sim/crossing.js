@@ -572,6 +572,11 @@ export function whatStops(me, world) {
     }
   }
 
+  /* WHERE I AM PULLING IN (a district trip's end, below): a stopped
+     place at the curb, braked for by exactly the rule that brakes for a
+     stopped car -- no second braking law. */
+  if (me.leaveAt != null && me.leaveAt > me.s - 1) consider(Math.max(0, me.leaveAt - me.s), { v: 0, s: me.leaveAt, id: "curb" });
+
   /* AND THE LINE. Only while I am short of it and not yet through: once
      past the stop line I am committed, and a car that stopped halfway
      across would be worse than one that never yielded.
@@ -681,7 +686,17 @@ export function step(world) {
       const accepted = me.accepted || (me.stoppedAt != null && !view.held && !view.hold);
       /* `LAUNCHED` stays as the physical backstop, for a driver who
          never came to a decision because they never came to a stop. */
-      const going = me.going || accepted || (stoppedAt != null && v > LAUNCHED);
+      /* NOT WHILE HELD. A rolling stopper counts as stopped below ROLLING
+         (2.2 m/s), which is above LAUNCHED (1.5), so the instant their stop
+         latched the backstop called them launched -- even while traffic was
+         holding them and they were still braking to a real stop. Measured:
+         a bold rolling stopper yielding to oncoming traffic at an arterial
+         T was declared going at 2.0 m/s, the oncoming car stood on the
+         brakes for a car now "committed" in its path, and they met. The
+         established rule is the opposite: held by traffic, a rolling
+         stopper stops like everybody else; the rolling stop is for a sign
+         with nobody there. */
+      const going = me.going || accepted || (stoppedAt != null && v > LAUNCHED && !view.held && !view.hold);
 
       /* UNDUE DELAY. The clock starts at the first opening this driver
          could have acted on and runs while they are still sitting there
@@ -725,7 +740,11 @@ export function step(world) {
        A leg with nothing beyond it is still the edge of the world, and a
        course of one intersection is made entirely of those. */
     .map((me) => {
-      if (me.player || me.s <= pathOf(world, me).length) return me;
+      /* HOME: at rest where they meant to pull in, and gone. Never while
+         moving -- a car vanishing at speed is a state nothing could
+         honestly draw. */
+      if (me.leaveAt != null && !me.player && !me.candidate && me.v < 0.3 && me.s >= me.leaveAt - CAR.length - 3) return null;
+      if (!me || me.player || me.s <= pathOf(world, me).length) return me;
       let wanted = null;
       const on = nextFor(world.course, me.k ?? 0, me.route, (k, side) => { const w = wantFor(world, me, k, side); wanted = w.want; return w.route; });
       if (!on) return null;
@@ -740,8 +759,18 @@ export function step(world) {
          candidate, so a loaded view is left alone here rather than
          being corrected twice. */
       const posted = world.road.posted && me.held == null ? postedAt(world.course, on.k, on.route) : null;
+      /* A TRIP THAT ENDS HERE: past its length and on a district street,
+         a place to pull in far enough ahead to stop for comfortably and
+         well short of the next line. */
+      const legNow = (me.leg ?? 0) + 1;
+      let leaveAt = null;
+      if (!me.candidate && me.tripLen != null && legNow >= me.tripLen && isDistrictSide(world.course, on.k, world.course.at[on.k].layout.paths[on.route]?.from)) {
+        const p = world.course.at[on.k].layout.paths[on.route];
+        const lo = Math.max(15, stoppingRoom(me.v) + 10), hi = p.stopAt - 30;
+        if (hi > lo) leaveAt = lo + rng(world.seed * 6151 + (me.n ?? 0) * 31 + legNow)() * (hi - lo);
+      }
       return {
-        ...me, k: on.k, route: on.route, s: 0,
+        ...me, k: on.k, route: on.route, s: 0, leaveAt,
         ...(posted == null ? {} : { v0: wantedSpeed(posted, me.caution) }),
         /* How many intersections they have been through, which is what a
            plan is indexed by and what a section of a drive is counted
@@ -770,12 +799,16 @@ export function step(world) {
   const wanted = !topUp || next.length < world.target;
   if (topUp && !wanted) nextAt = t;
   if (wanted && t >= nextAt) {
-    const car = arriving(world, spawned);
-    const joining = car && joinAt(world, next, car);
+    /* FROM INSIDE THE CITY OR FROM ITS EDGE (SIMULATOR.md 5.6). A car
+       pulling out of a district street joins at rest where there is room
+       ahead and behind, or not at all this time. */
+    const fromDistrict = topUp && districtStreetsOf(world.course).length > 0 && rng(world.seed * 92821 + spawned + 1)() < districtShare(world.course);
+    const car = fromDistrict ? null : arriving(world, spawned);
+    const joining = fromDistrict ? pullingOut(world, spawned, next) : car && joinAt(world, next, car);
     if (joining) {
       next.push(joining);
       spawned += 1;
-      nextAt = t + (topUp ? FILL : car.arriveIn);
+      nextAt = t + (topUp ? FILL : (car?.arriveIn ?? world.every));
     } else if (topUp) {
       /* No room on that leg this instant: try another next time. Not an
          arrival turned away, because nobody was arriving -- the map is
@@ -1014,7 +1047,102 @@ function arriving(world, n) {
        ordering stays consistent" -- and a rate tuned for one road is not
        a rate that saturates four approaches. */
     arriveIn: world.every * (0.6 + r() * 0.8),
+    tripLen: tripLenFor(world, n),
   };
+}
+
+/* =====================================================================
+   THE DISTRICTS AS PLACES CARS COME FROM AND GO TO (SIMULATOR.md 5.6).
+
+   A city whose every road meets another at both ends has no edge for
+   traffic to arrive from, and a city whose only traffic comes in at its
+   edges has nobody who lives there. So a car can also PULL OUT from the
+   curb on a district street -- a local street inside a residential,
+   commercial or industrial zone -- and a car whose trip is over PULLS IN
+   on one: slows to a stop at the curb, through the ordinary following
+   model, and is gone once at rest.
+
+   A map with no districts is untouched: no district street, so nobody
+   pulls out or in, and the new draws come from their own streams, so
+   every draw that was made before is the draw it was.
+   ===================================================================== */
+const DISTRICTS = new Set(["residential", "commercial", "industrial"]);
+const BIG = new Set(["arterial", "highway"]);
+/* The share of the city's cars that start inside it when it has both
+   districts and edges. A design constant, flagged: the town profile
+   (5.4) is where a place gets to say how much of its traffic is its own. */
+export const DISTRICT_SHARE = 0.5;
+export const TRIP = { min: 3, span: 8 };   // intersections a trip lasts, drawn per car
+const inPoly = (poly, p) => {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+};
+const districtCache = new WeakMap();
+/* Every curb lane arriving at a node along a district street, weighted by
+   its length. Computed once per course. */
+export function districtStreetsOf(course) {
+  if (!course?.graph) return [];
+  if (districtCache.has(course)) return districtCache.get(course);
+  const zones = (course.map?.zones ?? []).filter((z) => DISTRICTS.has(z.kind));
+  const roads = Object.fromEntries((course.map?.roads ?? []).map((r) => [r.id, r]));
+  const out = [];
+  if (zones.length) {
+    course.at.forEach((spot, k) => {
+      if (spot.through) return;
+      for (const leg of Object.values(spot.layout.legs)) {
+        const r = roads[leg.road];
+        if (!leg.curb || leg.bay || !r || BIG.has(r.kind)) continue;
+        const mid = r.pts[Math.floor(r.pts.length / 2)];
+        if (zones.some((z) => inPoly(z.polygon, mid))) out.push({ k, side: leg.id, weight: r.length });
+      }
+    });
+  }
+  districtCache.set(course, out);
+  return out;
+}
+const isDistrictSide = (course, k, side) => side != null && districtStreetsOf(course).some((d) => d.k === k && d.side === side);
+export const districtShare = (course) => (districtStreetsOf(course).length === 0 ? 0 : edgesOf(course).length === 0 ? 1 : DISTRICT_SHARE);
+const tripLenFor = (world, n) => TRIP.min + Math.floor(rng(world.seed * 6007 + n * 13 + 5)() * TRIP.span);
+
+/* A car pulling out from the curb, at rest, mid-street -- or null where
+   there is no room this time. Room is measured along the lane itself
+   (course.js `laneSpan`, the same measure following uses across a seam),
+   against everybody on it: a car's length clear ahead, and behind as
+   much as the car behind would want and needs to stop. */
+function pullingOut(world, n, actors) {
+  const spots = districtStreetsOf(world.course);
+  const r = rng(world.seed * 48271 + n + 3);
+  const total = spots.reduce((s, x) => s + x.weight, 0);
+  let left = r() * total, at = spots[spots.length - 1];
+  for (const x of spots) { if (left < x.weight) { at = x; break; } left -= x.weight; }
+  const chosen = wantFor(world, { n }, at.k, at.side);
+  const path = world.course.at[at.k].layout.paths[chosen.route];
+  const lo = 15, hi = path.stopAt - 40;
+  if (hi <= lo) return null;
+  const s = lo + r() * (hi - lo);
+  const posted = world.road.posted ? postedAt(world.course, at.k, chosen.route) : null;
+  const base = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
+  const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6) };
+  const car = {
+    ...driver(road, world.seed, n),
+    n, k: at.k, route: chosen.route, ...(chosen.want ? { want: chosen.want } : {}),
+    leg: 0, s, v: 0,
+    stoppedAt: null, going: false, accepted: false, openFor: 0, openedAt: null, waited: 0, delayed: false,
+    arriveIn: world.every, tripLen: tripLenFor(world, n), fromCurb: true,
+  };
+  const mine = laneSpan(world.course, at.k, chosen.route, s)[0];
+  for (const a of actors) {
+    const on = laneSpan(world.course, a.k ?? 0, a.route, a.s).find((x) => x.lane === mine.lane);
+    if (!on) continue;
+    const d = on.along - mine.along;
+    if (d >= 0 && d < CAR.length + 6) return null;
+    if (d < 0 && -d < CAR.length + Math.max(wantedGap(a, car), stoppingRoom(a.v ?? 0)) + 6) return null;
+  }
+  return car;
 }
 
 /* =====================================================================

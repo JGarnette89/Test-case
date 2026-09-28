@@ -25,7 +25,8 @@ import { emptyMap, road } from "../src/map/format.js";
 import { fillZone, clearZone, BLOCKS, SNAP, alignWithin, fillLots, clearLots, LOTS } from "../src/map/generate.js";
 import { standsOn } from "../src/map/load.js";
 import { graphOf } from "../src/sim/graph.js";
-import { seedGraph, step, overlapping } from "../src/sim/crossing.js";
+import { seedGraph, step, overlapping, districtStreetsOf, districtShare, whatStops, pathOf } from "../src/sim/crossing.js";
+import { testMap1 } from "../src/map/samples.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -61,9 +62,21 @@ const L = loadMap(city);
   const G = graphOf(L);
   check(G.errors.length === 0, `the graph raises no authoring error (${G.errors.map((e) => e.code).join(", ") || "none"})`);
   let w = seedGraph(1, 60, L, { target: 200, posted: true });
-  let over = 0;
-  for (let i = 0; i < 2400; i++) { w = step(w); if (i % 10 === 0) over += overlapping(w).length; }
+  let over = 0, launchedHeld = 0;
+  for (let i = 0; i < 2400; i++) {
+    const before = w;
+    w = step(w);
+    if (i % 10 === 0) over += overlapping(w).length;
+    /* HELD BY TRAFFIC, NOBODY LAUNCHES. Measured here, on the open city,
+       because this is where it happened: a rolling stopper yielding at an
+       arterial T was counted as launched at 2.0 m/s while still held, and
+       the oncoming car hit it. The closed city below never produces that
+       turn in two minutes, so a check there passed with the fix removed. */
+    const was = new Map(before.actors.map((x) => [x.id, x]));
+    for (const x of w.actors) { const p = was.get(x.id); if (p && !p.going && x.going && !x.accepted && x.k === p.k && whatStops(p, before).held) launchedHeld++; }
+  }
   check(w.actors.length > 150 && over === 0, `two minutes at 200 cars: ${w.actors.length} on the map, ${over} overlaps`);
+  check(launchedHeld === 0, `no driver counted as launched while traffic held them (${launchedHeld}) -- the rolling-stop rule`);
 }
 
 console.log("\n3. NO STREET DANGLES");
@@ -204,6 +217,44 @@ console.log("\n8. BUILDINGS ALONG THE FRONTAGES");
   let w = seedGraph(1, 60, lm, { target: 200, posted: true }), over = 0;
   for (let i = 0; i < 1200; i++) { w = step(w); if (i % 10 === 0) over += overlapping(w).length; }
   check(over === 0 && w.actors.length > 150, `and the city with its buildings still drives: a minute at 200 cars, ${over} overlaps`);
+}
+
+console.log("\n9. TRAFFIC FROM INSIDE THE CITY: PULLING OUT, PULLING IN");
+{
+  /* The stand-in city with its roads out of town removed: a closed
+     network, so every car on it has to come from its districts. */
+  const closed = { ...city, roads: city.roads.filter((r) => !r.id.startsWith("out-")) };
+  const lc = loadMap(closed);
+  let w = seedGraph(1, 60, lc, { target: 150, posted: true });
+  check(districtStreetsOf(w.course).length > 50 && districtShare(w.course) === 1, `a closed city: ${districtStreetsOf(w.course).length} curb lanes on district streets, and every arrival comes from them`);
+  let over = 0, appeared = 0, badAppear = 0, pulledIn = 0, vanishedMoving = 0, launchedHeld = 0;
+  let prev = new Map(w.actors.map((a) => [a.id, a]));
+  for (let i = 0; i < 2400; i++) {
+    const before = w;
+    w = step(w);
+    const now = new Map(w.actors.map((a) => [a.id, a]));
+    for (const [id, a] of now) {
+      if (!prev.has(id)) { appeared++; if (!(a.fromCurb && a.v === 0)) badAppear++; }
+      const was = prev.get(id);
+      /* The rule the fix restored: held by traffic, nobody launches. */
+      if (was && !was.going && a.going && !a.accepted && whatStops(was, before).held) launchedHeld++;
+    }
+    /* Read on the last tick it was seen, one tick BEFORE it went: the sim
+       removes a car in the tick its speed falls under 0.3 m/s, so the last
+       state seen is still settling. Within a metre a second of rest, and
+       at the spot it chose, is "pulled in"; anything else is vanishing. */
+    for (const [id, a] of prev) if (!now.has(id)) { if (a.leaveAt != null && a.v < 1 && Math.abs(a.s - a.leaveAt) < 8) pulledIn++; else vanishedMoving++; }
+    if (i % 10 === 0) over += overlapping(w).length;
+    prev = now;
+  }
+  check(w.actors.length > 120, `the closed city fills with traffic: ${w.actors.length} cars after two minutes (asked for 150)`);
+  check(appeared > 50 && badAppear === 0, `${appeared} cars pulled out, every one from the curb and from rest`);
+  check(pulledIn > 20 && vanishedMoving === 0, `${pulledIn} pulled in at the end of their trip, every one at rest where it meant to stop -- none vanished moving`);
+  check(over === 0, `and nobody drove through anybody (${over} overlaps)`);
+
+  /* A map with no districts is untouched by any of it. */
+  const t1 = seedGraph(1, 50, loadMap(testMap1()), { target: 60, posted: true });
+  check(districtStreetsOf(t1.course).length === 0 && districtShare(t1.course) === 0, "the test map has no districts, so nobody pulls out or in there");
 }
 
 console.log(`\n${"=".repeat(70)}`);
