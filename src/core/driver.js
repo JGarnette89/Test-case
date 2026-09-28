@@ -116,19 +116,29 @@ export const SOUND_DEVIATION = [0, 0.25];
 
 const span = (r, [lo, hi]) => lo + r() * (hi - lo);
 
-export function composeDriver(seed = 1) {
+/* A TOWN is a distribution over the axes, not a driver (DRIVING-SCHOOL.md
+   section 3): `town.weights` makes some axes likelier to be the weak one,
+   `town.bold` is the share of weak confidence that falls on the bold side.
+   With no town every axis weighs 1 and bold is one half, and the pick below
+   reduces EXACTLY to the uniform one it replaced -- the same draw from the
+   same number -- so every driver drawn before is the driver drawn now. */
+export function composeDriver(seed = 1, town = null) {
   const r = rng(seed);
   const bag = [...AXES];
   const n = WEAK_AXES[0] + Math.floor(r() * (WEAK_AXES[1] - WEAK_AXES[0] + 1));
   const weak = new Set();
+  const weightOf = (a) => town?.weights?.[a] ?? 1;
   for (let i = 0; i < n && bag.length; i++) {
-    weak.add(bag.splice(Math.floor(r() * bag.length) % bag.length, 1)[0]);
+    const total = bag.reduce((s, a) => s + weightOf(a), 0);
+    let left = r() * total, at = bag.length - 1;
+    for (let j = 0; j < bag.length; j++) { if (left < weightOf(bag[j])) { at = j; break; } left -= weightOf(bag[j]); }
+    weak.add(bag.splice(at, 1)[0]);
   }
 
   const ratings = {};
   for (const axis of AXES) {
     if (axis === "confidence") {
-      const side = r() < 0.5 ? -1 : 1;
+      const side = r() < 1 - (town?.bold ?? 0.5) ? -1 : 1;
       const dev = span(r, weak.has(axis) ? WEAK_DEVIATION : SOUND_DEVIATION);
       const half = side < 0 ? CONFIDENT_ENOUGH : 1 - CONFIDENT_ENOUGH;
       ratings[axis] = clamp01(CONFIDENT_ENOUGH + side * dev * half);

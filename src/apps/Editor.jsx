@@ -46,7 +46,7 @@ import {
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { readJSON, writeJSON } from "../storage.js";
 import { CLEARANCE_MIN } from "../map/load.js";
-import { KINDS, CONTROLS, ZONES, PROP_KINDS } from "../map/format.js";
+import { KINDS, CONTROLS, ZONES, PROP_KINDS, CHARACTERS } from "../map/format.js";
 import { testMap1, testCity0 } from "../map/samples.js";
 import { fillZone, clearZone, BLOCKS, fillLots, clearLots, LOTS } from "../map/generate.js";
 import {
@@ -1048,6 +1048,11 @@ function ZonePanel({ zone, generated = 0, buildings = 0, report = null, onGenera
         <Field label="Kind">
           <select style={inputStyle} value={zone.kind} onChange={(e) => onChange({ kind: e.target.value })}>
             {ZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+          </select>
+        </Field>
+        <Field label="Drivers here">
+          <select style={inputStyle} value={zone.character ?? "ordinary"} onChange={(e) => onChange({ character: e.target.value })}>
+            {CHARACTERS.map((c) => <option key={c} value={c}>{c.replace("-", " ")}</option>)}
           </select>
         </Field>
         <Field label="Density (0-1)">

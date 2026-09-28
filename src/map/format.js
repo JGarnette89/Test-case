@@ -44,6 +44,11 @@ export const KINDS = {
    is per approach in the real world too (src/sim/signal.js). */
 export const CONTROLS = ["stop", "yield", "none", "signal", "signal-no-right-on-red"];
 export const ZONES = ["residential", "commercial", "industrial", "park", "water", "highway"];
+/* WHO DRIVES HERE: a district's character (sim/towns.js says what each
+   means to the driver model). Only characters the model can express are
+   listed; "nobody is looking" waits on perception being on, and "nobody
+   signals" on the driver model having signals at all. */
+export const CHARACTERS = ["ordinary", "tailgaters", "rolling-stops", "wanderers", "late-brakers", "hesitant"];
 
 export function emptyMap(id = "untitled", name = "Untitled") {
   return { id, name, version: MAP_VERSION, bounds: { x: 0, y: 0, w: CHUNK, h: CHUNK }, chunk: CHUNK, roads: [], nodes: [], zones: [], props: [], spawns: [] };

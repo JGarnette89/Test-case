@@ -27,6 +27,10 @@ import { standsOn } from "../src/map/load.js";
 import { graphOf } from "../src/sim/graph.js";
 import { seedGraph, step, overlapping, districtStreetsOf, districtShare, whatStops, pathOf } from "../src/sim/crossing.js";
 import { testMap1 } from "../src/map/samples.js";
+import { composeDriver, AXES, WEAK_AXES, WEAK_RANGE, SOUND_RANGE, WEAK_DEVIATION, SOUND_DEVIATION, CONFIDENT_ENOUGH, lackingIn } from "../src/core/driver.js";
+import { rng } from "../src/core/rng.js";
+import { TOWNS, townOf } from "../src/sim/towns.js";
+import { CHARACTERS } from "../src/map/format.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -255,6 +259,54 @@ console.log("\n9. TRAFFIC FROM INSIDE THE CITY: PULLING OUT, PULLING IN");
   /* A map with no districts is untouched by any of it. */
   const t1 = seedGraph(1, 50, loadMap(testMap1()), { target: 60, posted: true });
   check(districtStreetsOf(t1.course).length === 0 && districtShare(t1.course) === 0, "the test map has no districts, so nobody pulls out or in there");
+}
+
+console.log("\n10. A DISTRICT'S CHARACTER: WHO DRIVES THERE");
+{
+  /* The draw before towns existed, re-implemented here from its own
+     description rather than imported, so "an ordinary place is unchanged"
+     is checked against an independent statement of the old rule. */
+  const oldDraw = (seed) => {
+    const r = rng(seed), bag = [...AXES], weak = new Set();
+    const n = WEAK_AXES[0] + Math.floor(r() * (WEAK_AXES[1] - WEAK_AXES[0] + 1));
+    for (let i = 0; i < n && bag.length; i++) weak.add(bag.splice(Math.floor(r() * bag.length) % bag.length, 1)[0]);
+    const span = ([lo, hi]) => lo + r() * (hi - lo), ratings = {};
+    for (const a of AXES) {
+      if (a === "confidence") { const side = r() < 0.5 ? -1 : 1; const dev = span(weak.has(a) ? WEAK_DEVIATION : SOUND_DEVIATION); const half = side < 0 ? CONFIDENT_ENOUGH : 1 - CONFIDENT_ENOUGH; ratings[a] = Math.max(0, Math.min(1, CONFIDENT_ENOUGH + side * dev * half)); }
+      else ratings[a] = Math.max(0, Math.min(1, span(weak.has(a) ? WEAK_RANGE : SOUND_RANGE)));
+    }
+    return ratings;
+  };
+  let same = 0;
+  for (let seed = 1; seed <= 2000; seed++) if (JSON.stringify(composeDriver(seed).ratings) === JSON.stringify(oldDraw(seed)) && JSON.stringify(composeDriver(seed, townOf("ordinary")).ratings) === JSON.stringify(oldDraw(seed))) same++;
+  check(same === 2000, `an ordinary place draws exactly the drivers it always did (${same} of 2000 identical to the old rule)`);
+
+  const target = { tailgaters: "confidence", "rolling-stops": "knowledge", wanderers: "steering", "late-brakers": "braking", hesitant: "confidence" };
+  const shareWeak = (town, axis) => { let k = 0; for (let s = 1; s <= 2000; s++) if (composeDriver(s * 31 + 7, town).weakOn.includes(axis)) k++; return k / 2000; };
+  const rows = Object.entries(target).map(([c, axis]) => ({ c, axis, here: shareWeak(townOf(c), axis), ordinary: shareWeak(null, axis) }));
+  check(rows.every((r) => r.here >= 0.6 && r.ordinary < 0.45) && CHARACTERS.every((c) => c in TOWNS),
+    `each character makes its axis the weak one for most of its people: ${rows.map((r) => `${r.c} ${Math.round(r.here * 100)}% (ordinary ${Math.round(r.ordinary * 100)}%)`).join(", ")}`);
+  const sideOf = (town) => { let bold = 0, weak = 0; for (let s = 1; s <= 2000; s++) { const d = composeDriver(s * 17 + 3, town); if (d.weakOn.includes("confidence")) { weak++; if (d.ratings.confidence > CONFIDENT_ENOUGH) bold++; } } return bold / weak; };
+  const tg = sideOf(townOf("tailgaters")), hs = sideOf(townOf("hesitant"));
+  check(tg > 0.8 && hs < 0.2, `tailgaters are bold (${Math.round(tg * 100)}% of the weak-confidence drivers on the bold side), the hesitant timid (${Math.round(hs * 100)}%)`);
+
+  /* And it reaches the road: the closed stand-in city with a rolling-stop
+     neighbourhood to the west and a tailgating one to the east. Measured
+     on the dispositions the sim acts on -- who rolls stops, what gap they
+     keep -- for the cars that pulled out of each. */
+  const closed = { ...city, roads: city.roads.filter((r) => !r.id.startsWith("out-")), zones: city.zones.map((z) => ({ ...z, character: z.id === "west" ? "rolling-stops" : "tailgaters" })) };
+  let w = seedGraph(2, 60, loadMap(closed), { target: 150, posted: true });
+  const seen = new Map();
+  for (let i = 0; i < 2400; i++) { w = step(w); for (const a of w.actors) if (a.home && !seen.has(a.id)) seen.set(a.id, a); }
+  const from = (z) => [...seen.values()].filter((a) => a.home === z);
+  const W = from("west"), E = from("east");
+  const rolls = (xs) => xs.filter((a) => a.rollsStops).length / Math.max(1, xs.length);
+  const gap = (xs) => xs.reduce((s, a) => s + a.headway, 0) / Math.max(1, xs.length);
+  check(W.length > 20 && E.length > 20 && rolls(W) > 2 * rolls(E), `people from the rolling-stop west roll their stops: ${Math.round(rolls(W) * 100)}% of ${W.length}, against ${Math.round(rolls(E) * 100)}% of ${E.length} from the east`);
+  check(gap(E) < 0.85 * gap(W), `people from the tailgating east follow closer: mean headway ${gap(E).toFixed(2)} s against ${gap(W).toFixed(2)} s from the west`);
+
+  const bad = loadMap({ ...testCity0(), zones: [{ id: "z", kind: "residential", polygon: [P(0, 0), P(100, 0), P(100, 100)], character: "polite" }] });
+  check(bad.zones[0].character === "ordinary" && bad.warnings.some((x) => x.code === "unknown-character"), "a character the model does not know is warned and treated as ordinary");
 }
 
 console.log(`\n${"=".repeat(70)}`);

@@ -43,6 +43,7 @@ import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel } from "./corner.js";
 import { rng } from "../core/rng.js";
+import { townOf } from "./towns.js";
 import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
 
 /* =====================================================================
@@ -1097,7 +1098,8 @@ export function districtStreetsOf(course) {
         const r = roads[leg.road];
         if (!leg.curb || leg.bay || !r || BIG.has(r.kind)) continue;
         const mid = r.pts[Math.floor(r.pts.length / 2)];
-        if (zones.some((z) => inPoly(z.polygon, mid))) out.push({ k, side: leg.id, weight: r.length });
+        const z = zones.find((q) => inPoly(q.polygon, mid));
+        if (z) out.push({ k, side: leg.id, weight: r.length, zone: z.id, character: z.character ?? "ordinary" });
       }
     });
   }
@@ -1127,8 +1129,12 @@ function pullingOut(world, n, actors) {
   const posted = world.road.posted ? postedAt(world.course, at.k, chosen.route) : null;
   const base = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
   const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6) };
+  /* FROM HERE: a car that pulls out of a district is one of its people,
+     drawn from its character. Traffic arriving at the city's edge is from
+     elsewhere and is drawn as it always was. */
   const car = {
-    ...driver(road, world.seed, n),
+    ...driver(road, world.seed, n, null, townOf(at.character)),
+    home: at.zone,
     n, k: at.k, route: chosen.route, ...(chosen.want ? { want: chosen.want } : {}),
     leg: 0, s, v: 0,
     stoppedAt: null, going: false, accepted: false, openFor: 0, openedAt: null, waited: 0, delayed: false,

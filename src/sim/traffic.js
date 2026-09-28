@@ -234,8 +234,8 @@ export { cautionOf };
    bold tail and 14% in the timid one, which is the mix the maintainer
    asked for arriving from the driver model rather than from a
    distribution written to produce it. */
-export function driver(road, seed, n, ratings = null) {
-  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }) } : composeDriver(seed * 7919 + n);
+export function driver(road, seed, n, ratings = null, town = null) {
+  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }) } : composeDriver(seed * 7919 + n, town);
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
   const v0 = wantedSpeed(road.speed, caution);

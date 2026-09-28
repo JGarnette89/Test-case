@@ -2444,6 +2444,25 @@ everybody else -- and the backstop now waits until nothing holds them.
 Checked directly on the open city, where it happened (sabotaged: one
 held launch, one overlap).
 
+**5.4, A DISTRICT'S CHARACTER -- BUILT, 28 September** (`sim/towns.js`,
+"Drivers here" on the editor's zone panel). The maintainer's "towns are
+distributions, not drivers" (DRIVING-SCHOOL.md 3): a district's
+character weights which axis its people are weak on, and for confidence
+which side -- ordinary, tailgaters, rolling stops, wanderers, late
+brakers, hesitant. Nothing writes a behaviour; the model that already
+turns ratings into driving does the rest. A car that pulls out of a
+district is one of its people (`home`); traffic arriving at the city's
+edge is from elsewhere and drawn as it always was. With no character the
+draw is the old one exactly, checked against an independent
+re-implementation over 2000 seeds. Measured: each character makes its
+axis the weak one for 72-76% of its people against about 30% in an
+ordinary place; in a rolling-stop neighbourhood 41% of its people roll
+their stops against 14% elsewhere (rolling depends on two axes, so it is
+three times as many, not everyone), and tailgaters keep a 0.54 s gap
+against 0.69 s. `TOWN_PULL` = 6 is a flagged design constant. Not
+expressible yet, and absent from the list: "nobody is looking" (needs
+perception on) and "nobody signals" (the driver model has no signals).
+
 **Measured for 5.5, not yet acted on:** 6.7 ms a tick on the desk
 machine at 200 cars on the stand-in city (1.4 by 0.9 km), which at
 20 Hz is fine on the desk and a question on the phone.
