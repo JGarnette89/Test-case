@@ -117,6 +117,9 @@ export function setRoadTurns(map, roadId, end, turns) {
 export function setRoadBays(map, roadId, end, bays) {
   return patchRoad(map, roadId, (r) => fitTurns({ ...r, bays: { ...(r.bays ?? { start: null, end: null }), [end]: bays } }));
 }
+export function setCrosswalk(map, roadId, end, on) {
+  return patchRoad(map, roadId, (r) => ({ ...r, crosswalk: { ...(r.crosswalk ?? { start: false, end: false }), [end]: on } }));
+}
 export function setLeftArrow(map, roadId, end, on) {
   return patchRoad(map, roadId, (r) => ({ ...r, leftArrow: { ...(r.leftArrow ?? { start: false, end: false }), [end]: on } }));
 }
@@ -258,8 +261,8 @@ export function splitRoad(map, roadId, seg, at) {
   const p = { x: at.x, y: at.y, z: at.z ?? 0 };
   const newId = nextId(map.roads, "road");
   const keep = (f, which) => (r[f] ? { [f]: { start: which === "a" ? r[f].start ?? null : null, end: which === "b" ? r[f].end ?? null : null } } : {});
-  const a = { ...r, points: [...r.points.slice(0, seg + 1), p], control: { start: r.control?.start ?? "none", end: "none" }, ...keep("turns", "a"), ...keep("bays", "a"), ...keep("leftArrow", "a") };
-  const b = { ...r, id: newId, points: [p, ...r.points.slice(seg + 1)], control: { start: "none", end: r.control?.end ?? "none" }, ...keep("turns", "b"), ...keep("bays", "b"), ...keep("leftArrow", "b") };
+  const a = { ...r, points: [...r.points.slice(0, seg + 1), p], control: { start: r.control?.start ?? "none", end: "none" }, ...keep("turns", "a"), ...keep("bays", "a"), ...keep("leftArrow", "a"), ...keep("crosswalk", "a") };
+  const b = { ...r, id: newId, points: [p, ...r.points.slice(seg + 1)], control: { start: "none", end: r.control?.end ?? "none" }, ...keep("turns", "b"), ...keep("bays", "b"), ...keep("leftArrow", "b"), ...keep("crosswalk", "b") };
   const roads = map.roads.flatMap((x) => (x.id === roadId ? [a, b] : [x]));
   /* A sign stands at a road END: the one at the old end now stands at the
      second half's, and the new ends where the split is have none. */

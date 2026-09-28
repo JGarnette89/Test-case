@@ -2666,6 +2666,18 @@ changing cost more milliseconds than scanning everybody did (1.40 against
 
 ### Stage 6 — a world with things in it
 
+**Crosswalks, 28 September -- the first piece.** A crosswalk is map data per
+road end (`crosswalk: { start, end }`, the editor's "Crosswalk" per
+approach). There is no room for one in the 2.05 m between a stop line and
+the box, so where a road end has one its approach's stop line moves back by
+the crosswalk's width (CROSSWALK_W, 3 m) and nothing else moves -- a map
+without crosswalks is the map it was, and every existing map has none.
+Drawn as continental bars from the box edge out. Next: pedestrians who walk
+them, drivers who yield to them (the near-half rule, DECISIONS.md 5.4,
+including a turning car at the EXIT crosswalk), then the maintainer's
+mid-block stop for a crossing (SIMULATOR.md 5 ruling 3). verify-peds.
+
+
 The content the axes have been waiting for, rebuilt on the map rather
 than ported: pedestrians as road users, parked cars and driveways and
 cars emerging from them, blind crests as occlusion with perception

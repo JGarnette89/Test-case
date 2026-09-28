@@ -94,9 +94,14 @@ export function prop({ id, kind = "house", at, heading = 0, l, w, h }) {
    open before that end for the traffic approaching it (map/bays.js).
    `leftArrow`, optional, per road end: a protected left-turn arrow on
    that approach's signal (sim/signal.js). */
-export function road({ id, kind = "collector", points, lanes, oneWay = false, speed, parking, control = { start: "none", end: "none" }, turns, bays, leftArrow }) {
+/* A CROSSWALK at a road end, optional, per end: a painted crossing across
+   the road just outside the intersection. Its approach's stop line moves
+   back by its width, so a waiting car stands clear of it; a map without
+   one is exactly the map it was. */
+export const CROSSWALK_W = 3.0;
+export function road({ id, kind = "collector", points, lanes, oneWay = false, speed, parking, control = { start: "none", end: "none" }, turns, bays, leftArrow, crosswalk }) {
   const k = KINDS[kind] ?? KINDS.collector;
-  return { id, kind, points, lanes: lanes ?? k.lanes, oneWay, speed: speed ?? k.speed, parking: parking ?? k.parking, control, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}) };
+  return { id, kind, points, lanes: lanes ?? k.lanes, oneWay, speed: speed ?? k.speed, parking: parking ?? k.parking, control, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}), ...(crosswalk ? { crosswalk } : {}) };
 }
 
 /* STAGE 0 AS THE FIRST MAP. The valley road and the bridge road from

@@ -301,8 +301,9 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke();
       ctx.lineCap = "butt";
       for (const l of j.lines) {
-        ctx.lineWidth = Math.max(1.5, 0.45 * k);
-        ctx.strokeStyle = l.kind === "stop" ? "rgba(250,250,242,0.95)" : "rgba(250,250,242,0.7)";
+        /* A crosswalk bar is half a metre of paint; a stop line 0.45. */
+        ctx.lineWidth = Math.max(1.5, (l.kind === "zebra" ? 0.5 : 0.45) * k);
+        ctx.strokeStyle = l.kind === "stop" || l.kind === "zebra" ? "rgba(250,250,242,0.95)" : "rgba(250,250,242,0.7)";
         seg(ctx, P, l.a, l.b);
       }
     } });

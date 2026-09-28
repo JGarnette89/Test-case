@@ -43,6 +43,7 @@ import { turnPoints } from "../core/turn.js";
 
 import { CAR, weaveRoom } from "./traffic.js";
 import { conflictsBetween, poseAt, LINE_SETBACK } from "./intersection.js";
+import { CROSSWALK_W } from "../map/format.js";
 import { signalFor, isSignal } from "./signal.js";
 import { defaultTurns, receive, checkTurns } from "./lanes.js";
 import { ribbonOf } from "../iso/road.js";
@@ -449,6 +450,9 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
       const f = 1 / Math.max(sinMin, 0.5);
       A.boxHalf = boxHalf * f;
       A.lineAt = Math.max(boxHalf * f, need) + LINE_SETBACK;
+      /* A CROSSWALK on this road end: the line stands its width further
+         back, so a car waiting at it is clear of the people crossing. */
+      if (roadOf[A.road]?.crosswalk?.[A.end]) { A.lineAt += CROSSWALK_W; A.crosswalk = true; }
     }
     const place = { lane, boxHalf, lineAt, control: Object.fromEntries(ids.map((id) => [id, legs[id].control])), at: n.at, reach: 0 };
     /* A SIGNAL IS A CONTROL THAT CHANGES WITH TIME (signal.js). The
@@ -714,7 +718,7 @@ export function junctionsOf(course) {
     const { legs, paths, place } = spot.layout;
     const centre = place.at;
     const corners = [];
-    const lines = [], signs = [], arrows = [];
+    const lines = [], signs = [], arrows = [], crossings = [];
     const seenBase = new Set();
     for (const leg of Object.values(legs)) {
       const r = roadOf[leg.road];
@@ -780,6 +784,29 @@ export function junctionsOf(course) {
         if (leg.pos === leg.across - 1) signs.push({ kind: lit ? "signal" : leg.control, base: leg.base, at: { x: sp.x + sx * (lane / 2 + 0.6), y: sp.y + sy * (lane / 2 + 0.6), z }, heading: sp.rot, ...(allWay ? { allWay } : {}) });
       }
     }
+    /* CROSSWALKS: continental bars across each road end that has one,
+       from the box edge out by its width -- drawn from the node's road
+       ends, so a one-way street leaving here (no inbound leg) gets its
+       crossing too. `crossings` is the same band as data, for the people
+       who walk it. */
+    for (const nl of (course.map?.nodes ?? []).find((q) => q.id === spot.node)?.legs ?? []) {
+      const r = roadOf[nl.road];
+      if (!r?.crosswalk?.[nl.end] || r.pts.length < 2) continue;
+      const box = Math.max(...Object.values(legs).filter((l) => l.road === r.id).map((l) => l.boxHalf ?? place.boxHalf), place.boxHalf);
+      const along = (d) => {   // a point d metres from this end along the road, and the road's direction there
+        const s = nl.end === "end" ? r.length - d : d;
+        let k = 0; while (k < r.pts.length - 2 && r.at[k + 1] < s) k++;
+        const a = r.pts[k], b = r.pts[k + 1], f = Math.max(0, Math.min(1, (s - r.at[k]) / Math.max(1e-6, r.at[k + 1] - r.at[k])));
+        return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, z: (a.z ?? 0) + ((b.z ?? 0) - (a.z ?? 0)) * f, dx: b.x - a.x, dy: b.y - a.y };
+      };
+      const p0 = along(box), p1 = along(box + CROSSWALK_W), mid = along(box + CROSSWALK_W / 2);
+      const len = Math.hypot(mid.dx, mid.dy) || 1, ux = mid.dx / len, uy = mid.dy / len, nx = -uy, ny = ux;
+      const half = r.width / 2;
+      for (let o = -half + 0.5; o <= half - 0.4; o += 1.0) {
+        lines.push({ kind: "zebra", a: { x: p0.x + nx * o, y: p0.y + ny * o, z: p0.z }, b: { x: p1.x + nx * o, y: p1.y + ny * o, z: p1.z } });
+      }
+      crossings.push({ road: r.id, end: nl.end, from: box, to: box + CROSSWALK_W, width: r.width, a: { x: mid.x - nx * half, y: mid.y - ny * half, z: mid.z }, b: { x: mid.x + nx * half, y: mid.y + ny * half, z: mid.z } });
+    }
     /* ONE WAY AND DO NOT ENTER (the maintainer's sign list, sixth and
        seventh), derived from the road's own `oneWay` and never placed, like
        the all-way plate: a sign authored apart from the road could say the
@@ -829,7 +856,7 @@ export function junctionsOf(course) {
     /* The surface: the corners in order round the centre. */
     const c2 = { x: centre.x, y: centre.y };
     corners.sort((p, q) => Math.atan2(p.y - c2.y, p.x - c2.x) - Math.atan2(q.y - c2.y, q.x - c2.x));
-    out.push({ node: spot.node, at: centre, surface: corners, lines, signs, arrows, signal: spot.layout.signal });
+    out.push({ node: spot.node, at: centre, surface: corners, lines, signs, arrows, crossings, signal: spot.layout.signal });
   }
   return out;
 }

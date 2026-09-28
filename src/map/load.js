@@ -256,6 +256,7 @@ export function loadMap(map) {
     let bays = r.bays && typeof r.bays === "object" ? { start: r.bays.start ?? null, end: r.bays.end ?? null } : null;
     if (bays && oneWay) { warn("bays-one-way", `road ${id}: turn bays on a one-way road are not supported; dropped`); bays = null; }
     const leftArrow = r.leftArrow && typeof r.leftArrow === "object" ? { start: !!r.leftArrow.start, end: !!r.leftArrow.end } : null;
+    const crosswalk = r.crosswalk && typeof r.crosswalk === "object" && (r.crosswalk.start || r.crosswalk.end) ? { start: !!r.crosswalk.start, end: !!r.crosswalk.end } : null;
     const parking = r.parking ?? KINDS[kind].parking;
     /* THE SURFACE OUTSIDE THE LANES: a parallel-parking strip each side of
        a two-way road with no bays (sim/parking.js `hasParking`, the same
@@ -263,7 +264,7 @@ export function loadMap(map) {
        traffic drives by are unchanged; `outer` is what is drawn and what
        a building has to keep off. */
     const outer = parking === "parallel" && !oneWay && !bays ? width + 2 * PARK_W : width;
-    const built = { id, kind, lanes, oneWay, width, outer, speed, parking, control, signAt, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}), ...(noLeft.start || noLeft.end ? { noLeft } : {}), ...raw };
+    const built = { id, kind, lanes, oneWay, width, outer, speed, parking, control, signAt, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}), ...(crosswalk ? { crosswalk } : {}), ...(noLeft.start || noLeft.end ? { noLeft } : {}), ...raw };
     /* A bay longer than its road cannot open: it and its taper must fit. */
     for (const end of ["start", "end"]) {
       const b = baysAt(built, end);
@@ -325,7 +326,7 @@ export function loadMap(map) {
         const mk = (suffix, pts, controlStart, controlEnd, turnsStart, turnsEnd, which) => {
           const rs = resample(pts);
           const keep = (f) => (o[f] ? { [f]: { start: which === "a" ? o[f].start : null, end: which === "b" ? o[f].end : null } } : {});
-          const half = { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, signAt: { start: which === "a" ? o.signAt?.start ?? null : null, end: which === "b" ? o.signAt?.end ?? null : null }, ...keep("bays"), ...keep("leftArrow"), ...keep("noLeft"), ...rs };
+          const half = { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, signAt: { start: which === "a" ? o.signAt?.start ?? null : null, end: which === "b" ? o.signAt?.end ?? null : null }, ...keep("bays"), ...keep("leftArrow"), ...keep("noLeft"), ...keep("crosswalk"), ...rs };
           return { ...half, ...surfaceFor(half) };
         };
         const a = mk("#a", aPts, o.control.start, "none", o.turns?.start ?? null, null, "a"), b = mk("#b", bPts, "none", o.control.end, null, o.turns?.end ?? null, "b");
