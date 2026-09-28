@@ -34,12 +34,56 @@ import { parkingOf, parkedPoses, contactWith, PARK_CLEAR, SLOT } from "../src/si
 import { touching } from "../src/sim/player.js";
 import { PARK_W, LANE } from "../src/map/format.js";
 import { poseOf } from "../src/sim/crossing.js";
+import { TEST_MAPS } from "../src/map/samples.js";
+import { playerOn } from "../src/sim/drive.js";
+import { poseAt, cornersOf, boxesOverlap } from "../src/sim/intersection.js";
+import { CAR } from "../src/sim/traffic.js";
 import { CHARACTERS } from "../src/map/format.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
 const P = (x, y) => ({ x, y, z: 0 });
 const both = (m) => fillZone(fillZone(m, "west").map, "east").map;
+
+console.log("\n0. THE FASTER CONFLICT TABLE IS THE SAME TABLE -- checked before anything drives on it");
+{
+  /* The scan as it was before its samples were cached and its pairs
+     boxed (28 September), restated here from its source, so the new one
+     is held to an independent copy rather than to itself. */
+  const reference = (a, b, pad) => {
+    const step = 0.4, far = Math.hypot(CAR.length, CAR.width) + 2 * pad;
+    const opens = (q) => Math.max(0, q.stopAt - 2 * CAR.length), shuts = (q) => Math.min(q.length, q.clearAt + CAR.length);
+    let first = null, lastB = -Infinity;
+    const bs = [];
+    for (let sb = opens(b); sb <= shuts(b); sb += step) bs.push([sb, poseAt(b, sb)]);
+    for (let sa = opens(a); sa <= shuts(a); sa += step) {
+      const pa = poseAt(a, sa);
+      for (const [sb, pb] of bs) {
+        if (Math.hypot(pa.x - pb.x, pa.y - pb.y) >= far) continue;
+        if (!boxesOverlap(cornersOf(pa, pad), cornersOf(pb, pad))) continue;
+        if (first === null || sa < first.a) first = { a: sa, b: sb };
+        if (sb > lastB) lastB = sb;
+      }
+    }
+    return first === null ? null : { ...first, clearOf: lastB };
+  };
+  let pairs = 0, differ = 0;
+  for (const t of TEST_MAPS) {
+    const g = graphOf(loadMap(t.build()));
+    const pad = (3.6 - CAR.width) / 4;   // weaveRoom(lane), as graphOf passes it
+    for (const spot of g.at) {
+      if (spot.through) continue;
+      const P = spot.layout.paths, keys = Object.keys(P);
+      for (const ka of keys) for (const kb of keys) {
+        if (ka === kb || P[ka].from === P[kb].from) continue;
+        pairs++;
+        const want = reference(P[ka], P[kb], pad), got = spot.layout.conflicts[`${ka}|${kb}`] ?? null;
+        if (JSON.stringify(want) !== JSON.stringify(got)) differ++;
+      }
+    }
+  }
+  check(pairs > 5000 && differ === 0, `${pairs} path pairs across both test maps, every entry identical to the scan as it was (${differ} differ)`);
+}
 
 console.log("\n1. DETERMINISTIC, AND AGAIN REPLACES");
 {
@@ -392,6 +436,33 @@ console.log("\n12. PARKED CARS: A STRIP, SLOTS, AND THE SAME PEOPLE ALL DAY");
   const onIt = { x: sl.x, y: sl.y, z: sl.z, heading: sl.heading };
   const inLane = (() => { let best = null, bd = Infinity; for (const q of L.pts) { const d = Math.hypot(q.x - sl.x, q.y - sl.y); if (d < bd) { bd = d; best = q; } } return { x: best.x, y: best.y, z: best.z ?? 0, heading: sl.heading }; })();
   check(!!contactWith(w.course, w.parked, onIt, touching) && !contactWith(w.course, w.parked, inLane, touching), "a car on a parked car's spot touches it; a car in the lane beside it does not");
+}
+
+console.log("\n13. THE TEST MAPS: EVERY SECTION OPENS, TO WATCH AND TO DRIVE");
+{
+  /* The Test maps screen only lists; what a tap does is #/map's scene on
+     the chosen section, which no SSR render reaches (CLAUDE.md item 4). So
+     every section is opened here the way the screen opens it: the map
+     built and loaded, the section found by id among the loaded ones for
+     Watch, and for Drive a world seeded and a player put on its start. */
+  let sections = 0, drives = 0, bad = [];
+  for (const t of TEST_MAPS) {
+    const lm = loadMap(t.build());
+    if (!lm.ok) { bad.push(`${t.id}: does not load`); continue; }
+    const w = seedGraph(1, 50, lm, { every: 2, target: 40, posted: true });
+    const b = lm.roads.flatMap((r) => r.pts);
+    const [x0, x1, y0, y1] = [Math.min(...b.map((q) => q.x)), Math.max(...b.map((q) => q.x)), Math.min(...b.map((q) => q.y)), Math.max(...b.map((q) => q.y))];
+    for (const sec of lm.sections) {
+      sections++;
+      if (!(sec.look.x >= x0 && sec.look.x <= x1 && sec.look.y >= y0 && sec.look.y <= y1)) bad.push(`${t.id}/${sec.id}: looks at nothing on the map`);
+      if (!sec.judge) bad.push(`${t.id}/${sec.id}: says nothing to judge`);
+      if (sec.start) { drives++; if (!playerOn(w.course, sec.start.road, sec.start.end, { through: !!sec.start.through })) bad.push(`${t.id}/${sec.id}: its start cannot be driven from`); }
+    }
+    if (lm.warnings.some((x) => x.code.startsWith("section"))) bad.push(`${t.id}: a section was dropped or lost its start`);
+  }
+  check(bad.length === 0 && sections >= 10 && drives >= 4, `${TEST_MAPS.length} test maps, ${sections} sections, every one somewhere on its map with something to judge, and all ${drives} starts drivable${bad.length ? `: ${bad.join("; ")}` : ""}`);
+  const t1 = loadMap(TEST_MAPS.find((t) => t.id === "test-1").build());
+  check(["crossroads", "tee", "fiveway", "arterial", "overpass", "hill"].every((id) => t1.sections.some((q) => q.id === id)), "test map 1 carries the six places #/map used to hard-code, under the same names");
 }
 
 console.log(`\n${"=".repeat(70)}`);

@@ -134,6 +134,7 @@ try {
     ["#/map", "stage 1 of the simulator: the map, with traffic on it"],
     ["#/editor", "stage 2: the editor, draw and drive"],
     ["#/exam", "stage 3: ride with a candidate"],
+    ["#/tests", "the test maps and their sections"],
     ["#/wheel", "stage 1 of the simulator: the player at the wheel"],
     ["#/iso", "stage 0 of the simulator: isometric"],
     ["#/sim", "stage 0 of the rebuild"],

@@ -415,6 +415,23 @@ export function loadMap(map) {
     zones.push({ id, kind: z.kind, polygon, density: Math.max(0, Math.min(1, Number.isFinite(Number(z.density)) ? Number(z.density) : 0.5)), character });
   });
 
+  /* SECTIONS: named places on a test map to watch, and optionally to start
+     driving from, each with a line on what to judge there (the Test maps
+     screen and #/map's view buttons). A section needs a finite place to
+     look at; a start is kept only if it names a road that loaded and an
+     end -- whether it can actually be driven from is the screen's to
+     refuse, as with any start. */
+  const roadIds = new Set(roads.map((r) => r.id));
+  const sections = [];
+  (Array.isArray(map.sections) ? map.sections : []).forEach((sec, i) => {
+    const id = String(sec?.id ?? `section${i}`);
+    const x = Number(sec?.look?.x), y = Number(sec?.look?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) { warn("section-no-place", `section ${id}: nowhere to look; dropped`); return; }
+    const st = sec.start && roadIds.has(sec.start.road) && (sec.start.end === "start" || sec.start.end === "end") ? { road: sec.start.road, end: sec.start.end, ...(sec.start.through ? { through: true } : {}) } : null;
+    if (sec.start && !st) warn("section-bad-start", `section ${id}: its start names no road on the map; it can be watched but not driven from`);
+    sections.push({ id, name: String(sec.name ?? id), look: { x, y, z: Number(sec.look.z) || 0 }, start: st, judge: String(sec.judge ?? "") });
+  });
+
   /* The chunk index: every road sample knows its chunk. */
   const chunks = new Map();
   const keyOf = (x, y) => `${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`;
@@ -436,7 +453,7 @@ export function loadMap(map) {
   }
 
   const bounds = map.bounds ?? { x: Math.min(...boxes.map((b) => b.x0)), y: Math.min(...boxes.map((b) => b.y0)), w: 0, h: 0 };
-  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, warnings };
+  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, warnings };
 }
 
 /* THE LAND, WHERE THE MAP GIVES NONE.

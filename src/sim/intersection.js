@@ -494,31 +494,57 @@ export function conflictsBetween(a, b, pad = 0) {
      length. `whatStops` already treats a shared exit as FOLLOWING, and
      it takes over at exactly this boundary, so bounding here removes a
      duplicate answer rather than dropping a case. */
-  const step = 0.4;
   /* Cheap reject first: two cars whose CENTRES are further apart than
      their own diagonals cannot be touching however they are turned, so
      the footprint test never has to run for most of the scan. */
   const far = Math.hypot(CAR.length, CAR.width) + 2 * pad;
-  const opens = (p) => Math.max(0, p.stopAt - 2 * CAR.length);
-  const shuts = (p) => Math.min(p.length, p.clearAt + CAR.length);
-  const [a0, a1] = [opens(a), shuts(a)];
-  const [b0, b1] = [opens(b), shuts(b)];
+  /* THE SAME SCAN, WITHOUT DOING IT TWICE (28 September). A path's samples
+     do not depend on its partner, so they are taken once per path (and
+     its footprints once per pad) instead of once per PAIR; and two paths
+     whose sampled boxes, grown by `far`, do not overlap cannot conflict,
+     so they are refused before any sample is compared. Measured on the
+     stand-in city the table took 2.6 of the 3.2 seconds it takes to open;
+     every entry is unchanged, checked key for key against the scan as it
+     was (verify-generate section 13). */
+  const A = samplesOf(a), B = samplesOf(b);
+  if (!A.pts.length || !B.pts.length) return null;
+  if (A.x0 - far > B.x1 || B.x0 - far > A.x1 || A.y0 - far > B.y1 || B.y0 - far > A.y1) return null;
+  const ca = cornersFor(A, pad), cb = cornersFor(B, pad);
   let first = null, lastB = -Infinity;
-  /* The inner path's poses once, not once per outer sample: a bent path
-     has a hundred vertices for `poseAt` to walk, and the scan is the one
-     place it is called thousands of times per layout. */
-  const bs = [];
-  for (let sb = b0; sb <= b1; sb += step) bs.push([sb, poseAt(b, sb)]);
-  for (let sa = a0; sa <= a1; sa += step) {
-    const pa = poseAt(a, sa);
-    for (const [sb, pb] of bs) {
+  for (let i = 0; i < A.pts.length; i++) {
+    const pa = A.pts[i], sa = A.s[i];
+    if (pa.x < B.x0 - far || pa.x > B.x1 + far || pa.y < B.y0 - far || pa.y > B.y1 + far) continue;
+    for (let j = 0; j < B.pts.length; j++) {
+      const pb = B.pts[j];
       if (Math.hypot(pa.x - pb.x, pa.y - pb.y) >= far) continue;
-      if (!boxesOverlap(cornersOf(pa, pad), cornersOf(pb, pad))) continue;
+      if (!boxesOverlap(ca[i], cb[j])) continue;
+      const sb = B.s[j];
       if (first === null || sa < first.a) first = { a: sa, b: sb };
       if (sb > lastB) lastB = sb;
     }
   }
   return first === null ? null : { ...first, clearOf: lastB };
+}
+
+/* A path's samples across its conflict region, at the scan's own step and
+   from the same starting point the scan always used, so the numbers are
+   the ones it produced; and their footprints per pad. Cached on the path
+   object, which is built once per layout and never changed after. */
+const SCAN_STEP = 0.4;
+const sampleCache = new WeakMap();
+function samplesOf(p) {
+  let c = sampleCache.get(p);
+  if (c) return c;
+  const s0 = Math.max(0, p.stopAt - 2 * CAR.length), s1 = Math.min(p.length, p.clearAt + CAR.length);
+  const s = [], pts = [];
+  for (let x = s0; x <= s1; x += SCAN_STEP) { s.push(x); pts.push(poseAt(p, x)); }
+  c = { s, pts, x0: Math.min(...pts.map((q) => q.x)), x1: Math.max(...pts.map((q) => q.x)), y0: Math.min(...pts.map((q) => q.y)), y1: Math.max(...pts.map((q) => q.y)), corners: new Map() };
+  sampleCache.set(p, c);
+  return c;
+}
+function cornersFor(c, pad) {
+  if (!c.corners.has(pad)) c.corners.set(pad, c.pts.map((q) => cornersOf(q, pad)));
+  return c.corners.get(pad);
 }
 
 /* Every path, and where each pair meets. The whole geometry of one

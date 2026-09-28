@@ -2485,6 +2485,22 @@ traffic is identical with or without them. Still absent: pulling in and
 out is a sideways step of 3 m at rest, not a manoeuvre, and there are no
 driveways.
 
+**TEST MAPS WITH SECTIONS -- BUILT, 28 September** (`#/tests`,
+`sections` in the format, `TEST_MAPS` in `map/samples.js`). The
+maintainer tests from a phone, and drawing in the editor there is slow,
+so every test map carries named SECTIONS -- a place to watch, optionally
+a start to drive from, one line on what to judge -- and the Test maps
+screen lists them with Watch and Drive. `#/map`'s hard-coded view
+buttons became test map 1's sections. The stand-in city ships ready
+(`testCityReady`): streets and buildings generated, the west rolling its
+stops and the east tailgating, its sections chosen from the generated
+map rather than typed in. Opening it cost 3.2 s on the desk machine,
+2.6 of it building each intersection's conflict table; the scan now
+samples each path once instead of once per pair and refuses pairs whose
+boxes cannot meet, 2.5x faster and key for key the same table across
+9,786 pairs (`verify-generate` section 0). A grid over the samples was
+tried and was SLOWER at these sizes, and was taken out.
+
 **5.5, THE NEIGHBOUR INDEX -- BUILT, 28 September** (`nearNode` /
 `atNode` in `crossing.js`, `tools/measure/city-perf.mjs`). Measured
 first: on the stand-in city every car asked every other car about

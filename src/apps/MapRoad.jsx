@@ -126,13 +126,17 @@ export function actorsOf(scene, carry) {
   return out;
 }
 
-export default function MapRoad({ mapData = null, startAt = null } = {}) {
+/* `initialMode` and `initialFollow` open the screen watching or driving a
+   named section (the Test maps screen); given, they win over the mode the
+   player last chose, which is a preference for #/map, not for a section
+   somebody asked to see. */
+export default function MapRoad({ mapData = null, startAt = null, initialMode = null, initialFollow = null } = {}) {
   const canvasRef = useRef(null);
   const [seed, setSeed] = useState(1);
   const [limit, setLimit] = useState(50);
   const [playing, setPlaying] = useState(true);
-  const [mode, setMode] = useState("drive");        // "drive" or "watch"
-  const [follow, setFollow] = useState(mapData ? "car" : "crossroads");   // watch mode: a place to look at, or "car" to ride one; the named places are the test map's own, so a supplied map starts on "car" instead
+  const [mode, setMode] = useState(initialMode ?? "drive");        // "drive" or "watch"
+  const [follow, setFollow] = useState(initialFollow ?? (mapData ? "car" : "crossroads"));   // watch mode: a section of the map to look at, or "car" to ride one
   const [zoom, setZoom] = useState(1);
   const [rotate, setRotate] = useState(true);   // driving: the view turns with the car; off is the fixed view, for comparison
   const [warnings, setWarnings] = useState([]);
@@ -152,7 +156,7 @@ export default function MapRoad({ mapData = null, startAt = null } = {}) {
   const judgedStop = useRef({ last: null, at: 0 });   // and the last stop's
   const contacts = useRef(0);
   const [cars, setCars] = useState(CARS.start);
-  if (!scene.current) scene.current = sceneFor(1, 50, 2.0, true, CARS.start, mapData, startAt);
+  if (!scene.current) scene.current = sceneFor(1, 50, 2.0, (initialMode ?? "drive") === "drive", CARS.start, mapData, startAt);
 
   const restart = (s = seed, kmh = limit, m = mode, n = cars) => {
     setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n);
@@ -171,7 +175,7 @@ export default function MapRoad({ mapData = null, startAt = null } = {}) {
     loadSettings().then((s) => {
       if (!live) return;
       const kmh = LIMITS.includes(s.limit) ? s.limit : limit;
-      const m = s.mode === "watch" ? "watch" : "drive";
+      const m = initialMode ?? (s.mode === "watch" ? "watch" : "drive");
       const n = Number.isFinite(s.cars) ? Math.max(CARS.min, Math.min(CARS.max, s.cars)) : cars;
       if (kmh !== limit || m !== mode || n !== cars) restart(seed, kmh, m, n);
       if (s.slider === "spring") input.current.state.spring = true;
@@ -253,10 +257,9 @@ export default function MapRoad({ mapData = null, startAt = null } = {}) {
          up the screen. Watching: a fixed place -- one of each kind of
          node and the overpass -- or a car, picking another when it
          leaves, from the fixed isometric view. */
-      const PLACES = {
-        crossroads: { x: 400, y: 400, z: 0 }, tee: { x: 800, y: 400, z: 0 }, fiveway: { x: 400, y: 800, z: 0 },
-        overpass: { x: 600, y: 800, z: 3 }, hill: { x: 600, y: 400, z: 3 }, arterial: { x: 1250, y: 400, z: 0 },
-      };
+      /* The places are the map's own sections (map/samples.js), not a
+         table here. */
+      const PLACES = Object.fromEntries((sc.loaded.sections ?? []).map((q) => [q.id, q.look]));
       let k, rot = 0;
       if (sc.me) {
         const p = driverPose(sc.me, sc.world.course);
@@ -375,7 +378,7 @@ export default function MapRoad({ mapData = null, startAt = null } = {}) {
               onClick={() => { setSetting("mode", id); restart(seed, limit, id); }}>{label}</button>
           ))}
           {mode === "watch" && <span style={S.label}>View</span>}
-          {mode === "watch" && [["crossroads", "the crossroads"], ["tee", "the T"], ["fiveway", "the five-way"], ["arterial", "the arterial"], ["overpass", "the overpass"], ["hill", "the hill"], ["car", "ride a car"]].map(([id, label]) => (
+          {mode === "watch" && [...(scene.current.loaded.sections ?? []).map((q) => [q.id, q.name]), ["car", "ride a car"]].map(([id, label]) => (
             <button key={id} className="btn" style={{ ...S.chip, borderColor: follow === id ? C.amber : "rgba(255,255,255,0.12)", color: follow === id ? C.white : DIM }}
               onClick={() => { cam.current = { x: 0, y: 0, z: 0, id: null }; setFollow(id); }}>{label}</button>
           ))}

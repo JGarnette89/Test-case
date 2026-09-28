@@ -52,6 +52,8 @@
    and a 700 m first draft tripled the time to open it at 300 cars.
    ===================================================================== */
 import { emptyMap, road } from "./format.js";
+import { fillZone, fillLots } from "./generate.js";
+import { loadMap } from "./load.js";
 
 /* A straight stroke, or a bowed one: `bow` metres sideways at the
    middle, so a road can bend without anybody computing an arc. */
@@ -109,6 +111,16 @@ export function testMap1() {
     road({ id: "E-north", kind: "arterial", points: stroke({ x: 1250, y: 0 }, E), control: { start: "none", end: "signal" }, bays: { end: { left: 1, right: 1 } }, leftArrow: { end: true } }),
     road({ id: "E-south", kind: "arterial", points: stroke(E, { x: 1250, y: 820 }), control: { start: "signal", end: "none" }, bays: { start: { left: 1 } }, leftArrow: { start: true } }),
   );
+  /* THE PLACES TO LOOK, as data: these were the view buttons hard-coded
+     into #/map, and now the map carries them like any test map. */
+  m.sections = [
+    { id: "crossroads", name: "the crossroads", look: { x: 400, y: 400 }, start: { road: "A-north", end: "end" }, judge: "Signals: who goes on the green, who waits, and left turns across oncoming traffic." },
+    { id: "tee", name: "the T", look: { x: 800, y: 400 }, judge: "A stop on the minor leg: drivers wait for a real gap in the through traffic." },
+    { id: "fiveway", name: "the five-way", look: { x: 400, y: 800 }, judge: "Five legs and stop signs: whose turn it is." },
+    { id: "arterial", name: "the arterial", look: { x: 1250, y: 400 }, judge: "Turn bays and protected left arrows: lefts leave from the bay, on their arrow." },
+    { id: "overpass", name: "the overpass", look: { x: 600, y: 800, z: 3 }, judge: "One road over another with no intersection: cars under it are drawn under it." },
+    { id: "hill", name: "the hill", look: { x: 600, y: 400, z: 3 }, judge: "A crest on the arterial." },
+  ];
   return m;
 }
 
@@ -144,3 +156,51 @@ export function testCity0() {
   );
   return m;
 }
+
+/* THE STAND-IN CITY, READY TO DRIVE: the blockout above with both
+   districts filled -- streets, buildings -- and a character each, the
+   west's people rolling their stops and the east's tailgating, so the
+   two can be told apart by watching. Its sections are chosen FROM the
+   generated map (a street in each district, a T where a neighbourhood
+   meets the arterial), not typed in as coordinates, so they stay true if
+   the generator changes. Still a stand-in for the maintainer's blockout. */
+export function testCityReady() {
+  let m = testCity0();
+  m = { ...m, id: "city0-ready", name: "Stand-in city, ready to drive", zones: m.zones.map((z) => ({ ...z, character: z.id === "west" ? "rolling-stops" : "tailgaters" })) };
+  for (const z of ["west", "east"]) m = fillZone(m, z).map;
+  for (const z of ["west", "east"]) m = fillLots(m, z).map;
+  const L = loadMap(m);
+  const mid = (r) => r.pts[Math.floor(r.pts.length / 2)];
+  const centre = (z) => { const p = m.zones.find((q) => q.id === z).polygon; return { x: p.reduce((s, q) => s + q.x, 0) / p.length, y: p.reduce((s, q) => s + q.y, 0) / p.length }; };
+  const nodeOf = new Map();
+  for (const n of L.nodes) for (const l of n.legs) nodeOf.set(`${l.road}|${l.end}`, n);
+  /* The generated street in a district nearest its middle that runs INTO
+     an intersection -- somewhere to watch and to start driving from. */
+  const streetIn = (z) => {
+    const c = centre(z);
+    return L.roads.filter((r) => r.id.startsWith(`${z}~`) && nodeOf.has(`${r.id}|end`))
+      .sort((a, b) => Math.hypot(mid(a).x - c.x, mid(a).y - c.y) - Math.hypot(mid(b).x - c.x, mid(b).y - c.y))[0];
+  };
+  const west = streetIn("west"), east = streetIn("east");
+  /* A T where a west street meets the northern arterial: left turns off
+     the arterial across oncoming traffic, where the rolling-stop bug was. */
+  const tee = L.nodes.filter((n) => n.legs.some((l) => l.road.startsWith("art-n")) && n.legs.some((l) => l.road.startsWith("west~")))
+    .sort((a, b) => Math.abs(a.at.x - 350) - Math.abs(b.at.x - 350))[0];
+  const teeArt = tee?.legs.find((l) => l.road.startsWith("art-n") && l.end === "end");
+  m.sections = [
+    west && { id: "west", name: "West streets: rolling stops", look: mid(west), start: { road: west.id, end: "end" }, judge: "Most people from here roll their stop signs. Watch the all-way stops: do they come to rest, or crawl through? Compare the east." },
+    east && { id: "east", name: "East streets: tailgaters", look: mid(east), start: { road: east.id, end: "end" }, judge: "Most people from here follow close. Do they visibly tailgate, compared with the west?" },
+    west && { id: "parked", name: "A parked street", look: mid(west), start: { road: west.id, end: "end" }, judge: "Parked cars in the strip; cars pull out and in at rest. Drive past close: can you clip one?" },
+    tee && { id: "tee", name: "Left turns off the arterial", look: tee.at, ...(teeArt ? { start: { road: teeArt.road, end: "end" } } : {}), judge: "Cars turning left off the arterial into the neighbourhood, across oncoming traffic. Do they wait for a real gap?" },
+    { id: "collector", name: "The collector on signals", look: { x: 700, y: 450 }, judge: "The collector between the districts, with streets joining it from both sides at the same points." },
+    { id: "whole", name: "Performance: the whole city", look: { x: 700, y: 450 }, judge: "Set Cars to 300 and watch: is it smooth on the phone, or does it stutter?" },
+  ].filter(Boolean);
+  return m;
+}
+
+/* THE TEST MAPS, for the Test maps screen: each builds its map on demand
+   (the city is generated, so it is built only when opened). */
+export const TEST_MAPS = [
+  { id: "city", name: "Stand-in city", blurb: "Two neighbourhoods with their own drivers, parked cars, buildings, an arterial loop and a collector on signals.", build: testCityReady },
+  { id: "test-1", name: "Test map 1", blurb: "The loop, the T, the crossroads, the five-way, the overpass and the big arterial.", build: testMap1 },
+];

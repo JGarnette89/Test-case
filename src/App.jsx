@@ -20,6 +20,7 @@ import Wheel from "./apps/Wheel.jsx";
 import MapRoad from "./apps/MapRoad.jsx";
 import Editor from "./apps/Editor.jsx";
 import ExamRide from "./apps/ExamRide.jsx";
+import TestMaps from "./apps/TestMaps.jsx";
 import ErrorBoundary from "./apps/ErrorBoundary.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
 import SimCandidates from "./apps/SimCandidates.jsx";
@@ -66,6 +67,17 @@ const FONT_U = "'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
    replaces loses it.
    ===================================================================== */
 const MODES = [
+  {
+    id: "tests",
+    live: true,
+    name: "Test maps",
+    kicker: "Live — start here to test",
+    blurb:
+      "Every test map and its named sections: watch the traffic at a section, or drive into it, each with one line on what to judge. No drawing needed.",
+    Icon: Milestone,
+    accent: C.green,
+    Component: TestMaps,
+  },
   {
     id: "map",
     live: true,
