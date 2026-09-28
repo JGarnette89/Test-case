@@ -60,6 +60,10 @@ export function emptyMap(id = "untitled", name = "Untitled") {
    convention every heading here uses), and l/w/h override the kind's
    own size. The kinds are blockout sizes, not architecture: a house on
    a residential lot, a strip-mall shop, a mid-rise block. */
+/* A parallel-parking strip's width beside the curb lane: 2.4 m, eight feet,
+   the North American standard. */
+export const PARK_W = 2.4;
+
 export const PROP_KINDS = {
   house: { l: 12, w: 9, h: 7 },
   shop: { l: 22, w: 16, h: 5 },

@@ -44,6 +44,7 @@ import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel } from "./corner.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
+import { parkingOf, initialParked } from "./parking.js";
 import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
 
 /* =====================================================================
@@ -678,6 +679,7 @@ export function whatStops(me, world) {
    and decide from the PREVIOUS committed state, integrate, commit.
    ===================================================================== */
 export function step(world) {
+  const parkedNow = [];   // cars that pulled into a slot this tick (parking.js)
   const next = world.actors
     .map((raw) => {
       /* A PLAYER AT THE WHEEL is an actor everybody else perceives,
@@ -794,7 +796,10 @@ export function step(world) {
       /* HOME: at rest where they meant to pull in, and gone. Never while
          moving -- a car vanishing at speed is a state nothing could
          honestly draw. */
-      if (me.leaveAt != null && !me.player && !me.candidate && me.v < 0.3 && me.s >= me.leaveAt - CAR.length - 3) return null;
+      if (me.leaveAt != null && !me.player && !me.candidate && me.v < 0.3 && me.s >= me.leaveAt - CAR.length - 3) {
+        if (me.parkSlot) parkedNow.push(me);
+        return null;
+      }
       if (!me || me.player || me.s <= pathOf(world, me).length) return me;
       let wanted = null;
       const on = nextFor(world.course, me.k ?? 0, me.route, (k, side) => { const w = wantFor(world, me, k, side); wanted = w.want; return w.route; });
@@ -814,14 +819,23 @@ export function step(world) {
          a place to pull in far enough ahead to stop for comfortably and
          well short of the next line. */
       const legNow = (me.leg ?? 0) + 1;
-      let leaveAt = null;
+      let leaveAt = null, parkSlot = null;
       if (!me.candidate && me.tripLen != null && legNow >= me.tripLen && isDistrictSide(world.course, on.k, world.course.at[on.k].layout.paths[on.route]?.from)) {
         const p = world.course.at[on.k].layout.paths[on.route];
         const lo = Math.max(15, stoppingRoom(me.v) + 10), hi = p.stopAt - 30;
-        if (hi > lo) leaveAt = lo + rng(world.seed * 6151 + (me.n ?? 0) * 31 + legNow)() * (hi - lo);
+        const pick = rng(world.seed * 6151 + (me.n ?? 0) * 31 + legNow);
+        const lane = parkingOf(world.course).byLane.get(p.laneIn.id);
+        if (lane) {
+          /* INTO A FREE SLOT: nobody parked there, nobody already heading
+             for it, far enough ahead to stop for and short of the line. On
+             a street with no free slot they drive on and try the next. */
+          const taken = new Set(atNode(world, world.actors, on.k).map((a) => a.parkSlot).filter(Boolean));
+          const free = lane.filter((sl) => !world.parked?.[sl.key] && !taken.has(sl.key) && sl.along - p.laneIn.at0 >= lo && sl.along - p.laneIn.at0 <= hi);
+          if (free.length) { const sl = free[Math.floor(pick() * free.length) % free.length]; leaveAt = sl.along - p.laneIn.at0; parkSlot = sl.key; }
+        } else if (hi > lo && !parkingOf(world.course).slots.length) leaveAt = lo + pick() * (hi - lo);   // a map with no parking at all: in the lane, as before
       }
       return {
-        ...me, k: on.k, route: on.route, s: 0, leaveAt,
+        ...me, k: on.k, route: on.route, s: 0, leaveAt, parkSlot,
         ...(posted == null ? {} : { v0: wantedSpeed(posted, me.caution) }),
         /* How many intersections they have been through, which is what a
            plan is indexed by and what a section of a drive is counted
@@ -838,6 +852,7 @@ export function step(world) {
 
   const t = world.t + DT;
   let { spawned, nextAt, turnedAway = 0 } = world;
+  let lastJoin = null;
   /* A POPULATION RATHER THAN A RATE, when the world is given one. The
      maintainer asked for "a way for me to directly determine how many
      cars are in the map", and a spawn interval does not say that: the
@@ -856,6 +871,7 @@ export function step(world) {
     const fromDistrict = topUp && districtStreetsOf(world.course).length > 0 && rng(world.seed * 92821 + spawned + 1)() < districtShare(world.course);
     const car = fromDistrict ? null : arriving(world, spawned);
     const joining = fromDistrict ? pullingOut(world, spawned, next) : car && joinAt(world, next, car);
+    lastJoin = joining;
     if (joining) {
       next.push(joining);
       spawned += 1;
@@ -886,10 +902,18 @@ export function step(world) {
   }
   /* What the world remembers of itself, for drivers who perceive it
      late. Only with perception on: a world without it keeps nothing. */
+  /* WHO IS PARKED NOW: the cars that pulled in, and not the one that
+     pulled out. A new object only when something changed. */
+  let parked = world.parked;
+  if (parkedNow.length || lastJoin?.fromSlot) {
+    parked = { ...parked };
+    for (const me of parkedNow) parked[me.parkSlot] = { n: me.n, colour: me.colour };
+    if (lastJoin?.fromSlot) delete parked[lastJoin.fromSlot];
+  }
   const past = world.road.perceive
     ? [world.actors, ...(world.past ?? [])].slice(0, LAG_TICKS)
     : world.past;
-  return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(past ? { past } : {}) };
+  return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(past ? { past } : {}) };
 }
 
 /* JOINING THE ROAD, AT THE SPEED THE ROAD IS DOING.
@@ -1175,7 +1199,18 @@ function pullingOut(world, n, actors) {
   const path = world.course.at[at.k].layout.paths[chosen.route];
   const lo = 15, hi = path.stopAt - 40;
   if (hi <= lo) return null;
-  const s = lo + r() * (hi - lo);
+  /* FROM A PARKED CAR, where the street has parking: somebody who was
+     parked there is the one who leaves, and their slot empties. With
+     nobody parked on this street there is nobody to leave. */
+  const lane = parkingOf(world.course).byLane.get(path.laneIn.id);
+  let s, fromSlot = null;
+  if (lane) {
+    const full = lane.filter((sl) => world.parked?.[sl.key] && sl.along - path.laneIn.at0 >= lo && sl.along - path.laneIn.at0 <= hi);
+    if (!full.length) return null;
+    const sl = full[Math.floor(r() * full.length) % full.length];
+    s = sl.along - path.laneIn.at0; fromSlot = sl.key;
+  } else if (parkingOf(world.course).slots.length) return null;   // a map with parking: nobody comes from nowhere
+  else s = lo + r() * (hi - lo);
   const posted = world.road.posted ? postedAt(world.course, at.k, chosen.route) : null;
   const base = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
   const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6) };
@@ -1188,7 +1223,7 @@ function pullingOut(world, n, actors) {
     n, k: at.k, route: chosen.route, ...(chosen.want ? { want: chosen.want } : {}),
     leg: 0, s, v: 0,
     stoppedAt: null, going: false, accepted: false, openFor: 0, openedAt: null, waited: 0, delayed: false,
-    arriveIn: world.every, tripLen: tripLenFor(world, n), fromCurb: true,
+    arriveIn: world.every, tripLen: tripLenFor(world, n), fromCurb: true, ...(fromSlot ? { fromSlot } : {}),
   };
   const mine = laneSpan(world.course, at.k, chosen.route, s)[0];
   for (const a of actors) {
@@ -1337,6 +1372,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
   const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, spawned: 0, nextAt: 0, actors: [] };
+  if (parkingOf(course).slots.length) w.parked = initialParked(course, seed);
   /* Long enough for a car to have crossed the longest road twice: the
      sum of every road would be an upper bound and cost six seconds of
      seeding on a desktop for a kilometre-square map, which on a phone

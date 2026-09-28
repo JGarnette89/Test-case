@@ -30,6 +30,10 @@ import { testMap1 } from "../src/map/samples.js";
 import { composeDriver, AXES, WEAK_AXES, WEAK_RANGE, SOUND_RANGE, WEAK_DEVIATION, SOUND_DEVIATION, CONFIDENT_ENOUGH, lackingIn } from "../src/core/driver.js";
 import { rng } from "../src/core/rng.js";
 import { TOWNS, townOf } from "../src/sim/towns.js";
+import { parkingOf, parkedPoses, contactWith, PARK_CLEAR, SLOT } from "../src/sim/parking.js";
+import { touching } from "../src/sim/player.js";
+import { PARK_W, LANE } from "../src/map/format.js";
+import { poseOf } from "../src/sim/crossing.js";
 import { CHARACTERS } from "../src/map/format.js";
 
 let failed = 0;
@@ -200,7 +204,7 @@ console.log("\n8. BUILDINGS ALONG THE FRONTAGES");
     const lot = LOTS[zones[zoneOfId[p.id]].kind];
     const fronts = lm.roads.some((r) => {
       if (lot.backs.includes(r.kind)) return false;
-      const want = r.width / 2 + lot.yard + p.w / 2;
+      const want = (r.outer ?? r.width) / 2 + lot.yard + p.w / 2;   // from the drawn edge: behind the parking strip where there is one
       for (let i = 0; i + 1 < r.pts.length; i++) {
         const a = r.pts[i], b = r.pts[i + 1], L2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
         const f = Math.max(0, Math.min(1, ((p.at.x - a.x) * (b.x - a.x) + (p.at.y - a.y) * (b.y - a.y)) / L2));
@@ -331,6 +335,63 @@ console.log("\n11. THE NEIGHBOUR INDEX CHANGES NOTHING BUT THE COST");
   const time = (loaded, cars, noIndex) => { let w = { ...seedGraph(3, 60, loaded, { target: cars, posted: true }), noIndex }; const t0 = performance.now(); for (let i = 0; i < 200; i++) w = step(w); return (performance.now() - t0) / 200; };
   const slow = time(L, 300, true), fast = time(L, 300, false);
   check(fast < slow / 3, `and it is what makes a city affordable: ${fast.toFixed(2)} ms a step at 300 cars against ${slow.toFixed(2)} ms scanning everybody`);
+}
+
+console.log("\n12. PARKED CARS: A STRIP, SLOTS, AND THE SAME PEOPLE ALL DAY");
+{
+  let m = city;
+  for (const z of ["west", "east"]) m = fillLots(m, z).map;
+  const closed = { ...m, roads: m.roads.filter((r) => !r.id.startsWith("out-")) };
+  const lc = loadMap(closed);
+  let w = seedGraph(4, 60, lc, { target: 120, posted: true });
+  const P0 = parkingOf(w.course);
+  const lanes = w.course.lanes;
+  /* Where the slots are: beside the curb lane, on the drawn surface, off
+     every lane, clear of both ends. */
+  const off = (sl) => { const L = lanes[sl.lane]; let best = Infinity; for (let i = 0; i + 1 < L.pts.length; i++) { const a = L.pts[i], b = L.pts[i + 1], L2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2, f = Math.max(0, Math.min(1, ((sl.x - a.x) * (b.x - a.x) + (sl.y - a.y) * (b.y - a.y)) / L2)); best = Math.min(best, Math.hypot(sl.x - a.x - (b.x - a.x) * f, sl.y - a.y - (b.y - a.y) * f)); } return best; };
+  const want = LANE / 2 + PARK_W / 2;
+  check(P0.slots.length > 200 && P0.slots.every((sl) => Math.abs(off(sl) - want) < 0.3) && P0.slots.every((sl) => sl.along >= PARK_CLEAR && sl.along <= lanes[sl.lane].length - PARK_CLEAR),
+    `${P0.slots.length} slots, every one ${want.toFixed(1)} m out from its curb lane's centre -- in the strip, off the lane -- and ${PARK_CLEAR} m clear of each end`);
+  const box = (f, l, wd) => { const t = (f.heading * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t); return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => ({ x: f.x + (u * l / 2) * c - (v * wd / 2) * s, y: f.y + (u * l / 2) * s + (v * wd / 2) * c })); };
+  const sep = (A, B) => { for (const poly of [A, B]) for (let i = 0; i < 4; i++) { const p = poly[i], q = poly[(i + 1) % 4], n = { x: q.y - p.y, y: p.x - q.x }; const pa = A.map((v) => v.x * n.x + v.y * n.y), pb = B.map((v) => v.x * n.x + v.y * n.y); if (Math.max(...pa) <= Math.min(...pb) || Math.max(...pb) <= Math.min(...pa)) return true; } return false; };
+  let onBuilding = 0;
+  for (const sl of P0.slots) for (const b of lc.props) if (Math.hypot(b.at.x - sl.x, b.at.y - sl.y) < 40 && !sep(box(sl, SLOT, PARK_W), box({ x: b.at.x, y: b.at.y, heading: b.heading }, b.l, b.w))) onBuilding++;
+  check(onBuilding === 0, `and no building stands on one (${onBuilding})`);
+
+  /* The closed city for two minutes: the same people all day. */
+  const people = (x) => x.actors.length + Object.keys(x.parked ?? {}).length;
+  const start = people(w);
+  let drift = 0, into = 0, outOf = 0, intoTaken = 0, outOfEmpty = 0, over = 0;
+  for (let i = 0; i < 2400; i++) {
+    const before = w;
+    w = step(w);
+    if (people(w) !== start) drift++;
+    const ids = new Set(w.actors.map((a) => a.id));
+    for (const a of before.actors) if (!ids.has(a.id) && a.parkSlot) { into++; if (before.parked?.[a.parkSlot]) intoTaken++; }
+    for (const a of w.actors) if (a.fromSlot && !before.actors.some((b) => b.id === a.id)) { outOf++; if (!before.parked?.[a.fromSlot] || w.parked?.[a.fromSlot]) outOfEmpty++; }
+    if (i % 10 === 0) {
+      const parked = parkedPoses(w.course, w.parked);
+      for (const a of w.actors) { const p = poseOf(w, a); const me = { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot }; if (parked.some((q) => Math.abs(q.x - me.x) < 8 && Math.abs(q.y - me.y) < 8 && touching(me, q))) over++; }
+    }
+  }
+  check(drift === 0, `cars driving plus cars parked stays ${start} for two minutes on a closed city (${drift} ticks it did not)`);
+  check(into > 20 && intoTaken === 0, `${into} cars pulled into a slot, every one free when they took it`);
+  check(outOf > 20 && outOfEmpty === 0, `${outOf} pulled out of a slot, every one full before and empty after`);
+  check(over === 0, `and no moving car ever touched a parked one (${over})`);
+
+  /* A map with parking and no districts: the parked cars sit there and the
+     traffic is exactly what it was without them. */
+  const t1 = loadMap(testMap1());
+  let a = seedGraph(1, 50, t1, { target: 80, posted: true }), b = { ...a, parked: undefined };
+  let same = true;
+  for (let i = 0; i < 1200 && same; i++) { a = step(a); b = step(b); same = JSON.stringify(a.actors) === JSON.stringify(b.actors); }
+  check(same && Object.keys(a.parked ?? {}).length > 0, `on the test map (${Object.keys(a.parked ?? {}).length} parked, no districts) the traffic is identical with the parked cars and without`);
+
+  /* The player can hit one; the lane beside it is clear. */
+  const sl = parkedPoses(w.course, w.parked)[0], L = lanes[P0.byKey.get(sl.id.slice("parked-".length)).lane];
+  const onIt = { x: sl.x, y: sl.y, z: sl.z, heading: sl.heading };
+  const inLane = (() => { let best = null, bd = Infinity; for (const q of L.pts) { const d = Math.hypot(q.x - sl.x, q.y - sl.y); if (d < bd) { bd = d; best = q; } } return { x: best.x, y: best.y, z: best.z ?? 0, heading: sl.heading }; })();
+  check(!!contactWith(w.course, w.parked, onIt, touching) && !contactWith(w.course, w.parked, inLane, touching), "a car on a parked car's spot touches it; a car in the lane beside it does not");
 }
 
 console.log(`\n${"=".repeat(70)}`);

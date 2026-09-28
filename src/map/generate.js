@@ -357,7 +357,7 @@ export function fillLots(map, zoneId) {
   let n = 0;
   for (const road of loaded.roads) {
     if (lot.backs.includes(road.kind)) continue;
-    const half = road.width / 2;
+    const half = (road.outer ?? road.width) / 2;   // behind the parking strip, where there is one
     const corner = half + size.l / 2 + CAR.length + LANE * 2;   // keep the box, the stop line and a car length clear
     for (let s = size.l / 2; s + size.l / 2 <= road.length; s += lot.frontage) {
       const i = Math.min(road.pts.length - 2, Math.floor(s / road.step));

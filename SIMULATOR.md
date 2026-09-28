@@ -2463,6 +2463,28 @@ against 0.69 s. `TOWN_PULL` = 6 is a flagged design constant. Not
 expressible yet, and absent from the list: "nobody is looking" (needs
 perception on) and "nobody signals" (the driver model has no signals).
 
+**5.3, PARKED CARS -- BUILT, 28 September** (`sim/parking.js`; the
+loader's `outer` width). A two-way residential street -- `parking:
+"parallel"` in the format, which nothing used before -- now has a 2.4 m
+strip beside each curb lane, drawn as road; the lanes and everything the
+traffic drives by are unchanged (`width` stays the carriageway), and
+buildings set back behind the strip. Slots of 6.5 m are pinned to the
+curb lane at a distance along it -- the coordinate a car's own position
+on that lane is measured in, so the slot beside a car is arithmetic --
+and kept 15 m clear of each intersection's centre (the maintainer
+confirmed the distance). The world starts with slots part-filled by the
+district's density. A car pulls out of a FULL slot, which empties; a car
+at the end of its trip picks a FREE slot nobody is heading for and takes
+it. On a map with parking nobody comes from nowhere: the old in-lane
+appearance survives only on maps with no parking at all. Measured on the
+closed stand-in city: cars driving plus cars parked stay exactly 1,918
+for two minutes, 27 in and 59 out, nobody touching a parked car. The
+player's car can hit one (MapRoad's contact test includes them). On a
+map with parking and no districts the parked cars are scenery and the
+traffic is identical with or without them. Still absent: pulling in and
+out is a sideways step of 3 m at rest, not a manoeuvre, and there are no
+driveways.
+
 **5.5, THE NEIGHBOUR INDEX -- BUILT, 28 September** (`nearNode` /
 `atNode` in `crossing.js`, `tools/measure/city-perf.mjs`). Measured
 first: on the stand-in city every car asked every other car about

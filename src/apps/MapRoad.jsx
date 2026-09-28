@@ -31,6 +31,7 @@ import { seedGraph, step, poseOf, DT } from "../sim/crossing.js";
 import { playerOn, stepDriver, driverPose, withDriver, aheadOf } from "../sim/drive.js";
 import { junctionsOf, postedAt } from "../sim/graph.js";
 import { touching } from "../sim/player.js";
+import { parkedPoses, contactWith } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
@@ -110,7 +111,9 @@ export function sceneFor(seed, kmh, every, drive, cars = CARS.start, rawMap = nu
    colour. */
 export function actorsOf(scene, carry) {
   const w = scene.world;
-  const out = [];
+  /* Parked cars first: they are part of the world the traffic drives past
+     and the player can hit (sim/parking.js). */
+  const out = w.parked ? parkedPoses(w.course, w.parked) : [];
   for (const a of w.actors) {
     if (a.player) {
       const p = driverPose({ ...a, s: a.s + a.v * carry }, w.course);
@@ -235,6 +238,8 @@ export default function MapRoad({ mapData = null, startAt = null } = {}) {
               const p = poseOf(w, a);
               if (touching(mine, { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot })) hit = true;
             }
+            /* A parked car is as solid as a moving one. */
+            if (!hit && w.parked && contactWith(w.course, w.parked, mine, touching)) hit = true;
             if (hit) { contacts.current++; flash.current = 1; setStopped(true); break; }
           }
         }
