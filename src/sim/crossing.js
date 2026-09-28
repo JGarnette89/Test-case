@@ -635,10 +635,20 @@ export function step(world) {
          its unloaded self, and the load is re-read every tick. */
       const me = underLoad(raw, world.road);
       const view = whatStops(me, world);
+      /* THE EXAMINER'S HAND (exam.js), on the one car that carries it.
+         `ease` is being TOLD to slow: the candidate wants less speed and
+         sheds it at their OWN braking rate (`brake`, the braking axis) --
+         dropping the wanted speed alone made the following model stand
+         on the brakes at its ceiling, which is not what "slow down,
+         please" gets from anybody. Whatever the traffic demands is still
+         the traffic's. `dual` is the instructor's brake, which is not
+         theirs at all. Read from `raw`, never written back. */
+      const own = decide(me, view);
+      const told = raw.ease ? Math.min(own, Math.max(decide({ ...me, v0: me.v0 * (1 - raw.ease) }, view), -(me.brake ?? 2.7))) : own;
       /* THE CORNER (corner.js): on a map, a turning path slows the car to
          the speed this driver takes it at, through the same following
          model. The real `view` still decides right of way below. */
-      const a = Math.min(decide(me, view), world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity);
+      const a = Math.min(told, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity);
       const v = Math.max(0, me.v + a * DT);
       const s = me.s + v * DT;
       const mine = pathOf(world, me);
@@ -911,14 +921,17 @@ function routeFor(world, me, k, side) {
 
    Without lane changes, or on the compass, the old choice: among the
    routes out of the lane arrived in. */
-function wantFor(world, me, k, side) {
+/* `told`, when given, is the intent to aim for in place of the plan --
+   an examiner's direction arriving on the approach itself (exam.js),
+   after the route was chosen at the seam. */
+export function wantFor(world, me, k, side, told = null) {
   const layout = world.course.at[k].layout;
   const routes = layout.routesFrom(side);
   const lanesMove = !!world.course.graph && world.laneChanges !== false && layout.legs[side]?.base != null;
   const exitOf = (r) => layout.legs[layout.paths[r].to]?.base ?? layout.paths[r].to;
   if (!lanesMove) {
-    if (me.plan) {
-      const want = me.plan[(me.leg ?? 0) + 1] ?? "straight";
+    if (told || me.plan) {
+      const want = told ?? me.plan[(me.leg ?? 0) + 1] ?? "straight";
       return { route: routes.find((r) => layout.paths[r].intent === want) ?? routes.find((r) => layout.paths[r].intent === "straight") ?? routes[0], want: null };
     }
     const r = rng(world.seed * 96181 + (me.n ?? 0) * 7919 + k + 1);
@@ -928,8 +941,8 @@ function wantFor(world, me, k, side) {
   const all = Object.keys(layout.paths).filter((r) => layout.legs[layout.paths[r].from]?.base === base);
   const exits = [...new Set(all.map(exitOf))];
   let target;
-  if (me.plan) {
-    const intent = me.plan[(me.leg ?? 0) + 1] ?? "straight";
+  if (told || me.plan) {
+    const intent = told ?? me.plan[(me.leg ?? 0) + 1] ?? "straight";
     target = exitOf(all.find((r) => layout.paths[r].intent === intent) ?? all.find((r) => layout.paths[r].intent === "straight") ?? all[0]);
   } else {
     const r = rng(world.seed * 96181 + (me.n ?? 0) * 7919 + k + 1);

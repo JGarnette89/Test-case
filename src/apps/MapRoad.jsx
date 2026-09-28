@@ -42,7 +42,7 @@ import { loadSettings, setSetting } from "../settings.js";
 const LIMITS = [40, 50, 60];
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
 const DPR_CAP = 2;
-const START = { road: "A-north", end: "end" };   // the player begins at the map's north edge, driving down to the crossroads
+export const START = { road: "A-north", end: "end" };   // the player begins at the map's north edge, driving down to the crossroads
 
 /* The scene for one map: roads with their ribbons from the loader, the
    land the roads imply (load.js `groundFor` -- a map carries no terrain
@@ -67,7 +67,7 @@ export const CARS = { min: 10, max: 300, step: 10, start: 120 };
    map, the player starts at the first edge `loadMap` finds
    (`map/edges.js` -- a plain module, not this one, so a headless check
    can ask the same question without Node trying to parse JSX). */
-function sceneFor(seed, kmh, every, drive, cars = CARS.start, rawMap = null, startAt = null) {
+export function sceneFor(seed, kmh, every, drive, cars = CARS.start, rawMap = null, startAt = null) {
   const loaded = loadMap(rawMap ?? testMap1());
   if (!loaded.ok) throw new Error(`${rawMap ? "map" : "test map"}: ${loaded.error}`);
   const b = loaded.bounds;
@@ -108,7 +108,7 @@ function sceneFor(seed, kmh, every, drive, cars = CARS.start, rawMap = null, sta
 /* Where every car is, carried forward by the time since the last
    tick, as poses the renderer draws directly; the player in their own
    colour. */
-function actorsOf(scene, carry) {
+export function actorsOf(scene, carry) {
   const w = scene.world;
   const out = [];
   for (const a of w.actors) {

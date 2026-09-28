@@ -2259,9 +2259,73 @@ to ask on a test map. It is NOT here because it is the priority; the
 priority is stages 4 and 5, and if this stage ever competes with them
 for time it yields.
 
+**WHY IT GOES BEFORE THE CITY, 27 September -- and the reason is
+sharper than "it is shorter".** The city is three to four weeks whose
+value depends on the game being worth playing, and the thing this
+project is ultimately for -- riding along, giving directions, catching
+faults -- has never been tested. The maintainer knows from doing the
+real job that it is interesting; what has never been established is
+whether what has been built CONVEYS it. Building a world for three
+weeks before finding out whether the thing you do in it is enjoyable is
+exactly the mistake that cost the first engine. The rule above that
+this stage yields when it competes with the driving does not apply,
+because it does not compete: days against weeks, and the editor
+question is his to answer in parallel, by using it. Stage 5 follows
+straight after, without waiting.
+
+**The guard on it: do not let it grow.** It is the reinterpretation of
+controls that already exist, not a new system. The moment the work
+turns into building assessment machinery rather than reinterpreting
+controls, stop and say so -- that is the failure this ordering exists
+to avoid.
+
 *Deliverable:* `#/exam?id=test-1`: ride with a rated candidate on the
 stage 2 map, give directions with the turn control, intervene with the
 slider, get a sheet.
+
+**BUILT, ROUGH ON PURPOSE, 27 September** -- `#/exam`, `src/sim/exam.js`,
+`src/apps/ExamRide.jsx`, `tools/verify-exam.mjs`. The dial's last
+position, and nothing new decides anything: the candidate is an
+ordinary sim driver built from one of the six named profiles, put where
+the player starts on the test map, carrying straight on at every
+intersection unless told otherwise.
+
+- **The turn taps give the direction.** In time, it is the route at the
+  intersection ahead -- the same mid-approach route switch the player's
+  own signal makes, through the same lane-change `want` when their lane
+  does not make the turn (`wantFor` in crossing.js, now taking a told
+  intent). Too late to slow for the corner and they carry on as they
+  were: "too late" is the corner model's own arithmetic, the braking to
+  reach THEIR corner speed before the arc against `HARSH_AT`, the sim's
+  boundary for a controlled stop. Measured, it lands 17 m before the arc
+  at 50 km/h on a free-flowing T; nothing was chosen. Past the line, it
+  is for the next intersection.
+- **The slider's lower half is the examiner's hand.** Easing down tells
+  them to slow: they want less speed (down to a tenth, graduated) and
+  shed it at their OWN braking rate. The last tenth of the travel is the
+  instructor's brake, the car's full 7.5 m/s^2. The upper half does
+  nothing; the examiner has no throttle. It springs back when let go.
+- **A finding, caught by the check:** "slow down" first produced 8.0
+  m/s^2, the model's emergency ceiling, because dropping a driver's
+  wanted speed abruptly makes the following model brake as hard as it
+  is allowed. Nobody slows like that because they were asked. Capped at
+  the candidate's own `brake`, so a heavy-footed candidate obeys "slow
+  down" in their own way too (verify-exam section 5).
+
+**What it deliberately does not have** -- and the reason the sheet is
+absent is structural, not time: `marking.js` imports the old engine's
+grader (`detect.js`, `faults.js`), and a live screen may never reach
+`src/engine/` (verify-core). Bringing the sheet back means moving that
+grader into `src/core/` first, which is assessment work; this stage
+exists to find out whether the ride is worth assessing before that is
+built. Also absent: taking back a direction once given, saying
+"straight on" (silence is), any record of interventions, the
+candidate's visible signal and head checks, any map but the test map.
+The screen says all of this to the person riding, so a known gap is not
+reported as a fault.
+
+**The question for the maintainer**, unchanged: does it feel like
+examining?
 *The question:* does the reinterpretation feel like examining, or like
 a driving game with the wheel taken away?
 *Cost:* days.

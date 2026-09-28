@@ -19,6 +19,7 @@ import IsoRoad from "./apps/IsoRoad.jsx";
 import Wheel from "./apps/Wheel.jsx";
 import MapRoad from "./apps/MapRoad.jsx";
 import Editor from "./apps/Editor.jsx";
+import ExamRide from "./apps/ExamRide.jsx";
 import ErrorBoundary from "./apps/ErrorBoundary.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
 import SimCandidates from "./apps/SimCandidates.jsx";
@@ -86,6 +87,17 @@ const MODES = [
     Icon: Milestone,
     accent: C.green,
     Component: Editor,
+  },
+  {
+    id: "exam",
+    live: true,
+    name: "Ride with a candidate",
+    kicker: "Live, rough — stage 3: the exam mode",
+    blurb:
+      "The test map from the passenger seat. A candidate drives; you give the directions with the turn taps and keep a hand on the slider -- ease it down to tell them to slow, push it to the bottom for the instructor's brake. No marking or sheet yet: the one question is whether it feels like examining.",
+    Icon: Milestone,
+    accent: C.blue,
+    Component: ExamRide,
   },
   {
     id: "wheel",

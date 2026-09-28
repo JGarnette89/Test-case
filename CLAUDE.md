@@ -214,7 +214,8 @@ Eight things to know before your first change:
    | `src/sim/drive.js`, `src/sim/player.js`, `src/iso/hud.js`, `src/iso/controls.js` | `verify-drive`, `verify-wheel`, `verify-screens` | ~10s |
    | `src/iso/chase.js`, `src/iso/project.js`, `src/iso/draw.js` | `verify-paint` FIRST (the painter's order, every rotation), `verify-chase`, `verify-perf`, `verify-wheel`, `verify-screens` | ~40s |
    | `src/sim/traffic.js` | the `src/sim/` five, plus `verify-wheel` (the player rides its step) | ~3m |
-   | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens` | ~100s |
+   | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens`, `-exam` (exam.js rides on crossing, drive, graph, corner and the candidate profiles) | ~100s |
+   | `src/sim/exam.js`, `src/apps/ExamRide.jsx` | `verify-exam` FIRST, then `verify-screens` (renders `#/exam`) and `verify-core` (a live screen) | ~10s |
    | `src/core/*` | `verify-core` FIRST, then the full suite: the engine re-exports core and the sim imports it, so both sides can move | 18m |
    | `src/frame.js` | `-screens`, `-camera`, `-clearance`, `-events`, `-world` | ~5m |
    | `src/engine/detect.js` | `-detect`, `-faults`, `-outcome`, `-course` | ~2m |
@@ -1674,6 +1675,7 @@ src/sim/signal.js        traffic signals: phases derived from the geometry, and 
 src/sim/lanechange.js    lane changes: confidence decides whether and how tight, observation whether the gap was seen, steering how cleanly; the change a turn needs, made or missed; and keeping right, knowledge's, with its exceptions
 src/sim/corner.js        the traffic slows for corners: the player's own cornering limit on each arc, scaled by confidence, braked for at the driver's own rate
 src/sim/lanes.js         permitted movements per lane (the maintainer's general rule, overridable per road end) and connectivity: every lane must land, or the map is refused
+src/sim/exam.js          STAGE 3, the exam mode as a reinterpretation: a candidate drives, the turn taps give the direction, the slider's lower half is your hand
 src/sim/drive.js         the player on the map: the turn signal as the turn commit, lane changes by drifting
 src/sim/player.js        the car under the player's two controls: pedal, wheel, grip, contact
 src/map/format.js        the map format: roads as strokes in metres, KINDS with lanes per direction, chunks
@@ -1698,6 +1700,7 @@ src/settings.js          the player's settings, through the storage adapter
 src/copy.js              copy to the clipboard over plain HTTP: clipboard, execCommand, then select
 src/apps/MapRoad.jsx     STAGE 1 (#/map): drive the test map in traffic, or watch it -- and, given a `mapData` prop, whatever map the editor built
 src/apps/Editor.jsx      STAGE 2 (#/editor): draw roads and zones, set kinds/lanes/speed/elevation/control, validate, save, Drive it
+src/apps/ExamRide.jsx    STAGE 3 (#/exam): ride with a candidate on the test map -- rough on purpose, no sheet
 src/apps/Wheel.jsx       the wheel screen (#/wheel): the controls on stage 0's roads
 src/apps/IsoRoad.jsx     stage 0 (#/iso): the isometric world and the budget sweep
 src/theme.js             palette and type — the engine must never import this
@@ -2059,10 +2062,11 @@ node tools/verify-bays.mjs          turn bays: a lane lies on its neighbour unti
 node tools/verify-equivalence.mjs  nothing moved that was not meant to
 node tools/verify-core.mjs         the live screens stand on src/core/ alone: core imports nothing outside itself, no live screen reaches the engine, no core name is declared twice
 node tools/verify-editor.mjs       the editor: the draft IS the map format, a hand-written map replayed through it round-trips exactly, snap preview finds an end and only an end, nothing drawn however badly can throw validation, Drive it is the real pipeline run headlessly, an overpass is authorable and distinguishable from a refused tight crossing, the map library never collides on id or leaves a stale entry openable, pinch and zoom keep the world under the fingers, an arterial drawn through the approach controls (signal, bays, arrow) comes out with bay legs, protected lefts, and traffic that runs clean, and a T, a made crossroads and a hump-made overpass all come out as the loader should see them, validation runs the graph without its conflict table (the editor validates on every tap) and still agrees with the full graph on every node and leg, and a road tapped as right angles comes out faster once smoothed, with its ends unmoved, and a map with no intersection at all still has somewhere to start driving, and the lane arrows show what the graph applies and write the format's own per-end override, and a building faces its street, keeps off the road (the loader drops one that does not), and still drives, and undo takes one intention per step and loses nothing going back and forth
+node tools/verify-exam.mjs         stage 3, the exam mode: silence is straight on, a direction in time is taken, a late one is not by the corner's own arithmetic, past the line it is for the next, easing slows them by their own braking and the bottom of the slider is the instructor's brake, and with no hand on them nothing changes
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All forty must exit 0 **before a commit**. Between commits, run
+All forty-two must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:
@@ -2538,6 +2542,16 @@ invisible to the encroachment fault because it only ever watches priors — in
   on it" — this is what that costs when nobody does. Open the page after
   touching a component: a build passing is not a screen rendering.
 - The timing renderer is the only one. 3D is the agreed direction, not started.
+- **Two editor limits, known and deliberately left (27 September).**
+  Neither needs fixing yet; both are written here so they are not lost.
+  (1) **Buildings do not block anybody's sight.** They are drawn and
+  kept off the road, but nothing in the sim models sight at all yet, so
+  a building on a corner hides nothing from the traffic or a candidate.
+  It lands with sight in the sim. (2) **A building under an overpass
+  counts as on the road**: the loader's test (`standsOn` in
+  `map/load.js`) is plan-only, so a footprint under a deck is dropped as
+  if it stood on the carriageway. It lands when buildings can be
+  elevated or the test compares heights. SIMULATOR.md section 4.
 - **Every screen ships to the phone whether it is on the menu or not.**
   `App.jsx` imports all of them statically, so the one bundle is 568 KB
   (186 KB gzipped) to show two live screens, measured 24 September.
