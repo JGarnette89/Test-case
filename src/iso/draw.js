@@ -358,10 +358,16 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const face = isLight ? null : boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
       /* The ALL-WAY plate: a white tab under the octagon (graph.js). */
       /* NO LEFT TURN: a white face crossed by a red band -- a map symbol. */
-      const band = s.kind === "no-left-turn" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 2.08 }, s.heading + 90, 0, { l: 0.95, w: 0.14, h: 0.14 }) : null;
+      /* ONE WAY: a black board along the road with a white bar (graph.js
+         derives it from the road's `oneWay`); DO NOT ENTER: red, white bar. */
+      const oneWay = s.kind === "one-way" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.9 }, s.heading + 90, 0, { l: 1.3, w: 0.1, h: 0.45 }) : null;
+      const oneWayBar = s.kind === "one-way" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 2.06 }, s.heading + 90, 0, { l: 1.0, w: 0.14, h: 0.12 }) : null;
+      const band = s.kind === "no-left-turn" || s.kind === "do-not-enter" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 2.08 }, s.heading + 90, 0, { l: 0.95, w: 0.14, h: 0.14 }) : null;
       const plate = s.allWay ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.3 }, s.heading + 90, 0, { l: 0.7, w: 0.1, h: 0.3 }) : null;
       items.push({ layer: 1, key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01, tag: audit && { kind: "sign", at: s.at }, paint: () => {
         paintBox(ctx, view, post, "#9a9da3");
+        if (s.kind === "do-not-enter") { paintBox(ctx, view, face, "#c8322b"); paintBox(ctx, view, band, "#f4f4ee"); return; }
+        if (s.kind === "one-way") { paintBox(ctx, view, oneWay, "#1c1d20"); paintBox(ctx, view, oneWayBar, "#f4f4ee"); return; }
         if (s.kind === "no-left-turn") { paintBox(ctx, view, face, "#f4f4ee"); paintBox(ctx, view, band, "#c8322b"); return; }
         if (!isLight) { if (plate) paintBox(ctx, view, plate, "#f4f4ee"); paintBox(ctx, view, face, s.kind === "stop" ? "#c8322b" : "#f2b84b"); return; }
         paintBox(ctx, view, housing, "#2a2d33");

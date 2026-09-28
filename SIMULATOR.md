@@ -2540,6 +2540,11 @@ with a default; he took the defaults for five and ruled on one):
    and a map whose own lane turns still list one is refused by name
    (verify-signs section 9). Drivers obey it; a knowledge-weak driver
    ignoring it waits on routes that plan past the next intersection.
+   **One way and do not enter are built**, derived from the road's own
+   `oneWay` like the all-way plate: ONE WAY beside the mouth where a
+   one-way street leaves an intersection, DO NOT ENTER facing anybody who
+   would turn into it the wrong way where it arrives (verify-signs
+   section 10). Left: speed limit, school zone, curve ahead.
 6. **Yield means:** slow, give way to traffic on the other road and anyone
    crossing, stop only if needed, and go without stopping when there is a
    safe gap -- a stop sign without the full stop. **BUILT 28 September**

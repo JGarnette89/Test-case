@@ -262,6 +262,31 @@ console.log("\n9. A NO-LEFT-TURN SIGN: NOBODY TURNS LEFT FROM THAT APPROACH, EVE
   check(!setNoLeft(draft, "s", "end", false).signs.some((q) => q.kind === "no-left-turn") && lefts("n") > 0, "and taking the sign away takes it away");
 }
 
+console.log("\n10. ONE WAY AND DO NOT ENTER: DERIVED FROM THE ROAD, AT EACH END OF A ONE-WAY STREET AND NOWHERE ELSE");
+{
+  /* Two crossroads joined by a one-way street running west to east. */
+  const m = emptyMap("oneway");
+  m.bounds = { x: 0, y: 0, w: 900, h: 600 };
+  m.roads.push(
+    road({ id: "w", points: [P(0, 300), P(300, 300)] }),
+    road({ id: "mid", oneWay: true, points: [P(300, 300), P(600, 300)] }),
+    road({ id: "e", points: [P(600, 300), P(900, 300)] }),
+    road({ id: "n1", points: [P(300, 0), P(300, 300)] }), road({ id: "s1", points: [P(300, 600), P(300, 300)] }),
+    road({ id: "n2", points: [P(600, 0), P(600, 300)] }), road({ id: "s2", points: [P(600, 600), P(600, 300)] }),
+  );
+  const L = loadMap(m);
+  const c = graphOf(L, { lane: 3.6 });
+  const all = junctionsOf(c).flatMap((j) => j.signs);
+  const dne = all.filter((q) => q.kind === "do-not-enter"), ow = all.filter((q) => q.kind === "one-way");
+  check(dne.length === 1 && ow.length === 1, `one DO NOT ENTER and one ONE WAY for the one one-way street (${dne.length}, ${ow.length}), none for the six two-way roads`);
+  /* Where they stand: DO NOT ENTER at the east end, facing west (180 deg)
+     toward a driver who would turn in there; ONE WAY at the west end, its
+     arrow pointing east with the flow. */
+  const norm = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
+  check(dne[0] && dne[0].at.x > 450 && Math.abs(norm(dne[0].heading - 180)) < 5 && ow[0] && ow[0].at.x < 450 && Math.abs(norm(ow[0].flow)) < 5,
+    `DO NOT ENTER at the far end facing the wrong way in (x ${dne[0]?.at.x.toFixed(0)}, facing ${norm(dne[0]?.heading ?? 0).toFixed(0)} deg), ONE WAY at the near end pointing with the traffic (x ${ow[0]?.at.x.toFixed(0)}, flow ${norm(ow[0]?.flow ?? 0).toFixed(0)} deg)`);
+}
+
 console.log(`\n${"=".repeat(70)}`);
 console.log(failed ? `${failed} FAILURE(S)` : "OK: a sign is the rule at its approach and the traffic is identical for it, disagreements are said, a sign keeps its end through a split and stands where it is put, the editor writes signs, and a driver learns a rule in one place.");
 process.exit(failed ? 1 : 0);

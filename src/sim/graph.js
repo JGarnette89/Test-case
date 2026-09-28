@@ -780,6 +780,28 @@ export function junctionsOf(course) {
         if (leg.pos === leg.across - 1) signs.push({ kind: lit ? "signal" : leg.control, base: leg.base, at: { x: sp.x + sx * (lane / 2 + 0.6), y: sp.y + sy * (lane / 2 + 0.6), z }, heading: sp.rot, ...(allWay ? { allWay } : {}) });
       }
     }
+    /* ONE WAY AND DO NOT ENTER (the maintainer's sign list, sixth and
+       seventh), derived from the road's own `oneWay` and never placed, like
+       the all-way plate: a sign authored apart from the road could say the
+       opposite of it. Where a one-way road LEAVES this intersection, a ONE
+       WAY sign beside its mouth, parallel to it, for the cross traffic
+       turning in; where one ARRIVES, DO NOT ENTER facing anybody who would
+       turn into it the wrong way. */
+    for (const nl of (course.map?.nodes ?? []).find((q) => q.id === spot.node)?.legs ?? []) {
+      const r = roadOf[nl.road];
+      if (!r?.oneWay || r.pts.length < 2) continue;
+      const half = place.boxHalf + 3;
+      const i = nl.end === "end"
+        ? (() => { let k = r.pts.length - 1; while (k > 1 && r.length - r.at[k] < half) k--; return k; })()
+        : (() => { let k = 0; while (k < r.pts.length - 2 && r.at[k] < half) k++; return k; })();
+      const a = r.pts[Math.max(0, i - 1)], b = r.pts[Math.min(r.pts.length - 1, i + 1)];
+      const flow = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;   // the direction traffic may go
+      /* Facing the driver who meets it: into the road from this node. */
+      const face = nl.end === "end" ? flow + 180 : flow;
+      const fh = (face * Math.PI) / 180, off = (r.outer ?? r.width) / 2 + 0.6;
+      const at = { x: r.pts[i].x - Math.sin(fh) * off, y: r.pts[i].y + Math.cos(fh) * off, z: r.pts[i].z ?? 0 };
+      signs.push(nl.end === "end" ? { kind: "do-not-enter", at, heading: face } : { kind: "one-way", at, heading: face + 90, flow });
+    }
     /* The surface: the corners in order round the centre. */
     const c2 = { x: centre.x, y: centre.y };
     corners.sort((p, q) => Math.atan2(p.y - c2.y, p.x - c2.x) - Math.atan2(q.y - c2.y, q.x - c2.x));
