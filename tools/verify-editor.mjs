@@ -16,7 +16,7 @@ import {
 import { validateDraft } from "../src/editor/validate.js";
 import { CLEARANCE_MIN } from "../src/map/load.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../src/editor/library.js";
-import { zoomAbout, pinchView, panView, isTap, toWorld as viewToWorld } from "../src/editor/gesture.js";
+import { zoomAbout, pinchView, panView, isTap, toWorld as viewToWorld, MIN_SCALE, MAX_SCALE, dragIntent, fitView } from "../src/editor/gesture.js";
 import { graphOf } from "../src/sim/graph.js";
 import { overlapping } from "../src/sim/crossing.js";
 import { testMap1 } from "../src/map/samples.js";
@@ -346,7 +346,23 @@ console.log("\n10. THE VIEW DOES WHAT A THUMB EXPECTS -- COMPUTED, SINCE IT CANN
   const z = zoomAbout(v, 120, 80, 1.5);
   const after = viewToWorld(z, 120, 80);
   check(near(z.scale, 6) && near(under.x, after.x) && near(under.y, after.y), "zooming keeps the world point under the cursor exactly where it was");
-  check(zoomAbout(v, 0, 0, 1000).scale === 20 && zoomAbout(v, 0, 0, 1e-6).scale === 0.3, "and the scale is clamped at both ends");
+  check(zoomAbout(v, 0, 0, 1000).scale === MAX_SCALE && zoomAbout(v, 0, 0, 1e-6).scale === MIN_SCALE, "and the scale is clamped at both ends");
+  /* THE WHOLE WORLD FITS A PHONE (28 September): eight square kilometres
+     is about 2.8 km a side, and at the widest zoom a 400 px screen holds it. */
+  check(400 / MIN_SCALE >= 2830, `zoomed right out a 400 px phone shows ${(400 / MIN_SCALE / 1000).toFixed(1)} km across -- the eight square kilometres is 2.8 km a side`);
+  const fit = fitView({ x: 100, y: -50, w: 2800, h: 1900 }, { w: 400, h: 700 });
+  const tl = viewToWorld(fit, 0, 0), br = viewToWorld(fit, 400, 700);
+  check(tl.x <= 100 && tl.y <= -50 && br.x >= 2900 && br.y >= 1850, "\"Whole map\" puts every corner of the map on the screen");
+  /* THE GESTURE RULE: a drag pans unless it starts on the thing already
+     selected. Taps are unchanged (they draw and select). */
+  const pt = { road: "r1", index: 3 };
+  check(dragIntent({ tool: "select", point: pt, prop: null, selected: null }) === "pan"
+    && dragIntent({ tool: "select", point: pt, prop: null, selected: { type: "road", id: "r2" } }) === "pan"
+    && dragIntent({ tool: "select", point: pt, prop: null, selected: { type: "road", id: "r1" } }) === "point"
+    && dragIntent({ tool: "building", point: null, prop: "b7", selected: null }) === "pan"
+    && dragIntent({ tool: "building", point: null, prop: "b7", selected: { type: "prop", id: "b7" } }) === "prop"
+    && dragIntent({ tool: "pan", point: pt, prop: null, selected: { type: "road", id: "r1" } }) === "pan",
+    "a drag pans -- on any road point, on any building -- unless it starts on the road or building already selected, which it moves");
 
   /* A pinch: two fingers spreading to twice their distance about the
      same midpoint doubles the scale and keeps the world under that

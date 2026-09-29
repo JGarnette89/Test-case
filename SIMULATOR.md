@@ -2664,6 +2664,46 @@ off, 18%), and a new assertion requires the index never to make lane
 changing cost more milliseconds than scanning everybody did (1.40 against
 2.03 ms). `tools/measure/lane-cost.mjs` has both measurements.
 
+### The free camera (28 September, the maintainer's request)
+
+*"can you have a free roam camera implemented? being able to scroll the map
+would improve the editor and testing."* Put ahead of everything else as
+tooling that improves his judgement of everything else.
+
+**THE GESTURES, DECIDED.** On the map screen, WATCHING: one finger drags the
+ground under it, two pinch and pan together, the wheel zooms about the
+cursor -- and any drag drops the view out of following a section or a car
+into "free look". DRIVING: one finger is the wheel and the pedal, so the
+camera cannot share the canvas; "Look around (pauses)" stops the world and
+hands the canvas to the camera until "Back to the car". The two are never
+live at once. IN THE EDITOR taps draw and select and two fingers always pan
+and zoom; a one-finger drag PANS unless it starts on the road or building
+ALREADY selected, which it then moves (`dragIntent`). Before, a drag on any
+building moved it and a drag near any road point -- one every few metres
+on a smoothed road -- moved that, so on a built-up map most attempts to pan
+grabbed something. "Whole map" in both, from the map's real extent: the
+generated city declares one 256 m chunk as its bounds and is 1900 x 1500 m.
+
+**RANGE: the whole world to a kerb.** 0.06 to 40 px/m; a 2.83 km square --
+eight square kilometres -- is a diamond (w + h) wide on this view and fits a
+412 px phone at 0.069. The editor's floor went from 0.3 to 0.08.
+
+**NOT CAPPED FOR SPEED; DRAWN SIMPLER.** Zoomed right out, the whole city
+was 297,000 canvas calls a frame (tools/measure/freecam-perf.mjs). Two
+detail tiers (draw.js): below FLAT_K (2.5 px/m) road paint, signs and
+arrows go, a road is one ribbon with its points thinned to two pixels, and
+flat ground is one quad; below LOD_K (1.5, a car under seven pixels) a car
+is a dot and a building its roof; between them a car keeps its body and
+drops the cabin. Now 3,500-17,600 calls at every zoom, against 10,900 for
+the old default watch view and about 25,000 at its old widest. Depth keys
+are unchanged, and verify-paint sweeps the free camera across both
+thresholds: it found its own audit wrong first (a surface's height taken
+as the average of its corners reads a car on the flat end of a hill road's
+ribbon as under a deck), and a placed car underground, before it could be
+trusted -- then a deck drawn as floor when far fails it, 172 frames.
+The phone has to say whether the widest view is smooth; a desktop cannot
+time canvas fills.
+
 ### Stage 6 — a world with things in it
 
 **Crosswalks, 28 September -- the first piece.** A crosswalk is map data per

@@ -8,7 +8,10 @@
    compute it. A view is `{ x0, y0, scale }`: the world point (metres)
    at the canvas's top-left corner, and pixels per metre.
    ===================================================================== */
-export const MIN_SCALE = 0.3, MAX_SCALE = 20;
+/* From the whole world to a kerb: 0.08 px/m shows three kilometres across
+   a 400 px phone -- the eight square kilometres the maintainer is to draw
+   (28 September: "being able to scroll the map would improve the editor"). */
+export const MIN_SCALE = 0.08, MAX_SCALE = 20;
 const clampScale = (s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
 
 export const toWorld = (v, px, py) => ({ x: v.x0 + px / v.scale, y: v.y0 + py / v.scale });
@@ -45,3 +48,26 @@ export function panView(start, from, to) {
    `tapPx` it has become a drag. */
 export const TAP_PX = 8;
 export const isTap = (from, to, tapPx = TAP_PX) => Math.hypot(to.x - from.x, to.y - from.y) <= tapPx;
+
+/* WHAT A ONE-FINGER DRAG DOES, decided when it starts (28 September). Taps
+   draw and select; a drag PANS -- always, unless it starts on a handle of
+   the thing ALREADY selected, which it then moves. Before this, a drag on
+   any building moved it and a drag on any road's point moved the point;
+   on a city covered in buildings, with a road point every few metres,
+   most attempts to pan grabbed something. So: tap it to select it, then
+   drag it. Two fingers always pan and zoom, whatever they land on.
+   `point` is a road point under the finger ({ road, index }) or null,
+   `prop` a building id or null, `selected` the editor's selection. */
+export function dragIntent({ tool, point, prop, selected }) {
+  if (tool === "pan") return "pan";
+  if (point && selected?.type === "road" && selected.id === point.road) return "point";
+  if (prop && selected?.type === "prop" && selected.id === prop) return "prop";
+  return "pan";
+}
+
+/* The view that shows all of a world rectangle `ext` ({ x, y, w, h }, metres)
+   on a canvas `box` ({ w, h }, pixels), centred, with a margin. */
+export function fitView(ext, box) {
+  const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, 0.9 * Math.min(box.w / Math.max(1, ext.w), box.h / Math.max(1, ext.h))));
+  return { x0: ext.x + ext.w / 2 - box.w / 2 / scale, y0: ext.y + ext.h / 2 - box.h / 2 / scale, scale };
+}

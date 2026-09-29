@@ -15,6 +15,9 @@
    ===================================================================== */
 import { newChase, chaseStep, zoomFor, LEAD_MIN, LEAD_MAX, LEAD_SECONDS, TURN_RATE, UP_HEADING } from "../src/iso/chase.js";
 import { viewOf, LIFT } from "../src/iso/project.js";
+import { groundAt, panFree, zoomFree, pinchFree, fitK, extentOf, FREE_K } from "../src/iso/freecam.js";
+import { loadMap } from "../src/map/load.js";
+import { TEST_MAPS } from "../src/map/samples.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -108,6 +111,46 @@ const norm = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
     /* A box face that faces the eye in the rotated frame has a positive dot with view.eye. */
     check(Math.abs(Math.hypot(view.eye.x, view.eye.y) - Math.SQRT2) < 1e-9, "the eye direction turned back into the world keeps its length");
   }
+}
+
+/* THE FREE CAMERA (iso/freecam.js): pan, zoom and pinch on the isometric
+   view, at any rotation -- computed, since it cannot be watched here. */
+{
+  console.log("\nthe free camera");
+  const canvas = { w: 412, h: 760 };
+  let worst = 0;
+  for (const rot of [0, 30, 90, 137, 270]) for (const k of [FREE_K.min, 1, 5, FREE_K.max]) {
+    const cam = { x: 700, y: 450, z: 0, k, rot };
+    const v = viewOf(k, cam, rot, canvas);
+    for (const [x, y] of [[700, 450], [712.5, 431], [650, 520]]) {
+      const [sx, sy] = v.P(x, y, 0), g = groundAt(cam, canvas, sx, sy);
+      worst = Math.max(worst, Math.hypot(g.x - x, g.y - y));
+    }
+  }
+  check(worst < 1e-6, `the ground under a pixel is where the renderer drew it, at 5 rotations and 4 zooms (worst ${worst.toExponential(1)} m)`);
+  const cam = { x: 700, y: 450, z: 0, k: 3, rot: 37 };
+  const under = groundAt(cam, canvas, 100, 200), panned = panFree(cam, canvas, { x: 100, y: 200 }, { x: 260, y: 90 });
+  const after = groundAt(panned, canvas, 260, 90);
+  check(Math.hypot(after.x - under.x, after.y - under.y) < 1e-9, "a drag carries the ground under the finger with it, turned view included");
+  const z = zoomFree(cam, canvas, 300, 600, 2.5), zu = groundAt(cam, canvas, 300, 600), za = groundAt(z, canvas, 300, 600);
+  check(Math.abs(z.k - 7.5) < 1e-9 && Math.hypot(za.x - zu.x, za.y - zu.y) < 1e-9, "zooming keeps the ground under the cursor where it was");
+  const start = { a: { x: 150, y: 300 }, b: { x: 250, y: 300 }, cam };
+  const pz = pinchFree(start, canvas, { x: 100, y: 300 }, { x: 300, y: 300 });
+  const mu = groundAt(cam, canvas, 200, 300), ma = groundAt(pz, canvas, 200, 300);
+  check(Math.abs(pz.k - 6) < 1e-9 && Math.hypot(ma.x - mu.x, ma.y - mu.y) < 1e-9, "a pinch spreading 2x doubles the zoom about the fingers");
+  check(zoomFree(cam, canvas, 0, 0, 1e6).k === FREE_K.max && zoomFree(cam, canvas, 0, 0, 1e-6).k === FREE_K.min, "and the zoom is clamped at both ends");
+  /* The whole city fits a phone: its real extent, not its declared bounds. */
+  const city = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
+  const ext = extentOf(city), k = fitK(ext, canvas), fc = { x: ext.x + ext.w / 2, y: ext.y + ext.h / 2, z: 0, k, rot: 0 };
+  const vf = viewOf(k, fc, 0, canvas);
+  const corners = [[ext.x, ext.y], [ext.x + ext.w, ext.y], [ext.x + ext.w, ext.y + ext.h], [ext.x, ext.y + ext.h]].map(([x, y]) => vf.P(x, y, 0));
+  check(ext.w > city.bounds.w && corners.every(([px, py]) => px >= 0 && px <= canvas.w && py >= 0 && py <= canvas.h),
+    `"Whole map" on a phone shows all of the city: ${ext.w.toFixed(0)} x ${ext.h.toFixed(0)} m (its declared bounds say ${city.bounds.w} x ${city.bounds.h}) at ${k.toFixed(2)} px/m`);
+  /* Eight square kilometres is a 2.83 km square; on this view a square is a
+     diamond as wide as its two sides together, so the fit must not be
+     held up by the zoom's floor. */
+  const eight = fitK({ x: 0, y: 0, w: 2830, h: 2830 }, canvas);
+  check(eight > FREE_K.min, `and the eight square kilometres fit a phone whole, at ${eight.toFixed(3)} px/m, above the zoom's floor of ${FREE_K.min}`);
 }
 
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }

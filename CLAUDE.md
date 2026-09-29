@@ -212,6 +212,7 @@ Eight things to know before your first change:
    | `src/map/format.js` (KINDS, lane defaults) | `verify-map`, `verify-graph`, `verify-drive`, `verify-screens` -- and READ the numbers the tests assert on, a lane count changes the leg count | ~1m |
    | `src/map/bays.js`, `src/core/motion.js` | `verify-bays` FIRST, then `verify-map`, `verify-graph`, `verify-connect`, `verify-lanes`, `verify-signal`, `verify-drive`, `verify-screens` | ~9m |
    | `src/sim/drive.js`, `src/sim/player.js`, `src/iso/hud.js`, `src/iso/controls.js` | `verify-drive`, `verify-wheel`, `verify-screens` | ~10s |
+   | `src/iso/freecam.js` | `verify-chase` FIRST (its free-camera section), then `verify-paint` (the sweep across the free camera's range) and `verify-screens` | ~15s |
    | `src/iso/chase.js`, `src/iso/project.js`, `src/iso/draw.js` | `verify-paint` FIRST (the painter's order, every rotation), `verify-chase`, `verify-perf`, `verify-wheel`, `verify-screens` | ~40s |
    | `src/sim/traffic.js` | the `src/sim/` five, plus `verify-wheel` (the player rides its step) | ~3m |
    | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens`, `-exam` (exam.js rides on crossing, drive, graph, corner and the candidate profiles), `-generate` (a generated city is the biggest network any check drives) | ~2m |
@@ -1704,6 +1705,7 @@ src/editor/gesture.js    the editor view: pan, zoom about a point, two-finger pi
 src/iso/project.js       the isometric projection and the one depth key everything sorts by
 src/iso/draw.js          painting the world on a canvas: roads, junctions, boxes for cars, sorted once
 src/iso/chase.js         the chase camera: leads with speed, eases, turns with the car (SIMULATOR.md 5.2)
+src/iso/freecam.js       the free camera: pan, zoom about a point, pinch, at any rotation; the whole map's real extent and the zoom that fits it
 src/iso/hud.js           the controls drawn on the canvas -- never React state from a frame loop
 src/iso/controls.js      the two controls as pointer arithmetic, and the signal taps
 src/iso/perf.js          the performance instrument: meter, probes, the budget ramp, the report
@@ -2067,8 +2069,8 @@ node tools/verify-wheel.mjs        the player at the wheel: a monotone pedal, a 
 node tools/verify-map.mjs          a map loads normalised and warned, never thrown; stage 0 is the first map and reproduces the hand-built roads
 node tools/verify-graph.mjs        the sim on a road network: the map's crossroads IS the compass crossroads; a T, a five-way, a loop, a bend, a hill and an overpass run the same rules
 node tools/verify-drive.mjs        the player on the map: the signal picks the exit it means and only before the line, the box is committed to, the road is driven, the traffic treats the player as its own
-node tools/verify-chase.mjs        the chase camera leads with speed, eases, turns the short way, keeps the car on screen, and the rotated view agrees with itself
-node tools/verify-paint.mjs        the painter's order: no car under the surface it stands on, none over a deck it is under, at every rotation, on both scenes
+node tools/verify-chase.mjs        the chase camera leads with speed, eases, turns the short way, keeps the car on screen, and the rotated view agrees with itself; the free camera's ground under a pixel is where the renderer drew it at every rotation and zoom, drag, zoom and pinch keep the world under the fingers, and the whole city -- and eight square kilometres -- fit a phone
+node tools/verify-paint.mjs        the painter's order: no car or person under the surface it stands on, none over a deck it is under, at every rotation, on both scenes -- and across the free camera's whole range, anywhere over the map, zoom 0.06 to 40 on both sides of both detail thresholds
 node tools/verify-signal.mjs       traffic signals: phases derived and never conflicting, only rights go on red and only after stopping, a red is not undue delay, the amber is a physical dilemma
 node tools/verify-lanes.mjs        lane changes are temperament: confidence decides whether and how tight, observation whether it was seen, steering how cleanly; drivers get over for their turn or miss it; knowledge keeps them right, the exceptions restated from the ruling, and failing is markable; honest, touch-free, and a few percent of the sim
 node tools/verify-connect.mjs      permitted movements are the network's: the general rule by default, overridable per lane, and a lane with nowhere to land refused at authoring time, named by lane and intersection

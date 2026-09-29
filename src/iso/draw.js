@@ -27,6 +27,14 @@ import { lightAt, arrowAt } from "../sim/signal.js";
 import { poseAt, groundAt as stage0Ground, LANE } from "./road.js";
 import { C } from "../theme.js";
 
+/* Below this many pixels a metre the view is FAR (drawFrame): the whole
+   city at once, drawn simply: a car is then under seven pixels long. */
+export const LOD_K = 1.5;
+/* Below this the road's paint, signs and arrows are too small to read and
+   the ground is one quad: roads are drawn as ribbons (drawFrame, `flat`). */
+export const FLAT_K = 2.5;
+const CAR_LEN = 4.5;
+
 /* Light from high, behind-left of the viewer, so tops are bright and
    the two faces that show are a little darker than each other. */
 const LIGHT = norm({ x: -0.9, y: 0.35, z: 0.9 });
@@ -146,6 +154,24 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   const margin = 40 * k;
   const onScreen = ([px, py]) => px > -margin && px < canvas.w + margin && py > -margin && py < canvas.h + margin;
   const items = [];
+  /* FAR: THE WHOLE CITY AT ONCE (the free camera, iso/freecam.js). Below
+     LOD_K a lane is under three pixels, and drawing a car as two shaded
+     boxes, a road's paint, a sign's post or a flat cell of grass buys
+     nothing anybody can see -- measured, the whole stand-in city was
+     297,000 canvas calls and 38 ms of script a frame on a desktop
+     (tools/measure/freecam-perf.mjs). So a car is one dot in its colour,
+     markings and signs are left out, a road is one filled ribbon, a
+     building its roof, and flat grass one quad under the lot. Nothing's
+     depth key changes, so the painter's order is the one verify-paint
+     holds at every zoom. Never a zoom cap: seeing the whole city is the
+     point. */
+  const far = k < LOD_K, flat = k < FLAT_K;
+  if (flat && terrain.length) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const c of terrain) for (const q of c) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
+    const g = [{ x: x0, y: y0, z: 0 }, { x: x1, y: y0, z: 0 }, { x: x1, y: y1, z: 0 }, { x: x0, y: y1, z: 0 }];
+    items.push({ layer: 0, key: -Infinity, tag: audit && { kind: "cell", poly: g }, paint: () => { quad(ctx, P, g[0], g[1], g[2], g[3]); ctx.fillStyle = shade(C.grass, { x: 0, y: 0, z: 1 }, 0.35); ctx.fill(); } });
+  }
 
   ctx.fillStyle = "#1b1e23";
   ctx.fillRect(0, 0, canvas.w, canvas.h);
@@ -155,6 +181,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      that climbs. */
   for (const cell of terrain) {
     const [a, b, c, d] = cell;
+    if (flat && Math.abs(a.z) < 0.05 && Math.abs(b.z) < 0.05 && Math.abs(c.z) < 0.05 && Math.abs(d.z) < 0.05) continue;   // flat: the quad under the lot
     if (!onScreen(P(a.x, a.y, a.z)) && !onScreen(P(c.x, c.y, c.z))) continue;
     const n = cross(sub(b, a), sub(d, a));
     /* KEYED BY ITS FARTHEST CORNER. Ground cells are big and the road
@@ -202,7 +229,38 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   let deckSpan = 0;   // the largest key span of any deck piece in view: how far past its centre a car on a deck must be keyed
   for (const { road } of roads) {
     const { pts, left, right } = road;
+    /* FAR: each ground-level stretch of road is ONE ribbon, its points
+       thinned to about two pixels apart -- seven canvas calls a segment
+       was most of the whole city's frame. Markings are not drawn this far
+       out, so where two ribbons meet at a junction the tarmac is one
+       colour whichever lands on top; decks keep their pieces below. */
+    if (flat) {
+      const stride = Math.max(1, Math.floor(2 / (k * Math.max(0.5, (road.at?.[1] ?? 5) - (road.at?.[0] ?? 0)))));
+      let run = [];
+      const flush = () => {
+        if (run.length < 2) { run = []; return; }
+        const L = run.map((i) => left[i]), R = run.map((i) => right[i]).reverse();
+        const poly = [...L, ...R];
+        if (poly.some((q) => onScreen(P(q.x, q.y, q.z)))) {
+          const key = Math.max(...poly.map((q) => depthOf(q.x, q.y, q.z))) + 0.01;
+          counts.segments += run.length - 1;
+          items.push({ layer: 0, key, tag: audit && { kind: "road", id: `${road.id}@far`, poly }, paint: () => {
+            ctx.beginPath();
+            poly.forEach((q, j) => { const [x, y] = P(q.x, q.y, q.z); if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+            ctx.closePath(); ctx.fillStyle = shade(C.asphalt, { x: 0, y: 0, z: 1 }, 0.45); ctx.fill();
+          } });
+        }
+        run = [];
+      };
+      for (let i = 0; i < pts.length; i++) {
+        const deckHere = i + 1 < pts.length && isDeck(road, i) && isDeck(road, i + 1);
+        if (deckHere) { run.push(i); flush(); continue; }
+        if (i % stride === 0 || i === pts.length - 1 || (i + 1 < pts.length && isDeck(road, i + 1))) run.push(i);
+      }
+      flush();
+    }
     for (let i = 0; i + 1 < pts.length; i++) {
+      if (flat && !(isDeck(road, i) && isDeck(road, i + 1))) continue;   // drawn above as a ribbon
       const a = left[i], b = left[i + 1], c = right[i + 1], d = right[i];
       if (!onScreen(P(a.x, a.y, a.z)) && !onScreen(P(c.x, c.y, c.z))) continue;
       const n = cross(sub(b, a), sub(d, a));
@@ -235,13 +293,13 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const fill = (p, q, r, s) => {
         quad(ctx, P, p, q, r, s);
         ctx.fillStyle = shade(C.asphalt, n, 0.45); ctx.fill();
-        ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke();   // hide the hairline between pieces
+        if (!flat) { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke(); }   // hide the hairline between pieces
       };
       if (!deck) {
         /* KEYED BY ITS NEAREST CORNER, the mirror of the ground's rule:
            a segment follows every cell that reaches under it. */
         const key = Math.max(depthOf(a.x, a.y, a.z), depthOf(b.x, b.y, b.z), depthOf(c.x, c.y, c.z), depthOf(d.x, d.y, d.z)) + 0.01;
-        items.push({ layer: 0, key, tag: audit && { kind: "road", id: `${road.id}#${i}`, poly: [a, b, c, d] }, paint: () => { fill(a, b, c, d); lines(); } });
+        items.push({ layer: 0, key, tag: audit && { kind: "road", id: `${road.id}#${i}`, poly: [a, b, c, d] }, paint: () => { fill(a, b, c, d); if (!flat) lines(); } });
       } else {
         const across = Math.max(1, Math.round(Math.hypot(d.x - a.x, d.y - a.y) / LANE));
         const pieces = [];
@@ -301,7 +359,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       ctx.fillStyle = shade(C.asphalt, { x: 0, y: 0, z: 1 }, 0.45); ctx.fill();
       ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke();
       ctx.lineCap = "butt";
-      for (const l of j.lines) {
+      if (!flat) for (const l of j.lines) {
         /* A crosswalk bar is half a metre of paint; a stop line 0.45. */
         ctx.lineWidth = Math.max(1.5, (l.kind === "zebra" ? 0.5 : 0.45) * k);
         ctx.strokeStyle = l.kind === "stop" || l.kind === "zebra" ? "rgba(250,250,242,0.95)" : "rgba(250,250,242,0.7)";
@@ -313,7 +371,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
        may make, bent the way it goes. Painted after the whole floor
        (layer 0.5) because they lie on a road segment whose own key can
        be nearer than any point of the arrow. */
-    for (const ar of j.arrows ?? []) {
+    if (!flat) for (const ar of j.arrows ?? []) {
       const h = (ar.heading * Math.PI) / 180, fx = Math.cos(h), fy = Math.sin(h), rx = -Math.sin(h), ry = Math.cos(h);
       const pt = (f, r) => ({ x: ar.at.x + fx * f + rx * r, y: ar.at.y + fy * f + ry * r, z: ar.at.z ?? 0 });
       items.push({ layer: 0.5, key: depthOf(ar.at.x, ar.at.y, ar.at.z ?? 0), paint: () => {
@@ -332,7 +390,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
         }
       } });
     }
-    for (const s of j.signs) {
+    if (!flat) for (const s of j.signs) {
       /* A post and a face: the face a flat box at eye height, red for a
          stop, turned to the driver it faces. Drawn as a map symbol, a
          little larger than life, as every sign here is.
@@ -409,6 +467,15 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     /* Quantised RELATIVE TO THE VIEW: a sprite set has 32 headings as
        seen from the camera, so the step is taken in the rotated frame. */
     const deg = quantise(a.heading + rotDeg) - rotDeg;
+    /* Far: a person is under a pixel -- except somebody struck, who is a
+       dot that flashes, so it is never missed. A car is one dot. */
+    if (far) {
+      if (a.ped && !a.struck) continue;
+      const colour = a.struck ? (Math.floor((scene.t ?? 0) * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour ?? CAR_COLOURS[(a.n ?? 0) % CAR_COLOURS.length];
+      const r = Math.max(1.5, CAR_LEN * k * 0.6);
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: a.ped ? "ped" : "car", id: a.id ?? a.n, at }, paint: () => { ctx.fillStyle = colour; ctx.fillRect(px - r / 2, py - r / 2, r, r); } });
+      continue;
+    }
     /* A PERSON: a narrow upright box, 0.5 m square and 1.7 m tall. */
     if (a.ped) {
       /* Struck: lying on the road, flashing like a wreck's hazards. */
@@ -420,7 +487,8 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     const colour = a.colour ?? CAR_COLOURS[(a.n ?? 0) % CAR_COLOURS.length];
     const body = boxCorners(at, deg, 0, BODY);
     const cabin = boxCorners(at, deg, 0, CABIN, BODY.h);
-    items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, colour); paintBox(ctx, view, cabin, colour); } });
+    /* Between the two tiers a car is its body alone: the cabin is a few pixels. */
+    items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, colour); if (!flat) paintBox(ctx, view, cabin, colour); } });
   }
 
   for (const { road, cars = [] } of roads) {
@@ -453,7 +521,9 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
     counts.props++;
     const box = boxCorners({ x: b.x, y: b.y, z }, b.heading, 0, { l: b.l, w: b.w, h: b.h });
-    items.push({ layer: 1, key: depthOf(b.x, b.y, z) + 0.01, tag: audit && { kind: "prop", at: { x: b.x, y: b.y, z } }, paint: () => paintBox(ctx, view, box, "#7d8290") });
+    items.push({ layer: 1, key: depthOf(b.x, b.y, z) + 0.01, tag: audit && { kind: "prop", at: { x: b.x, y: b.y, z } }, paint: far
+      ? () => { quad(ctx, P, box[4], box[5], box[6], box[7]); ctx.fillStyle = "#8a8f9c"; ctx.fill(); }
+      : () => paintBox(ctx, view, box, "#7d8290") });
   }
 
   /* The floor first, then everything with height; each by depth. */

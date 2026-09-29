@@ -22,6 +22,8 @@
    contact banner, which is an event.
    ===================================================================== */
 import { pedPose, pedAt, strikePed } from "../sim/peds.js";
+import { panFree, zoomFree, pinchFree, fitK, extentOf } from "../iso/freecam.js";
+import { isTap } from "../editor/gesture.js";
 import React, { useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
@@ -149,6 +151,14 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [limit, setLimit] = useState(50);
   const [playing, setPlaying] = useState(true);
   const [lookAway, setLookAway] = useState(false);
+  /* THE FREE CAMERA (iso/freecam.js). Watching, it is the view called
+     "free look" and any drag on the map enters it. Driving, the canvas is
+     the wheel and the pedal, so it is "Look around": the world pauses and
+     the canvas becomes the camera until "Back to the car". */
+  const [look, setLook] = useState(false);
+  const free = useRef(null);          // { x, y, z, k, rot } while the free camera is on
+  const lastView = useRef(null);      // the view as last drawn, where a free camera starts from
+  const gesture = useRef({ pointers: new Map(), start: null });
   const [mode, setMode] = useState(initialMode ?? "drive");        // "drive" or "watch"
   const [follow, setFollow] = useState(initialFollow ?? (mapData ? "car" : "crossroads"));   // watch mode: a section of the map to look at, or "car" to ride one
   const [zoom, setZoom] = useState(1);
@@ -179,7 +189,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look);
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
     cam.current = { ...newChase(), id: null };
-    owed.current = 0; contacts.current = 0; flash.current = 0;
+    owed.current = 0; contacts.current = 0; flash.current = 0; free.current = null; setLook(false);
   };
 
   useEffect(() => { setWarnings(scene.current.loaded.warnings); }, []);
@@ -240,7 +250,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       /* THE SIM STEPS AT 20 Hz FROM AN ACCUMULATOR. Driving, the player
          is stepped first and written into the world, so this tick's
          traffic sees where they really are. */
-      if (playing && !stopped) {
+      if (playing && !stopped && !(mode === "drive" && look)) {
         owed.current += dt;
         while (owed.current >= DT) {
           owed.current -= DT;
@@ -288,7 +298,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const lastCrash = sc.world.crashes?.at(-1) ?? null;
       if (lastCrash) PLACES.crash = lastCrash.at;
       let k, rot = 0;
-      if (sc.me) {
+      const freeOn = (mode === "watch" && follow === "free") || (mode === "drive" && look);
+      if (freeOn && !free.current && lastView.current) free.current = { ...lastView.current };
+      if (freeOn && free.current) {
+        cam.current = { ...cam.current, x: free.current.x, y: free.current.y, z: free.current.z ?? 0 };
+        k = free.current.k; rot = free.current.rot ?? 0;
+      } else if (sc.me) {
         const p = driverPose(sc.me, sc.world.course);
         cam.current = { ...chaseStep(cam.current, { ...p, v: sc.me.v }, dt, { rotate }), id: null };
         k = zoomFor(size.w, size.h, cam.current.lead) * zoom;
@@ -304,6 +319,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         cam.current = { ...cam.current, x: cam.current.x + (want.x - cam.current.x) * f, y: cam.current.y + (want.y - cam.current.y) * f, z: cam.current.z + ((want.z ?? 0) - cam.current.z) * f, rot: 0, snap: false };
         k = Math.max(1, (size.w / (follow === "car" ? 60 : 110)) * zoom);
       }
+      lastView.current = { x: cam.current.x, y: cam.current.y, z: cam.current.z ?? 0, k, rot };
       const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, props: sc.props, t: sc.world.t + carry });
 
       if (now - fpsAt > 1000) {
@@ -378,12 +394,74 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     };
     tick(performance.now());
     return () => { cancelAnimationFrame(raf.current); window.removeEventListener("keydown", onKey); window.removeEventListener("keyup", onKey); };
-  }, [playing, follow, zoom, seed, limit, mode, stopped, rotate]);
+  }, [playing, follow, zoom, seed, limit, mode, stopped, rotate, look]);
 
   const at = (e) => { const r = e.currentTarget.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top, { w: r.width, h: r.height }]; };
   const onDown = (e) => { e.currentTarget.setPointerCapture?.(e.pointerId); const [x, y, box] = at(e); input.current.pointer("down", e.pointerId, x, y, box, performance.now()); };
   const onMove = (e) => { const [x, y, box] = at(e); input.current.pointer("move", e.pointerId, x, y, box, performance.now()); };
   const onUp = (e) => { const [x, y, box] = at(e); input.current.pointer("up", e.pointerId, x, y, box, performance.now()); };
+
+  /* THE CAMERA'S GESTURES: one finger drags the ground under it, two pinch
+     and pan together, the wheel zooms about the cursor. The same arithmetic
+     the checks hold (iso/freecam.js). */
+  const freeOn = (mode === "watch" && follow === "free") || (mode === "drive" && look);
+  const enterFree = () => { if (!free.current && lastView.current) free.current = { ...lastView.current }; if (mode === "watch" && follow !== "free") setFollow("free"); };
+  const camDown = (e) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const [x, y, box] = at(e), g = gesture.current;
+    g.pointers.set(e.pointerId, { x, y });
+    g.box = box;
+    if (g.pointers.size === 2) { const [a, b] = [...g.pointers.values()]; enterFree(); g.start = { mode: "pinch", a, b, cam: { ...(free.current ?? lastView.current) } }; }
+    else if (g.pointers.size === 1) g.start = { mode: "pending", from: { x, y }, last: { x, y } };
+  };
+  const camMove = (e) => {
+    const g = gesture.current;
+    if (!g.pointers.has(e.pointerId) || !g.start) return;
+    const [x, y, box] = at(e);
+    g.pointers.set(e.pointerId, { x, y });
+    if (g.start.mode === "pinch" && g.pointers.size >= 2) {
+      const [a, b] = [...g.pointers.values()];
+      free.current = pinchFree(g.start, box, a, b);
+    } else if (g.start.mode !== "pinch") {
+      if (g.start.mode === "pending" && !isTap(g.start.from, { x, y })) { enterFree(); g.start.mode = "pan"; }
+      if (g.start.mode === "pan" && free.current) { free.current = panFree(free.current, box, g.start.last, { x, y }); g.start.last = { x, y }; }
+    }
+  };
+  const camUp = (e) => {
+    const g = gesture.current;
+    g.pointers.delete(e.pointerId);
+    /* Lifting one finger of a pinch ends it; the other does not become a pan. */
+    if (g.pointers.size === 0) g.start = null;
+    else if (g.start?.mode === "pinch") g.start = { mode: "done" };
+  };
+  /* The wheel: native and non-passive, so zooming the map does not scroll
+     the page (the editor's rule). */
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const onWheel = (e) => {
+      if (!(mode === "watch" || look)) return;
+      e.preventDefault();
+      enterFree();
+      const r = canvas.getBoundingClientRect();
+      if (free.current) free.current = zoomFree(free.current, { w: r.width, h: r.height }, e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0015));
+    };
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, look, follow]);
+  const zoomBy = (factor) => {
+    if (!freeOn || !free.current) { setZoom((z) => Math.max(0.5, Math.min(4, z * factor))); return; }
+    const c = canvasRef.current, box = { w: c?.clientWidth ?? 400, h: c?.clientHeight ?? 700 };
+    free.current = zoomFree(free.current, box, box.w / 2, box.h * 0.55, factor);
+  };
+  /* The whole map in view: its real extent (roads and buildings), not the
+     declared bounds a generated map leaves at one chunk. */
+  const wholeMap = () => {
+    const ext = extentOf(scene.current.loaded), c = canvasRef.current, box = { w: c?.clientWidth ?? 400, h: c?.clientHeight ?? 700 };
+    enterFree();
+    free.current = { x: ext.x + ext.w / 2, y: ext.y + ext.h / 2, z: 0, k: fitK(ext, box), rot: 0 };
+  };
 
   return (
     <div style={S.page}>
@@ -394,7 +472,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
 
       <div style={S.view}>
         <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }}
-          onPointerDown={mode === "drive" ? onDown : undefined} onPointerMove={mode === "drive" ? onMove : undefined} onPointerUp={mode === "drive" ? onUp : undefined} onPointerCancel={mode === "drive" ? onUp : undefined} />
+          onPointerDown={mode === "drive" && !look ? onDown : camDown} onPointerMove={mode === "drive" && !look ? onMove : camMove}
+          onPointerUp={mode === "drive" && !look ? onUp : camUp} onPointerCancel={mode === "drive" && !look ? onUp : camUp} />
         {stopped && (
           <div style={S.banner}>
             <div style={{ fontFamily: FONT_D, fontSize: 18, fontWeight: 700 }}>Contact.</div>
@@ -408,16 +487,22 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         <div style={S.row}>
           <button className="btn" style={S.btn} onClick={() => setPlaying((p) => !p)}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
           <button className="btn" style={S.btn} onClick={() => restart(seed + 1)} title="restart with new traffic"><RotateCcw size={16} /></button>
-          <button className="btn" style={S.btn} onClick={() => setZoom((z) => Math.max(0.5, z / 1.25))}><ZoomOut size={16} /></button>
-          <button className="btn" style={S.btn} onClick={() => setZoom((z) => Math.min(4, z * 1.25))}><ZoomIn size={16} /></button>
+          <button className="btn" style={S.btn} onClick={() => zoomBy(1 / 1.25)}><ZoomOut size={16} /></button>
+          <button className="btn" style={S.btn} onClick={() => zoomBy(1.25)}><ZoomIn size={16} /></button>
+          <button className="btn" style={S.chip} onClick={wholeMap} title="the whole map in view, to pan and zoom from">Whole map</button>
+          {mode === "drive" && (
+            <button className="btn" style={{ ...S.chip, borderColor: look ? C.amber : "rgba(255,255,255,0.12)", color: look ? C.white : DIM }}
+              onClick={() => { if (look) { free.current = null; setLook(false); } else setLook(true); }}>
+              {look ? "Back to the car" : "Look around (pauses)"}</button>
+          )}
           {[["drive", "you drive"], ["watch", "watch the traffic"]].map(([id, label]) => (
             <button key={id} className="btn" style={{ ...S.chip, borderColor: mode === id ? C.green : "rgba(255,255,255,0.12)", color: mode === id ? C.white : DIM }}
               onClick={() => { setSetting("mode", id); restart(seed, limit, id); }}>{label}</button>
           ))}
           {mode === "watch" && <span style={S.label}>View</span>}
-          {mode === "watch" && [...(scene.current.loaded.sections ?? []).map((q) => [q.id, q.name]), ["car", "ride a car"], ["crash", "the last crash"]].map(([id, label]) => (
+          {mode === "watch" && [...(scene.current.loaded.sections ?? []).map((q) => [q.id, q.name]), ["car", "ride a car"], ["crash", "the last crash"], ["free", "free look"]].map(([id, label]) => (
             <button key={id} className="btn" style={{ ...S.chip, borderColor: follow === id ? C.amber : "rgba(255,255,255,0.12)", color: follow === id ? C.white : DIM }}
-              onClick={() => { cam.current = { x: 0, y: 0, z: 0, id: null }; setFollow(id); }}>{label}</button>
+              onClick={() => { if (id === "free") { if (!free.current && lastView.current) free.current = { ...lastView.current }; } else { free.current = null; cam.current = { x: 0, y: 0, z: 0, id: null }; } setFollow(id); }}>{label}</button>
           ))}
           {mode === "drive" && (
             <button className="btn" style={{ ...S.chip, borderColor: rotate ? C.amber : "rgba(255,255,255,0.12)", color: rotate ? C.white : DIM }}

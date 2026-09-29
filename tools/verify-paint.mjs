@@ -27,7 +27,10 @@ import { drawFrame } from "../src/iso/draw.js";
 import { terrain, groundAt as stage0Ground } from "../src/iso/road.js";
 import { seedScene, stepScene, carsOf } from "../src/iso/world.js";
 import { loadMap, groundFor } from "../src/map/load.js";
-import { testMap1 } from "../src/map/samples.js";
+import { testMap1, testPeds } from "../src/map/samples.js";
+import { FREE_K, extentOf } from "../src/iso/freecam.js";
+import { LOD_K, FLAT_K } from "../src/iso/draw.js";
+import { pedPose } from "../src/sim/peds.js";
 import { junctionsOf } from "../src/sim/graph.js";
 import { seedGraph, step, poseOf } from "../src/sim/crossing.js";
 
@@ -45,7 +48,11 @@ const inside = (poly, x, y) => {
   }
   return on;
 };
-const levelOf = (poly) => poly.reduce((s, p) => s + (p.z ?? 0), 0) / poly.length;
+/* The surface's height WHERE THE CAR IS: its nearest corner. An average
+   was right while every surface was a small flat piece; far out a road is
+   one long ribbon (draw.js FLAT_K), and the hill road's ribbon averages
+   3 m, which read a car on its flat end as under a deck. */
+const levelOf = (poly, x, y) => poly.reduce((m, p) => { const d = (p.x - x) ** 2 + (p.y - y) ** 2; return d < m.d ? { d, z: p.z ?? 0 } : m; }, { d: Infinity, z: 0 }).z;
 
 /* Audit one frame: every car against every surface whose footprint it
    is inside. Returns the violations. */
@@ -53,12 +60,13 @@ function audit(scene, canvas, rot) {
   const out = drawFrame(stub, canvas, { ...scene, rot }, { audit: true });
   const order = out.order;
   const bad = [];
-  const cars = order.map((t, i) => ({ ...t, i })).filter((t) => t.kind === "car");
+  /* People on foot stand on the same surfaces cars do (sim/peds.js). */
+  const cars = order.map((t, i) => ({ ...t, i })).filter((t) => t.kind === "car" || t.kind === "ped");
   const surfaces = order.map((t, i) => ({ ...t, i })).filter((t) => t.poly);
   for (const c of cars) {
     for (const s of surfaces) {
       if (!inside(s.poly, c.at.x, c.at.y)) continue;
-      const dz = c.at.z - levelOf(s.poly);
+      const dz = c.at.z - levelOf(s.poly, c.at.x, c.at.y);
       if (Math.abs(dz) < 1.5) { if (c.i < s.i) bad.push({ car: c.id, on: `${s.kind} ${s.id ?? ""}`.trim(), rot, why: "drawn before the surface it stands on" }); }
       else if (dz < -1.5) { if (c.i > s.i) bad.push({ car: c.id, on: `${s.kind} ${s.id ?? ""}`.trim(), rot, why: "drawn over the deck it is under" }); }
     }
@@ -129,6 +137,52 @@ const summarise = (name, scene, canvas, cams) => {
   const r = summarise("stage0", { roads: carsOf(scene), terrain: scene.terrain, props: scene.props, groundAt: stage0Ground, k: 5, tilt: true }, canvas, cams);
   console.log(`   stage 0: ${r.frames} frames, ${(r.carsSeen / r.frames).toFixed(0)} cars a frame, ${r.bad.length} misdrawn -- ${Object.entries(r.kinds).map(([k, n]) => `${n} ${k}`).join(", ") || "none"}`);
   check(r.bad.length === 0, "on stage 0's valley and bridge the same holds");
+}
+
+/* 3. THE FREE CAMERA (iso/freecam.js): anywhere over the map, at every
+   zoom from the whole city to a kerb, both sides of both detail
+   thresholds (draw.js LOD_K, FLAT_K), and turned. The sort has broken
+   twice when the camera changed -- a pad sized for one road width, and
+   rotation -- so the new camera's whole range is swept rather than
+   assumed. Test map 1 (junctions, the overpass, the hill) and the
+   Pedestrians map (people standing on crosswalks, which are junction
+   surface). */
+{
+  const KS = [FREE_K.min, 0.5, LOD_K - 0.01, LOD_K + 0.01, FLAT_K - 0.01, FLAT_K + 0.01, 5, 20, FREE_K.max];
+  const R = [0, 45, 90, 180, 270];
+  const canvas = { w: 412, h: 760 };
+  for (const [name, raw, peds] of [["test map 1", testMap1(), false], ["the Pedestrians map", testPeds(), true]]) {
+    const loaded = loadMap(raw);
+    let world = seedGraph(3, 50, loaded, { target: 60, posted: true });
+    for (let i = 0; i < 20 * 60; i++) world = step(world);
+    const actors = [
+      ...world.actors.map((a) => { const p = poseOf(world, a); return { id: a.id, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, n: a.n }; }),
+      ...(world.peds ?? []).map((q) => ({ id: q.id, n: q.n, ...pedPose(world, q), ped: true })),
+      /* The overpass, as section 1 places it: a car on the deck and one
+         under it -- traffic alone may leave nobody there when we look. */
+      ...(peds ? [] : [{ id: "on-deck", x: 601.8, y: 775, z: 7, heading: 90 }, { id: "under-deck", x: 600, y: 801.8, z: 0, heading: 0 }, { id: "under-deck-2", x: 603, y: 798.2, z: 0, heading: 180 }]),
+      /* And people placed along every crosswalk, a quarter, half and three
+         quarters across -- a snapshot has only whoever happened to be out. */
+      ...junctionsOf(world.course).flatMap((j) => (j.crossings ?? []).flatMap((c, ci) => [0.25, 0.5, 0.75].map((t) => ({ id: `placed-${j.node}-${ci}-${t}`, n: 0, ped: true, heading: 0, x: c.a.x + (c.b.x - c.a.x) * t, y: c.a.y + (c.b.y - c.a.y) * t, z: c.a.z ?? 0 })))),
+    ];
+    const ext = extentOf(loaded), ground = groundFor(loaded, { cell: 20 });
+    const scene = {
+      roads: loaded.roads.map((road) => ({ road, cars: [] })),
+      terrain: terrain({ x0: ext.x, y0: ext.y, x1: ext.x + ext.w, y1: ext.y + ext.h, cell: 20, ground }),
+      junctions: junctionsOf(world.course), groundAt: ground, tilt: false, actors,
+    };
+    const cams = [];
+    for (const fx of [0.2, 0.5, 0.8]) for (const fy of [0.2, 0.5, 0.8]) cams.push({ x: ext.x + ext.w * fx, y: ext.y + ext.h * fy, z: 0 });
+    let bad = [], frames = 0, seen = 0, pedsSeen = 0;
+    for (const cam of cams) for (const k of KS) for (const rot of R) {
+      const r = audit({ ...scene, cam, k }, canvas, rot);
+      bad = bad.concat(r.bad.map((b) => ({ ...b, k }))); frames++; seen += r.cars;
+    }
+    if (peds) pedsSeen = actors.filter((a) => a.ped).length;
+    const worst = bad.slice(0, 4).map((b) => `${b.car} at k ${b.k} rot ${b.rot}: ${b.why}`).join("; ");
+    check(bad.length === 0 && seen > 0 && (!peds || pedsSeen > 0),
+      `${name}, the free camera: ${frames} frames over 9 positions, zoom ${FREE_K.min} to ${FREE_K.max} px/m across both detail thresholds, 5 rotations -- ${seen} car${peds ? " and person" : ""} placements audited${peds ? ` (${pedsSeen} people on foot)` : ""}, ${bad.length} misdrawn${worst ? ` (${worst})` : ""}`);
+  }
 }
 
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }

@@ -58,7 +58,7 @@ import {
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../editor/library.js";
-import { zoomAbout as zoomView, pinchView, panView, isTap, TAP_PX } from "../editor/gesture.js";
+import { zoomAbout as zoomView, pinchView, panView, isTap, TAP_PX, dragIntent, fitView } from "../editor/gesture.js";
 import MapRoad from "./MapRoad.jsx";
 import { firstEdge } from "../map/edges.js";
 import ErrorBoundary from "./ErrorBoundary.jsx";
@@ -535,7 +535,10 @@ export default function Editor() {
     const w = toWorld(p.x, p.y);
     const hb = !hp && (tool === "select" || tool === "building") ? propAt(draft, w) : null;
     const grab = hb ? (() => { const q = draft.props.find((x) => x.id === hb); return { id: hb, dx: w.x - q.at.x, dy: w.y - q.at.y }; })() : null;
-    v.dragging = { mode: tool === "pan" ? "pan" : "pending", startPx: p, x0: v.x0, y0: v.y0, point: hp, prop: grab };
+    /* A drag moves only what is already selected; otherwise it pans
+       (gesture.js `dragIntent`). A tap still selects or draws. */
+    const intent = dragIntent({ tool, point: hp, prop: hb, selected });
+    v.dragging = { mode: tool === "pan" ? "pan" : "pending", startPx: p, x0: v.x0, y0: v.y0, point: intent === "point" ? hp : null, prop: intent === "prop" ? grab : null };
   };
   const onMove = (e) => {
     const p = at(e), v = view.current;
@@ -741,6 +744,15 @@ export default function Editor() {
         <span style={{ flex: 1 }} />
         <button className="btn" style={S.btn} onClick={() => { const c = canvasRef.current; zoomAbout((c?.clientWidth ?? 0) / 2, (c?.clientHeight ?? 0) / 2, 1 / 1.25); paint(); }}><ZoomOut size={16} /></button>
         <button className="btn" style={S.btn} onClick={() => { const c = canvasRef.current; zoomAbout((c?.clientWidth ?? 0) / 2, (c?.clientHeight ?? 0) / 2, 1.25); paint(); }}><ZoomIn size={16} /></button>
+        <button className="btn" style={S.chip} title="the whole map in view" onClick={() => {
+          /* Everything drawn: roads, zones and buildings. */
+          const pts = [...draft.roads.flatMap((r) => r.points), ...(draft.zones ?? []).flatMap((z) => z.polygon ?? []), ...(draft.props ?? []).map((q) => q.at)];
+          if (!pts.length) return;
+          const x0 = Math.min(...pts.map((q) => q.x)), y0 = Math.min(...pts.map((q) => q.y)), x1 = Math.max(...pts.map((q) => q.x)), y1 = Math.max(...pts.map((q) => q.y));
+          const c = canvasRef.current;
+          Object.assign(view.current, fitView({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, { w: c?.clientWidth ?? 400, h: c?.clientHeight ?? 600 }));
+          paint();
+        }}>Whole map</button>
       </div>
 
       <div style={S.view}>
