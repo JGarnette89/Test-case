@@ -42,7 +42,7 @@ import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } fro
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel, speedBy } from "./corner.js";
-import { stepPeds, heldAhead, strikes, strikePed } from "./peds.js";
+import { stepPeds, heldAhead, strikes, strikePed, pedPose } from "./peds.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
@@ -769,8 +769,13 @@ export function whatStops(me, world) {
      the car at the line; past it -- in the box, turning across the exit
      crosswalk -- they are an obstacle it stops short of. */
   const walker = heldAhead(world, me, mine);
-  const held = short && (!!walker || others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0)));
-  if (walker && !short) consider(walker.s - me.s - CAR.length / 2 - 0.5, { id: "ped", v: 0, headway: me.headway });
+  /* A crosswalk at the intersection lies past the stop line: hold at the
+     line. A MID-BLOCK crossing lies before it: stop short of the paint
+     itself -- holding at the line had a car registering somebody and
+     driving through them to reach its own stop line. */
+  const walkerAtLine = !!walker && walker.s >= waitAt(mine);
+  const held = short && (walkerAtLine || others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0)));
+  if (walker && (!short || !walkerAtLine)) consider(walker.s - me.s - CAR.length / 2 - 0.5, { id: "ped", v: 0, headway: me.headway });
   /* THE THREE CONTROLS, AND THE ONLY PLACE THAT KNOWS A SIGNAL EXISTS.
      A red or an unmakeable amber HOLDS -- gap or no gap; a sign or a
      right on red waits for a stop and then a gap; a green or an
@@ -996,7 +1001,14 @@ export function step(world) {
        ahead and behind, or not at all this time. */
     const fromDistrict = topUp && districtStreetsOf(world.course).length > 0 && rng(world.seed * 92821 + spawned + 1)() < districtShare(world.course);
     const car = fromDistrict ? null : arriving(world, spawned);
-    const joining = fromDistrict ? pullingOut(world, spawned, next) : car && joinAt(world, next, car);
+    let joining = fromDistrict ? pullingOut(world, spawned, next) : car && joinAt(world, next, car);
+    /* NOBODY PULLS OUT ONTO A PERSON: a car leaving the curb beside somebody
+       crossing from between the parked cars waits (peds.js). It was placed
+       straight onto her. */
+    if (joining && (world.peds ?? []).some((q) => q.state !== "struck")) {
+      const at = poseOf({ ...world, actors: next }, joining);
+      if ((world.peds ?? []).some((q) => { const pp = pedPose(world, q); return Math.hypot(pp.x - at.x, pp.y - at.y) < 8; })) joining = null;
+    }
     lastJoin = joining;
     if (joining) {
       next.push(joining);
@@ -1497,7 +1509,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
@@ -1523,7 +1535,9 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, spawned: 0, nextAt: 0, actors: [] };
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, spawned: 0, nextAt: 0, actors: [],
+    /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
+    ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}) };
   if (parkingOf(course).slots.length) w.parked = initialParked(course, seed);
   /* Long enough for a car to have crossed the longest road twice: the
      sum of every road would be an upper bound and cost six seconds of

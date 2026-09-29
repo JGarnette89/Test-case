@@ -23,9 +23,13 @@ import { loadMap } from "../src/map/load.js";
 import { emptyMap, road, CROSSWALK_W } from "../src/map/format.js";
 import { graphOf, junctionsOf } from "../src/sim/graph.js";
 import { seedGraph, step, overlapping, pathOf, poseOf, openTo } from "../src/sim/crossing.js";
-import { crosswalksOf, bandOn, heldAhead, pedAt, pedPose, strikePed } from "../src/sim/peds.js";
+import { crosswalksOf, bandOn, heldAhead, pedAt, pedPose, strikePed, bandsAhead } from "../src/sim/peds.js";
+import { TEST_MAPS, testPeds } from "../src/map/samples.js";
+import { playerOn, stepDriver, withDriver, driverPose } from "../src/sim/drive.js";
+import { holdAt } from "../src/sim/player.js";
+import { REACTION_FLOOR } from "../src/core/perception.js";
 import { walkedCrossroads, touching } from "./measure/peds.mjs";
-import { testPeds } from "../src/map/samples.js";
+
 import { lookingAway } from "../src/sim/attention.js";
 import { DT, CAR } from "../src/sim/traffic.js";
 import { setCrosswalk, splitRoad, addCrossing } from "../src/editor/model.js";
@@ -204,7 +208,9 @@ console.log("\n5. DRIVERS WHO LOOK AWAY CAN MISS SOMEBODY ON FOOT -- AND ONLY TH
   /* The Pedestrians test map: two crossroads and a mid-block crossing,
      60 cars. Ten minutes a seed. */
   const run = (seed, perceive) => {
-    let w = seedGraph(seed, 50, loadMap(testPeds()), { target: 60, posted: true, perceive });
+    /* Everybody careful: this section is about what drivers see, not about
+       people taking risks (section 6). */
+    let w = seedGraph(seed, 50, loadMap(testPeds()), { target: 60, posted: true, perceive, pedRisk: { trusting: 0, heedless: 0 }, gapHeedless: 0 });
     let silent = 0, across = 0, unexplained = 0;
     const lastAway = new Map();
     let seenCrash = 0;
@@ -232,6 +238,94 @@ console.log("\n5. DRIVERS WHO LOOK AWAY CAN MISS SOMEBODY ON FOOT -- AND ONLY TH
      by a driver who was watching. */
   check(sum(on, "silent") === 0 && sum(on, "unexplained") === 0,
     `with drivers looking away now and then: ${sum(on, "struck")} people struck in half an hour (${sum(on, "across")} across) -- nothing silent, and no strike by a driver who had not just looked away`);
+}
+
+console.log("\n6. FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (the maintainer's ruling, 29 September)");
+{
+  /* (a) Careful people are never struck by drivers who are watching --
+     on the Pedestrians map and on the city, mid-block walkers included. */
+  const careful = { pedRisk: { trusting: 0, heedless: 0 }, gapHeedless: 0 };
+  let carefulStruck = 0, walked = 0;
+  for (const [raw, cars, seed] of [[testPeds(), 60, 3], [TEST_MAPS.find((t) => t.id === "city").build(), 300, 5]]) {
+    let w = seedGraph(seed, 50, loadMap(raw), { target: cars, posted: true, ...careful });
+    const seen = new Set();
+    for (let i = 0; i < 300 / DT; i++) { w = step(w); for (const q of w.peds ?? []) seen.add(q.id); }
+    walked += seen.size;
+    carefulStruck += (w.crashes ?? []).filter((c) => String(c.a).startsWith("ped-")).length;
+  }
+  check(walked > 100 && carefulStruck === 0, `with everybody on foot careful, ${walked} people over ten minutes on two maps and nobody struck by traffic that was watching`);
+
+  /* (b) With people who take risks (the defaults), everybody struck is one
+     of them, and every strike is recorded. */
+  let byManner = {}, silent = 0;
+  for (const seed of [3, 5, 7]) {
+    let w = seedGraph(seed, 50, loadMap(TEST_MAPS.find((t) => t.id === "city").build()), { target: 300, posted: true });
+    const manner = new Map();
+    for (let i = 0; i < 300 / DT; i++) { w = step(w); for (const q of w.peds ?? []) manner.set(q.id, q.manner); silent += touching(w).length; }
+    for (const c of (w.crashes ?? []).filter((c) => String(c.a).startsWith("ped-"))) byManner[manner.get(c.a)] = (byManner[manner.get(c.a)] ?? 0) + 1;
+  }
+  const struck = Object.values(byManner).reduce((q, x) => q + x, 0);
+  check(!byManner.careful && silent === 0, `fifteen minutes of the city with people who take risks: ${struck} struck (${JSON.stringify(byManner)}) -- none of them careful, every one a recorded crash`);
+
+  /* (c) THE PLAYER. A street lined with parked cars and people darting out
+     between them -- every mid-block walker heedless, ten times the usual
+     rate. A player who responds -- a reaction floor after somebody is in
+     their way, full brake -- never strikes anybody: a response always
+     existed. The traffic on the same street, owed no such thing, does. */
+  const street = () => {
+    const m = emptyMap("dart");
+    m.bounds = { x: 0, y: 0, w: 700, h: 200 };
+    m.roads.push(road({ id: "a", kind: "residential", points: [P(0, 100), P(175, 100), P(350, 100)] }), road({ id: "b", kind: "residential", points: [P(350, 100), P(525, 100), P(700, 100)] }));
+    return m;
+  };
+  const L = loadMap(street());
+  let w = seedGraph(3, 50, L, { target: 8, posted: true, gapRate: 300, gapHeedless: 1 });
+  let me = playerOn(w.course, "a", "end"), playerHits = 0, laps = 0, heldSince = null;
+  const hitIds = new Set();
+  for (let i = 0; i < 480 / DT; i++) {
+    const path = pathOf(w, me);
+    const held = heldAhead(w, { ...me, lag: 0 }, path);
+    if (held && heldSince == null) heldSince = w.t;
+    if (!held) heldSince = null;
+    const braking = heldSince != null && w.t - heldSince >= REACTION_FLOOR;
+    const slider = braking ? -1 : me.v < 11 ? 0.6 : holdAt(me.v, 0);
+    me = stepDriver(me, { steer: 0, slider }, w, DT);
+    w = step(withDriver(w, me));
+    const hit = pedAt(w, driverPose(me, w.course));
+    if (hit && !hitIds.has(hit)) { hitIds.add(hit); playerHits++; }
+    /* Round again from the start at the far end. */
+    const at = pathOf(w, me);
+    if (!w.actors.some((a) => a.player) || (me.k !== 0 || at.length - me.s < 3) && driverPose(me, w.course).x > 650) { laps++; me = playerOn(w.course, "a", "end"); w = { ...w, actors: w.actors.filter((a) => !a.player) }; }
+  }
+  const npc = (w.crashes ?? []).filter((c) => String(c.a).startsWith("ped-")).length;
+
+  /* (d) THE CASE ITSELF, set up rather than waited for: the player at 40
+     km/h a few metres short of a mid-block crossing, and somebody heedless
+     waiting there behind the parked row. No response exists, so they must
+     not step out until the player is past; a car of the traffic in the same
+     spot gets no such grace. */
+  const probe = (asPlayer) => {
+    let pw = seedGraph(1, 50, L, { target: 0, posted: true, gapRate: 0, gapHeedless: 1 });
+    const car0 = playerOn(pw.course, "a", "end");
+    const path = pathOf(pw, car0);
+    const cws = crosswalksOf(pw.course);
+    const ahead = bandsAhead(pw, car0.k, path).filter((e) => e.cw.kind === "gap" && e.s > 120).sort((x, y) => x.s - y.s)[0];
+    const car = { ...car0, s: ahead.s - 1.5 - CAR.length / 2 - 7, v: 11, player: asPlayer, ...(asPlayer ? {} : { id: "npc-probe", n: 999, v0: 11 }) };
+    pw = { ...pw, actors: [car], peds: [{ id: "ped-probe", n: 0, cw: ahead.cw.i, from: 0, u: 0, state: "waiting", since: 0, manner: "heedless" }] };
+    let stepped = false, hit = false, me = car;
+    for (let i = 0; i < 80; i++) {
+      if (asPlayer) { me = stepDriver(me, { steer: 0, slider: holdAt(me.v, 0) }, pw, DT); pw = step(withDriver(pw, me)); if (pedAt(pw, driverPose(me, pw.course))) hit = true; }
+      else { pw = step(pw); if ((pw.crashes ?? []).some((c) => c.a === "ped-probe")) hit = true; }
+      const q = (pw.peds ?? []).find((x) => x.id === "ped-probe");
+      if (q && q.state !== "waiting") stepped = stepped || { at: pw.t, carPast: asPlayer ? me.s + CAR.length / 2 > ahead.s + 1.5 : null };
+    }
+    return { stepped, hit };
+  };
+  const pl = probe(true), np = probe(false);
+  check(!pl.hit && (!pl.stepped || pl.stepped.carPast), `somebody heedless waiting behind the parked row 7 m ahead of the player at 40 km/h stays put until the player is past (${pl.stepped ? "stepped out once it was clear" : "never stepped out"}), and is not struck`);
+  check(np.stepped && np.hit, "the same person, the same place, a car of the traffic instead: they dart out and it strikes them");
+  check(laps >= 2 && playerHits === 0, `eight minutes along a street of parked cars with people darting out, ${laps} runs end to end at 40 km/h: a player who responds in time never strikes anybody`);
+  check(npc > 0, `while the traffic on the same street, owed no such fairness, struck ${npc}`);
 }
 
 console.log(`\n${"=".repeat(70)}`);

@@ -2776,6 +2776,48 @@ to see -- a flagged rate. Estimate once ruled: a day, most of it the
 mid-block crossing source and its checks; the sight test itself is the
 smallest part.
 
+### People who take risks, and hiding (29 September, DECISIONS.md 5.16.5)
+
+Built on the maintainer's ruling that fairness is owed to the player, not
+to the simulation (sim/peds.js):
+
+- **Manners.** At a crosswalk a person is careful (steps off only when
+  every car could stop), trusting (whenever nothing is on the paint -- their
+  right of way) or heedless (without looking); PED_RISK 15% trusting, 5%
+  heedless. Mid-block, a person crosses from between parked cars at a
+  crossing point every ~40 m of parked curb, GAP_RATE 30 per km of parked
+  curb per hour, GAP_HEEDLESS 10% of them darting out at 3 m/s (DART) --
+  at a walk they spent 1.8 s in the parking strip, which handed every
+  driver the warning a dart never gives.
+- **Hiding.** A driver sees somebody mid-block only when the line from
+  their eye clears the parked cars and wrecks (plan footprints; a parked car
+  hides a person behind it -- the height ruling is still the maintainer's).
+- **Fairness.** Somebody trusting or heedless steps out in front of the
+  player only if the player could still stop, reacting at the floor and
+  braking fully, the hidden time counted. Set up directly in verify-peds 6:
+  a heedless person 7 m ahead of the player at 40 km/h waits; the same
+  person ahead of a traffic car darts out and is struck; switch the
+  fairness off and the player case fails.
+- **What building it found**, each a real gap and each fixed: a crossing
+  just past a road's seam belongs to the next intersection, so neither the
+  person nor the approaching driver saw the other (both now look across
+  the seam, `bandsAhead`); a car that registered somebody mid-block held at
+  its own stop line beyond them and drove through; the half rule let an
+  inner-lane car pass somebody a metre over the middle (now: within a lane's
+  half and half a metre of the car's line is always in its way); a car
+  pulling out of a parking slot was placed straight onto somebody crossing
+  there; a queued car creeping forward over the paint drove on into a
+  careful person stepping out beside it; and a careful person hidden behind
+  a parked car judged room a driver could not use.
+- **Measured.** With everybody careful, nobody is struck by traffic that is
+  watching, on the Pedestrians map or the city. With the defaults, the
+  city (300 cars) sees people struck at the rate in
+  tools/measure/gap-risk.mjs -- see the report to the maintainer -- and
+  every one is somebody who took a risk.
+- **Not yet:** emergency vehicles responding; a height ruling (children,
+  vans); drivers slowing past parked rows where somebody could step out
+  (caution against the unseen -- confidence's side of the asymmetry).
+
 ### Stage 6 — a world with things in it
 
 **Crosswalks, 28 September -- the first piece.** A crosswalk is map data per

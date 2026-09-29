@@ -2388,6 +2388,37 @@ three sabotages.
 
 
 
+### 5.16.5 FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (29 September)
+
+The maintainer: *"pedestrians should absolutely have a chance to do
+dangerous stuff, we just need to make sure the player has time to react
+whenever put in that situation. NPC cars however don't need that same level
+of fairness and unavoidable collisions could occur (perhaps prompting
+emergency vehicles to respond/appear) morbid, but collisions can give our
+city a sense of being lived in and not just waiting for the user to arrive
+on scene."*
+
+**The rule that an unavoidable collision does not test anticipation and
+merely punishes is correct -- and it was only ever about the person holding
+the controls.** Applied to the whole world it made everything safe by
+construction: people stepped off only when every car could stop, which is
+exactly why inattention never cost anything against them (SIMULATOR.md,
+observation scored on the decision). It is the same over-correction as the
+generator discarding marginal situations earlier in the project
+(`windowIsSafe`, CLAUDE.md): a correct rule applied past its subject.
+
+So: people on foot may do dangerous things (sim/peds.js -- trusting,
+heedless, darting out from between parked cars); in front of the traffic,
+no constraint, and collisions between them are CONTENT, recorded and drawn;
+in front of THE PLAYER, only where a response exists in time, given what
+the player could perceive -- the old engine's avoidability question
+(engine/outcome.js `avoidableFrom`) asked of the one response a driver has,
+reaction floor then full brake, with the time a person is hidden behind a
+parked car counted. The rates are tunables, set against a measured rate and
+told to the maintainer, never an emergent surprise.
+
+## 6. ENCROACHMENT: entitled space, not forced evasive action
+
 **The standard is intrusion on entitled space, and it is deliberately
 STRICTER than collision avoidance.** Turning within a fraction of a second
 in front of somebody is a failure to yield whether or not they had to

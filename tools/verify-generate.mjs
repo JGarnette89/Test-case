@@ -432,10 +432,14 @@ console.log("\n12. PARKED CARS: A STRIP, SLOTS, AND THE SAME PEOPLE ALL DAY");
   /* A map with parking and no districts: the parked cars sit there and the
      traffic is exactly what it was without them. */
   const t1 = loadMap(testMap1());
-  let a = seedGraph(1, 50, t1, { target: 80, posted: true }), b = { ...a, parked: undefined };
+  /* With nobody on foot: since 29 September people cross mid-block from
+     between parked cars and parked cars hide them (sim/peds.js), so with
+     people about the parked cars rightly change what drivers see. The
+     cars themselves still change nothing. */
+  let a = seedGraph(1, 50, t1, { target: 80, posted: true, gapRate: 0 }), b = { ...a, parked: undefined };
   let same = true;
   for (let i = 0; i < 1200 && same; i++) { a = step(a); b = step(b); same = JSON.stringify(a.actors) === JSON.stringify(b.actors); }
-  check(same && Object.keys(a.parked ?? {}).length > 0, `on the test map (${Object.keys(a.parked ?? {}).length} parked, no districts) the traffic is identical with the parked cars and without`);
+  check(same && Object.keys(a.parked ?? {}).length > 0, `on the test map (${Object.keys(a.parked ?? {}).length} parked, no districts) with nobody on foot the traffic is identical with the parked cars and without`);
 
   /* The player can hit one; the lane beside it is clear. */
   const sl = parkedPoses(w.course, w.parked)[0], L = lanes[P0.byKey.get(sl.id.slice("parked-".length)).lane];
