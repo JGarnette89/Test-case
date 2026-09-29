@@ -27,7 +27,7 @@
    ===================================================================== */
 import { junctionsOf } from "./graph.js";
 import { rng } from "../core/rng.js";
-import { DT, CAR } from "./traffic.js";
+import { DT, CAR, MOST_BRAKE } from "./traffic.js";
 import { lookingAway } from "./attention.js";
 import { accelFor } from "./player.js";
 import { parkingOf, parkedPoses } from "./parking.js";
@@ -95,6 +95,16 @@ export function playerCanRespond(world, cw, p = null) {
 }
 
 export const WALK = 1.35;
+/* THE APPROACH AND THE DEPARTURE (the maintainer, from testing: "they
+   simply appear 10% in the road and disappear when they reach 90% of the
+   way. it gives the impression cars are waiting for nobody"). A person is
+   created APPROACH metres back along the line of their crossing -- on the
+   pavement, beyond the drawn road -- walks to the kerb in view, waits or
+   does not by their manner, crosses, and walks APPROACH metres on before
+   they are gone. The approach is what a good observer notices and a poor
+   one misses, and nobody decides to cross before they have been visible
+   walking up to it. */
+export const APPROACH = 10;
 /* Somebody heedless DARTS -- a child after a ball, somebody late for the
    bus: a jog, a flagged design constant. At a walk they spent 1.8 s in
    the parking strip before reaching the lane, which handed every driver
@@ -339,7 +349,7 @@ export function heldAhead(world, me, path) {
          path in front of it, whom it stops for where it is. Driving on
          because the paint had been reached put a queued car that crept
          forward into a careful person stepping out beside it. */
-      if (me.s - CAR.length / 2 < farEdge && peds.some((p) => p.cw === cw.i && p.state !== "waiting" && seen(p) && Math.abs(tOf(p, cw) - band.t) * cw.width < 1.8 + 0.3 && (cw.kind !== "gap" || !eye || world.pedsAlwaysSeen || inSight(world, eye, pedPose(world, p))))) {
+      if (me.s - CAR.length / 2 < farEdge && peds.some((p) => p.cw === cw.i && (p.state === "crossing" || p.state === "struck") && seen(p) && Math.abs(tOf(p, cw) - band.t) * cw.width < 1.8 + 0.3 && (cw.kind !== "gap" || !eye || world.pedsAlwaysSeen || inSight(world, eye, pedPose(world, p))))) {
         ahead.push({ near: me.s + CAR.length / 2 + 0.3, held: true });
       }
       continue;
@@ -354,10 +364,19 @@ export function heldAhead(world, me, path) {
        braking for her, could not stop, crept on and struck her). It goes
        through; the person pauses at the middle for it (`stepPeds`). */
     const canStop = ((me.v ?? 0) ** 2) / (2 * COMFY) <= near - (me.s + CAR.length / 2);
-    const within = canStop ? (far + CAR.length / 2 - me.s) / Math.max(me.v ?? 0, 1.5) + 0.5 : 0;
+    const clearIn = (far + CAR.length / 2 - me.s) / Math.max(me.v ?? 0, 1.5) + 0.5;
+    const within = canStop ? clearIn : 0;
+    /* BUT SOMEBODY RUNNING WILL NOT PAUSE. The committed car goes on because
+       the person pauses at the middle for it -- and a person seen running
+       across plainly is not going to. A driver who can see that brakes as
+       hard as the car can, if that still stops them short (measured, the
+       default city: an attentive car drove on into somebody darting across
+       it had been able to see for most of a second, and braked 9 m out). */
+    const hardStop = ((me.v ?? 0) ** 2) / (2 * MOST_BRAKE) <= near - (me.s + CAR.length / 2);
+    const withinFor = (p) => (speedOf(p) > WALK && hardStop ? clearIn : within);
     /* Only somebody the driver can SEE: a person behind a parked car is not
        there for them until they step out past it (mid-block crossings). */
-    ahead.push({ near, held: peds.some((p) => p.cw === cw.i && seen(p) && holds(p, cw, band.t, within) && (cw.kind !== "gap" || !eye || world.pedsAlwaysSeen || inSight(world, eye, pedPose(world, p)))) });
+    ahead.push({ near, held: peds.some((p) => p.cw === cw.i && seen(p) && holds(p, cw, band.t, withinFor(p)) && (cw.kind !== "gap" || !eye || world.pedsAlwaysSeen || inSight(world, eye, pedPose(world, p)))) });
   }
   if (!ahead.some((x) => x.held)) return null;
   /* NOBODY STOPS ON A CROSSWALK. With one held further on -- the exit
@@ -433,20 +452,34 @@ export function stepPeds(world) {
   const t = world.t;
   let n = world.pedN ?? 0;
   const out = [];
-  for (const p of world.peds ?? []) {
+  let across = world.pedsAcross ?? 0;
+  for (let p of world.peds ?? []) {
     const cw = cws[p.cw];
+    /* Walking up to the kerb; at it, waiting -- and a heedless person
+       decides on the spot, in the same tick, without stopping. */
+    if (p.state === "approaching") {
+      const u = p.u + speedOf(p) * DT;
+      if (u < -0.5) { out.push({ ...p, u }); continue; }
+      p = { ...p, u: -0.5, state: "waiting", since: t };
+    }
+    /* Across: walking on, off the road, and then gone. */
+    if (p.state === "leaving") {
+      const u = p.u + speedOf(p) * DT;
+      if (u < cw.width + APPROACH) out.push({ ...p, u });
+      continue;
+    }
     if (p.state === "waiting") {
       const go = p.manner === "trusting" ? !onPaint(world, cw) && playerCanRespond(world, cw, p)
         : p.manner === "heedless" ? !onPaint(world, cw, { going: false }) && playerCanRespond(world, cw, p)
         : safeToStep(world, cw);
-      out.push(go ? { ...p, state: "crossing", since: t } : p);
+      out.push(go ? { ...p, u: 0, state: "crossing", since: t } : p);
       continue;
     }
     /* STRUCK: they stay where they fell for as long as a wreck stands
        (crossing.js CRASH_CLEAR, 45 s), and then are gone. */
     if (p.state === "struck") { if (t - p.since < STRUCK_CLEAR) out.push(p); continue; }
     let u = p.u + speedOf(p) * DT;
-    if (u >= cw.width) continue;   // across: gone
+    if (u >= cw.width) { across += 1; out.push({ ...p, u, state: "leaving", since: t }); continue; }
     /* PAUSING AT THE MIDDLE: about to step into the far half while a car
        that cannot stop comfortably is about to cross it there, a person
        waits at the line and lets it pass -- what anybody does. */
@@ -463,7 +496,7 @@ export function stepPeds(world) {
     if (r() < (DT * (world.gapRate ?? GAP_RATE) * km) / 3600) {
       const cw = gaps[Math.floor(r() * gaps.length) % gaps.length];
       if (!out.some((q) => q.cw === cw.i)) {
-        out.push({ id: `ped-${n}`, n, cw: cw.i, from: 0, u: 0, state: "waiting", since: t, manner: r() < (world.gapHeedless ?? GAP_HEEDLESS) ? "heedless" : "careful" });
+        out.push({ id: `ped-${n}`, n, cw: cw.i, from: 0, u: -APPROACH, state: "approaching", since: t, manner: r() < (world.gapHeedless ?? GAP_HEEDLESS) ? "heedless" : "careful" });
         n += 1;
       }
     }
@@ -474,11 +507,11 @@ export function stepPeds(world) {
     if (r() >= DT / PED_EVERY) continue;
     /* Nobody new while somebody from the same curb is still waiting. */
     const from = r() < 0.5 ? 0 : 1;
-    if (out.some((p) => p.cw === cw.i && p.state === "waiting" && p.from === from)) continue;
-    out.push({ id: `ped-${n}`, n, cw: cw.i, from, u: 0, state: "waiting", since: t, manner: mannerOf(world, r()) });
+    if (out.some((p) => p.cw === cw.i && (p.state === "waiting" || p.state === "approaching") && p.from === from)) continue;
+    out.push({ id: `ped-${n}`, n, cw: cw.i, from, u: -APPROACH, state: "approaching", since: t, manner: mannerOf(world, r()) });
     n += 1;
   }
-  return { peds: out, pedN: n };
+  return { peds: out, pedN: n, pedsAcross: across };
 }
 
 /* Where a pedestrian stands, for drawing and for the contact check. */
@@ -486,7 +519,7 @@ export function pedPose(world, p) {
   const cw = crosswalksOf(world.course)[p.cw];
   const t = tOf(p, cw);
   /* Waiting: half a metre back on the curb they will step off. */
-  const tt = p.state === "waiting" ? (p.from === 0 ? -0.5 / cw.width : 1 + 0.5 / cw.width) : t;
+  const tt = t;   // u runs from -APPROACH (on the pavement) to width + APPROACH, so one rule places them all
   return { x: cw.a.x + (cw.b.x - cw.a.x) * tt, y: cw.a.y + (cw.b.y - cw.a.y) * tt, z: cw.a.z ?? 0, heading: (Math.atan2(cw.b.y - cw.a.y, cw.b.x - cw.a.x) * 180) / Math.PI + (p.from === 0 ? 0 : 180) };
 }
 

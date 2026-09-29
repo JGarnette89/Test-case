@@ -2814,6 +2814,27 @@ to the simulation (sim/peds.js):
   city (300 cars) sees people struck at the rate in
   tools/measure/gap-risk.mjs -- see the report to the maintainer -- and
   every one is somebody who took a risk.
+- **People are seen coming and going (29 September, from the maintainer's
+  testing: "they simply appear 10% in the road and disappear when they
+  reach 90% of the way. it gives the impression cars are waiting for
+  nobody").** It was the model, not an optimisation: a person was created
+  standing at the carriageway edge already deciding, and deleted the tick
+  they reached the far edge. Now a person is created `APPROACH` (10 m)
+  back on the pavement, walks up in view, decides only at the kerb, crosses,
+  and walks 10 m on before they are gone (sim/peds.js; verify-peds 7, held
+  to fixed distances rather than to the constant, and sabotaged with it at
+  0.5 m). So nobody decides to cross before they have been visible walking
+  up to it. Cost: about twice as many people alive at once, each a few
+  arithmetic operations a tick -- nothing measurable against the traffic.
+- **Somebody seen running is braked for (29 September).** Found by the
+  change above shifting which occasions came up: a car too close to stop
+  comfortably is committed and goes on, because a person pauses at the
+  middle for it -- but somebody darting across is plainly not going to,
+  and an attentive car drove into a person it had been able to see for
+  most of a second. A committed car now brakes as hard as the car can for
+  a person it sees running, if that still stops it short (verify-peds 8,
+  sabotaged). Most traffic strikes of heedless people before this were
+  that gap; what is left is people nobody could see in time.
 - **Not yet:** emergency vehicles responding; a height ruling (children,
   vans); drivers slowing past parked rows where somebody could step out
   (caution against the unseen -- confidence's side of the asymmetry).

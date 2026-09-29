@@ -26,7 +26,7 @@ for (let i = 0; i < secs / DT; i++) {
   const before = new Map((w.peds ?? []).map((q) => [q.id, q])), cars = new Map(w.actors.map((a) => [a.id, a]));
   w = step(w);
   const now = new Set((w.peds ?? []).map((q) => q.id));
-  for (const [id, q] of before) if (!now.has(id) && q.state === "crossing") crossed++;
+  for (const q of w.peds ?? []) if (q.state === "leaving" && before.get(q.id)?.state === "crossing") crossed++;
   for (const a of w.actors) {
     const was = cars.get(a.id); if (!was || was.route !== a.route) continue;
     const pa = w.course.at[a.k].layout.paths[a.route];

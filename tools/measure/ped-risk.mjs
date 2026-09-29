@@ -16,7 +16,7 @@ for (const [name, risk] of [["all careful", { trusting: 0, heedless: 0 }], ["5% 
       const before = new Map((w.peds ?? []).map((q) => [q.id, q]));
       w = step(w);
       const now = new Set((w.peds ?? []).map((q) => q.id));
-      for (const [id, q] of before) if (!now.has(id) && q.state === "crossing") across++;
+      for (const q of w.peds ?? []) if (q.state === "leaving" && before.get(q.id)?.state === "crossing") across++;
       for (const a of w.actors) { ticks++; if (-(a.a ?? 0) > 3.5) hard++; }
     }
     struck += (w.crashes ?? []).filter((c) => String(c.a).startsWith("ped-")).length;

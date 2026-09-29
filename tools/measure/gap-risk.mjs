@@ -19,7 +19,7 @@ for (const [rate, heed, perceive] of (process.env.CASES ? JSON.parse(process.env
       w = step(w);
       for (const q of w.peds ?? []) seen.add(q.id);
       const now = new Set((w.peds ?? []).map((q) => q.id));
-      for (const [id, q] of before) if (!now.has(id) && q.state === "crossing") across++;
+      for (const q of w.peds ?? []) if (q.state === "leaving" && before.get(q.id)?.state === "crossing") across++;
     }
     ms += (performance.now() - t0) / (secs / DT);
     spawned += seen.size;

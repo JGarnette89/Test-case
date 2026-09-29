@@ -18,12 +18,18 @@
      5. Drivers who look away can miss somebody on foot, and only they
         can: attentive drivers strike nobody; every strike is a recorded,
         drawn crash, by a driver who had just looked away.
+     6. Fairness is owed to the player, not the simulation.
+     7. People are seen coming and going: created on the pavement, they walk
+        up, decide at the kerb and walk on, never appearing or vanishing in
+        the road.
+     8. Somebody seen running across is braked for, hard, by a car too
+        close to stop comfortably -- they will not pause at the middle.
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { emptyMap, road, CROSSWALK_W } from "../src/map/format.js";
 import { graphOf, junctionsOf } from "../src/sim/graph.js";
 import { seedGraph, step, overlapping, pathOf, poseOf, openTo } from "../src/sim/crossing.js";
-import { crosswalksOf, bandOn, heldAhead, pedAt, pedPose, strikePed, bandsAhead } from "../src/sim/peds.js";
+import { crosswalksOf, bandOn, heldAhead, pedAt, pedPose, strikePed, bandsAhead, APPROACH, speedOf } from "../src/sim/peds.js";
 import { TEST_MAPS, testPeds } from "../src/map/samples.js";
 import { playerOn, stepDriver, withDriver, driverPose } from "../src/sim/drive.js";
 import { holdAt } from "../src/sim/player.js";
@@ -109,7 +115,7 @@ console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- 
       const cars = new Map(w.actors.map((a) => [a.id, a]));
       w = step(w);
       const now = new Set((w.peds ?? []).map((q) => q.id));
-      for (const [id, q] of before) if (!now.has(id) && q.state === "crossing") out.crossed++;
+      for (const q of w.peds ?? []) if (q.state === "leaving" && before.get(q.id)?.state === "crossing") out.crossed++;
       for (const q of w.peds ?? []) if (q.state === "waiting") out.longest = Math.max(out.longest, w.t - q.since);
       if (i % 5 === 0) { out.touch += touching(w).length; out.over += overlapping(w).length; }
       /* A car driving over a crosswalk while somebody is on the OTHER half
@@ -196,7 +202,7 @@ console.log("\n4. A MID-BLOCK CROSSING, MADE WITH THE EDITOR'S TOOL: A STOP EACH
       if (was.s < pa.stopAt && a.s >= pa.stopAt) (a.stoppedAt != null ? stopped++ : rolled++);
     }
     const now = new Set((w.peds ?? []).map((q) => q.id));
-    for (const [id, q] of people) if (!now.has(id) && q.state === "crossing") crossed++;
+    for (const q of w.peds ?? []) if (q.state === "leaving" && people.get(q.id)?.state === "crossing") crossed++;
     if (i % 5 === 0) { over += overlapping(w).length; touch += touching(w).length; }
   }
   check(stopped > 20 && crossed > 0 && touch === 0 && over === 0 && (w.crashes ?? []).length === 0,
@@ -219,7 +225,7 @@ console.log("\n5. DRIVERS WHO LOOK AWAY CAN MISS SOMEBODY ON FOOT -- AND ONLY TH
       w = step(w);
       for (const a of w.actors) if (lookingAway(w.t, a) > 0) lastAway.set(a.id, w.t);
       const now = new Set((w.peds ?? []).map((q) => q.id));
-      for (const [id, q] of before) if (!now.has(id) && q.state === "crossing") across++;
+      for (const q of w.peds ?? []) if (q.state === "leaving" && before.get(q.id)?.state === "crossing") across++;
       silent += touching(w).length;
       for (const c of (w.crashes ?? []).slice(seenCrash)) if (String(c.a).startsWith("ped-") && !(lastAway.has(c.b) && w.t - lastAway.get(c.b) < 3)) unexplained++;
       seenCrash = (w.crashes ?? []).length;
@@ -271,7 +277,7 @@ console.log("\n6. FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (the mai
      between them -- every mid-block walker heedless, ten times the usual
      rate. A player who responds -- a reaction floor after somebody is in
      their way, full brake -- never strikes anybody: a response always
-     existed. The traffic on the same street, owed no such thing, does. */
+     existed. The traffic on the same street is owed no such thing. */
   const street = () => {
     const m = emptyMap("dart");
     m.bounds = { x: 0, y: 0, w: 700, h: 200 };
@@ -325,7 +331,89 @@ console.log("\n6. FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (the mai
   check(!pl.hit && (!pl.stepped || pl.stepped.carPast), `somebody heedless waiting behind the parked row 7 m ahead of the player at 40 km/h stays put until the player is past (${pl.stepped ? "stepped out once it was clear" : "never stepped out"}), and is not struck`);
   check(np.stepped && np.hit, "the same person, the same place, a car of the traffic instead: they dart out and it strikes them");
   check(laps >= 2 && playerHits === 0, `eight minutes along a street of parked cars with people darting out, ${laps} runs end to end at 40 km/h: a player who responds in time never strikes anybody`);
-  check(npc > 0, `while the traffic on the same street, owed no such fairness, struck ${npc}`);
+  /* NOT A CHECK ANY MORE (29 September). This asserted the traffic on the
+     same street DID strike somebody, and the strikes it counted turned out
+     to be mostly cars driving on into somebody they could see running
+     across -- the committed-car gap section 8 closes. With it closed the
+     traffic here strikes only people it could not see in time, which is
+     rare on this street; that the fairness is the player's alone is what
+     (d) shows directly, and it still does. Reported, as the rate it is. */
+  console.log(`   (the traffic on the same street, owed no such fairness, struck ${npc} in the same eight minutes)`);
+}
+
+console.log("\n7. PEOPLE ARE SEEN COMING AND GOING: THEY APPEAR ON THE PAVEMENT, WALK UP, DECIDE AT THE KERB, AND WALK ON (the maintainer, from testing)");
+{
+  /* "they simply appear 10% in the road and disappear when they reach 90%
+     of the way": every person must be created off the drawn road, walk up
+     for the whole approach before deciding anything, and walk on after the
+     far kerb for the whole departure. */
+  const raw = testPeds(), L = loadMap(raw);
+  const roadHalf = Object.fromEntries(L.roads.map((r) => [r.id, (r.outer ?? r.width) / 2]));
+  let w = seedGraph(3, 50, L, { target: 40, posted: true });
+  const cws = crosswalksOf(w.course);
+  const first = new Map(), stepped = new Map(), lastOff = new Map();
+  let bornOnRoad = 0, rushed = 0, vanishedOnRoad = 0, people = 0;
+  /* Whoever is already out when we start watching was born in the warm-up. */
+  const already = new Set((w.peds ?? []).map((q) => q.id));
+  /* Fixed physical expectations, not the constant itself: at least SEEN
+     metres beyond the road's edge when they appear, walked in view before
+     stepping off, and walked on after the far kerb. */
+  const SEEN = 5;
+  const beyond = (q) => { const cw = cws[q.cw]; const t = q.from === 0 ? q.u / cw.width : 1 - q.u / cw.width; return Math.max(-t, t - 1, 0) * cw.width; };
+  for (let i = 0; i < 300 / DT; i++) {
+    const before = new Map((w.peds ?? []).map((q) => [q.id, q]));
+    w = step(w);
+    const now = new Set();
+    for (const q of w.peds ?? []) {
+      now.add(q.id);
+      if (already.has(q.id)) continue;
+      if (!first.has(q.id)) { first.set(q.id, w.t); people++; if (beyond(q) < SEEN || q.state !== "approaching") bornOnRoad++; }
+      const b = before.get(q.id);
+      if (q.state === "crossing" && b && b.state !== "crossing") { stepped.set(q.id, w.t); if ((w.t - first.get(q.id)) * speedOf(q) < SEEN) rushed++; }
+      if (q.state === "leaving" && b?.state === "crossing") lastOff.set(q.id, w.t);
+    }
+    for (const [id, b] of before) if (!already.has(id) && !now.has(id) && b.state !== "struck" && b.state !== "leaving") vanishedOnRoad++;
+    for (const [id, b] of before) if (!already.has(id) && !now.has(id) && b.state === "leaving" && (w.t - (lastOff.get(id) ?? w.t)) * speedOf(b) < SEEN) vanishedOnRoad++;
+  }
+  check(people > 50 && bornOnRoad === 0, `${people} people in five minutes, every one appearing at least ${SEEN} m beyond the road's edge, none in the road`);
+  check(rushed === 0 && stepped.size > 30, `${stepped.size} stepped off, every one only after walking the whole way up to the kerb in view -- nobody committed before they could be seen`);
+  check(vanishedOnRoad === 0, "and nobody vanishes in the road or at the far kerb: they walk on off the road before they are gone");
+}
+
+console.log("\n8. SOMEBODY SEEN RUNNING ACROSS IS BRAKED FOR, EVEN BY A CAR TOO CLOSE TO STOP COMFORTABLY");
+{
+  /* A car that cannot stop comfortably goes on, because a person pauses at
+     the middle for it -- but somebody running is not going to. Set up
+     directly, occlusion off so the rule is all that is tested: a traffic
+     car at 50 km/h, 25 m short of a crossing (a comfortable stop needs 39
+     m, a hard one 12), and somebody darting across from either side. */
+  const street = () => {
+    const m = emptyMap("runner");
+    m.bounds = { x: 0, y: 0, w: 700, h: 200 };
+    m.roads.push(road({ id: "a", kind: "residential", points: [P(0, 100), P(175, 100), P(350, 100)] }), road({ id: "b", kind: "residential", points: [P(350, 100), P(525, 100), P(700, 100)] }));
+    return m;
+  };
+  const L = loadMap(street());
+  const probe = (from) => {
+    let pw = seedGraph(1, 50, L, { target: 0, posted: true, gapRate: 0 });
+    const car0 = playerOn(pw.course, "a", "end");
+    const path = pathOf(pw, car0);
+    const ahead = bandsAhead(pw, car0.k, path).filter((e) => e.s > 80).sort((x, y) => x.s - y.s)[0];
+    const near = ahead.s - (ahead.cw.to - ahead.cw.from) / 2;
+    const car = { ...car0, id: "npc-probe", n: 999, s: near - 25 - CAR.length / 2, v: 14, v0: 14, player: false };
+    pw = { ...pw, pedsAlwaysSeen: true, actors: [car], peds: [{ id: "ped-probe", n: 0, cw: ahead.cw.i, from, u: 0.3, state: "crossing", since: 0, manner: "heedless" }] };
+    let hit = false, least = Infinity;
+    for (let i = 0; i < 100; i++) {
+      pw = step(pw);
+      if ((pw.crashes ?? []).some((c) => c.a === "ped-probe" || c.b === "ped-probe")) hit = true;
+      const a = pw.actors.find((x) => x.id === "npc-probe");
+      if (a) least = Math.min(least, a.a ?? 0);
+    }
+    return { hit, least };
+  };
+  const both = [0, 1].map(probe);
+  check(both.every((r) => !r.hit) && both.some((r) => r.least < -2.5 - 1e-9),
+    `somebody darting across 25 m ahead of a car at 50 km/h, from either side: struck ${both.filter((r) => r.hit).length} of 2 times; hardest braking ${Math.min(...both.map((r) => r.least)).toFixed(1)} m/s2, harder than a comfortable stop`);
 }
 
 console.log(`\n${"=".repeat(70)}`);

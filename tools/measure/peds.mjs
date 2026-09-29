@@ -43,7 +43,7 @@ if (process.argv[1]?.endsWith("peds.mjs") && process.argv[1].includes("measure")
     const before = new Map((w.peds ?? []).map((p) => [p.id, p]));
     w = step(w);
     const now = new Set((w.peds ?? []).map((p) => p.id));
-    for (const [id, p] of before) if (!now.has(id) && p.state === "crossing") crossed++;
+    for (const p of w.peds ?? []) if (p.state === "leaving" && before.get(p.id)?.state === "crossing") crossed++;
     for (const p of w.peds ?? []) if (p.state === "waiting") maxWait = Math.max(maxWait, w.t - p.since);
     if (i % 5 === 0) { touch += touching(w).length; over += overlapping(w).length; }
     for (const a of w.actors) if (a.v < 0.3 && !seen.has(a.id + "@" + a.k)) {

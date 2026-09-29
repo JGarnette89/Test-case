@@ -13,7 +13,7 @@ for (let i = 0; i < secs / DT; i++) {
   const before = new Map((w.peds ?? []).map((q) => [q.id, q]));
   w = step(w);
   const now = new Set((w.peds ?? []).map((q) => q.id));
-  for (const [id, q] of before) if (!now.has(id) && q.state === "crossing") across++;
+  for (const q of w.peds ?? []) if (q.state === "leaving" && before.get(q.id)?.state === "crossing") across++;
   for (const q of w.peds ?? []) if (q.state === "struck") struck.add(q.id);
   silent += touching(w).length;
 }
