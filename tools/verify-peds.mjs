@@ -12,6 +12,9 @@
         them is never undue delay; a map without crosswalks is unchanged.
      3. The player's car against a person: found, struck, left lying where
         they fell and waited for by the traffic, then cleared.
+     4. A mid-block crossing made with the editor's tool: a stop each way on
+        a street with no side street, and it does its job -- everybody
+        stops, people cross, nobody is touched.
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { emptyMap, road, CROSSWALK_W } from "../src/map/format.js";
@@ -20,7 +23,7 @@ import { seedGraph, step, overlapping, pathOf, poseOf, openTo } from "../src/sim
 import { crosswalksOf, bandOn, heldAhead, pedAt, pedPose, strikePed } from "../src/sim/peds.js";
 import { walkedCrossroads, touching } from "./measure/peds.mjs";
 import { DT, CAR } from "../src/sim/traffic.js";
-import { setCrosswalk, splitRoad } from "../src/editor/model.js";
+import { setCrosswalk, splitRoad, addCrossing } from "../src/editor/model.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -153,6 +156,36 @@ console.log("\n3. THE PLAYER'S CAR AGAINST A PERSON: FOUND, STRUCK, LEFT WHERE T
   check(lying?.state === "struck" && still && waited, `twenty seconds on they are still where they fell, and every one of the ${crossing.length} paths over that crosswalk is held for them`);
   for (let i = 0; i < 30 / DT; i++) w = step(w);
   check(!w.peds.some((q) => q.id === who.id), "and after the time a wreck stands, they are cleared");
+}
+
+console.log("\n4. A MID-BLOCK CROSSING, MADE WITH THE EDITOR'S TOOL: A STOP EACH WAY SERVING ONLY A CROSSWALK (the maintainer's ruling)");
+{
+  const m = emptyMap("mid");
+  m.bounds = { x: 0, y: 0, w: 600, h: 200 };
+  m.roads.push(road({ id: "street", kind: "residential", points: [P(0, 100), P(200, 100), P(400, 100), P(600, 100)] }));
+  const { map, ids } = addCrossing(m, "street", P(310, 104));
+  const L = loadMap(map);
+  const node = L.nodes.find((n) => n.legs.length === 2);
+  const stops = (map.signs ?? []).filter((q) => q.kind === "stop").length;
+  check(ids.length === 2 && node && Math.abs(node.at.x - 310) < 0.01 && Math.abs(node.at.y - 100) < 0.01 && stops === 2 && map.roads.find((r) => r.id === ids[0]).crosswalk?.end === true,
+    "one tap on a street splits it where it was tapped, puts a stop sign on both new approaches and a crosswalk between them -- a node with no side street");
+  let w = seedGraph(3, 50, L, { target: 20, posted: true });
+  let over = 0, stopped = 0, rolled = 0, crossed = 0, touch = 0;
+  for (let i = 0; i < 240 / DT; i++) {
+    const before = new Map(w.actors.map((a) => [a.id, a])), people = new Map((w.peds ?? []).map((q) => [q.id, q]));
+    w = step(w);
+    for (const a of w.actors) {
+      const was = before.get(a.id);
+      if (!was || was.route !== a.route) continue;
+      const pa = w.course.at[a.k].layout.paths[a.route];
+      if (was.s < pa.stopAt && a.s >= pa.stopAt) (a.stoppedAt != null ? stopped++ : rolled++);
+    }
+    const now = new Set((w.peds ?? []).map((q) => q.id));
+    for (const [id, q] of people) if (!now.has(id) && q.state === "crossing") crossed++;
+    if (i % 5 === 0) { over += overlapping(w).length; touch += touching(w).length; }
+  }
+  check(stopped > 20 && crossed > 0 && touch === 0 && over === 0 && (w.crashes ?? []).length === 0,
+    `four minutes: ${stopped} cars over the line having stopped (${rolled} without -- rolling stops are drivers' own), ${crossed} people across, no car touches anybody or anything`);
 }
 
 console.log(`\n${"=".repeat(70)}`);

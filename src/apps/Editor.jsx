@@ -40,7 +40,7 @@
    ===================================================================== */
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
-  Route, MousePointer2, Hexagon, Move, ZoomIn, ZoomOut,
+  Route, MousePointer2, Hexagon, Move, ZoomIn, ZoomOut, Footprints,
   Trash2, Download, Upload, FolderOpen, Play, CheckCircle2, AlertTriangle, Undo2, Redo2, X, Save, Library, Building2,
 } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
@@ -54,7 +54,7 @@ import {
   setRoadProps, setRoadControl, setRoadBays, setLeftArrow, setPointZ, nearestRoadEnd, cumulative,
   nearestOnRoad, joinCrossing, setRoadRamp, setRoadHump, deletePoint, subdivideRoad, smoothRoad,
   addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse, setRoadTurns,
-  addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad, setSignBack, controlAt, setNoLeft, noLeftAt, setCrosswalk,
+  addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad, setSignBack, controlAt, setNoLeft, noLeftAt, setCrosswalk, addCrossing,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../editor/library.js";
@@ -487,6 +487,16 @@ export default function Editor() {
       }
       return;
     }
+    if (tool === "crossing") {
+      /* A mid-block crossing where the road is tapped: split there, stop
+         signs both ways, a crosswalk (model.js `addCrossing`). */
+      const hr = hitRoad(p.x, p.y);
+      if (!hr) return;
+      const { map: m1, ids } = addCrossing(draft, hr, w);
+      setDraft(m1);
+      setSelected({ type: "road", id: ids[0], end: "end" });
+      return;
+    }
     if (tool === "building") {
       /* A tap on an existing building selects it rather than stacking a
          second on top; anywhere else places one. */
@@ -706,7 +716,7 @@ export default function Editor() {
       </div>
 
       <div style={S.toolbar}>
-        {[["road", "Draw road", Route], ["select", "Select / edit", MousePointer2], ["zone", "Draw zone", Hexagon], ["building", "Place building", Building2], ["pan", "Pan", Move]].map(([id, label, Icon]) => (
+        {[["road", "Draw road", Route], ["select", "Select / edit", MousePointer2], ["zone", "Draw zone", Hexagon], ["building", "Place building", Building2], ["crossing", "Mid-block crossing", Footprints], ["pan", "Pan", Move]].map(([id, label, Icon]) => (
           <button key={id} className="btn" title={label}
             style={{ ...S.btn, borderColor: tool === id ? C.amber : "rgba(255,255,255,0.12)", color: tool === id ? C.white : DIM }}
             onClick={() => { if (drawing) finishDrawing(); if (id !== "select" && id !== "building") setSelected(null); setTool(id); }}>

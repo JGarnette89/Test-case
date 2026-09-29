@@ -2522,7 +2522,14 @@ with a default; he took the defaults for five and ruled on one):
    and it must still do its job: stop traffic for that crossing. So a
    mid-block stop is a real feature, not a placement error; it needs
    pedestrians and crossings in the sim, which do not exist yet, and is
-   planned after observation.
+   planned after observation. **BUILT 29 September**: the editor's
+   "Mid-block crossing" tool splits a street where it is tapped, puts a
+   stop sign on both new approaches and a crosswalk between them -- two
+   roads, two signs and a crosswalk, nothing new in the format. A node
+   with only the one street through it already carried traffic; measured
+   first (tools/measure/midblock.mjs). Four minutes: 68 cars over the
+   line, every one having stopped, 10 people across, nothing touched.
+   The Pedestrians test map's "mid-block crossing". verify-peds 4.
 4. **Locals know their own district's signs without reading them**;
    drivers from elsewhere have to read every one.
 5. **Sign kinds, in this order:** stop, yield, all-way plate, no right on

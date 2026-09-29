@@ -270,6 +270,32 @@ export function splitRoad(map, roadId, seg, at) {
   return { map: { ...map, roads, ...(signs ? { signs } : {}) }, ids: [roadId, newId] };
 }
 
+/* A MID-BLOCK CROSSING (the maintainer's ruling, 28 September: "a stop
+   sign can be mid-road, but it needs to still serve its purpose to stop
+   traffic for a crossing" -- a school zone, say). The road is split at the
+   point nearest `at`; the two new ends meet at a node with only this
+   street through it, each gets a stop sign, and a crosswalk is painted
+   there -- the people who use it are the sim's (sim/peds.js). Nothing new
+   in the format: it is two roads, two signs and a crosswalk, which is what
+   a mid-block stop is. */
+export function addCrossing(map, roadId, at) {
+  const r = map.roads.find((x) => x.id === roadId);
+  if (!r || r.points.length < 2) return { map, ids: [roadId] };
+  let best = null;
+  for (let i = 0; i + 1 < r.points.length; i++) {
+    const a = r.points[i], b = r.points[i + 1], dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0.05, Math.min(0.95, ((at.x - a.x) * dx + (at.y - a.y) * dy) / L2));
+    const p = { x: a.x + dx * t, y: a.y + dy * t, z: (a.z ?? 0) + ((b.z ?? 0) - (a.z ?? 0)) * t };
+    const d = Math.hypot(p.x - at.x, p.y - at.y);
+    if (!best || d < best.d) best = { seg: i, p, d };
+  }
+  const { map: split, ids } = splitRoad(map, roadId, best.seg, best.p);
+  let m = setRoadControl(split, ids[0], "end", "stop");
+  m = setRoadControl(m, ids[1], "start", "stop");
+  m = setCrosswalk(m, ids[0], "end", true);
+  return { map: m, ids };
+}
+
 /* MAKE AN INTERSECTION WHERE TWO ROADS CROSS. The format connects roads
    only at nodes (section 3.1): two roads drawn across each other are an
    overpass if one is high enough and a warning if not, never silently a

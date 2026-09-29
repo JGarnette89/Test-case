@@ -232,7 +232,11 @@ export function testPeds() {
   m.roads.push(
     road({ id: "west", points: stroke({ x: 0, y: 400 }, S), control: { start: "none", end: "stop" }, crosswalk: atEnd }),
     road({ id: "middle", points: stroke(S, U), control: { start: "stop", end: "none" }, crosswalk: both }),
-    road({ id: "east", points: stroke({ x: 1400, y: 400 }, U), crosswalk: atEnd }),
+    /* East of the crossroads the collector has a MID-BLOCK crossing: two
+       roads meeting end to end, a stop sign each way, a crosswalk -- the
+       maintainer's school-zone stop (editor/model.js `addCrossing`). */
+    road({ id: "east", points: stroke({ x: 1400, y: 400 }, { x: 1200, y: 400 }), control: { start: "none", end: "stop" }, crosswalk: atEnd }),
+    road({ id: "east-in", points: stroke({ x: 1200, y: 400 }, U), control: { start: "stop", end: "none" }, crosswalk: atEnd }),
     road({ id: "S-north", kind: "residential", points: stroke({ x: 400, y: 0 }, S), control: { start: "none", end: "stop" }, crosswalk: atEnd }),
     road({ id: "S-south", kind: "residential", points: stroke({ x: 400, y: 800 }, S), control: { start: "none", end: "stop" }, crosswalk: atEnd }),
     road({ id: "U-north", kind: "residential", points: stroke({ x: 1000, y: 0 }, U), crosswalk: atEnd }),
@@ -241,6 +245,7 @@ export function testPeds() {
   m.sections = [
     { id: "stop", name: "the four-way stop", look: S, start: { road: "S-south", end: "end" }, judge: "People step off only when the cars could stop; drivers wait for them -- but go once they are past the middle, onto the far half (the near-half rule). A turning car waits behind the crosswalk, not on it." },
     { id: "uncontrolled", name: "the uncontrolled crossroads", look: U, start: { road: "U-south", end: "end" }, judge: "The same with no signs: through traffic slows and waits for people already crossing." },
+    { id: "midblock", name: "the mid-block crossing", look: { x: 1200, y: 400 }, start: { road: "east", end: "end" }, judge: "A stop sign each way with no side street, only a crosswalk: everybody stops, and waits while somebody is crossing their half." },
   ];
   return m;
 }
