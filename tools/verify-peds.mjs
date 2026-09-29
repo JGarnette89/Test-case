@@ -15,6 +15,9 @@
      4. A mid-block crossing made with the editor's tool: a stop each way on
         a street with no side street, and it does its job -- everybody
         stops, people cross, nobody is touched.
+     5. Drivers who look away can miss somebody on foot, and only they
+        can: attentive drivers strike nobody; every strike is a recorded,
+        drawn crash, by a driver who had just looked away.
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { emptyMap, road, CROSSWALK_W } from "../src/map/format.js";
@@ -22,6 +25,8 @@ import { graphOf, junctionsOf } from "../src/sim/graph.js";
 import { seedGraph, step, overlapping, pathOf, poseOf, openTo } from "../src/sim/crossing.js";
 import { crosswalksOf, bandOn, heldAhead, pedAt, pedPose, strikePed } from "../src/sim/peds.js";
 import { walkedCrossroads, touching } from "./measure/peds.mjs";
+import { testPeds } from "../src/map/samples.js";
+import { lookingAway } from "../src/sim/attention.js";
 import { DT, CAR } from "../src/sim/traffic.js";
 import { setCrosswalk, splitRoad, addCrossing } from "../src/editor/model.js";
 
@@ -119,7 +124,8 @@ console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- 
         if (!w.ignorePeds && a.v < 0.3 && heldAhead(w, a, path) && openTo(a, w, 1)) out.delayed++;
       }
     }
-    out.crashes = (w.crashes ?? []).length;
+    out.crashes = (w.crashes ?? []).filter((c) => !String(c.a).startsWith("ped-")).length;
+    out.crashesWithPeds = (w.crashes ?? []).filter((c) => String(c.a).startsWith("ped-")).length;
     return out;
   };
   const stop = run("stop", 3), none = run("none", 5), blind = run("stop", 3, true);
@@ -127,7 +133,12 @@ console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- 
     `four minutes each: ${stop.crossed} people across at the all-way stop and ${none.crossed} at the uncontrolled crossroads, nobody waiting at the curb longer than ${Math.max(stop.longest, none.longest).toFixed(1)} s`);
   check(stop.touch === 0 && none.touch === 0 && stop.over === 0 && none.over === 0 && stop.crashes === 0 && none.crashes === 0,
     "no car touches anybody on foot, and no car touches another car");
-  check(blind.touch > 0, `and it is the yielding doing it: the same traffic with drivers told to ignore people on foot drives into them ${blind.touch} car-ticks`);
+  /* A contact is a strike now, recorded the tick it happens (peds.js
+     `strikes`), so the comparison counts strikes -- and holds that every
+     one of them is recorded and drawn, never a car inside a person. */
+  const blindStruck = blind.crashesWithPeds;
+  check(blindStruck > 0 && blind.touch === 0, `and it is the yielding doing it: the same traffic with drivers told to ignore people on foot strikes ${blindStruck} of them -- every one a recorded crash, the person lying where they fell, never a car silently inside somebody`);
+  check(stop.crashesWithPeds === 0 && none.crashesWithPeds === 0, "while drivers who yield strike nobody");
   check(stop.otherHalf + none.otherHalf > 0, `the near-half rule: ${stop.otherHalf + none.otherHalf} times a car crossed a crosswalk while somebody was still on its other half`);
   check(stop.delayed + none.delayed === 0, "and a driver waiting for somebody on foot is never counted as delaying");
   let w = seedGraph(3, 50, loadMap(crossroads()), { target: 40, posted: true });
@@ -186,6 +197,41 @@ console.log("\n4. A MID-BLOCK CROSSING, MADE WITH THE EDITOR'S TOOL: A STOP EACH
   }
   check(stopped > 20 && crossed > 0 && touch === 0 && over === 0 && (w.crashes ?? []).length === 0,
     `four minutes: ${stopped} cars over the line having stopped (${rolled} without -- rolling stops are drivers' own), ${crossed} people across, no car touches anybody or anything`);
+}
+
+console.log("\n5. DRIVERS WHO LOOK AWAY CAN MISS SOMEBODY ON FOOT -- AND ONLY THEY: EVERY STRIKE RECORDED, NONE BY A DRIVER WHO WAS LOOKING");
+{
+  /* The Pedestrians test map: two crossroads and a mid-block crossing,
+     60 cars. Ten minutes a seed. */
+  const run = (seed, perceive) => {
+    let w = seedGraph(seed, 50, loadMap(testPeds()), { target: 60, posted: true, perceive });
+    let silent = 0, across = 0, unexplained = 0;
+    const lastAway = new Map();
+    let seenCrash = 0;
+    for (let i = 0; i < 600 / DT; i++) {
+      const before = new Map((w.peds ?? []).map((q) => [q.id, q]));
+      w = step(w);
+      for (const a of w.actors) if (lookingAway(w.t, a) > 0) lastAway.set(a.id, w.t);
+      const now = new Set((w.peds ?? []).map((q) => q.id));
+      for (const [id, q] of before) if (!now.has(id) && q.state === "crossing") across++;
+      silent += touching(w).length;
+      for (const c of (w.crashes ?? []).slice(seenCrash)) if (String(c.a).startsWith("ped-") && !(lastAway.has(c.b) && w.t - lastAway.get(c.b) < 3)) unexplained++;
+      seenCrash = (w.crashes ?? []).length;
+    }
+    const struck = (w.crashes ?? []).filter((c) => String(c.a).startsWith("ped-")).length;
+    return { across, silent, struck, unexplained, crashes: (w.crashes ?? []).length };
+  };
+  const off = [3, 5, 7].map((seed) => run(seed, false)), on = [3, 5, 7].map((seed) => run(seed, true));
+  const sum = (xs, f) => xs.reduce((q, x) => q + x[f], 0);
+  check(sum(off, "struck") === 0 && sum(off, "crashes") === 0 && sum(off, "silent") === 0 && sum(off, "across") > 400,
+    `half an hour with drivers watching the road: ${sum(off, "across")} people across, nobody struck, no crash of any kind`);
+  /* Counted, and said as it is: people on foot rarely step out when a
+     car could not stop, so a driver's glance seldom costs anybody -- the
+     axis's expression against pedestrians is thin, and that is the
+     finding, not a pass. What is held: nothing silent, and nothing struck
+     by a driver who was watching. */
+  check(sum(on, "silent") === 0 && sum(on, "unexplained") === 0,
+    `with drivers looking away now and then: ${sum(on, "struck")} people struck in half an hour (${sum(on, "across")} across) -- nothing silent, and no strike by a driver who had not just looked away`);
 }
 
 console.log(`\n${"=".repeat(70)}`);

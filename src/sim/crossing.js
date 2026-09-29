@@ -42,7 +42,7 @@ import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } fro
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel, speedBy } from "./corner.js";
-import { stepPeds, heldAhead } from "./peds.js";
+import { stepPeds, heldAhead, strikes, strikePed } from "./peds.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
@@ -513,8 +513,21 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
        standing at its own line, which then waited for a car that could not
        move until the jam cleared: the same four minutes, one car in six. */
     if (them.stoppedAt == null && them.v < AT_REST) return false;
+    /* AND A CAR STANDING AT ITS LINE GOT THERE FIRST: arriving while it
+       stands there, I give way to it if I can stop comfortably -- the same
+       "whoever gets there first" as above, for a driver still rolling in.
+       Reading it as claiming nothing let a slow left-turner roll on while
+       the oncoming car it faced judged a gap and went, and they met in the
+       box (tools/measure/ped-miss.mjs, seed 7). Too close to stop, I go on,
+       and its own gap check sees me coming. Not at a signal. */
+    const firstThere = !layout.signal && me.stoppedAt == null && them.stoppedAt != null && !them.going && stoppingRoom(me.v) <= Math.max(0, waitAt(mine) - me.s);
     const head = leftYields(mine, theirs, layout);
+    /* ...but never where the turn rule already says they give way to me:
+       a left-turner standing at its line on a through road is waiting FOR
+       the oncoming traffic, and read as "there first" it stopped the
+       through road 700 times in a check's run (verify-crossing). */
     if (head === false) return false;
+    if (firstThere) return true;
     /* AN ONCOMING CAR AT REST AT ITS LINE HAS NOT GIVEN UP ITS PRIORITY
        -- the same exception the two-way stop already makes, and at a
        signal it is not the exception but the ordinary case: when a
@@ -1047,7 +1060,12 @@ export function step(world) {
     : world.past;
   /* EVERYBODY ON FOOT (peds.js), deciding from the traffic as it now is. */
   const walked = world.course.graph ? stepPeds({ ...world, t, tick: world.tick + 1, actors: next }) : null;
-  return { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walked : {}) };
+  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walked : {}) };
+  /* A CAR THAT REACHES SOMEBODY ON FOOT has struck them (peds.js
+     `strikes`): they fall where they are, the car stops as a wreck, and
+     it is logged like any crash. Only a driver who did not see them can. */
+  if (walked) for (const hit of strikes(out, poseOf)) out = crashWith(strikePed(out, hit.ped), hit.car, hit.at, hit.ped);
+  return out;
 }
 
 /* JOINING THE ROAD, AT THE SPEED THE ROAD IS DOING.
@@ -1686,12 +1704,12 @@ export function contactsIn(world) {
 }
 
 /* The car the player hit has crashed too: it stops, and it is logged. */
-export function crashWith(world, id, at) {
+export function crashWith(world, id, at, other = "player") {
   const t = world.t;
   let found = false;
-  const actors = world.actors.map((a) => { if (a.id !== id || a.crash) return a; found = true; return { ...a, v: 0, a: 0, crash: { t, with: "player", at } }; });
+  const actors = world.actors.map((a) => { if (a.id !== id || a.crash) return a; found = true; return { ...a, v: 0, a: 0, crash: { t, with: other, at } }; });
   if (!found) return world;
-  return { ...world, actors, crashes: [...(world.crashes ?? []), { t, a: "player", b: id, at }].slice(-50) };
+  return { ...world, actors, crashes: [...(world.crashes ?? []), { t, a: other, b: id, at }].slice(-50) };
 }
 
 export function overlapping(world) {

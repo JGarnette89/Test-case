@@ -171,6 +171,11 @@ console.log("\n7. A YIELD SIGN: SLOW, GIVE WAY, STOP ONLY IF NEEDED (the maintai
   const light = run("yield", 8, 3), busy = run("yield", 40, 3), stop = run("stop", 40, 3), none = run("none", 40, 3);
   /* Temperament needs more drivers than one light run has at its tails. */
   const more = [5, 9].map((seed) => run("yield", 8, seed));
+  /* The same light traffic with no sign at all: the comparison for speed. In
+     busy traffic an unsigned crossroads is crossed mostly from a stop now
+     (a car rolling in gives way to one standing at its line), so busy runs
+     have nothing rolling to compare with. */
+  const bare = [3, 5, 9].map((seed) => run("none", 8, seed));
   const rolled = light.minor.filter((m) => !m.stopped).length;
   check(light.minor.length >= 10 && rolled > 0 && light.idleStops === 0,
     `in light traffic ${rolled} of ${light.minor.length} yield-road cars crossed without stopping, and not one stood at the line for more than a second with nobody to give way to`);
@@ -188,9 +193,9 @@ console.log("\n7. A YIELD SIGN: SLOW, GIVE WAY, STOP ONLY IF NEEDED (the maintai
   const over = Math.max(...moving.map((m) => m.v - wantedSpeed(YIELD_AT, m.caution)));
   /* Straight across only: a turning car slows for its corner sign or no sign. */
   const med = (xs) => { const q = [...xs].sort((x, y) => x - y); return q[Math.floor(q.length / 2)]; };
-  const free = med(none.minor.filter((m) => !m.stopped && m.straight).map((m) => m.v)), signed = med(moving.filter((m) => m.straight).map((m) => m.v));
+  const free = med(bare.flatMap((r) => r.minor).filter((m) => !m.stopped && m.straight).map((m) => m.v)), signed = med(moving.filter((m) => m.straight).map((m) => m.v));
   check(moving.length > 10 && over <= 1.0 && signed < free,
-    `and slowed: every one reached the line within ${over.toFixed(2)} m/s of YIELD_AT (${kmh(YIELD_AT)} km/h, a flagged design constant) scaled by their temperament, the fastest at ${kmh(fastest)} km/h -- going straight across, a median ${kmh(signed)} km/h, against ${kmh(free)} on the same road with no sign`);
+    `and slowed: every one reached the line within ${over.toFixed(2)} m/s of YIELD_AT (${kmh(YIELD_AT)} km/h, a flagged design constant) scaled by their temperament, the fastest at ${kmh(fastest)} km/h -- going straight across, a median ${kmh(signed)} km/h, against ${kmh(free)} on the same road, in the same light traffic, with no sign`);
   check(bold.length >= 5 && timid.length >= 5 && mean(bold) > mean(timid),
     `a bold driver arrives hotter than a timid one: ${kmh(mean(bold))} against ${kmh(mean(timid))} km/h (${bold.length} and ${timid.length} crossings)`);
   check(busy.minor.filter((m) => m.stopped).length > 0 && busy.idleStops === 0,

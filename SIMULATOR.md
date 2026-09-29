@@ -2736,9 +2736,38 @@ walked crossroads, four minutes: 29 people across at each control, the
 longest curb wait 8.6 s, no touches -- and the same traffic told to ignore
 them hits them 15 car-ticks. One measurement misled first: a car 0.35 m
 short of the paint was counted as on it, and people waited 108 s for it.
-The "Pedestrians" test map. Not yet: heedless pedestrians, drivers who miss
-them (they are always seen), crosswalks away from intersections, and the
-maintainer's mid-block stop for a crossing (ruling 3). verify-peds.
+The "Pedestrians" test map. Not yet: heedless pedestrians.
+
+**Drivers who miss them, 29 September.** A driver in the middle of a glance
+away (sim/attention.js) does not know about somebody who stepped off since,
+and a car that reaches a person strikes them: they lie where they fell, the
+car is a wreck, it is logged (peds.js `strikes`). Recording contacts
+surfaced what the ten-minute runs on the Pedestrians map had been hiding,
+and each was a real gap: people walked through a wreck standing on the
+paint; the near-half rule's fixed one-metre step let a car that needed 2.5 s
+to clear commit as somebody neared its half (now: held if they will be
+there before it is clear); a car that slowed for its turn began braking for
+somebody it could no longer stop for and crept into her (now: a car that
+cannot stop comfortably is committed, and the person pauses at the middle
+for it); a person stepping out in front of a car pulling away from its line
+stopped it after it had taken its gap, and two cars met when it went on
+(now: people let a car that is already pulling away go first); and, not
+about pedestrians at all, at an unsigned crossroads a slow left-turner
+rolled on while the oncoming car standing at its line judged a gap and went
+-- a car still rolling in now gives way to one standing at its line, if it
+can stop comfortably ("whoever gets there first") -- except where the
+turn rule already makes the standing car the one to give way: a
+left-turner waiting on a through road is waiting FOR the oncoming traffic
+(read as "there first", it stopped the through road 700 times in
+verify-crossing). That costs the unsigned crossroads about a quarter of its
+throughput in heavy traffic: 68 cars through in four minutes at 40 cars,
+against 93 before and 89 at a four-way stop -- which is what a busy
+unsigned crossroads is when everybody is careful.
+Measured after: half an hour, three seeds, 584 people across, nobody struck
+and no crash of any kind with drivers watching; with drivers looking away,
+0 struck in half an hour -- people rarely step out where a car could not
+stop, so a glance seldom costs anybody. Observation's expression against
+pedestrians is THIN, and that is the finding. verify-peds sections 2 and 5.
 
 
 The content the axes have been waiting for, rebuilt on the map rather
