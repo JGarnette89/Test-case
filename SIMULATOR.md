@@ -2711,6 +2711,71 @@ trusted -- then a deck drawn as floor when far fails it, 172 frames.
 The phone has to say whether the widest view is smooth; a desktop cannot
 time canvas fills.
 
+### Observation, scored on the decision (29 September)
+
+**Against pedestrians the decision is late and nothing downstream feels
+it.** Poor observers register somebody on foot late 21.7% of the time (by
+0.78 s) against 7.4% (0.29 s) for sound ones; braking, stopping margin and
+stops too late to be comfortable move by under a point
+(tools/measure/ped-observation.mjs, controlled with people always seen and
+people ignored). People step off only when every car can stop comfortably,
+so they are SAFE BY CONSTRUCTION and the margin swallows the delay.
+
+**Against the car in front it is real, on every road -- and a first
+comparison hid it.** Glances away add hard braking (over 3.5 m/s^2) to
+poor observers far more than to sound ones on every road type tried
+(tools/measure/obs-where.mjs, one controlled map varied one thing at a
+time), per driver-minute: all-way stops +0.21 against +0.09; signals +0.13
+against +0.08; a through road +0.15 against +0.03; all-way stops at double
+the traffic +0.43 against +0.04; the city +0.09 against +0.005. Largest in
+dense stop-and-go, diluted where hard braking from other causes is already
+common. Comparing poor with sound observers DIRECTLY said "no effect" on
+test map 1 and the city: with nobody looking away poor observers brake hard
+LESS (0.4-0.8x), because a driver is drawn weak on one or two axes and a
+poor observer is less often also a poor braker (mean braking deficit 0.20
+against 0.30). The honest measure is each group against itself. Late
+reaction to the car ahead braking is the fault the maintainer's default
+for question 6 names, and it is the first fault kind the observation axis
+measurably dominates.
+
+**OCCLUSION: WHAT IT WOULD COST TO GIVE OBSERVATION CONTENT AGAINST PEOPLE
+ON FOOT -- assessed, NOT built, waiting on the maintainer.** The case: a
+person stepping out from between parked cars, which is where a glance away
+genuinely costs something and where the props that make a street feel
+alive are the props that make it hard. What exists: parked cars as objects
+(3,504 slots on the city, 1,802 full, along 22.8 km of curb), buildings,
+wrecks, pedestrians with the near-half rule, drivers who look away, the
+old engine's plan-view line-of-sight test (engine/sight.js `visibility`,
+segment against footprints) to port rather than write. What it takes:
+
+1. **Sight in the sim** -- a driver sees a person only when the line from
+   their eye to them clears every parked car, wreck and building near it,
+   checked against the few within reach (parked cars are indexed by curb
+   lane already). Registration then runs from first SIGHT, not first
+   step, and a glance away stacks on top. Small; the cost is the per-tick
+   test, bounded by people on foot times cars near them.
+2. **People crossing between parked cars, mid-block** -- a new source: a
+   person appears at a gap in the parked row and crosses where there is no
+   crosswalk. Everything today is at crosswalks, which are kept clear of
+   parking, so without this there is nothing to be hidden behind.
+3. **What they do when THEY cannot see** -- the hidden person cannot see
+   the car either. Some step out anyway (the heedless or the trusting),
+   which is the hazard; `heedless` already exists as a word in the old
+   engine's design.
+4. **Checks** -- decision-scored as above: registration from first sight,
+   late and hard braking, with and without the parked cars as the control.
+
+Rulings it needs, each a sentence: (a) are pedestrians crossing mid-block
+between parked cars in scope; (b) who has the right of way there -- the
+default would be the person yields outside a crosswalk and the driver must
+still avoid them; (c) does a parked car hide an adult from a driver or
+only a child -- the default would be a car hides a child entirely and an
+adult's lower body, a van or truck an adult entirely, which needs parked
+vehicles to have kinds; (d) how often people step out without being able
+to see -- a flagged rate. Estimate once ruled: a day, most of it the
+mid-block crossing source and its checks; the sight test itself is the
+smallest part.
+
 ### Stage 6 — a world with things in it
 
 **Crosswalks, 28 September -- the first piece.** A crosswalk is map data per
