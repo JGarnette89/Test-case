@@ -170,7 +170,7 @@ console.log("\n7. A YIELD SIGN: SLOW, GIVE WAY, STOP ONLY IF NEEDED (the maintai
   };
   const light = run("yield", 8, 3), busy = run("yield", 40, 3), stop = run("stop", 40, 3), none = run("none", 40, 3);
   /* Temperament needs more drivers than one light run has at its tails. */
-  const more = [5, 9].map((seed) => run("yield", 8, seed));
+  const more = [5, 9, 11, 13].map((seed) => run("yield", 8, seed));
   /* The same light traffic with no sign at all: the comparison for speed. In
      busy traffic an unsigned crossroads is crossed mostly from a stop now
      (a car rolling in gives way to one standing at its line), so busy runs

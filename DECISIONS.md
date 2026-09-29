@@ -2417,6 +2417,27 @@ reaction floor then full brake, with the time a person is hidden behind a
 parked car counted. The rates are tunables, set against a measured rate and
 told to the maintainer, never an emergent surprise.
 
+### 5.16.6 KNOWLEDGE AND COMPLIANCE ARE TWO AXES, AND COMPLIANCE IS SITUATIONAL (29 September)
+
+The maintainer's ruling of 25 September (R2-DESIGN.md 17, which records
+the build): knowing a rule and choosing to follow it are different, and
+the same rolling stop means a gap in what somebody was taught or a corner
+being cut. Three things to keep:
+
+- **Compliance is drawn BESIDE the five skills, never in their bag.** It
+  keeps every driver drawn before byte-identical on the skills, which is
+  what let the split be measured as the split alone; and it is the
+  ruling's population half -- traffic varies in compliance, learners in
+  knowledge. Putting it in `WEAK_AXES`' draw would reshuffle every driver
+  in every check and bury the effect.
+- **Knowledge is a SET of rules, and a rule nothing can express is not in
+  it.** Add a rule to `RULES` when a situation tests it, never before.
+- **A compliance fault must be situational or it is knowledge's.** The
+  check that holds this (`verify-compliance` 2) measures the cost of an
+  occasion with its own instrument, not the sim's `nobodyAbout` -- a check
+  that asked the sim's predicate whether the sim's predicate held would
+  compare a quantity with itself (CLAUDE.md, cold start 3).
+
 ## 6. ENCROACHMENT: entitled space, not forced evasive action
 
 **The standard is intrusion on entitled space, and it is deliberately

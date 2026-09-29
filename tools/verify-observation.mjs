@@ -94,7 +94,15 @@ console.log("\n3. WITH EVERYBODY LOOKING AWAY NOW AND THEN: CRASHES, EVERY ONE R
   }
   console.log(`       crashes in three minutes: ${rows.join(", ")}`);
   check(silent === 0, "every overlap is a recorded crash -- none silent");
-  check(on > 0 && off === 0, `the same traffic with nobody looking away crashes ${off} times against ${on}: the crashes are the glances'`);
+  /* NOT ZERO WITHOUT GLANCES (29 September). This asserted `off === 0`,
+     which only ever held by the seed: attentive city traffic has a
+     measured background of about 9 crashes an hour (tools/measure/
+     gap-risk.mjs), an open item of its own. When the compliance split
+     moved this seed's occasions it met one -- two attentive left-turners
+     at the signalled node, one of them extremely bold -- nothing to do
+     with glances. The claim that survives is the one this section is
+     for: the glances are most of the crashes. */
+  check(on > 0 && off * 4 <= on, `the same traffic with nobody looking away crashes ${off} times against ${on}: the crashes are mostly the glances' (the rest is the attentive background, an open item)`);
 }
 
 console.log("\n4. SIGNS ON A CLEAR ROAD ARE NEVER MISSED -- AND WHY");

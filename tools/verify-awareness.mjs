@@ -59,7 +59,7 @@ console.log("=".repeat(70));
 console.log("\n1. THE FIFTH AXIS OPERATES ON A DIFFERENT LAYER");
 {
   AXES.includes("observation")
-    ? ok(`five axes: ${AXES.join(", ")}`)
+    ? ok(`${AXES.length} axes: ${AXES.join(", ")}`)
     : fail("observation is not an axis");
   deficitOf({ observation: 1 }, "observation").tail === 0 &&
   deficitOf({ observation: 0 }, "observation").deficit === 1

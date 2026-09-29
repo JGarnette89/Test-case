@@ -33,7 +33,7 @@
    That removes a class of bug for free.
    ===================================================================== */
 
-import { composeDriver, deficitOf, lackingIn, LACKING_AT, severityOf, pressureOf, skillUnderPressure, cautionOf } from "../core/driver.js";
+import { composeDriver, rulesUnknown, knows, deficitOf, lackingIn, LACKING_AT, severityOf, pressureOf, skillUnderPressure, cautionOf } from "../core/driver.js";
 import { rng } from "../core/rng.js";
 
 /* The project's scale, and the one thing here that must agree with the
@@ -235,12 +235,22 @@ export { cautionOf };
    asked for arriving from the driver model rather than from a
    distribution written to produce it. */
 export function driver(road, seed, n, ratings = null, town = null) {
-  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }) } : composeDriver(seed * 7919 + n, town);
+  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }), unknown: rulesUnknown(ratings, rng(seed * 15485863 + n + 7)) } : composeDriver(seed * 7919 + n, town);
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
   const v0 = wantedSpeed(road.speed, caution);
 
-  /* WHO ROLLS A STOP, and it is two axes rather than one.
+  /* WHO ROLLS A STOP -- and since the knowledge/compliance split (R2-DESIGN
+     17) it is two different drivers doing the same thing for two reasons:
+       "always"     does not know a stop means coming to rest, so rolls
+                    every stop nothing holds them at, whoever is about;
+       "unwatched"  knows, and does not care to when it costs nothing --
+                    rolls only with nobody about (crossing.js `nobodyAbout`).
+     The paragraph below is the ruling the second of them rests on; the
+     weight that was knowledge's is compliance's now, because the ruling
+     reads as a choice ("will disregard the stopping portion"), not a gap.
+
+     Before the split: it is two axes rather than one.
 
      The maintainer's ruling: "rolling stops are a failure to obey the law
      not necessarily a skill issue. a high confidence driver might feel
@@ -261,8 +271,8 @@ export function driver(road, seed, n, ratings = null, town = null) {
      about the person. It means nothing on a straight road and everything
      at a stop line. */
   const boldness = Math.max(0, 1 - caution);
-  const rollsStops =
-    0.7 * deficitOf(who.ratings, "knowledge").deficit + 0.3 * boldness > LACKING_AT;
+  const rollsStops = !knows(who, "fullStop") ? "always"
+    : 0.7 * deficitOf(who.ratings, "compliance").deficit + 0.3 * boldness > LACKING_AT ? "unwatched" : false;
 
   /* HOW HARD THEY PLAN ON BRAKING, which is the whole of the braking
      axis and is ONE PARAMETER RATHER THAN A NEW MECHANISM.
@@ -325,6 +335,7 @@ export function driver(road, seed, n, ratings = null, town = null) {
     id: `car-${n}`,
     ratings: who.ratings,
     weakOn: who.weakOn,
+    unknown: who.unknown ?? [],
     caution,
     rollsStops,
     brake,

@@ -29,7 +29,34 @@ import { rng } from "./rng.js";
    Never score observation by outcome. The moment "didn't see the van" is
    graded by whether contact occurred, it collapses back into confidence
    and the axis stops meaning anything. */
-export const AXES = ["observation", "confidence", "steering", "braking", "knowledge"];
+export const SKILLS = ["observation", "confidence", "steering", "braking", "knowledge"];
+
+/* KNOWLEDGE AND COMPLIANCE ARE TWO AXES (R2-DESIGN.md 17, the maintainer's
+   ruling of 25 September): "well experienced drivers may know they are
+   required to fully stop for a right turn on a red, but will roll through
+   anyways. a new driver might not know that they can't do that and instead
+   think it's right." KNOWLEDGE is whether they know the rule -- held as a
+   SET of rules they do not know (`unknown`, below), with the scalar kept as
+   what the set is drawn from. COMPLIANCE is whether they follow a rule they
+   know -- a standing disposition, a scalar like steering and braking.
+
+   Compliance is not one of the SKILLS a learner's profile draws its
+   weaknesses from, and that is the ruling's second half rather than a
+   convenience: regular traffic knows the rules and varies in whether it
+   bothers, learners are patchy on knowledge and usually trying hard. So it
+   is drawn beside the profile, from its own stream -- which also leaves
+   every driver drawn before this exactly the driver drawn now on the five
+   skills, so what the split moved is the split alone. */
+export const AXES = [...SKILLS, "compliance"];
+
+/* THE RULES A DRIVER CAN NOT KNOW. Only rules the simulator can express:
+   a rule nothing tests is a label. More arrive as their situations do
+   (the sign vocabulary, lanes that end, what a yield line means...).
+     fullStop   a stop sign, or a right on red, means coming to rest;
+     keepRight  out of the curb lane only to pass, for a turn, or for
+                somebody in the way. */
+export const RULES = ["fullStop", "keepRight"];
+export const knows = (d, rule) => !(d?.unknown ?? []).includes(rule);
 
 /* Confidence is TWO-TAILED and the other three are not, which is the
    thing that makes a driver read as a person rather than a set of
@@ -124,7 +151,7 @@ const span = (r, [lo, hi]) => lo + r() * (hi - lo);
    same number -- so every driver drawn before is the driver drawn now. */
 export function composeDriver(seed = 1, town = null) {
   const r = rng(seed);
-  const bag = [...AXES];
+  const bag = [...SKILLS];
   const n = WEAK_AXES[0] + Math.floor(r() * (WEAK_AXES[1] - WEAK_AXES[0] + 1));
   const weak = new Set();
   const weightOf = (a) => town?.weights?.[a] ?? 1;
@@ -136,7 +163,7 @@ export function composeDriver(seed = 1, town = null) {
   }
 
   const ratings = {};
-  for (const axis of AXES) {
+  for (const axis of SKILLS) {
     if (axis === "confidence") {
       const side = r() < 1 - (town?.bold ?? 0.5) ? -1 : 1;
       const dev = span(r, weak.has(axis) ? WEAK_DEVIATION : SOUND_DEVIATION);
@@ -146,7 +173,32 @@ export function composeDriver(seed = 1, town = null) {
       ratings[axis] = clamp01(span(r, weak.has(axis) ? WEAK_RANGE : SOUND_RANGE));
     }
   }
-  return { id: `drv-${seed >>> 0}`, ratings, weakOn: [...weak], skill: 1 };
+  /* Compliance and the rules, from a second stream (see AXES). */
+  const r2 = rng((Math.imul(seed >>> 0, 0x9e3779b1) ^ 0x85ebca6b) >>> 0);
+  if (r2() < shareAt(COMPLY_WEAK, town?.weights?.compliance ?? 1)) weak.add("compliance");
+  ratings.compliance = clamp01(span(r2, weak.has("compliance") ? WEAK_RANGE : SOUND_RANGE));
+  return { id: `drv-${seed >>> 0}`, ratings, weakOn: [...weak], unknown: rulesUnknown(ratings, r2), skill: 1 };
+}
+
+/* HOW OFTEN COMPLIANCE IS SOMEBODY'S WEAKNESS: as often as any one skill
+   is, in an ordinary place -- the profile's mean number of weak axes over
+   the skills it draws from, 0.3. Derived, not chosen, so "compliance is as
+   common a failing as any other" holds by construction. A town's weight on
+   it acts on the odds, the same pull TOWN_PULL has on a skill (at 6: about
+   seven in ten). */
+export const COMPLY_WEAK = (WEAK_AXES[0] + WEAK_AXES[1]) / 2 / SKILLS.length;
+const shareAt = (p, w) => (w * p) / (w * p + 1 - p);
+
+/* WHICH RULES THIS DRIVER DOES NOT KNOW, each one drawn from the knowledge
+   rating: none for anybody in the sound range, every one for the worst of
+   the weak range, and a straight line between -- the two ends are the
+   profile's own ranges rather than new numbers. One draw per rule whatever
+   the rating, so the stream stays aligned. */
+export function rulesUnknown(ratings, r) {
+  const d = deficitOf(ratings, "knowledge").deficit;
+  const lo = 1 - SOUND_RANGE[0], hi = 1 - WEAK_RANGE[0];
+  const p = clamp01((d - lo) / (hi - lo));
+  return RULES.filter(() => r() < p);
 }
 
 /* 1 at the optimum, 0 when maximally bold, 2 when maximally timid. The

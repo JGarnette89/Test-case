@@ -33,7 +33,7 @@ import { seedGraph, step, overlapping, poseOf } from "../src/sim/crossing.js";
 import { lateralOf, changing, LC_TIME, LC_EVERY, RETURN_AFTER, KEEP_RIGHT_FAULT } from "../src/sim/lanechange.js";
 import { weaveRoom, DT, CAR, wantedGap } from "../src/sim/traffic.js";
 import { noticing } from "../src/sim/marking.js";
-import { deficitOf } from "../src/core/driver.js";
+import { deficitOf, knows } from "../src/core/driver.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -219,7 +219,10 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
    (CLAUDE.md, cold start 3). */
 {
   const SEEDS = [3, 4, 5], SECS = 150, CARS = 200;
-  const kd = (a) => deficitOf(a.ratings ?? {}, "knowledge").deficit ?? 0;
+  /* HOW LAX A DRIVER IS ABOUT KEEPING RIGHT, since the knowledge/compliance
+     split: 1 for one who does not know the rule, their compliance deficit
+     for one who does. The bands below are unchanged. */
+  const kd = (a) => (!knows(a, "keepRight") ? 1 : deficitOf(a.ratings ?? {}, "compliance").deficit ?? 0);
   const exceptionHolds = (w, a) => {
     const L = w.course.at[a.k ?? 0].layout, p = L.paths[a.route], leg = L.legs[p.from];
     const right = `${leg.base}#${leg.lane + 1}`;
@@ -264,7 +267,7 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
           for (const a of fresh) drawnKd.set(a.id, kd(a));
           const ids = new Set(fresh.map((a) => a.id));
           w = { ...w,
-            actors: w.actors.map((a) => (ids.has(a.id) ? { ...a, candidate: a.id, trip: 0, ...(mode === "stripped" ? { ratings: { ...a.ratings, knowledge: 1 } } : {}) } : a)),
+            actors: w.actors.map((a) => (ids.has(a.id) ? { ...a, candidate: a.id, trip: 0, ...(mode === "stripped" ? { ratings: { ...a.ratings, knowledge: 1, compliance: 1 }, unknown: [] } : {}) } : a)),
             watching: [...(w.watching ?? []), ...fresh.map((a) => ({ id: a.id }))] };
         }
         w = noticing(w);
@@ -314,7 +317,7 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
     `the exceptions are the rule: of ${on.flagged} decisions the model judged out of the curb lane with no reason, a restatement from the ruling found an exception holding in ${disagreements} ${JSON.stringify(on.disagree)}`);
   const rate = (b) => (b.n ? b.marked / b.n : NaN);
   check(on.occ.weak.n >= 40 && on.occ.sound.n >= 80 && rate(on.occ.weak) > 4 * rate(on.occ.sound) && rate(on.occ.sound) < 0.05,
-    `knowledge decides it: weak-on-knowledge drivers (deficit over 0.5) were marked on ${(100 * rate(on.occ.weak)).toFixed(0)}% of ${on.occ.weak.n} occasions out of the curb lane with no reason, sound ones (under 0.2) on ${(100 * rate(on.occ.sound)).toFixed(0)}% of ${on.occ.sound.n}`);
+    `knowledge and compliance decide it: drivers who do not know the rule or do not bother (lax over 0.5) were marked on ${(100 * rate(on.occ.weak)).toFixed(0)}% of ${on.occ.weak.n} occasions out of the curb lane with no reason, sound ones (under 0.2) on ${(100 * rate(on.occ.sound)).toFixed(0)}% of ${on.occ.sound.n}`);
   const sorted = on.delays.slice().sort((a, b) => a - b);
   check(sorted.length >= 50 && sorted[0] >= RETURN_AFTER - 1e-9,
     `the return is not a snap: ${sorted.length} returns, the soonest ${sorted[0]?.toFixed(1)} s after the reason passed (median ${sorted[sorted.length >> 1]?.toFixed(1)} s), against RETURN_AFTER ${RETURN_AFTER.toFixed(1)} s`);
@@ -339,7 +342,7 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
     `the left lane clears: cruising out of the curb lane with no reason ${(100 * share(on)).toFixed(1)}% of the time with the rule, ${(100 * share(off)).toFixed(1)}% without it, same seeds`);
   const markedOn = on.marks.sound + on.marks.weak + on.marks.other, markedBare = bare.marks.sound + bare.marks.weak + bare.marks.other;
   check(markedOn >= 20 && on.marks.weak > 4 * on.marks.sound && markedBare <= 0.15 * markedOn,
-    `markable, and knowledge's: every driver watched, the sheet carried ${markedOn} keepRight faults (${on.marks.weak} on weak-knowledge drivers, ${on.marks.sound} on sound); with every driver's knowledge made perfect, ${markedBare}`);
+    `markable, and knowledge's or compliance's: every driver watched, the sheet carried ${markedOn} keepRight faults (${on.marks.weak} on lax drivers, ${on.marks.sound} on sound); with every driver knowing the rule and keeping it, ${markedBare}`);
 }
 
 /* 6. THE HEADROOM KEPT, by controlled comparison: the same map, seed and

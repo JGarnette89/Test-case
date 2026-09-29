@@ -179,6 +179,7 @@ console.log(`\n2. A WEAK AXIS SHOWS, AND SHOWS AS ITSELF`);
     ragged: ["furthest off their own line", (r) => r.off, "m"],
     heavy: ["how far out they start easing off", (r) => r.easesAt, "m"],
     unschooled: ["stop signs crossed without coming to rest", (r) => r.rolledPast, ""],
+    scofflaw: ["stop signs crossed without coming to rest", (r) => r.rolledPast, ""],
   };
   const base = RAN.sound;
   const runs = RAN;
@@ -200,7 +201,8 @@ console.log(`\n2. A WEAK AXIS SHOWS, AND SHOWS AS ITSELF`);
     ["a pushy one gets round more often", runs.bold.trips > base.trips],
     ["a ragged one strays further off its line", runs.ragged.off > base.off * 3],
     ["a heavy-footed one leaves the braking later", runs.heavy.easesAt < base.easesAt * 0.95],
-    ["and an unschooled one crosses without stopping where a sound driver stops", runs.unschooled.rolledPast > base.rolledPast],
+    ["an unschooled one crosses without stopping where a sound driver stops", runs.unschooled.rolledPast > base.rolledPast],
+    ["and a scofflaw does too, where nobody is about", runs.scofflaw.rolledPast > base.rolledPast],
   ];
   const missing = moved.filter(([, held]) => !held);
   missing.length === 0
@@ -210,7 +212,7 @@ console.log(`\n2. A WEAK AXIS SHOWS, AND SHOWS AS ITSELF`);
   /* AND IT MUST NOT MOVE ANYBODY ELSE'S, or the player can see that
      something is wrong and never work out what. This is the property
      that makes a drive readable rather than merely varied. */
-  const CLEAN = { ragged: "off", heavy: "easesAt", unschooled: "rolledPast" };
+  const CLEAN = { ragged: "off", heavy: "easesAt", unschooled: "rolledPast", scofflaw: "rolledPast" };
   const bled = [];
   for (const [id, own] of Object.entries(CLEAN)) {
     for (const other of ["off", "easesAt", "rolledPast"]) {

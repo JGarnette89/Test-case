@@ -191,7 +191,7 @@ export function noticing(world) {
       close(showing); changed = true;
     }
 
-    /* --- keeping right: the knowledge axis on the link --- */
+    /* --- keeping right: compliance on the link, or knowledge for a driver who does not know the rule --- */
     const hogging = a.hogSince != null && world.t - a.hogSince > KEEP_RIGHT_FAULT;
     const outOfLane = open("keepRight");
     if (hogging) {

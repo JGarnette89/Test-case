@@ -27,7 +27,7 @@ import { standsOn } from "../src/map/load.js";
 import { graphOf } from "../src/sim/graph.js";
 import { seedGraph, step, overlapping, districtStreetsOf, districtShare, whatStops, pathOf } from "../src/sim/crossing.js";
 import { testMap1 } from "../src/map/samples.js";
-import { composeDriver, AXES, WEAK_AXES, WEAK_RANGE, SOUND_RANGE, WEAK_DEVIATION, SOUND_DEVIATION, CONFIDENT_ENOUGH, lackingIn } from "../src/core/driver.js";
+import { composeDriver, SKILLS, WEAK_AXES, WEAK_RANGE, SOUND_RANGE, WEAK_DEVIATION, SOUND_DEVIATION, CONFIDENT_ENOUGH, lackingIn } from "../src/core/driver.js";
 import { rng } from "../src/core/rng.js";
 import { TOWNS, townOf } from "../src/sim/towns.js";
 import { parkingOf, parkedPoses, contactWith, PARK_CLEAR, SLOT } from "../src/sim/parking.js";
@@ -321,21 +321,25 @@ console.log("\n10. A DISTRICT'S CHARACTER: WHO DRIVES THERE");
      description rather than imported, so "an ordinary place is unchanged"
      is checked against an independent statement of the old rule. */
   const oldDraw = (seed) => {
-    const r = rng(seed), bag = [...AXES], weak = new Set();
+    const r = rng(seed), bag = [...SKILLS], weak = new Set();
     const n = WEAK_AXES[0] + Math.floor(r() * (WEAK_AXES[1] - WEAK_AXES[0] + 1));
     for (let i = 0; i < n && bag.length; i++) weak.add(bag.splice(Math.floor(r() * bag.length) % bag.length, 1)[0]);
     const span = ([lo, hi]) => lo + r() * (hi - lo), ratings = {};
-    for (const a of AXES) {
+    for (const a of SKILLS) {
       if (a === "confidence") { const side = r() < 0.5 ? -1 : 1; const dev = span(weak.has(a) ? WEAK_DEVIATION : SOUND_DEVIATION); const half = side < 0 ? CONFIDENT_ENOUGH : 1 - CONFIDENT_ENOUGH; ratings[a] = Math.max(0, Math.min(1, CONFIDENT_ENOUGH + side * dev * half)); }
       else ratings[a] = Math.max(0, Math.min(1, span(weak.has(a) ? WEAK_RANGE : SOUND_RANGE)));
     }
     return ratings;
   };
   let same = 0;
-  for (let seed = 1; seed <= 2000; seed++) if (JSON.stringify(composeDriver(seed).ratings) === JSON.stringify(oldDraw(seed)) && JSON.stringify(composeDriver(seed, townOf("ordinary")).ratings) === JSON.stringify(oldDraw(seed))) same++;
+  /* The five SKILLS, which are what the old rule drew; compliance is drawn
+     beside them since the split (core/driver.js AXES) and is verify-
+     compliance's business. */
+  const skills = (d) => Object.fromEntries(SKILLS.map((a) => [a, d.ratings[a]]));
+  for (let seed = 1; seed <= 2000; seed++) if (JSON.stringify(skills(composeDriver(seed))) === JSON.stringify(oldDraw(seed)) && JSON.stringify(skills(composeDriver(seed, townOf("ordinary")))) === JSON.stringify(oldDraw(seed))) same++;
   check(same === 2000, `an ordinary place draws exactly the drivers it always did (${same} of 2000 identical to the old rule)`);
 
-  const target = { tailgaters: "confidence", "rolling-stops": "knowledge", wanderers: "steering", "late-brakers": "braking", hesitant: "confidence" };
+  const target = { tailgaters: "confidence", "rolling-stops": "compliance", wanderers: "steering", "late-brakers": "braking", hesitant: "confidence" };
   const shareWeak = (town, axis) => { let k = 0; for (let s = 1; s <= 2000; s++) if (composeDriver(s * 31 + 7, town).weakOn.includes(axis)) k++; return k / 2000; };
   const rows = Object.entries(target).map(([c, axis]) => ({ c, axis, here: shareWeak(townOf(c), axis), ordinary: shareWeak(null, axis) }));
   check(rows.every((r) => r.here >= 0.6 && r.ordinary < 0.45) && CHARACTERS.every((c) => c in TOWNS),
@@ -354,9 +358,27 @@ console.log("\n10. A DISTRICT'S CHARACTER: WHO DRIVES THERE");
   for (let i = 0; i < 2400; i++) { w = step(w); for (const a of w.actors) if (a.home && !seen.has(a.id)) seen.set(a.id, a); }
   const from = (z) => [...seen.values()].filter((a) => a.home === z);
   const W = from("west"), E = from("east");
-  const rolls = (xs) => xs.filter((a) => a.rollsStops).length / Math.max(1, xs.length);
+  /* The rolling-stop town is scofflaws since the knowledge/compliance
+     split: people who know the rule and choose to roll -- "unwatched". A
+     driver who does not know it rolls anywhere and is nobody's character. */
+  const rolls = (xs) => xs.filter((a) => a.rollsStops === "unwatched").length / Math.max(1, xs.length);
   const gap = (xs) => xs.reduce((s, a) => s + a.headway, 0) / Math.max(1, xs.length);
-  check(W.length > 20 && E.length > 20 && rolls(W) > 2 * rolls(E), `people from the rolling-stop west roll their stops: ${Math.round(rolls(W) * 100)}% of ${W.length}, against ${Math.round(rolls(E) * 100)}% of ${E.length} from the east`);
+  /* AGAINST THE SAME DISTRICT WITH NO CHARACTER, not against the east
+     (29 September). Comparing the two towns was never a controlled
+     comparison, and since the split it stopped being a fair one: the
+     maintainer's rolling-stop ruling gives boldness a real share in
+     choosing to roll, and compliance is drawn beside the profile, so a
+     tailgating town -- bold, and weak on compliance as often as anywhere
+     -- rolls too (measured: 22% against the west's 30%). Before the split
+     its bold people were rarely weak on knowledge, because the confidence
+     weight took their profile's weak slot; that was the draw, not the
+     ruling. The same map and seed with the west ordinary is the control. */
+  const plain = { ...closed, zones: closed.zones.map((z) => (z.id === "west" ? { ...z, character: undefined } : z)) };
+  let w0 = seedGraph(2, 60, loadMap(plain), { target: 150, posted: true });
+  const seen0 = new Map();
+  for (let i = 0; i < 2400; i++) { w0 = step(w0); for (const a of w0.actors) if (a.home && !seen0.has(a.id)) seen0.set(a.id, a); }
+  const W0 = [...seen0.values()].filter((a) => a.home === "west");
+  check(W.length > 20 && W0.length > 20 && rolls(W) > 2 * rolls(W0), `people from the rolling-stop west choose to roll their stops: ${Math.round(rolls(W) * 100)}% of ${W.length}, against ${Math.round(rolls(W0) * 100)}% of ${W0.length} from the same district with no character (the tailgating east: ${Math.round(rolls(E) * 100)}% -- boldness is a share of choosing to roll, by the ruling)`);
   check(gap(E) < 0.85 * gap(W), `people from the tailgating east follow closer: mean headway ${gap(E).toFixed(2)} s against ${gap(W).toFixed(2)} s from the west`);
 
   const bad = loadMap({ ...testCity0(), zones: [{ id: "z", kind: "residential", polygon: [P(0, 0), P(100, 0), P(100, 100)], character: "polite" }] });

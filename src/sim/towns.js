@@ -7,7 +7,9 @@
    A character is a weighting over which axis a driver born here is weak
    on (core/driver.js `composeDriver`), and for confidence which side. Every
    behaviour follows from the model that already turns ratings into
-   driving: a knowledge-weak driver rolls stops, a bold one follows close
+   driving: a driver who does not care rolls stops when nobody is about
+   (compliance -- the rolling-stop town is scofflaws, who know the rule), a
+   bold one follows close
    and takes tight gaps, a steering-weak one weaves and runs wide on bends,
    a braking-weak one leaves it late and stands on it. Nothing here writes
    a behaviour.
@@ -24,7 +26,7 @@ export const TOWN_PULL = 6;
 export const TOWNS = {
   ordinary: null,
   tailgaters: { weights: { confidence: TOWN_PULL }, bold: 0.9 },
-  "rolling-stops": { weights: { knowledge: TOWN_PULL } },
+  "rolling-stops": { weights: { compliance: TOWN_PULL } },
   wanderers: { weights: { steering: TOWN_PULL } },
   "late-brakers": { weights: { braking: TOWN_PULL } },
   hesitant: { weights: { confidence: TOWN_PULL }, bold: 0.1 },

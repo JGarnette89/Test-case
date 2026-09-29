@@ -438,7 +438,13 @@ function committedAcross(world, cw, p, { onlyPlayer = false } = {}) {
     if (!farHalf(bt)) continue;
     const nose = a.s + CAR.length / 2, tail = a.s - CAR.length / 2;
     if (tail > far) continue;                                      // past it
-    if (nose > near) return true;                                  // on it
+    /* On it -- unless it has STOPPED there for them. A car that halted with
+       its nose on the paint because this person was in its way is waiting
+       for them, and they were waiting for it: measured (29 September, the
+       walked crossroads), a person paused at the middle for a right-turner
+       standing on the paint, the car stood for her, and the crossing
+       locked for the rest of the run. A wreck is not waiting for anybody. */
+    if (nose > near) return a.crash || a.going || (a.v ?? 0) > 0.3;
     if ((a.v ?? 0) > 0.3 && ((a.v ?? 0) ** 2) / (2 * COMFY) > near - nose) return true;   // cannot stop short of it
   }
   return false;

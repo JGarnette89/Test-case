@@ -24,7 +24,7 @@ import {
   ROAD, CAR, DT, M, PX_PER_M, ON_SCREEN,
 } from "../src/sim/traffic.js";
 import {
-  composeDriver, deficitOf, AXES, WEAK_AXES, COMPETENT_AT, LACKING_AT, CONFIDENT_ENOUGH,
+  composeDriver, deficitOf, AXES, SKILLS, WEAK_AXES, COMPETENT_AT, LACKING_AT, CONFIDENT_ENOUGH,
   strengthsOf, lackingIn, cautionOf,
 } from "../src/core/driver.js";
 import { readFileSync } from "node:fs";
@@ -248,7 +248,7 @@ console.log("\n5. EVERY CAR IS A RATED DRIVER, AND THERE IS ONE DRIVER MODEL");
      ratings model. This is that bug declined rather than predicted. */
   const src = readFileSync(new URL("../src/sim/traffic.js", import.meta.url), "utf8");
   /^import \{ composeDriver/m.test(src) || src.includes("composeDriver")
-    ? ok("drivers come from `composeDriver`, the same five axes the candidate is drawn from")
+    ? ok("drivers come from `composeDriver`, the same axes the candidate is drawn from")
     : fail([
         "the sim is drawing drivers some other way.",
         "There is ONE driver model in this project and every car uses it -- an NPC is",
@@ -312,16 +312,16 @@ console.log("\n6. A DRIVER HAS A CHARACTER -- HOW EVERY CAR IS DRAWN");
   const counts = {}, weakSizes = new Set();
   for (let i = 1; i <= 500; i++) {
     const d = composeDriver(i * 13);
-    weakSizes.add(d.weakOn.length);
+    weakSizes.add(d.weakOn.filter((a) => SKILLS.includes(a)).length);
     for (const a of d.weakOn) counts[a] = (counts[a] || 0) + 1;
   }
   const [lo, hi] = WEAK_AXES;
   [...weakSizes].every((n) => n >= lo && n <= hi)
-    ? ok(`every candidate is weak on ${lo}-${hi} axes, never on all of them and never on none`)
+    ? ok(`every candidate is weak on ${lo}-${hi} of the ${SKILLS.length} skills, never on all of them and never on none (compliance is drawn beside them)`)
     : fail(`candidates were drawn weak on ${[...weakSizes].sort().join(",")} axes, outside ${lo}-${hi}`);
   const share = AXES.map((a) => (counts[a] || 0) / 500);
   Math.min(...share) > 0.15
-    ? ok(`and no axis is a rarity: weakness lands on each of the five between ${(100 * Math.min(...share)).toFixed(0)}% and ${(100 * Math.max(...share)).toFixed(0)}% of the time`)
+    ? ok(`and no axis is a rarity: weakness lands on each of the ${AXES.length} between ${(100 * Math.min(...share)).toFixed(0)}% and ${(100 * Math.max(...share)).toFixed(0)}% of the time`)
     : fail(`one axis is weak in only ${(100 * Math.min(...share)).toFixed(0)}% of candidates`);
 
   /* EVERY CANDIDATE HAS A REAL STRENGTH AND A REAL WEAKNESS. A driver

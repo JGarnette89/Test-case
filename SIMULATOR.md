@@ -2835,9 +2835,131 @@ to the simulation (sim/peds.js):
   a person it sees running, if that still stops it short (verify-peds 8,
   sabotaged). Most traffic strikes of heedless people before this were
   that gap; what is left is people nobody could see in time.
+- **A deadlock at the middle (29 September).** Surfaced when the
+  compliance split moved the walked crossroads' occasions: a person paused
+  at the middle for a right-turner whose nose was on the paint, the car
+  had stopped there for her, and each waited for the other for the rest of
+  the run (longest curb wait 78 s against 7). A car at rest on the paint
+  and not pulling away is waiting for them, so they go on; a wreck still
+  holds them (peds.js `committedAcross`). verify-peds 2's sixty-second
+  bound is what caught it.
 - **Not yet:** emergency vehicles responding; a height ruling (children,
   vans); drivers slowing past parked rows where somebody could step out
   (caution against the unseen -- confidence's side of the asymmetry).
+
+### Knowledge and compliance (29 September, R2-DESIGN.md 17)
+
+A driver who does not know a stop means coming to rest rolls every stop
+nothing holds them at; one who knows and does not care rolls only when
+nobody is about. Same for keeping right. `#/candidates` has *Unschooled*
+and *Scofflaw* side by side to watch. Measured and checked in
+`verify-compliance.mjs`; the population it produced is in R2-DESIGN 17.
+
+### THE SHAPE OF THE WORLD WORK (29 September, the maintainer)
+
+In his words: *"a big part of this in the end is making a world that feels
+alive and is nice to drive in, meaning we need to be able to show a
+bustling downtown scene as well, with pedestrians going in and out of
+places, crossing the road or just walking along. we might even include bus
+stops at some point where large vehicles (note: we still haven't put a
+single truck in the game as a visual/sizable obstacle) load and unload
+passengers. so we need to be able to show things happening along the road
+as well (an arterial road could turn off into some parking lots for large
+shopping centers for example) that don't feel off limits for the user."*
+
+**THE PRINCIPLE UNDERNEATH IT: THE WORLD IS NOT A DIORAMA WITH DRIVABLE
+CORRIDORS.** If there is a parking lot, the player can drive into it.
+Nothing on screen may read as scenery he is forbidden from reaching. This
+is the section 0 rule (a state the engine can produce and the renderer
+cannot express is a lie) turned round: a place the renderer draws and the
+player cannot enter is a lie about the world.
+
+In priority order:
+
+1. **LARGE VEHICLES.** Until now every vehicle in the simulation was 4.5 x
+   1.8 m. A truck is not decoration, it is a different driving problem: a
+   MOVING SIGHT BLOCKER (the occlusion machinery already exists), slow to
+   accelerate (a reason to use lane changing), wide through a turn, and it
+   makes observation matter -- a driver behind a truck cannot see, and a
+   good one positions differently. Built with the existing vehicle
+   machinery at different dimensions and performance, never as a special
+   case.
+2. **AMBIENT PEDESTRIANS**, distinct from crossing ones: walking along the
+   sidewalk, going in and out of buildings, standing about. Most never
+   interact with traffic, so they are cheap -- and they make the hazardous
+   ones UNPREDICTABLE. If everyone on screen is about to cross, a player
+   learns to expect it; if most people are simply walking, the one who
+   steps off is a surprise. The same principle as empty intersections
+   making busy ones matter; it turns pedestrians from a hazard system into
+   a living street.
+3. **BUS STOPS**, needing 1 first: a large vehicle stopping to load and
+   unload. A genuinely good traffic event -- it blocks a lane, people cross
+   to and from it, and traffic decides whether to wait or go round.
+4. **OFF-ROAD DESTINATIONS** -- an arterial turning into a shopping-centre
+   parking lot. **STRUCTURALLY DIFFERENT, AND SCOPED BEFORE PROMISED.** The
+   simulation runs on a graph of lanes; a parking lot is an open area, not
+   a path. It is a different kind of space and needs designing rather than
+   adding. Scoped, not started -- see "Parking lots: what it would take"
+   when it is written.
+
+The pedestrian persistence fix and the knowledge/compliance split came
+first: both are prerequisites for any of this being worth anything.
+
+#### Parking lots: what it would take (scoped 29 September, not started)
+
+**What exists.** Everything that moves runs on the lane graph: a car is
+`s` metres along a path through an intersection. The PLAYER is too
+(`sim/player.js`: `s` along the road, `off` from its line, `psi` against
+its tangent) -- off the road's edges "the grass drags hard and the car
+crawls", so today anything off the lane network is, in effect, forbidden
+ground. What already reaches off it: `sim/parking.js` (curb slots beside
+a lane, cars pulling in and out of them at rest), district trips (a car's
+journey begins and ends at a slot in its home zone), zones as drawn
+polygons, and `map/generate.js` laying streets inside a zone.
+
+**Two designs, and they are not the same size.**
+
+A. **THE LOT AS A SMALL ROAD NETWORK.** Aisles are streets: one lane each
+   way, a low posted speed, generated inside a zone of kind "lot" from its
+   polygon and the entrances drawn on it (the way `generate.js` fills a
+   district), joined to the arterial at those entrances as ordinary
+   intersections. Stalls are slots on both sides of every aisle --
+   `parking.js` extended from parallel curb slots to PERPENDICULAR stalls,
+   whose pull-in is a short turning arc rather than a sideways drift.
+   Shoppers are district trips whose home is the lot; people walk between
+   stalls and the store doors (item 2). The player drives the aisles as
+   roads; pulling into a stall needs the stall rows counted as drivable
+   surface in the player's geometry (their edges widened where a stall
+   row borders the aisle) -- contact with a parked car already exists.
+   Everything drawn in the lot is then aisle or stall, and both are
+   reachable, which satisfies the principle. It cannot do: cutting
+   diagonally across an empty lot, or cars finding their own line across
+   open tarmac. Moderate: a generator, a second kind of slot, the lot's
+   surface and paint, and the player's edges -- every piece an extension
+   of machinery that exists and is checked.
+
+B. **THE LOT AS OPEN GROUND.** World-frame driving for the player (the
+   bicycle model in `player.js` in x/y rather than against a road), a
+   hand-over between the two frames at the lot boundary, NPCs moving in
+   open space -- on derived aisle lines (which is A again) or by real path
+   planning -- and a GENERAL yielding and avoidance rule for agents that
+   have no conflict table, since every right-of-way decision the sim makes
+   today is read off one. A second simulation paradigm beside the graph,
+   and nothing verified so far covers it. Large, and not yet shown to be
+   needed.
+
+**Recommendation: A**, with the aisle network DERIVED from the lot polygon
+and its entrances so the maintainer draws a lot, not its aisles, and the
+draft stays the format. B only if play shows A's limits bite.
+
+**Needs first:** perpendicular stalls; item 2 (people walking to and from
+the doors); item 1 for delivery trucks at a loading dock.
+
+**Domain questions for the maintainer before building:** right of way in
+a lot is mostly not the Highway Traffic Act's -- it is private property.
+What does he teach: the through aisle over the stall rows, a car backing
+out yielding to everyone, pedestrians anywhere? And a lot exit onto an
+arterial: a stop, a yield, right turns only?
 
 ### Stage 6 — a world with things in it
 

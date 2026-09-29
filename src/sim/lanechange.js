@@ -44,7 +44,7 @@
    stays in the old one too, for following, until the blend is over
    (crossing.js `whatStops`).
    ===================================================================== */
-import { deficitOf } from "../core/driver.js";
+import { deficitOf, knows } from "../core/driver.js";
 import { rng } from "../core/rng.js";
 import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
 import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom } from "./traffic.js";
@@ -101,15 +101,17 @@ const SETTLE = 6;
    not snap back the instant the lane is clear; they take about the time
    a lane change itself takes to decide it is done. So the prompt return
    is LC_TIME after the reason passed -- a flagged design constant, the
-   same number that times the change -- and knowledge stretches it:
-   `RETURN_AFTER / (1 - deficit)`. A sound driver (deficit 0.13, the
-   traffic's median) returns in 4.4 s; the weak-on-knowledge quarter
-   (0.7) take 13 s, longer than most of an approach, so they sit out
-   there; and a driver who does not know the rule at all never returns.
-   Continuous, no threshold typed in. */
+   same number that times the change -- and COMPLIANCE stretches it:
+   `RETURN_AFTER / (1 - deficit)`. A sound driver (deficit 0.13) returns
+   in 4.4 s; a weak one (0.7) takes 13 s, longer than most of an approach,
+   so they sit out there -- unless somebody faster comes up behind, which
+   makes it cost and brings anybody who knows the rule back promptly. A
+   driver who does not KNOW the rule (core/driver.js `RULES`) never
+   returns, whoever is behind: the split of R2-DESIGN 17, knowing against
+   bothering. Continuous, no threshold typed in. */
 export const RETURN_AFTER = LC_TIME;
 /* WHEN IT IS A FAULT: out of the curb lane with no reason for longer than
-   this. Twice the prompt return -- a driver at knowledge deficit 0.5
+   this. Twice the prompt return -- a driver at compliance deficit 0.5
    reaches it exactly, and every driver on the sound side of the ratings'
    profile (deficit 0.2 or less: 4.8 s) returns well inside it. A design
    constant and a domain question, flagged for the maintainer: how long an
@@ -305,8 +307,14 @@ export function laneStep(world, me, out, view) {
   else {
     const since = out.hogSince ?? t;
     out = { ...out, hogSince: since, hogTime: (out.hogTime ?? 0) + (out.hogSince != null ? LC_EVERY * DT : 0) };
-    const kd = deficitOf(out.ratings ?? {}, "knowledge").deficit ?? 0;
-    if (!settling && t - since >= RETURN_AFTER / Math.max(1e-9, 1 - kd)) {
+    /* Not knowing the rule, never; knowing it, at their compliance --
+       except that somebody faster coming up behind makes it cost, and then
+       anybody who knows the rule goes back at the prompt interval. */
+    const nb = neighbours(world, out, path.from, out.s);
+    const pressed = !!nb.behind && nb.db < look && (nb.behind.v0 ?? nb.behind.v ?? 0) > want + 1;
+    const cd = pressed ? 0 : deficitOf(out.ratings ?? {}, "compliance").deficit ?? 0;
+    const after = knows(out, "keepRight") ? RETURN_AFTER / Math.max(1e-9, 1 - cd) : Infinity;
+    if (!settling && t - since >= after) {
       const moved = attempt(world, out, path, { ...keep, keepRight: true }, T0);
       if (moved.route !== out.route) return { ...moved, hogSince: null, keptRight: (out.keptRight ?? 0) + 1, returnDelay: t - since };
       out = moved;

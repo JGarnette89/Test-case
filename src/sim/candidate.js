@@ -89,6 +89,13 @@ export const PROFILES = [
     watch: "treats a stop sign as a suggestion — slows to a crawl and carries on",
     ratings: { ...sound(), confidence: CONFIDENT_ENOUGH, knowledge: 0.15 },
   },
+  {
+    id: "scofflaw",
+    name: "Scofflaw",
+    blurb: "weak on compliance",
+    watch: "knows the rules and keeps them when somebody is about -- rolls a stop sign with nobody there, stops properly with somebody there",
+    ratings: { ...sound(), confidence: CONFIDENT_ENOUGH, compliance: 0.15 },
+  },
 ];
 
 export const profileOf = (id) => PROFILES.find((p) => p.id === id) ?? PROFILES[0];

@@ -42,7 +42,7 @@ import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } fro
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel, speedBy } from "./corner.js";
-import { stepPeds, heldAhead, strikes, strikePed, pedPose } from "./peds.js";
+import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
@@ -200,7 +200,33 @@ const ROLLING = 2.2;
    comes to rest. They still YIELD -- a rolling stop is a failure to obey
    the law, not a failure to look, and the maintainer's mechanism is a
    driver confident in their own read rather than a reckless one. */
-const restFor = (me) => (me.rollsStops ? ROLLING : AT_REST);
+/* WHETHER THEY ROLL THIS ONE. A driver who does not know the rule rolls
+   every stop; one who knows it and does not care rolls when nobody is about
+   (traffic.js `rollsStops`). */
+const rollsHere = (me, world) => me.rollsStops === "always" || me.rollsStops === true || (me.rollsStops === "unwatched" && nobodyAbout(world, me));
+
+/* SOMEBODY ABOUT: anybody this driver can see at this intersection who is
+   not behind them on their own approach -- a car within ABOUT of its own
+   line on either side of it, or somebody on foot at one of its crossings.
+   COMPLIANCE IS SITUATIONAL and this is its situation: a rule broken when
+   it is free, kept when anybody would see or be put out. ABOUT is a flagged
+   design constant -- about a block's approach, within which a car at the
+   line is plainly in view. */
+export const ABOUT = 40;
+export function nobodyAbout(world, me) {
+  const k = me.k ?? 0, layout = layoutOf(world, me), mine = pathOf(world, me);
+  const myBase = layout.legs[mine.from]?.base ?? mine.from;
+  for (const b of atNode(world, seenBy(world, me), k)) {
+    if (b.id === me.id || (b.k ?? 0) !== k) continue;
+    const p = layout.paths[b.route];
+    if (!p) continue;
+    if ((layout.legs[p.from]?.base ?? p.from) === myBase && b.s <= me.s) continue;
+    if (Math.abs(waitAt(p) - b.s) < ABOUT) return false;
+  }
+  const cws = world.peds?.length ? crosswalksOf(world.course) : null;
+  for (const q of world.peds ?? []) if (q.state !== "struck" && cws[q.cw]?.k === k) return false;
+  return true;
+}
 
 /* WHERE THE COMPETENT DRIVER SITS ON THE CONFIDENCE AXIS. `cautionOf`
    returns 1 at the optimum, 0 maximally bold, 2 maximally timid, so this
@@ -842,7 +868,7 @@ export function step(world) {
          stop is made of arrival order and nothing else can reconstruct
          it after the fact. */
       const atLine = Math.abs(s - waitAt(mine)) < AT_LINE;
-      const stoppedAt = me.stoppedAt ?? (v < restFor(me) && atLine ? world.t : null);
+      const stoppedAt = me.stoppedAt ?? (atLine && (v < AT_REST || (v < ROLLING && rollsHere(me, world))) ? world.t : null);
       /* ACCEPTING A GAP IS A DECISION, AND IT STICKS. `LAUNCHED` alone
          made commitment a matter of SPEED, so a driver who had judged the
          gap and started to move spent the two thirds of a second it takes

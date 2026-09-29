@@ -548,7 +548,14 @@ console.log("\n8. RATINGS: ERRORS DERIVED FROM WHAT A DRIVER IS BAD AT");
      MANNER of a stop a real quantity, so the abrupt cases could finally be
      written: harshStop and brakesTooLate. Observation remains exempt, and
      by design rather than for want of content. */
-  const BLOCKED = { observation: "expresses through awareness, not traits" };
+  /* COMPLIANCE (29 September, R2-DESIGN 17): split from knowledge and
+     built in the live simulator, where it is situational and checked
+     (verify-compliance). The old engine attributes through CAUSES, which is
+     the maintainer's table and has no compliance column, so here it
+     dominates nothing until he rules on which kinds move -- `rollingStop`
+     is still 0.9 knowledge in it. A measured gap, reported every run, not
+     a let-off. */
+  const BLOCKED = { observation: "expresses through awareness, not traits", compliance: "the engine's CAUSES (the maintainer's table) has no compliance column yet; the live sim's split is verify-compliance's" };
   const actsOn = vocab.filter((r) => !BLOCKED[r.axis]);
   const thin = actsOn.filter((r) => r.dominates.length < 2);
   thin.length === 0

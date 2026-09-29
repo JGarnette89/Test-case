@@ -1436,7 +1436,7 @@ game cannot yet respond to a collision.
 
 ---
 
-## 17. R3 — knowledge splits into knowledge and compliance. The maintainer's ruling, 25 September. Agreed, not built.
+## 17. R3 — knowledge splits into knowledge and compliance. The maintainer's ruling, 25 September. Built 29 September -- see the end of this section.
 
 Jay's distinction, verbatim: *"well experienced drivers may know they are
 required to fully stop for a right turn on a red, but will roll through
@@ -1604,3 +1604,74 @@ driver this rule," concrete and per-rule, where a lesson on steering or
 braking is still a scalar delta. `DRIVER-IDENTITY.md`'s §8 table (the R1
 four-axis attribution) is superseded by this the same way §8 itself
 superseded traits — the findings hold, the representation does not.
+
+### Built, 29 September (the live simulator; the shelved engine untouched)
+
+**Where it lives.** `src/core/driver.js`: `AXES` is six -- the five
+`SKILLS` a learner's profile draws its 1-2 weaknesses from, and
+`compliance` drawn BESIDE them from a second stream of the same seed. So
+every driver drawn before the split is byte-identical on the five skills
+(verify-generate 10 holds it against an independent restatement), and
+whatever moved, moved because of the split. Compliance is weak as often as
+any one skill is -- the profile's mean, 0.3, derived rather than chosen --
+and a town's weight acts on its odds the way `TOWN_PULL` acts on a skill.
+
+**Knowledge is a set.** `RULES` names the rules the simulator can express
+-- `fullStop` (a stop sign or a right on red means coming to rest) and
+`keepRight` -- and `unknown` is the ones this driver does not know, each
+drawn from the knowledge rating: none anywhere in the sound range, all at
+the bottom of the weak range, a straight line between. The scalar stays
+as what the set is drawn from, and because the engine's `CAUSES` has no
+compliance entry, the engine consumes no extra random numbers and its
+golden does not move (verify-equivalence).
+
+**Re-pointed:**
+
+- **Rolling stops** (`traffic.js` `rollsStops`): `"always"` for a driver
+  who does not know `fullStop` -- every stop nothing holds them at, whoever
+  is about -- and `"unwatched"` for one who knows it and scores
+  0.7 x compliance deficit + 0.3 x boldness over `LACKING_AT` (the earlier
+  weighting with knowledge's share moved to compliance, since the ruling
+  reads as a choice). They roll only when nobody is about
+  (`crossing.js` `nobodyAbout`: anybody the driver can see within `ABOUT`,
+  40 m, of their own line at this intersection, not behind them on their
+  approach, or anybody on foot at its crossings -- a flagged constant).
+- **Keep right** (`lanechange.js`): a driver who does not know the rule
+  never returns; one who does returns after `RETURN_AFTER / (1 - compliance
+  deficit)` -- unless somebody faster is coming up behind in their lane,
+  which makes it cost and brings them back at the prompt interval.
+- **The rolling-stop town** is scofflaws now: `weights: { compliance }`.
+- **A named candidate**, *Scofflaw*, weak on compliance, beside
+  *Unschooled*.
+
+**The readability test is a check** (`verify-compliance.mjs` 2), with the
+cost of an occasion measured by its own instrument -- the true world, by
+time to the box -- not by `nobodyAbout`. Three seeds, five minutes, the
+city at 200 cars:
+
+| | alone | in company |
+|---|---|---|
+| does not know the rule | rolls 88% of 244 | 65% of 242 |
+| knows it, does not care | 70% of 332 | **2%** of 291 |
+| sound on both | 1% of 521 | 0% of 526 |
+
+Alone the two are the same fault; in company they come apart; and all 76
+scofflaws seen both ways who rolled alone stopped properly with somebody
+there. The unknowing driver's 65% in company is not 100% because traffic
+that holds them makes them stop anyway. Sabotaged both ways: a scofflaw
+who ignores who is about rolls 67% in company and fails; an unknowing
+driver who minds it rolls 4% and fails.
+
+**What it moved in the population** (`tools/measure/comply-pop.mjs`,
+4000 drawn drivers): stops rolled by 15.4% before; now 22.3% always and
+12.6% when nobody is about. Keep right: 21.0% do not know it, 23.8% know
+it and are lax. The rise is explained, not a surprise: traffic is drawn
+from the learner's profile, in which knowledge is weak for about 30%,
+while this section's own population ruling says regular traffic has HIGH
+knowledge. How many experienced drivers genuinely do not know a rule is a
+number for the maintainer; until then the traffic keeps the one model.
+
+**Not yet:** the old engine's `CAUSES` (the maintainer's table) has no
+compliance column, so exam-mode attribution does not read the split;
+`lateSignal`/`noSignal` wait for the sim to model signalling as a choice;
+and yielding to an emergency vehicle is the next thing born on compliance.

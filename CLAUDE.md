@@ -224,6 +224,7 @@ Eight things to know before your first change:
    | `src/sim/attention.js`, `seenBy` in `src/sim/crossing.js` | `verify-observation` FIRST, then `verify-crashes`, `verify-signs` and the `src/sim/` five (course section 13 is the candidate's perception) | ~6m |
    | crosswalks (`crosswalk` in `src/map/format.js`/`load.js`, `crossings` in `graph.js` `junctionsOf`), `src/sim/peds.js` | `verify-peds` FIRST, then the `src/sim/graph.js` row and `verify-screens` | ~5m |
    | `src/sim/exam.js`, `src/apps/ExamRide.jsx` | `verify-exam` FIRST, then `verify-screens` (renders `#/exam`) and `verify-core` (a live screen) | ~10s |
+   | `src/core/driver.js` `RULES`, compliance, or `nobodyAbout` in `crossing.js` | `verify-compliance` FIRST, then `verify-generate` (section 10, the draw), `verify-lanes`, `verify-telling` and the full suite for core | |
    | `src/core/*` | `verify-core` FIRST, then the full suite: the engine re-exports core and the sim imports it, so both sides can move | 18m |
    | `src/frame.js` | `-screens`, `-camera`, `-clearance`, `-events`, `-world` | ~5m |
    | `src/engine/detect.js` | `-detect`, `-faults`, `-outcome`, `-course` | ~2m |
@@ -1669,7 +1670,7 @@ src/engine/scenarios.js  the set situations, as data
 src/engine/routes.js     drives, as data
 src/core/rng.js          one seeded random source (mulberry32), for everything
 src/core/turn.js         a turn is an arc tangent to both lanes, radius derived by the caller
-src/core/driver.js       a driver: the five axes, a deficit, how a character is drawn, caution, and load
+src/core/driver.js       a driver: five skills and compliance, the rules a driver can not know, a deficit, how a character is drawn, caution, and load
 src/core/perception.js   how fast anybody reacts and registers: REACTION_FLOOR, REGISTER_*
 src/core/motion.js       how hard a road lets a car move sideways: LATERAL, changeTime
 src/sim/traffic.js       THE REBUILD, stage 0: a stepped world, and cars that follow each other
@@ -1680,7 +1681,7 @@ src/sim/course.js        stage 3: intersections placed in one space, the roads b
 src/sim/marking.js       stage 3: deferred marking and the section sheet, fed to detect.js unchanged
 src/sim/graph.js         THE SIMULATOR (SIMULATOR.md): the sim on a road network -- nodes at any bearing, ONE LEG PER LANE, junction geometry
 src/sim/signal.js        traffic signals: phases derived from the geometry, and a light that resolves to the controls the sim already had plus HOLD
-src/sim/lanechange.js    lane changes: confidence decides whether and how tight, observation whether the gap was seen, steering how cleanly; the change a turn needs, made or missed; and keeping right, knowledge's, with its exceptions
+src/sim/lanechange.js    lane changes: confidence decides whether and how tight, observation whether the gap was seen, steering how cleanly; the change a turn needs, made or missed; and keeping right -- not knowing the rule, or knowing and not bothering -- with its exceptions
 src/sim/corner.js        the traffic slows for corners: the player's own cornering limit on each arc, scaled by confidence, braked for at the driver's own rate
 src/sim/lanes.js         permitted movements per lane (the maintainer's general rule, overridable per road end) and connectivity: every lane must land, or the map is refused
 src/sim/parking.js       parked cars: slots beside the curb lane, filled at the start, pulled into and out of by district trips, solid to the player
@@ -2083,11 +2084,12 @@ node tools/verify-generate.mjs     stage 5, streets inside a district: determini
 node tools/verify-signs.mjs        signs as objects: a sign IS the rule at its approach and a map written with signs drives identically, tick for tick, to the same map in shorthand; disagreements are warned; a sign keeps its road end through a split and stands where it is put; the editor writes signs; and a driver learns a rule only through sim/reading.js; a yield sign slows, gives way and stops only if needed, the through road never waits for an uncommitted yield-road car, and an uncontrolled crossroads never locks; and the all-way plate hangs under every stop sign where every approach stops and nowhere else; and a no-left-turn sign leaves no lane of its approach a left, nobody turns left there, and lane turns that still list one are refused by name; and a one-way street gets ONE WAY where it leaves an intersection and DO NOT ENTER where it arrives, and no two-way road gets either; and a speed sign says what its road posts, only where that limit is news
 node tools/verify-observation.mjs  drivers who can miss things: glances away last the driver's lag and come round every few seconds, not together; while looking they see the present and while away a picture carried forward that is wrong only about what changed; every crash with it on is recorded and has somebody in it who looked away; poor observers reach stop lines unread more often; locals know their own signs
 node tools/verify-peds.mjs         pedestrians and crosswalks: a crosswalk is map data per road end, moves only its own approach's stop line back by its width so the line is painted behind it, is drawn where it is, survives a split, and the traffic runs clean with it; people walk the crosswalks, step off only when every car could stop, the traffic yields to them on the half they hold (the near-half rule) and never touches them -- because it yields, the same traffic told to ignore them hits them -- waiting for them is never undue delay, a map without crosswalks is unchanged; and somebody the player hits lies where they fell, is waited for and is cleared; and a mid-block crossing made with the editor's tool -- a stop each way and a crosswalk, no side street -- stops everybody and carries people across untouched; and with drivers watching nobody is struck and nothing crashes in half an hour, while every strike -- by drivers told to ignore people, or looking away -- is a recorded crash with the person lying where they fell; and fairness is owed to the player, not the simulation: careful people are never struck by traffic that is watching, everybody struck took a risk, somebody heedless hidden behind parked cars ahead of the player waits until a response exists while the same person ahead of a traffic car darts out and is struck, and a player who responds in time never strikes anybody; people are seen coming and going -- created on the pavement, they walk up, decide only at the kerb and walk on, never appearing or vanishing in the road; and somebody seen running across is braked for hard by a car too close to stop comfortably
+node tools/verify-compliance.mjs   knowledge and compliance are two axes: knowledge a set of rules, compliance a disposition drawn beside the five skills, independent; and on the city's stop signs a driver who does not know the rule rolls whoever is about while a scofflaw rolls only alone -- the cost of an occasion measured by its own instrument
 node tools/verify-crashes.mjs      when two cars collide: contact is a crash that stops both where they hit, is logged with where, stands and is cleared; no two cars ever overlap unless it is a recorded crash, in the traffic where crashes happen; the car the player hits crashes too; and the default traffic still never crashes
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All forty-seven must exit 0 **before a commit**. Between commits, run
+All forty-eight must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:
