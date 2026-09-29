@@ -108,7 +108,8 @@ export function heldAhead(world, me, path) {
      with the picture from when they looked away: somebody who stepped off
      since is not in it, and they do not wait for them. Only with drivers
      looking away switched on -- a driver with no lag always sees. */
-  const away = lookingAway(world.t ?? 0, me);
+  /* `pedsAlwaysSeen`: a check's controlled comparison, never a setting. */
+  const away = world.pedsAlwaysSeen ? 0 : lookingAway(world.t ?? 0, me);
   const seen = (p) => !(away > 0 && p.since > (world.t ?? 0) - away);
   /* Every crosswalk still ahead on this path, nearest first. */
   const ahead = [];
