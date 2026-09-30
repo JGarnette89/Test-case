@@ -51,6 +51,7 @@ import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, clearBetwe
 import { changeTime } from "../core/motion.js";
 import { poseAt } from "./intersection.js";
 import { atNode } from "./crossing.js";
+import { fits } from "./corner.js";
 
 /* THE LANE BESIDE, by place across the approach (graph.js `legAt`):
    `d` = -1 toward the centre line, +1 toward the curb. A turn bay sits
@@ -106,7 +107,7 @@ const SETTLE = 6;
    in 4.4 s; a weak one (0.7) takes 13 s, longer than most of an approach,
    so they sit out there -- unless somebody faster comes up behind, which
    makes it cost and brings anybody who knows the rule back promptly. A
-   driver who does not KNOW the rule (core/driver.js `RULES`) never
+   driver who does not READ the rule (core/driver.js `DIFFICULTY`) never
    returns, whoever is behind: the split of R2-DESIGN 17, knowing against
    bothering. Continuous, no threshold typed in. */
 export const RETURN_AFTER = LC_TIME;
@@ -149,7 +150,10 @@ function reasonToStayOut(world, out, layout, path, leg, look, want) {
   if (!toLeg || !layout.legs[toLeg]) return "noLane";
   const exitOf = (r) => layout.legs[layout.paths[r].to]?.base ?? layout.paths[r].to;
   const exit = exitOf(out.route);
-  const route = layout.routesFrom(toLeg).find((r) => exitOf(r) === exit);
+  /* ...by a turn THIS vehicle can make from there: a truck in the second
+     lane for a right the curb lane takes too tightly for it is there for
+     its turn, not hogging (corner.js `fits`). */
+  const route = layout.routesFrom(toLeg).find((r) => exitOf(r) === exit && fits(out, layout.paths[r], world.road?.lane));
   if (!route) return "turn";
   const s2 = out.s * (layout.paths[route].stopAt / path.stopAt);
   const nb = neighbours(world, out, toLeg, s2);
@@ -247,13 +251,15 @@ export function laneStep(world, me, out, view) {
   /* A WANT ALREADY MET: arriving in a lane that makes the movement this
      driver is heading for, they take it. */
   if (out.want && out.want.k === out.k) {
-    const met = layout.routesFrom(path.from).find((r) => layout.legs[layout.paths[r].to]?.base === out.want.to);
+    /* Reached from here only by a turn this vehicle can make (corner.js `fits`): a truck's curb lane may reach the exit by a right too tight for it. */
+    const met = layout.routesFrom(path.from).find((r) => layout.legs[layout.paths[r].to]?.base === out.want.to && fits(out, layout.paths[r], world.road?.lane));
     if (met && met !== out.route) return { ...out, route: met, s: out.s * (layout.paths[met].stopAt / path.stopAt), want: null, turnsMet: (out.turnsMet ?? 0) + 1 };
     if (met) return { ...out, want: null, turnsMet: (out.turnsMet ?? 0) + 1 };
   }
   if (out.going || out.stoppedAt != null || out.v < 3) return quiet(out);
   if (!leg || (leg.across ?? leg.lanes ?? 1) < 2) return quiet(out);
-  const T0 = LC_TIME;
+  /* At this vehicle's own sideways comfort: changeTime scales with 1/sqrt(lateral). */
+  const T0 = LC_TIME / Math.sqrt(vehicleOf(out).lateral ?? 1);
   if (out.s < BLIND_BEHIND + 30) return quiet(out);
 
   /* THE LANE THE TURN NEEDS -- a MANDATORY change. The driver chose where
@@ -272,14 +278,15 @@ export function laneStep(world, me, out, view) {
     const mine = T0 * (1 + 0.5 * (deficitOf(out.ratings ?? {}, "steering").deficit ?? 0));
     if (path.stopAt - out.s < out.v * mine * 1.2 + 10) return { ...out, want: null, missedTurns: (out.missedTurns ?? 0) + 1 };
     const here = leg.pos ?? leg.lane;
-    const okLanes = Object.values(layout.legs).filter((l) => l.base === leg.base && layout.routesFrom(l.id).some((r) => layout.legs[layout.paths[r].to]?.base === out.want.to)).map((l) => l.pos ?? l.lane);
+    const okLanes = Object.values(layout.legs).filter((l) => l.base === leg.base && layout.routesFrom(l.id).some((r) => layout.legs[layout.paths[r].to]?.base === out.want.to && fits(out, layout.paths[r], world.road?.lane))).map((l) => l.pos ?? l.lane);
     if (!okLanes.length) return { ...out, want: null };
     const nearest = okLanes.reduce((b, l) => (Math.abs(l - here) < Math.abs(b - here) ? l : b), okLanes[0]);
     const dir = Math.sign(nearest - here);
     const toLeg = beside(layout, leg, dir);
     if (!toLeg || !layout.legs[toLeg]) return out;
     const routes = layout.routesFrom(toLeg);
-    const route = routes.find((r) => layout.legs[layout.paths[r].to]?.base === out.want.to)
+    const route = routes.find((r) => layout.legs[layout.paths[r].to]?.base === out.want.to && fits(out, layout.paths[r], world.road?.lane))
+      ?? routes.find((r) => layout.legs[layout.paths[r].to]?.base === out.want.to)
       ?? routes.find((r) => layout.paths[r].intent === "straight") ?? routes[0];
     if (!route) return out;
     const s2 = out.s * (layout.paths[route].stopAt / path.stopAt);
@@ -313,7 +320,7 @@ export function laneStep(world, me, out, view) {
     const nb = neighbours(world, out, path.from, out.s);
     const pressed = !!nb.behind && nb.db < look && (nb.behind.v0 ?? nb.behind.v ?? 0) > want + 1;
     const cd = pressed ? 0 : deficitOf(out.ratings ?? {}, "compliance").deficit ?? 0;
-    const after = knows(out, "keepRight") ? RETURN_AFTER / Math.max(1e-9, 1 - cd) : Infinity;
+    const after = knows(out, "keep-right") ? RETURN_AFTER / Math.max(1e-9, 1 - cd) : Infinity;
     if (!settling && t - since >= after) {
       const moved = attempt(world, out, path, { ...keep, keepRight: true }, T0);
       if (moved.route !== out.route) return { ...moved, hogSince: null, keptRight: (out.keptRight ?? 0) + 1, returnDelay: t - since };
@@ -349,7 +356,7 @@ export function laneStep(world, me, out, view) {
     if (layout.legs[toLeg].bay) continue;
     const to = layout.legs[toLeg].pos ?? layout.legs[toLeg].lane;
     /* ...and never out of the lane the turn needs. */
-    const route = layout.routesFrom(toLeg).find((r) => layout.paths[r].intent === path.intent);
+    const route = layout.routesFrom(toLeg).find((r) => layout.paths[r].intent === path.intent && fits(out, layout.paths[r], world.road?.lane));
     if (!route) continue;
     const target = layout.paths[route];
     const s2 = out.s * (target.stopAt / path.stopAt);

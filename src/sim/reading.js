@@ -37,6 +37,7 @@
    `verify-signs` holds that tick for tick.
    ===================================================================== */
 import { lookingAway } from "./attention.js";
+import { reads } from "../core/driver.js";
 
 /* How far away a stop or yield sign can be made out and understood: a
    750 mm red octagon or inverted triangle, by shape and colour, in
@@ -56,8 +57,14 @@ export function signReach(layout, path) {
 export function knownControl(actor, layout, path, t = 0) {
   const standing = layout.place.control[path.from];
   if (standing !== "stop" && standing !== "yield") return standing;
-  if (!(actor.lag > 0) || actor.player) return standing;
   const leg = layout.legs[path.from];
+  /* A YIELD SIGN NOT UNDERSTOOD is, to them, no control at all -- by the
+     sign's own difficulty (core/driver.js `reads`), consistent for this
+     driver wherever they meet one. A stop sign not understood is still a
+     stop they slow for; what they get wrong is the stopping, which the
+     rolling-stop decision reads (crossing.js `rollsHere`). */
+  if (standing === "yield" && !reads(actor, "yield", leg?.sign?.difficulty)) return "none";
+  if (!(actor.lag > 0) || actor.player) return standing;
   if (actor.home && leg?.zone && actor.home === leg.zone) return standing;
   const { from } = signReach(layout, path);
   const s = actor.s ?? 0;

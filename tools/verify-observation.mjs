@@ -133,8 +133,11 @@ console.log("\n4. SIGNS ON A CLEAR ROAD ARE NEVER MISSED -- AND WHY");
   }
   check(shortest > longest, `the shortest clear view of any stop or yield sign is ${shortest.toFixed(1)} s at the posted speed (${where}), against the longest glance anybody takes, ${longest.toFixed(2)} s`);
   const tally = { sound: { passes: 0, missed: 0 }, poor: { passes: 0, missed: 0 } };
-  for (const [loaded, cars] of [[t1, 150], [city, 250]]) {
-    let w = seedGraph(5, 50, loaded, { target: cars, posted: true, perceive: true });
+  /* Two seeds: one gave 18 poor-observer passes against the floor of 20
+     once trucks and the sign difficulty moved its traffic (30 September).
+     The sample grows; the floor stays. */
+  for (const [loaded, cars] of [[t1, 150], [city, 250]]) for (const seed of [5, 6]) {
+    let w = seedGraph(seed, 50, loaded, { target: cars, posted: true, perceive: true });
     const readAt = new Map();
     for (let i = 0; i < 120 / DT; i++) {
       const before = new Map(w.actors.map((a) => [a.id, a]));

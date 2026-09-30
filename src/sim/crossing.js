@@ -41,11 +41,13 @@ import {
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } from "./graph.js";
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
-import { cornerAccel, speedBy } from "./corner.js";
+import { cornerAccel, speedBy, fits } from "./corner.js";
+export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
+import { reads } from "../core/driver.js";
 import { lookingAway } from "./attention.js";
 import { parkingOf, initialParked } from "./parking.js";
 import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
@@ -203,7 +205,15 @@ const ROLLING = 2.2;
 /* WHETHER THEY ROLL THIS ONE. A driver who does not know the rule rolls
    every stop; one who knows it and does not care rolls when nobody is about
    (traffic.js `rollsStops`). */
-const rollsHere = (me, world) => me.rollsStops === "always" || me.rollsStops === true || (me.rollsStops === "unwatched" && nobodyAbout(world, me));
+/* ...and one who does not READ the stop -- the stop sign, by the sign's
+   own difficulty, or the full stop a right on red needs -- rolls it
+   whoever is about: nothing is being weighed (core/driver.js `reads`). */
+const rollsHere = (me, world) => {
+  const L = layoutOf(world, me), p = pathOf(world, me);
+  const kind = L.signal ? "right-on-red" : "stop";
+  if (!reads(me, kind, L.signal ? undefined : L.legs[p.from]?.sign?.difficulty)) return true;
+  return me.rollsStops === true || (me.rollsStops === "unwatched" && nobodyAbout(world, me));
+};
 
 /* SOMEBODY ABOUT: anybody this driver can see at this intersection who is
    not behind them on their own approach -- a car within ABOUT of its own
@@ -300,6 +310,8 @@ function controlOf(actor, layout, path, t = 0, viewer = actor) {
     toLine: waitAt(path, actor) - (actor.s ?? 0),
     standing,
     brake: vehicleOf(actor).brake,
+    /* A NO RIGHT ON RED sign misread is a right on red after stopping. */
+    readsNoRightOnRed: viewer !== actor || reads(actor, "no-right-on-red"),
   });
 }
 
@@ -1110,7 +1122,12 @@ export function step(world) {
      `verify-crashes` holds the invariant: no two cars ever overlap unless
      they are a recorded crash. */
   let crashes = world.crashes;
-  const hits = contactsIn({ ...world, actors: next });
+  /* At the NEW clock: `next` is where everybody is at t + DT, and a car
+     changing lanes is placed across by the clock -- tested at the old one,
+     its lateral position lagged a tick behind everything else, and a
+     contact showed as an overlap for a tick before it was a crash
+     (verify-crashes, 30 September). */
+  const hits = contactsIn({ ...world, t: world.t + DT, actors: next });
   if (hits.length) {
     const hit = new Map();
     for (const c of hits) { if (!hit.has(c.a)) hit.set(c.a, c); if (!hit.has(c.b)) hit.set(c.b, c); }
@@ -1260,7 +1277,9 @@ function routeFor(world, me, k, side) {
    after the route was chosen at the seam. */
 export function wantFor(world, me, k, side, told = null) {
   const layout = world.course.at[k].layout;
-  const routes = layout.routesFrom(side);
+  const all0 = layout.routesFrom(side);
+  const ok = all0.filter((r) => fits(me, layout.paths[r], world.road?.lane));
+  const routes = ok.length ? ok : all0;
   const lanesMove = !!world.course.graph && world.laneChanges !== false && layout.legs[side]?.base != null;
   const exitOf = (r) => layout.legs[layout.paths[r].to]?.base ?? layout.paths[r].to;
   if (!lanesMove) {
@@ -1272,7 +1291,9 @@ export function wantFor(world, me, k, side, told = null) {
     return { route: routes[Math.floor(r() * routes.length) % routes.length], want: null };
   }
   const base = layout.legs[side].base;
-  const all = Object.keys(layout.paths).filter((r) => layout.legs[layout.paths[r].from]?.base === base);
+  const all1 = Object.keys(layout.paths).filter((r) => layout.legs[layout.paths[r].from]?.base === base);
+  const allOk = all1.filter((r) => fits(me, layout.paths[r], world.road?.lane));
+  const all = allOk.length ? allOk : all1;
   const exits = [...new Set(all.map(exitOf))];
   let target;
   if (told || me.plan) {
@@ -1282,7 +1303,9 @@ export function wantFor(world, me, k, side, told = null) {
     const r = rng(world.seed * 96181 + (me.n ?? 0) * 7919 + k + 1);
     target = exits[Math.floor(r() * exits.length) % exits.length];
   }
-  const mine = routes.find((r) => exitOf(r) === target);
+  /* This lane's way to it only if this vehicle can make it; a truck in a
+     curb lane whose right is too tight for it wants the next lane's. */
+  const mine = routes.find((r) => exitOf(r) === target && fits(me, layout.paths[r], world.road?.lane));
   if (mine) return { route: mine, want: null };
   /* Not from this lane: for now, the way this lane goes -- straight on
      if it can -- and the want to act on. */
@@ -1297,7 +1320,7 @@ function arriving(world, n) {
   const r = rng(world.seed * 31337 + n + 1);
   /* Traffic perceives the present unless perception is for everybody. */
   const base = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
-  const where = edgeFor(world.course, r());
+  let where = edgeFor(world.course, r());
   /* A MAP WITH NO OPEN END -- a closed network, every road meeting
      another at both ends -- has nowhere for anybody to arrive from. No
      arrival, rather than a throw: traffic from inside the districts is
@@ -1317,7 +1340,23 @@ function arriving(world, n) {
      above is still taken, so every later draw is the one it was, and
      the compass, where lanes do not change, keeps it. */
   const lanesMove = !!world.course.graph && world.laneChanges !== false;
-  const chosen = lanesMove ? wantFor(world, { n }, where.k, where.side) : { route: drawn, want: null };
+  /* A TRUCK, now and then (`TRUCK_SHARE`), from its own stream so a world
+     without trucks draws every other number exactly as it did. Only as
+     traffic arriving from outside: a truck does not fit a curb slot. Drawn
+     before the route, so the route is one it can make (`fits`). */
+  const kind = (world.trucks ?? 0) > 0 && rng(world.seed * 7717 + n + 5)() < world.trucks ? "truck" : "car";
+  /* A truck enters in a lane with a turn it can make, where the edge it
+     arrives at has one: a curb lane whose only way on is a right too tight
+     for it left it to make that turn over the curb (verify-trucks 7). */
+  if (lanesMove && kind !== "car") {
+    const L = world.course.at[where.k].layout, can = (side) => L.routesFrom(side).some((q) => fits({ kind }, L.paths[q], world.road?.lane));
+    if (!can(where.side)) {
+      const base = L.legs[where.side]?.base;
+      const other = Object.keys(L.legs).find((id) => L.legs[id].base === base && can(id));
+      if (other) where = { ...where, side: other };
+    }
+  }
+  const chosen = lanesMove ? wantFor(world, { n, kind }, where.k, where.side) : { route: drawn, want: null };
   const route = chosen.route;
   /* A car enters the world already driving to the limit of the road it
      enters on, not to the map's fastest. Drawn BEFORE the driver so
@@ -1326,10 +1365,6 @@ function arriving(world, n) {
      implementations of one quantity is the recurring bug here. */
   const posted = world.road.posted ? postedAt(world.course, where.k, route) : null;
   const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6) };
-  /* A TRUCK, now and then (`TRUCK_SHARE`), from its own stream so a world
-     without trucks draws every other number exactly as it did. Only as
-     traffic arriving from outside: a truck does not fit a curb slot. */
-  const kind = (world.trucks ?? 0) > 0 && rng(world.seed * 7717 + n + 5)() < world.trucks ? "truck" : "car";
   const who = driver(road, world.seed, n, null, null, kind);
   return {
     ...who,

@@ -86,7 +86,7 @@ export const PROFILES = [
     id: "unschooled",
     name: "Unschooled",
     blurb: "weak on knowledge",
-    watch: "treats a stop sign as a suggestion — slows to a crawl and carries on",
+    watch: "stops at every stop sign, and gets the harder rules wrong -- rolls a right on red, sits out in the left lane, reads a hard sign wrong",
     ratings: { ...sound(), confidence: CONFIDENT_ENOUGH, knowledge: 0.15 },
   },
   {

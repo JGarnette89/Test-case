@@ -2430,8 +2430,11 @@ being cut. Three things to keep:
   ruling's population half -- traffic varies in compliance, learners in
   knowledge. Putting it in `WEAK_AXES`' draw would reshuffle every driver
   in every check and bury the effect.
-- **Knowledge is a SET of rules, and a rule nothing can express is not in
-  it.** Add a rule to `RULES` when a situation tests it, never before.
+- **Knowledge is checked against each sign's difficulty, once per driver
+  per KIND** (revised 30 September, the maintainer's proposal): never per
+  encounter, or the same driver reads a sign on one approach and not the
+  next -- which is compliance's shape. A kind nothing can express a
+  misreading of has no business in `DIFFICULTY` beyond being listed.
 - **A compliance fault must be situational or it is knowledge's.** The
   check that holds this (`verify-compliance` 2) measures the cost of an
   occasion with its own instrument, not the sim's `nobodyAbout` -- a check

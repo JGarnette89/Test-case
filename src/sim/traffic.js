@@ -33,7 +33,7 @@
    That removes a class of bug for free.
    ===================================================================== */
 
-import { composeDriver, rulesUnknown, knows, deficitOf, lackingIn, LACKING_AT, severityOf, pressureOf, skillUnderPressure, cautionOf } from "../core/driver.js";
+import { composeDriver, stuckFor, deficitOf, lackingIn, LACKING_AT, severityOf, pressureOf, skillUnderPressure, cautionOf } from "../core/driver.js";
 import { rng } from "../core/rng.js";
 
 /* The project's scale, and the one thing here that must agree with the
@@ -175,12 +175,18 @@ export const MOST_BRAKE = 8.0;
    car's 2.4, plans on braking more gently (2.0 against 2.7) and can stop
    at most at about 6 (air brakes, a load behind), and keeps to the posted
    limit (`cap`, the multiple of the road's speed it will not exceed)
-   rather than to its driver's temperament over it. The driver in it is
-   drawn exactly as any other -- a truck is a vehicle, not a character.
+   rather than to its driver's temperament over it. And it moves sideways
+   more gently (`lateral`, the share of the road's comfortable sideways
+   acceleration it takes: a loaded truck tips long before a car slides),
+   so it changes lanes more slowly -- which is also what keeps a truck
+   driver who missed a car beside them able to swing back before they
+   touch it, as a car driver can (30 September: at a car's pace the wider
+   truck reached the car beside first). The driver in it is drawn exactly
+   as any other -- a truck is a vehicle, not a character.
    ===================================================================== */
 export const VEHICLES = {
-  car: { length: CAR.length, width: CAR.width, height: 1.5, accel: ACCEL, brake: BRAKE, most: MOST_BRAKE, cap: Infinity },
-  truck: { length: 9.0, width: 2.55, height: 3.4, accel: 1.0, brake: 2.0, most: 6.0, cap: 1.0 },
+  car: { length: CAR.length, width: CAR.width, height: 1.5, accel: ACCEL, brake: BRAKE, most: MOST_BRAKE, cap: Infinity, lateral: 1 },
+  truck: { length: 9.0, width: 2.55, height: 3.4, accel: 1.0, brake: 2.0, most: 6.0, cap: 1.0, lateral: 0.6 },
 };
 export const vehicleOf = (a) => VEHICLES[a?.kind] ?? VEHICLES.car;
 export const lenOf = (a) => vehicleOf(a).length;
@@ -270,7 +276,7 @@ export { cautionOf };
    asked for arriving from the driver model rather than from a
    distribution written to produce it. */
 export function driver(road, seed, n, ratings = null, town = null, kind = "car") {
-  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }), unknown: rulesUnknown(ratings, rng(seed * 15485863 + n + 7)) } : composeDriver(seed * 7919 + n, town);
+  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }), stuck: stuckFor(rng(seed * 15485863 + n + 7)) } : composeDriver(seed * 7919 + n, town);
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
   const vehicle = { kind };
@@ -307,8 +313,11 @@ export function driver(road, seed, n, ratings = null, town = null, kind = "car")
      about the person. It means nothing on a straight road and everything
      at a stop line. */
   const boldness = Math.max(0, 1 - caution);
-  const rollsStops = !knows(who, "fullStop") ? "always"
-    : 0.7 * deficitOf(who.ratings, "compliance").deficit + 0.3 * boldness > LACKING_AT ? "unwatched" : false;
+  /* Compliance only, since signs carry their difficulty (30 September):
+     whether they READ the stop -- a stop sign, or the full stop a right on
+     red needs -- is asked where they meet it (crossing.js `rollsHere`,
+     core/driver.js `reads`). */
+  const rollsStops = 0.7 * deficitOf(who.ratings, "compliance").deficit + 0.3 * boldness > LACKING_AT ? "unwatched" : false;
 
   /* HOW HARD THEY PLAN ON BRAKING, which is the whole of the braking
      axis and is ONE PARAMETER RATHER THAN A NEW MECHANISM.
@@ -372,7 +381,7 @@ export function driver(road, seed, n, ratings = null, town = null, kind = "car")
     kind,
     ratings: who.ratings,
     weakOn: who.weakOn,
-    unknown: who.unknown ?? [],
+    stuck: who.stuck,
     caution,
     rollsStops,
     brake,

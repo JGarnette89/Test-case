@@ -222,7 +222,7 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
   /* HOW LAX A DRIVER IS ABOUT KEEPING RIGHT, since the knowledge/compliance
      split: 1 for one who does not know the rule, their compliance deficit
      for one who does. The bands below are unchanged. */
-  const kd = (a) => (!knows(a, "keepRight") ? 1 : deficitOf(a.ratings ?? {}, "compliance").deficit ?? 0);
+  const kd = (a) => (!knows(a, "keep-right") ? 1 : deficitOf(a.ratings ?? {}, "compliance").deficit ?? 0);
   const exceptionHolds = (w, a) => {
     const L = w.course.at[a.k ?? 0].layout, p = L.paths[a.route], leg = L.legs[p.from];
     const right = `${leg.base}#${leg.lane + 1}`;

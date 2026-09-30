@@ -2849,9 +2849,15 @@ to the simulation (sim/peds.js):
 
 ### Knowledge and compliance (29 September, R2-DESIGN.md 17)
 
-A driver who does not know a stop means coming to rest rolls every stop
-nothing holds them at; one who knows and does not care rolls only when
-nobody is about. Same for keeping right. `#/candidates` has *Unschooled*
+A driver who does not know a rule breaks it wherever they meet it; one who
+knows and does not care breaks it only when nobody is about. **Revised 30
+September (the maintainer's proposal): every sign carries a difficulty and
+knowledge is checked against it**, once per driver per kind -- nobody
+misreads a stop sign, a sixth of traffic misreads the full stop a right on
+red needs, and a hard sign placed on the map (a `difficulty` on the sign) is
+misread by more of the same people. Stop-sign rolling is compliance alone
+now. A hard sign must LOOK hard, so the player can see why -- a rendering
+requirement, not yet met. R2-DESIGN 17 has the scale and the population. `#/candidates` has *Unschooled*
 and *Scofflaw* side by side to watch. Measured and checked in
 `verify-compliance.mjs`; the population it produced is in R2-DESIGN 17.
 
@@ -2949,6 +2955,32 @@ does not fit a curb slot. Drawn as a cargo box behind a cab.
   plainly cannot stop short of their meeting point (`crossing.js`
   `blockedBy`). The car-only city is unchanged by it: no crashes, harsh
   braking the same.
+- **A truck cut over the curb onto somebody waiting there (30 September).**
+  The rigid-body pose is right -- a truck's rear does cut inside a turn --
+  and on a tight residential right it cut 2 m inside the path, over the
+  curb. A real truck swings wide into the next lane to make that corner;
+  that is not modelled, so a truck now does not take a turn it cannot make
+  within its own lane when its leg offers another way on (`corner.js`
+  `fits`: a body of length L on an arc of radius r cuts r - sqrt(r^2 -
+  (L/2)^2) inside it, against its lane's spare width) -- in route choice,
+  in the lane it enters by, and in keep-right and every lane change, all of
+  which had been putting trucks back into curb lanes whose right was too
+  tight. In effect trucks keep to truck routes. **A domain question for the
+  maintainer:** what should a truck do at a corner it cannot make in its
+  lane -- swing into the lane beside, or the oncoming lane? That is the
+  "takes intersections wide" behaviour, and it needs his answer first.
+- **A truck that missed a car in its blind spot could not swing back in
+  time.** A driver who skips the check notices after their registration
+  delay and returns -- sized so a car beside is never reached (the lane
+  change is 3.8 s, a car beside reached at about 1.9 s). A truck is wider
+  and reached the car at 1.65 s. It also takes far less sideways
+  acceleration than a car before it tips, so its row carries `lateral`
+  0.6 (a flagged figure) and its lane change runs 5 s, reaching the car
+  beside at 2.1 s -- past the slowest notice.
+- **A crash was a silent overlap for one tick.** Contacts were tested on the
+  new positions at the old clock, and a car changing lanes is placed
+  across by the clock, so it was tested a tick behind everybody else.
+  Tested at the new clock now (`crossing.js` `step`).
 - **A truck kept the speed of the road it entered on.** The seam reset a
   driver's wanted speed with the car-only `wantedSpeed` instead of the
   vehicle's `wantedFor` -- two implementations of one quantity.

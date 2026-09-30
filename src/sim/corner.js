@@ -34,7 +34,7 @@
    ===================================================================== */
 import { poseAt } from "./intersection.js";
 import { CLEAN, GRIP } from "./player.js";
-import { wantedSpeed, decide, MOST_BRAKE } from "./traffic.js";
+import { wantedSpeed, decide, MOST_BRAKE, CAR, lenOf, widthOf } from "./traffic.js";
 
 
 const norm = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
@@ -62,6 +62,25 @@ export function cornerOf(path) {
     ? { from, to, k: kMax, clean: Math.sqrt(CLEAN / kMax), grip: Math.sqrt(GRIP / kMax) }
     : null;
   return path._corner;
+}
+
+/* A TURN THIS VEHICLE CAN MAKE WITHOUT LEAVING ITS LANE. A rigid body
+   with front and rear on an arc of radius r cuts r - sqrt(r^2 - (L/2)^2)
+   inside it; the room it has is its lane less its own width, split. A
+   car makes every turn a path was drawn for; a truck does not make a tight
+   residential corner -- measured (30 September): a truck turning right
+   from a stop cut 2 m inside, over the curb, onto somebody waiting there.
+   A real truck swings wide into the next lane to make such a corner; that
+   is not modelled, so a truck does not take a turn it cannot make when
+   the leg offers another way on (a TRUCK ROUTE, in effect), and takes the
+   least tight when it offers none. */
+export function fits(me, path, lane = 3.6) {
+  const half = lenOf(me) / 2;
+  if (half <= CAR.length / 2) return true;
+  const c = cornerOf(path);
+  if (!c) return true;
+  const r = 1 / c.k, cut = r > half ? r - Math.sqrt(r * r - half * half) : Infinity;
+  return cut <= ((lane ?? 3.6) - widthOf(me)) / 2;
 }
 
 /* The speed THIS driver takes that corner at. */

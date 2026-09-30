@@ -1436,7 +1436,7 @@ game cannot yet respond to a collision.
 
 ---
 
-## 17. R3 — knowledge splits into knowledge and compliance. The maintainer's ruling, 25 September. Built 29 September -- see the end of this section.
+## 17. R3 — knowledge splits into knowledge and compliance. The maintainer's ruling, 25 September. Built 29 September, and knowledge REVISED 30 September to a check against each sign's difficulty -- see the end of this section.
 
 Jay's distinction, verbatim: *"well experienced drivers may know they are
 required to fully stop for a right turn on a red, but will roll through
@@ -1675,3 +1675,90 @@ number for the maintainer; until then the traffic keeps the one model.
 compliance column, so exam-mode attribution does not read the split;
 `lateSignal`/`noSignal` wait for the sim to model signalling as a choice;
 and yielding to an emergency vehicle is the next thing born on compliance.
+
+### Revised 30 September: every sign carries a difficulty, and knowledge is checked against it
+
+The maintainer, answering the 22% above: *"22% is very high, but it leads me
+to a different idea. what if there was a sign difficulty level for each sign
+and the knowledge stat was a check against it? think of a complex highway
+exit sign, or a complicated downtown parking sign?"* Adopted, and built.
+
+**Why it is better than the per-rule set this section first recorded.**
+That design modelled knowledge as a set of rules each driver knows or does
+not, and the build drew the set at random from the knowledge rating. The
+maintainer's version DERIVES that set from one number and a difficulty per
+sign: fewer moving parts, and the same characterful result without anybody
+authoring the set. It is also how it actually works -- nobody misunderstands
+a stop sign and everybody has misread a parking sign. The variance in what
+real drivers know is concentrated in the complicated rules rather than
+spread evenly across them, which is exactly why a flat 22% of traffic not
+knowing a stop means stop read as absurd. And it makes signs CONTENT: a hard
+sign placed somewhere produces drivers getting it wrong -- authored
+difficulty in the map, for the editor, and it serves the town-character
+idea directly, since a district with confusing signage is a harder district
+without changing a single driver.
+
+**How it is built** (`src/core/driver.js`):
+
+- **`DIFFICULTY` per kind of sign, or of rule met without one**, 0 trivial to
+  1 read right only by the best-informed; a flagged scale for the
+  maintainer. A particular sign on the map may carry its own `difficulty`,
+  which the loader keeps (`map/load.js`).
+- **The check is resolved PER DRIVER PER KIND, never per encounter.** Each
+  driver draws once per kind how well it has stuck (`stuck`), and reads a
+  sign when knowledge >= difficulty x (0.5 .. 1.5 by that draw). A re-roll
+  per sign would have the same driver read it on one approach and not the
+  next -- which is compliance's shape, not knowledge's, and would break the
+  readability test the split exists to pass. One draw per kind also makes a
+  harder instance of a kind misread by every driver who misreads the easier
+  one, and more: a confusing sign is harder for the same people.
+- **Where a misreading shows:** a stop sign misread is rolled (with a
+  difficulty near 0 nobody does); a yield misread is to them no control; a
+  right on red, which needs a full stop first and has no sign, is rolled by
+  a driver who does not know it -- the maintainer's own example; a
+  no-right-on-red sign misread is a right on red after stopping; keep-right
+  misread is never going back. A no-left-turn sign's misreading is not yet
+  expressible (the graph takes the left away). `rollsStops` is compliance
+  only now; not reading is asked where the driver meets the sign.
+
+**The scale, and what it produces** (`tools/measure/sign-reading.mjs`, 20000
+drivers drawn as the traffic is, 29.6% of them weak on knowledge):
+
+| kind | difficulty | misread | of weak | of sound |
+|---|---|---|---|---|
+| stop | 0.02 | 0.0% | 0.0% | 0.0% |
+| no-left-turn | 0.05 | 0.0% | 0.0% | 0.0% |
+| yield | 0.10 | 0.0% | 0.0% | 0.0% |
+| no-right-on-red | 0.25 | 8.8% | 29.8% | 0.0% |
+| keep-right | 0.30 | 12.9% | 43.6% | 0.0% |
+| right-on-red | 0.35 | 16.6% | 56.3% | 0.0% |
+| a sign placed at 0.6 | | 29.8% | 90.6% | 4.3% |
+| at 0.8 (a complex parking or exit sign) | | 55.5% | 98.1% | 37.6% |
+| at 0.9 | | 64.5% | 99.5% | 49.8% |
+
+The everyday signs are read by everybody; the rules that trip people are
+the ones an examiner would name; and only a genuinely hard sign trips a
+sound driver. Whether that is a plausible population is the maintainer's
+to judge.
+
+**The readability test holds, with knowledge showing where it now shows**
+(`verify-compliance.mjs`): at a right on red the driver who does not read it
+rolls it alone 93% and in company 92%; a scofflaw rolls it in company 0%.
+At stop signs nobody rolls for want of reading one, and scofflaws roll 70%
+alone against 2% in company, 104 of 105 of them stopping properly when
+watched. Made hard (difficulty 0.9), the city's stop signs were rolled by
+175 of 385 drivers who roll none as drawn -- the same people, compliance
+held out. Sabotaged: re-rolled per encounter, knowledge ignored at the
+line, a sign's own difficulty ignored -- each fails.
+
+**A RENDERING REQUIREMENT, noted rather than solved:** the player must be
+able to see WHY a driver misread a sign, or it reads as random rather than
+as a poorly informed driver. A hard sign has to LOOK hard -- a multi-panel
+parking sign, a cluttered exit gantry -- and a stop sign has to look like
+the easy thing it is. Until the renderer draws difficulty, a hard sign
+placed on a map is a behaviour the screen does not explain.
+
+**What it changed:** the 22% of traffic rolling stop signs for want of
+knowing is gone -- stop-sign rolling is compliance alone now. The named
+candidate *Unschooled* no longer rolls stop signs; they misread the harder
+rules instead, which show at signals and on multi-lane roads.

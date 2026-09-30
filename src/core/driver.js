@@ -35,10 +35,10 @@ export const SKILLS = ["observation", "confidence", "steering", "braking", "know
    ruling of 25 September): "well experienced drivers may know they are
    required to fully stop for a right turn on a red, but will roll through
    anyways. a new driver might not know that they can't do that and instead
-   think it's right." KNOWLEDGE is whether they know the rule -- held as a
-   SET of rules they do not know (`unknown`, below), with the scalar kept as
-   what the set is drawn from. COMPLIANCE is whether they follow a rule they
-   know -- a standing disposition, a scalar like steering and braking.
+   think it's right." KNOWLEDGE is whether they know the rule -- a scalar
+   checked against how hard each kind of sign is (`reads`, below).
+   COMPLIANCE is whether they follow a rule they know -- a standing
+   disposition, a scalar like steering and braking.
 
    Compliance is not one of the SKILLS a learner's profile draws its
    weaknesses from, and that is the ruling's second half rather than a
@@ -49,14 +49,61 @@ export const SKILLS = ["observation", "confidence", "steering", "braking", "know
    skills, so what the split moved is the split alone. */
 export const AXES = [...SKILLS, "compliance"];
 
-/* THE RULES A DRIVER CAN NOT KNOW. Only rules the simulator can express:
-   a rule nothing tests is a label. More arrive as their situations do
-   (the sign vocabulary, lanes that end, what a yield line means...).
-     fullStop   a stop sign, or a right on red, means coming to rest;
-     keepRight  out of the curb lane only to pass, for a turn, or for
-                somebody in the way. */
-export const RULES = ["fullStop", "keepRight"];
-export const knows = (d, rule) => !(d?.unknown ?? []).includes(rule);
+/* EVERY SIGN CARRIES A DIFFICULTY, AND A DRIVER'S KNOWLEDGE IS CHECKED
+   AGAINST IT (the maintainer, 30 September: "what if there was a sign
+   difficulty level for each sign and the knowledge stat was a check
+   against it? think of a complex highway exit sign, or a complicated
+   downtown parking sign?"). Nobody misunderstands a stop sign and
+   everybody has misread a parking sign: the variance in what drivers know
+   is in the complicated rules, not spread evenly across them. R2-DESIGN 17
+   records why this replaced a per-rule set drawn at random.
+
+   DIFFICULTY is per kind of sign -- or of rule a driver meets without one
+   -- a flagged design scale for the maintainer, 0 trivial to 1 only the
+   best-informed read it right. A particular sign on the map may carry its
+   own (`difficulty` on the sign), so a confusing sign in a confusing place
+   is authored difficulty without touching a single driver. Only kinds the
+   simulator can express a misreading of are here:
+     stop            a stop sign -- misread, the driver rolls it;
+     yield           misread, the approach is to them uncontrolled;
+     no-left-turn    a symbol; listed, its misreading not yet expressible
+                     (the graph removes the left the driver would take);
+     no-right-on-red misread, a right on red after stopping;
+     right-on-red    no sign: turning right on a red means a full stop
+                     first -- misread, they roll it (the maintainer's own
+                     example of what a new driver may not know);
+     keep-right      no sign on these roads: out of the curb lane only to
+                     pass or turn -- misread, they never go back. */
+export const DIFFICULTY = {
+  "stop": 0.02,
+  "no-left-turn": 0.05,
+  "yield": 0.10,
+  "no-right-on-red": 0.25,
+  "keep-right": 0.30,
+  "right-on-red": 0.35,
+};
+/* HOW WELL A KIND OF SIGN HAS STUCK WITH THIS DRIVER: one draw per driver
+   per KIND, never per encounter -- knowledge is consistent (a driver who
+   reads a kind reads it every time), compliance is what is situational,
+   and a re-roll per sign would make one blur into the other. The draw
+   scales the difficulty between STUCK's ends, so a driver reads a sign
+   when knowledge >= difficulty x (0.5 .. 1.5): a difficulty-0 sign is read
+   by everybody, and a harder instance of a kind is failed by every driver
+   who fails an easier one, and more. */
+export const STUCK = [0.5, 1.5];
+export const stuckFor = (r) => Object.fromEntries(Object.keys(DIFFICULTY).map((k) => [k, r()]));
+export function reads(d, kind, difficulty = DIFFICULTY[kind]) {
+  /* A kind with no difficulty is a misspelling, not an easy sign: read as
+     0 it made every driver read it, silently (a check asking about
+     "keepRight" after the rule became "keep-right" classed drivers who
+     cannot read it as sound). */
+  if (difficulty == null) throw new Error(`reads: no difficulty for sign kind "${kind}"`);
+  if (d?.player) return true;
+  const k = d?.ratings?.knowledge ?? 1;
+  const u = d?.stuck?.[kind] ?? 0.5;
+  return k >= difficulty * (STUCK[0] + (STUCK[1] - STUCK[0]) * u);
+}
+export const knows = (d, kind) => reads(d, kind);
 
 /* Confidence is TWO-TAILED and the other three are not, which is the
    thing that makes a driver read as a person rather than a set of
@@ -177,7 +224,7 @@ export function composeDriver(seed = 1, town = null) {
   const r2 = rng((Math.imul(seed >>> 0, 0x9e3779b1) ^ 0x85ebca6b) >>> 0);
   if (r2() < shareAt(COMPLY_WEAK, town?.weights?.compliance ?? 1)) weak.add("compliance");
   ratings.compliance = clamp01(span(r2, weak.has("compliance") ? WEAK_RANGE : SOUND_RANGE));
-  return { id: `drv-${seed >>> 0}`, ratings, weakOn: [...weak], unknown: rulesUnknown(ratings, r2), skill: 1 };
+  return { id: `drv-${seed >>> 0}`, ratings, weakOn: [...weak], stuck: stuckFor(r2), skill: 1 };
 }
 
 /* HOW OFTEN COMPLIANCE IS SOMEBODY'S WEAKNESS: as often as any one skill
@@ -189,17 +236,7 @@ export function composeDriver(seed = 1, town = null) {
 export const COMPLY_WEAK = (WEAK_AXES[0] + WEAK_AXES[1]) / 2 / SKILLS.length;
 const shareAt = (p, w) => (w * p) / (w * p + 1 - p);
 
-/* WHICH RULES THIS DRIVER DOES NOT KNOW, each one drawn from the knowledge
-   rating: none for anybody in the sound range, every one for the worst of
-   the weak range, and a straight line between -- the two ends are the
-   profile's own ranges rather than new numbers. One draw per rule whatever
-   the rating, so the stream stays aligned. */
-export function rulesUnknown(ratings, r) {
-  const d = deficitOf(ratings, "knowledge").deficit;
-  const lo = 1 - SOUND_RANGE[0], hi = 1 - WEAK_RANGE[0];
-  const p = clamp01((d - lo) / (hi - lo));
-  return RULES.filter(() => r() < p);
-}
+
 
 /* 1 at the optimum, 0 when maximally bold, 2 when maximally timid. The
    whole of confidence, in one number.

@@ -188,7 +188,9 @@ export function loadMap(map) {
     const back = Math.max(0, Math.min(SIGN_BACK_MAX, Number(sg.back) || 0));
     const key = `${sg.road}|${sg.end}`;
     if (!signsAt.has(key)) signsAt.set(key, []);
-    signsAt.get(key).push({ id, kind: sg.kind, back });
+    /* A sign may be harder than its kind (core/driver.js DIFFICULTY): 0..1. */
+    const difficulty = Number.isFinite(sg.difficulty) ? Math.max(0, Math.min(1, sg.difficulty)) : null;
+    signsAt.get(key).push({ id, kind: sg.kind, back, ...(difficulty != null ? { difficulty } : {}) });
   });
 
   /* Roads: fill from the kind, thin, drop the short, resample, clamp. */

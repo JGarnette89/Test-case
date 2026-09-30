@@ -188,12 +188,12 @@ export function movementLight(signal, base, intent, t) {
    still stop comfortably must, and one who cannot must carry on,
    because a car that stands on the brakes at an amber it could not
    make is the fault this model already calls `harshStop`. */
-export function controlUnder(signal, base, intent, t, { v = 0, toLine = Infinity, standing = "none", brake } = {}) {
+export function controlUnder(signal, base, intent, t, { v = 0, toLine = Infinity, standing = "none", brake, readsNoRightOnRed = true } = {}) {
   const light = movementLight(signal, base, intent, t);
   if (light == null) return standing === "stop" ? "stop" : "none";
   if (light === "green") return "none";
   /* At THIS vehicle's comfortable braking: a truck that judged the amber
      by a car's ran the red it could not stop for (29 September). */
   if (light === "amber") return toLine > 0 && stoppingRoom(v, brake) <= toLine ? "hold" : "none";
-  return intent === "right" && !signal.noRightOnRed[base] ? "stop" : "hold";
+  return intent === "right" && (!signal.noRightOnRed[base] || !readsNoRightOnRed) ? "stop" : "hold";
 }

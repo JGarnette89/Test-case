@@ -635,22 +635,27 @@ console.log("\n9. DEFERRED MARKING, AND THE SECTION SHEET");
     : fail(`a sound driver produced a marked sheet — ${sound.sheets.map((s) => s.result.score).join(", ")} — so something is being charged that did not happen`);
 
   /* --- a weak axis shows on the sheet, in detect.js's own shape --- */
-  const rolled = drive("unschooled", perfect);
+  /* FIFTEEN MINUTES, and the scofflaw (30 September): since signs carry a
+     difficulty nobody rolls a stop sign for want of reading it, so the
+     driver who rolls is the one who does not care, and only when nobody
+     is about. Five minutes of the unschooled driver had given two rolling
+     stops and one catch -- a sample of one; this asks for three. */
+  const rolled = drive("scofflaw", perfect, 900);
   const hits = tot(rolled.sheets, (s) => s.result.hits.length);
   const missed = tot(rolled.sheets, (s) => s.result.missed.length);
-  console.log(`   unschooled driver, perfect examiner: faults ${JSON.stringify(rolled.faults)}, ${hits} caught, ${missed} missed across ${rolled.sheets.length} sheets`);
-  (rolled.faults.rollingStop ?? 0) > 0 && hits > 0 && missed === 0
-    ? ok(`an unschooled driver's rolling stops reach the sheet and a prompt examiner catches all of them: ${hits} caught, none missed`)
+  console.log(`   scofflaw, perfect examiner: faults ${JSON.stringify(rolled.faults)}, ${hits} caught, ${missed} missed across ${rolled.sheets.length} sheets`);
+  (rolled.faults.rollingStop ?? 0) >= 3 && hits >= 3 && missed === 0
+    ? ok(`a scofflaw's rolling stops reach the sheet and a prompt examiner catches all of them: ${hits} caught, none missed`)
     : fail(`rolling stops did not reach the sheet as catchable faults (${rolled.faults.rollingStop ?? 0} derived, ${hits} caught, ${missed} missed)`);
 
   /* --- and the three examiner failures cost what they should --- */
-  const quiet = drive("unschooled", silent);
+  const quiet = drive("scofflaw", silent, 900);
   const quietMissed = tot(quiet.sheets, (s) => s.result.missed.length);
   quietMissed > 0 && quiet.sheets.some((s) => s.result.score < 100)
     ? ok(`a silent examiner misses them: ${quietMissed} missed, and the sheet says so`)
     : fail("an examiner who marked nothing was not charged for the faults they let go");
 
-  const spray = drive("unschooled", spraying, 300);
+  const spray = drive("scofflaw", spraying, 300);
   const invented = tot(spray.sheets, (s) => s.result.invented.length);
   invented > 20 && spray.sheets.length > 0 && spray.sheets.every((s) => s.result.score === 0)
     ? ok(`and spraying marks is charged for every one that landed on nothing: ${invented} invented across ${spray.sheets.length} sheets, all scored 0`)
@@ -686,7 +691,7 @@ console.log("\n9. DEFERRED MARKING, AND THE SECTION SHEET");
     : fail("marking.js restates the visibility floor instead of importing it, or lowered it");
 
   /* --- and it replays --- */
-  const twice = () => JSON.stringify(drive("unschooled", perfect, 200).sheets.map((s) => [s.result.score, s.result.hits.length, s.directionsOnYou]));
+  const twice = () => JSON.stringify(drive("scofflaw", perfect, 200).sheets.map((s) => [s.result.score, s.result.hits.length, s.directionsOnYou]));
   twice() === twice()
     ? ok("the same seed produces the same sheet")
     : fail("two runs of one seed produced different sheets, so nothing graded here can be trusted");

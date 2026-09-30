@@ -201,9 +201,16 @@ console.log(`\n2. A WEAK AXIS SHOWS, AND SHOWS AS ITSELF`);
     ["a pushy one gets round more often", runs.bold.trips > base.trips],
     ["a ragged one strays further off its line", runs.ragged.off > base.off * 3],
     ["a heavy-footed one leaves the braking later", runs.heavy.easesAt < base.easesAt * 0.95],
-    ["an unschooled one crosses without stopping where a sound driver stops", runs.unschooled.rolledPast > base.rolledPast],
-    ["and a scofflaw does too, where nobody is about", runs.scofflaw.rolledPast > base.rolledPast],
+    ["and a scofflaw crosses without stopping where a sound driver stops, when nobody is about", runs.scofflaw.rolledPast > base.rolledPast],
   ];
+  /* A MEASURED GAP, NOT A LET-OFF (30 September). Knowledge is checked
+     against each sign's difficulty now (core/driver.js DIFFICULTY), and
+     every control on this course is a stop sign, which everybody reads --
+     so the unschooled candidate has nothing here to get wrong, and correctly
+     does not. They show at a right on red, out of the curb lane and at a
+     hard sign (verify-compliance). Reported every run; held below to move
+     nothing else. */
+  console.log(`   MEASURED GAP: knowledge has nothing to misread on this course -- every sign is a stop sign; the unschooled crossed ${runs.unschooled.rolledPast} without stopping against sound's ${base.rolledPast}`);
   const missing = moved.filter(([, held]) => !held);
   missing.length === 0
     ? ok("each weak axis moves its own observable, in the direction it should: " + moved.map(([w]) => w.replace(/^(a|and an|and a) /, "")).join("; "))

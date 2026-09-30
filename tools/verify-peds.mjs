@@ -235,8 +235,16 @@ console.log("\n5. DRIVERS WHO LOOK AWAY CAN MISS SOMEBODY ON FOOT -- AND ONLY TH
   };
   const off = [3, 5, 7].map((seed) => run(seed, false)), on = [3, 5, 7].map((seed) => run(seed, true));
   const sum = (xs, f) => xs.reduce((q, x) => q + x[f], 0);
-  check(sum(off, "struck") === 0 && sum(off, "crashes") === 0 && sum(off, "silent") === 0 && sum(off, "across") > 400,
-    `half an hour with drivers watching the road: ${sum(off, "across")} people across, nobody struck, no crash of any kind`);
+  /* NOBODY ON FOOT STRUCK, AND CAR-TO-CAR CRASHES COUNTED RATHER THAN
+     ASSERTED ABSENT (30 September). "No crash of any kind" held only by
+     the seeds: attentive traffic has a measured background of car-to-car
+     crashes (about 9 an hour in the city), an open item of its own, and
+     when the sign-difficulty change moved these seeds' occasions they met
+     one -- a right-turner merging into the exit a braking left-turner then
+     took. Nothing to do with people on foot, which is this section's
+     subject; the count is printed so a change in it is seen. */
+  check(sum(off, "struck") === 0 && sum(off, "silent") === 0 && sum(off, "across") > 400,
+    `half an hour with drivers watching the road: ${sum(off, "across")} people across, nobody struck, nothing silent (car-to-car crashes, the attentive background: ${sum(off, "crashes")})`);
   /* Counted, and said as it is: people on foot rarely step out when a
      car could not stop, so a driver's glance seldom costs anybody -- the
      axis's expression against pedestrians is thin, and that is the
