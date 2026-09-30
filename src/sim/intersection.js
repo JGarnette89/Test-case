@@ -421,7 +421,7 @@ export function poseAt(path, s) {
    touching and to ask whether two PATHS could ever put them there. */
 export function cornersOf(p, pad = 0) {
   const a = (p.rot * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
-  const hl = CAR.length / 2 + pad, hw = CAR.width / 2 + pad;
+  const hl = (p.length ?? CAR.length) / 2 + pad, hw = (p.width ?? CAR.width) / 2 + pad;
   return [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([u, v]) => ({
     x: p.x + c * hl * u - sn * hw * v,
     y: p.y + sn * hl * u + c * hw * v,

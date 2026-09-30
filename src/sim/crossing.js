@@ -27,7 +27,7 @@
    ===================================================================== */
 import {
   decide, wantedGap, driver, timeToCover, weaveAt, wantedSpeed, stoppingRoom, underLoad,
-  CAR, DT, PX_PER_M, M,
+  CAR, DT, PX_PER_M, M, vehicleOf, lenOf, widthOf, clearBetween, wantedFor,
 } from "./traffic.js";
 import {
   layoutFor, intersectionFor, poseAt, SIDES, INTENTS,
@@ -221,7 +221,7 @@ export function nobodyAbout(world, me) {
     const p = layout.paths[b.route];
     if (!p) continue;
     if ((layout.legs[p.from]?.base ?? p.from) === myBase && b.s <= me.s) continue;
-    if (Math.abs(waitAt(p) - b.s) < ABOUT) return false;
+    if (Math.abs(waitAt(p, b) - b.s) < ABOUT) return false;
   }
   const cws = world.peds?.length ? crosswalksOf(world.course) : null;
   for (const q of world.peds ?? []) if (q.state !== "struck" && cws[q.cw]?.k === k) return false;
@@ -297,8 +297,9 @@ function controlOf(actor, layout, path, t = 0, viewer = actor) {
   if (actor.amberGo) return "none";
   return controlUnder(layout.signal, layout.legs[path.from]?.base, path.intent, t, {
     v: actor.v ?? 0,
-    toLine: waitAt(path) - (actor.s ?? 0),
+    toLine: waitAt(path, actor) - (actor.s ?? 0),
     standing,
+    brake: vehicleOf(actor).brake,
   });
 }
 
@@ -326,7 +327,7 @@ export const pathOf = (world, a) => layoutOf(world, a).paths[a.route];
    version had those two disagreeing by exactly this much and the result
    was total deadlock: nobody was ever recorded as having stopped, so
    nobody ever got priority, so nobody ever moved. */
-const waitAt = (path) => path.stopAt - CAR.length / 2;
+const waitAt = (path, a) => path.stopAt - lenOf(a) / 2;
 
 /* THE YIELD APPROACH: slow, so as to be able to give way. A driver who has
    read a yield sign arrives at the line no faster than YIELD_AT, scaled by
@@ -341,8 +342,8 @@ export const YIELD_AT = 20 / 3.6;
 function yieldAccel(me, world) {
   if (me.going || me.crash) return Infinity;
   const layout = layoutOf(world, me), path = layout.paths[me.route];
-  if (!path || me.s > waitAt(path) || controlOf(me, layout, path, world.t ?? 0) !== "yield") return Infinity;
-  return speedBy(me, wantedSpeed(YIELD_AT, me.caution ?? 1), waitAt(path));
+  if (!path || me.s > waitAt(path, me) || controlOf(me, layout, path, world.t ?? 0) !== "yield") return Infinity;
+  return speedBy(me, wantedSpeed(YIELD_AT, me.caution ?? 1), waitAt(path, me));
 }
 
 /* =====================================================================
@@ -360,7 +361,8 @@ function yieldAccel(me, world) {
    "clear it in half the gap" a driver is actually taught.
    ===================================================================== */
 export function gapNeeded(me, run, caution = me.caution) {
-  return timeToCover(me.v, run, me.v0) * (1 + caution);
+  /* A longer vehicle is clear later: `run` is to where a car is clear. */
+  return timeToCover(me.v, run + lenOf(me) - CAR.length, me.v0, vehicleOf(me).accel) * (1 + caution);
 }
 
 /* Is there room to go in front of this one? Time until they reach the
@@ -463,7 +465,7 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
      the first point of it. Two paths run alongside each other for
      several metres and a car that has passed the nominal meeting point
      can still be right beside me. */
-  if (them.s > hit.clearOf + CAR.length / 2) return false;
+  if (them.s > hit.clearOf + CAR.length / 2 + (lenOf(them) - CAR.length)) return false;
 
   /* ALREADY COMMITTED, AND COMMITMENT BEGINS AT THE LAUNCH RATHER THAN
      AT THE LINE. A driver who has stopped, judged it clear and started to
@@ -546,13 +548,25 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
        the oncoming car it faced judged a gap and went, and they met in the
        box (tools/measure/ped-miss.mjs, seed 7). Too close to stop, I go on,
        and its own gap check sees me coming. Not at a signal. */
-    const firstThere = !layout.signal && me.stoppedAt == null && them.stoppedAt != null && !them.going && stoppingRoom(me.v) <= Math.max(0, waitAt(mine) - me.s);
+    const firstThere = !layout.signal && me.stoppedAt == null && them.stoppedAt != null && !them.going && stoppingRoom(me.v) <= Math.max(0, waitAt(mine, me) - me.s);
     const head = leftYields(mine, theirs, layout);
     /* ...but never where the turn rule already says they give way to me:
        a left-turner standing at its line on a through road is waiting FOR
        the oncoming traffic, and read as "there first" it stopped the
        through road 700 times in a check's run (verify-crossing). */
-    if (head === false) return false;
+    /* ...UNLESS THEY PLAINLY CANNOT. Standing at my line, a left-turner
+       already too close to stop comfortably short of where our paths meet
+       is going to turn in front of me whatever the rule says -- their own
+       gap check saw me at rest, which claims nothing, and went. The law
+       gives me the road; I still wait for the gap (30 September: a truck
+       pulling away at its 1 m/s^2 met exactly that left-turner on the
+       Pedestrians map, where a car would usually have been clear). */
+    if (head === false) {
+      const meet = layout.conflicts[them.route + "|" + me.route];
+      const theirIn = meet ? meet.a - them.s : -Infinity;
+      if (me.stoppedAt != null && me.v < AT_REST && them.v > AT_REST && theirIn > 0 && stoppingRoom(them.v, vehicleOf(them).brake) > theirIn) return !hasGap(me, them, layout, caution);
+      return false;
+    }
     if (firstThere) return true;
     /* AN ONCOMING CAR AT REST AT ITS LINE HAS NOT GIVEN UP ITS PRIORITY
        -- the same exception the two-way stop already makes, and at a
@@ -705,7 +719,7 @@ export function whatStops(me, world) {
       for (const my of mySpan) {
         const on = theirSpan.find((t) => t.lane === my.lane);
         if (!on) continue;
-        const d = on.along - my.along - CAR.length;
+        const d = clearBetween(on.along - my.along, me, them);
         if (d >= 0) consider(d, them);
       }
       continue;
@@ -734,7 +748,7 @@ export function whatStops(me, world) {
        notice that would have swung them back. */
     const unseen = me.lc?.missed && !me.lc.abort && them.id === me.lc.unseen && world.t < me.lc.t0 + me.lc.noticeAfter;
     if (shareLane && them.s > me.s && !unseen) {
-      consider(them.s - me.s - CAR.length, them);
+      consider(clearBetween(them.s - me.s, me, them), them);
     }
 
     /* AND THE CAR IN FRONT ON MY WAY OUT, which is a different car and
@@ -759,8 +773,8 @@ export function whatStops(me, world) {
          being in front, it held the car in the box, which held it at its
          line: a gridlock at the five-way -- lowered from 120 cars to 40,
          the map was still at 44 two minutes later. */
-      if (theirLeft < myLeft && me.s > mine.clearAt - CAR.length && them.s > theirs.stopAt) {
-        consider(myLeft - theirLeft - CAR.length, them);
+      if (theirLeft < myLeft && me.s > mine.clearAt - lenOf(me) && them.s > theirs.stopAt) {
+        consider(clearBetween(myLeft - theirLeft, me, them), them);
       }
     }
   }
@@ -789,7 +803,7 @@ export function whatStops(me, world) {
      marks were exactly that. */
   const queued = leader != null && gap <= wantedGap(me, leader);
 
-  const short = !me.going && me.s < waitAt(mine) + AT_LINE && me.s < mine.clearAt;
+  const short = !me.going && me.s < waitAt(mine, me) + AT_LINE && me.s < mine.clearAt;
   /* SOMEBODY ON A CROSSWALK THIS CAR WOULD CROSS, on the half it would
      cross it (peds.js, the near-half rule): short of the line they hold
      the car at the line; past it -- in the box, turning across the exit
@@ -799,9 +813,9 @@ export function whatStops(me, world) {
      line. A MID-BLOCK crossing lies before it: stop short of the paint
      itself -- holding at the line had a car registering somebody and
      driving through them to reach its own stop line. */
-  const walkerAtLine = !!walker && walker.s >= waitAt(mine);
+  const walkerAtLine = !!walker && walker.s >= waitAt(mine, me);
   const held = short && (walkerAtLine || others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0)));
-  if (walker && (!short || !walkerAtLine)) consider(walker.s - me.s - CAR.length / 2 - 0.5, { id: "ped", v: 0, headway: me.headway });
+  if (walker && (!short || !walkerAtLine)) consider(walker.s - me.s - lenOf(me) / 2 - 0.5, { id: "ped", v: 0, headway: me.headway });
   /* THE THREE CONTROLS, AND THE ONLY PLACE THAT KNOWS A SIGNAL EXISTS.
      A red or an unmakeable amber HOLDS -- gap or no gap; a sign or a
      right on red waits for a stop and then a gap; a green or an
@@ -818,9 +832,31 @@ export function whatStops(me, world) {
          That is not a cosmetic difference. It is where the remaining
          overlaps were coming from: 16 of 21 were a waiting car and a
          crossing car, and the waiting one was sticking into the box. */
-      const d = waitAt(mine) - me.s;
+      const d = waitAt(mine, me) - me.s;
       /* A stationary obstacle exactly where the driver must not pass. */
       consider(d, { id: "line", v: 0, headway: me.headway });
+    }
+  }
+  /* THE NEXT INTERSECTION'S LINE, SEEN FROM THIS SIDE OF THE SEAM (29
+     September). A driver's path ends at the middle of the link, so a
+     stop line or a red a few metres past that seam was invisible until
+     the car crossed it -- on a short link a car arrived at 60 km/h 20 m
+     from a red and stood on the brakes at 8 m/s^2, and a truck, which
+     cannot, ran the red into a crossing car. Within this driver's own
+     comfortable stopping distance, the next line is braked for exactly as
+     the line on this path is, under the control as this driver would read
+     it there -- the straight movement's, the one a red means for most. */
+  const toEnd = mine.length - me.s;
+  if (world.course.graph && toEnd < stoppingRoom(me.v, me.brake ?? vehicleOf(me).brake) + 15) {
+    const j = joinedTo(world.course, me.k ?? 0, mine.to);
+    const L2 = j && world.course.at[j.k]?.layout;
+    const routes = L2 ? L2.routesFrom(j.side) : [];
+    const r2 = routes.find((r) => L2.paths[r].intent === "straight") ?? routes[0];
+    if (r2) {
+      const p2 = L2.paths[r2];
+      const there = { ...me, k: j.k, route: r2, s: me.s - mine.length, stoppedAt: null, going: false, amberGo: false };
+      const u = controlOf(there, L2, p2, world.t ?? 0);
+      if (u === "hold" || u === "stop") consider(toEnd + waitAt(p2, me), { id: "line", v: 0, headway: me.headway });
     }
   }
   return { leader, gap, held, queued, hold: short && under === "hold" };
@@ -867,7 +903,7 @@ export function step(world) {
       /* WHEN THEY STOPPED, remembered because the queue at an all-way
          stop is made of arrival order and nothing else can reconstruct
          it after the fact. */
-      const atLine = Math.abs(s - waitAt(mine)) < AT_LINE;
+      const atLine = Math.abs(s - waitAt(mine, me)) < AT_LINE;
       const stoppedAt = me.stoppedAt ?? (atLine && (v < AT_REST || (v < ROLLING && rollsHere(me, world))) ? world.t : null);
       /* ACCEPTING A GAP IS A DECISION, AND IT STICKS. `LAUNCHED` alone
          made commitment a matter of SPEED, so a driver who had judged the
@@ -919,7 +955,7 @@ export function step(world) {
          Frozen once they go, so what they did stays inspectable. */
       /* The amber decision, remembered (see `controlOf`): released at an
          amber while still short of the line is committed to going. */
-      const amberGo = me.amberGo || (!!layoutOf(world, me).signal && s < waitAt(mine) + AT_LINE
+      const amberGo = me.amberGo || (!!layoutOf(world, me).signal && s < waitAt(mine, me) + AT_LINE
         && movementLight(layoutOf(world, me).signal, layoutOf(world, me).legs[mine.from]?.base, mine.intent, world.t) === "amber"
         && controlOf(me, layoutOf(world, me), mine, world.t) === "none");
       const at = { ...raw, v, s, stoppedAt, going, accepted, ...(amberGo ? { amberGo } : {}) };
@@ -993,7 +1029,7 @@ export function step(world) {
       }
       return {
         ...me, k: on.k, route: on.route, s: 0, leaveAt, parkSlot,
-        ...(posted == null ? {} : { v0: wantedSpeed(posted, me.caution) }),
+        ...(posted == null ? {} : { v0: wantedFor(me, posted, me.caution) }),
         /* How many intersections they have been through, which is what a
            plan is indexed by and what a section of a drive is counted
            in. Everybody carries it, not only a candidate. */
@@ -1131,7 +1167,7 @@ export function joinAt(world, actors, car) {
   const behind = actors
     .filter((a) => (a.k ?? 0) === (car.k ?? 0) && pathOf(world, a).from === mine.from)
     .reduce((lo, a) => (a.s < lo.s ? a : lo), { s: Infinity, v: Infinity });
-  const room = behind.s - CAR.length;
+  const room = behind.s - (lenOf(car) + lenOf(behind)) / 2;
   const fits = (v) => room > wantedGap({ ...car, v }, behind);
   if (fits(car.v)) return car;
   if (!fits(0)) return null;
@@ -1290,7 +1326,11 @@ function arriving(world, n) {
      implementations of one quantity is the recurring bug here. */
   const posted = world.road.posted ? postedAt(world.course, where.k, route) : null;
   const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6) };
-  const who = driver(road, world.seed, n);
+  /* A TRUCK, now and then (`TRUCK_SHARE`), from its own stream so a world
+     without trucks draws every other number exactly as it did. Only as
+     traffic arriving from outside: a truck does not fit a curb slot. */
+  const kind = (world.trucks ?? 0) > 0 && rng(world.seed * 7717 + n + 5)() < world.trucks ? "truck" : "car";
+  const who = driver(road, world.seed, n, null, null, kind);
   return {
     ...who,
     n,
@@ -1420,8 +1460,8 @@ function pullingOut(world, n, actors) {
     const on = laneSpan(world.course, a.k ?? 0, a.route, a.s).find((x) => x.lane === mine.lane);
     if (!on) continue;
     const d = on.along - mine.along;
-    if (d >= 0 && d < CAR.length + 6) return null;
-    if (d < 0 && -d < CAR.length + Math.max(wantedGap(a, car), stoppingRoom(a.v ?? 0)) + 6) return null;
+    if (d >= 0 && d < (lenOf(a) + lenOf(car)) / 2 + 6) return null;
+    if (d < 0 && -d < (lenOf(a) + lenOf(car)) / 2 + Math.max(wantedGap(a, car), stoppingRoom(a.v ?? 0)) + 6) return null;
   }
   return car;
 }
@@ -1535,7 +1575,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, trucks = TRUCK_SHARE } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
@@ -1561,7 +1601,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}) };
   if (parkingOf(course).slots.length) w.parked = initialParked(course, seed);
@@ -1577,6 +1617,13 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
    target: fast enough that a map fills in well under a minute, slow
    enough that one edge is not handed a platoon in a single tick. */
 export const FILL = 0.2;
+
+/* THE SHARE OF TRAFFIC ARRIVING FROM OUTSIDE THAT IS A TRUCK. A flagged
+   design constant for the maintainer: urban arterials carry roughly five
+   to ten percent heavy vehicles, and this is the low end of that. Per
+   world (`seedGraph`'s `trucks`), so a check can hold a world of cars as
+   its control. */
+export const TRUCK_SHARE = 0.06;
 
 /* Run a fresh world until it has traffic on it, then put the clock
    back to zero -- moving everything that is on that clock. A world
@@ -1640,9 +1687,37 @@ export function run(world, ticks) {
    car that is not where the screen says it is (DECISIONS.md 0). */
 export function poseOf(world, actor) {
   /* On a map the pose has a height, from the road's own profile. */
-  const p = world.course.graph
-    ? poseOnGraph(world.course, actor.k ?? 0, actor.route, actor.s)
-    : poseOn(world.course, actor.k ?? 0, actor.route, actor.s);
+  const at = (s) => (world.course.graph
+    ? poseOnGraph(world.course, actor.k ?? 0, actor.route, s)
+    : poseOn(world.course, actor.k ?? 0, actor.route, s));
+  let p = at(actor.s);
+  /* A VEHICLE LONGER THAN THE PATHS WERE DRAWN FOR SPANS THEM (29
+     September). A path's turn is sized for a car, whose centre rides it;
+     a truck's centre on the arc, facing along it, swung its rear 1.9 m into
+     the next lane 25 degrees into a right turn and struck the car turning
+     left beside it. A long vehicle's front and rear both follow the path,
+     so its body is the chord between the two -- it cuts inside a turn, as
+     a truck's rear wheels do, and never swings out. Past either end of
+     the path the point carries on straight. */
+  const half = lenOf(actor) / 2;
+  if (half > CAR.length / 2) {
+    const len = pathOf(world, actor)?.length ?? Infinity;
+    const end = (s) => {
+      const c = Math.max(0, Math.min(len, s)), q = at(c), h = (q.rot * Math.PI) / 180;
+      return { x: q.x + Math.cos(h) * (s - c), y: q.y + Math.sin(h) * (s - c), z: q.z ?? 0 };
+    };
+    /* The front on the path; the rear the point on the path a rigid body's
+       length behind it IN A STRAIGHT LINE -- on an arc that is further
+       back along the path than the length, since the chord is shorter. */
+    const f = end(actor.s + half);
+    let lo = actor.s + half - 3 * half, hi = actor.s - half;
+    for (let i = 0; i < 20; i++) {
+      const mid = (lo + hi) / 2, q = end(mid);
+      if (Math.hypot(f.x - q.x, f.y - q.y) > 2 * half) lo = mid; else hi = mid;
+    }
+    const r = end((lo + hi) / 2);
+    p = { ...p, x: (f.x + r.x) / 2, y: (f.y + r.y) / 2, z: ((f.z ?? 0) + (r.z ?? 0)) / 2, rot: (Math.atan2(f.y - r.y, f.x - r.x) * 180) / Math.PI };
+  }
   /* A LANE CHANGE IS WHERE THE CAR IS, NOT A STRAY: it is added here, to
      the pose that is drawn and checked for overlap, and deliberately not
      to `strayOf`, which is what the marking sheet reads as lane-keeping.
@@ -1651,10 +1726,13 @@ export function poseOf(world, actor) {
      sliding sideways. */
   const lat = actor.lc ? lateralOf(actor.lc, world.t) : 0;
   const off = strayOf(world, actor) + lat;
-  if (!off) return p;
+  /* THE VEHICLE'S OWN SIZE travels with its pose, so the footprint that is
+     checked for contact and the box that is drawn are this vehicle's. */
+  const { length, width, height } = vehicleOf(actor);
+  if (!off) return { ...p, length, width, height };
   const a = (p.rot * Math.PI) / 180;
   const turn = lat ? (Math.atan2(lateralRate(actor.lc, world.t), Math.max(1, actor.v ?? 0)) * 180) / Math.PI : 0;
-  return { ...p, rot: p.rot + turn, x: p.x - Math.sin(a) * off, y: p.y + Math.cos(a) * off };
+  return { ...p, length, width, height, rot: p.rot + turn, x: p.x - Math.sin(a) * off, y: p.y + Math.cos(a) * off };
 }
 
 /* HOW FAR OFF THEIR LINE A DRIVER IS, signed, to the right. The one
@@ -1733,7 +1811,8 @@ export function contactsIn(world) {
     for (const b of nearNode(world, world.actors, a.k ?? 0)) {
       if (b.player || !(a.id < b.id)) continue;
       const A = poseFor(a), B = poseFor(b);
-      if (Math.abs(A.p.x - B.p.x) > 6 || Math.abs(A.p.y - B.p.y) > 6) continue;
+      const near = Math.max(6, (lenOf(a) + lenOf(b)) / 2 + 1);
+      if (Math.abs(A.p.x - B.p.x) > near || Math.abs(A.p.y - B.p.y) > near) continue;
       if (Math.abs((A.p.z ?? 0) - (B.p.z ?? 0)) > 2.0) continue;
       if (!boxesOverlap(A.box, B.box)) continue;
       const known = a.crash?.with === b.id || b.crash?.with === a.id;

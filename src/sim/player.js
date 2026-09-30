@@ -333,15 +333,23 @@ export function playerPose(me, road, poseAt) {
    need finer; it says "you hit that car" and it never says it for a
    car a lane away. */
 const DISC_R = 0.95, DISC_AT = 1.3;   // the discs reach the car's half-length fore and aft, and its half-width abeam
+/* A car is two discs; a LONGER VEHICLE (a truck, sim/traffic.js VEHICLES)
+   is a row of discs of its own half-width, spaced no further apart than
+   their radius, so its whole footprint is solid. A pose without a length
+   is a car, exactly as before. */
 function discs(pose) {
-  const h = (pose.heading * Math.PI) / 180;
-  const dx = Math.cos(h) * DISC_AT, dy = Math.sin(h) * DISC_AT;
-  return [{ x: pose.x + dx, y: pose.y + dy }, { x: pose.x - dx, y: pose.y - dy }];
+  const h = (pose.heading * Math.PI) / 180, c = Math.cos(h), s = Math.sin(h);
+  if (!(pose.length > 4.5)) {
+    const dx = c * DISC_AT, dy = s * DISC_AT;
+    return [{ x: pose.x + dx, y: pose.y + dy, r: DISC_R }, { x: pose.x - dx, y: pose.y - dy, r: DISC_R }];
+  }
+  const r = (pose.width ?? 1.8) / 2 + 0.05, reach = pose.length / 2 - r, n = Math.ceil((2 * reach) / r) + 1;
+  return Array.from({ length: n }, (_, i) => { const d = -reach + (2 * reach * i) / (n - 1); return { x: pose.x + c * d, y: pose.y + s * d, r }; });
 }
 export function touching(a, b) {
   if (Math.abs(a.z - b.z) > 2) return false;   // one is on the overpass
   const A = discs(a), B = discs(b);
-  for (const p of A) for (const q of B) if (Math.hypot(p.x - q.x, p.y - q.y) < 2 * DISC_R) return true;
+  for (const p of A) for (const q of B) if (Math.hypot(p.x - q.x, p.y - q.y) < p.r + q.r) return true;
   return false;
 }
 

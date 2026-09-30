@@ -472,7 +472,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     if (far) {
       if (a.ped && !a.struck) continue;
       const colour = a.struck ? (Math.floor((scene.t ?? 0) * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour ?? CAR_COLOURS[(a.n ?? 0) % CAR_COLOURS.length];
-      const r = Math.max(1.5, CAR_LEN * k * 0.6);
+      const r = Math.max(1.5, (a.length ?? CAR_LEN) * k * 0.6);
       items.push({ layer: 1, key: carKey(at), tag: audit && { kind: a.ped ? "ped" : "car", id: a.id ?? a.n, at }, paint: () => { ctx.fillStyle = colour; ctx.fillRect(px - r / 2, py - r / 2, r, r); } });
       continue;
     }
@@ -485,6 +485,20 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       continue;
     }
     const colour = a.colour ?? CAR_COLOURS[(a.n ?? 0) % CAR_COLOURS.length];
+    /* A TRUCK (sim/traffic.js VEHICLES): a cargo box behind a cab, both
+       from the vehicle's own length and width. Two boxes side by side in
+       plan, so they are painted far one first, by the same depth key the
+       world is sorted by. */
+    if (a.kind === "truck") {
+      const L = a.length ?? 9, W = a.width ?? 2.55, H = a.height ?? 3.4;
+      const cabL = 2.2, boxL = L - cabL - 0.2;
+      const box = { l: boxL, w: W, h: H, back: (L - boxL) / 2 }, cab = { l: cabL, w: W - 0.1, h: H * 0.8, back: -(L - cabL) / 2 };
+      const rad = (deg * Math.PI) / 180, along = (d) => ({ x: at.x + Math.cos(rad) * d, y: at.y + Math.sin(rad) * d, z: at.z });
+      const parts = [[boxCorners(at, deg, 0, box), "#e9e6df", along(-box.back)], [boxCorners(at, deg, 0, cab), colour, along(-cab.back)]]
+        .sort((p, q) => depthOf(p[2].x, p[2].y, p[2].z) - depthOf(q[2].x, q[2].y, q[2].z));
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { for (const [c, col] of parts) paintBox(ctx, view, c, col); } });
+      continue;
+    }
     const body = boxCorners(at, deg, 0, BODY);
     const cabin = boxCorners(at, deg, 0, CABIN, BODY.h);
     /* Between the two tiers a car is its body alone: the cabin is a few pixels. */

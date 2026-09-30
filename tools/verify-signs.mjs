@@ -130,7 +130,11 @@ console.log("\n7. A YIELD SIGN: SLOW, GIVE WAY, STOP ONLY IF NEEDED (the maintai
   /* A through road east-west, yield signs on the minor road's two
      approaches (tools/measure/yield.mjs). */
   const run = (ctl, cars, seed, secs = 240) => {
-    let w = seedGraph(seed, 50, loadMap(yieldCross(ctl)), { target: cars, posted: true });
+    /* CARS ONLY (30 September): these are sign rules, their bounds set on
+       car traffic. With the 6% trucks in, the uncontrolled crossroads
+       carried 28 minor-road crossings against 31 -- slower pull-aways, not
+       a lock (the lock was 1); trucks are verify-trucks' business. */
+    let w = seedGraph(seed, 50, loadMap(yieldCross(ctl)), { target: cars, posted: true, trucks: 0 });
     const out = { minor: [], idleStops: 0, rests: 0, throughHeldByUncommitted: 0, crashes: 0, over: 0 };
     const low = new Map(), idle = new Map();
     for (let i = 0; i < secs / DT; i++) {

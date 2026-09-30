@@ -161,6 +161,39 @@ const STANDSTILL = 2.0;
 export const MOST_BRAKE = 8.0;
 
 /* =====================================================================
+   WHAT A VEHICLE IS, AS DATA (29 September, the maintainer: "we still
+   haven't put a single truck in the game"). Everything that moves is one
+   of these rows, read through `vehicleOf`; nothing asks "is it a truck".
+   A car is the row every constant above was written for, so its numbers
+   ARE those constants, and a world with no trucks is the world it was,
+   tick for tick (tools/measure/world-hash.mjs).
+
+   A TRUCK is a single-unit box truck at the scale this project has used
+   since the old engine (CLAUDE.md: 9 x 2.55 m). Its performance is a row
+   of flagged design constants, real-world figures rather than fitted
+   ones: a loaded straight truck pulls away at about 1 m/s^2 against a
+   car's 2.4, plans on braking more gently (2.0 against 2.7) and can stop
+   at most at about 6 (air brakes, a load behind), and keeps to the posted
+   limit (`cap`, the multiple of the road's speed it will not exceed)
+   rather than to its driver's temperament over it. The driver in it is
+   drawn exactly as any other -- a truck is a vehicle, not a character.
+   ===================================================================== */
+export const VEHICLES = {
+  car: { length: CAR.length, width: CAR.width, height: 1.5, accel: ACCEL, brake: BRAKE, most: MOST_BRAKE, cap: Infinity },
+  truck: { length: 9.0, width: 2.55, height: 3.4, accel: 1.0, brake: 2.0, most: 6.0, cap: 1.0 },
+};
+export const vehicleOf = (a) => VEHICLES[a?.kind] ?? VEHICLES.car;
+export const lenOf = (a) => vehicleOf(a).length;
+export const widthOf = (a) => vehicleOf(a).width;
+/* Bumper to bumper, for two vehicles in one lane whose centres are `d`
+   apart: the centres' distance less half of each. Two cars: `d - 4.5`,
+   exactly the expression it replaces. */
+export const clearBetween = (d, a, b) => d - (lenOf(a) + lenOf(b)) / 2;
+/* The speed a driver of this vehicle wants on a road: their temperament's,
+   no more than the vehicle will do there. */
+export const wantedFor = (a, roadSpeed, caution) => Math.min(wantedSpeed(roadSpeed, caution), roadSpeed * vehicleOf(a).cap);
+
+/* =====================================================================
    Setting up
 
    SIX CARS THAT ALL WANT TO GO THE SAME SPEED WOULD SPREAD OUT AND NEVER
@@ -212,12 +245,14 @@ export const MOST_BRAKE = 8.0;
    something a tick can tell them. Every number in it is one the loop
    already uses, so the two cannot drift.
    ===================================================================== */
-export function timeToCover(v, d, v0) {
+/* `accel` is the vehicle's own pull-away (a truck's crossing takes far
+   longer from rest, which is what makes it wait for a bigger gap). */
+export function timeToCover(v, d, v0, accel = ACCEL) {
   if (d <= 0) return 0;
   const cap = Math.max(v0, v);
-  const spent = (cap - v) / ACCEL;                     // time spent getting up to speed
-  const covered = v * spent + 0.5 * ACCEL * spent * spent;
-  if (d <= covered) return (Math.sqrt(v * v + 2 * ACCEL * d) - v) / ACCEL;
+  const spent = (cap - v) / accel;                     // time spent getting up to speed
+  const covered = v * spent + 0.5 * accel * spent * spent;
+  if (d <= covered) return (Math.sqrt(v * v + 2 * accel * d) - v) / accel;
   return spent + (d - covered) / cap;
 }
 
@@ -234,11 +269,12 @@ export { cautionOf };
    bold tail and 14% in the timid one, which is the mix the maintainer
    asked for arriving from the driver model rather than from a
    distribution written to produce it. */
-export function driver(road, seed, n, ratings = null, town = null) {
+export function driver(road, seed, n, ratings = null, town = null, kind = "car") {
   const who = ratings ? { ratings, weakOn: lackingIn({ ratings }), unknown: rulesUnknown(ratings, rng(seed * 15485863 + n + 7)) } : composeDriver(seed * 7919 + n, town);
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
-  const v0 = wantedSpeed(road.speed, caution);
+  const vehicle = { kind };
+  const v0 = wantedFor(vehicle, road.speed, caution);
 
   /* WHO ROLLS A STOP -- and since the knowledge/compliance split (R2-DESIGN
      17) it is two different drivers doing the same thing for two reasons:
@@ -289,7 +325,7 @@ export function driver(road, seed, n, ratings = null, town = null) {
      where the old engine's `ABRUPT_AT` says a stop stops being
      controlled. So the axis runs from "comfortable" to "abrupt" and has
      no room to be anything else. */
-  const brake = BRAKE * (1 + (ABRUPT - 1) * deficitOf(who.ratings, "braking").deficit);
+  const brake = vehicleOf(vehicle).brake * (1 + (ABRUPT - 1) * deficitOf(who.ratings, "braking").deficit);
 
   /* AND HOW STEADY A LINE THEY HOLD. The steering axis's unambiguous
      fault (CLAUDE.md: only `wander` and `wideTurn` belong to one axis
@@ -312,7 +348,7 @@ export function driver(road, seed, n, ratings = null, town = null) {
      Held in DISTANCE rather than time so a pose stays a pure function of
      how far along the car is -- the same discipline the paths are under
      -- and so that a driver's weave does not speed up when they do. */
-  const weave = weaveRoom(road.lane ?? ROAD.laneWidth) * deficitOf(who.ratings, "steering").deficit;
+  const weave = weaveRoom(road.lane ?? ROAD.laneWidth, widthOf(vehicle)) * deficitOf(who.ratings, "steering").deficit;
 
   /* HOW FAR BEHIND THE WORLD THEY PERCEIVE IT, in seconds: the whole of
      the observation axis (stage 4). Everything here is visible all the
@@ -333,6 +369,7 @@ export function driver(road, seed, n, ratings = null, town = null) {
 
   return {
     id: `car-${n}`,
+    kind,
     ratings: who.ratings,
     weakOn: who.weakOn,
     unknown: who.unknown ?? [],
@@ -399,7 +436,7 @@ export function perceive(me, world) {
   let leader = null, gap = Infinity;
   for (const other of world.actors) {
     if (other.id === me.id) continue;
-    const d = ahead(me, other) - CAR.length;
+    const d = clearBetween(ahead(me, other), me, other);
     if (d >= 0 && d < gap) { gap = d; leader = other; }
   }
   return { leader, gap };
@@ -424,7 +461,7 @@ export function perceive(me, world) {
    the symptom would be a pair of cars overlapping in a place the
    conflict table says they never meet -- which is exactly how this was
    found. */
-export const weaveRoom = (lane) => (lane - CAR.width) / 4;
+export const weaveRoom = (lane, width = CAR.width) => (lane - width) / 4;
 
 /* =====================================================================
    A LOADED DRIVER IS A WORSE DRIVER
@@ -499,10 +536,10 @@ export function underLoad(me, road) {
     ...me,
     held, composure,
     caution,
-    v0: wantedSpeed(road.speed, caution),
+    v0: wantedFor(me, road.speed, caution),
     headway: HEADWAY * (0.55 + 0.45 * caution),
-    brake: Math.min(BRAKE * ABRUPT, BRAKE + (me.brake - BRAKE) * sev),
-    weave: Math.min(weaveRoom(road.lane ?? ROAD.laneWidth), (me.weave ?? 0) * sev),
+    brake: Math.min(vehicleOf(me).brake * ABRUPT, vehicleOf(me).brake + (me.brake - vehicleOf(me).brake) * sev),
+    weave: Math.min(weaveRoom(road.lane ?? ROAD.laneWidth, widthOf(me)), (me.weave ?? 0) * sev),
   };
 }
 
@@ -517,7 +554,9 @@ export const wantedSpeed = (roadSpeed, caution) => roadSpeed * (1.35 - 0.35 * ca
    mirror of `timeToCover` and it exists for the same reason: a driver
    has to be able to anticipate, and an approach has to be long enough to
    be an approach. */
-export const stoppingRoom = (v) => (v * v) / (2 * BRAKE);
+/* At the comfortable rate, by default a car's; a vehicle that brakes more
+   gently (a truck, VEHICLES) passes its own. */
+export const stoppingRoom = (v, b = BRAKE) => (v * v) / (2 * b);
 
 /* ONE WEAVE PER WAVELENGTH, and the wavelength is a real one: about
    three and a half seconds at 60 km/h, which is the pace of a driver
@@ -536,7 +575,7 @@ export function wantedGap(me, leader) {
   /* AND THIS DRIVER OWN WILLINGNESS TO BRAKE, for the same reason. */
   const b = me.brake ?? BRAKE;
   return STANDSTILL
-    + Math.max(0, me.v * t + (me.v * closing) / (2 * Math.sqrt(ACCEL * b)));
+    + Math.max(0, me.v * t + (me.v * closing) / (2 * Math.sqrt(vehicleOf(me).accel * b)));
 }
 
 /* EXPORTED because stage 1 uses the same decision. A driver deciding
@@ -546,9 +585,10 @@ export function wantedGap(me, leader) {
    would be two answers to one question. */
 export function decide(me, view) {
   const free = 1 - Math.pow(me.v / me.v0, 4);
-  if (!view.leader) return ACCEL * free;
+  const { accel, most } = vehicleOf(me);
+  if (!view.leader) return accel * free;
   const gap = Math.max(view.gap, 0.1);
-  return Math.max(-MOST_BRAKE, ACCEL * (free - Math.pow(wantedGap(me, view.leader) / gap, 2)));
+  return Math.max(-most, accel * (free - Math.pow(wantedGap(me, view.leader) / gap, 2)));
 }
 
 /* =====================================================================

@@ -2905,6 +2905,69 @@ In priority order:
 The pedestrian persistence fix and the knowledge/compliance split came
 first: both are prerequisites for any of this being worth anything.
 
+#### 1. Large vehicles -- built (30 September)
+
+**A truck is a row in the vehicle table** (`sim/traffic.js` `VEHICLES`,
+read through `vehicleOf` wherever a size or a performance figure is
+used): 9 x 2.55 m, pulling away at 1.0 m/s^2 against a car's 2.4, planning
+on braking at 2.0 and stopping at most at 6 against 2.7 and 8, and keeping
+to the posted limit. A car's row IS the constants every car was built on,
+so a world with no trucks is the world it was, tick for tick
+(`tools/measure/world-hash.mjs`). `TRUCK_SHARE` (6% of traffic arriving
+from outside -- a flagged constant for the maintainer; urban arterials
+carry roughly 5-10%) is per world, and trucks come only from outside: one
+does not fit a curb slot. Drawn as a cargo box behind a cab.
+
+**What building it found, each a real gap:**
+
+- **A truck ran a red it could not stop for.** The amber decision -- can I
+  stop comfortably -- was a car's; the truck judged by 2.7, planned on 2.0,
+  stood on its 6 and still ended past the line. The amber is judged at the
+  vehicle's own braking (`signal.js` `controlUnder`).
+- **Nobody could see the next intersection's line across the seam.** A
+  driver's path ends at the middle of the link, so on a short link a car
+  crossed the seam at 60 km/h 20 m from a red and braked at 8 m/s^2; a
+  truck could not. Within a driver's own comfortable stopping distance the
+  next line is now braked for like the one on their own path
+  (`crossing.js` `whatStops`). It helps cars too, measured on two seeds,
+  33 car-hours (`tools/measure/seam-brake.mjs`): harsh-braking episodes
+  13.2 -> 10.6 per car-hour, car crashes 2 -> 0. This is the one change a
+  world without trucks sees.
+- **A truck swung its rear into the next lane on a turn.** The sim puts a
+  vehicle's centre on its path facing along it; for a 9 m body 25 degrees
+  into a right turn that put the rear 1.9 m into the lane beside, where a
+  left-turner was. A vehicle longer than the paths were drawn for now
+  spans them as a rigid body: front on the path, rear the point on the path
+  its length behind in a straight line -- it cuts inside a turn as a
+  truck's rear wheels do.
+- **A truck pulled out in front of a left-turner who could not stop.**
+  The turn rule gives the straight-through vehicle the road, and the
+  standing truck took it -- while the left-turner, already too close to
+  stop, had judged the stopped truck as claiming nothing and gone. A car
+  pulling away at 2.4 m/s^2 was usually clear; a truck at 1.0 was not. A
+  vehicle standing at its line now waits for the gap when a left-turner
+  plainly cannot stop short of their meeting point (`crossing.js`
+  `blockedBy`). The car-only city is unchanged by it: no crashes, harsh
+  braking the same.
+- **A truck kept the speed of the road it entered on.** The seam reset a
+  driver's wanted speed with the car-only `wantedSpeed` instead of the
+  vehicle's `wantedFor` -- two implementations of one quantity.
+
+**Measured** (`tools/measure/trucks.mjs`, four seeds, ten minutes, the city
+at 200): from rest to 30 km/h trucks 8.7 s, cars 4.7 s; trucks over the
+limit never; no crash involving a truck in 5.7 truck-hours. Checked, each
+mechanism sabotaged, in `verify-trucks.mjs`.
+
+**Not yet -- and it is most of what makes a truck interesting:** a truck is
+not yet a SIGHT BLOCKER. Nothing in the sim models one vehicle hiding
+another from a driver -- `seenBy` is when a driver looks, never what they
+can see past -- so a driver behind a truck is not yet blind, and the
+observation axis does not yet reward positioning. Occlusion exists for
+people behind parked cars (`peds.js` `inSight`); extending it to vehicles
+behind vehicles is its own increment, and it is the next one on trucks.
+Nor does a truck take an intersection wide: it cuts inside on the car's
+path, which is safe but not what a truck driver does at a tight corner.
+
 #### Parking lots: what it would take (scoped 29 September, not started)
 
 **What exists.** Everything that moves runs on the lane graph: a car is

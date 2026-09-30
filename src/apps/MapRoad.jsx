@@ -134,7 +134,7 @@ export function actorsOf(scene, carry) {
     /* A CRASHED car flashes its hazards: orange and dark, twice a second,
        so a wreck is never just another stopped car. */
     const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;
-    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash });
+    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height });
   }
   /* PEOPLE ON FOOT (sim/peds.js): waiting at the curb or crossing. */
   for (const q of w.peds ?? []) out.push({ id: q.id, n: q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });
@@ -272,7 +272,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               const p = poseOf(w, a);
               /* The car the player hit has crashed too -- it stops and is
                  logged -- rather than driving on through them. */
-              if (touching(mine, { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot })) { hit = true; w = crashWith(w, a.id, { x: p.x, y: p.y, z: p.z ?? 0 }); sc.world = w; }
+              if (touching(mine, { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, length: p.length, width: p.width })) { hit = true; w = crashWith(w, a.id, { x: p.x, y: p.y, z: p.z ?? 0 }); sc.world = w; }
             }
             /* A parked car is as solid as a moving one. */
             if (!hit && w.parked && contactWith(w.course, w.parked, mine, touching)) hit = true;

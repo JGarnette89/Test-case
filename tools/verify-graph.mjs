@@ -428,7 +428,12 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
 {
   const loaded = loadMap(testMap1());
   const run = (corners) => {
-    let w = seedGraph(4, 50, loaded, { target: 120, posted: true, corners });
+    /* CARS ONLY (30 September): the limit measured against is a car's
+       (corner.js), and a truck keeps to the posted limit and so rarely
+       arrives hot -- with the 6% trucks in, the no-slowing control read
+       39.6% against 45.9%, diluted by vehicles the grip figure is not
+       for. A truck's own cornering limit is not modelled yet. */
+    let w = seedGraph(4, 50, loaded, { target: 120, posted: true, corners, trucks: 0 });
     const entries = [];
     let cornerHarsh = { poor: 0, sound: 0 };
     for (let i = 0; i < 20 * 180; i++) {

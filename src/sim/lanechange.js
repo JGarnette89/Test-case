@@ -47,7 +47,7 @@
 import { deficitOf, knows } from "../core/driver.js";
 import { rng } from "../core/rng.js";
 import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
-import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom } from "./traffic.js";
+import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, clearBetween } from "./traffic.js";
 import { changeTime } from "../core/motion.js";
 import { poseAt } from "./intersection.js";
 import { atNode } from "./crossing.js";
@@ -153,8 +153,8 @@ function reasonToStayOut(world, out, layout, path, leg, look, want) {
   if (!route) return "turn";
   const s2 = out.s * (layout.paths[route].stopAt / path.stopAt);
   const nb = neighbours(world, out, toLeg, s2);
-  if ((nb.behind && nb.db < BLIND_BEHIND) || (nb.ahead && nb.da < CAR.length + 2)) return "passing";
-  if (nb.ahead && nb.da - CAR.length < look && (nb.ahead.v ?? 0) < want - 1) return "inTheWay";
+  if ((nb.behind && nb.db < BLIND_BEHIND) || (nb.ahead && clearBetween(nb.da, out, nb.ahead) < 2)) return "passing";
+  if (nb.ahead && clearBetween(nb.da, out, nb.ahead) < look && (nb.ahead.v ?? 0) < want - 1) return "inTheWay";
   const g = gapFor(out, nb, 1);
   if (!g.leadOk || !g.lagOk) return "noGap";
   return { dir: 1, toLeg, route, s2, nb };
@@ -354,7 +354,7 @@ export function laneStep(world, me, out, view) {
     const target = layout.paths[route];
     const s2 = out.s * (target.stopAt / path.stopAt);
     const nb = neighbours(world, out, toLeg, s2);
-    const there = nb.ahead && nb.da - CAR.length < look ? Math.min(want, nb.ahead.v) : want;
+    const there = nb.ahead && clearBetween(nb.da, out, nb.ahead) < look ? Math.min(want, nb.ahead.v) : want;
     const gain = there - here;
     if (gain < LC_GAIN * Math.max(0.2, caution)) continue;
     if (!best || gain > best.gain) best = { dir, to, toLeg, route, s2, nb, gain };
@@ -383,11 +383,12 @@ export { reasonToStayOut };
    not stop in time -- 187 overlapping car-ticks at 300 cars. Boldness
    is a tight gap, never one that cannot be survived. */
 function gapFor(out, nb, kappa) {
-  const stopIn = (v, vl) => Math.max(0, (v * v - vl * vl) / (2 * MOST_BRAKE));
-  const leadGap = nb.ahead ? nb.da - CAR.length : Infinity;
-  const lagGap = nb.behind ? nb.db - CAR.length : Infinity;
-  const needLead = Math.max(1.5 + stopIn(out.v, nb.ahead?.v ?? out.v), kappa * wantedGap(out, nb.ahead ?? { v: out.v }));
-  const needLag = Math.max(1.5 + stopIn(nb.behind?.v ?? 0, out.v), kappa * wantedGap(nb.behind ?? { v: 0 }, out));
+  /* At the FOLLOWER's hardest braking: a truck behind stops longer. */
+  const stopIn = (v, vl, who) => Math.max(0, (v * v - vl * vl) / (2 * vehicleOf(who).most));
+  const leadGap = nb.ahead ? clearBetween(nb.da, out, nb.ahead) : Infinity;
+  const lagGap = nb.behind ? clearBetween(nb.db, out, nb.behind) : Infinity;
+  const needLead = Math.max(1.5 + stopIn(out.v, nb.ahead?.v ?? out.v, out), kappa * wantedGap(out, nb.ahead ?? { v: out.v }));
+  const needLag = Math.max(1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind), kappa * wantedGap(nb.behind ?? { v: 0 }, out));
   return { leadGap, lagGap, leadOk: leadGap >= needLead, lagOk: lagGap >= needLag };
 }
 
@@ -413,7 +414,7 @@ function attempt(world, out, path, best, T0) {
      a miss RATE can be read (verify-lanes.mjs), not only the misses. */
   const counted = inBlind ? { ...out, blindOcc: (out.blindOcc ?? 0) + 1, blindMiss: (out.blindMiss ?? 0) + (missed ? 1 : 0) } : out;
   if (!missed && !lagOk) return counted;
-  if (!missed && inBlind && nb.db < CAR.length + 1) return counted;   // somebody beside: a driver who looked does not go
+  if (!missed && inBlind && clearBetween(nb.db, out, nb.behind) < 1) return counted;   // somebody beside: a driver who looked does not go
 
   /* GO. The steering axis decides the blend. */
   const steer = deficitOf(out.ratings ?? {}, "steering").deficit ?? 0;

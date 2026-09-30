@@ -27,7 +27,7 @@
    ===================================================================== */
 import { junctionsOf } from "./graph.js";
 import { rng } from "../core/rng.js";
-import { DT, CAR, MOST_BRAKE } from "./traffic.js";
+import { DT, CAR, MOST_BRAKE, lenOf, widthOf, vehicleOf } from "./traffic.js";
 import { lookingAway } from "./attention.js";
 import { accelFor } from "./player.js";
 import { parkingOf, parkedPoses } from "./parking.js";
@@ -67,8 +67,8 @@ const mannerOf = (world, x) => {
 /* Is a car on this crosswalk's paint (or pulling away across it)? */
 function onPaint(world, cw, { going = true } = {}) {
   for (const { a, near, far } of carsFor(world, cw)) {
-    const nose = a.s + CAR.length / 2;
-    if (nose > near && a.s - CAR.length / 2 < far) return true;
+    const nose = a.s + lenOf(a) / 2;
+    if (nose > near && a.s - lenOf(a) / 2 < far) return true;
     if (going && a.going && nose <= far) return true;
   }
   return false;
@@ -80,7 +80,7 @@ function onPaint(world, cw, { going = true } = {}) {
 export function playerCanRespond(world, cw, p = null) {
   for (const { a, near } of carsFor(world, cw)) {
     if (!a.player) continue;
-    const nose = a.s + CAR.length / 2;
+    const nose = a.s + lenOf(a) / 2;
     if (nose > near) continue;                       // on it or past: onPaint's business
     const v = a.v ?? 0;
     if (v < 0.3) continue;
@@ -344,13 +344,13 @@ export function heldAhead(world, me, path) {
     const band = { s: bandS, t: bandT };
     const near = band.s - (cw.to - cw.from) / 2;
     const farEdge = band.s + (cw.to - cw.from) / 2;
-    if (me.s + CAR.length / 2 > near + 0.5) {
+    if (me.s + lenOf(me) / 2 > near + 0.5) {
       /* ALREADY ON IT: go on through -- unless somebody is in the car's own
          path in front of it, whom it stops for where it is. Driving on
          because the paint had been reached put a queued car that crept
          forward into a careful person stepping out beside it. */
-      if (me.s - CAR.length / 2 < farEdge && peds.some((p) => p.cw === cw.i && (p.state === "crossing" || p.state === "struck") && seen(p) && Math.abs(tOf(p, cw) - band.t) * cw.width < 1.8 + 0.3 && (cw.kind !== "gap" || !eye || world.pedsAlwaysSeen || inSight(world, eye, pedPose(world, p))))) {
-        ahead.push({ near: me.s + CAR.length / 2 + 0.3, held: true });
+      if (me.s - lenOf(me) / 2 < farEdge && peds.some((p) => p.cw === cw.i && (p.state === "crossing" || p.state === "struck") && seen(p) && Math.abs(tOf(p, cw) - band.t) * cw.width < 1.8 + 0.3 && (cw.kind !== "gap" || !eye || world.pedsAlwaysSeen || inSight(world, eye, pedPose(world, p))))) {
+        ahead.push({ near: me.s + lenOf(me) / 2 + 0.3, held: true });
       }
       continue;
     }
@@ -363,8 +363,8 @@ export function heldAhead(world, me, path) {
        only arrive slower (measured: a car that slowed for its turn, began
        braking for her, could not stop, crept on and struck her). It goes
        through; the person pauses at the middle for it (`stepPeds`). */
-    const canStop = ((me.v ?? 0) ** 2) / (2 * COMFY) <= near - (me.s + CAR.length / 2);
-    const clearIn = (far + CAR.length / 2 - me.s) / Math.max(me.v ?? 0, 1.5) + 0.5;
+    const canStop = ((me.v ?? 0) ** 2) / (2 * COMFY) <= near - (me.s + lenOf(me) / 2);
+    const clearIn = (far + lenOf(me) / 2 - me.s) / Math.max(me.v ?? 0, 1.5) + 0.5;
     const within = canStop ? clearIn : 0;
     /* BUT SOMEBODY RUNNING WILL NOT PAUSE. The committed car goes on because
        the person pauses at the middle for it -- and a person seen running
@@ -372,7 +372,7 @@ export function heldAhead(world, me, path) {
        hard as the car can, if that still stops them short (measured, the
        default city: an attentive car drove on into somebody darting across
        it had been able to see for most of a second, and braked 9 m out). */
-    const hardStop = ((me.v ?? 0) ** 2) / (2 * MOST_BRAKE) <= near - (me.s + CAR.length / 2);
+    const hardStop = ((me.v ?? 0) ** 2) / (2 * vehicleOf(me).most) <= near - (me.s + lenOf(me) / 2);
     const withinFor = (p) => (speedOf(p) > WALK && hardStop ? clearIn : within);
     /* Only somebody the driver can SEE: a person behind a parked car is not
        there for them until they step out past it (mid-block crossings). */
@@ -404,7 +404,7 @@ function safeToStep(world, cw) {
      so nobody steps off into one; skipping crashed cars had people walking
      through a car stopped on the crosswalk. */
   for (const { a, near, far } of carsFor(world, cw)) {
-    const nose = a.s + CAR.length / 2;
+    const nose = a.s + lenOf(a) / 2;
     /* ON IT: actually over the paint. A margin here counted a car waiting
        at its own line -- 0.35 m short of the crosswalk after running its
        line by a metre and a half -- as standing on it, and people at that
@@ -412,7 +412,7 @@ function safeToStep(world, cw) {
        (tools/measure/ped-wait-car.mjs). */
     /* On the paint -- or standing with its nose at it, about to move: a
        careful person does not step out right beside it. */
-    if (nose > near - 1 && a.s - CAR.length / 2 < far) return false;
+    if (nose > near - 1 && a.s - lenOf(a) / 2 < far) return false;
     if (nose > far) continue;
     /* FROM BEHIND A PARKED CAR the driver will not see them until they are
        out past it, a parking strip's walk away: a careful person allows for
@@ -436,7 +436,7 @@ function committedAcross(world, cw, p, { onlyPlayer = false } = {}) {
   for (const { a, near, far, t: bt } of carsFor(world, cw)) {
     if (onlyPlayer && !a.player) continue;
     if (!farHalf(bt)) continue;
-    const nose = a.s + CAR.length / 2, tail = a.s - CAR.length / 2;
+    const nose = a.s + lenOf(a) / 2, tail = a.s - lenOf(a) / 2;
     if (tail > far) continue;                                      // past it
     /* On it -- unless it has STOPPED there for them. A car that halted with
        its nose on the paint because this person was in its way is waiting
@@ -539,7 +539,7 @@ export function pedAt(world, car, margin = 0.3) {
     if (p.state === "struck") continue;
     const q = pedPose(world, p);
     const dx = q.x - car.x, dy = q.y - car.y, u = dx * c + dy * s, v = -dx * s + dy * c;
-    if (Math.abs(u) < CAR.length / 2 + margin && Math.abs(v) < CAR.width / 2 + margin) return p.id;
+    if (Math.abs(u) < (car.length ?? CAR.length) / 2 + margin && Math.abs(v) < (car.width ?? CAR.width) / 2 + margin) return p.id;
   }
   return null;
 }
@@ -568,7 +568,7 @@ export function strikes(world, poseOf) {
       if (Math.abs(c.x - (cw.a.x + cw.b.x) / 2) > 30 || Math.abs(c.y - (cw.a.y + cw.b.y) / 2) > 30) continue;
       const h = ((c.rot ?? 0) * Math.PI) / 180, q = pedPose(world, p);
       const dx = q.x - c.x, dy = q.y - c.y, u = dx * Math.cos(h) + dy * Math.sin(h), v = -dx * Math.sin(h) + dy * Math.cos(h);
-      if (Math.abs(u) < CAR.length / 2 + 0.3 && Math.abs(v) < CAR.width / 2 + 0.3) { out.push({ ped: p.id, car: a.id, at: { x: q.x, y: q.y, z: q.z ?? 0 } }); break; }
+      if (Math.abs(u) < lenOf(a) / 2 + 0.3 && Math.abs(v) < widthOf(a) / 2 + 0.3) { out.push({ ped: p.id, car: a.id, at: { x: q.x, y: q.y, z: q.z ?? 0 } }); break; }
     }
   }
   return out;
