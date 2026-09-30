@@ -46,6 +46,13 @@ const JOIN = 4;
 /* Keeping to one side of the sidewalk, so two people passing do not walk
    through each other. */
 const KEEP = Math.min(0.45, SIDEWALK_W / 2 - 0.3);
+/* SOMEBODY TO CROSS is somebody walking this close to the curb it is
+   wanted from (peds.js): near enough that turning to it is what they were
+   doing anyway. */
+export const WANT_NEAR = 12;
+/* Stepping back onto a sidewalk from a crossing: this long to settle onto
+   their side of it, so nobody jumps. */
+const SETTLE = 0.6;
 
 const nets = new WeakMap();
 
@@ -171,14 +178,24 @@ export function stepWalkers(world) {
   const t = world.t;
   let n = world.walkerN;
   const out = [];
-  for (let p of world.walkers) {
+  /* Whoever turned to cross this tick is a crosser now (peds.js); whoever
+     reached the far sidewalk walks on from where they are. */
+  const taken = new Set(world.walkersTaken ?? []);
+  const walkers = world.walkers.filter((p) => !taken.has(p.id));
+  for (const c of world.walkersFreed ?? []) {
+    const at = c.pose, near = nearestWalk(net, at);
+    if (!near) continue;
+    walkers.push(person(r, n++, { id: `w${n - 1}`, look: c.look ?? c.n, state: "walking", w: near.w, s: near.s, dir: r() < 0.5 ? 1 : -1, blend: { x: at.x, y: at.y, t } }));
+  }
+  const here = (p) => { const q = walkerPose(world, p); return { x: q.x, y: q.y, t }; };
+  for (let p of walkers) {
     if (p.state === "standing") { out.push(t >= p.until ? { ...p, state: "walking" } : p); continue; }
     if (p.state === "out" || p.state === "in") {
       const d = net.doors[p.door], len = Math.max(0.5, Math.hypot(d.face.x - d.walk.x, d.face.y - d.walk.y));
       /* `u` is how far along the front walk from the sidewalk (0) to the door (1). */
       const u = p.u + ((p.state === "in" ? 1 : -1) * p.v * DT) / len;
       if (p.state === "in" && u >= 1) continue;   // gone in
-      if (p.state === "out" && u <= 0) { out.push({ ...p, state: "walking", u: undefined }); continue; }
+      if (p.state === "out" && u <= 0) { out.push({ ...p, state: "walking", u: undefined, blend: here(p) }); continue; }
       out.push({ ...p, u });
       continue;
     }
@@ -200,18 +217,21 @@ export function stepWalkers(world) {
         const j = on[Math.floor(r() * on.length)];
         const over = s < 0 ? -s : s - w.length;
         const nw = net.walks[j.w];
-        out.push({ ...p, w: j.w, s: j.end === 0 ? over : nw.length - over, dir: j.end === 0 ? 1 : -1, left });
+        /* Round the corner onto the next sidewalk -- its end can be a few
+           metres from this one's (JOIN), so they ease across (SETTLE). */
+        out.push({ ...p, w: j.w, s: j.end === 0 ? over : nw.length - over, dir: j.end === 0 ? 1 : -1, left, blend: here(p) });
         continue;
       }
-      /* A dead end: back the way they came. */
-      out.push({ ...p, s: end === 0 ? -s : 2 * w.length - s, dir: -p.dir, left });
+      /* A dead end: back the way they came, crossing to the other side of the sidewalk. */
+      out.push({ ...p, s: end === 0 ? -s : 2 * w.length - s, dir: -p.dir, left, blend: here(p) });
       continue;
     }
     out.push({ ...p, s, left });
   }
   /* The same number of people all day: whoever went in or walked off is
      somebody else coming out. */
-  while (out.length < net.people) {
+  const away = world.walkersAway ?? 0;
+  while (out.length + away < net.people) {
     const q = arrival(net, r, n);
     if (!q) break;
     out.push(q);
@@ -233,5 +253,25 @@ export function walkerPose(world, p) {
   const w = net.walks[p.w];
   const q = along(w, p.s);
   const nx = -Math.sin(q.h), ny = Math.cos(q.h);
-  return { x: q.x + nx * KEEP * p.dir, y: q.y + ny * KEEP * p.dir, z: q.z, heading: ((q.h + (p.dir < 0 ? Math.PI : 0)) * 180) / Math.PI };
+  /* Keeping to the right of the way they walk. */
+  let x = q.x - nx * KEEP * p.dir, y = q.y - ny * KEEP * p.dir;
+  if (p.blend && world.t >= p.blend.t && world.t - p.blend.t < SETTLE) {
+    const k = (world.t - p.blend.t) / SETTLE;
+    x = p.blend.x + (x - p.blend.x) * k; y = p.blend.y + (y - p.blend.y) * k;
+  }
+  return { x, y, z: q.z, heading: ((q.h + (p.dir < 0 ? Math.PI : 0)) * 180) / Math.PI };
+}
+
+/* The nearest point on any sidewalk: which, and how far along. */
+function nearestWalk(net, p) {
+  let best = null;
+  net.walks.forEach((w, i) => {
+    for (let k = 0; k + 1 < w.pts.length; k++) {
+      const a = w.pts[k], b = w.pts[k + 1], dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1;
+      const f = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2));
+      const d = Math.hypot(a.x + dx * f - p.x, a.y + dy * f - p.y);
+      if (!best || d < best.d) best = { d, w: i, s: w.at[k] + f * Math.sqrt(L2) };
+    }
+  });
+  return best && best.d < 3 ? best : null;
 }

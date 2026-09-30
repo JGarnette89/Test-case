@@ -3172,13 +3172,41 @@ coming out of front doors, going in at others, stopping a while.
   it passes; somebody else comes out of another, so the number holds all
   day. Where a road leaves the map, people walk on and off. Nobody is
   created or ends anywhere else once the world is running.
-- **What they are not, yet:** they never step off the curb, nothing reads
-  them and they read nothing, and they are drawn exactly as the people who
-  cross, so nothing tells you which is which. Their own random stream: the
-  traffic is tick for tick what it was (`verify-walkers` section 3). On for
-  the screens (`seedGraph`'s `walkers`), off in the other checks until step
-  3 makes them part of what the traffic meets. 31 microseconds a step for
-  the city's 264.
+- They read nobody and nobody reads them, and they are drawn exactly as
+  the people who cross, so nothing tells you which is which. Their own
+  random stream: with nobody crossing, the traffic is tick for tick what it
+  was (`verify-walkers` section 3). On for the screens (`seedGraph`'s
+  `walkers`), off in the other checks, which keep the old source of
+  crossers. 31 microseconds a step for the city's 264.
+
+**Step 3 BUILT (30 September): the people who cross are people who were
+walking.** When a crossing is wanted at a curb -- at the same seeded rate
+as before, per crosswalk and per kilometre of parked curb -- it waits (up
+to 90 s, `WANT_FOR`) for somebody walking within 12 m of that curb
+(`WANT_NEAR`), who turns and walks up to it from where they are, and from
+there is exactly the crosser `peds.js` always had: the curb, the decision
+by manner, the near half. Across, they walk on along the far sidewalk from
+where their line meets it. Nobody on foot appears or vanishes anywhere
+but a door, the map's edge, or that turn, and nobody moves more than a
+step in a tick (`verify-walkers` section 4, on the city's mid-block
+crossings AND the Pedestrians map's crosswalks -- run on the city alone it
+passed with the crosswalk path broken).
+
+**What it costs, and it is the maintainer's call:** crossings now follow
+where people are walking. Measured over 20 minutes (tools/measure/
+crossers.mjs): the stand-in city 642 an hour -> 354, the Pedestrians map
+1134 -> 348, which has only 12 people on its 5.9 km of sidewalk. Nobody
+struck either way. Either that is the point -- a busy street has more
+people crossing than a quiet one -- or the rate should hold, which means
+more walkers where crossings are wanted, or a wanted crossing drawing
+somebody from further off. Not tuned until he says which.
+
+**Found on the way:** the warm-up rebases every clock in the world to
+zero, and the walkers' clocks (how long somebody stands, the ease onto a
+sidewalk) were left on the old one -- the same bug `warmed`'s own comment
+records for drivers, and a 1.5 m jump a tick until moved with the rest.
+The step off the curb is still a 0.5 m jump in one tick, older than any of
+this (`peds.js`: waiting half a metre back, then on the paint).
 - **Known:** a hand-placed building standing on a sidewalk is drawn over it
   and walked through -- the generator's yards (7 m and up) keep its own
   buildings clear. Corners are covered but square; there are no curb ramps.

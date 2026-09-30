@@ -9,8 +9,12 @@
       number of people on foot holds all day; nobody appears or vanishes
       anywhere but at a door or where a sidewalk leaves the map; and they
       do come out, go in and stop a while.
-   3. The traffic is exactly the traffic it was: a world with walkers is
+   3. Walkers touch no car: with nobody crossing, a world with walkers is
       tick for tick the same world of cars as one without.
+   4. The people who cross are people who were walking (step 3): each
+      steps up to the curb from where a walker was, walks on along the far
+      sidewalk once across, nobody on foot jumps, and the traffic, watching,
+      strikes nobody.
 
    Usage: node tools/verify-walkers.mjs
    ===================================================================== */
@@ -19,6 +23,7 @@ import { TEST_MAPS } from "../src/map/samples.js";
 import { sidewalksOf, onRoadSurface, WALKED } from "../src/map/sidewalks.js";
 import { seedWalkers, stepWalkers, walkerPose, walkNetOf } from "../src/sim/walkers.js";
 import { seedGraph, step } from "../src/sim/crossing.js";
+import { pedPose, DART } from "../src/sim/peds.js";
 import { DT } from "../src/sim/traffic.js";
 
 let fails = 0;
@@ -90,16 +95,74 @@ console.log("2. walkers keep to the sidewalks, and come and go only at doors and
   ok(wentIn > 0 && cameOut > 0 && stood > 0, `in ${SECS / 60} minutes ${cameOut} came out of a door, ${wentIn} went in, and somebody stopped a while ${stood} times`);
 }
 
-console.log("3. the traffic is the traffic it was");
+console.log("3. walkers touch no car -- only the people who cross do (section 4)");
 {
   const { loaded } = maps.find((m) => m.id === "city");
-  let a = seedGraph(4, 50, loaded, { every: 2.0, target: 120, posted: true });
-  let b = seedGraph(4, 50, loaded, { every: 2.0, target: 120, posted: true, walkers: true });
+  /* Nobody crossing, in both: what is left to differ is the walkers. */
+  const quiet = { every: 2.0, target: 120, posted: true, gapRate: 0, pedEvery: Infinity };
+  let a = seedGraph(4, 50, loaded, quiet);
+  let b = seedGraph(4, 50, loaded, { ...quiet, walkers: true });
   ok(!a.walkers && b.walkers?.length > 0, `walkers are asked for (${b.walkers?.length ?? 0} with, none without)`);
   const key = (w) => JSON.stringify(w.actors.map((x) => [x.id, x.k, x.route, x.s.toFixed(6), x.v.toFixed(6)]));
   let same = key(a) === key(b), ticks = 0;
   for (; ticks < 60 / DT && same; ticks++) { a = step(a); b = step(b); same = key(a) === key(b); }
   ok(same, `a minute of traffic with walkers is tick for tick the traffic without (${ticks} ticks compared)`);
+}
+
+console.log("4. the people who cross come from the people walking, and go back to walking");
+/* Both kinds of crossing: the city's are all mid-block, between parked
+   cars; the Pedestrians map's are painted crosswalks at intersections. A
+   version run on the city alone passed with the crosswalk path broken. */
+for (const mapId of ["city", "test-peds"]) {
+  const { loaded } = maps.find((m) => m.id === mapId);
+  let w = seedGraph(3, 50, loaded, { every: 2.0, target: 120, posted: true, walkers: true });
+  const net = walkNetOf(loaded);
+  const edges = [];
+  net.edge.forEach((e, i) => e.forEach((on, end) => on && edges.push(walkerPose(w, { state: "walking", w: i, s: end ? net.walks[i].length : 0, dir: 1 }))));
+  const atDoorOrEdge = (q) => net.doors.some((d) => Math.hypot(d.face.x - q.x, d.face.y - q.y) < 1.5) || edges.some((e) => Math.hypot(e.x - q.x, e.y - q.y) < 2.5);
+  /* Everybody on foot, by id, where they are. */
+  const snap = (x) => new Map([...(x.peds ?? []).map((q) => [q.id, { q: pedPose(x, q), p: q }]), ...(x.walkers ?? []).map((q) => [q.id, { q: walkerPose(x, q), p: q }])]);
+  let prev = snap(w), worst = 0, made = 0, fromWalk = 0, backToWalking = 0, orphans = 0, lost = 0;
+  const struck = new Set(), across0 = w.pedsAcross ?? 0;
+  const MINS = 15;
+  for (let k = 0; k < (MINS * 60) / DT; k++) {
+    w = step(w);
+    const now = snap(w);
+    for (const [id, { q, p }] of now) {
+      const o = prev.get(id);
+      if (o) { worst = Math.max(worst, Math.hypot(q.x - o.q.x, q.y - o.q.y)); continue; }
+      if (id.startsWith("ped-")) {
+        made++;
+        if (p.fromWalker) {
+          fromWalk++;
+          /* They start where a walker was a tick ago, and that walker is gone. */
+          const was = [...prev.entries()].some(([wid, x]) => wid.startsWith("w") && !now.has(wid) && Math.hypot(x.q.x - p.origin.x, x.q.y - p.origin.y) < 0.8);
+          if (!was) orphans++;
+        }
+      } else if (!atDoorOrEdge(q)) {
+        /* A new walker anywhere else must be somebody who has just crossed. */
+        const crossed = [...prev.entries()].some(([pid, x]) => pid.startsWith("ped-") && !now.has(pid) && Math.hypot(x.q.x - q.x, x.q.y - q.y) < 0.8);
+        if (crossed) backToWalking++; else orphans++;
+      }
+    }
+    for (const [id, { q, p }] of prev) {
+      if (now.has(id)) continue;
+      if (id.startsWith("ped-")) { if (p.state !== "struck" && !p.fromWalker) lost++; continue; }
+      if (!atDoorOrEdge(q) && ![...now.values()].some(({ p: c }) => c.fromWalker && c.origin && Math.hypot(c.origin.x - q.x, c.origin.y - q.y) < 0.8)) orphans++;
+    }
+    for (const q of w.peds ?? []) if (q.state === "struck") struck.add(q.id);
+    prev = now;
+  }
+  const crossed = (w.pedsAcross ?? 0) - across0;
+  ok(made > 20 && fromWalk === made, `${mapId}: in ${MINS} minutes ${made} people stepped up to a curb, every one of them somebody who was walking (${fromWalk})`);
+  ok(backToWalking > 20 && lost === 0, `${mapId}: ${backToWalking} walked on along the far sidewalk once across, and nobody who crossed simply vanished (${lost})`);
+  ok(orphans === 0, `${mapId}: nobody on foot appeared or vanished anywhere but a door, the map's edge, or the turn between walking and crossing (${orphans})`);
+  /* The one step bigger than walking is older than walkers: stepping off,
+     a person goes from half a metre back on the curb to the paint in one
+     tick (peds.js), plus that tick's own walk -- at a run, DART. */
+  const STEP = 0.5 + DART * DT + 1e-6;
+  ok(worst <= STEP, `${mapId}: nobody on foot moves more than a step in a tick -- the largest was ${worst.toFixed(2)} m, against the curb step at a run, ${STEP.toFixed(2)}`);
+  ok(struck.size === 0, `${mapId}: with the traffic watching, nobody is struck (${struck.size}); ${crossed} crossings, ${(crossed / (MINS / 60)).toFixed(0)} an hour`);
 }
 
 console.log(fails ? `\n${fails} FAILED` : "\nall passed");

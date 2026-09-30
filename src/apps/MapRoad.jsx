@@ -140,10 +140,10 @@ export function actorsOf(scene, carry) {
     out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height });
   }
   /* PEOPLE ON FOOT (sim/peds.js): waiting at the curb or crossing. */
-  for (const q of w.peds ?? []) out.push({ id: q.id, n: q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });
+  for (const q of w.peds ?? []) out.push({ id: q.id, n: q.look ?? q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });
   /* And the people walking along (sim/walkers.js), drawn exactly as the
      ones who cross: nothing tells you which is which until one steps off. */
-  for (const q of w.walkers ?? []) out.push({ id: q.id, n: q.n, ...walkerPose(w, q), ped: true });
+  for (const q of w.walkers ?? []) out.push({ id: q.id, n: q.look ?? q.n, ...walkerPose(w, q), ped: true });
   return out;
 }
 

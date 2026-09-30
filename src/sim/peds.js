@@ -34,6 +34,7 @@ import { parkingOf, parkedPoses } from "./parking.js";
 import { PARK_W } from "../map/format.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { segHitsBox } from "./sight.js";
+import { walkerPose, walkNetOf, WANT_NEAR } from "./walkers.js";
 
 /* =====================================================================
    PEOPLE WHO DO DANGEROUS THINGS (the maintainer, 29 September:
@@ -287,6 +288,35 @@ function carsFor(world, cw) {
 
 /* Where along its crosswalk (0 at a, 1 at b) a pedestrian is. */
 const tOf = (p, cw) => (p.from === 0 ? p.u / cw.width : 1 - p.u / cw.width);
+/* The point `u` metres along a crosswalk walked from side `from`. */
+const at = (cw, from, u) => { const t = from === 0 ? u / cw.width : 1 - u / cw.width; return { x: cw.a.x + (cw.b.x - cw.a.x) * t, y: cw.a.y + (cw.b.y - cw.a.y) * t, z: cw.a.z ?? 0 }; };
+/* How long a crossing wanted where nobody is walking waits for somebody. */
+const WANT_FOR = 90;
+/* Where a crosser's line, carried on past the far curb, meets the middle
+   of the far sidewalk: where they become somebody walking again. */
+const rejoinCache = new WeakMap();
+function rejoinFor(world, cw, from) {
+  const key = `${cw.i}|${from}`;
+  let m = rejoinCache.get(world.course);
+  if (!m) rejoinCache.set(world.course, (m = new Map()));
+  if (m.has(key)) return m.get(key);
+  let best = { d: Infinity, u: cw.width + 1 };
+  const mid = at(cw, from, cw.width + APPROACH / 2), segs = [];
+  for (const w of walkNetOf(world.course.map)?.walks ?? []) for (let i = 0; i + 1 < w.pts.length; i++) {
+    const a = w.pts[i], b = w.pts[i + 1];
+    if (Math.min(Math.hypot(a.x - mid.x, a.y - mid.y), Math.hypot(b.x - mid.x, b.y - mid.y)) < APPROACH + 10) segs.push([a, b]);
+  }
+  for (let u = cw.width; u <= cw.width + APPROACH; u += 0.1) {
+    const p = at(cw, from, u);
+    for (const [a, b] of segs) {
+      const dx = b.x - a.x, dy = b.y - a.y, f = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      const d = Math.hypot(a.x + dx * f - p.x, a.y + dy * f - p.y);
+      if (d < best.d) best = { d, u };
+    }
+  }
+  m.set(key, best.u);
+  return best.u;
+}
 /* Does this crossing pedestrian hold the point t of their crosswalk?
    `within`: seconds the asking driver needs to be clear of that point.
    The half they are on, always (the near-half rule); and the other half
@@ -462,6 +492,29 @@ export function stepPeds(world) {
   let n = world.pedN ?? 0;
   const out = [];
   let across = world.pedsAcross ?? 0;
+  /* WHO CROSSES, WHEN THERE ARE PEOPLE WALKING (SIMULATOR.md, ambient
+     pedestrians, step 3): not somebody created ten metres back, but
+     somebody already on the sidewalk near that curb, who turns and walks
+     up to it. `took` are the walkers who did; `freed` the crossers who
+     reached the far sidewalk and walk on. A crossing wanted where nobody
+     is walking waits (`pedWant`) until somebody comes by. */
+  const walking = world.walkers ? world.walkers.filter((q) => q.state === "walking" || q.state === "standing") : null;
+  const took = new Set(), freed = [];
+  const want = walking ? { ...(world.pedWant ?? {}) } : null;
+  const fromWalker = (cw, from, manner) => {
+    const curb = at(cw, from, -0.5), far = at(cw, from, cw.width + 0.5);
+    let best = null;
+    for (const q of walking) {
+      if (took.has(q.id)) continue;
+      const pq = walkerPose(world, q), d = Math.hypot(pq.x - curb.x, pq.y - curb.y);
+      if (d > WANT_NEAR || Math.hypot(pq.x - far.x, pq.y - far.y) < d + 1) continue;
+      if (!best || d < best.d) best = { q, pq, d };
+    }
+    if (!best) return null;
+    took.add(best.q.id);
+    const u0 = -0.5 - best.d;
+    return { id: `ped-${n}`, n, look: best.q.look ?? best.q.n, cw: cw.i, from, u: u0, u0, origin: { x: best.pq.x, y: best.pq.y, z: best.pq.z ?? 0 }, state: "approaching", since: t, manner, fromWalker: true, rejoinAt: rejoinFor(world, cw, from) };
+  };
   for (let p of world.peds ?? []) {
     const cw = cws[p.cw];
     /* Walking up to the kerb; at it, waiting -- and a heedless person
@@ -474,6 +527,9 @@ export function stepPeds(world) {
     /* Across: walking on, off the road, and then gone. */
     if (p.state === "leaving") {
       const u = p.u + speedOf(p) * DT;
+      /* Drawn from somebody walking (walkers.js): back to walking, on the
+         far sidewalk where their line reaches it. */
+      if (p.fromWalker && u >= (p.rejoinAt ?? cw.width + 1)) { freed.push(p); continue; }
       if (u < cw.width + APPROACH) out.push({ ...p, u });
       continue;
     }
@@ -528,8 +584,10 @@ export function stepPeds(world) {
     const km = (gaps.length * GAP_EVERY * 6.5) / 1000;
     if (r() < (DT * (world.gapRate ?? GAP_RATE) * km) / 3600) {
       const cw = gaps[Math.floor(r() * gaps.length) % gaps.length];
-      if (!out.some((q) => q.cw === cw.i)) {
-        out.push({ id: `ped-${n}`, n, cw: cw.i, from: 0, u: -APPROACH, state: "approaching", since: t, manner: r() < (world.gapHeedless ?? GAP_HEEDLESS) ? "heedless" : "careful" });
+      const manner = r() < (world.gapHeedless ?? GAP_HEEDLESS) ? "heedless" : "careful";
+      if (want) want[`${cw.i}|0`] = { t, manner };
+      else if (!out.some((q) => q.cw === cw.i)) {
+        out.push({ id: `ped-${n}`, n, cw: cw.i, from: 0, u: -APPROACH, state: "approaching", since: t, manner });
         n += 1;
       }
     }
@@ -537,12 +595,29 @@ export function stepPeds(world) {
   for (const cw of cws) {
     if (cw.kind === "gap") continue;
     const r = rng((world.seed ?? 1) * 104729 + cw.i * 7919 + (world.tick ?? 0) * 31 + 17);
-    if (r() >= DT / PED_EVERY) continue;
+    if (r() >= DT / (world.pedEvery ?? PED_EVERY)) continue;
     /* Nobody new while somebody from the same curb is still waiting. */
     const from = r() < 0.5 ? 0 : 1;
+    const manner = mannerOf(world, r());
+    if (want) { want[`${cw.i}|${from}`] = { t, manner }; continue; }
     if (out.some((p) => p.cw === cw.i && (p.state === "waiting" || p.state === "approaching") && p.from === from)) continue;
-    out.push({ id: `ped-${n}`, n, cw: cw.i, from, u: -APPROACH, state: "approaching", since: t, manner: mannerOf(world, r()) });
+    out.push({ id: `ped-${n}`, n, cw: cw.i, from, u: -APPROACH, state: "approaching", since: t, manner });
     n += 1;
+  }
+  /* Wanted crossings, met by whoever is walking near that curb -- one at
+     a time from a curb, as before, and given up after WANT_FOR. */
+  if (want) {
+    for (const [key, w] of Object.entries(want)) {
+      const [i, f] = key.split("|").map(Number), cw = cws[i];
+      if (t - w.t > WANT_FOR || !cw) { delete want[key]; continue; }
+      if (out.some((p) => p.cw === cw.i && (p.state === "waiting" || p.state === "approaching") && (cw.kind === "gap" || p.from === f))) continue;
+      const q = fromWalker(cw, f, w.manner);
+      if (!q) continue;
+      out.push(q);
+      n += 1;
+      delete want[key];
+    }
+    return { peds: out, pedN: n, pedsAcross: across, pedWant: want, walkersTaken: [...took], walkersFreed: freed };
   }
   return { peds: out, pedN: n, pedsAcross: across };
 }
@@ -550,6 +625,10 @@ export function stepPeds(world) {
 /* Where a pedestrian stands, for drawing and for the contact check. */
 export function pedPose(world, p) {
   const cw = crosswalksOf(world.course)[p.cw];
+  if (p.origin && p.u < -0.5) {
+    const k = (p.u - p.u0) / (-0.5 - p.u0), c = at(cw, p.from, -0.5);
+    return { x: p.origin.x + (c.x - p.origin.x) * k, y: p.origin.y + (c.y - p.origin.y) * k, z: c.z, heading: (Math.atan2(c.y - p.origin.y, c.x - p.origin.x) * 180) / Math.PI };
+  }
   const t = tOf(p, cw);
   /* Waiting: half a metre back on the curb they will step off. */
   const tt = t;   // u runs from -APPROACH (on the pavement) to width + APPROACH, so one rule places them all

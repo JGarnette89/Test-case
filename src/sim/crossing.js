@@ -1312,8 +1312,12 @@ export function step(world) {
   /* EVERYBODY ON FOOT (peds.js), deciding from the traffic as it now is. */
   const walked = world.course.graph ? stepPeds({ ...world, t, tick: world.tick + 1, actors: next, ...(tall ? { tall } : { tall: undefined }) }) : null;
   /* PEOPLE WALKING ALONG (walkers.js): on the sidewalks, reading nobody and read by nobody. */
-  const strolled = world.walkers ? stepWalkers({ ...world, t }) : null;
-  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walked : {}), ...(strolled ? strolled : {}) };
+  /* Some of them turned to cross this tick, and some came back onto a
+     sidewalk from one (peds.js, `walkersTaken`/`walkersFreed`). */
+  const { walkersTaken, walkersFreed, ...walkedRest } = walked ?? {};
+  const away = (walkedRest.peds ?? []).filter((q) => q.fromWalker && q.state !== "struck").length;
+  const strolled = world.walkers ? stepWalkers({ ...world, t, walkersTaken, walkersFreed: (walkersFreed ?? []).map((q) => ({ ...q, pose: pedPose({ ...world, t }, q) })), walkersAway: away }) : null;
+  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walkedRest : {}), ...(strolled ? strolled : {}) };
   if (tall) out.tall = tall; else if (out.tall) delete out.tall;
   /* A CAR THAT REACHES SOMEBODY ON FOOT has struck them (peds.js
      `strikes`): they fall where they are, the car stops as a wreck, and
@@ -1773,7 +1777,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, trucks = TRUCK_SHARE, walkers = false } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks = TRUCK_SHARE, walkers = false } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
@@ -1801,7 +1805,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
   };
   const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
-    ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}) };
+    ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   if (parkingOf(course).slots.length) w.parked = initialParked(course, seed);
   /* People walking the sidewalks (walkers.js): asked for by the screen,
      off for the checks until one of them crosses (SIMULATOR.md, ambient
@@ -1864,6 +1868,12 @@ function warmed(w0, acrossIt) {
   return {
     ...rebased, t: 0, tick: 0, nextAt: Math.max(0, w.nextAt - shift),
     ...(w.peds ? { peds: w.peds.map((p) => ({ ...p, since: back(p.since) })) } : {}),
+    /* ...and so are the people walking: how long somebody stands, and the
+       ease onto a sidewalk -- left on the warm-up's clock it lay in the
+       future and a walker's pose ran backwards past where it began, a
+       1.5 m jump a tick (tools/measure/crossers.mjs, 30 September). */
+    ...(w.walkers ? { walkers: w.walkers.map((p) => ({ ...p, ...(p.until != null ? { until: p.until - shift } : {}), ...(p.blend ? { blend: { ...p.blend, t: p.blend.t - shift } } : {}) })) } : {}),
+    ...(w.pedWant ? { pedWant: Object.fromEntries(Object.entries(w.pedWant).map(([k, v]) => [k, { ...v, t: v.t - shift }])) } : {}),
     /* ...and a lane change is on that clock too: one begun in the warm-up
        kept a start forty seconds in the future, so its car sat a whole
        lane off, in both lanes, until the clock caught up -- found as a
