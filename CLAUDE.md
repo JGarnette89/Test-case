@@ -223,6 +223,7 @@ Eight things to know before your first change:
    | crashes in `src/sim/crossing.js` (`contactsIn`, `crashWith`, `CRASH_CLEAR`) | `verify-crashes` FIRST, then the `src/sim/` five and `verify-screens` | ~4m |
    | `src/sim/reading.js`, signs in `src/map/load.js` or `src/map/format.js` | `verify-signs` FIRST (identical traffic with signs and shorthand), then `verify-observation`, the `src/sim/` five and `verify-editor` | ~5m |
    | `src/sim/attention.js`, `seenBy` in `src/sim/crossing.js` | `verify-observation` FIRST, then `verify-crashes`, `verify-signs` and the `src/sim/` five (course section 13 is the candidate's perception) | ~6m |
+   | `src/map/sidewalks.js`, `src/sim/walkers.js` | `verify-walkers` FIRST, then `verify-paint` (sidewalks are a surface people stand on) and `verify-screens`; the walker step in `crossing.js` is the `src/sim/*` row | ~1m |
    | crosswalks (`crosswalk` in `src/map/format.js`/`load.js`, `crossings` in `graph.js` `junctionsOf`), `src/sim/peds.js` | `verify-peds` FIRST, then the `src/sim/graph.js` row and `verify-screens` | ~5m |
    | `src/sim/exam.js`, `src/apps/ExamRide.jsx` | `verify-exam` FIRST, then `verify-screens` (renders `#/exam`) and `verify-core` (a live screen) | ~10s |
    | `src/core/driver.js` `DIFFICULTY`/`reads`, compliance, `rollsHere`/`nobodyAbout` in `crossing.js`, a sign's `difficulty` in `map/load.js` | `verify-compliance` FIRST, then `verify-generate` (section 10, the draw), `verify-lanes`, `verify-telling` and the full suite for core | |
@@ -1690,6 +1691,8 @@ src/sim/reading.js       the ONE place a driver learns the rule at an intersecti
 src/sim/sight.js         what a driver can see PAST: a truck (an opaque box taller than 2 m) hides what is behind it, from the traffic and from the fairness owed the player
 src/sim/attention.js     drivers look away now and then, for their registration delay, and carry the last picture forward meanwhile -- the observation axis as behaviour
 src/sim/peds.js          people on foot at crosswalks: when they step off, the half of the road they hold, the traffic waiting for them, and somebody struck
+src/sim/walkers.js       people walking along the sidewalks: out of a door, along, standing a while, in at another -- reading nobody, read by nobody, their own random stream
+src/map/sidewalks.js     sidewalks derived from the road's drawn edge, stopped at the other road's edge at an intersection so two roads' sidewalks cover the corner
 src/sim/towns.js         who drives in a district: a character is a weighting over which axis its people are weak on (DRIVING-SCHOOL.md 3)
 src/sim/exam.js          STAGE 3, the exam mode as a reinterpretation: a candidate drives, the turn taps give the direction, the slider's lower half is your hand
 src/sim/drive.js         the player on the map: the turn signal as the turn commit, lane changes by drifting
@@ -2089,10 +2092,11 @@ node tools/verify-peds.mjs         pedestrians and crosswalks: a crosswalk is ma
 node tools/verify-compliance.mjs   knowledge and compliance are two axes: compliance a disposition drawn beside the five skills, knowledge checked against how hard each sign is -- a stop sign read by everybody, a hard sign by fewer, one draw per driver per kind so a harder sign is misread by the same people and more; at a right on red a driver who does not read it rolls it whoever is about while a scofflaw rolls only alone, at stop signs nobody rolls for want of reading one, and a map's stop signs made hard are rolled by drivers who roll none as drawn -- the cost of an occasion measured by its own instrument
 node tools/verify-trucks.mjs       large vehicles: a truck is a row in the vehicle table, a car's row the constants every car was built on and a world without trucks has none; trucks arrive at their share, pull away slower, never pass the limit, span their path as a rigid body through a turn, are solid their whole length, judge an amber by their own brakes and see the next line across the seam, so none ends up over a red; and never set out on a corner too tight to make in their lane when the leg offers another way on; and a truck hides what is behind it and a car does not, a driver remembers somebody a truck has just hidden, a sound driver waits for what a truck might hide and a bold one does not and nobody waits for ever, and hiding costs the city a little time and no lock
 node tools/verify-crashes.mjs      when two cars collide: contact is a crash that stops both where they hit, is logged with where, stands and is cleared; no two cars ever overlap unless it is a recorded crash, in the traffic where crashes happen; the car the player hits crashes too; and the default traffic still never crashes
+node tools/verify-walkers.mjs      people walking along: sidewalks both sides of every walked road, on no road's surface, meeting at every corner; walkers never on a road, the number on foot held all day, nobody appearing or vanishing but at a door or the map's edge, and the traffic tick for tick the traffic it was
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All forty-nine must exit 0 **before a commit**. Between commits, run
+All fifty must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:

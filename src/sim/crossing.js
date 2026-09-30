@@ -44,6 +44,7 @@ import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel, speedBy, fits } from "./corner.js";
 export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
+import { seedWalkers, stepWalkers } from "./walkers.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
@@ -1310,7 +1311,9 @@ export function step(world) {
   const tall = tallNow.length ? tallNow.map((a) => boxOf(poseOf({ ...world, t, actors: next }, a), a.id)) : null;
   /* EVERYBODY ON FOOT (peds.js), deciding from the traffic as it now is. */
   const walked = world.course.graph ? stepPeds({ ...world, t, tick: world.tick + 1, actors: next, ...(tall ? { tall } : { tall: undefined }) }) : null;
-  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walked : {}) };
+  /* PEOPLE WALKING ALONG (walkers.js): on the sidewalks, reading nobody and read by nobody. */
+  const strolled = world.walkers ? stepWalkers({ ...world, t }) : null;
+  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walked : {}), ...(strolled ? strolled : {}) };
   if (tall) out.tall = tall; else if (out.tall) delete out.tall;
   /* A CAR THAT REACHES SOMEBODY ON FOOT has struck them (peds.js
      `strikes`): they fall where they are, the car stops as a wreck, and
@@ -1770,7 +1773,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, trucks = TRUCK_SHARE } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, trucks = TRUCK_SHARE, walkers = false } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
@@ -1800,6 +1803,10 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}) };
   if (parkingOf(course).slots.length) w.parked = initialParked(course, seed);
+  /* People walking the sidewalks (walkers.js): asked for by the screen,
+     off for the checks until one of them crosses (SIMULATOR.md, ambient
+     pedestrians, step 3). Their own random stream either way. */
+  if (walkers) { const ws = seedWalkers(loaded, seed); if (ws) Object.assign(w, ws); }
   /* Long enough for a car to have crossed the longest road twice: the
      sum of every road would be an upper bound and cost six seconds of
      seeding on a desktop for a kilometre-square map, which on a phone

@@ -22,6 +22,8 @@
    contact banner, which is an event.
    ===================================================================== */
 import { pedPose, pedAt, strikePed } from "../sim/peds.js";
+import { walkerPose } from "../sim/walkers.js";
+import { sidewalksOf } from "../map/sidewalks.js";
 import { panFree, zoomFree, pinchFree, fitK, extentOf } from "../iso/freecam.js";
 import { isTap } from "../editor/gesture.js";
 import React, { useEffect, useRef, useState } from "react";
@@ -88,7 +90,7 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
      road now and then, for as long as their observation lets them, and
      misses what changed meanwhile. Off by default -- it makes crashes,
      which stay where they happened for the player to see. */
-  let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true, perceive: !!lookAway });
+  let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true, perceive: !!lookAway, walkers: true });
   let me = null;
   if (drive) {
     me = playerOn(world.course, start.road, start.end, { through: !!start.through });   // the curb lane, driving down to the crossroads
@@ -109,6 +111,7 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
     roads: loaded.roads.map((road) => ({ road, cars: [] })),
     terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground }),
     junctions: junctionsOf(world.course),
+    sidewalks: sidewalksOf(loaded),
     /* The map's buildings, in the shape drawFrame's stand-in boxes
        already take. The loader has dropped any standing on a road. */
     props: (loaded.props ?? []).map((p) => ({ x: p.at.x, y: p.at.y, heading: p.heading, l: p.l, w: p.w, h: p.h })),
@@ -138,6 +141,9 @@ export function actorsOf(scene, carry) {
   }
   /* PEOPLE ON FOOT (sim/peds.js): waiting at the curb or crossing. */
   for (const q of w.peds ?? []) out.push({ id: q.id, n: q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });
+  /* And the people walking along (sim/walkers.js), drawn exactly as the
+     ones who cross: nothing tells you which is which until one steps off. */
+  for (const q of w.walkers ?? []) out.push({ id: q.id, n: q.n, ...walkerPose(w, q), ped: true });
   return out;
 }
 
@@ -320,7 +326,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         k = Math.max(1, (size.w / (follow === "car" ? 60 : 110)) * zoom);
       }
       lastView.current = { x: cam.current.x, y: cam.current.y, z: cam.current.z ?? 0, k, rot };
-      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, props: sc.props, t: sc.world.t + carry });
+      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, props: sc.props, t: sc.world.t + carry });
 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);

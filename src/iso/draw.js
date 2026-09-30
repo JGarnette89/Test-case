@@ -132,7 +132,7 @@ function seg(ctx, P, a, b) {
    smooth at the display's rate rather than at the sim's.
    ===================================================================== */
 export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
-  const { roads, terrain, cam, k, tilt, props = [], actors = [], junctions = [] } = scene;
+  const { roads, terrain, cam, k, tilt, props = [], actors = [], junctions = [], sidewalks = [] } = scene;
   /* THE GROUND IS THE SCENE'S, not stage 0's hill: a map supplies its
      own (flat, for now), and a deck is wherever a road stands more than
      a metre above whatever ground the scene has. */
@@ -225,6 +225,29 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      piece's own key span, measured from the pieces as built rather than
      typed. A car under a deck needs nothing: the piece over it is a
      deck's height further into the screen by construction. */
+  /* SIDEWALKS (map/sidewalks.js): flat, at the road's height, beside its
+     curb and never on any road's surface, so among the flat things they
+     only ever overlap the grass -- keyed like a road segment, by the
+     nearest corner, they follow every cell under them. A few segments to
+     a piece, so a long street is not a hundred canvas calls; far out,
+     one piece a sidewalk. */
+  for (const w of sidewalks) {
+    const per = flat ? w.pts.length : 4;
+    for (let i0 = 0; i0 + 1 < w.pts.length; i0 += per) {
+      const i1 = Math.min(w.pts.length - 1, i0 + per);
+      const poly = [...w.inner.slice(i0, i1 + 1), ...w.outer.slice(i0, i1 + 1).reverse()].map((q) => ({ x: q.x, y: q.y, z: q.z ?? 0 }));
+      if (!poly.some((q) => onScreen(P(q.x, q.y, q.z)))) continue;
+      const key = Math.max(...poly.map((q) => depthOf(q.x, q.y, q.z))) + 0.005;
+      counts.segments++;
+      items.push({ layer: 0, key, tag: audit && { kind: "sidewalk", id: `${w.id}@${i0}`, poly }, paint: () => {
+        ctx.beginPath();
+        poly.forEach((q, j) => { const [x, y] = P(q.x, q.y, q.z); if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+        ctx.closePath();
+        ctx.fillStyle = shade(C.sidewalk, { x: 0, y: 0, z: 1 }, 0.4); ctx.fill();
+        if (!flat) { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke(); }
+      } });
+    }
+  }
   const lerp = (p, q, t) => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, z: p.z + (q.z - p.z) * t });
   let deckSpan = 0;   // the largest key span of any deck piece in view: how far past its centre a car on a deck must be keyed
   for (const { road } of roads) {

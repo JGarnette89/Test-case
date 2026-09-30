@@ -31,6 +31,8 @@ import { testMap1, testPeds } from "../src/map/samples.js";
 import { FREE_K, extentOf } from "../src/iso/freecam.js";
 import { LOD_K, FLAT_K } from "../src/iso/draw.js";
 import { pedPose } from "../src/sim/peds.js";
+import { walkerPose } from "../src/sim/walkers.js";
+import { sidewalksOf } from "../src/map/sidewalks.js";
 import { junctionsOf } from "../src/sim/graph.js";
 import { seedGraph, step, poseOf } from "../src/sim/crossing.js";
 
@@ -89,9 +91,11 @@ const summarise = (name, scene, canvas, cams) => {
 /* 1. The test map: junctions, two-lane roads, the overpass. */
 {
   const loaded = loadMap(testMap1());
-  let world = seedGraph(3, 50, loaded, { every: 1.2 });
+  let world = seedGraph(3, 50, loaded, { every: 1.2, walkers: true });
   for (let i = 0; i < 20 * 60; i++) world = step(world);
-  const actors = world.actors.map((a) => { const p = poseOf(world, a); return { id: a.n, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, n: a.n }; });
+  /* People walking the sidewalks stand on a surface too (map/sidewalks.js). */
+  const walking = (world.walkers ?? []).map((q) => ({ id: q.id, ...walkerPose(world, q), ped: true, n: q.n }));
+  const actors = [...world.actors.map((a) => { const p = poseOf(world, a); return { id: a.n, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, n: a.n }; }), ...walking];
   /* Placed where the report said: the middle of the crossroads, across
      the view on each road, on the overpass, and under it. */
   const placed = [
@@ -111,8 +115,10 @@ const summarise = (name, scene, canvas, cams) => {
     roads: loaded.roads.map((road) => ({ road, cars: [] })),
     terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground }),
     junctions: junctionsOf(world.course),
+    sidewalks: sidewalksOf(loaded),
     groundAt: ground, k: 5, tilt: false, actors: [...actors, ...placed],
   };
+  check(walking.length > 0 && scene.sidewalks.length > 0, `the test map's scene carries its sidewalks (${scene.sidewalks.length}) and the people walking them (${walking.length})`);
   const canvas = { w: 1600, h: 1200 };
   const cams = [{ x: 400, y: 400, z: 0 }, { x: 600, y: 780, z: 3 }, { x: 800, y: 600, z: 0 }, { x: 400, y: 800, z: 0 }];
   const fixed = cams.reduce((n, cam) => n + audit({ ...scene, cam }, canvas, 0).bad.length, 0);

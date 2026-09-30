@@ -3146,6 +3146,43 @@ off it, and nothing walks along a road.
    change of source, unless meant; and a world without sidewalks runs as
    it did.
 
+**Steps 1 and 2 BUILT (30 September).** Open `#/tests`, the stand-in city,
+and watch any street: grey sidewalks both sides, and people walking them,
+coming out of front doors, going in at others, stopping a while.
+
+- **Sidewalks** (`map/sidewalks.js`): 1.8 m (`SIDEWALK_W`, a common
+  Ontario municipal width, flagged) beside every residential, collector and
+  arterial road -- none beside a highway or a service lane, none on a deck.
+  Taken from the road's DRAWN edge, so they step out round turn bays and
+  sit beyond the parking strip. At an intersection each stops at the other
+  road's edge, found to the centimetre, and two roads' sidewalks then cover
+  the corner between them. Measured on every test map: none lies on any
+  road's surface, and every sidewalk end at an intersection whose roads are
+  all walked meets another (560 of 560 in the city). None is laid where the
+  drawn ground would bury it: the 20 m ground grid stands 2.4 m above the
+  street under test map 1's overpass, a cutting it cannot draw, and a
+  walker there stood inside the hill (caught by `verify-paint`).
+- **Walkers** (`sim/walkers.js`): 264 people on the city's 40.9 km. A
+  density per kilometre by district (`WALKERS_PER_KM`: residential 4,
+  commercial 12, industrial 1.5, park 3, elsewhere 2 -- a flagged tunable,
+  chosen to look like a street with people on it). A door is where a
+  building's nearest sidewalk faces it, joined by a front walk. A walker
+  walks 150-1200 m, choosing at each corner, turns back at a dead end,
+  stops a while about once in two minutes, then goes in at the next door
+  it passes; somebody else comes out of another, so the number holds all
+  day. Where a road leaves the map, people walk on and off. Nobody is
+  created or ends anywhere else once the world is running.
+- **What they are not, yet:** they never step off the curb, nothing reads
+  them and they read nothing, and they are drawn exactly as the people who
+  cross, so nothing tells you which is which. Their own random stream: the
+  traffic is tick for tick what it was (`verify-walkers` section 3). On for
+  the screens (`seedGraph`'s `walkers`), off in the other checks until step
+  3 makes them part of what the traffic meets. 31 microseconds a step for
+  the city's 264.
+- **Known:** a hand-placed building standing on a sidewalk is drawn over it
+  and walked through -- the generator's yards (7 m and up) keep its own
+  buildings clear. Corners are covered but square; there are no curb ramps.
+
 #### Parking lots: what it would take (scoped 29 September, not started)
 
 **What exists.** Everything that moves runs on the lane graph: a car is

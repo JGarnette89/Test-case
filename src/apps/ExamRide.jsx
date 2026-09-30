@@ -140,7 +140,7 @@ export default function ExamRide() {
         k = zoomFor(size.w, size.h, cam.current.lead) * zoom;
         rot = cam.current.rot;
       }
-      drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, props: sc.props, t: sc.world.t + carry });
+      drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, props: sc.props, t: sc.world.t + carry });
 
       ctx.textAlign = "center"; ctx.textBaseline = "top";
       if (me) {
