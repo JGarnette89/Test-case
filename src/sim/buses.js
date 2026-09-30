@@ -30,16 +30,30 @@ import { lenOf } from "./traffic.js";
    arriving from outside, like a truck (crossing.js TRUCK_SHARE). A
    flagged tunable: enough that one comes by while you watch a stop. */
 export const BUS_SHARE = 0.08;
-/* HOW LONG A BUS STANDS AT A STOP with nobody getting on or off: doors
-   open, a look, doors shut. A flagged tunable until passengers exist to
-   set it (slice B). */
-export const DWELL = 12;
+/* HOW LONG A BUS STANDS AT A STOP (slice B): as long as its people take
+   -- everybody getting off, one at a time at the front door, and then
+   everybody waiting getting on -- and never less than MIN_DWELL (doors
+   open, a look, doors shut) nor more than MAX_DWELL (a driver running
+   late goes). Flagged tunables. */
+export const MIN_DWELL = 6, MAX_DWELL = 45;
+/* One person stepping off every ALIGHT_EACH seconds, the first a second
+   after the doors open. */
+export const ALIGHT_EACH = 1.5;
+/* How many people a bus arrives carrying, and the share who get off at a
+   stop. Flagged: a middling city bus. */
+export const RIDERS = [4, 30], OFF_SHARE = [0.1, 0.4];
+/* The old fixed dwell, which the checks still read as the floor. */
+export const DWELL = MIN_DWELL;
 /* How far short of the stop a bus sets its front: it pulls up with its
    front door at the sign. */
 const DOOR = 1.5;
 /* How far short of its aim a bus may rest and still be at the stop: the
    gap the following rule keeps behind a stopped place (measured 1.8 m). */
 const REST = 3;
+
+const hash = (s) => [...String(s)].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7);
+/* How many people a bus arrives with, from its own number. */
+export const ridersFor = (n) => RIDERS[0] + Math.floor((((n * 2246822519) >>> 0) / 4294967296) * (RIDERS[1] - RIDERS[0] + 1));
 
 const cache = new WeakMap();
 /* Every stop on the course, by the lane that serves it: `{ id, kind,
@@ -93,18 +107,37 @@ export function nextStop(course, me, path, fromS, room) {
   return ahead[0] ?? null;
 }
 
-/* AT THE STOP: standing there, the doors open for DWELL, and then it is
-   served and the bus looks for the next. Returns the bus as it now is. */
-export function atStop(me, t, course, path) {
+/* When the i-th person getting off steps down, counted from the doors
+   opening -- read the same way by the bus and by the people (walkers.js),
+   so neither has to tell the other. */
+export const alightAt = (dwellFrom, i) => dwellFrom + 1 + i * ALIGHT_EACH;
+
+/* AT THE STOP: standing there, the doors open; the people getting off get
+   off, the people waiting (`waiting`, counted from the sidewalk as it was
+   last tick) get on, and then it is served and the bus looks for the
+   next. Returns the bus as it now is. */
+export function atStop(me, t, course, path, waiting = 0) {
   if (!me.busStop) return me;
   /* Only AT the stop -- a bus held in a queue short of it has not arrived,
      and one that moves has shut its doors (verify-buses: a bus that began
      its dwell in a queue and crept up stood 19 s). It comes to rest a
      little short of where it aims, by the following gap. */
   if (me.v > 0.3 || me.s < me.busStop.at - REST) return me.dwellFrom == null ? me : { ...me, dwellFrom: null };
-  if (me.dwellFrom == null) return { ...me, dwellFrom: t };
-  if (t - me.dwellFrom < DWELL) return me;
+  if (me.dwellFrom == null) {
+    /* Who gets off here: a share of whoever is aboard, drawn from the bus's
+       own number and the stop, so it is the same every time it is asked. */
+    const riders = me.riders ?? 0;
+    const u = ((((me.n ?? 0) * 2654435761) ^ hash(me.busStop.id)) >>> 0) / 4294967296;
+    const off = Math.round(riders * (OFF_SHARE[0] + (OFF_SHARE[1] - OFF_SHARE[0]) * u));
+    return { ...me, dwellFrom: t, alighting: off, boardedFrom: null };
+  }
+  const since = t - me.dwellFrom;
+  const offDone = since >= (me.alighting ? alightAt(0, me.alighting - 1) + 1 : 0);
+  /* Doors shut when everybody has got off and nobody is left to get on --
+     or when it has stood long enough. */
+  const boarded = Math.max(me.boarded ?? 0, waiting);
+  if (since < MAX_DWELL && (since < MIN_DWELL || !offDone || waiting > 0)) return boarded === (me.boarded ?? 0) ? me : { ...me, boarded };
   const served = me.busStop.id;
-  const on = { ...me, served, dwellFrom: null, busStop: null };
+  const on = { ...me, served, dwellFrom: null, busStop: null, riders: Math.max(0, (me.riders ?? 0) - (me.alighting ?? 0)) + boarded, alighting: 0, boarded: 0 };
   return { ...on, busStop: nextStop(course, on, path, me.s, 20) };
 }

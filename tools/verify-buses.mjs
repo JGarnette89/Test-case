@@ -12,6 +12,11 @@
       -- and nothing touches anything.
    4. A map without stops has no buses and is tick for tick the world it
       was.
+   5. Passengers (slice B): people walking past a stop wait there, get on
+      at the door of a bus standing at it once its people are off, and get
+      off at that door; a bus stands as long as that takes, between its
+      shortest and longest stand, and never shuts its doors on somebody
+      still waiting short of the longest.
 
    Usage: node tools/verify-buses.mjs
    ===================================================================== */
@@ -20,7 +25,8 @@ import { testBuses, testMap1 } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
 import { seedGraph, step, poseOf } from "../src/sim/crossing.js";
 import { laneSpanOnGraph } from "../src/sim/graph.js";
-import { stopsOf, DWELL } from "../src/sim/buses.js";
+import { stopsOf, DWELL, MIN_DWELL, MAX_DWELL } from "../src/sim/buses.js";
+import { walkNetOf, walkerPose, WAIT_PATIENCE } from "../src/sim/walkers.js";
 import { DT, lenOf } from "../src/sim/traffic.js";
 
 let fails = 0;
@@ -78,9 +84,9 @@ const passes = [...track.values()].filter((x) => x.before && x.passed);
 const stood = passes.filter((x) => x.stood >= DWELL - 0.5);
 const doors = passes.filter((x) => x.door != null).map((x) => x.door);
 ok(passes.length >= 8, `${buses.size} buses in ${MINS} minutes drove past a stop in their lane ${passes.length} times`);
-ok(stood.length === passes.length, `every time, they stood there for the dwell (${stood.length} of ${passes.length}, ${DWELL} s)`);
+ok(stood.length === passes.length, `every time, they stood there at least the shortest stand (${stood.length} of ${passes.length}, ${MIN_DWELL} s)`);
 ok(doors.length && Math.max(...doors.map(Math.abs)) < 4, `with the front of the bus at the stop -- within ${doors.length ? Math.max(...doors.map(Math.abs)).toFixed(1) : "?"} m of the sign`);
-ok(dwellMax < DWELL + 1, `and went on when done: the longest stand was ${dwellMax.toFixed(1)} s`);
+ok(dwellMax < MAX_DWELL + 1, `and went on when done: the longest stand was ${dwellMax.toFixed(1)} s, against ${MAX_DWELL}`);
 ok(strangers === 0, `nothing but a bus ever stops for a stop (${strangers})`);
 
 console.log("3. the traffic behind waits behind it");
@@ -96,6 +102,54 @@ console.log("4. a map without stops has no buses and is the world it was");
   let same = key(a) === key(b), any = false;
   for (let i = 0; i < 60 / DT && same; i++) { a = step(a); b = step(b); same = key(a) === key(b); any ||= b.actors.some((q) => q.kind === "bus"); }
   ok(same && !any, `test map 1, with the bus share on and off: identical for a minute, and no bus (${any ? "a bus appeared" : "none"})`);
+}
+
+console.log("5. people wait at a stop, get on at the door of a bus standing there, and get off at it");
+{
+  let v = seedGraph(3, 50, loadMap(testBuses()), { every: 2.0, target: 40, posted: true, buses: 0.3, walkers: true });
+  const net = walkNetOf(v.course.map);
+  const doorOf = new Map(net.stops.map((q) => [q.id, q.door]));
+  /* A bus with its doors open at a stop, and where that door is. */
+  const open = (x) => x.actors.filter((a) => a.kind === "bus" && a.dwellFrom != null).map((a) => ({ a, door: doorOf.get(a.busStop.id) }));
+  let prev = new Map(v.walkers.map((p) => [p.id, { p, q: walkerPose(v, p) }])), prevOpen = open(v);
+  let boarded = 0, alighted = 0, wrongOn = 0, wrongOff = 0, worst = 0, leftWaiting = 0, waitedLong = 0, waited = 0;
+  const dwells = [];
+  for (let k = 0; k < (MINS * 60) / DT; k++) {
+    const before = v;
+    v = step(v);
+    const now = new Map(v.walkers.map((p) => [p.id, { p, q: walkerPose(v, p) }])), nowOpen = open(v);
+    for (const [id, { p, q }] of now) {
+      const o = prev.get(id);
+      if (o) { worst = Math.max(worst, Math.hypot(q.x - o.q.x, q.y - o.q.y)); if (o.p.state !== "waiting" && p.state === "waiting") waited++; continue; }
+      if (p.state !== "alighting") continue;
+      alighted++;
+      if (!nowOpen.some(({ door }) => door && Math.hypot(door.x - q.x, door.y - q.y) < 0.5)) wrongOff++;
+    }
+    for (const [id, { p, q }] of prev) {
+      if (now.has(id) || p.state !== "boarding") continue;
+      boarded++;
+      if (!prevOpen.some(({ door }) => door && Math.hypot(door.x - q.x, door.y - q.y) < 1.0)) wrongOn++;
+    }
+    /* A bus that shuts its doors with somebody still waiting to get on, short of its longest stand. */
+    for (const a of before.actors) {
+      if (a.kind !== "bus" || a.dwellFrom == null) continue;
+      const after = v.actors.find((b) => b.id === a.id);
+      if (after && after.dwellFrom == null) {
+        const stood = v.t - a.dwellFrom;
+        dwells.push(stood);
+        if (stood < MAX_DWELL - 0.5 && before.walkers.some((q) => q.stop === a.busStop.id && (q.state === "waiting" || q.state === "boarding"))) leftWaiting++;
+      }
+    }
+    for (const q of v.walkers) if (q.state === "waiting" && v.t - q.since > WAIT_PATIENCE + 1) waitedLong++;
+    prev = now; prevOpen = nowOpen;
+  }
+  ok(waited > 5 && boarded > 5, `in ${MINS} minutes somebody started waiting at a stop ${waited} times, and ${boarded} got on`);
+  ok(wrongOn === 0, `everybody who got on did so at the door of a bus standing at their stop (${wrongOn} did not)`);
+  ok(alighted > 5 && wrongOff === 0, `${alighted} got off, every one at the door of a bus standing at a stop (${wrongOff} did not)`);
+  ok(leftWaiting === 0, `no bus shut its doors on somebody still waiting to get on, short of its longest stand (${leftWaiting})`);
+  ok(dwells.length && Math.min(...dwells) >= MIN_DWELL - 0.1 && Math.max(...dwells) <= MAX_DWELL + 0.1, `a bus stands as long as its people take: ${dwells.length ? `${Math.min(...dwells).toFixed(1)}-${Math.max(...dwells).toFixed(1)} s` : "never"}, between ${MIN_DWELL} and ${MAX_DWELL}`);
+  ok(worst < 0.5 && waitedLong === 0, `nobody on foot jumps (largest step ${worst.toFixed(2)} m), and nobody waits past their patience (${waitedLong})`);
+  ok((v.crashes ?? []).length === 0, `and nothing touched anything (${(v.crashes ?? []).length})`);
 }
 
 console.log(fails ? `\n${fails} FAILED` : "\nall passed");

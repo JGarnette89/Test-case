@@ -45,7 +45,7 @@ import { cornerAccel, speedBy, fits } from "./corner.js";
 export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
 import { seedWalkers, stepWalkers } from "./walkers.js";
-import { BUS_SHARE, stopsOf, nextStop, atStop } from "./buses.js";
+import { BUS_SHARE, stopsOf, nextStop, atStop, ridersFor } from "./buses.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
@@ -1154,7 +1154,7 @@ export function step(world) {
          and until then it is where it is, not crossing any seam. */
       if (me.crash) return world.t - me.crash.t >= CRASH_CLEAR ? null : me;
       /* A bus at its stop: standing with its doors open, then on (buses.js). */
-      if (me.busStop && !me.player) me = atStop(me, world.t, world.course, pathOf(world, me));
+      if (me.busStop && !me.player) me = atStop(me, world.t, world.course, pathOf(world, me), (world.walkers ?? []).filter((q) => q.stop === me.busStop.id && (q.state === "waiting" || q.state === "boarding")).length);
       if (me.leaveAt != null && !me.player && !me.candidate && me.v < 0.3 && me.s >= me.leaveAt - CAR.length - 3) {
         if (me.parkSlot) parkedNow.push(me);
         return null;
@@ -1323,7 +1323,7 @@ export function step(world) {
      sidewalk from one (peds.js, `walkersTaken`/`walkersFreed`). */
   const { walkersTaken, walkersFreed, ...walkedRest } = walked ?? {};
   const away = (walkedRest.peds ?? []).filter((q) => q.fromWalker && q.state !== "struck").length;
-  const strolled = world.walkers ? stepWalkers({ ...world, t, walkersTaken, walkersFreed: (walkersFreed ?? []).map((q) => ({ ...q, pose: pedPose({ ...world, t }, q) })), walkersAway: away }) : null;
+  const strolled = world.walkers ? stepWalkers({ ...world, t, actors: next, walkersTaken, walkersFreed: (walkersFreed ?? []).map((q) => ({ ...q, pose: pedPose({ ...world, t }, q) })), walkersAway: away }) : null;
   let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walkedRest : {}), ...(strolled ? strolled : {}) };
   if (tall) out.tall = tall; else if (out.tall) delete out.tall;
   /* A CAR THAT REACHES SOMEBODY ON FOOT has struck them (peds.js
@@ -1566,7 +1566,7 @@ function arriving(world, n) {
     arriveIn: world.every * (0.6 + r() * 0.8),
     /* A bus runs its route; it does not end a trip at a parking slot. */
     tripLen: kind === "bus" ? null : tripLenFor(world, n),
-    ...(kind === "bus" ? { busStop: nextStop(world.course, { kind }, world.course.at[where.k].layout.paths[route], 0, 15) } : {}),
+    ...(kind === "bus" ? { busStop: nextStop(world.course, { kind }, world.course.at[where.k].layout.paths[route], 0, 15), riders: ridersFor(n) } : {}),
   };
 }
 

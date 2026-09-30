@@ -28,6 +28,19 @@
 import { rng } from "../core/rng.js";
 import { DT } from "./traffic.js";
 import { sidewalksOf, SIDEWALK_W } from "../map/sidewalks.js";
+import { alightAt } from "./buses.js";
+import { LANE } from "../map/format.js";
+
+/* PEOPLE AT A BUS STOP (SIMULATOR.md, "3. Bus stops", slice B). Somebody
+   walking past a stop waits there now and then -- WAIT_SHARE of those who
+   pass, while fewer than WAIT_MAX are already waiting -- in a queue along
+   the sidewalk behind the post, and gives up after WAIT_PATIENCE with no
+   bus. Flagged tunables. When a bus stands at the stop they get on once
+   the people getting off have (buses.js `alightAt`), walking to its door;
+   the people getting off step down there and walk away. */
+export const WAIT_SHARE = 0.3, WAIT_MAX = 8, WAIT_PATIENCE = 420;
+const QUEUE = 0.9;   // metres between people queueing
+const BUS_W = 2.6;   // a bus's width (traffic.js VEHICLES.bus): where its side stands
 
 /* PEOPLE PER KILOMETRE OF SIDEWALK, by the district it runs through --
    more where there are shops. A flagged tunable: chosen to look like a
@@ -127,7 +140,23 @@ export function walkNetOf(loaded) {
   /* How many people a sidewalk carries: its length at its district's density. */
   const zoneOf = (p) => (loaded.zones ?? []).find((z) => inPoly(z.polygon, p))?.kind ?? "none";
   const weight = walks.map((w) => (w.length / 1000) * (WALKERS_PER_KM[zoneOf(along(w, w.length / 2))] ?? WALKERS_PER_KM.none));
-  const net = { walks, joins, edge, doors, byWalk, weight, people: Math.round(weight.reduce((a, b) => a + b, 0)) };
+  /* BUS STOPS on the sidewalk: where the post is along its sidewalk, and
+     the DOOR -- the curb stepped out to where the side of a bus standing in
+     the curb lane is, past the parking strip where the road has one. */
+  const stops = [];
+  for (const st of loaded.stops ?? []) {
+    const near = nearestWalk({ walks }, st.at);
+    if (!near) continue;
+    const w = walks[near.w], r = roads[st.road];
+    const k = Math.max(0, Math.min(w.pts.length - 2, w.at.findIndex((a, i) => i + 1 < w.at.length && w.at[i + 1] >= near.s)));
+    const f = (near.s - w.at[k]) / Math.max(1e-6, w.at[k + 1] - w.at[k]);
+    const lerp = (A) => ({ x: A[k].x + (A[k + 1].x - A[k].x) * f, y: A[k].y + (A[k + 1].y - A[k].y) * f, z: A[k].z ?? 0 });
+    const inner = lerp(w.inner), mid = lerp(w.pts);
+    const ux = inner.x - mid.x, uy = inner.y - mid.y, ul = Math.hypot(ux, uy) || 1;
+    const out = ((r?.outer ?? r?.width ?? 0) - (r?.width ?? 0)) / 2 + Math.max(0.3, (LANE - BUS_W) / 2);
+    stops.push({ id: st.id, w: near.w, s: near.s, door: { x: inner.x + (ux / ul) * out, y: inner.y + (uy / ul) * out, z: inner.z }, spot: mid });
+  }
+  const net = { walks, joins, edge, doors, byWalk, weight, stops, people: Math.round(weight.reduce((a, b) => a + b, 0)) };
   nets.set(loaded, net);
   return net;
 }
@@ -188,8 +217,37 @@ export function stepWalkers(world) {
     walkers.push(person(r, n++, { id: `w${n - 1}`, look: c.look ?? c.n, state: "walking", w: near.w, s: near.s, dir: r() < 0.5 ? 1 : -1, blend: { x: at.x, y: at.y, t } }));
   }
   const here = (p) => { const q = walkerPose(world, p); return { x: q.x, y: q.y, t }; };
+  const stopById = new Map(net.stops.map((q) => [q.id, q]));
+  const stopsOn = new Map();
+  for (const q of net.stops) { if (!stopsOn.has(q.w)) stopsOn.set(q.w, []); stopsOn.get(q.w).push(q); }
+  /* The bus standing at a stop with its doors open, if one is. */
+  const busAt = (id) => (world.actors ?? []).find((a) => a.kind === "bus" && a.dwellFrom != null && a.busStop?.id === id) ?? null;
   for (let p of walkers) {
     if (p.state === "standing") { out.push(t >= p.until ? { ...p, state: "walking" } : p); continue; }
+    /* WAITING FOR A BUS: on when one stands here and its people are off;
+       walking on if none comes. */
+    if (p.state === "waiting") {
+      const bus = busAt(p.stop);
+      if (bus && t >= alightAt(bus.dwellFrom, bus.alighting ?? 0)) {
+        const st = stopById.get(p.stop), from = walkerPose(world, p);
+        out.push({ ...p, state: "boarding", from: { x: from.x, y: from.y, z: from.z }, to: st.door, u: 0 });
+      } else if (t - p.since > WAIT_PATIENCE) out.push({ ...p, state: "walking", stop: undefined, blend: here(p) });
+      else out.push(p);
+      continue;
+    }
+    if (p.state === "boarding" || p.state === "alighting") {
+      const len = Math.max(0.3, Math.hypot(p.to.x - p.from.x, p.to.y - p.from.y)), u = p.u + (p.v * DT) / len;
+      if (p.state === "boarding") {
+        /* The bus left without them (MAX_DWELL): back to the queue. */
+        if (!busAt(p.stop)) { out.push({ ...p, state: "waiting", since: t, blend: here(p) }); continue; }
+        if (u >= 1) continue;   // aboard
+        out.push({ ...p, u });
+        continue;
+      }
+      if (u >= 1) { out.push({ ...p, state: "walking", u: undefined, blend: here(p) }); continue; }
+      out.push({ ...p, u });
+      continue;
+    }
     if (p.state === "out" || p.state === "in") {
       const d = net.doors[p.door], len = Math.max(0.5, Math.hypot(d.face.x - d.walk.x, d.face.y - d.walk.y));
       /* `u` is how far along the front walk from the sidewalk (0) to the door (1). */
@@ -207,6 +265,16 @@ export function stepWalkers(world) {
     if (left <= 0) {
       const door = net.byWalk[p.w].find((i) => (net.doors[i].s - p.s) * p.dir >= 0 && (net.doors[i].s - s) * p.dir <= 0);
       if (door != null) { out.push({ ...p, s: net.doors[door].s, state: "in", door, u: 0, left }); continue; }
+    }
+    /* Passing a stop: now and then, waiting for the bus there. */
+    const st = stopsOn.get(p.w)?.find((q) => (q.s - p.s) * p.dir >= 0 && (q.s - s) * p.dir < 0);
+    if (st && !p.stop && r() < WAIT_SHARE) {
+      const queued = walkers.filter((q) => q.stop === st.id && q.state === "waiting").length + out.filter((q) => q.stop === st.id && q.state === "waiting").length;
+      if (queued < WAIT_MAX) {
+        const w = net.walks[p.w], at = Math.max(0, Math.min(w.length, st.s - QUEUE * (queued + 1)));
+        out.push({ ...p, s: at, left, state: "waiting", stop: st.id, since: t, blend: here(p) });
+        continue;
+      }
     }
     if (r() < DT / STAND_EVERY) { out.push({ ...p, s, left, state: "standing", until: t + STAND_MIN + (STAND_MAX - STAND_MIN) * r() }); continue; }
     if (s < 0 || s > w.length) {
@@ -230,6 +298,20 @@ export function stepWalkers(world) {
   }
   /* The same number of people all day: whoever went in or walked off is
      somebody else coming out. */
+  /* PEOPLE GETTING OFF: stepping down at the door of a bus at its stop, one
+     every ALIGHT_EACH (buses.js `alightAt`), and walking onto the sidewalk. */
+  for (const bus of world.actors ?? []) {
+    if (bus.kind !== "bus" || bus.dwellFrom == null || !bus.alighting) continue;
+    const st = stopById.get(bus.busStop?.id);
+    if (!st) continue;
+    for (let i = 0; i < bus.alighting; i++) {
+      const at = alightAt(bus.dwellFrom, i);
+      if (at > t - DT && at <= t) {
+        out.push(person(r, n, { id: `w${n}`, state: "alighting", from: st.door, to: { x: st.spot.x, y: st.spot.y, z: st.spot.z }, u: 0, w: st.w, s: st.s, dir: r() < 0.5 ? 1 : -1 }));
+        n++;
+      }
+    }
+  }
   const away = world.walkersAway ?? 0;
   while (out.length + away < net.people) {
     const q = arrival(net, r, n);
@@ -244,6 +326,10 @@ export function stepWalkers(world) {
    or on a front walk between a door and the sidewalk. */
 export function walkerPose(world, p) {
   const net = walkNetOf(world.course?.map);
+  if (p.state === "boarding" || p.state === "alighting") {
+    const u = Math.max(0, Math.min(1, p.u));
+    return { x: p.from.x + (p.to.x - p.from.x) * u, y: p.from.y + (p.to.y - p.from.y) * u, z: p.from.z ?? 0, heading: (Math.atan2(p.to.y - p.from.y, p.to.x - p.from.x) * 180) / Math.PI };
+  }
   if (p.state === "out" || p.state === "in") {
     const d = net.doors[p.door];
     const x = d.walk.x + (d.face.x - d.walk.x) * p.u, y = d.walk.y + (d.face.y - d.walk.y) * p.u;

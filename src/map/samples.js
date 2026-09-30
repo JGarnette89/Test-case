@@ -271,7 +271,7 @@ export function testBuses() {
     { id: "west-curb", at: { x: 1180, y: 395 }, kind: "curb" },
   ];
   m.sections = [
-    { id: "curb-east", name: "the eastbound curb stop", look: { x: 420, y: 400 }, start: { road: "main-w", end: "end" }, judge: "A bus pulls up with its front door at the stop and stands there in the lane with its doors open; the traffic behind it queues, and it pulls away when it is done." },
+    { id: "curb-east", name: "the eastbound curb stop", look: { x: 420, y: 400 }, start: { road: "main-w", end: "end" }, judge: "A bus pulls up with its front door at the post and stands in the lane: people step off one at a time and walk away, the people waiting at the post walk to the door and get on, and it pulls away when nobody is left -- a longer stand when more are getting on and off. The traffic behind queues." },
     { id: "curb-west", name: "the westbound curb stop", look: { x: 1180, y: 400 }, start: { road: "main-e", end: "start" }, judge: "The same the other way." },
   ];
   return m;
@@ -283,6 +283,6 @@ export const TEST_MAPS = [
   { id: "city", name: "Stand-in city", blurb: "Two neighbourhoods with their own drivers, parked cars, buildings, an arterial loop and a collector on signals.", build: testCityReady },
   { id: "test-peds", name: "Pedestrians", blurb: "Crosswalks at a four-way stop and at an uncontrolled crossroads, and the people who walk them.", build: testPeds },
   { id: "test-signs", name: "Signs", blurb: "A yield crossroads and an uncontrolled crossroads on one through road.", build: testSigns },
-  { id: "test-buses", name: "Buses", blurb: "Curb stops on a two-lane collector: a bus stops, stands, and the traffic behind it waits.", build: testBuses },
+  { id: "test-buses", name: "Buses", blurb: "Curb stops on a two-lane collector: a bus stops, people get off and on, and the traffic behind it waits.", build: testBuses },
   { id: "test-1", name: "Test map 1", blurb: "The loop, the T, the crossroads, the five-way, the overpass and the big arterial.", build: testMap1 },
 ];

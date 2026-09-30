@@ -3258,8 +3258,27 @@ at the sign for `DWELL` (12 s, flagged until passengers set it), and goes
 on; the traffic behind queues. The doors open only AT the stop: a bus that
 began its dwell held in a queue short of it crept up and stood 19 s, or ran
 out its dwell and drove past its sign (`verify-buses`, which caught both).
-Not yet: passengers (slice B), bays and the yield-to-a-bus rule (C), going
-round on a broken line (D). Nothing yet places stops on the stand-in city.
+Not yet: bays and the yield-to-a-bus rule (C), going round on a broken
+line (D). Nothing yet places stops on the stand-in city.
+
+**Slice B BUILT (30 September): passengers.** Somebody walking past a stop
+waits there now and then (`WAIT_SHARE` 0.3, at most `WAIT_MAX` 8 queued
+along the sidewalk behind the post, giving up after `WAIT_PATIENCE` 7
+minutes), all flagged. A bus arrives carrying 4-30 people and a share of
+them (10-40%) get off, one every 1.5 s at the front door, and walk away
+along the sidewalk; then the people waiting walk to the door and get on.
+The door is where a bus's side stands: the curb stepped out past the
+parking strip, if there is one. The bus shuts its doors when nobody is
+left getting off or on -- never under 6 s (`MIN_DWELL`), and a driver
+running late goes at 45 s (`MAX_DWELL`), whoever is left, who go back to
+waiting. Measured on the Buses map over 15 minutes: stands of 6-19 s, 32
+got on, 112 got off, nobody on foot moved more than 0.38 m in a tick.
+Neither side tells the other anything: the bus counts who is waiting
+from the sidewalk as it was last tick, and when each person steps off is
+one formula both read (`alightAt`). **Known:** the people buses bring in
+from outside the map stay on it until their walk is done and they reach
+the map's edge or a door, so a map with no buildings fills up -- the
+Buses map went from 12 people on foot to 55 in 15 minutes.
 
 #### Parking lots: what it would take (scoped 29 September, not started)
 
