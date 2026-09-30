@@ -3000,6 +3000,152 @@ behind vehicles is its own increment, and it is the next one on trucks.
 Nor does a truck take an intersection wide: it cuts inside on the car's
 path, which is safe but not what a truck driver does at a tight corner.
 
+#### Trucks as sight blockers: what it takes (scoped 30 September)
+
+**What exists.** A driver's picture of the world is `seenBy` -- WHEN they
+look (`attention.js`), never WHAT they can see past. The only occlusion in
+the sim is people on foot hidden behind parked cars and wrecks
+(`peds.js` `inSight`, plan footprints on a grid). Nothing hides one vehicle
+from another.
+
+**Four pieces, in order:**
+
+1. **Line of sight in the sim.** From a driver's eye to each road user they
+   decide about, blocked by any vehicle taller than eye height -- a truck,
+   never a car (you see over and through a car; nobody sees through a box
+   truck). One segment-against-box test per truck nearby, trucks being 6%
+   of traffic: cheap. A road user hidden this way is not in the driver's
+   picture, exactly as one they looked away from is not.
+2. **The margin for what you cannot see IS confidence** (CLAUDE.md, the
+   asymmetry that justifies the axis structure). Occlusion is PERCEPTIBLE:
+   a driver can see that the truck hides the oncoming lane. So a driver
+   whose view of a conflicting approach is blocked assumes something could
+   be in it -- a vehicle at the road's speed at the edge of what they can
+   see -- and waits for the gap that would need, scaled by caution: the
+   timid wait it out, the bold go. The classic case is the left turn behind
+   an oncoming truck, and it makes confidence and observation readable
+   against trucks as nothing else yet does. Built as a phantom in the
+   gap check, not a new decision.
+3. **People on foot hidden behind a truck**: `inSight` takes trucks as
+   blockers like parked cars, for the traffic and for the player's
+   fairness test (`playerCanRespond` counts the time somebody is hidden).
+4. **THE PLAYER'S OWN VIEW -- a decision for the maintainer, and it
+   changes how the game looks.** The isometric camera sees the whole
+   world from above, so a truck hides things from every simulated driver
+   and from nobody watching the screen. For the player to be blind behind
+   a truck the way a driver is, the screen has to hide or dim what the
+   player's car cannot see -- a sight-cone or shadow treatment of the
+   world. That is a design change to the view, not a mechanism, and it
+   waits for his answer. Pieces 1-3 do not.
+
+**Pieces 1-3 BUILT, 30 September** (`sim/sight.js`, `crossing.js`
+`whatStops`/`phantomHolds`, `peds.js` `inSight`). A vehicle hides what is
+behind it when it is an opaque box taller than 2 m (`HIDES`) -- a truck,
+not a car, whose glass you see through. What building it found:
+
+- **The first test was against eye height, and every car hid every other**
+  (a car is 1.5 m against a 1.2 m eye). The threshold is the box, not the
+  eye.
+- **The margin, placed naively, cost 20% of throughput.** Phantoms landed
+  where nothing can be: in a waiting truck's own lane behind it (nothing
+  comes through a truck) and on road a truck itself stands on. Excluded.
+- **It locked an intersection.** A driver with the right of way waited for
+  ever on a stretch a waiting truck hid, while the truck and everybody
+  else waited for them -- throughput fell from 670 to 500 a minute over
+  five minutes. OBJECT PERMANENCE resolves it: where road beyond the
+  hidden stretch is in view, anything in the stretch came through the
+  watched part, so the phantom lasts only as long as crossing the stretch
+  takes; where the whole approach is hidden, a driver gives it up after
+  the undue-delay wait (`UNDUE_AT`) scaled by their caution -- a real
+  driver would edge forward to see, which is not modelled yet.
+- **Forgetting what a truck hides crashed cars.** Two drivers stopped at
+  their lines, the second waiting its turn, each dropped the other the
+  moment a truck passed between them, and both went. A road user a truck
+  hides is now carried forward from when the driver last saw them, for
+  MEMORY (6 s, flagged) -- the attention model's own idea (`seenBy`),
+  applied to sight.
+
+- **It cost thirteen times a step, at first.** At 300 cars a step went
+  from 18 ms to 236 with trucks opaque. Poses taken once per actor per
+  tick, the margin scanned only by a driver at their line, the hiding
+  test run only against somebody on another approach to their own
+  intersection, and memory kept only by a driver near their line for
+  those same people, brought it to 23 ms against 13 see-through -- the
+  sight code itself about 13% of a step, the rest the traffic being held
+  more. Memory alone had been 22 ms of it.
+- **A truck's tail, in a turn, is not half its length behind it.** With
+  front and rear on its path, a truck standing in a right turn has its
+  tail 6.6 m behind its centre along the path, not 4.5, and a car
+  following by half-length ran into it (`verify-bays`, 300 cars). Each
+  long vehicle now carries where its tail really is (`rear`), and every
+  following gap is back's nose to front's tail (`clearBetween`); a set-up
+  probe in `verify-trucks` holds it, sabotaged.
+
+- **A careful person was struck by a car a truck had hidden them from.**
+  They stepped off in plain view; a moving truck then came between them and
+  the car, which saw them at 8.8 m. Two changes: the allowance for being
+  hidden is now walked out from the curb until the driver could first see
+  them (a parking strip behind a parked car, a lane behind a truck), and a
+  careful person keeps watching lane by lane -- they do not step into the
+  lane of a car that cannot stop short of them with a metre to spare, and
+  wait just outside the strip a car on the paint holds for them, so it
+  goes by rather than waiting for them while they wait for it.
+- **Hiding applies only on the approach.** Two cars merging into one exit
+  lost each other behind a truck and met there: following somebody into a
+  shared exit is not a decision a truck can hide, so once either is into
+  the intersection, everybody is seen.
+- **A truck's tail jumped 1.9 m in a sharp turn.** The search for where the
+  tail lies along the path was a bisection over a fixed range and clamped
+  when the tail lay beyond it; it now steps back to the first point a
+  body's length from the front and bisects within that step.
+
+**Measured** (`tools/measure/truck-sight.mjs`, the city, opaque against
+see-through): at 6% trucks, 0 crashes either way, drivers held at a line
+16.8% of the time against 13.6%, crossings within a few percent and no
+minute decaying. At 15%, 3428 crossings against 3537, no minute below 92%
+of its twin. And what a truck might hide holds the timid more than the bold
+(4.6% of sampled ticks against 2.7%) -- the margin is confidence. A world of
+cars is tick-identical. Piece 4, the player's own view, waits on the
+maintainer.
+
+**Checks it needs:** set-up probes, not waiting for traffic -- a left-turner
+facing an oncoming truck with a car hidden in its shadow (the timid wait,
+the bold go, and the hidden car is what they meet); somebody stepping out
+from in front of a stopped truck; and a controlled comparison of the city
+with trucks transparent against trucks opaque, to report what the blocking
+costs in crashes, which by the fairness ruling is content, told as a rate.
+
+#### 2. Ambient pedestrians: the plan (30 September)
+
+**What exists:** people who cross -- created 10 m back along their
+crosswalk's own line, walking up it, deciding at the curb (`peds.js`). No
+sidewalk anywhere: the renderer draws the road surface and buildings set
+off it, and nothing walks along a road.
+
+**In order:**
+
+1. **Sidewalks, derived and drawn.** A strip along each side of a road,
+   just beyond its outer edge (and its parking strip, where it has one),
+   `SIDEWALK_W` wide -- derived from the road, never drawn by hand, like the
+   parking strip. The renderer draws them first: a person walking along a
+   road must walk on something the screen shows (CLAUDE.md item 6).
+2. **Walkers.** People on the sidewalks: walking along, from a building's
+   door to another's or off the map, standing a while, going in. A density
+   per kilometre of sidewalk, higher in commercial districts than
+   residential -- a flagged tunable. They are cheap: a walker is a position
+   along a sidewalk and a speed, stepped with no traffic questions at all.
+3. **Crossers come FROM walkers.** A walker whose way on lies across the
+   road turns at a crosswalk -- or, heedless, between parked cars -- and
+   becomes exactly today's crossing pedestrian (approach, curb, decision by
+   manner), and walks on along the far sidewalk. So the crossing hazard is
+   drawn from people already on screen, and the one who steps off is one
+   of many who did not -- the maintainer's point that most people simply
+   walking is what makes the one who crosses a surprise.
+4. **Checks:** walkers stay on the sidewalk and off the road except where
+   they cross; the crossing rate the traffic meets is unchanged by the
+   change of source, unless meant; and a world without sidewalks runs as
+   it did.
+
 #### Parking lots: what it would take (scoped 29 September, not started)
 
 **What exists.** Everything that moves runs on the lane graph: a car is

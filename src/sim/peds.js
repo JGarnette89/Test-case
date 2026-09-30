@@ -33,6 +33,7 @@ import { accelFor } from "./player.js";
 import { parkingOf, parkedPoses } from "./parking.js";
 import { PARK_W } from "../map/format.js";
 import { REACTION_FLOOR } from "../core/perception.js";
+import { segHitsBox } from "./sight.js";
 
 /* =====================================================================
    PEOPLE WHO DO DANGEROUS THINGS (the maintainer, 29 September:
@@ -191,6 +192,10 @@ export function inSight(world, eye, q) {
   const reach = Math.hypot(eye.x - q.x, eye.y - q.y) / 2 + 5, mid = { x: (eye.x + q.x) / 2, y: (eye.y + q.y) / 2 };
   for (const b of parkedNear(world, mid, reach)) if (segHitsBox(eye, q, b, 4.5, 1.8)) return false;
   for (const a of world.actors) if (a.crash?.at && Math.hypot(a.crash.at.x - mid.x, a.crash.at.y - mid.y) < reach && segHitsBox(eye, q, { ...a.crash.at, heading: 0 }, 3.5, 3.5)) return false;
+  /* ...and a truck, standing or moving (sim/sight.js): somebody stepping
+     out from in front of one is not there for a driver until they are past
+     it -- nor for the player, whose fairness counts the hidden time. */
+  for (const b of world.tall ?? []) if (Math.hypot(b.x - mid.x, b.y - mid.y) < reach + b.l / 2 && segHitsBox(eye, q, b)) return false;
   return true;
 }
 const CELL = 25;
@@ -211,20 +216,6 @@ function parkedNear(world, p, r) {
   for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (const c of g.get(`${x},${y}`) ?? []) out.push(c);
   return out;
 }
-function segHitsBox(p, q, b, l, w) {
-  const h = ((b.heading ?? 0) * Math.PI) / 180, c = Math.cos(h), s = Math.sin(h);
-  const to = (x, y) => { const dx = x - b.x, dy = y - b.y; return [dx * c + dy * s, -dx * s + dy * c]; };
-  const [u0, v0] = to(p.x, p.y), [u1, v1] = to(q.x, q.y);
-  let t0 = 0, t1 = 1;
-  const du = u1 - u0, dv = v1 - v0;
-  for (const [pp, qq] of [[-du, u0 + l / 2], [du, l / 2 - u0], [-dv, v0 + w / 2], [dv, w / 2 - v0]]) {
-    if (pp === 0) { if (qq < 0) return false; continue; }
-    const r = qq / pp;
-    if (pp < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; }
-  }
-  return t0 <= t1;
-}
-
 /* Where a path crosses a crosswalk's centre line, if it does: `s` along
    the path and `t` from the crosswalk's a (0) to b (1). Cached per path. */
 const bandCache = new WeakMap();
@@ -399,7 +390,7 @@ function eyeOf(world, me) {
 }
 
 /* Could every car that would cross this pedestrian's path stop short of it? */
-function safeToStep(world, cw) {
+function safeToStep(world, cw, from = 0) {
   /* A WRECK is in the way like any car on the paint -- it will not move --
      so nobody steps off into one; skipping crashed cars had people walking
      through a car stopped on the crosswalk. */
@@ -417,8 +408,20 @@ function safeToStep(world, cw) {
     /* FROM BEHIND A PARKED CAR the driver will not see them until they are
        out past it, a parking strip's walk away: a careful person allows for
        that, or they step out "with room" a driver cannot use. */
-    const eye = cw.kind === "gap" ? eyeOf(world, a) : null;
-    const hidden = eye && !inSight(world, eye, { x: cw.a.x, y: cw.a.y }) ? PARK_W / WALK : 0;
+    /* ...AND FROM BEHIND A TRUCK (sim/sight.js), on any crossing: walked
+       from this person's curb until the driver could first see them, at a
+       walk -- a parking strip's width behind a parked car, a lane's behind
+       a truck in the near lane. A fixed parking-strip allowance let a
+       careful person step out from in front of a truck into a car that
+       could not see them (30 September). */
+    const eye = cw.kind === "gap" || world.tall?.length ? eyeOf(world, a) : null;
+    let hidden = 0;
+    if (eye) {
+      const at = (d) => { const t = from === 0 ? d / cw.width : 1 - d / cw.width; return { x: cw.a.x + (cw.b.x - cw.a.x) * t, y: cw.a.y + (cw.b.y - cw.a.y) * t }; };
+      let d = 0;
+      while (d < cw.width && !inSight(world, eye, at(d))) d += 0.6;
+      hidden = Math.min(d, cw.width) / WALK;
+    }
     /* A CAR ALREADY PULLING AWAY across this crosswalk goes first: stepping
        out in front of one stopped it after it had taken its gap, and when
        it went on the gap had gone -- two cars met in the exit lane
@@ -477,7 +480,7 @@ export function stepPeds(world) {
     if (p.state === "waiting") {
       const go = p.manner === "trusting" ? !onPaint(world, cw) && playerCanRespond(world, cw, p)
         : p.manner === "heedless" ? !onPaint(world, cw, { going: false }) && playerCanRespond(world, cw, p)
-        : safeToStep(world, cw);
+        : safeToStep(world, cw, p.from);
       out.push(go ? { ...p, u: 0, state: "crossing", since: t } : p);
       continue;
     }
@@ -491,6 +494,30 @@ export function stepPeds(world) {
        waits at the line and lets it pass -- what anybody does. */
     const edge = cw.width / 2 - 0.3;
     if (p.u <= edge && u > edge && committedAcross(world, cw, p, { onlyPlayer: p.manner && p.manner !== "careful" })) u = p.u;
+    /* AND A CAREFUL PERSON KEEPS WATCHING, lane by lane: they do not step
+       into the lane of a car that cannot stop comfortably short of them,
+       whatever it looked like from the curb. A moving truck that comes
+       between them and a car after they have stepped off hides them from
+       it until it is too late to stop (30 September, the Pedestrians map:
+       a careful person struck at 8.8 m by a car that had just come out
+       from behind a truck). */
+    if ((!p.manner || p.manner === "careful") && u !== p.u) {
+      for (const { a, near, far, t } of carsFor(world, cw)) {
+        if (a.crash || a.parked) continue;
+        const uc = p.from === 0 ? t * cw.width : (1 - t) * cw.width;
+        /* They wait just outside the strip a driver on the paint holds for
+           somebody in front of them (1.8 + 0.3 m either side of its line),
+           so a car that is on it goes on past rather than waiting for them
+           while they wait for it. */
+        const laneEdge = uc - (1.8 + 0.3 + 0.2);
+        if (!(p.u <= laneEdge && u > laneEdge)) continue;
+        const nose = a.s + lenOf(a) / 2, tail = a.s - (a.rear ?? lenOf(a) / 2);
+        if (tail > far) continue;                                   // past
+        const onIt = nose > near - 0.5;                             // at or over the paint: let it go by
+        const cannotStop = (a.v ?? 0) > 0.3 && ((a.v ?? 0) ** 2) / (2 * COMFY) > near - nose - 1;
+        if (onIt || cannotStop) { u = p.u; break; }
+      }
+    }
     out.push({ ...p, u });
   }
   /* MID-BLOCK: by the kilometre of parked curb, a person at a random gap,

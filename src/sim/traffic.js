@@ -191,10 +191,13 @@ export const VEHICLES = {
 export const vehicleOf = (a) => VEHICLES[a?.kind] ?? VEHICLES.car;
 export const lenOf = (a) => vehicleOf(a).length;
 export const widthOf = (a) => vehicleOf(a).width;
-/* Bumper to bumper, for two vehicles in one lane whose centres are `d`
-   apart: the centres' distance less half of each. Two cars: `d - 4.5`,
-   exactly the expression it replaces. */
-export const clearBetween = (d, a, b) => d - (lenOf(a) + lenOf(b)) / 2;
+/* Bumper to bumper, for `back` following `front` in one lane, centres `d`
+   apart: back's nose to front's tail. A long vehicle in a turn has its tail
+   further back along its path than half its length (`rear`, set each tick
+   from its pose, crossing.js): measured, a car closed on a truck turning
+   right by its half-length and ran into the tail the truck really had.
+   Two cars: `d - 4.5`, exactly the expression it replaces. */
+export const clearBetween = (d, back, front) => d - lenOf(back) / 2 - (front?.rear ?? lenOf(front) / 2);
 /* The speed a driver of this vehicle wants on a road: their temperament's,
    no more than the vehicle will do there. */
 export const wantedFor = (a, roadSpeed, caution) => Math.min(wantedSpeed(roadSpeed, caution), roadSpeed * vehicleOf(a).cap);

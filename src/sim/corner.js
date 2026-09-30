@@ -80,7 +80,19 @@ export function fits(me, path, lane = 3.6) {
   const c = cornerOf(path);
   if (!c) return true;
   const r = 1 / c.k, cut = r > half ? r - Math.sqrt(r * r - half * half) : Infinity;
-  return cut <= ((lane ?? 3.6) - widthOf(me)) / 2;
+  if (cut > ((lane ?? 3.6) - widthOf(me)) / 2) return false;
+  /* AND NO MORE THAN A RIGHT ANGLE WITHIN ITS OWN LENGTH. A rigid body with
+     both ends on a path that turns further than that has two places its
+     tail could be, and the one it is on can vanish under it: a truck on a
+     120-degree right jumped 3.6 m, drawn and checked (verify-lanes). */
+  const L = 2 * half;
+  for (let s = Math.max(0, c.from - L); s <= c.to; s += 1) {
+    let d = poseAt(path, Math.min(path.length, s + L)).rot - poseAt(path, s).rot;
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    if (Math.abs(d) > 90) return false;
+  }
+  return true;
 }
 
 /* The speed THIS driver takes that corner at. */

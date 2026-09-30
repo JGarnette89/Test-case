@@ -50,6 +50,7 @@ import { knownControl, theirControl } from "./reading.js";
 import { reads } from "../core/driver.js";
 import { lookingAway } from "./attention.js";
 import { parkingOf, initialParked } from "./parking.js";
+import { tallerThanEye, boxOf, eyeOf, hiddenFrom, blocked, segHitsBox } from "./sight.js";
 import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
 
 /* =====================================================================
@@ -715,7 +716,62 @@ export function whatStops(me, world) {
 
   /* Everybody else, as THIS driver has them -- the present for a driver
      with no lag, their lag ago otherwise. */
-  const others = nearNode(world, seenBy(world, me), mineAt);
+  let others = nearNode(world, seenBy(world, me), mineAt);
+  /* ...AS THEY LAST SAW ANYBODY A TRUCK NOW HIDES (sim/sight.js). Somebody
+     a truck hides is in their picture where they last saw them, carried
+     forward at the speed they had -- exactly as somebody they looked away
+     from is (sim/attention.js) -- for MEMORY seconds, and then not at all.
+     Deleting them outright made two drivers stopped at their lines, both
+     waiting their turn, each forget the other the moment a truck passed
+     between them; both went, and met (30 September). Only where a truck
+     stands near, so a world of cars is unchanged. */
+  /* Only trucks near enough to stand between this driver and anybody they
+     decide about (SIGHT_NEAR); poses taken once per actor per tick
+     (`poseOnce`): measured, recomputing them per pair made a step at 300
+     cars thirteen times slower. */
+  const myPose = poseOnce(world, me), layout0 = layoutOf(world, me), mine0 = pathOf(world, me);
+  const tall = (world.tall ?? []).filter((b) => b.id !== me.id && Math.abs(b.x - myPose.x) < SIGHT_NEAR && Math.abs(b.y - myPose.y) < SIGHT_NEAR);
+  let eye = null, seenNow = null;
+  if (tall.length) {
+    eye = eyeOf(myPose, me);
+    const memo = me.memo ?? {}, kept = [];
+    /* Remembered only by a driver near their line, and only somebody on
+       ANOTHER approach to this intersection -- the ones a go is decided
+       against. Remembering everybody, for everybody near a truck, was
+       most of what sight cost: 22 ms of a step at 300 cars. */
+    const nearLine = !me.going && me.s > waitAt(mine0, me) - 40 && me.s < mine0.clearAt;
+    const myBase0 = layout0.legs[mine0.from]?.base ?? mine0.from;
+    seenNow = nearLine ? [] : null;
+    for (const o of others) {
+      if (o.id === me.id || tall.some((b) => b.id === o.id)) { kept.push(o); continue; }
+      /* Hiding matters only for the decision at this intersection, against
+         somebody on another approach: traffic at the neighbouring ones is
+         here for following across the seam, and anybody ahead in my own
+         lane is behind whoever is in front of me anyway. (Testing everybody
+         was most of a step at 300 cars.) */
+      const oPath = pathOf(world, o);
+      if ((o.k ?? 0) !== mineAt || (layout0.legs[oPath?.from]?.base ?? null) === myBase0) { kept.push(o); continue; }
+      /* ...and only while BOTH are still approaching: once either is into
+         the intersection they are close, and following somebody into a
+         shared exit is not a decision a truck can hide (30 September: two
+         cars merging into one exit lane lost each other behind a truck and
+         met there). */
+      if (me.going || me.s > mine0.stopAt || o.going || o.s > (oPath?.stopAt ?? Infinity)) { kept.push(o); continue; }
+      /* Only a truck nearer than they are can stand between us. */
+      const po = poseOnce(world, o), dO = Math.hypot(po.x - eye.x, po.y - eye.y);
+      const between = tall.filter((b) => b.id !== o.id && Math.hypot(b.x - eye.x, b.y - eye.y) - b.l / 2 < dO);
+      if (!between.length || !hiddenFrom(eye, po, o, between, null)) {
+        kept.push(o);
+        if (seenNow && (o.k ?? 0) === mineAt && (layout0.legs[pathOf(world, o)?.from]?.base ?? null) !== myBase0) seenNow.push(o);
+        continue;
+      }
+      const m = memo[o.id], ago = m ? (world.t ?? 0) - m.t : Infinity;
+      if (m && ago < MEMORY && m.k === (o.k ?? 0) && m.route === o.route) {
+        kept.push({ ...o, s: Math.min(m.s + m.v * ago, pathOf(world, o).length), v: m.v, stoppedAt: m.stoppedAt, going: m.going, accepted: m.accepted });
+      }
+    }
+    others = kept;
+  }
   for (const them of others) {
     if (them.id === me.id) continue;
     const theirs = pathOf(world, them);
@@ -826,7 +882,10 @@ export function whatStops(me, world) {
      itself -- holding at the line had a car registering somebody and
      driving through them to reach its own stop line. */
   const walkerAtLine = !!walker && walker.s >= waitAt(mine, me);
-  const held = short && (walkerAtLine || others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0)));
+  const held = short && (walkerAtLine || others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0))
+    /* The margin, only for the driver at the head of the queue: one behind
+       somebody is held by them, and what the head can see decides. */
+    || (tall.length > 0 && !(leader && leader.id !== "line" && gap < 15) && phantomHolds(world, me, layout, mine, eye, tall)));
   if (walker && (!short || !walkerAtLine)) consider(walker.s - me.s - lenOf(me) / 2 - 0.5, { id: "ped", v: 0, headway: me.headway });
   /* THE THREE CONTROLS, AND THE ONLY PLACE THAT KNOWS A SIGNAL EXISTS.
      A red or an unmakeable amber HOLDS -- gap or no gap; a sign or a
@@ -871,7 +930,88 @@ export function whatStops(me, world) {
       if (u === "hold" || u === "stop") consider(toEnd + waitAt(p2, me), { id: "line", v: 0, headway: me.headway });
     }
   }
-  return { leader, gap, held, queued, hold: short && under === "hold" };
+  return { leader, gap, held, queued, hold: short && under === "hold", ...(seenNow ? { seen: seenNow } : {}) };
+}
+
+/* THE MARGIN FOR WHAT YOU CANNOT SEE IS CONFIDENCE (CLAUDE.md: occlusion
+   is perceptible, inattention is not). A driver whose view of a road they
+   would cross is blocked by a truck can see that it is blocked, so they
+   assume something could be there: on each conflicting route, at the
+   nearest point to where our paths meet that the truck hides, a vehicle
+   at that road's speed scaled by their own caution -- the timid assume it
+   at full speed, the bold assume nothing. Whether it would hold them is
+   the same `blockedBy` every real road user is asked, so it gives way
+   exactly where a real car there would be given way to, and nowhere
+   else. */
+const PHANTOM_LOOK = 8;
+/* How near a truck must be to hide anything this driver decides about: the
+   neighbourhood of one intersection, generously. */
+const SIGHT_NEAR = 120;
+/* One pose per actor object per tick: actor objects are made anew each
+   tick, so the object is the key and nothing goes stale. */
+const poseMemo = new WeakMap();
+function poseOnce(world, a) {
+  let p = poseMemo.get(a);
+  if (!p) { p = poseOf(world, a); poseMemo.set(a, p); }
+  return p;
+}
+/* How long a road user a truck hides stays in a driver's picture where they
+   last saw it, carried forward: a flagged figure, about the time a truck
+   takes to pass between two cars. */
+const MEMORY = 6;   // seconds of road back from the meeting point, at its speed
+function phantomHolds(world, me, layout, mine, eye, tall) {
+  const assume = Math.max(0, Math.min(1, me.caution ?? 1));
+  if (assume <= 0) return false;
+  /* Only a driver near enough their line to be deciding: further back
+     they are still approaching, and what is hidden changes before they
+     get there (scanning for every approaching car was a fifth of a step). */
+  if (me.s < waitAt(mine, me) - Math.max(10, stoppingRoom(me.v ?? 0) + 5)) return false;
+  const myBase = layout.legs[mine.from]?.base ?? mine.from;
+  const trucksHere = world.actors.filter((a) => (a.k ?? 0) === (me.k ?? 0) && tall.some((b) => b.id === a.id));
+  for (const [r2, p2] of Object.entries(layout.paths)) {
+    if (r2 === me.route || (layout.legs[p2.from]?.base ?? p2.from) === myBase) continue;
+    const meet = layout.conflicts[r2 + "|" + me.route];
+    if (!meet) continue;
+    const speed = (world.road.posted ? postedAt(world.course, me.k ?? 0, r2) : null) ?? world.road.speed;
+    /* Nothing comes THROUGH a truck: in the truck's own lane, the road it
+       hides behind itself holds only whoever is queued behind it. (Without
+       this a truck waiting at its line held every driver whose path it
+       crossed: drivers at a line held 26% of the time against 14%.) */
+    const inLane = trucksHere.filter((a) => pathOf(world, a)?.from === p2.from);
+    for (let s = meet.a; s >= Math.max(0, meet.a - speed * PHANTOM_LOOK); s -= 3) {
+      if (inLane.some((a) => a.s > s)) break;
+      const q = poseAt(p2, s);
+      if (!blocked(eye, q, tall)) continue;
+      /* ...nor where a truck itself stands: road a truck covers is hidden
+         and has no room for anybody (a truck crossing the box ahead held
+         the car behind it for the stretch of cross road it stood on). */
+      if (tall.some((b) => segHitsBox(q, q, { ...b, l: b.l + 5, w: b.w + 5 }))) continue;
+      /* OBJECT PERMANENCE. A vehicle can be in the hidden stretch only if it
+         got there unseen: where the road beyond the stretch is in view,
+         anything in it came through the part this driver is watching, so
+         once they have stood at the line for as long as it takes to cross
+         the stretch, nothing unseen is left in it. Without this a driver
+         who had the right of way waited for ever on a stretch a waiting
+         truck hid, while the truck and everybody else waited for them --
+         a lock that grew for five minutes (30 September). */
+      let far = null;
+      for (let s2 = s - 3; s2 >= Math.max(0, meet.a - speed * PHANTOM_LOOK); s2 -= 3) if (!blocked(eye, poseAt(p2, s2), tall)) { far = s2; break; }
+      const waited = me.stoppedAt != null ? (world.t ?? 0) - me.stoppedAt : 0;
+      if (far != null && waited > (s - far) / Math.max(speed, 1) + REACTION_FLOOR) break;
+      /* AND WHERE THE WHOLE APPROACH IS HIDDEN, not for ever: past the
+         wait the maintainer marks as undue delay (UNDUE_AT), scaled by
+         this driver's own caution, they conclude nothing is coming -- the
+         timid hold out longer, which is their fault to commit. A real
+         driver edges forward to see past the truck; creeping for a view is
+         not modelled yet, and without this a driver with the right of way
+         and a truck that waited for them stood each other off for ever. */
+      if (far == null && waited > UNDUE_AT * (me.caution ?? 1)) break;
+      const ghost = { id: "phantom", k: me.k ?? 0, route: r2, s, v: speed * assume, stoppedAt: null, going: false, accepted: false, kind: "car", caution: 1 };
+      if (blockedBy(me, ghost, layout, me.caution, world.t ?? 0)) return true;
+      break;
+    }
+  }
+  return false;
 }
 
 /* =====================================================================
@@ -980,6 +1120,14 @@ export function step(world) {
       const openedAt = me.openedAt ?? (openFor >= REACTION_FLOOR ? world.t : null);
       const waited = sitting && openedAt != null ? world.t - openedAt : (me.waited || 0);
       const out = { ...at, a, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
+      /* WHAT THEY SAW THIS TICK, remembered for when a truck hides it (see
+         `whatStops`); nothing to remember with no truck near. */
+      if (view.seen) {
+        const t0 = world.t ?? 0, memo = {};
+        for (const [id, m] of Object.entries(me.memo ?? {})) if (t0 - m.t < MEMORY) memo[id] = m;
+        for (const o of view.seen) memo[o.id] = { k: o.k ?? 0, route: o.route, s: o.s, v: o.v, t: t0, stoppedAt: o.stoppedAt, going: o.going, accepted: o.accepted };
+        out.memo = memo;
+      } else if (out.memo) delete out.memo;
       /* LANE CHANGES (lanechange.js): only where a leg has more than one
          lane, so every course the sim had before is untouched. Decided
          from `raw` for who they are -- the ratings, the caution -- and
@@ -1122,6 +1270,12 @@ export function step(world) {
      `verify-crashes` holds the invariant: no two cars ever overlap unless
      they are a recorded crash. */
   let crashes = world.crashes;
+  /* A LONG VEHICLE'S TAIL, where it really is along its path this tick,
+     for whoever follows it (traffic.js `clearBetween`). Cars carry none. */
+  for (let i = 0; i < next.length; i++) {
+    const a = next[i];
+    if (a && !a.player && lenOf(a) > CAR.length) next[i] = { ...a, rear: rearOf(world, a) };
+  }
   /* At the NEW clock: `next` is where everybody is at t + DT, and a car
      changing lanes is placed across by the clock -- tested at the old one,
      its lateral position lagged a tick behind everything else, and a
@@ -1149,9 +1303,15 @@ export function step(world) {
   const past = world.road.perceive
     ? [world.actors, ...(world.past ?? [])].slice(0, LAG_TICKS)
     : world.past;
+  /* WHAT STANDS TALLER THAN A DRIVER'S EYE (sim/sight.js), as committed:
+     every driver deciding from this state sees the same trucks. None, and
+     the world carries none -- a world of cars is the world it was. */
+  const tallNow = world.seeThrough ? [] : next.filter(tallerThanEye);
+  const tall = tallNow.length ? tallNow.map((a) => boxOf(poseOf({ ...world, t, actors: next }, a), a.id)) : null;
   /* EVERYBODY ON FOOT (peds.js), deciding from the traffic as it now is. */
-  const walked = world.course.graph ? stepPeds({ ...world, t, tick: world.tick + 1, actors: next }) : null;
+  const walked = world.course.graph ? stepPeds({ ...world, t, tick: world.tick + 1, actors: next, ...(tall ? { tall } : { tall: undefined }) }) : null;
   let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walked : {}) };
+  if (tall) out.tall = tall; else if (out.tall) delete out.tall;
   /* A CAR THAT REACHES SOMEBODY ON FOOT has struck them (peds.js
      `strikes`): they fall where they are, the car stops as a wreck, and
      it is logged like any crash. Only a driver who did not see them can. */
@@ -1720,6 +1880,55 @@ export function run(world, ticks) {
    hold a steady line has to really not hold it, or the weave is a
    drawing rather than a fault, and the overlap test would be measuring a
    car that is not where the screen says it is (DECISIONS.md 0). */
+/* Where along its path a rigid body's tail is, its front `half` ahead of
+   `s`: the point a body's length behind the front IN A STRAIGHT LINE --
+   further back than s - half on an arc, since the chord is shorter. */
+function rearOn(end, s, half, prefer = null) {
+  /* Every point back along the path a body's length from the front (stepped,
+     then bisected within the step): a bisection over a fixed range clamped
+     when the tail lay beyond it (a 1.9 m jump deep in a right turn). On a
+     turn sharper than a right angle there can be two such points, and
+     taking whichever was found first switched between them from one tick
+     to the next (a 3.6 m jump) -- so the one nearest where the tail was
+     last tick (`prefer`, metres behind the centre) is taken; the first
+     otherwise. */
+  const f = end(s + half), L = 2 * half, dist = (x) => { const q = end(x); return Math.hypot(f.x - q.x, f.y - q.y); };
+  const roots = [];
+  let prev = dist(s - half) >= L;
+  if (prev) roots.push(s - half);
+  for (let b = s - half - 0.5; b > s - 6 * half; b -= 0.5) {
+    const now = dist(b) >= L;
+    if (now !== prev) {
+      let lo = b, hi = b + 0.5;
+      for (let i = 0; i < 16; i++) { const mid = (lo + hi) / 2; if ((dist(mid) >= L) === now) lo = mid; else hi = mid; }
+      roots.push((lo + hi) / 2);
+      if (prefer == null) break;
+    }
+    prev = now;
+  }
+  if (!roots.length) return s - 6 * half;
+  if (prefer == null) return roots[0];
+  return roots.reduce((b, r) => (Math.abs(s - r - prefer) < Math.abs(s - b - prefer) ? r : b), roots[0]);
+}
+/* How far behind its centre, along its path, a long vehicle's tail is: its
+   half-length on the straight, more in a turn (`clearBetween`). */
+export function rearOf(world, actor) {
+  const half = lenOf(actor) / 2, path = pathOf(world, actor);
+  if (!path) return half;
+  const at = (s) => (world.course.graph ? poseOnGraph(world.course, actor.k ?? 0, actor.route, s) : poseOn(world.course, actor.k ?? 0, actor.route, s));
+  const len = path.length;
+  const end = (s) => { const c = Math.max(0, Math.min(len, s)), q = at(c), h = (q.rot * Math.PI) / 180; return { x: q.x + Math.cos(h) * (s - c), y: q.y + Math.sin(h) * (s - c) }; };
+  const r = actor.s - rearOn(end, actor.s, half, actor.rear ?? null);
+  /* NEVER A JUMP. Where the tail's place on the path vanishes under it -- a
+     truck forced into a corner sharper than its body can follow, which
+     `fits` keeps it off wherever there is another way on -- it moves to
+     the new place over a few ticks at a pace tied to its own, rather than
+     in one. The body is approximate for that moment, and continuous. */
+  if (actor.rear == null) return r;
+  const most = Math.max(0.3, ((actor.v ?? 0) + 0.5) * DT * 3);
+  return Math.max(actor.rear - most, Math.min(actor.rear + most, r));
+}
+
 export function poseOf(world, actor) {
   /* On a map the pose has a height, from the road's own profile. */
   const at = (s) => (world.course.graph
@@ -1744,13 +1953,8 @@ export function poseOf(world, actor) {
     /* The front on the path; the rear the point on the path a rigid body's
        length behind it IN A STRAIGHT LINE -- on an arc that is further
        back along the path than the length, since the chord is shorter. */
-    const f = end(actor.s + half);
-    let lo = actor.s + half - 3 * half, hi = actor.s - half;
-    for (let i = 0; i < 20; i++) {
-      const mid = (lo + hi) / 2, q = end(mid);
-      if (Math.hypot(f.x - q.x, f.y - q.y) > 2 * half) lo = mid; else hi = mid;
-    }
-    const r = end((lo + hi) / 2);
+    /* The tail where this tick put it (`rear`, kept continuous), or found. */
+    const f = end(actor.s + half), r = end(actor.rear != null ? actor.s - actor.rear : rearOn(end, actor.s, half));
     p = { ...p, x: (f.x + r.x) / 2, y: (f.y + r.y) / 2, z: ((f.z ?? 0) + (r.z ?? 0)) / 2, rot: (Math.atan2(f.y - r.y, f.x - r.x) * 180) / Math.PI };
   }
   /* A LANE CHANGE IS WHERE THE CAR IS, NOT A STRAY: it is added here, to

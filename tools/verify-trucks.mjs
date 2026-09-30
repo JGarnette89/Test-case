@@ -25,7 +25,9 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, pathOf, layoutOf, poseOf, overlapping, strayOf, DT, TRUCK_SHARE } from "../src/sim/crossing.js";
+import { seedGraph, step, pathOf, layoutOf, poseOf, overlapping, strayOf, whatStops, rearOf, DT, TRUCK_SHARE, UNDUE_AT } from "../src/sim/crossing.js";
+import { tallerThanEye, boxOf, eyeOf, blocked } from "../src/sim/sight.js";
+import { emptyMap, road } from "../src/map/format.js";
 import { joinedTo } from "../src/sim/course.js";
 import { poseAt } from "../src/sim/intersection.js";
 import { poseOnGraph, postedAt } from "../src/sim/graph.js";
@@ -241,6 +243,133 @@ console.log("\n7. A TRUCK DOES NOT TAKE A CORNER IT CANNOT MAKE");
   }
   console.log(`   (${turns} turns set out on by trucks, ${tooTight} of them tighter than a truck can make, where the leg offered no other way on)`);
   check(avoidable === 0 && seen.size > 40, `no truck sets out on a corner it cannot make when its leg offers another way on (${avoidable} of ${seen.size} truck passages)`);
+}
+
+console.log("\n8. A TRUCK HIDES WHAT IS BEHIND IT -- AND A DRIVER KNOWS WHAT IT HIDES");
+{
+  /* (a) What hides: a box above the eye, never a car's glass. */
+  const truckBox = boxOf({ x: 50, y: 0, rot: 90, length: VEHICLES.truck.length, width: VEHICLES.truck.width });
+  check(!tallerThanEye({ kind: "car" }) && tallerThanEye({ kind: "truck" }) && blocked({ x: 0, y: 0 }, { x: 100, y: 0 }, [truckBox]) && !blocked({ x: 0, y: 10 }, { x: 100, y: 10 }, [truckBox]),
+    "a truck hides what is behind it and a car does not; a sightline past the truck's end is clear");
+
+  /* The probes stand on an uncontrolled crossroads, set up by hand: two
+     cars at their lines and a truck put where it hides one from the other. */
+  const m = emptyMap("x");
+  m.bounds = { x: 0, y: 0, w: 600, h: 600 };
+  for (const [id, a] of [["w", { x: 0, y: 300, z: 0 }], ["e", { x: 600, y: 300, z: 0 }], ["n", { x: 300, y: 0, z: 0 }], ["s", { x: 300, y: 600, z: 0 }]]) m.roads.push(road({ id, points: [a, { x: 300, y: 300, z: 0 }], control: { start: "none", end: "none" } }));
+  const base = seedGraph(1, 50, loadMap(m), { target: 0, posted: true, trucks: 0 });
+  const L = base.course.at[0].layout;
+  const straightFrom = (road) => Object.keys(L.paths).find((r) => L.legs[L.paths[r].from]?.road === road && L.paths[r].intent === "straight");
+  const at = (road, id, stoppedAt, caution = 1) => {
+    const route = straightFrom(road), p = L.paths[route];
+    return { ...driver(base.road, 1, id.length + stoppedAt, null, null, "car"), id, n: 1, k: 0, route, s: p.stopAt - CAR.length / 2 - 0.2, v: 0, leg: 0, stoppedAt, going: false, accepted: false, openFor: 0, openedAt: null, waited: 0, delayed: false, caution };
+  };
+  const A = at("w", "A", 10), B = at("s", "B", 9);
+  const eyeA = eyeOf(poseOf(base, A), A), posB = poseOf(base, B);
+  const mid = { x: (eyeA.x + posB.x) / 2, y: (eyeA.y + posB.y) / 2 };
+  const between = boxOf({ ...mid, rot: (Math.atan2(posB.y - eyeA.y, posB.x - eyeA.x) * 180) / Math.PI + 90, length: VEHICLES.truck.length, width: VEHICLES.truck.width }, "T");
+  const w0 = { ...base, t: 12, actors: [A, B] };
+  const heldIn = (w, me) => whatStops(me, w).held;
+  /* (b) MEMORY. B stopped first, so A waits. A truck passes between them:
+     A still has B where they last saw them, and still waits; without that
+     memory A forgets B the moment the truck hides them, and goes. */
+  const memo = { B: { k: 0, route: B.route, s: B.s, v: 0, t: 11.9, stoppedAt: 9, going: false, accepted: false } };
+  const withTruck = { ...w0, tall: [between] };
+  /* A bold driver, so what they cannot see holds them only through memory
+     (a sound one would also be held by the margin, (c) below). */
+  const Ab = { ...A, caution: 0 };
+  check(heldIn(w0, Ab) && blocked(eyeA, posB, [between]) && heldIn(withTruck, { ...Ab, memo }) && !heldIn(withTruck, Ab),
+    "two cars stopped at their lines, the second waiting its turn: a truck passing between them hides the first, and the second still waits, because it remembers who it watched stop -- without that memory it forgets them and goes");
+
+  /* (c) THE MARGIN FOR WHAT YOU CANNOT SEE. A alone at its line, nobody
+     anywhere, and a truck standing where it hides the road to A's left
+     short of where their paths meet: a sound driver waits for what could
+     be there; a bold one does not; and once the sound one has stood there
+     long enough for anything in the hidden stretch to have come out of it,
+     they go. */
+  const route = straightFrom("s"), pS = L.paths[route];
+  const meet = L.conflicts[route + "|" + A.route];
+  const q = poseAt(pS, meet.a - 20);
+  const hide = boxOf({ x: q.x, y: q.y, rot: ((pS.pts ? 0 : 0) + (Math.atan2(q.y - eyeA.y, q.x - eyeA.x) * 180) / Math.PI) + 90, length: VEHICLES.truck.length, width: VEHICLES.truck.width }, "T");
+  const alone = { ...base, t: 12, actors: [], tall: [hide] };
+  const sound = { ...A, stoppedAt: 11.9 }, bold = { ...A, stoppedAt: 11.9, caution: 0 }, long = { ...A, stoppedAt: 0 };
+  check(heldIn(alone, sound) && !heldIn(alone, bold) && !heldIn(alone, long) && !heldIn({ ...alone, tall: [] }, sound),
+    "alone at the line, the road to the left hidden by a standing truck: a sound driver waits for what could be there, a bold one does not, and after standing long enough for anything hidden to have come out, the sound one goes; with the truck see-through, nobody waits");
+
+  /* (c2) THE WHOLE APPROACH HIDDEN -- a truck right beside the driver's
+     eye, so no road beyond the hidden stretch is in view and object
+     permanence has nothing to go on. A sound driver waits, but not for
+     ever: past the undue-delay wait scaled by their caution they conclude
+     nothing is coming (the lock, without it: a driver with the right of
+     way and a truck that waited for them stood each other off). */
+  const posS = poseAt(pS, meet.a - 30);
+  const ang = Math.atan2(posS.y - eyeA.y, posS.x - eyeA.x);
+  const wall = boxOf({ x: eyeA.x + Math.cos(ang) * 3, y: eyeA.y + Math.sin(ang) * 3, rot: (ang * 180) / Math.PI + 90, length: VEHICLES.truck.length, width: VEHICLES.truck.width }, "W");
+  const whole = { ...base, t: 100, actors: [], tall: [wall] };
+  const allHidden = [0, 10, 20, 30, 40, 50, 60].every((d) => blocked(eyeA, poseAt(pS, Math.max(0, meet.a - d)), [wall]));
+  const soon = { ...A, stoppedAt: 99 }, later = { ...A, stoppedAt: 100 - UNDUE_AT * 1.1 };
+  check(allHidden && heldIn(whole, soon) && !heldIn(whole, later),
+    `the whole approach hidden by a truck beside the driver: a sound driver waits for what could be there, and gives it up after the undue-delay wait (${UNDUE_AT} s at their caution) rather than for ever`);
+
+  /* (c3) A CAR FOLLOWING A TRUCK THROUGH A TURN never reaches its tail: in
+     a turn a truck's tail is further back along its path than half its
+     length (`rear`), and following by half-length ran a car into it at
+     300 cars (verify-bays, 30 September). */
+  {
+    const rRight = Object.keys(L.paths).find((r) => L.legs[L.paths[r].from]?.road === "w" && L.paths[r].intent === "right");
+    const pR = L.paths[rRight];
+    /* The truck standing where its tail reaches furthest back along the
+       turn, and a car arriving behind it to rest. */
+    const T0 = { ...driver(base.road, 1, 77, null, null, "truck"), id: "T1", n: 77, k: 0, route: rRight, v: 0, leg: 0, stoppedAt: 1, going: true, accepted: true, openFor: 0, openedAt: null, waited: 0, delayed: false };
+    let bestS = pR.stopAt, bestRear = 0;
+    for (let s = pR.stopAt; s < pR.clearAt + 6; s += 0.5) { const r = rearOf({ ...base, actors: [] }, { ...T0, s }); if (r > bestRear) { bestRear = r; bestS = s; } }
+    const truck = { ...T0, s: bestS, v0: 0.01 };
+    const car = { ...driver(base.road, 1, 78), id: "C1", n: 78, k: 0, route: rRight, s: bestS - 25, v: 6, leg: 0, stoppedAt: 1, going: true, accepted: true, openFor: 0, openedAt: null, waited: 0, delayed: false };
+    let w = { ...base, t: 5, actors: [truck, car] }, contact = false;
+    for (let i = 0; i < 10 / DT; i++) { w = step(w); if ((w.crashes ?? []).length) contact = true; }
+    check(!contact && bestRear > VEHICLES.truck.length / 2 + 0.5, `a car coming to rest behind a truck standing in a right turn stops short of its tail, which there lies ${bestRear.toFixed(1)} m behind its centre along the path against half its length of ${VEHICLES.truck.length / 2}`);
+  }
+
+  /* (d) In traffic: the city at 15% trucks, opaque against see-through. */
+  const city15 = (opaque) => {
+    let w = { ...seedGraph(3, 50, city, { target: 200, posted: true, trucks: 0.15 }), seeThrough: !opaque };
+    let crossings = 0, longest = 0, still = new Map(), phantom = { bold: 0, timid: 0, boldN: 0, timidN: 0 };
+    const perMin = [];
+    for (let i = 0; i < 300 / DT; i++) {
+      const before = new Map(w.actors.map((a) => [a.id, a]));
+      w = step(w);
+      for (const a of w.actors) {
+        const b = before.get(a.id);
+        if (b && b.k === a.k && b.route === a.route) { const p = pathOf(w, a); if (b.s < p.stopAt && a.s >= p.stopAt) { crossings++; perMin[Math.floor(w.t / 60)] = (perMin[Math.floor(w.t / 60)] ?? 0) + 1; } }
+        if (a.v < 0.1 && !a.crash) { still.set(a.id, (still.get(a.id) ?? 0) + DT); longest = Math.max(longest, still.get(a.id)); } else still.delete(a.id);
+      }
+      if (opaque && i % 20 === 0) for (const a of w.actors) {
+        if (a.player || a.crash || !w.tall) continue;
+        const band = a.caution < 0.6 ? "bold" : a.caution > 1.3 ? "timid" : null;
+        if (!band) continue;
+        /* Among drivers at their line, the only ones the margin can hold. */
+        const pa = pathOf(w, a);
+        if (a.going || a.s < pa.stopAt - lenOf(a) / 2 - 8 || a.s > pa.stopAt) continue;
+        phantom[band + "N"]++;
+        if (whatStops(a, w).held && !whatStops(a, { ...w, tall: undefined }).held) phantom[band]++;
+      }
+    }
+    return { crossings, perMin, longest, crashes: (w.crashes ?? []).filter((c) => !String(c.a).startsWith("ped-")).length, phantom };
+  };
+  const see = city15(false), opq = city15(true);
+  const rate = (b) => opq.phantom[b] / Math.max(1, opq.phantom[b + "N"]);
+  /* A LOCK SHOWS AS THROUGHPUT DECAYING minute on minute (a driver with the
+     right of way and a truck that waited for them stood each other off for
+     five minutes: 670 crossings a minute falling to 500) -- so every minute
+     is held to the see-through world's same minute. The longest standstill
+     is reported, not bounded: at 15% trucks a permissive left at a signal
+     waits a long time for a gap in slow, dense oncoming traffic, trucks
+     opaque or not. */
+  const worst = Math.min(...opq.perMin.map((n, i) => n / Math.max(1, see.perMin[i] ?? n)));
+  check(opq.crossings > 0.9 * see.crossings && worst > 0.85 && opq.crashes <= see.crashes + 1,
+    `five minutes of the city at 15% trucks: ${opq.crossings} crossings with trucks opaque against ${see.crossings} see-through, no minute below ${(100 * worst).toFixed(0)}% of its see-through twin (a minute by minute: ${opq.perMin.join(" ")} against ${see.perMin.join(" ")}), crashes ${opq.crashes} (${see.crashes}); longest standstill ${opq.longest.toFixed(0)} s (${see.longest.toFixed(0)} s)`);
+  check(rate("timid") > rate("bold") && opq.phantom.timidN > 50 && opq.phantom.boldN > 50,
+    `and what a truck might hide holds the timid more than the bold: ${(100 * rate("timid")).toFixed(1)}% of timid drivers' sampled ticks at their line against ${(100 * rate("bold")).toFixed(1)}% of bold ones' (${opq.phantom.timidN} and ${opq.phantom.boldN} sampled) -- the margin for what you cannot see is confidence (at its ends, (c): a sound driver waits and a maximally bold one does not)`);
 }
 
 console.log(`\n${"=".repeat(70)}`);
