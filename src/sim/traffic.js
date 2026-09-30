@@ -187,6 +187,10 @@ export const MOST_BRAKE = 8.0;
 export const VEHICLES = {
   car: { length: CAR.length, width: CAR.width, height: 1.5, accel: ACCEL, brake: BRAKE, most: MOST_BRAKE, cap: Infinity, lateral: 1 },
   truck: { length: 9.0, width: 2.55, height: 3.4, accel: 1.0, brake: 2.0, most: 6.0, cap: 1.0, lateral: 0.6 },
+  /* A city bus (sim/buses.js): a 12 m low-floor, as long as two cars and a
+     half, pulling away no harder than a truck -- and braking gently, for
+     the people standing in it. */
+  bus: { length: 12.2, width: 2.6, height: 3.2, accel: 1.0, brake: 1.8, most: 6.0, cap: 1.0, lateral: 0.6 },
 };
 export const vehicleOf = (a) => VEHICLES[a?.kind] ?? VEHICLES.car;
 export const lenOf = (a) => vehicleOf(a).length;

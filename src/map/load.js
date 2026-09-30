@@ -18,7 +18,7 @@
 
    Pure. No React, no canvas, no colour.
    ===================================================================== */
-import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS, ZONES, CHARACTERS, PARK_W, SIGN_KINDS, SIGN_BACK_MAX } from "./format.js";
+import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS, ZONES, CHARACTERS, PARK_W, SIGN_KINDS, SIGN_BACK_MAX, STOP_KINDS } from "./format.js";
 import { ribbonOf } from "../iso/road.js";
 import { hasBays, baySurfaceOf, baysAt } from "./bays.js";
 
@@ -478,6 +478,37 @@ export function loadMap(map) {
     sections.push({ id, name: String(sec.name ?? id), look: { x, y, z: Number(sec.look.z) || 0 }, start: st, judge: String(sec.judge ?? "") });
   });
 
+  /* BUS STOPS: each on the road it stands beside, on the side it stands
+     -- which says the direction it serves, since a bus stops at its own
+     curb -- and how far along. Refused, by name, where there is no such
+     road near, on a highway, on the wrong side of a one-way road, or too
+     near an intersection for a bus to stop clear of it (the parking rule,
+     sim/parking.js PARK_CLEAR, 15 m). */
+  const stops = [];
+  (Array.isArray(map.stops) ? map.stops : []).forEach((st, i) => {
+    const id = String(st?.id ?? `stop${i}`);
+    const x = Number(st?.at?.x), y = Number(st?.at?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) { warn("stop-no-place", `stop ${id}: nowhere; dropped`); return; }
+    const kind = STOP_KINDS.includes(st.kind) ? st.kind : "curb";
+    if (st.kind != null && st.kind !== kind) warn("stop-kind", `stop ${id}: kind "${st.kind}" is not one of ${STOP_KINDS.join(", ")}; taken as a curb stop`);
+    let best = null;
+    for (const r of roads) {
+      if (r.kind === "highway") continue;
+      const q = nearestOn(r.pts, { x, y });
+      if (!best || q.d < best.q.d) best = { r, q };
+    }
+    const r = best?.r;
+    if (!r || best.q.d > (r.outer ?? r.width) / 2 + 6) { warn("stop-no-road", `stop ${id}: stands beside no road`, { x, y }); return; }
+    const a = r.pts[best.q.i], b = r.pts[best.q.i + 1];
+    const h = Math.atan2(b.y - a.y, b.x - a.x);
+    /* Right of travel in plan, y down: (-sin, cos) of the heading. */
+    const right = (x - best.q.at.x) * -Math.sin(h) + (y - best.q.at.y) * Math.cos(h) > 0;
+    if (!right && r.oneWay) { warn("stop-wrong-side", `stop ${id}: on the left of one-way road ${r.id}, where no bus stops; dropped`, { x, y }); return; }
+    const s = r.at[best.q.i] + best.q.f * (r.at[best.q.i + 1] - r.at[best.q.i]);
+    if (s < 15 || s > r.length - 15) { warn("stop-near-intersection", `stop ${id}: within 15 m of the end of road ${r.id}; dropped`, { x, y }); return; }
+    stops.push({ id, kind, road: r.id, dir: right ? "fwd" : "rev", s, at: { x, y }, heading: ((h * 180) / Math.PI) + (right ? 0 : 180) });
+  });
+
   /* The chunk index: every road sample knows its chunk. */
   const chunks = new Map();
   const keyOf = (x, y) => `${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`;
@@ -508,7 +539,7 @@ export function loadMap(map) {
     ...roads.flatMap((r) => ["start", "end"].filter((e) => r.signAt?.[e]).map((e) => ({ ...r.signAt[e], road: r.id, end: e }))),
     ...roads.flatMap((r) => ["start", "end"].filter((e) => r.noLeft?.[e]).map((e) => ({ id: r.noLeft[e].id, kind: "no-left-turn", back: 0, road: r.id, end: e }))),
   ];
-  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, laneKm, warnings };
+  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, stops, laneKm, warnings };
 }
 
 /* THE LAND, WHERE THE MAP GIVES NONE.

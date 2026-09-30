@@ -51,6 +51,12 @@ export const CONTROLS = ["stop", "yield", "none", "signal", "signal-no-right-on-
    `no-right-on-red` is the plate on a signal's approach. Speed and warning
    signs are the next kinds and wait on the maintainer's rulings. */
 export const SIGN_KINDS = ["stop", "yield", "no-right-on-red", "no-left-turn"];
+/* BUS STOPS (SIMULATOR.md, "3. Bus stops"): a place beside a road, and
+   whether the bus stands in the curb lane there or pulls into a bay. Both
+   exist in the real world and the maintainer wants both (30 September). A
+   map lists them in `stops: [{ id, at: { x, y }, kind }]` -- by PLACE, so a
+   stop survives the road being split at an intersection or redrawn. */
+export const STOP_KINDS = ["curb", "bay"];
 export const SIGN_BACK_MAX = 40;   // metres: further back than this a sign stops reading as the intersection's
 export const ZONES = ["residential", "commercial", "industrial", "park", "water", "highway"];
 /* WHO DRIVES HERE: a district's character (sim/towns.js says what each

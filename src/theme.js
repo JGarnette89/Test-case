@@ -1,7 +1,7 @@
 /* Shared look: palette, type stacks, and the shade helper. Kept out of the
    engine on purpose — the engine must not know what colour anything is. */
 const C = {
-  asphalt: "#43474F", sidewalk: "#A9A69C", grass: "#5E8A54", grassDark: "#4E7746",
+  asphalt: "#43474F", sidewalk: "#A9A69C", bus: "#2F6DB5", grass: "#5E8A54", grassDark: "#4E7746",
   line: "#FAFAF2", yellow: "#FFC93C", ink: "#191C22",
   red: "#E05252", green: "#3BAA51", blue: "#3B7BE8", amber: "#F0A93C",
   white: "#FAFAF2", bg: "#16181C", signal: "#FFB330",

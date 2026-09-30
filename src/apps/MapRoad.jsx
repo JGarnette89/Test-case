@@ -112,6 +112,7 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
     terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground }),
     junctions: junctionsOf(world.course),
     sidewalks: sidewalksOf(loaded),
+    stops: loaded.stops ?? [],
     /* The map's buildings, in the shape drawFrame's stand-in boxes
        already take. The loader has dropped any standing on a road. */
     props: (loaded.props ?? []).map((p) => ({ x: p.at.x, y: p.at.y, heading: p.heading, l: p.l, w: p.w, h: p.h })),
@@ -326,7 +327,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         k = Math.max(1, (size.w / (follow === "car" ? 60 : 110)) * zoom);
       }
       lastView.current = { x: cam.current.x, y: cam.current.y, z: cam.current.z ?? 0, k, rot };
-      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, props: sc.props, t: sc.world.t + carry });
+      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + carry });
 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);

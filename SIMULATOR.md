@@ -3211,6 +3211,56 @@ this (`peds.js`: waiting half a metre back, then on the paint).
   and walked through -- the generator's yards (7 m and up) keep its own
   buildings clear. Corners are covered but square; there are no curb ramps.
 
+#### 3. Bus stops: the maintainer's rulings (30 September)
+
+Asked before building, because each is a rule a driver can get wrong. In
+his words, then what each means here:
+
+1. **Going round a stopped bus.** *"Traffic can pull around on a broken
+   centre line, yielding to oncoming traffic (ideally, our drivers could
+   always make a mistake here)."* On a two-lane road with a broken centre
+   line a driver behind a stopped bus may pass it in the oncoming lane,
+   giving way to oncoming traffic; on a solid line they may not. The
+   judgment of the oncoming gap is where drivers err -- confidence decides
+   how tight a gap they take, observation whether they saw what was coming
+   -- the same axes that already decide a lane change and a left turn.
+2. **Yielding to a bus pulling out.** *"Cars should yield to buses moving
+   into the road, however this doesn't seem to be common knowledge and
+   maybe can be a medium-high knowledge check. The bus driver should know
+   this information, but still will observe behind without simply assuming
+   others will follow the rule."* A sign-difficulty-style knowledge check:
+   a driver who reads the rule gives way to a bus signalling to pull out;
+   one who does not, does not. Medium-high difficulty -- placed between
+   no-right-on-red (.25) and right-on-red (.35) on the DIFFICULTY scale
+   unless he says otherwise. The BUS DRIVER knows the rule and still checks
+   behind: it pulls out when the traffic has let it, never on the rule
+   alone -- so a driver who does not know it costs the bus time, not a
+   crash.
+3. **Bay or curb.** *"Both, sometimes a bay will exist other times the bus
+   stop can stop at the side of a road. We need this variability since it
+   exists in the real world."* A stop is map data, bay or curb, per stop.
+   At a curb stop the bus stands in the curb lane and blocks it (ruling 1
+   applies behind it); at a bay it pulls out of the lane and back in
+   (ruling 2 applies as it leaves).
+
+**Slice A BUILT (30 September): buses and curb stops.** Open `#/tests`,
+**Buses**, either section. A bus is a row in the vehicle table (12.2 m,
+pulls away like a truck, brakes gently for the people standing in it, tall
+enough to hide what is behind it), arriving from outside at 8% of the
+traffic on a map with stops (`BUS_SHARE`, flagged) and never on one
+without. A stop is a PLACE on the map (`stops: [{ id, at, kind }]`): the
+loader puts it beside the nearest road, and the side it stands on says
+which direction it serves; one beside no road, within 15 m of an
+intersection, or left of a one-way road is refused by name. A bus stops
+for its stop by the rule every car already stops for a stopped car (the
+same one that pulls a car into a parking slot), stands with its front door
+at the sign for `DWELL` (12 s, flagged until passengers set it), and goes
+on; the traffic behind queues. The doors open only AT the stop: a bus that
+began its dwell held in a queue short of it crept up and stood 19 s, or ran
+out its dwell and drove past its sign (`verify-buses`, which caught both).
+Not yet: passengers (slice B), bays and the yield-to-a-bus rule (C), going
+round on a broken line (D). Nothing yet places stops on the stand-in city.
+
 #### Parking lots: what it would take (scoped 29 September, not started)
 
 **What exists.** Everything that moves runs on the lane graph: a car is

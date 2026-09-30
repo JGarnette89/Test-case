@@ -45,6 +45,7 @@ import { cornerAccel, speedBy, fits } from "./corner.js";
 export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
 import { seedWalkers, stepWalkers } from "./walkers.js";
+import { BUS_SHARE, stopsOf, nextStop, atStop } from "./buses.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
@@ -852,6 +853,8 @@ export function whatStops(me, world) {
      place at the curb, braked for by exactly the rule that brakes for a
      stopped car -- no second braking law. */
   if (me.leaveAt != null && me.leaveAt > me.s - 1) consider(Math.max(0, me.leaveAt - me.s), { v: 0, s: me.leaveAt, id: "curb" });
+  /* A BUS'S STOP (buses.js): the same stopped place, by the same rule. */
+  if (me.busStop) consider(Math.max(0, me.busStop.at - me.s), { v: 0, s: me.busStop.at, id: "stop" });
 
   /* AND THE LINE. Only while I am short of it and not yet through: once
      past the stop line I am committed, and a car that stopped halfway
@@ -1150,6 +1153,8 @@ export function step(world) {
       /* A crash is cleared -- towed, details exchanged -- after CRASH_CLEAR,
          and until then it is where it is, not crossing any seam. */
       if (me.crash) return world.t - me.crash.t >= CRASH_CLEAR ? null : me;
+      /* A bus at its stop: standing with its doors open, then on (buses.js). */
+      if (me.busStop && !me.player) me = atStop(me, world.t, world.course, pathOf(world, me));
       if (me.leaveAt != null && !me.player && !me.candidate && me.v < 0.3 && me.s >= me.leaveAt - CAR.length - 3) {
         if (me.parkSlot) parkedNow.push(me);
         return null;
@@ -1190,6 +1195,8 @@ export function step(world) {
       }
       return {
         ...me, k: on.k, route: on.route, s: 0, leaveAt, parkSlot,
+        /* The next stop a bus makes on the way through (buses.js). */
+        ...(me.kind === "bus" ? { busStop: nextStop(world.course, me, world.course.at[on.k].layout.paths[on.route], 0, Math.max(15, stoppingRoom(me.v))), dwellFrom: null } : {}),
         ...(posted == null ? {} : { v0: wantedFor(me, posted, me.caution) }),
         /* How many intersections they have been through, which is what a
            plan is indexed by and what a section of a drive is counted
@@ -1511,7 +1518,10 @@ function arriving(world, n) {
      without trucks draws every other number exactly as it did. Only as
      traffic arriving from outside: a truck does not fit a curb slot. Drawn
      before the route, so the route is one it can make (`fits`). */
-  const kind = (world.trucks ?? 0) > 0 && rng(world.seed * 7717 + n + 5)() < world.trucks ? "truck" : "car";
+  let kind = (world.trucks ?? 0) > 0 && rng(world.seed * 7717 + n + 5)() < world.trucks ? "truck" : "car";
+  /* A BUS, on a map with stops (buses.js), from a stream of its own: a map
+     without stops draws exactly what it did. */
+  if (kind === "car" && (world.buses ?? 0) > 0 && stopsOf(world.course).size && rng(world.seed * 4441 + n + 9)() < world.buses) kind = "bus";
   /* A truck enters in a lane with a turn it can make, where the edge it
      arrives at has one: a curb lane whose only way on is a right too tight
      for it left it to make that turn over the curb (verify-trucks 7). */
@@ -1554,7 +1564,9 @@ function arriving(world, n) {
        ordering stays consistent" -- and a rate tuned for one road is not
        a rate that saturates four approaches. */
     arriveIn: world.every * (0.6 + r() * 0.8),
-    tripLen: tripLenFor(world, n),
+    /* A bus runs its route; it does not end a trip at a parking slot. */
+    tripLen: kind === "bus" ? null : tripLenFor(world, n),
+    ...(kind === "bus" ? { busStop: nextStop(world.course, { kind }, world.course.at[where.k].layout.paths[route], 0, 15) } : {}),
   };
 }
 
@@ -1777,7 +1789,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks = TRUCK_SHARE, walkers = false } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks = TRUCK_SHARE, buses = BUS_SHARE, walkers = false } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
@@ -1803,7 +1815,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   if (parkingOf(course).slots.length) w.parked = initialParked(course, seed);

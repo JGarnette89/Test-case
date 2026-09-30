@@ -132,7 +132,7 @@ function seg(ctx, P, a, b) {
    smooth at the display's rate rather than at the sim's.
    ===================================================================== */
 export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
-  const { roads, terrain, cam, k, tilt, props = [], actors = [], junctions = [], sidewalks = [] } = scene;
+  const { roads, terrain, cam, k, tilt, props = [], actors = [], junctions = [], sidewalks = [], stops = [] } = scene;
   /* THE GROUND IS THE SCENE'S, not stage 0's hill: a map supplies its
      own (flat, for now), and a deck is wherever a road stands more than
      a metre above whatever ground the scene has. */
@@ -512,6 +512,15 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
        from the vehicle's own length and width. Two boxes side by side in
        plan, so they are painted far one first, by the same depth key the
        world is sorted by. */
+    /* A BUS (sim/buses.js): one long box in its livery, a dark band of
+       windows along it, from the vehicle's own dimensions. */
+    if (a.kind === "bus") {
+      const L = a.length ?? 12.2, W = a.width ?? 2.6, H = a.height ?? 3.2;
+      const body = boxCorners(at, deg, 0, { l: L, w: W, h: H });
+      const glass = boxCorners(at, deg, 0, { l: L - 0.6, w: W + 0.04, h: 0.9 }, H - 1.4);
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, a.crashed ? colour : C.bus); if (!flat) paintBox(ctx, view, glass, "#2a3340"); } });
+      continue;
+    }
     if (a.kind === "truck") {
       const L = a.length ?? 9, W = a.width ?? 2.55, H = a.height ?? 3.4;
       const cabL = 2.2, boxL = L - cabL - 0.2;
@@ -548,6 +557,17 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const cabin = boxCorners(at, deg, grade, CABIN, BODY.h);
       items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: car.n, at }, paint: () => { paintBox(ctx, view, body, colour); paintBox(ctx, view, cabin, colour); } });
     }
+  }
+
+  /* BUS STOPS (map/load.js `stops`): a post with a flag at the curb,
+     where a bus pulls up. Too small to read far out. */
+  if (!far) for (const st of stops) {
+    const z = groundAt(st.at.x, st.at.y);
+    if (!onScreen(P(st.at.x, st.at.y, z))) continue;
+    const at = { x: st.at.x, y: st.at.y, z };
+    const post = boxCorners(at, st.heading, 0, { l: 0.12, w: 0.12, h: 2.6 });
+    const flag = boxCorners(at, st.heading, 0, { l: 0.08, w: 0.6, h: 0.45 }, 2.1);
+    items.push({ layer: 1, key: depthOf(at.x, at.y, z) + 0.01, tag: audit && { kind: "stop", at }, paint: () => { paintBox(ctx, view, post, "#3b3f47"); paintBox(ctx, view, flag, C.bus); } });
   }
 
   /* Stand-in buildings, for the budget ramp: boxes on the ground, keyed
