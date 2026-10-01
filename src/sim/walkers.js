@@ -235,15 +235,21 @@ export function stepWalkers(world) {
       else out.push(p);
       continue;
     }
-    if (p.state === "boarding" || p.state === "alighting") {
+    if (p.state === "boarding" || p.state === "alighting" || p.state === "returning") {
       const len = Math.max(0.3, Math.hypot(p.to.x - p.from.x, p.to.y - p.from.y)), u = p.u + (p.v * DT) / len;
       if (p.state === "boarding") {
-        /* The bus left without them (MAX_DWELL): back to the queue. */
-        if (!busAt(p.stop)) { out.push({ ...p, state: "waiting", since: t, blend: here(p) }); continue; }
+        /* The bus left without them: they walk back to their place in the
+           queue, at their own pace (eased in 0.6 s it was 10 m/s). */
+        if (!busAt(p.stop)) {
+          const at = walkerPose(world, p), spot = walkerPose(world, { ...p, state: "waiting", blend: undefined });
+          out.push({ ...p, state: "returning", from: { x: at.x, y: at.y, z: at.z }, to: { x: spot.x, y: spot.y, z: spot.z }, u: 0, blend: undefined });
+          continue;
+        }
         if (u >= 1) continue;   // aboard
         out.push({ ...p, u });
         continue;
       }
+      if (p.state === "returning") { out.push(u >= 1 ? { ...p, state: "waiting", since: t, u: undefined } : { ...p, u }); continue; }
       if (u >= 1) { out.push({ ...p, state: "walking", u: undefined, blend: here(p) }); continue; }
       out.push({ ...p, u });
       continue;
@@ -269,10 +275,13 @@ export function stepWalkers(world) {
     /* Passing a stop: now and then, waiting for the bus there. */
     const st = stopsOn.get(p.w)?.find((q) => (q.s - p.s) * p.dir >= 0 && (q.s - s) * p.dir < 0);
     if (st && !p.stop && r() < WAIT_SHARE) {
-      const queued = walkers.filter((q) => q.stop === st.id && q.state === "waiting").length + out.filter((q) => q.stop === st.id && q.state === "waiting").length;
+      const queueing = (q) => q.stop === st.id && (q.state === "waiting" || q.state === "returning");
+      const queued = walkers.filter(queueing).length + out.filter(queueing).length;
       if (queued < WAIT_MAX) {
         const w = net.walks[p.w], at = Math.max(0, Math.min(w.length, st.s - QUEUE * (queued + 1)));
-        out.push({ ...p, s: at, left, state: "waiting", stop: st.id, since: t, blend: here(p) });
+        /* They walk to their place in the queue (eased, it was a 6 m slide). */
+        const from = walkerPose(world, p), spot = walkerPose(world, { ...p, s: at, state: "waiting", blend: undefined });
+        out.push({ ...p, s: at, left, state: "returning", stop: st.id, since: t, from: { x: from.x, y: from.y, z: from.z }, to: { x: spot.x, y: spot.y, z: spot.z }, u: 0, blend: undefined });
         continue;
       }
     }
@@ -326,7 +335,7 @@ export function stepWalkers(world) {
    or on a front walk between a door and the sidewalk. */
 export function walkerPose(world, p) {
   const net = walkNetOf(world.course?.map);
-  if (p.state === "boarding" || p.state === "alighting") {
+  if (p.state === "boarding" || p.state === "alighting" || p.state === "returning") {
     const u = Math.max(0, Math.min(1, p.u));
     return { x: p.from.x + (p.to.x - p.from.x) * u, y: p.from.y + (p.to.y - p.from.y) * u, z: p.from.z ?? 0, heading: (Math.atan2(p.to.y - p.from.y, p.to.x - p.from.x) * 180) / Math.PI };
   }

@@ -3006,6 +3006,55 @@ every other check in the suite.
 
 ---
 
+## 10.7 A WAIT IS A PROMISE THAT SOMETHING ELSE WILL MOVE
+
+Four times the traffic has stood still for good, and three of them were
+the same shape:
+
+- **The through road (rebuild, stage 1).** "A left turn yields to the
+  oncoming" as an unconditional hold: a car stopped two hundred metres
+  back was oncoming traffic, and both major approaches stood for good.
+- **The five-way (29 September).** On a shared exit, a car still WAITING
+  at its line read as in front of a car already in the box, so each held
+  the other.
+- **The crosswalk (29 September).** A car stopped on the paint for a
+  person was read by her as about to move, and each waited for the other.
+
+**The common cause: a party AT REST AND WAITING was read as a party
+CLAIMING.** Each wait was a test on the other party's state -- in front
+of me, oncoming, on the paint -- that stayed true while that party was
+itself standing still waiting on me, so neither could ever change it.
+The fix every time was the rule this project already had: *a stopped
+vehicle claims nothing* (CLAUDE.md, rules), applied at the place the wait
+was decided.
+
+The fourth -- **a bus that waited 1062 s to pull out of its bay (1
+October)** -- looked the same and was NOT: the cars it waited for were
+queued at a side street's stop sign, nowhere near it, read as "beside"
+it through a lane position clamped to the start of a road they had not
+reached (buses.js `laneAt`). That is the OTHER recurring bug, two
+implementations of one quantity (CLAUDE.md item 2). It is recorded here
+because it presented as a deadlock and the first hypothesis was the
+wrong one; the trace said otherwise.
+
+**THE RULE, so there is no fifth:**
+
+1. **Every wait names what must move for it to end, and that thing must
+   be able to move without the waiter moving first.** If what I wait for
+   is at rest, ask whether it is waiting on me; if it can be, the rule
+   deciding between us has to break the tie (a stopped party claims
+   nothing; the tie-break is TOTAL -- 5.13), never leave it to both.
+2. **Every wait has a check with a bound on it.** All four were caught by
+   one -- verify-peds' 60 s at the curb, the five-way's car count that
+   would not fall, verify-buses' "no bus waits for ever". A new kind of
+   waiting ships with its bound in the same increment, set from what the
+   wait is FOR (a gap of a few seconds, a light's cycle), never from what
+   the run happened to produce.
+3. **When something stands still for good, trace both parties' decisions
+   before naming the cause.** A deadlock and a false position look the
+   same from outside; one tick of `whatStops` for each party tells them
+   apart.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

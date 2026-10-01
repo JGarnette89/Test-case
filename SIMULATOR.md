@@ -3280,6 +3280,43 @@ from outside the map stay on it until their walk is done and they reach
 the map's edge or a door, so a map with no buildings fills up -- the
 Buses map went from 12 people on foot to 55 in 15 minutes.
 
+**Slice C BUILT (1 October): bays, and giving way to a bus pulling out.**
+Open `#/tests`, **Buses**, *the eastbound bay*. A stop of kind `bay` sets
+the curb back (`BAY` in map/format.js: 3.2 m, the bus's length behind the
+post, 15 m tapers) -- drawn, so the sidewalk steps back with it, and one
+set of numbers for the surface and for the line the bus pulls along. The
+bus eases into it over the taper before its stop, by where it is, never on
+a clock; fully in, it is out of the lane and the traffic passes it. When
+its people are done it signals, and pulls out only when nobody is beside it
+and whoever is coming behind in the lane it rejoins is stopped or at least
+`PULL_GAP` (4 s, flagged) back -- the maintainer's "will observe behind
+without simply assuming others will follow the rule". A driver behind it
+gives way only if they READ the rule -- `yield-to-bus` in core/driver.js,
+difficulty 0.30, his "medium-high" placed between no-right-on-red and
+right-on-red (flagged for him) -- and can stop comfortably; one who does
+not drives on past. Measured over three 20-minute runs (`verify-buses`
+section 6).
+
+**Three bugs it found, none of them nudged:**
+- **A bus waited 1062 s to pull out.** Not two parties deferring to each
+  other: `laneSpanOnGraph` gives both ends of a path, the one not reached
+  yet clamped to its start, so every car still on its way to the road the
+  bus was rejoining read as standing beside it. `laneAt` (buses.js) is the
+  lane a vehicle is actually on; the longest wait is now 6.6 s.
+- **A bus that had been let out vanished from the lane** until its pull fell
+  below the line, so the car that had stopped for it pulled forward and met
+  it. A bus pulling out is in the lane from the moment it moves.
+- **A bold driver turned left across a bus with 0.93 s to spare, judging
+  1.22.** `hasGap` measured how soon the oncoming vehicle reaches the
+  conflict from its CENTRE, where the conflict table puts a car's -- the one
+  place the other vehicle's length was not counted (`hit` already counted
+  it). A bus's front is 3.85 m further ahead than a car's, a truck's 2.25.
+  Fixed in `hasGap` for every vehicle; a world of cars is unchanged.
+
+Also: two buses bound for one bay -- the second sees the first in it and
+stops behind; and a person deciding to wait walks to their place in the
+queue rather than sliding there.
+
 #### Parking lots: what it would take (scoped 29 September, not started)
 
 **What exists.** Everything that moves runs on the lane graph: a car is

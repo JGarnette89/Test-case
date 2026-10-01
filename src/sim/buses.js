@@ -25,6 +25,8 @@
    Pure. No React, no DOM.
    ===================================================================== */
 import { lenOf } from "./traffic.js";
+import { BAY } from "../map/format.js";
+import { laneSpanOnGraph } from "./graph.js";
 
 /* A BUS NOW AND THEN, on a map with stops -- a share of the traffic
    arriving from outside, like a truck (crossing.js TRUCK_SHARE). A
@@ -104,7 +106,70 @@ export function nextStop(course, me, path, fromS, room) {
     if (at >= path.clearAt + half && at <= path.length) found.push({ id: st.id, kind: st.kind, at });
   }
   const ahead = found.filter((q) => q.id !== me.served && q.at >= fromS + room).sort((a, b) => a.at - b.at);
-  return ahead[0] ?? null;
+  const next = ahead[0] ?? null;
+  /* INTO A BAY (slice C): out of the lane over the taper before it comes
+     to rest, positionally -- never on a clock -- so the line it takes is
+     the bay the loader drew. Only with room to pull out again on this path;
+     otherwise the bus stands in the lane beside it, as at a curb stop. */
+  if (next?.kind === "bay") {
+    const limit = next.at <= path.stopAt ? path.stopAt - 10 : path.length - 1;
+    if (next.at + BAY.taper <= limit) return { ...next, bay: { in0: next.at - 1 - BAY.taper, in1: next.at - 1, w: BAY.w } };
+    return { ...next, kind: "curb" };
+  }
+  return next;
+}
+
+const ease = (x) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
+/* How far a bus has pulled toward the curb, in metres off its lane's line:
+   in over the taper before its stop, out over the taper after it once it
+   has been let go (`out0`). */
+export function pullOf(a) {
+  const b = a.bay ?? a.busStop?.bay;
+  if (!b) return 0;
+  if (b.out0 != null) return b.w * (1 - ease((a.s - b.out0) / BAY.taper));
+  return b.w * ease((a.s - b.in0) / (b.in1 - b.in0));
+}
+/* Out of the lane: far enough into the bay that a car passes clear of it
+   -- and not yet let go. A bus pulling OUT is claiming the lane from the
+   moment it moves: read as out of it until its pull fell below the line, a
+   driver who had stopped to let it out lost sight of it, pulled forward,
+   and met it coming (verify-buses, 30 September). */
+export const inBay = (a) => a.kind === "bus" && !(a.bay?.out0 != null) && pullOf(a) >= BAY.w - 0.3;
+
+/* MAY A BUS PULL OUT OF ITS BAY? The bus driver knows the rule and still
+   looks (the maintainer, 30 September: "will observe behind without simply
+   assuming others will follow the rule"): nobody beside it, and whoever is
+   coming up behind in the lane it rejoins is either stopped -- letting it
+   out -- or PULL_GAP seconds back. A flagged tunable. */
+export const PULL_GAP = 4;
+/* THE LANE A VEHICLE IS ACTUALLY ON, and how far along it: the lane in
+   before its line, the lane out once through the box, none in the box.
+   `laneSpanOnGraph` gives both ends of a path, the one not reached yet
+   clamped to its start -- read as a position, every car on its way to the
+   road a bus was pulling back onto sat "beside" it, and the bus waited for
+   ever (verify-buses, 30 September). */
+export function laneAt(course, a) {
+  const p = course.at[a.k ?? 0]?.layout.paths[a.route];
+  if (!p) return [];
+  const [inn, out] = laneSpanOnGraph(course, a.k ?? 0, a.route, a.s);
+  return a.s <= p.stopAt ? [inn] : a.s >= p.clearAt ? [out] : [];
+}
+export function mayPullOut(world, bus) {
+  const mine = laneAt(world.course, bus);
+  const half = lenOf(bus) / 2;
+  for (const a of world.actors) {
+    if (a.id === bus.id || a.parked || inBay(a)) continue;
+    const theirs = laneAt(world.course, a);
+    for (const my of mine) {
+      const on = theirs.find((q) => q.lane === my.lane);
+      if (!on) continue;
+      const gap = my.along - half - (on.along + lenOf(a) / 2);
+      if (on.along - lenOf(a) / 2 > my.along + half) continue;   // ahead of it
+      if (gap < 0) return false;                                  // beside it
+      if (gap < 80 && (a.v ?? 0) >= 0.5 && gap / (a.v ?? 0.1) < PULL_GAP) return false;
+    }
+  }
+  return true;
 }
 
 /* When the i-th person getting off steps down, counted from the doors
@@ -116,7 +181,7 @@ export const alightAt = (dwellFrom, i) => dwellFrom + 1 + i * ALIGHT_EACH;
    off, the people waiting (`waiting`, counted from the sidewalk as it was
    last tick) get on, and then it is served and the bus looks for the
    next. Returns the bus as it now is. */
-export function atStop(me, t, course, path, waiting = 0) {
+export function atStop(me, t, course, path, waiting = 0, mayGo = () => true) {
   if (!me.busStop) return me;
   /* Only AT the stop -- a bus held in a queue short of it has not arrived,
      and one that moves has shut its doors (verify-buses: a bus that began
@@ -137,7 +202,13 @@ export function atStop(me, t, course, path, waiting = 0) {
      or when it has stood long enough. */
   const boarded = Math.max(me.boarded ?? 0, waiting);
   if (since < MAX_DWELL && (since < MIN_DWELL || !offDone || waiting > 0)) return boarded === (me.boarded ?? 0) ? me : { ...me, boarded };
+  /* Out of a bay only when the road behind lets it (`mayPullOut`),
+     signalling meanwhile -- which is what a driver who knows the rule
+     gives way to. */
+  const bay = me.busStop.bay;
+  if (bay && !mayGo()) return me.wantsOut ? (boarded === (me.boarded ?? 0) ? me : { ...me, boarded }) : { ...me, wantsOut: t, boarded };
   const served = me.busStop.id;
-  const on = { ...me, served, dwellFrom: null, busStop: null, riders: Math.max(0, (me.riders ?? 0) - (me.alighting ?? 0)) + boarded, alighting: 0, boarded: 0 };
+  const on = { ...me, served, dwellFrom: null, busStop: null, wantsOut: null, riders: Math.max(0, (me.riders ?? 0) - (me.alighting ?? 0)) + boarded, alighting: 0, boarded: 0,
+    ...(bay ? { bay: { ...bay, out0: me.s } } : {}) };
   return { ...on, busStop: nextStop(course, on, path, me.s, 20) };
 }

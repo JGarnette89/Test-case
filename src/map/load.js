@@ -18,7 +18,7 @@
 
    Pure. No React, no canvas, no colour.
    ===================================================================== */
-import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS, ZONES, CHARACTERS, PARK_W, SIGN_KINDS, SIGN_BACK_MAX, STOP_KINDS } from "./format.js";
+import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS, ZONES, CHARACTERS, PARK_W, SIGN_KINDS, SIGN_BACK_MAX, STOP_KINDS, BAY, bayShape } from "./format.js";
 import { ribbonOf } from "../iso/road.js";
 import { hasBays, baySurfaceOf, baysAt } from "./bays.js";
 
@@ -506,7 +506,29 @@ export function loadMap(map) {
     if (!right && r.oneWay) { warn("stop-wrong-side", `stop ${id}: on the left of one-way road ${r.id}, where no bus stops; dropped`, { x, y }); return; }
     const s = r.at[best.q.i] + best.q.f * (r.at[best.q.i + 1] - r.at[best.q.i]);
     if (s < 15 || s > r.length - 15) { warn("stop-near-intersection", `stop ${id}: within 15 m of the end of road ${r.id}; dropped`, { x, y }); return; }
-    stops.push({ id, kind, road: r.id, dir: right ? "fwd" : "rev", s, at: { x, y }, heading: ((h * 180) / Math.PI) + (right ? 0 : 180) });
+    /* A BAY needs its length and tapers clear of the road's ends; where
+       they are not, it is a curb stop, said so. */
+    let k = kind;
+    const reach = BAY.back + BAY.taper, past = BAY.ahead + BAY.taper;
+    if (k === "bay" && ((right ? s - reach : s - past) < 10 || (right ? s + past : s + reach) > r.length - 10)) {
+      warn("bay-too-near", `stop ${id}: its bay would reach within 10 m of the end of road ${r.id}; a curb stop instead`, { x, y });
+      k = "curb";
+    }
+    /* ...and it is drawn: the curb on its side set back by the bay's shape,
+       so the sidewalk, which follows the drawn edge, steps back with it. */
+    if (k === "bay") {
+      const edge = right ? r.right : r.left;
+      r.right = r.right.slice(); r.left = r.left.slice();
+      const out = right ? r.right : r.left;
+      r.pts.forEach((c, i) => {
+        const d = right ? r.at[i] - s : s - r.at[i];
+        const f = bayShape(d);
+        if (f <= 0) return;
+        const e = edge[i], ux = e.x - c.x, uy = e.y - c.y, ul = Math.hypot(ux, uy) || 1;
+        out[i] = { ...e, x: e.x + (ux / ul) * BAY.w * f, y: e.y + (uy / ul) * BAY.w * f };
+      });
+    }
+    stops.push({ id, kind: k, road: r.id, dir: right ? "fwd" : "rev", s, at: { x, y }, heading: ((h * 180) / Math.PI) + (right ? 0 : 180) });
   });
 
   /* The chunk index: every road sample knows its chunk. */

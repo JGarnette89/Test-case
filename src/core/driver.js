@@ -73,7 +73,13 @@ export const AXES = [...SKILLS, "compliance"];
                      first -- misread, they roll it (the maintainer's own
                      example of what a new driver may not know);
      keep-right      no sign on these roads: out of the curb lane only to
-                     pass or turn -- misread, they never go back. */
+                     pass or turn -- misread, they never go back;
+     yield-to-bus    no sign: give way to a bus signalling to pull out of a
+                     bay -- the law, and not common knowledge (the
+                     maintainer, 30 September: "maybe can be a medium-high
+                     knowledge check") -- misread, they drive on past it.
+                     LAST, because the draws are taken in this order: a kind
+                     added at the end moves no driver's reading of another. */
 export const DIFFICULTY = {
   "stop": 0.02,
   "no-left-turn": 0.05,
@@ -81,6 +87,7 @@ export const DIFFICULTY = {
   "no-right-on-red": 0.25,
   "keep-right": 0.30,
   "right-on-red": 0.35,
+  "yield-to-bus": 0.30,
 };
 /* HOW WELL A KIND OF SIGN HAS STUCK WITH THIS DRIVER: one draw per driver
    per KIND, never per encounter -- knowledge is consistent (a driver who

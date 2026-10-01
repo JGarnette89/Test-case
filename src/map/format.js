@@ -57,6 +57,21 @@ export const SIGN_KINDS = ["stop", "yield", "no-right-on-red", "no-left-turn"];
    map lists them in `stops: [{ id, at: { x, y }, kind }]` -- by PLACE, so a
    stop survives the road being split at an intersection or redrawn. */
 export const STOP_KINDS = ["curb", "bay"];
+/* A BUS BAY: the curb set back BAY.w for the length of a bus behind the
+   post (BAY.back) and a little past it (BAY.ahead), tapering in and out
+   over BAY.taper -- the surface the loader draws and the line a bus pulls
+   along (sim/buses.js), one set of numbers for both. 3.2 m takes a 2.6 m
+   bus clear of its lane; the taper is about what a bus needs to leave a
+   lane at walking pace. Flagged. */
+export const BAY = { w: 3.2, back: 16, ahead: 2, taper: 15 };
+/* How much of the bay's width is out at `d` metres along the direction of
+   travel from the post: 0 before and after, 1 alongside, eased between. */
+export function bayShape(d) {
+  const ease = (x) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
+  if (d < -BAY.back) return ease((d + BAY.back + BAY.taper) / BAY.taper);
+  if (d > BAY.ahead) return ease(1 - (d - BAY.ahead) / BAY.taper);
+  return 1;
+}
 export const SIGN_BACK_MAX = 40;   // metres: further back than this a sign stops reading as the intersection's
 export const ZONES = ["residential", "commercial", "industrial", "park", "water", "highway"];
 /* WHO DRIVES HERE: a district's character (sim/towns.js says what each

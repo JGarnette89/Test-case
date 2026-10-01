@@ -45,11 +45,12 @@ import { cornerAccel, speedBy, fits } from "./corner.js";
 export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
 import { seedWalkers, stepWalkers } from "./walkers.js";
-import { BUS_SHARE, stopsOf, nextStop, atStop, ridersFor } from "./buses.js";
+import { BUS_SHARE, stopsOf, nextStop, atStop, ridersFor, pullOf, inBay, mayPullOut, laneAt } from "./buses.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
 import { reads } from "../core/driver.js";
+import { BAY } from "../map/format.js";
 import { lookingAway } from "./attention.js";
 import { parkingOf, initialParked } from "./parking.js";
 import { tallerThanEye, boxOf, eyeOf, hiddenFrom, blocked, segHitsBox } from "./sight.js";
@@ -394,7 +395,13 @@ function hasGap(me, them, layout, caution) {
      The floor keeps a car stopped in a queue from reading as infinitely
      far away in time -- which it very nearly is, correctly: if the
      through road is stopped, you go. */
-  const reach = (meet.a - them.s) / Math.max(them.v, 0.5);
+  /* From THEIR FRONT, which on a long vehicle is further ahead of its
+     centre than a car's: the region is where a car's centre meets it.
+     Measured from a bus's centre, a bold driver turned left with 1.22 s to
+     spare that was really 0.93 and met it (verify-buses, 1 October) --
+     the one place the other vehicle's length was not counted (see `hit`
+     below, which counts it). */
+  const reach = (meet.a - (lenOf(them) - CAR.length) / 2 - them.s) / Math.max(them.v, 0.5);
   return reach >= gapNeeded(me, meet.clearOf - me.s, caution);
 }
 
@@ -683,6 +690,21 @@ export function openTo(me, world, caution) {
    line they are not allowed past yet. Both come back in the shape
    `decide` already understands, so nothing downstream knows the
    difference between a queue and a right-of-way. */
+/* CAN THIS DRIVER STOP COMFORTABLY SHORT OF THEM, in the lane they share:
+   giving way to a bus pulling out is for a driver who can, not one who
+   would have to stand on the brakes (the same test a pedestrian's
+   `cannotStop` asks). */
+function canStopFor(world, me, them) {
+  const mine = laneAt(world.course, me), theirs = laneAt(world.course, them);
+  for (const my of mine) {
+    const on = theirs.find((q) => q.lane === my.lane);
+    if (!on) continue;
+    const d = clearBetween(on.along - my.along, me, them);
+    if (d >= 0) return d >= ((me.v ?? 0) ** 2) / (2 * (me.brake ?? 2.7));
+  }
+  return false;
+}
+
 export function whatStops(me, world) {
   const layout = layoutOf(world, me);
   const mine = layout.paths[me.route];
@@ -776,6 +798,12 @@ export function whatStops(me, world) {
   }
   for (const them of others) {
     if (them.id === me.id) continue;
+    /* A BUS IN ITS BAY is out of every lane (buses.js) -- except, while it
+       signals to pull out, to a driver who knows to give way to it and can
+       stop for it comfortably: to them it is the car in front. */
+    /* ...and never to another bus bound for the same stop, which has to
+       stop behind it (two buses met in one bay). */
+    if (inBay(them) && me.busStop?.id !== them.busStop?.id && !(them.wantsOut != null && !me.player && reads(me, "yield-to-bus") && canStopFor(world, me, them))) continue;
     const theirs = pathOf(world, them);
 
     /* THE CAR IN FRONT ON THE ROAD I AM ON, WHEREVER THEY ARE FILED.
@@ -1154,7 +1182,9 @@ export function step(world) {
          and until then it is where it is, not crossing any seam. */
       if (me.crash) return world.t - me.crash.t >= CRASH_CLEAR ? null : me;
       /* A bus at its stop: standing with its doors open, then on (buses.js). */
-      if (me.busStop && !me.player) me = atStop(me, world.t, world.course, pathOf(world, me), (world.walkers ?? []).filter((q) => q.stop === me.busStop.id && (q.state === "waiting" || q.state === "boarding")).length);
+      if (me.busStop && !me.player) me = atStop(me, world.t, world.course, pathOf(world, me), (world.walkers ?? []).filter((q) => q.stop === me.busStop.id && (q.state === "waiting" || q.state === "boarding" || q.state === "returning")).length, () => mayPullOut(world, me));
+      /* Out of the bay and back in the lane: the pull is done with. */
+      if (me.bay && me.s > me.bay.out0 + BAY.taper) me = { ...me, bay: null };
       if (me.leaveAt != null && !me.player && !me.candidate && me.v < 0.3 && me.s >= me.leaveAt - CAR.length - 3) {
         if (me.parkSlot) parkedNow.push(me);
         return null;
@@ -1196,7 +1226,7 @@ export function step(world) {
       return {
         ...me, k: on.k, route: on.route, s: 0, leaveAt, parkSlot,
         /* The next stop a bus makes on the way through (buses.js). */
-        ...(me.kind === "bus" ? { busStop: nextStop(world.course, me, world.course.at[on.k].layout.paths[on.route], 0, Math.max(15, stoppingRoom(me.v))), dwellFrom: null } : {}),
+        ...(me.kind === "bus" ? { busStop: nextStop(world.course, me, world.course.at[on.k].layout.paths[on.route], 0, Math.max(15, stoppingRoom(me.v))), dwellFrom: null, wantsOut: null, bay: null } : {}),
         ...(posted == null ? {} : { v0: wantedFor(me, posted, me.caution) }),
         /* How many intersections they have been through, which is what a
            plan is indexed by and what a section of a drive is counted
@@ -1993,7 +2023,9 @@ export function poseOf(world, actor) {
      with the move, so the car points across the lane line rather than
      sliding sideways. */
   const lat = actor.lc ? lateralOf(actor.lc, world.t) : 0;
-  const off = strayOf(world, actor) + lat;
+  /* A bus pulling into or out of its bay (buses.js), toward the curb. */
+  const pull = actor.kind === "bus" ? pullOf(actor) : 0;
+  const off = strayOf(world, actor) + lat + pull;
   /* THE VEHICLE'S OWN SIZE travels with its pose, so the footprint that is
      checked for contact and the box that is drawn are this vehicle's. */
   const { length, width, height } = vehicleOf(actor);

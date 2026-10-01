@@ -256,7 +256,7 @@ export function testPeds() {
    sections here. */
 export function testBuses() {
   const X = { x: 800, y: 400 };
-  const m = emptyMap("test-buses", "Buses -- curb stops on a two-lane collector");
+  const m = emptyMap("test-buses", "Buses -- curb stops and bays on a two-lane collector");
   m.bounds = { x: -50, y: -50, w: 1700, h: 900 };
   m.roads.push(
     road({ id: "main-w", lanes: 1, points: stroke({ x: 0, y: 400 }, X) }),
@@ -269,9 +269,13 @@ export function testBuses() {
   m.stops = [
     { id: "east-curb", at: { x: 420, y: 405 }, kind: "curb" },
     { id: "west-curb", at: { x: 1180, y: 395 }, kind: "curb" },
+    /* Bays: the post stands back beyond the bay (map/format.js BAY). */
+    { id: "east-bay", at: { x: 640, y: 408 }, kind: "bay" },
+    { id: "west-bay", at: { x: 980, y: 392 }, kind: "bay" },
   ];
   m.sections = [
     { id: "curb-east", name: "the eastbound curb stop", look: { x: 420, y: 400 }, start: { road: "main-w", end: "end" }, judge: "A bus pulls up with its front door at the post and stands in the lane: people step off one at a time and walk away, the people waiting at the post walk to the door and get on, and it pulls away when nobody is left -- a longer stand when more are getting on and off. The traffic behind queues." },
+    { id: "bay-east", name: "the eastbound bay", look: { x: 640, y: 400 }, start: { road: "main-w", end: "end" }, judge: "A bus pulls out of the lane into the bay, and the traffic goes past it. When it is done it signals to pull out: a driver who knows to give way to it stops and lets it out, one who does not drives on past -- the bus never pulls out on the rule alone, it waits for the road behind to let it." },
     { id: "curb-west", name: "the westbound curb stop", look: { x: 1180, y: 400 }, start: { road: "main-e", end: "start" }, judge: "The same the other way." },
   ];
   return m;
@@ -283,6 +287,6 @@ export const TEST_MAPS = [
   { id: "city", name: "Stand-in city", blurb: "Two neighbourhoods with their own drivers, parked cars, buildings, an arterial loop and a collector on signals.", build: testCityReady },
   { id: "test-peds", name: "Pedestrians", blurb: "Crosswalks at a four-way stop and at an uncontrolled crossroads, and the people who walk them.", build: testPeds },
   { id: "test-signs", name: "Signs", blurb: "A yield crossroads and an uncontrolled crossroads on one through road.", build: testSigns },
-  { id: "test-buses", name: "Buses", blurb: "Curb stops on a two-lane collector: a bus stops, people get off and on, and the traffic behind it waits.", build: testBuses },
+  { id: "test-buses", name: "Buses", blurb: "Curb stops and bays on a two-lane collector: a bus stops, people get off and on, the traffic waits behind it or passes the bay, and gives way to a bus pulling out -- if it knows to.", build: testBuses },
   { id: "test-1", name: "Test map 1", blurb: "The loop, the T, the crossroads, the five-way, the overpass and the big arterial.", build: testMap1 },
 ];
