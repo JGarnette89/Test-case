@@ -224,6 +224,7 @@ Eight things to know before your first change:
    | `src/sim/reading.js`, signs in `src/map/load.js` or `src/map/format.js` | `verify-signs` FIRST (identical traffic with signs and shorthand), then `verify-observation`, the `src/sim/` five and `verify-editor` | ~5m |
    | `src/sim/attention.js`, `seenBy` in `src/sim/crossing.js` | `verify-observation` FIRST, then `verify-crashes`, `verify-signs` and the `src/sim/` five (course section 13 is the candidate's perception) | ~6m |
    | `src/sim/buses.js`, `src/sim/passing.js`, `stops` in `src/map/load.js`/`format.js`, `testBuses` | `verify-buses` FIRST, then the `VEHICLES` row (a bus is one), the `src/map/*` row and the `TEST_MAPS` row | ~15m |
+   | `src/map/brief.js`, Make a map in `src/apps/TestMaps.jsx` | `verify-briefs` FIRST, then `verify-screens` (renders `#/tests`); brief.js builds on `generate.js`, `load.js` and `editor/model.js`, so a change to any of those runs it too | ~3m |
    | `src/map/sidewalks.js`, `src/sim/walkers.js` | `verify-walkers` FIRST, then `verify-paint` (sidewalks are a surface people stand on) and `verify-screens`; the walker step in `crossing.js` is the `src/sim/*` row, and the crossers drawn from walkers in `peds.js` are the crosswalks row | ~2m |
    | crosswalks (`crosswalk` in `src/map/format.js`/`load.js`, `crossings` in `graph.js` `junctionsOf`), `src/sim/peds.js` | `verify-peds` FIRST, then the `src/sim/graph.js` row and `verify-screens` | ~5m |
    | `src/sim/exam.js`, `src/apps/ExamRide.jsx` | `verify-exam` FIRST, then `verify-screens` (renders `#/exam`) and `verify-core` (a live screen) | ~10s |
@@ -1704,6 +1705,7 @@ src/map/format.js        the map format: roads as strokes in metres, KINDS with 
 src/map/bays.js          turn bays: a lane that begins before an intersection, its taper derived from the lane change's own numbers
 src/map/load.js          loading a map: normalise, warn, never throw; the surface and lane lines; the graph
 src/map/samples.js       hand-written maps as data -- stage 0, and the test map #/map drives
+src/map/brief.js         a map built to test something: a brief (size, arterials, signals, every type, downtown, buses, drivers) in, a map out with a section per thing asked for and a report measured from the loaded map
 src/map/generate.js      STAGE 5: detail generated inside the maintainer's shapes -- local streets filling a district, joined to the roads around it
 src/map/edges.js         where a car starts on a map with no hardcoded start: the first dangling end
 src/editor/model.js      the editor's data model: pure functions over a map, nothing else -- the draft IS the format
@@ -2097,10 +2099,11 @@ node tools/verify-trucks.mjs       large vehicles: a truck is a row in the vehic
 node tools/verify-crashes.mjs      when two cars collide: contact is a crash that stops both where they hit, is logged with where, stands and is cleared; no two cars ever overlap unless it is a recorded crash, in the traffic where crashes happen; the car the player hits crashes too; and the default traffic still never crashes
 node tools/verify-walkers.mjs      people walking along: sidewalks both sides of every walked road, on no road's surface, meeting at every corner; walkers never on a road, the number on foot held all day, nobody appearing or vanishing but at a door or the map's edge, and with nobody crossing the traffic tick for tick the traffic it was; and the people who cross are people who were walking -- at mid-block gaps and at crosswalks -- who walk on along the far sidewalk, nobody on foot jumping, nobody struck
 node tools/verify-buses.mjs        buses and stops: a stop is a place beside a road serving the direction whose curb it is at, refused by name where it cannot be; every bus that passes a stop in its lane stands at it with its door at the sign for its dwell and goes on, nothing else stops there, the traffic behind queues and touches nothing, and a map without stops has no buses and is unchanged; and passengers -- people wait at a stop, get on at the door of a bus standing there once its people are off, get off at that door, and a bus stands as long as that takes, never shutting its doors on somebody still waiting short of its longest stand; and bays -- the surface steps back at a bay, a bus in it is out of the lane and passed, and when it signals to pull out everybody who knows to give way and could stop lets it out while those who do not drive past, over three seeds, and no bus waits for ever; and going round a bus at a curb stop -- on a broken centre line a driver stopped behind it passes when the oncoming gap is one they take, bold drivers too, cutting the time stood behind the bus and touching nothing, and never on a solid line or an unmarked road
+node tools/verify-briefs.mjs       maps made to test something: a map is its brief and seed; what the brief asks for -- signals, a long arterial, every intersection type, downtown crosswalks, curb stops and bays -- is counted in the loaded map; each map drives with no graph error or vehicle contact and every section opens; and a brief the map cannot meet says so
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All fifty-one must exit 0 **before a commit**. Between commits, run
+All fifty-two must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:

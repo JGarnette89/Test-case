@@ -3373,6 +3373,55 @@ car-seconds to 56; nothing touched (`verify-buses` section 7,
 street has no centre line painted at all -- is passing a stopped bus
 allowed there (no marking, so permitted when safe), or not?
 
+### Maps made to test something (1 October, the maintainer's priority)
+
+His words: *"the designer has been making pretty good maps so far, I'm
+thinking it would be better to start from a generated map and make
+changes from there rather than start at a blank slate. truthfully my wife
+has taken my mouse for her work and editing on a phone is proving
+difficult. we could get more testing done if maps are created with those
+features in mind."*
+
+**So generation comes first and editing is refinement**, and the loop is
+built around his actual channel: a map is generated aimed at something,
+he drives it, he says in words what he wants different, and it is
+changed. The editor's job becomes reviewing and tweaking, not authoring.
+Weeks of testing on generated maps produced good findings; this makes the
+aiming deliberate rather than incidental.
+
+**BUILT** (`map/brief.js`, `#/tests` -> **Make a map**). A BRIEF is a small
+vocabulary, every word of which is MEASURED in the map that comes out --
+composition's rule, a word nothing can check does not belong:
+- **size** small / medium / large (2x2, 3x2, 4x3 blocks of 500 m);
+- **arterials** loop / long / cross / grid / none -- which major roads are
+  arterials, the rest two-lane collectors (passable around a bus);
+- **signals** how many signalled intersections, or left to the city;
+- **every intersection type** -- signals, signals with a protected left
+  arrow, all-way stop, stop on the minor road, yield on the minor road,
+  uncontrolled, and a mid-block crossing;
+- **downtown** -- a commercial centre of tight blocks, crosswalks at every
+  one of its intersections, and the walkers a commercial district carries;
+- **buses** -- a curb stop and a bay on every full collector block, placed
+  where the loaded map has room for a bay;
+- **mixed drivers** -- each district a different character.
+The major roads are built from the brief, every intersection given its
+control, the districts grown by the existing generator; then the LOADED
+map is measured -- signals counted from its nodes, every type found,
+crosswalk coverage, stops by kind -- and anything short of the brief is
+said on the map (`report.missing`) and in its whole-map section, never
+claimed. Each map carries a section per thing asked for. `verify-briefs`
+holds all of it, sabotaged once (no signals written: three cases fail).
+
+Found by its own check before it shipped: asking for **0** signals still
+signalled the arterial crossings, and downtown had crosswalks at only
+**53%** of its intersections -- a street meeting a road mid-block has no
+road END there until the loader splits it.
+
+**Not yet:** a brief written as a sentence (he describes, a request is
+turned into a brief here -- the vocabulary is the contract); traffic
+levels and truck share are the screen's, not the map's; parking lots and
+roundabouts are not expressible.
+
 #### Parking lots: what it would take (scoped 29 September, not started)
 
 **What exists.** Everything that moves runs on the lane graph: a car is

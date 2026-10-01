@@ -10,9 +10,10 @@
    the chosen one.
    ===================================================================== */
 import React, { useMemo, useState } from "react";
-import { ChevronLeft, Eye, Car } from "lucide-react";
+import { ChevronLeft, Eye, Car, Wand2, Shuffle } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { TEST_MAPS } from "../map/samples.js";
+import { mapFromBrief, BRIEF, DEFAULT_BRIEF } from "../map/brief.js";
 import MapRoad from "./MapRoad.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 
@@ -27,8 +28,16 @@ export default function TestMaps() {
     const t = TEST_MAPS.find((m) => m.id === open);
     return t ? t.build() : null;
   }, [open]);
+  /* A MAP MADE TO ORDER (map/brief.js): tapped together here, no drawing,
+     and kept while this screen is open. */
+  const [brief, setBrief] = useState(DEFAULT_BRIEF);
+  const [made, setMade] = useState(null);
+  const [seed, setSeed] = useState(1);
+  const make = (sd = seed) => { setSeed(sd); setMade(mapFromBrief(brief, sd)); };
+  const current = chosen?.mapId === "made" ? made : built;
 
-  if (chosen && built) {
+  if (chosen && current) {
+    const built = current;
     const sec = chosen.section;
     return (
       <div style={{ minHeight: "100dvh", background: C.bg }}>
@@ -53,6 +62,45 @@ export default function TestMaps() {
         <span style={S.title}>Test maps</span>
         <span style={S.sub}>Pick a map, then a section: Watch shows the traffic there, Drive puts you at the wheel heading into it. Each says what to judge.</span>
       </div>
+      <div style={S.card}>
+        <div style={{ ...S.mapHead, cursor: "default" }}>
+          <span style={{ fontFamily: FONT_D, fontSize: 16, color: C.white }}>Make a map</span>
+          <span style={{ fontFamily: FONT_U, fontSize: 12, color: DIM, textAlign: "left" }}>Say what it should test, then Make it. Each map comes with a section for every thing asked for.</span>
+        </div>
+        <div style={S.picks}>
+          <Pick label="Size" options={Object.keys(BRIEF.size)} value={brief.size} onPick={(v) => setBrief({ ...brief, size: v })} />
+          <Pick label="Arterials" options={BRIEF.arterials} value={brief.arterials} onPick={(v) => setBrief({ ...brief, arterials: v })} />
+          <Pick label="Signals" options={["auto", "0", "1", "2", "3", "4", "6"]} value={brief.signals == null ? "auto" : String(brief.signals)} onPick={(v) => setBrief({ ...brief, signals: v === "auto" ? null : Number(v) })} />
+          <div style={S.pickRow}>
+            {[["everyType", "Every intersection type"], ["downtown", "Downtown, busy on foot"], ["buses", "Buses"]].map(([k, label]) => (
+              <button key={k} className="btn" style={{ ...S.chip, ...(brief[k] ? S.on : {}) }} onClick={() => setBrief({ ...brief, [k]: !brief[k] })}>{label}</button>
+            ))}
+            <button className="btn" style={{ ...S.chip, ...(brief.drivers === "mixed" ? S.on : {}) }} onClick={() => setBrief({ ...brief, drivers: brief.drivers === "mixed" ? "ordinary" : "mixed" })}>Mixed drivers</button>
+          </div>
+          <div style={S.pickRow}>
+            <button className="btn" style={{ ...S.act, borderColor: C.amber }} onClick={() => make(seed)}><Wand2 size={16} /> Make it</button>
+            {made && <button className="btn" style={S.act} onClick={() => make(seed + 1)}><Shuffle size={16} /> Another layout</button>}
+          </div>
+        </div>
+        {made && (
+          <>
+            <div style={{ ...S.section, fontFamily: FONT_U, fontSize: 12, color: made.report.missing.length ? C.red : DIM }}>
+              {made.name}. {made.report.signals} signals, {made.report.arterialKm} km of arterial, {made.report.crosswalks} crosswalk ends, {made.report.stops.curb + made.report.stops.bay} bus stops.
+              {made.report.missing.length ? ` Not got: ${made.report.missing.join("; ")}.` : " Everything asked for is here."}
+            </div>
+            {(made.sections ?? []).map((sec) => (
+              <div key={sec.id} style={S.section}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: FONT_D, fontSize: 14, color: TEXT }}>{sec.name}</div>
+                  <div style={{ fontFamily: FONT_U, fontSize: 12, color: DIM }}>{sec.judge}</div>
+                </div>
+                <button className="btn" style={S.act} onClick={() => setChosen({ mapId: "made", section: sec, mode: "watch" })}><Eye size={16} /> Watch</button>
+                {sec.start && <button className="btn" style={S.act} onClick={() => setChosen({ mapId: "made", section: sec, mode: "drive" })}><Car size={16} /> Drive</button>}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
       {TEST_MAPS.map((m) => (
         <div key={m.id} style={S.card}>
           <button className="btn" style={S.mapHead} onClick={() => setOpen(open === m.id ? null : m.id)}>
@@ -75,7 +123,21 @@ export default function TestMaps() {
   );
 }
 
+/* One row of choices: tap one. */
+function Pick({ label, options, value, onPick }) {
+  return (
+    <div style={S.pickRow}>
+      <span style={{ fontFamily: FONT_U, fontSize: 12, color: DIM, minWidth: 64 }}>{label}</span>
+      {options.map((o) => <button key={o} className="btn" style={{ ...S.chip, ...(o === value ? S.on : {}) }} onClick={() => onPick(o)}>{o}</button>)}
+    </div>
+  );
+}
+
 const S = {
+  picks: { display: "flex", flexDirection: "column", gap: 6, padding: "0 12px 12px" },
+  pickRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 },
+  chip: { minHeight: 44, padding: "0 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: DIM, fontFamily: FONT_D, fontSize: 13 },
+  on: { borderColor: C.amber, color: C.white },
   page: { minHeight: "100dvh", background: C.bg, color: TEXT, padding: "0 10px 24px" },
   head: { padding: "10px 2px 8px", display: "flex", flexDirection: "column", gap: 2 },
   title: { fontFamily: FONT_D, fontSize: 18, fontWeight: 700, color: C.white },
