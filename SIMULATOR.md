@@ -3251,9 +3251,10 @@ his words, then what each means here:
    this information, but still will observe behind without simply assuming
    others will follow the rule."* A sign-difficulty-style knowledge check:
    a driver who reads the rule gives way to a bus signalling to pull out;
-   one who does not, does not. Medium-high difficulty -- placed between
-   no-right-on-red (.25) and right-on-red (.35) on the DIFFICULTY scale
-   unless he says otherwise. The BUS DRIVER knows the rule and still checks
+   one who does not, does not. First placed at .30 for "medium-high";
+   **lowered to .15 on his ruling of 1 October** -- "it's just one of those
+   things people know or dont" -- between the yield sign (.10) and
+   no-right-on-red (.25). The BUS DRIVER knows the rule and still checks
    behind: it pulls out when the traffic has let it, never on the rule
    alone -- so a driver who does not know it costs the bus time, not a
    crash.
@@ -3369,9 +3370,10 @@ car-seconds to 56; nothing touched (`verify-buses` section 7,
   into and out of a bay is the bay's own drawn shape (`bayShape`), so a
   standing bus is wholly in the bay the screen shows.
 
-**For the maintainer:** passing is on the broken line only. A residential
-street has no centre line painted at all -- is passing a stopped bus
-allowed there (no marking, so permitted when safe), or not?
+**Ruled (1 October):** *"people can pass a bus on an unmarked street if
+the way is clear the other way."* Passing is now forbidden only by a
+solid line (an arterial's or a highway's); a residential street, unmarked,
+is passed on the same gap judgment as a broken line.
 
 ### Maps made to test something (1 October, the maintainer's priority)
 

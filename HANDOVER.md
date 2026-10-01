@@ -322,3 +322,47 @@ timid driver stays out longer, so returns more" — never measured.
 wrong; it was mostly the overpass. Every one of those had to be caught
 and rewritten. If a sentence explains *why* a number came out that way,
 either measure it or write that it is inferred.
+
+---
+
+## Delta, 1 October (written before a week-long usage reset)
+
+Only what is not already in SIMULATOR.md / DECISIONS.md / CLAUDE.md.
+
+**State.** Everything is committed and pushed. Last pieces: buses
+(curb stops, passengers, bays, going round), the editor's Intersection
+and Bus stop tools, maps made from a brief (`map/brief.js`, #/tests ->
+Make a map), and the maintainer's two rulings of 1 October (yield-to-bus
+difficulty 0.15; passing a stopped bus allowed on an unmarked street).
+Nothing is in flight.
+
+**Next piece, agreed:** maps made to test something is BUILT; the next
+step is the loop around it -- he drives a generated map and says in words
+what he wants different, and the brief vocabulary grows from what he
+asks for. Do not grow the vocabulary ahead of his requests. Candidates
+he is likely to ask for: roundabouts (not expressible on the graph yet),
+parking lots (scoped, right-of-way open), traffic level and truck share
+as part of a brief rather than the drive screen.
+
+**Not in the docs, worth knowing:**
+- `verify-lanes` has timing assertions; run two suites at once and they
+  fail on DIFFERENT lines each time. Alone it passes. Never run two
+  suite batches in parallel; if it fails on timing only, re-run it alone
+  before believing it.
+- The full suite takes ~30 min and a third of it guards `src/engine/`,
+  which the live screens no longer reach. Under usage pressure, run the
+  subset the change can reach and say which in the commit (the
+  maintainer's instruction, 1 October).
+- A sabotage run edits `src/` and restores at the end of the same shell
+  command. If a session is cut off mid-run the sabotage STAYS IN THE
+  TREE -- this happened once (crossing.js `!(false)`). After any
+  interruption, grep for the sabotage before trusting the tree.
+- `world-hash.mjs` (tools/measure) against tools/scratch/hash-head.txt is
+  the quick proof a change left car-only worlds alone; the baseline is
+  commit 347a7e8 and has held through everything since.
+- Per-world options exist for controlled comparisons and checks only:
+  `walkers`, `pedEvery`, `gapRate`, `buses`, `passing`, `trucks`. The
+  screens pass `walkers: true`; everything else defaults.
+- verify-buses' "no vehicle touched another" deliberately excludes people
+  struck: a heedless person darting out between parked cars on a
+  residential side street is peds content and verify-peds' business.

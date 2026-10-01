@@ -4,10 +4,11 @@
    centre line, yielding to oncoming traffic (ideally, our drivers could
    always make a mistake here)."
 
-   WHERE: a two-way road with one lane each way and a BROKEN centre line --
-   on these maps a collector (the renderer paints a collector's centre line
-   broken, an arterial's a solid double, a residential street's not at
-   all; draw.js). Behind a bus standing at a curb stop, a driver who has
+   WHERE: a two-way road with one lane each way and NO SOLID centre line --
+   a collector's broken line, or a residential street with none painted
+   (the maintainer, 1 October: "people can pass a bus on an unmarked
+   street if the way is clear the other way"). An arterial's solid double
+   line forbids it (draw.js paints the three). Behind a bus standing at a curb stop, a driver who has
    come to a stop behind it may pull out into the oncoming lane, pass, and
    come back in clear ahead of it.
 
@@ -40,6 +41,8 @@ import { LANE } from "../map/format.js";
    at low speed. And the room left ahead of the bus before coming back in.
    Flagged design constants. */
 export const PASS_TAPER = 12, PASS_CLEAR = 6;
+/* The kinds painted with a solid centre line, which may not be crossed to pass. */
+const SOLID = new Set(["arterial", "highway"]);
 
 const ease = (x) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
 
@@ -64,7 +67,7 @@ export function oncomingLane(course, laneId) {
   const l = parse(laneId);
   if (!l) return null;
   const r = (course.map?.roads ?? []).find((x) => x.id === l.road);
-  if (!r || r.oneWay || (r.lanes ?? 1) !== 1 || r.kind !== "collector") return null;
+  if (!r || r.oneWay || (r.lanes ?? 1) !== 1 || SOLID.has(r.kind)) return null;
   return `${r.id}:${l.dir === "fwd" ? "rev" : "fwd"}#0`;
 }
 

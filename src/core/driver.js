@@ -75,9 +75,11 @@ export const AXES = [...SKILLS, "compliance"];
      keep-right      no sign on these roads: out of the curb lane only to
                      pass or turn -- misread, they never go back;
      yield-to-bus    no sign: give way to a bus signalling to pull out of a
-                     bay -- the law, and not common knowledge (the
-                     maintainer, 30 September: "maybe can be a medium-high
-                     knowledge check") -- misread, they drive on past it.
+                     bay -- misread, they drive on past it. First placed at
+                     .30 for his "medium-high"; lowered on his ruling of 1
+                     October: "it's just one of those things people know
+                     or dont" -- known or not, once per driver, as every
+                     kind is.
                      LAST, because the draws are taken in this order: a kind
                      added at the end moves no driver's reading of another. */
 export const DIFFICULTY = {
@@ -87,7 +89,7 @@ export const DIFFICULTY = {
   "no-right-on-red": 0.25,
   "keep-right": 0.30,
   "right-on-red": 0.35,
-  "yield-to-bus": 0.30,
+  "yield-to-bus": 0.15,
 };
 /* HOW WELL A KIND OF SIGN HAS STUCK WITH THIS DRIVER: one draw per driver
    per KIND, never per encounter -- knowledge is consistent (a driver who
