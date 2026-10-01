@@ -22,6 +22,11 @@
       out, nobody who knows to give way and could stop drives past it,
       those who do not know do, and it waits for the road behind rather
       than pulling out on the rule -- and not for ever.
+   7. Going round a stopped bus (slice D): on a broken centre line, a car
+      stopped behind a bus at a curb stop goes round it when the oncoming
+      gap is one it takes -- bold drivers too, theirs to misjudge -- which
+      cuts the time stood behind the bus, touches nothing, and never
+      happens on a solid line or an unmarked road.
 
    Usage: node tools/verify-buses.mjs
    ===================================================================== */
@@ -37,6 +42,12 @@ import { walkNetOf, walkerPose, WAIT_PATIENCE } from "../src/sim/walkers.js";
 import { DT, lenOf } from "../src/sim/traffic.js";
 
 let fails = 0;
+/* VEHICLES TOUCHING VEHICLES. A person struck is peds.js's content -- the
+   heedless one who darts out between parked cars ahead of the traffic, by
+   design -- and verify-peds holds it to the fairness rules. Counted here
+   it made "nothing touched" a claim about pedestrians this check never
+   tests, green only while nobody happened to dart out (1 October). */
+const vehicleCrashes = (w) => (w.crashes ?? []).filter((c) => !String(c.a).startsWith("ped") && !String(c.b).startsWith("ped")).length;
 const ok = (cond, msg) => { console.log(`${cond ? "  ok  " : "  FAIL"} ${msg}`); if (!cond) fails++; };
 
 console.log("1. a stop is a place beside a road, serving one direction");
@@ -85,7 +96,7 @@ for (let k = 0; k < (MINS * 60) / DT; k++) {
     if (a.kind !== "bus" || a.dwellFrom == null) continue;
     if (w.actors.some((b) => b !== a && b.k === a.k && b.route === a.route && b.s < a.s && a.s - b.s < 25 && b.v < 0.3)) queued++;
   }
-  contacts = (w.crashes ?? []).length;
+  contacts = vehicleCrashes(w);
 }
 const passes = [...track.values()].filter((x) => x.before && x.passed);
 const stood = passes.filter((x) => x.stood >= DWELL - 0.5);
@@ -98,7 +109,7 @@ ok(strangers === 0, `nothing but a bus ever stops for a stop (${strangers})`);
 
 console.log("3. the traffic behind waits behind it");
 ok(queued > 0, `a car stood behind a bus at its stop in ${(queued * DT).toFixed(0)} s of the run`);
-ok(contacts === 0, `and nothing touched anything (${contacts} crashes)`);
+ok(contacts === 0, `and no vehicle touched another (${contacts})`);
 
 console.log("4. a map without stops has no buses and is the world it was");
 {
@@ -156,7 +167,7 @@ console.log("5. people wait at a stop, get on at the door of a bus standing ther
   ok(leftWaiting === 0, `no bus shut its doors on somebody still waiting to get on, short of its longest stand (${leftWaiting})`);
   ok(dwells.length && Math.min(...dwells) >= MIN_DWELL - 0.1 && Math.max(...dwells) <= MAX_DWELL + 0.1, `a bus stands as long as its people take: ${dwells.length ? `${Math.min(...dwells).toFixed(1)}-${Math.max(...dwells).toFixed(1)} s` : "never"}, between ${MIN_DWELL} and ${MAX_DWELL}`);
   ok(worst < 0.5 && waitedLong === 0, `nobody on foot jumps (largest step ${worst.toFixed(2)} m), and nobody waits past their patience (${waitedLong})`);
-  ok((v.crashes ?? []).length === 0, `and nothing touched anything (${(v.crashes ?? []).length})`);
+  ok(vehicleCrashes(v) === 0, `and no vehicle touched another (${vehicleCrashes(v)})`);
 }
 
 console.log("6. bays: out of the lane, passed, and given way to -- by those who know to");
@@ -214,7 +225,7 @@ console.log("6. bays: out of the lane, passed, and given way to -- by those who 
       }
     }
   }
-  crashes6 += (v.crashes ?? []).length;
+  crashes6 += vehicleCrashes(v);
   }
   const knew = outcomes.filter((c) => c.reads && c.couldStop), didNot = outcomes.filter((c) => !c.reads);
   ok(passedStanding > 0 && inLane < 1, `a bus in its bay is out of the lane (${inLane.toFixed(1)} s standing in it) and the traffic goes past it (${passedStanding} times)`);
@@ -222,7 +233,39 @@ console.log("6. bays: out of the lane, passed, and given way to -- by those who 
   ok(knew.length >= 5 && knew.every((c) => c.outcome === "let out"), `everybody who knows to give way and could stop let the bus out (${knew.filter((c) => c.outcome === "let out").length} of ${knew.length})`);
   ok(didNot.filter((c) => c.outcome === "passed").length >= 2, `and drivers who do not know drove on past it (${didNot.filter((c) => c.outcome === "passed").length} of ${didNot.length})`);
   ok(longest < 90, `and no bus waited for ever to get out: the longest was ${longest.toFixed(1)} s`);
-  ok(crashes6 === 0, `nothing touched anything (${crashes6})`);
+  ok(crashes6 === 0, `no vehicle touched another (${crashes6})`);
+}
+
+console.log("7. going round a bus at a curb stop, on a broken centre line and nowhere else");
+{
+  /* The same map with its through road re-made: a collector is painted
+     with a broken line, an arterial a solid double, a residential street
+     none (draw.js). Passing is the broken line's alone. */
+  const remade = (kind) => { const m = testBuses(); m.roads = m.roads.map((r) => (r.id.startsWith("main") ? { ...r, kind, lanes: 1, parking: "none" } : r)); return loadMap(m); };
+  const run = (L, passing, seeds) => {
+    let passes = 0, carCrashes = 0, behind = 0, bold = 0;
+    for (const seed of seeds) {
+      let v = seedGraph(seed, 50, L, { every: 2.0, target: 90, posted: true, buses: 0.3, passing });
+      const seen = new Set();
+      for (let k = 0; k < (15 * 60) / DT; k++) {
+        v = step(v);
+        for (const a of v.actors) if (a.pass && !seen.has(`${a.id}|${a.pass.s0}`)) { seen.add(`${a.id}|${a.pass.s0}`); passes++; if ((a.caution ?? 1) < 0.6) bold++; }
+        for (const b of v.actors) if (b.kind === "bus" && b.dwellFrom != null && !b.busStop?.bay)
+          behind += v.actors.filter((c) => c.kind === "car" && c.k === b.k && c.route === b.route && c.s < b.s && b.s - c.s < 25 && c.v < 0.3).length * DT;
+      }
+      /* Vehicles touching vehicles: a person struck is peds.js's content (verify-peds), not this. */
+      carCrashes += (v.crashes ?? []).filter((c) => !String(c.a).startsWith("ped") && !String(c.b).startsWith("ped")).length;
+    }
+    return { passes, carCrashes, behind, bold };
+  };
+  const seeds = [5, 6];
+  const on = run(loadMap(testBuses()), true, seeds), off = run(loadMap(testBuses()), false, seeds);
+  ok(on.passes >= 5, `on the two-lane collector, cars went round a bus standing at its stop ${on.passes} times in two runs of 15 minutes`);
+  ok(on.bold > 0, `bold drivers among them (${on.bold} passes by drivers with caution under 0.6) -- the gap is theirs to misjudge`);
+  ok(on.behind < off.behind, `and stood behind a standing bus for less of it: ${on.behind.toFixed(0)} car-seconds against ${off.behind.toFixed(0)} with passing off`);
+  ok(on.carCrashes === 0, `no vehicle touched another while passing (${on.carCrashes})`);
+  const solid = run(remade("arterial"), true, [5]), none = run(remade("residential"), true, [5]);
+  ok(solid.passes === 0 && none.passes === 0, `nobody passed on the same road painted with a solid line (${solid.passes}) or with no line at all (${none.passes})`);
 }
 
 console.log(fails ? `\n${fails} FAILED` : "\nall passed");

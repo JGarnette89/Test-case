@@ -2239,6 +2239,27 @@ answer by using it.
 *Cost:* one to two weeks estimated; shipped in one session, v1 scope
 (section 4 above says what that leaves out).
 
+**Before the maintainer draws his own city (1 October): the two rough
+steps, fixed.** Walking the path from a blank map to a drivable city found
+two places it asked too much of him:
+- **Every intersection he drew started uncontrolled**, and setting one was
+  four separate edits (each road, each end). The **Intersection** tool
+  sets a whole intersection in one tap -- all-way stop, stop or yield on
+  the minor road, signals, or none -- through the same `setRoadControl`
+  the end-by-end edit uses (editor/model.js `setIntersection`). A road
+  running straight through is split there first; the minor road is the
+  lower kind, or the stem of a T of one kind; at four equal roads
+  "minor" is refused in words.
+- **Bus stops could not be placed at all** -- they existed only in the
+  Buses test map's code. The **Bus stop** tool puts one beside the road
+  tapped, on the side tapped, just beyond the curb (or the parking strip),
+  and the panel makes it a curb stop or a bay; the loader decides the
+  direction it serves and refuses by name one it cannot place.
+Both held to `verify-editor` section 19. Still open, and his to answer:
+whether he draws on the PC or the phone -- maps saved in the library live
+in one device's browser, and moving one between them today is Download
+JSON, carry the file, Open a file.
+
 ### Stage 3 — the exam mode, as a reinterpretation
 
 Moved up from the end of the path, because section 1.1 made it cheap:
@@ -3316,6 +3337,41 @@ section 6).
 Also: two buses bound for one bay -- the second sees the first in it and
 stops behind; and a person deciding to wait walks to their place in the
 queue rather than sliding there.
+
+**Slice D BUILT (1 October): going round a stopped bus** (`sim/passing.js`).
+Open `#/tests`, **Buses**, *the eastbound curb stop*. On a two-lane road
+with a broken centre line -- a collector here: the renderer paints a
+collector's line broken, an arterial's solid double, a residential
+street's not at all -- a driver who has stopped behind a bus standing at a
+curb stop may pull out into the oncoming lane, pass it and come back in 6
+m clear ahead. Whether to go is the left turn's own question: the time the
+pass takes, padded by their caution, against the time the oncoming traffic
+needs to reach its end -- so a bold driver takes a pass a sound one
+refuses, and that is the mistake the ruling asked for. The oncoming driver
+brakes for a car in their lane; the passer, once out, does not brake for
+them, because two cars each stopped for the other nose to nose would be
+exactly the wait DECISIONS.md 10.7 forbids. Measured over two 15-minute
+runs: 18 passes, and the time cars stood behind a curb bus fell from 98
+car-seconds to 56; nothing touched (`verify-buses` section 7,
+`tools/measure/passing.mjs`).
+
+**Found on the way, and both are the bay's as much as the pass's:**
+- **Out from close behind, the car hit the bus.** Stopped 2 m behind it, a
+  car pulling out over the full taper reached the bus's tail still inside
+  its width -- every one of the first 19 passes. The taper is now the room
+  the car has, and each plan is checked by sweeping the car's footprint
+  along the line against the bus's; one that would touch is not taken.
+- **A long vehicle placed by its middle swings its nose.** Given a heading
+  by rotating about its centre, a bus pulling out of a bay put its nose
+  1.5 m into the oncoming lane and met the bus coming the other way. Front
+  and back now each sit on the line, the chord between them the heading --
+  as a truck spans its path through a turn -- and the line a bus follows
+  into and out of a bay is the bay's own drawn shape (`bayShape`), so a
+  standing bus is wholly in the bay the screen shows.
+
+**For the maintainer:** passing is on the broken line only. A residential
+street has no centre line painted at all -- is passing a stopped bus
+allowed there (no marking, so permitted when safe), or not?
 
 #### Parking lots: what it would take (scoped 29 September, not started)
 

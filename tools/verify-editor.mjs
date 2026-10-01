@@ -12,6 +12,7 @@ import {
   nearestOnRoad, splitRoad, joinCrossing, setRoadRamp, setRoadHump, controlAt,
   deletePoint, subdivideRoad, smoothRoad,
   addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad,
+  intersectionAt, setIntersection, addStop, setStopKind, deleteStop,
 } from "../src/editor/model.js";
 import { validateDraft } from "../src/editor/validate.js";
 import { CLEARANCE_MIN } from "../src/map/load.js";
@@ -660,6 +661,50 @@ console.log("\n18. A BUILDING MOVED TO ANOTHER STREET CAN BE TURNED TO FACE IT")
   check(Math.abs(to - 90) < 1e-9 && m.props[0].heading === 0, `moved beside the north-south one it keeps its heading until asked, and the nearest road now runs at ${to}°`);
   check(headingToRoad(m, { x: 900, y: 900 }) === null, "with no road within 40 m there is nothing to face");
   check(validateDraft(setPropProps(m, h, { heading: to })).loaded.props.length === 1, "turned, it is still off the road and kept");
+}
+
+console.log("\n19. AN INTERSECTION'S CONTROLS IN ONE TAP, AND BUS STOPS PLACED BY A TAP");
+{
+  /* A T: a residential street ending on an arterial that runs straight
+     through -- drawn the way a person draws it, the arterial in one stroke. */
+  const draw = (m, kind, a, b) => { const r = addRoad(m, { kind }); return { map: addPoint(addPoint(r.map, r.id, a), r.id, b), id: r.id }; };
+  let m = newDraft(), art, side;
+  ({ map: m, id: art } = draw(m, "arterial", { x: 0, y: 0 }, { x: 400, y: 0 }));
+  ({ map: m, id: side } = draw(m, "residential", { x: 200, y: 200 }, { x: 200, y: 0 }));
+  const x = intersectionAt(m, { x: 200, y: 0 });
+  check(x.legs.length === 1 && x.through.length === 1, `tapped where the street meets the arterial: one end there and a road running through (${x.legs.length}, ${x.through.length})`);
+  const t = setIntersection(m, { x: 200, y: 0 }, "minor-stop");
+  const L = validateDraft(t.map).loaded;
+  const node = L?.nodes.find((n) => Math.hypot(n.at.x - 200, n.at.y) < 1);
+  const ctl = Object.fromEntries((node?.legs ?? []).map((l) => [L.roads.find((r) => r.id === l.road)?.kind + ":" + l.road, l.control]));
+  const minorCtl = node?.legs.filter((l) => L.roads.find((r) => r.id === l.road)?.kind === "residential").map((l) => l.control);
+  const majorCtl = node?.legs.filter((l) => L.roads.find((r) => r.id === l.road)?.kind === "arterial").map((l) => l.control);
+  check(t.applied && node?.legs.length === 3 && minorCtl?.join() === "stop" && majorCtl?.every((c) => c === "none"), `"stop on the minor road": the arterial is split there, the street stops and the arterial does not (${JSON.stringify(ctl)})`);
+  const sig = validateDraft(setIntersection(m, { x: 200, y: 0 }, "signal").map).loaded;
+  check(sig.nodes.find((n) => Math.hypot(n.at.x - 200, n.at.y) < 1)?.legs.every((l) => String(l.control).startsWith("signal")), "\"signals\": every approach is signalled");
+  /* A crossroads of four equal roads: no minor road, said so in words. */
+  let c = newDraft();
+  for (const [a, b] of [[{ x: 0, y: 0 }, { x: 100, y: 0 }], [{ x: 200, y: 0 }, { x: 100, y: 0 }], [{ x: 100, y: -100 }, { x: 100, y: 0 }], [{ x: 100, y: 100 }, { x: 100, y: 0 }]]) c = draw(c, "collector", a, b).map;
+  const eq = setIntersection(c, { x: 100, y: 0 }, "minor-yield");
+  check(!eq.applied && /same kind/.test(eq.reason ?? "") && eq.map === c, `four equal roads: "minor" is refused in words and nothing changes ("${eq.reason}")`);
+  const all = validateDraft(setIntersection(c, { x: 100, y: 0 }, "all-stop").map).loaded;
+  check(all.nodes[0]?.legs.length === 4 && all.nodes[0].legs.every((l) => l.control === "stop"), "\"all-way stop\": all four stop -- written as signs, the way an end-by-end edit writes them");
+  check(!setIntersection(newDraft(), { x: 0, y: 0 }, "signal").applied, "tapped where no roads meet: nothing to set");
+
+  /* A stop tapped beside the arterial, on its south side, serves eastbound
+     traffic (right of travel); a bay moves the post out by the bay. */
+  const { map: s1, id: sid } = addStop(t.map, { x: 100, y: 6 });
+  const LS = validateDraft(s1).loaded;
+  check(sid && LS.stops.length === 1 && LS.stops[0].dir === "fwd" && LS.stops[0].kind === "curb", `a stop tapped south of the arterial is kept by the loader, serving eastbound traffic (${JSON.stringify(LS.stops[0] ?? null)})`);
+  const north = validateDraft(addStop(t.map, { x: 100, y: -6 }).map).loaded;
+  check(north.stops[0]?.dir === "rev", "tapped on the north side, westbound");
+  const bay = validateDraft(setStopKind(s1, sid, "bay")).loaded;
+  check(bay.stops[0]?.kind === "bay" && !bay.warnings.some((w) => w.code.startsWith("stop")), "made a bay, the loader keeps it as a bay with nothing to warn about");
+  check(deleteStop(s1, sid).stops.length === 0 && addStop(t.map, { x: 100, y: 80 }).id === null, "deleted, it is gone; tapped far from any road, none is placed");
+  /* And it drives: the editor's own Drive it pipeline, with buses on. */
+  let w = seedGraph(1, 50, validateDraft(setStopKind(s1, sid, "bay")).loaded, { every: 2.0, target: 30, posted: true, buses: 0.3 });
+  for (let i = 0; i < 120 / DT; i++) w = step(w);
+  check((w.crashes ?? []).filter((q) => !String(q.a).startsWith("ped") && !String(q.b).startsWith("ped")).length === 0, `two minutes of traffic on the drawn T with its stop and bay, nothing touching (${w.actors.length} on the road)`);
 }
 
 console.log("\n" + "=".repeat(70));

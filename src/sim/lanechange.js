@@ -327,6 +327,11 @@ export function laneStep(world, me, out, view) {
       out = moved;
     }
   }
+  /* A BUS KEEPS TO THE CURB LANE: back toward it, as above, and for a turn
+     its route needs -- never out of it to pass. One that changed lanes with
+     a stop ahead pulled "into the bay" from the middle lane, across the
+     curb lane, and a car in that lane met it (verify-editor, 1 October). */
+  if (out.kind === "bus") return out;
 
   /* A driver settles in a lane before choosing to leave it again. (A
      change they NEED is not held back by this: the car crossing two

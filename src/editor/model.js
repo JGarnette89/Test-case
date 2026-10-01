@@ -17,7 +17,7 @@
    exists rather than keeping a counter, which is what makes deleting a
    road and adding another safe without extra bookkeeping.
    ===================================================================== */
-import { emptyMap, road as makeRoad, KINDS, LANE, PROP_KINDS } from "../map/format.js";
+import { emptyMap, road as makeRoad, KINDS, LANE, PROP_KINDS, PARK_W, BAY } from "../map/format.js";
 
 /* --- ids ---------------------------------------------------------- */
 function nextId(list, prefix) {
@@ -313,6 +313,121 @@ export function joinCrossing(map, roadA, roadB, at) {
   let m = splitRoad(map, roadA, onA.seg, p).map;
   m = splitRoad(m, roadB, onB.seg, p).map;
   return m;
+}
+
+/* --- bus stops ------------------------------------------------------------ */
+/* A STOP IS A PLACE (map/format.js `stops`), so placing one is a tap beside
+   a road: the post goes just beyond the curb on the side tapped -- past
+   the parking strip where the road has one, past the bay where it is a
+   bay -- and the loader decides from that which direction it serves and
+   refuses, by name, one it cannot place. */
+const halfOuter = (r) => {
+  const k = KINDS[r.kind] ?? KINDS.collector, lanes = r.lanes ?? k.lanes, two = !r.oneWay;
+  const parked = (r.parking ?? k.parking) === "parallel" && two && !r.bays;
+  return (two ? lanes * LANE : (lanes * LANE) / 2) + (parked ? PARK_W : 0);
+};
+export function addStop(map, at, { kind = "curb", within = 15 } = {}) {
+  const on = nearestOnRoad(map, at, { within });
+  if (!on) return { map, id: null };
+  const r = map.roads.find((x) => x.id === on.road), a = r.points[on.seg], b = r.points[on.seg + 1];
+  const L = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / L, ny = (b.x - a.x) / L;
+  const side = (at.x - on.at.x) * nx + (at.y - on.at.y) * ny >= 0 ? 1 : -1;
+  const out = halfOuter(r) + 1.0 + (kind === "bay" ? BAY.w : 0);
+  const id = nextId(map.stops ?? [], "stop");
+  const stop = { id, at: { x: on.at.x + side * nx * out, y: on.at.y + side * ny * out }, kind };
+  return { map: { ...map, stops: [...(map.stops ?? []), stop] }, id };
+}
+/* Curb or bay: the post moves out by the bay's width, or back in, so it
+   stays just beyond the curb either way. */
+export function setStopKind(map, id, kind) {
+  return { ...map, stops: (map.stops ?? []).map((s) => {
+    if (s.id !== id || s.kind === kind) return s;
+    const on = nearestOnRoad(map, s.at, { within: 40 });
+    if (!on) return { ...s, kind };
+    const dx = s.at.x - on.at.x, dy = s.at.y - on.at.y, d = Math.hypot(dx, dy) || 1, by = kind === "bay" ? BAY.w : -BAY.w;
+    return { ...s, kind, at: { x: s.at.x + (dx / d) * by, y: s.at.y + (dy / d) * by } };
+  }) };
+}
+export function deleteStop(map, id) {
+  return { ...map, stops: (map.stops ?? []).filter((s) => s.id !== id) };
+}
+export function stopAt(map, pt, within = 6) {
+  let best = null;
+  for (const s of map.stops ?? []) { const d = Math.hypot(s.at.x - pt.x, s.at.y - pt.y); if (d <= within && (!best || d < best.d)) best = { id: s.id, d }; }
+  return best?.id ?? null;
+}
+
+/* --- an intersection's controls, in one tap ------------------------------ */
+/* A crossroads drawn by hand starts uncontrolled at every end, and setting
+   it meant selecting each road and each end in turn -- four edits for one
+   crossroads. These set the whole intersection at once, through the same
+   `setRoadControl` an end-by-end edit uses, so the result is exactly what
+   those edits would have written. */
+
+/* How major a kind of road is: the lower kinds are the minor roads at an
+   intersection, the ones a stop or a yield goes on. */
+export const RANK = { service: 0, residential: 1, collector: 2, arterial: 3, highway: 4 };
+export const PRESETS = ["all-stop", "minor-stop", "minor-yield", "signal", "none"];
+
+/* The road ends meeting at a point (within `within` metres), each with its
+   kind and the direction it leaves in; which of them are minor; and the
+   roads that run straight THROUGH the point without an end there (they
+   need splitting before they can carry a control). */
+export function intersectionAt(map, at, { within = LANE * 1.5 } = {}) {
+  const legs = [], through = [];
+  for (const r of map.roads) {
+    if (r.points.length < 2) continue;
+    const n = r.points.length;
+    for (const [end, p, q] of [["start", r.points[0], r.points[1]], ["end", r.points[n - 1], r.points[n - 2]]]) {
+      if (Math.hypot(p.x - at.x, p.y - at.y) > within) continue;
+      const L = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+      legs.push({ road: r.id, end, kind: r.kind, dir: { x: (q.x - p.x) / L, y: (q.y - p.y) / L } });
+    }
+    if (!legs.some((l) => l.road === r.id)) {
+      const on = nearestOnRoad({ roads: [r] }, at, { within });
+      if (on) through.push(on);
+    }
+  }
+  return { at, legs, through, minor: minorLegs(legs, through.length) };
+}
+
+/* Which legs are minor: the lower-ranked roads, if the roads are not all
+   one kind; at a T of one kind, the stem -- the leg with no other leg
+   running straight on from it. Null where nothing tells the roads apart
+   (a crossroads of four equal roads): then "minor" means nothing, and the
+   choice is all-way, signals or nothing. */
+function minorLegs(legs, throughCount) {
+  if (throughCount) return null;   // decided once the through road is split
+  if (legs.length < 2) return null;
+  const top = Math.max(...legs.map((l) => RANK[l.kind] ?? 2));
+  const lower = legs.map((l, i) => ((RANK[l.kind] ?? 2) < top ? i : -1)).filter((i) => i >= 0);
+  if (lower.length) return lower;
+  if (legs.length === 3) {
+    const straightOn = (i) => legs.some((m, j) => j !== i && legs[i].dir.x * m.dir.x + legs[i].dir.y * m.dir.y < -0.87);   // within 30 degrees of opposite
+    const stem = legs.map((_, i) => i).filter((i) => !straightOn(i));
+    return stem.length === 1 ? stem : null;
+  }
+  return null;
+}
+
+/* SET AN INTERSECTION. Splits any road running straight through the point
+   first, so every road there has an end to carry a control; then applies
+   the preset to every end. Returns `{ map, applied, reason }` -- `applied`
+   false, with a reason in words, where the preset means nothing here. */
+export function setIntersection(map, at, preset, { within = LANE * 1.5 } = {}) {
+  if (!PRESETS.includes(preset)) return { map, applied: false, reason: `"${preset}" is not one of ${PRESETS.join(", ")}` };
+  let m = map, x = intersectionAt(m, at, { within });
+  for (const on of x.through) m = splitRoad(m, on.road, on.seg, on.at).map;
+  x = intersectionAt(m, at, { within });
+  if (x.legs.length < 2) return { map, applied: false, reason: "no intersection here: fewer than two road ends meet at this point" };
+  const minor = new Set(x.minor ?? []);
+  if (preset.startsWith("minor") && !minor.size) return { map, applied: false, reason: "every road here is the same kind, so there is no minor road -- choose all-way stop, signals or none" };
+  x.legs.forEach((l, i) => {
+    const c = preset === "all-stop" ? "stop" : preset === "signal" ? "signal" : preset === "none" ? "none"
+      : minor.has(i) ? (preset === "minor-stop" ? "stop" : "yield") : "none";
+    m = setRoadControl(m, l.road, l.end, c);
+  });
+  return { map: m, applied: true, reason: null };
 }
 
 /* --- reshaping ---------------------------------------------------------- */

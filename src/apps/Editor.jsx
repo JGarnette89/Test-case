@@ -41,7 +41,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   Route, MousePointer2, Hexagon, Move, ZoomIn, ZoomOut, Footprints,
-  Trash2, Download, Upload, FolderOpen, Play, CheckCircle2, AlertTriangle, Undo2, Redo2, X, Save, Library, Building2,
+  Trash2, Download, Upload, FolderOpen, Play, CheckCircle2, AlertTriangle, Undo2, Redo2, X, Save, Library, Building2, TrafficCone, Bus,
 } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { readJSON, writeJSON } from "../storage.js";
@@ -55,6 +55,7 @@ import {
   nearestOnRoad, joinCrossing, setRoadRamp, setRoadHump, deletePoint, subdivideRoad, smoothRoad,
   addZone, addZonePoint, setZoneProps, deleteZone, serialize, parse, setRoadTurns,
   addProp, setPropProps, deleteProp, propAt, footprintOf, headingToRoad, setSignBack, controlAt, setNoLeft, noLeftAt, setCrosswalk, addCrossing,
+  intersectionAt, setIntersection, addStop, setStopKind, deleteStop, stopAt,
 } from "../editor/model.js";
 import { validateDraft } from "../editor/validate.js";
 import { listMaps, saveMap, openMap, deleteMap, prunedList } from "../editor/library.js";
@@ -218,6 +219,21 @@ export default function Editor() {
       ctx.fillStyle = bad ? C.red + "55" : "rgba(160,166,180,0.55)"; ctx.fill();
       const sel = selected?.type === "prop" && selected.id === p.id;
       ctx.strokeStyle = sel ? C.white : bad ? C.red : "rgba(220,224,232,0.8)"; ctx.lineWidth = sel ? 2.5 : 1; ctx.stroke();
+    }
+
+    /* The intersection being set (the Intersection tool), ringed. */
+    if (selected?.type === "node") {
+      const q = toScreen(selected.at.x, selected.at.y);
+      ctx.beginPath(); ctx.arc(q.x, q.y, 14, 0, Math.PI * 2);
+      ctx.strokeStyle = C.amber; ctx.lineWidth = 2.5; ctx.stroke();
+    }
+    /* Bus stops: a post marker where each stands, ringed when selected. */
+    for (const st of draft.stops ?? []) {
+      const q = toScreen(st.at.x, st.at.y);
+      ctx.beginPath(); ctx.arc(q.x, q.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = C.bus; ctx.fill();
+      const sel = selected?.type === "stop" && selected.id === st.id;
+      ctx.strokeStyle = sel ? C.white : "rgba(255,255,255,0.7)"; ctx.lineWidth = sel ? 2.5 : 1; ctx.stroke();
     }
 
     /* Nodes, once the draft loads -- where roads actually snap together,
@@ -497,6 +513,28 @@ export default function Editor() {
       setSelected({ type: "road", id: ids[0], end: "end" });
       return;
     }
+    if (tool === "stop") {
+      /* A BUS STOP beside the road tapped, on the side tapped (model.js
+         `addStop`); a tap on one already there selects it. */
+      const hit = stopAt(draft, w, Math.max(6, SNAP_PX / view.current.scale));
+      if (hit) { setSelected({ type: "stop", id: hit }); return; }
+      const { map: m1, id } = addStop(draft, w);
+      if (!id) return;
+      setDraft(m1);
+      setSelected({ type: "stop", id });
+      return;
+    }
+    if (tool === "intersection") {
+      /* AN INTERSECTION, to set all its controls at once (model.js
+         `setIntersection`): the road ends meeting near the tap, or a road
+         running through where another ends. Anywhere else, nothing. */
+      const within = Math.max(6, SNAP_PX / view.current.scale);
+      const x = intersectionAt(draft, w, { within });
+      if (x.legs.length + x.through.length < 2) { setSelected(null); return; }
+      const ends = x.legs.length ? x.legs.map((l) => { const r = roadOf(l.road); return l.end === "start" ? r.points[0] : r.points.at(-1); }) : [w];
+      setSelected({ type: "node", at: { x: ends.reduce((a, q) => a + q.x, 0) / ends.length, y: ends.reduce((a, q) => a + q.y, 0) / ends.length } });
+      return;
+    }
     if (tool === "building") {
       /* A tap on an existing building selects it rather than stacking a
          second on top; anywhere else places one. */
@@ -707,6 +745,8 @@ export default function Editor() {
   const selRoad = selected?.type === "road" ? roadOf(selected.id) : null;
   const selZone = selected?.type === "zone" ? zoneOf(selected.id) : null;
   const selProp = selected?.type === "prop" ? (draft.props ?? []).find((p) => p.id === selected.id) ?? null : null;
+  const selNode = selected?.type === "node" ? intersectionAt(draft, selected.at, { within: 6 }) : null;
+  const selStop = selected?.type === "stop" ? (draft.stops ?? []).find((q) => q.id === selected.id) ?? null : null;
 
   return (
     <div style={S.page}>
@@ -716,7 +756,7 @@ export default function Editor() {
       </div>
 
       <div style={S.toolbar}>
-        {[["road", "Draw road", Route], ["select", "Select / edit", MousePointer2], ["zone", "Draw zone", Hexagon], ["building", "Place building", Building2], ["crossing", "Mid-block crossing", Footprints], ["pan", "Pan", Move]].map(([id, label, Icon]) => (
+        {[["road", "Draw road", Route], ["select", "Select / edit", MousePointer2], ["intersection", "Intersection controls", TrafficCone], ["zone", "Draw zone", Hexagon], ["building", "Place building", Building2], ["crossing", "Mid-block crossing", Footprints], ["stop", "Bus stop", Bus], ["pan", "Pan", Move]].map(([id, label, Icon]) => (
           <button key={id} className="btn" title={label}
             style={{ ...S.btn, borderColor: tool === id ? C.amber : "rgba(255,255,255,0.12)", color: tool === id ? C.white : DIM }}
             onClick={() => { if (drawing) finishDrawing(); if (id !== "select" && id !== "building") setSelected(null); setTool(id); }}>
@@ -791,6 +831,25 @@ export default function Editor() {
             onZ={(i, z) => setDraft((m) => setPointZ(m, selRoad.id, i, z))}
             onDelete={() => { setDraft((m) => deleteRoad(m, selRoad.id)); setSelected(null); }}
           />
+        )}
+        {selStop && (
+          <div style={S.card}>
+            <div style={S.cardHead}>
+              <span>Bus stop · {selStop.id}</span>
+              <button className="btn" style={S.iconBtn} title="delete stop" onClick={() => { setDraft((m) => deleteStop(m, selStop.id)); setSelected(null); }}><Trash2 size={15} /></button>
+            </div>
+            <div style={S.row}>
+              {["curb", "bay"].map((k) => (
+                <button key={k} className="btn" style={{ ...S.chip, borderColor: selStop.kind === k ? C.amber : "rgba(255,255,255,0.12)" }}
+                  onClick={() => setDraft((m) => setStopKind(m, selStop.id, k))}>{k === "curb" ? "At the curb" : "In a bay"}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: DIM }}>Buses stop here in the direction whose curb it stands by. At the curb they stand in the lane and traffic waits or goes round on a broken line; in a bay they pull out of the lane.</div>
+          </div>
+        )}
+        {selNode && (
+          <NodePanel node={selNode} controls={selNode.legs.map((l) => controlAt(draft, roadOf(l.road), l.end))}
+            onPreset={(preset) => { const r = setIntersection(draft, selected.at, preset, { within: 6 }); if (r.applied) setDraft(r.map); return r.reason; }} />
         )}
         {selProp && (
           <PropPanel key={selProp.id} prop={selProp}
@@ -1077,6 +1136,33 @@ function PropPanel({ prop, canFace, onFace, onChange, onDelete }) {
         <button className="btn" style={S.chip} disabled={!canFace} title={canFace ? "turn it to face the nearest road" : "no road within 40 m"} onClick={onFace}>Face nearest road</button>
         <span style={{ fontSize: 11, color: DIM, alignSelf: "center" }}>Drag it on the map to move it.</span>
       </div>
+    </div>
+  );
+}
+
+/* AN INTERSECTION'S CONTROLS IN ONE TAP: what is on each road end now,
+   and the presets that set them all (model.js `setIntersection`). */
+function NodePanel({ node, controls, onPreset }) {
+  const [note, setNote] = useState(null);
+  const minor = !!node.minor || node.through.length > 0;
+  const go = (p) => setNote(onPreset(p));
+  const label = { "all-stop": "All-way stop", "minor-stop": "Stop on the minor road", "minor-yield": "Yield on the minor road", signal: "Signals", none: "Uncontrolled" };
+  return (
+    <div style={S.card}>
+      <div style={S.cardHead}><span>Intersection · {node.legs.length + node.through.length * 2} road ends</span></div>
+      <div style={{ fontSize: 12, color: DIM }}>
+        {node.legs.map((l, i) => `${l.kind} ${l.road}: ${controls[i]}`).join(" · ")}
+        {node.through.length ? ` · ${node.through.map((t) => t.road).join(", ")} runs through (split when you choose)` : ""}
+      </div>
+      <div style={S.row}>
+        {["all-stop", "minor-stop", "minor-yield", "signal", "none"].map((p) => (
+          <button key={p} className="btn" style={{ ...S.chip, opacity: p.startsWith("minor") && !minor ? 0.4 : 1 }}
+            disabled={p.startsWith("minor") && !minor}
+            title={p.startsWith("minor") && !minor ? "every road here is the same kind: there is no minor road" : label[p]}
+            onClick={() => go(p)}>{label[p]}</button>
+        ))}
+      </div>
+      {note && <div style={{ fontSize: 12, color: C.red }}>{note}</div>}
     </div>
   );
 }

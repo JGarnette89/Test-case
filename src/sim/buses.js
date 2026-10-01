@@ -25,7 +25,7 @@
    Pure. No React, no DOM.
    ===================================================================== */
 import { lenOf } from "./traffic.js";
-import { BAY } from "../map/format.js";
+import { BAY, bayShape } from "../map/format.js";
 import { laneSpanOnGraph } from "./graph.js";
 
 /* A BUS NOW AND THEN, on a map with stops -- a share of the traffic
@@ -113,7 +113,10 @@ export function nextStop(course, me, path, fromS, room) {
      otherwise the bus stands in the lane beside it, as at a curb stop. */
   if (next?.kind === "bay") {
     const limit = next.at <= path.stopAt ? path.stopAt - 10 : path.length - 1;
-    if (next.at + BAY.taper <= limit) return { ...next, bay: { in0: next.at - 1 - BAY.taper, in1: next.at - 1, w: BAY.w } };
+    /* `post`: where the stop's post is, in the path's metres -- the bay
+       is drawn about it (map/format.js `bayShape`), so the bus follows it
+       there too. Out of the bay needs its tail past the taper. */
+    if (next.at + DOOR + half + BAY.ahead + BAY.taper + half <= limit) return { ...next, bay: { post: next.at + DOOR + half, w: BAY.w } };
     return { ...next, kind: "curb" };
   }
   return next;
@@ -123,18 +126,23 @@ const ease = (x) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 -
 /* How far a bus has pulled toward the curb, in metres off its lane's line:
    in over the taper before its stop, out over the taper after it once it
    has been let go (`out0`). */
-export function pullOf(a) {
+export function pullOf(a, s = a.s) {
   const b = a.bay ?? a.busStop?.bay;
   if (!b) return 0;
-  if (b.out0 != null) return b.w * (1 - ease((a.s - b.out0) / BAY.taper));
-  return b.w * ease((a.s - b.in0) / (b.in1 - b.in0));
+  /* THE BAY'S OWN SHAPE, where that point of the bus is: the line a bus
+     follows IS the bay the loader drew (one set of numbers, map/format.js
+     BAY). An ease of its own, keyed to where the bus meant to stop, left a
+     standing bus's tail on the ramp and out in the lane once its ends were
+     placed on the line (1 October). */
+  return b.w * bayShape(s - b.post);
 }
 /* Out of the lane: far enough into the bay that a car passes clear of it
    -- and not yet let go. A bus pulling OUT is claiming the lane from the
    moment it moves: read as out of it until its pull fell below the line, a
    driver who had stopped to let it out lost sight of it, pulled forward,
    and met it coming (verify-buses, 30 September). */
-export const inBay = (a) => a.kind === "bus" && !(a.bay?.out0 != null) && pullOf(a) >= BAY.w - 0.3;
+export const inBay = (a) => a.kind === "bus" && !(a.bay?.out0 != null)
+  && Math.min(pullOf(a, a.s + lenOf(a) / 2), pullOf(a, a.s - lenOf(a) / 2)) >= BAY.w - 0.3;   // both ends in
 
 /* MAY A BUS PULL OUT OF ITS BAY? The bus driver knows the rule and still
    looks (the maintainer, 30 September: "will observe behind without simply

@@ -46,6 +46,7 @@ export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
 import { seedWalkers, stepWalkers } from "./walkers.js";
 import { BUS_SHARE, stopsOf, nextStop, atStop, ridersFor, pullOf, inBay, mayPullOut, laneAt } from "./buses.js";
+import { planPass, passOffset, passerAhead } from "./passing.js";
 import { rng } from "../core/rng.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
@@ -798,6 +799,13 @@ export function whatStops(me, world) {
   }
   for (const them of others) {
     if (them.id === me.id) continue;
+    /* GOING ROUND A STOPPED BUS (passing.js): out in the oncoming lane, the
+       bus being passed is not in front of me -- and somebody passing
+       toward me in MY lane is, as a stopped thing to stop short of: they
+       are committed, I am the one who can give way. */
+    if (me.pass && them.id === me.pass.bus && me.s < me.pass.s3) continue;
+    const head = them.pass ? passerAhead(world.course, me, them) : null;
+    if (head != null) { consider(head, { v: 0, id: "passer" }); continue; }
     /* A BUS IN ITS BAY is out of every lane (buses.js) -- except, while it
        signals to pull out, to a driver who knows to give way to it and can
        stop for it comfortably: to them it is the car in front. */
@@ -1065,8 +1073,16 @@ export function step(world) {
          whatever instructions they are carrying (traffic.js,
          `underLoad`). Decided from, never written back -- the actor keeps
          its unloaded self, and the load is re-read every tick. */
-      const me = underLoad(raw, world.road);
-      const view = whatStops(me, world);
+      let me = underLoad(raw, world.road);
+      let view = whatStops(me, world);
+      /* GOING ROUND A BUS standing at its stop, where the road allows it
+         and the oncoming gap is one this driver takes (passing.js). Decided
+         once, then driven: the view is re-read without the bus in it. */
+      let pass = raw.pass && me.s <= raw.pass.s3 ? raw.pass : null;
+      if (!pass && world.course.graph && world.passing !== false) {
+        pass = planPass(world, me, view.leader, pathOf(world, me));
+        if (pass) { me = { ...me, pass }; view = whatStops(me, world); }
+      }
       /* THE EXAMINER'S HAND (exam.js), on the one car that carries it.
          `ease` is being TOLD to slow: the candidate wants less speed and
          sheds it at their OWN braking rate (`brake`, the braking axis) --
@@ -1142,7 +1158,7 @@ export function step(world) {
       const amberGo = me.amberGo || (!!layoutOf(world, me).signal && s < waitAt(mine, me) + AT_LINE
         && movementLight(layoutOf(world, me).signal, layoutOf(world, me).legs[mine.from]?.base, mine.intent, world.t) === "amber"
         && controlOf(me, layoutOf(world, me), mine, world.t) === "none");
-      const at = { ...raw, v, s, stoppedAt, going, accepted, ...(amberGo ? { amberGo } : {}) };
+      const at = { ...raw, v, s, stoppedAt, going, accepted, ...(amberGo ? { amberGo } : {}), pass: pass && s <= pass.s3 ? pass : null };
       const sitting = stoppedAt != null && !going;
       /* How long the opening in front of them has been there this time,
          and -- latched -- when the first one they could have acted on
@@ -1164,7 +1180,15 @@ export function step(world) {
          lane, so every course the sim had before is untouched. Decided
          from `raw` for who they are -- the ratings, the caution -- and
          from the tick's own view for what is in front of them. */
-      return world.course.graph && world.laneChanges !== false ? laneStep(world, { ...raw, v: me.v }, out, view) : out;
+      const stepped = world.course.graph && world.laneChanges !== false ? laneStep(world, { ...raw, v: me.v }, out, view) : out;
+      /* A BUS'S STOP IS ITS LANE'S: one that is in another lane than the
+         stop it was heading for -- a change its route needed -- looks for
+         the next stop on the lane it is actually in. */
+      if (stepped.kind === "bus" && stepped.busStop && stepped.route !== out.route && stepped.dwellFrom == null) {
+        const p = world.course.at[stepped.k ?? 0].layout.paths[stepped.route];
+        return { ...stepped, busStop: nextStop(world.course, stepped, p, stepped.s, Math.max(15, stoppingRoom(stepped.v))) };
+      }
+      return stepped;
     })
     /* AND OFF THE END OF ONE PATH IS THE START OF THE NEXT, rather than
        the end of the world. The two intersections are placed so those are
@@ -1184,7 +1208,7 @@ export function step(world) {
       /* A bus at its stop: standing with its doors open, then on (buses.js). */
       if (me.busStop && !me.player) me = atStop(me, world.t, world.course, pathOf(world, me), (world.walkers ?? []).filter((q) => q.stop === me.busStop.id && (q.state === "waiting" || q.state === "boarding" || q.state === "returning")).length, () => mayPullOut(world, me));
       /* Out of the bay and back in the lane: the pull is done with. */
-      if (me.bay && me.s > me.bay.out0 + BAY.taper) me = { ...me, bay: null };
+      if (me.bay && me.s - lenOf(me) / 2 > me.bay.post + BAY.ahead + BAY.taper) me = { ...me, bay: null };
       if (me.leaveAt != null && !me.player && !me.candidate && me.v < 0.3 && me.s >= me.leaveAt - CAR.length - 3) {
         if (me.parkSlot) parkedNow.push(me);
         return null;
@@ -1227,6 +1251,7 @@ export function step(world) {
         ...me, k: on.k, route: on.route, s: 0, leaveAt, parkSlot,
         /* The next stop a bus makes on the way through (buses.js). */
         ...(me.kind === "bus" ? { busStop: nextStop(world.course, me, world.course.at[on.k].layout.paths[on.route], 0, Math.max(15, stoppingRoom(me.v))), dwellFrom: null, wantsOut: null, bay: null } : {}),
+        pass: null,   // a pass ends before the seam (passing.js `planPass`)
         ...(posted == null ? {} : { v0: wantedFor(me, posted, me.caution) }),
         /* How many intersections they have been through, which is what a
            plan is indexed by and what a section of a drive is counted
@@ -1552,6 +1577,12 @@ function arriving(world, n) {
   /* A BUS, on a map with stops (buses.js), from a stream of its own: a map
      without stops draws exactly what it did. */
   if (kind === "car" && (world.buses ?? 0) > 0 && stopsOf(world.course).size && rng(world.seed * 4441 + n + 9)() < world.buses) kind = "bus";
+  /* A BUS ENTERS IN THE CURB LANE, where its stops are. */
+  if (lanesMove && kind === "bus") {
+    const L = world.course.at[where.k].layout, base = L.legs[where.side]?.base;
+    const curb = Object.keys(L.legs).find((id) => L.legs[id].base === base && L.legs[id].curb);
+    if (curb) where = { ...where, side: curb };
+  }
   /* A truck enters in a lane with a turn it can make, where the edge it
      arrives at has one: a curb lane whose only way on is a right too tight
      for it left it to make that turn over the curb (verify-trucks 7). */
@@ -1819,7 +1850,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks = TRUCK_SHARE, buses = BUS_SHARE, walkers = false } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks = TRUCK_SHARE, buses = BUS_SHARE, walkers = false, passing = true } = {}) {
   const course = graphOf(loaded, { lane: 3.6, control });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
@@ -1845,7 +1876,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, ...(passing ? {} : { passing: false }), spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   if (parkingOf(course).slots.length) w.parked = initialParked(course, seed);
@@ -2023,15 +2054,24 @@ export function poseOf(world, actor) {
      with the move, so the car points across the lane line rather than
      sliding sideways. */
   const lat = actor.lc ? lateralOf(actor.lc, world.t) : 0;
-  /* A bus pulling into or out of its bay (buses.js), toward the curb. */
-  const pull = actor.kind === "bus" ? pullOf(actor) : 0;
+  /* A bus pulling into or out of its bay (buses.js), toward the curb; a
+     car going round it (passing.js), the other way. */
+  /* FRONT AND BACK EACH ON THE LINE, the chord between them the heading --
+     as a truck spans its path through a turn. Rotated about its middle
+     instead, a 12 m bus pulling out of a bay swung its nose 1.5 m into the
+     oncoming lane and met the bus coming the other way (1 October). */
+  const sideOf = actor.kind === "bus" && (actor.bay || actor.busStop?.bay) ? (q) => pullOf(actor, q)
+    : actor.pass ? (q) => -passOffset({ ...actor, s: q }) : null;
+  const halfL = vehicleOf(actor).length / 2;
+  const front = sideOf ? sideOf(actor.s + halfL) : 0, back = sideOf ? sideOf(actor.s - halfL) : 0;
+  const pull = sideOf ? (front + back) / 2 : 0;
   const off = strayOf(world, actor) + lat + pull;
   /* THE VEHICLE'S OWN SIZE travels with its pose, so the footprint that is
      checked for contact and the box that is drawn are this vehicle's. */
   const { length, width, height } = vehicleOf(actor);
   if (!off) return { ...p, length, width, height };
   const a = (p.rot * Math.PI) / 180;
-  const turn = lat ? (Math.atan2(lateralRate(actor.lc, world.t), Math.max(1, actor.v ?? 0)) * 180) / Math.PI : 0;
+  const turn = (lat ? (Math.atan2(lateralRate(actor.lc, world.t), Math.max(1, actor.v ?? 0)) * 180) / Math.PI : 0) + (sideOf ? (Math.atan2(front - back, 2 * halfL) * 180) / Math.PI : 0);
   return { ...p, length, width, height, rot: p.rot + turn, x: p.x - Math.sin(a) * off, y: p.y + Math.cos(a) * off };
 }
 
