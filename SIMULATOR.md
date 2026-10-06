@@ -2392,6 +2392,90 @@ time:
 **People crossing are 60% of the step.** That is the next thing to
 diagnose, worst first, once the phone's number confirms it.
 
+##### 1.2.5 THE PHONE ON THE WHOLE GAME, AND FORTY-ONE PEOPLE COSTING 13 MS -- 6 October
+
+**The bench on the Pixel 7 Pro (`7da0243`):**
+- **The cap fell from 200 cars to 50.** Step 50 held 59 fps; step 100
+  failed on p95 (25.1 ms) with a worst frame of 33.3.
+- **The sim is the bottleneck:** step median 17.6 ms against draw
+  3.8 ms.
+- **The split:**
+  - 41 people crossing, 13.4 ms;
+  - 292 walking, 10.6 ms;
+  - 3 buses, 3.1 ms;
+  - 4 trucks, 1.1 ms;
+  - 2,684 parked cars, 0.9 ms;
+  - sight blocking, 0.5 ms.
+
+The maintainer did not trust the run, for two reasons, and both were
+right.
+
+**1. The positive control did not fire.** Zero hitches from the DOM
+probe, against twelve on `#/iso`. The probe was only ever one control,
+and the wrong one for the question it was standing in for. A React
+update from the frame loop answers "does that cost here", and that
+depends on the page: the bench's page is small, and the update may
+simply have been cheap. Whether the run could see a hitch at all was
+never asked. There are now two controls, each with its own line in the
+report:
+
+- **Control 1, can this run see a hitch.** In the probe step, the
+  screen stalls itself for 80 ms every two seconds, away from the
+  React update. The meter must see every stall, or the report says its
+  hitch counts cannot be believed.
+- **Control 2, does a React update cost here.** The updates issued are
+  counted, and the frames they land on are timed against the rest. A
+  probe that ran and cost nothing now reads differently from one that
+  never ran.
+
+The probe step also no longer ends a ramp: it fails by design.
+`verify-bench` checks both controls, and it caught a meter made blind
+to the stalls.
+
+**2. Switching off drawn content made the SIM slower** -- sidewalks
+-3.3 ms, buildings -4.5, the wide view -5.5. It was impossible, and the
+cause was the split itself. The switches that keep the world carried
+the baseline's world on, so they ran 9 to 36 s later in its life. A
+bench world is not stationary: people crossing grow from 35 to 73 over
+its first minute, and the step from 6.4 to 9.9 ms
+(`tools/scratch/drift.mjs`). Every split step now RESTARTS the world
+the baseline was built with. The step is pure -- measured: the input
+world is untouched, and two runs from it are identical -- so it is the
+same moment every time. `verify-bench` holds the drawing-only steps to
+ending the sim exactly where the baseline did.
+
+**3. The pedestrian cost, as found** (`tools/measure/step-profile.mjs`,
+50 cars, a minute in, desk). 76% of the step was one function:
+`fromWalker` in `peds.js`, 9.3 ms of 12.2.
+
+- A crossing is WANTED at a curb, and is met by somebody already
+  walking near it. A want nobody is near waits up to `WANT_FOR` (90 s)
+  and asks again every tick.
+- On the bench's downtown that is about 167 wants pending at once,
+  against 264 walkers. Each want scanned every walker, working out
+  where each one was along their sidewalk.
+- That was 44,000 walker poses a tick, to start 5.4 crossings a
+  second.
+
+The cost was a PRODUCT, which is why the phone's two savings did not
+sum: switching off either the walkers or the crossings removes nearly
+all of it.
+
+**The fix keeps the traffic identical, tick for tick.**
+- Each walker's pose is computed once a tick, since nothing moves
+  inside the function.
+- A grid of `WANT_NEAR` cells means a want looks only at the nine
+  cells round its curb, in the walkers' own order.
+- `strikes` (is a car touching anybody crossing) had the same shape:
+  every car's pose again for every person. It now computes each once.
+
+`tools/measure/bench-hash.mjs` fingerprints the bench world over two
+minutes at 50 cars and one at 150, and both hashes are unchanged.
+
+**Step at 50 cars: 12.2 ms -> 1.9 ms (6.5x); at 200, 7.1 ms**, where
+the cost is now the cars' own decisions (`whatStops`), as it should
+be. The pedestrian side is about 1 ms at 200.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,

@@ -24,7 +24,7 @@ import { walkerPose } from "../sim/walkers.js";
 import { DT } from "../sim/traffic.js";
 import { sidewalksOf } from "../map/sidewalks.js";
 import { terrain } from "./road.js";
-import { deviceLines, stallLines, probeLine } from "./perf.js";
+import { deviceLines, stallLines, HITCH } from "./perf.js";
 import { drawFrame } from "./draw.js";
 
 /* THE MAP: a made-to-order city with everything the game has --
@@ -93,15 +93,24 @@ export function benchScene(fleet, off = {}) {
     ...(off.crossers ? { pedEvery: Infinity, gapRate: 0 } : {}),
   });
   const st = staticsOf(loaded);
-  return withOff({ loaded, world, key: worldKey(fleet, off), ...st, junctions: junctionsOf(world.course), full: st }, off);
+  return withOff({ loaded, world, base: world, key: worldKey(fleet, off), ...st, junctions: junctionsOf(world.course), full: st }, off);
 }
 
-/* The switches that need no new world: sight blocking, read by the step
+/* The switches that need no new world: they RESTART the world the scene
+   was built with (`base`), never carry on the one in hand. A bench world
+   is not stationary -- people crossing grow from 35 to 73 over its first
+   minute and the step from 6.4 to 9.9 ms (tools/scratch/drift.mjs) -- so a
+   switch run later in a world's life read as making the sim SLOWER:
+   sidewalks -3.3 ms, buildings -4.5, the wide view -5.5 on the phone,
+   6 October. The step is pure (it never changes the world it is given),
+   so the same object is the same moment, every time.
+
+   Sight blocking is read by the step
    itself (crossing.js `tallNow`) rather than a seed option -- a seed
    option here would be silently ignored, which is how the desk script's
    first "see-through" comparison measured nothing -- and what is drawn. */
 export function withOff(sc, off = {}) {
-  const { seeThrough, ...rest } = sc.world;
+  const { seeThrough, ...rest } = sc.base;
   return {
     ...sc, off,
     world: off.sight ? { ...rest, seeThrough: true } : rest,
@@ -208,6 +217,23 @@ export function categorySteps(fleet) {
   ];
 }
 
+/* THE TWO CONTROLS, which answer different questions. Can this run see a
+   hitch at all: stalls made on purpose, every one of which must be seen.
+   Does a React update from the frame loop cost anything on this device:
+   updates issued, and the frames they land on against the rest -- a
+   number whether or not anything crosses the hitch line. */
+export function controlLines(probe) {
+  const c = probe.control ?? {};
+  const lines = [];
+  lines.push(c.injected
+    ? `control 1, can this run see a hitch: ${c.injected} stalls of 80 ms made on purpose, ${c.injectedSeen} seen over ${HITCH} ms -- ${c.injectedSeen === c.injected ? "every one, so the hitch counts can be believed" : "NOT every one: the hitch counts in this report cannot be believed"}`
+    : "control 1, can this run see a hitch: NO stalls were made -- the probe step did not run its control, so the hitch counts cannot be believed");
+  lines.push(c.issued
+    ? `control 2, does a React update from the loop cost here: ${c.issued} updates issued; the frames they land on ${c.domMean} ms on average (worst ${c.domMax}) against ${c.restMean} ms for the rest`
+    : "control 2, does a React update from the loop cost here: NO updates were issued -- the probe did not run");
+  return lines;
+}
+
 /* THE REPORT. The ramp with what the world held at each step, so the
    numbers are visibly for the whole game; where each frame's time went
    (the sim step, the poses, the draw); the stalls and the probe; the
@@ -227,7 +253,7 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
   L.push("  step = the sim step, on the frames that ran one (a third of them at 60 fps); poses and draw every frame; ms, median/95th");
   L.push(...stallLines([...ramp.results, ...(split?.results ?? [])]));
   const probe = ramp.results.find((x) => x.probe);
-  if (probe) L.push(probeLine(probe));
+  if (probe) L.push(...controlLines(probe));
   const cap = ramp.cap, steady = ramp.steadyCap;
   L.push(cap ? `cap (budget, no hitching): held at ${cap.fleet} cars with everything in (step ${cap.label}); broke at step ${cap.brokeAt ?? "-"}` : "cap (budget, no hitching): the budget did not hold at any step");
   L.push(steady ? `cap (steady state, stutter set aside): held at ${steady.fleet} cars (step ${steady.label}); broke at step ${steady.brokeAt ?? "-"}` : "cap (steady state): did not hold at any step");
@@ -263,11 +289,12 @@ export function loadStep(st, step) {
   if (st.sc && st.sc.key === worldKey(step.fleet, off)) {
     st.sc = withOff(st.sc, off);
     st.buildS = 0;
+    st.cam = {}; st.owed = 0; st.frames = 0;   // the same moment, seen the same way
   } else {
     const t0 = clock();
     st.sc = benchScene(step.fleet, off);
     st.buildS = Math.round((clock() - t0) / 100) / 10;
-    st.cam = {}; st.owed = 0;
+    st.cam = {}; st.owed = 0; st.frames = 0;
   }
   st.view = step.view ?? "car";
   st.counts = benchCounts(st.sc);

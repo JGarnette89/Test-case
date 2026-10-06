@@ -313,7 +313,17 @@ export function rampSteps() {
    frame's time went as well as how long it was. */
 export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = perfMeter(), stopOnFail = true } = {}) {
   let i = 0, at = null, settled = false, started = false, last = null, counts = null;
-  let log = [], gcFrames = 0, gcMs = 0, split = {};
+  let log = [], gcFrames = 0, gcMs = 0, split = {}, ctl = null;
+  /* THE CONTROLS, counted apart from the meter. `flags.injected`: the
+     frame closed a stall the screen made on purpose -- the instrument
+     must see every one, or nothing it reports about hitches can be
+     believed. `flags.issued`/`flags.dom`: a React update was issued, and
+     the frames its cost can land on -- reported as their own times
+     against the rest, so a probe that ran and cost nothing is told apart
+     from one that never ran (6 October: zero hitches on the bench, twelve
+     on #/iso). */
+  const freshCtl = () => ({ injected: 0, injectedSeen: 0, issued: 0, domFrames: 0, domSum: 0, domMax: 0, restFrames: 0, restSum: 0 });
+  ctl = freshCtl();
   const results = [];
   const finish = () => {
     const strict = results.filter((x) => x.pass);
@@ -337,12 +347,15 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       last = now;
       if (drew) counts = { cars: drew.cars, items: drew.items, ...(drew.extra ?? {}) };
       if (!started) { started = true; return { load: steps[0] }; }
-      if (at == null) { at = now; settled = false; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; return {}; }
+      if (at == null) { at = now; settled = false; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); return {}; }
       const held = (now - at) / 1000;
-      if (!settled && held >= settle) { settled = true; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; }
+      if (!settled && held >= settle) { settled = true; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); }
       if (settled && dt != null) {
         if (flags.gc) { gcFrames++; gcMs += dt; }
         if (flags.split) for (const key in flags.split) (split[key] ??= []).push(flags.split[key]);
+        if (flags.injected) { ctl.injected++; if (dt > HITCH) ctl.injectedSeen++; }
+        if (flags.issued) ctl.issued++;
+        if (flags.dom && !flags.injected) { ctl.domFrames++; ctl.domSum += dt; ctl.domMax = Math.max(ctl.domMax, dt); } else if (!flags.injected) { ctl.restFrames++; ctl.restSum += dt; }
         if (dt > HITCH) {
           log.push({
             t: Math.round((held - settle) * 100) / 100, dt: Math.round(dt),
@@ -361,9 +374,13 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
         pass: meter.passes(sum), steady: meter.steady(sum),
         stallLog: log, gcFrames, gcMeanMs: gcFrames ? Math.round((gcMs / gcFrames) * 10) / 10 : 0,
         ...(Object.keys(split).length ? { split: splitSummary(split) } : {}),
+        control: { injected: ctl.injected, injectedSeen: ctl.injectedSeen, issued: ctl.issued,
+          domMean: ctl.domFrames ? Math.round((ctl.domSum / ctl.domFrames) * 10) / 10 : null, domMax: Math.round(ctl.domMax * 10) / 10,
+          restMean: ctl.restFrames ? Math.round((ctl.restSum / ctl.restFrames) * 10) / 10 : null },
       });
       i++;
-      if (i >= steps.length || (stopOnFail && !results[results.length - 1].steady)) return finish();
+      /* The probe hitches by design, so it never ends a ramp. */
+      if (i >= steps.length || (stopOnFail && !results[results.length - 1].steady && !results[results.length - 1].probe)) return finish();
       at = null;
       return { load: steps[i] };
     },

@@ -501,12 +501,44 @@ export function stepPeds(world) {
   const walking = world.walkers ? world.walkers.filter((q) => q.state === "walking" || q.state === "standing") : null;
   const took = new Set(), freed = [];
   const want = walking ? { ...(world.pedWant ?? {}) } : null;
+  /* EACH WALKER'S POSE ONCE A TICK. Every wanted crossing still waiting
+     scans everybody walking for somebody near its curb, and a want waits
+     up to WANT_FOR for one: on the bench's downtown, about 167 wants
+     against 264 walkers -- 44,000 poses a tick, three quarters of the
+     whole step, to start five crossings a second (6 October,
+     tools/measure/step-profile.mjs). Nothing moves inside this function,
+     so a walker's pose is the same for every want that asks; it is
+     worked out the first time and kept. Same poses, same order, same
+     choices. */
+  const poses = walking ? new Array(walking.length) : null;
+  /* And only the walkers who could be near: a grid of WANT_NEAR cells,
+     built on the first want of the tick, so a want looks at the nine
+     cells round its curb -- everybody within WANT_NEAR is in them -- in
+     the walkers' own order, so the nearest, and any tie, is the same
+     walker the whole list would have given. */
+  let grid = null;
+  const cellOf = (x, y) => `${Math.floor(x / WANT_NEAR)},${Math.floor(y / WANT_NEAR)}`;
+  const near = (p) => {
+    if (!grid) {
+      grid = new Map();
+      for (let i = 0; i < walking.length; i++) {
+        const pq = poses[i] ?? (poses[i] = walkerPose(world, walking[i])), key = cellOf(pq.x, pq.y);
+        let list = grid.get(key);
+        if (!list) grid.set(key, (list = []));
+        list.push(i);
+      }
+    }
+    const cx = Math.floor(p.x / WANT_NEAR), cy = Math.floor(p.y / WANT_NEAR), out = [];
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) { const list = grid.get(`${cx + dx},${cy + dy}`); if (list) for (const i of list) out.push(i); }
+    return out.sort((a, b) => a - b);
+  };
   const fromWalker = (cw, from, manner) => {
     const curb = at(cw, from, -0.5), far = at(cw, from, cw.width + 0.5);
     let best = null;
-    for (const q of walking) {
+    for (const i of near(curb)) {
+      const q = walking[i];
       if (took.has(q.id)) continue;
-      const pq = walkerPose(world, q), d = Math.hypot(pq.x - curb.x, pq.y - curb.y);
+      const pq = poses[i], d = Math.hypot(pq.x - curb.x, pq.y - curb.y);
       if (d > WANT_NEAR || Math.hypot(pq.x - far.x, pq.y - far.y) < d + 1) continue;
       if (!best || d < best.d) best = { q, pq, d };
     }
@@ -663,14 +695,18 @@ export function strikePed(world, id) {
 export function strikes(world, poseOf) {
   const out = [];
   if (!world.peds?.some((p) => p.state === "crossing")) return out;
+  /* Each car's pose once, however many people are crossing: it was
+     worked out again for every one of them (6 October). */
+  const poses = new Array(world.actors.length);
   for (const p of world.peds) {
     if (p.state !== "crossing") continue;
     const cw = crosswalksOf(world.course)[p.cw];
-    for (const a of world.actors) {
+    for (let i = 0; i < world.actors.length; i++) {
+      const a = world.actors[i];
       /* Any car near them -- whichever intersection it is counted at, since
          a crossing just past a seam is reached from the one before. */
       if (a.player || a.crash) continue;
-      const c = poseOf(world, a);
+      const c = poses[i] ?? (poses[i] = poseOf(world, a));
       if (Math.abs(c.x - (cw.a.x + cw.b.x) / 2) > 30 || Math.abs(c.y - (cw.a.y + cw.b.y) / 2) > 30) continue;
       const h = ((c.rot ?? 0) * Math.PI) / 180, q = pedPose(world, p);
       const dx = q.x - c.x, dy = q.y - c.y, u = dx * Math.cos(h) + dy * Math.sin(h), v = -dx * Math.sin(h) + dy * Math.cos(h);

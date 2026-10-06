@@ -14,11 +14,13 @@
    3. the split runs every step whatever it finds, the ramp stops at a
       steady failure, and only the steps that change the traffic build
       a new world;
-   4. every frame says where its time went, and the report renders.
+   4. the controls: every stall made on purpose is seen, and the React
+      updates are counted, so a run that cannot see a hitch says so;
+   5. every frame says where its time went, and the report renders.
 
    Usage: node tools/verify-bench.mjs */
 import { budgetRamp } from "../src/iso/perf.js";
-import { benchState, loadStep, benchFrame, benchSteps, categorySteps, benchReport, OFF } from "../src/iso/bench.js";
+import { benchState, loadStep, benchFrame, benchSteps, categorySteps, benchReport, controlLines, OFF } from "../src/iso/bench.js";
 
 let failed = 0;
 const ok = (c, msg) => { console.log(`${c ? " ok " : " FAIL"} ${msg}`); if (!c) failed++; };
@@ -30,14 +32,18 @@ const size = { w: 412, h: 560 };
    frame time to pretend, so pass and fail can be steered. */
 function run(steps, { stopOnFail = true, dtFor = () => 16.7 } = {}) {
   const ramp = budgetRamp({ steps, settle: 0.2, hold: 0.6, stopOnFail });
-  let st = null, now = 0, out = null, builds = [];
+  let st = null, now = 0, out = null, builds = [], stall = false, issued = false;
   for (let f = 0; f < 200000 && !out; f++) {
     const step = ramp.step;
-    const dt = dtFor(step ?? {});
+    /* The screen's controls in the probe step: a React update every 60
+       frames, and an 80 ms stall every 120 (denser here), which lengthens the gap the
+       NEXT frame closes -- exactly as Bench.jsx makes them. */
+    const dt = dtFor(step ?? {}) + (stall ? 80 : 0);
     now += dt;
     let fr = null;
     if (st) fr = benchFrame(st, dt, ctx, size);
-    const want = ramp.frame(now, fr?.drew, { split: fr?.split });
+    const want = ramp.frame(now, fr?.drew, { split: fr?.split, injected: stall, issued, dom: issued });
+    stall = !!step?.probe && f % 12 === 5; issued = !!step?.probe && f % 6 === 0;   // denser than the screen: the check holds a step for well under a second
     if (want.done) out = want;
     else if (want.load) { st = st ? loadStep(st, want.load) : benchState(want.load); builds.push({ label: want.load.label, built: st.buildS > 0 }); }
   }
@@ -67,6 +73,16 @@ for (const key of Object.keys(OFF)) {
   ok(base[c] > 0 && r[c] === 0, `no ${key}: ${c} ${base[c]} -> ${r[c]}`);
   ok(others.every((x) => r[x] > 0), `   and everything else is still there (${others.map((x) => `${x} ${r[x]}`).join(", ")})`);
 }
+/* What is only DRAWN cannot change the sim: a step that switches off only
+   drawing, or looks from further out, starts from the baseline's own world
+   at the same moment and must end it identically. A step that carried the
+   baseline's world on instead ran later in a world that grows busier, and
+   on the phone read as drawing making the sim slower (6 October). */
+const same = (r) => ["moving", "trucks", "buses", "walkers", "crossing", "parked"].every((k) => r[k] === base[k]);
+for (const label of ["no sidewalks", "no buildings", "wide view"]) {
+  const r = split.results.find((x) => x.label === label);
+  ok(same(r), `${label}: the sim ends exactly where the baseline's did (${r.crossing} crossing, ${r.walkers} walking, ${r.moving} moving against ${base.crossing}, ${base.walkers}, ${base.moving})`);
+}
 const wide = split.results.find((r) => r.label === "wide view");
 ok(wide.cars > base.cars, `the wide view draws more of the city (${base.cars} -> ${wide.cars} road users on screen)`);
 
@@ -80,7 +96,15 @@ const rebuilt = split.builds.filter((b) => b.built).map((b) => b.label);
 const want = ["everything", "no trucks", "no buses", "no walkers", "no crossers", "no parked"];   // the five that change the traffic, and the baseline
 ok(rebuilt.length === want.length && want.every((x) => rebuilt.includes(x)), `new worlds only for: ${rebuilt.join(", ")}`);
 
-console.log("\n4. every frame says where its time went, and the report renders");
+console.log("\n4. the controls: every stall made on purpose is seen, and the React updates are counted");
+const pc = ramp.results.find((r) => r.probe).control;
+ok(pc.injected > 0 && pc.injectedSeen === pc.injected, `control 1: ${pc.injected} stalls made, ${pc.injectedSeen} seen`);
+ok(pc.issued > 0 && pc.domMean != null && pc.restMean != null, `control 2: ${pc.issued} updates issued, their frames ${pc.domMean} ms against ${pc.restMean}`);
+ok(ramp.results.filter((r) => !r.probe).every((r) => r.control.injected === 0 && r.control.issued === 0), "and no other step makes either");
+ok(/every one, so the hitch counts can be believed/.test(controlLines(ramp.results[0]).join(" ")), "the report says the hitch counts can be believed");
+ok(/cannot be believed/.test(controlLines({ control: { injected: 4, injectedSeen: 3, issued: 8, domMean: 17, domMax: 20, restMean: 17 } }).join(" ")) && /cannot be believed/.test(controlLines({ control: {} }).join(" ")), "and says they cannot when a stall was missed, or none was made");
+
+console.log("\n5. every frame says where its time went, and the report renders");
 ok(ramp.results.every((r) => r.split?.step?.p50 > 0 && r.split?.draw?.p50 > 0 && r.split?.poses?.p50 > 0), "sim step, poses and draw timed at every step");
 ok(ramp.results.every((r) => r.split.step.share > 15 && r.split.step.share < 50), `the sim steps on about a third of the frames (${ramp.results.map((r) => r.split.step.share).join(", ")}%)`);
 const text = benchReport({ device: { ua: "test", cores: 8, memoryGB: 8, secure: true, dpr: 3, screen: "1x1", viewport: "1x1" }, canvas: "412x560", ramp, split, loaded: ramp.results.length ? (await import("../src/iso/bench.js")).benchMap() : null });

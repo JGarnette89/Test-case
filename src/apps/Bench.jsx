@@ -50,7 +50,7 @@ export default function Bench() {
     const ctx = canvas.getContext("2d");
     if (!tasks.current) tasks.current = taskProbe();
     if (!gc.current) gc.current = gcProbe();
-    let raf = 0, last = 0, fpsAt = performance.now(), frames = 0;
+    let raf = 0, last = 0, fpsAt = performance.now(), frames = 0, injectAt = 0;
 
     const fit = () => {
       const dpr = Math.min(DPR_CAP, window.devicePixelRatio || 1);
@@ -66,7 +66,7 @@ export default function Bench() {
     const tick = (now) => {
       const t0 = performance.now();
       const before = flags.current;
-      flags.current = { domTtl: Math.max(0, (before.domTtl ?? 0) - 1), resized: false, tickMs: 0 };
+      flags.current = { domTtl: Math.max(0, (before.domTtl ?? 0) - 1), resized: false, tickMs: 0, injected: false, issued: false };
       const size = fit();
       const r = run.current;
       if (!r) return;
@@ -78,6 +78,7 @@ export default function Bench() {
       const want = r.ramp.frame(now, fr?.drew, {
         gc: gc.current.tick(), dom: (before.domTtl ?? 0) > 0, ticks: fr?.ticks ?? 0, resized: before.resized, tickMs: before.tickMs,
         tasks: gap.tasks, longest: gap.longest, hidden: gap.hidden, input: gap.input, frame: gap.frame, split: fr?.split,
+        injected: before.injected, issued: before.issued,
       });
       if (want.load) {
         r.st = r.st ? loadStep(r.st, want.load) : benchState(want.load);
@@ -100,8 +101,17 @@ export default function Bench() {
         const step = r.ramp.step;
         readout.current = `${r.phase === "ramp" ? "ramp" : "where it goes"} · step ${step?.label ?? ""} · ${fr?.drew?.extra?.moving ?? "-"} cars, ${fr?.drew?.extra?.walkers ?? "-"} walking, ${fr?.drew?.extra?.parked ?? "-"} parked · ${Math.round((frames * 1000) / (now - fpsAt))} fps`;
         /* THE PROBE: the ramp's first step issues a React update once a second, on purpose. */
-        if (step?.probe) { setProbe((p) => p + 1); flags.current.domTtl = 2; }
+        if (step?.probe) { setProbe((p) => p + 1); flags.current.domTtl = 2; flags.current.issued = true; }
         frames = 0; fpsAt = now;
+      }
+      /* THE OTHER CONTROL, which needs no React and no device to agree: in
+         the probe step, a stall of 80 ms made on purpose every two
+         seconds, half a second away from the React update so the two
+         never share a frame. The meter must see every one (perf.js). */
+      if (r.ramp.step?.probe && now - injectAt > 2000 && now - fpsAt > 400 && now - fpsAt < 700) {
+        const until = performance.now() + 80;
+        while (performance.now() < until) { /* the stall */ }
+        flags.current.injected = true; injectAt = now;
       }
       ctx.fillStyle = "rgba(230,232,236,0.85)"; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top";
       ctx.fillText(readout.current, 8, 6);
