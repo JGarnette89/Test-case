@@ -45,11 +45,17 @@ const cross = (a, b) => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z
 
 /* A colour shaded by how a face meets the light. `amt` is the share of
    full brightness kept in shadow. */
-function shade(hex, n, amt = 0.55) {
-  const lit = amt + (1 - amt) * Math.max(0, dot(norm(n), LIGHT));
-  const v = parseInt(hex.slice(1), 16);
-  const ch = [(v >> 16) & 255, (v >> 8) & 255, v & 255].map((c) => Math.round(c * lit));
-  return `rgb(${ch[0]},${ch[1]},${ch[2]})`;
+function shade(hex, n, amt = 0.55) { return shadeN(hex, n.x, n.y, n.z, amt); }
+/* The same, from a normal's components: no vector, no array, only the
+   string the canvas is handed. Every face of every box goes through it.
+   The arithmetic is norm() then dot() written out, in the same order. */
+const HEX = new Map();
+function shadeN(hex, nx, ny, nz, amt = 0.55) {
+  const l = Math.hypot(nx, ny, nz) || 1;
+  const lit = amt + (1 - amt) * Math.max(0, (nx / l) * LIGHT.x + (ny / l) * LIGHT.y + (nz / l) * LIGHT.z);
+  let v = HEX.get(hex);
+  if (v === undefined) HEX.set(hex, (v = parseInt(hex.slice(1), 16)));
+  return `rgb(${Math.round(((v >> 16) & 255) * lit)},${Math.round(((v >> 8) & 255) * lit)},${Math.round((v & 255) * lit)})`;
 }
 
 /* Blend two hex colours by t. */
@@ -73,38 +79,54 @@ const CAR_COLOURS = [C.red, C.green, C.amber, C.blue, "#F2E8D5"];
 const PED_COLOURS = ["#3a6fd8", "#d85a3a", "#2e9a5a", "#9a4fd0", "#d8b43a"];
 
 /* The eight corners of a box centred at `at`, heading `deg`, pitched by
-   `grade` (rise over run) about its lateral axis, resting on its base. */
+   `grade` (rise over run) about its lateral axis, resting on its base --
+   as ONE flat array, x y z for corner 0, then 1, and so on: a box was
+   nine objects, and every car is two boxes every frame. */
+const CORNER = [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0, -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1];
 function boxCorners(at, deg, grade, box, lift = 0) {
   const a = (deg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
   const pitch = Math.atan(grade), cp = Math.cos(pitch), sp = Math.sin(pitch);
-  const out = [];
-  for (const [u, v, w] of [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]]) {
+  const out = new Float64Array(24);
+  for (let i = 0; i < 8; i++) {
+    const u = CORNER[3 * i], v = CORNER[3 * i + 1], w = CORNER[3 * i + 2];
     const fx = (u * box.l) / 2 - (box.back ?? 0), fy = (v * box.w) / 2, fz = lift + w * box.h;
     /* pitch about the lateral axis: forward rises with the grade */
     const px = fx * cp - fz * sp, pz = fx * sp + fz * cp;
-    out.push({ x: at.x + px * c - fy * s, y: at.y + px * s + fy * c, z: at.z + pz });
+    out[3 * i] = at.x + px * c - fy * s; out[3 * i + 1] = at.y + px * s + fy * c; out[3 * i + 2] = at.z + pz;
   }
   return out;
 }
+/* Corner i of a box as a point, for the few places that want one. */
+const cornerOf = (b, i) => ({ x: b[3 * i], y: b[3 * i + 1], z: b[3 * i + 2] });
 /* Faces as corner indices, wound so the normal points outward. */
 const FACES = [[4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]];
 
-function paintBox(ctx, view, corners, colour) {
-  const P = view.P;
-  const faces = [];
-  for (const f of FACES) {
-    const p0 = corners[f[0]], p1 = corners[f[1]], p2 = corners[f[2]];
-    const n = cross(sub(p1, p0), sub(p2, p0));
-    if (dot(n, view.eye) <= 0) continue;
-    const cx = f.reduce((t, i) => t + corners[i].x, 0) / 4, cy = f.reduce((t, i) => t + corners[i].y, 0) / 4, cz = f.reduce((t, i) => t + corners[i].z, 0) / 4;
-    faces.push({ key: view.key(cx, cy, cz), f, n });
+/* Scratch for paintBox, which is never re-entered: the faces that show,
+   their keys and normals, and one projected point. */
+const FACE_I = [0, 0, 0, 0, 0], FACE_KEY = [0, 0, 0, 0, 0], FACE_N = new Float64Array(15), PT = [0, 0];
+function paintBox(ctx, view, b, colour) {
+  const e = view.eye;
+  let m = 0;
+  for (let fi = 0; fi < FACES.length; fi++) {
+    const f = FACES[fi], i0 = 3 * f[0], i1 = 3 * f[1], i2 = 3 * f[2], i3 = 3 * f[3];
+    /* cross(sub(p1, p0), sub(p2, p0)), written out */
+    const ux = b[i1] - b[i0], uy = b[i1 + 1] - b[i0 + 1], uz = b[i1 + 2] - b[i0 + 2];
+    const vx = b[i2] - b[i0], vy = b[i2 + 1] - b[i0 + 1], vz = b[i2 + 2] - b[i0 + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    if (nx * e.x + ny * e.y + nz * e.z <= 0) continue;
+    const key = view.key((0 + b[i0] + b[i1] + b[i2] + b[i3]) / 4, (0 + b[i0 + 1] + b[i1 + 1] + b[i2 + 1] + b[i3 + 1]) / 4, (0 + b[i0 + 2] + b[i1 + 2] + b[i2 + 2] + b[i3 + 2]) / 4);
+    /* insertion by key, stable, as the sort it replaces */
+    let j = m;
+    while (j > 0 && FACE_KEY[j - 1] > key) { FACE_KEY[j] = FACE_KEY[j - 1]; FACE_I[j] = FACE_I[j - 1]; FACE_N[3 * j] = FACE_N[3 * j - 3]; FACE_N[3 * j + 1] = FACE_N[3 * j - 2]; FACE_N[3 * j + 2] = FACE_N[3 * j - 1]; j--; }
+    FACE_KEY[j] = key; FACE_I[j] = fi; FACE_N[3 * j] = nx; FACE_N[3 * j + 1] = ny; FACE_N[3 * j + 2] = nz;
+    m++;
   }
-  faces.sort((a, b) => a.key - b.key);
-  for (const { f, n } of faces) {
+  for (let q = 0; q < m; q++) {
+    const f = FACES[FACE_I[q]];
     ctx.beginPath();
-    for (let i = 0; i < 4; i++) { const [px, py] = P(corners[f[i]].x, corners[f[i]].y, corners[f[i]].z); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+    for (let i = 0; i < 4; i++) { const c = 3 * f[i]; view.into(b[c], b[c + 1], b[c + 2], PT); i ? ctx.lineTo(PT[0], PT[1]) : ctx.moveTo(PT[0], PT[1]); }
     ctx.closePath();
-    ctx.fillStyle = shade(colour, n);
+    ctx.fillStyle = shadeN(colour, FACE_N[3 * q], FACE_N[3 * q + 1], FACE_N[3 * q + 2]);
     ctx.fill();
     ctx.strokeStyle = "rgba(0,0,0,0.55)"; ctx.lineWidth = 1; ctx.stroke();
   }
@@ -131,6 +153,23 @@ function seg(ctx, P, a, b) {
    already carried forward by the time since the last tick so motion is
    smooth at the display's rate rather than at the sim's.
    ===================================================================== */
+/* A SIDEWALK PIECE IS THE SAME POLYGON EVERY FRAME, so it is built once
+   per sidewalk and piece size and kept: rebuilt per frame it was three
+   arrays and a dozen points for every piece in the city, on screen or
+   not. Kept on the sidewalk object itself, so a new map's are new. */
+const piecesOf = new WeakMap();
+function sidewalkPiece(w, i0, i1) {
+  let byStart = piecesOf.get(w);
+  if (!byStart) piecesOf.set(w, (byStart = new Map()));
+  const id = i0 * 100003 + i1;
+  let poly = byStart.get(id);
+  if (!poly) {
+    poly = [...w.inner.slice(i0, i1 + 1), ...w.outer.slice(i0, i1 + 1).reverse()].map((q) => ({ x: q.x, y: q.y, z: q.z ?? 0 }));
+    byStart.set(id, poly);
+  }
+  return poly;
+}
+
 export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   const { roads, terrain, cam, k, tilt, props = [], actors = [], junctions = [], sidewalks = [], stops = [] } = scene;
   /* THE GROUND IS THE SCENE'S, not stage 0's hill: a map supplies its
@@ -152,8 +191,10 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   const P = view.P, depthOf = view.key;
   const rotDeg = scene.rot ?? 0;
   const margin = 40 * k;
-  const onScreen = ([px, py]) => px > -margin && px < canvas.w + margin && py > -margin && py < canvas.h + margin;
+  const onScreen = (x, y, z) => view.onScreen(x, y, z, margin);
   const items = [];
+  /* The largest depth key over a polygon, without an array of keys. */
+  const maxKey = (poly) => { let m = -Infinity; for (const q of poly) { const d = depthOf(q.x, q.y, q.z); if (d > m) m = d; } return m; };
   /* FAR: THE WHOLE CITY AT ONCE (the free camera, iso/freecam.js). Below
      LOD_K a lane is under three pixels, and drawing a car as two shaded
      boxes, a road's paint, a sign's post or a flat cell of grass buys
@@ -182,7 +223,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   for (const cell of terrain) {
     const [a, b, c, d] = cell;
     if (flat && Math.abs(a.z) < 0.05 && Math.abs(b.z) < 0.05 && Math.abs(c.z) < 0.05 && Math.abs(d.z) < 0.05) continue;   // flat: the quad under the lot
-    if (!onScreen(P(a.x, a.y, a.z)) && !onScreen(P(c.x, c.y, c.z))) continue;
+    if (!onScreen(a.x, a.y, a.z) && !onScreen(c.x, c.y, c.z)) continue;
     const n = cross(sub(b, a), sub(d, a));
     /* KEYED BY ITS FARTHEST CORNER. Ground cells are big and the road
        lies on them, so a cell keyed by its centre could land after a
@@ -231,25 +272,116 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      nearest corner, they follow every cell under them. A few segments to
      a piece, so a long street is not a hundred canvas calls; far out,
      one piece a sidewalk. */
+  /* A sidewalk piece on screen -- its own function so the closure's
+     scope is built only for the pieces that are drawn (segment, below). */
+  const sidewalkFill = shade(C.sidewalk, { x: 0, y: 0, z: 1 }, 0.4);
+  const sidewalkItem = (w, i0, poly) => {
+    counts.segments++;
+    items.push({ layer: 0, key: maxKey(poly) + 0.005, tag: audit && { kind: "sidewalk", id: `${w.id}@${i0}`, poly }, paint: () => {
+      ctx.beginPath();
+      for (let j = 0; j < poly.length; j++) { const q = poly[j]; view.into(q.x, q.y, q.z, PT); if (j) ctx.lineTo(PT[0], PT[1]); else ctx.moveTo(PT[0], PT[1]); }
+      ctx.closePath();
+      ctx.fillStyle = sidewalkFill; ctx.fill();
+      if (!flat) { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke(); }
+    } });
+  };
   for (const w of sidewalks) {
     const per = flat ? w.pts.length : 4;
     for (let i0 = 0; i0 + 1 < w.pts.length; i0 += per) {
       const i1 = Math.min(w.pts.length - 1, i0 + per);
-      const poly = [...w.inner.slice(i0, i1 + 1), ...w.outer.slice(i0, i1 + 1).reverse()].map((q) => ({ x: q.x, y: q.y, z: q.z ?? 0 }));
-      if (!poly.some((q) => onScreen(P(q.x, q.y, q.z)))) continue;
-      const key = Math.max(...poly.map((q) => depthOf(q.x, q.y, q.z))) + 0.005;
-      counts.segments++;
-      items.push({ layer: 0, key, tag: audit && { kind: "sidewalk", id: `${w.id}@${i0}`, poly }, paint: () => {
-        ctx.beginPath();
-        poly.forEach((q, j) => { const [x, y] = P(q.x, q.y, q.z); if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
-        ctx.closePath();
-        ctx.fillStyle = shade(C.sidewalk, { x: 0, y: 0, z: 1 }, 0.4); ctx.fill();
-        if (!flat) { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke(); }
-      } });
+      const poly = sidewalkPiece(w, i0, i1);
+      let seen = false;
+      for (let j = 0; j < poly.length && !seen; j++) seen = onScreen(poly[j].x, poly[j].y, poly[j].z);
+      if (seen) sidewalkItem(w, i0, poly);
     }
   }
   const lerp = (p, q, t) => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, z: p.z + (q.z - p.z) * t });
   let deckSpan = 0;   // the largest key span of any deck piece in view: how far past its centre a car on a deck must be keyed
+  /* ONE ROAD SEGMENT ON SCREEN. A function of its own, called only past
+     the cull, because a loop body that makes closures has V8 build their
+     scope on every pass -- for every segment in the city, on screen or
+     not, before the cull could skip it (tools/measure/draw-alloc.mjs). */
+  const segment = (road, i) => {
+    const { pts, left, right } = road;
+    const a = left[i], b = left[i + 1], c = right[i + 1], d = right[i];
+    const n = cross(sub(b, a), sub(d, a));
+    const deck = isDeck(road, i) && isDeck(road, i + 1);
+    counts.segments++;
+    /* The paint on the segment: its edges, the centre line with its
+       gaps, and the lines between lanes going the same way. */
+    const lines = () => {
+      ctx.lineWidth = Math.max(1, 0.15 * k);
+      ctx.strokeStyle = "rgba(250,250,242,0.8)";
+      seg(ctx, P, a, b); seg(ctx, P, d, c);
+      /* THE CENTRE LINE SAYS WHAT KIND OF ROAD THIS IS, the way it does
+         on a real one: an arterial carries a solid double yellow, a
+         collector the broken single, a residential street nothing at
+         all. The cheapest of the cues that make three roads feel like
+         three kinds of place (SIMULATOR.md 1.1.10). */
+      /* Where a turn bay opens the median, the line moves to its far
+         side (map/bays.js `centre`); elsewhere it is the centreline. */
+      const mid = road.centre ?? pts;
+      if (road.kind === "arterial" || road.kind === "highway") {
+        const p0 = mid[i], p1 = mid[i + 1], len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+        const ox = (-(p1.y - p0.y) / len) * 0.14, oy = ((p1.x - p0.x) / len) * 0.14;
+        ctx.strokeStyle = C.yellow;
+        for (const s of [-1, 1]) seg(ctx, P, { x: p0.x + s * ox, y: p0.y + s * oy, z: p0.z }, { x: p1.x + s * ox, y: p1.y + s * oy, z: p1.z });
+      } else if (road.kind !== "residential" && i % 3 !== 2) { ctx.strokeStyle = C.yellow; seg(ctx, P, mid[i], mid[i + 1]); }
+      /* A null point is a stretch where the lanes either side are not
+         yet apart -- a bay lying on its neighbour before its taper. */
+      if (road.laneLines && i % 2 === 0) { ctx.strokeStyle = "rgba(250,250,242,0.75)"; for (const line of road.laneLines) if (line[i] && line[i + 1]) seg(ctx, P, line[i], line[i + 1]); }
+    };
+    const fill = (p, q, r, s) => {
+      quad(ctx, P, p, q, r, s);
+      ctx.fillStyle = shade(C.asphalt, n, 0.45); ctx.fill();
+      if (!flat) { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke(); }   // hide the hairline between pieces
+    };
+    if (!deck) {
+      /* KEYED BY ITS NEAREST CORNER, the mirror of the ground's rule:
+         a segment follows every cell that reaches under it. */
+      const key = Math.max(depthOf(a.x, a.y, a.z), depthOf(b.x, b.y, b.z), depthOf(c.x, c.y, c.z), depthOf(d.x, d.y, d.z)) + 0.01;
+      items.push({ layer: 0, key, tag: audit && { kind: "road", id: `${road.id}#${i}`, poly: [a, b, c, d] }, paint: () => { fill(a, b, c, d); if (!flat) lines(); } });
+    } else {
+      const across = Math.max(1, Math.round(Math.hypot(d.x - a.x, d.y - a.y) / LANE));
+      const pieces = [];
+      for (let s = 0; s < across; s++) for (let h = 0; h < 2; h++) {
+        const L0 = lerp(a, b, h / 2), L1 = lerp(a, b, (h + 1) / 2), R0 = lerp(d, c, h / 2), R1 = lerp(d, c, (h + 1) / 2);
+        const pa = lerp(L0, R0, s / across), pb = lerp(L1, R1, s / across), pc = lerp(L1, R1, (s + 1) / across), pd = lerp(L0, R0, (s + 1) / across);
+        const keys = [pa, pb, pc, pd].map((p) => depthOf(p.x, p.y, p.z));
+        pieces.push({ pa, pb, pc, pd, key: Math.max(...keys) + 0.01, span: Math.max(...keys) - Math.min(...keys), outerL: s === 0, outerR: s === across - 1 });
+      }
+      for (const p of pieces) deckSpan = Math.max(deckSpan, p.span);
+      const last = pieces.reduce((m, p) => (p.key > m.key ? p : m), pieces[0]);
+      for (const p of pieces) {
+        items.push({ layer: 1, key: p.key, tag: audit && { kind: "deck", id: `${road.id}#${i}`, poly: [p.pa, p.pb, p.pc, p.pd] }, paint: () => {
+          /* The slab: its outer sides, a metre deep, so the deck reads as
+             a thing with thickness standing in the air rather than a
+             ribbon floating. */
+          const drop = (q) => ({ ...q, z: q.z - 1.0 });
+          for (const [e0, e1, out] of [...(p.outerL ? [[p.pa, p.pb, -1]] : []), ...(p.outerR ? [[p.pd, p.pc, 1]] : [])]) {
+            quad(ctx, P, e0, e1, drop(e1), drop(e0));
+            const t = sub(e1, e0);
+            ctx.fillStyle = shade("#3b3f47", { x: -t.y * out, y: t.x * out, z: 0 }, 0.45); ctx.fill();
+          }
+          fill(p.pa, p.pb, p.pc, p.pd);
+          if (p === last) lines();
+        } });
+      }
+      /* Piers at the ends of the span, so the deck visibly stands on
+         something -- and only at the ends, because the road it crosses
+         runs under the middle. */
+      const spanEnd = !(isDeck(road, i - 1) && i > 0) || !(i + 2 < pts.length && isDeck(road, i + 2));
+      if (spanEnd) {
+        const ground = { x: pts[i].x, y: pts[i].y, z: 0 };
+        for (const side of [left, right]) {
+          const top = { x: side[i].x * 0.85 + pts[i].x * 0.15, y: side[i].y * 0.85 + pts[i].y * 0.15, z: pts[i].z - 1.0 };
+          const foot = { x: top.x, y: top.y, z: ground.z };
+          const pier = boxCorners({ x: top.x, y: top.y, z: foot.z }, 0, 0, { l: 1.2, w: 1.2, h: top.z - foot.z });
+          items.push({ layer: 1, key: depthOf(top.x, top.y, foot.z) + 0.01, tag: audit && { kind: "pier", at: foot }, paint: () => paintBox(ctx, view, pier, "#8a8d93") });
+        }
+      }
+    }
+  };
   for (const { road } of roads) {
     const { pts, left, right } = road;
     /* FAR: each ground-level stretch of road is ONE ribbon, its points
@@ -264,12 +396,12 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
         if (run.length < 2) { run = []; return; }
         const L = run.map((i) => left[i]), R = run.map((i) => right[i]).reverse();
         const poly = [...L, ...R];
-        if (poly.some((q) => onScreen(P(q.x, q.y, q.z)))) {
-          const key = Math.max(...poly.map((q) => depthOf(q.x, q.y, q.z))) + 0.01;
+        if (poly.some((q) => onScreen(q.x, q.y, q.z))) {
+          const key = maxKey(poly) + 0.01;
           counts.segments += run.length - 1;
           items.push({ layer: 0, key, tag: audit && { kind: "road", id: `${road.id}@far`, poly }, paint: () => {
             ctx.beginPath();
-            poly.forEach((q, j) => { const [x, y] = P(q.x, q.y, q.z); if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+            for (let j = 0; j < poly.length; j++) { const q = poly[j]; view.into(q.x, q.y, q.z, PT); if (j) ctx.lineTo(PT[0], PT[1]); else ctx.moveTo(PT[0], PT[1]); }
             ctx.closePath(); ctx.fillStyle = shade(C.asphalt, { x: 0, y: 0, z: 1 }, 0.45); ctx.fill();
           } });
         }
@@ -284,85 +416,8 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     }
     for (let i = 0; i + 1 < pts.length; i++) {
       if (flat && !(isDeck(road, i) && isDeck(road, i + 1))) continue;   // drawn above as a ribbon
-      const a = left[i], b = left[i + 1], c = right[i + 1], d = right[i];
-      if (!onScreen(P(a.x, a.y, a.z)) && !onScreen(P(c.x, c.y, c.z))) continue;
-      const n = cross(sub(b, a), sub(d, a));
-      const deck = isDeck(road, i) && isDeck(road, i + 1);
-      counts.segments++;
-      /* The paint on the segment: its edges, the centre line with its
-         gaps, and the lines between lanes going the same way. */
-      const lines = () => {
-        ctx.lineWidth = Math.max(1, 0.15 * k);
-        ctx.strokeStyle = "rgba(250,250,242,0.8)";
-        seg(ctx, P, a, b); seg(ctx, P, d, c);
-        /* THE CENTRE LINE SAYS WHAT KIND OF ROAD THIS IS, the way it does
-           on a real one: an arterial carries a solid double yellow, a
-           collector the broken single, a residential street nothing at
-           all. The cheapest of the cues that make three roads feel like
-           three kinds of place (SIMULATOR.md 1.1.10). */
-        /* Where a turn bay opens the median, the line moves to its far
-           side (map/bays.js `centre`); elsewhere it is the centreline. */
-        const mid = road.centre ?? pts;
-        if (road.kind === "arterial" || road.kind === "highway") {
-          const p0 = mid[i], p1 = mid[i + 1], len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
-          const ox = (-(p1.y - p0.y) / len) * 0.14, oy = ((p1.x - p0.x) / len) * 0.14;
-          ctx.strokeStyle = C.yellow;
-          for (const s of [-1, 1]) seg(ctx, P, { x: p0.x + s * ox, y: p0.y + s * oy, z: p0.z }, { x: p1.x + s * ox, y: p1.y + s * oy, z: p1.z });
-        } else if (road.kind !== "residential" && i % 3 !== 2) { ctx.strokeStyle = C.yellow; seg(ctx, P, mid[i], mid[i + 1]); }
-        /* A null point is a stretch where the lanes either side are not
-           yet apart -- a bay lying on its neighbour before its taper. */
-        if (road.laneLines && i % 2 === 0) { ctx.strokeStyle = "rgba(250,250,242,0.75)"; for (const line of road.laneLines) if (line[i] && line[i + 1]) seg(ctx, P, line[i], line[i + 1]); }
-      };
-      const fill = (p, q, r, s) => {
-        quad(ctx, P, p, q, r, s);
-        ctx.fillStyle = shade(C.asphalt, n, 0.45); ctx.fill();
-        if (!flat) { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke(); }   // hide the hairline between pieces
-      };
-      if (!deck) {
-        /* KEYED BY ITS NEAREST CORNER, the mirror of the ground's rule:
-           a segment follows every cell that reaches under it. */
-        const key = Math.max(depthOf(a.x, a.y, a.z), depthOf(b.x, b.y, b.z), depthOf(c.x, c.y, c.z), depthOf(d.x, d.y, d.z)) + 0.01;
-        items.push({ layer: 0, key, tag: audit && { kind: "road", id: `${road.id}#${i}`, poly: [a, b, c, d] }, paint: () => { fill(a, b, c, d); if (!flat) lines(); } });
-      } else {
-        const across = Math.max(1, Math.round(Math.hypot(d.x - a.x, d.y - a.y) / LANE));
-        const pieces = [];
-        for (let s = 0; s < across; s++) for (let h = 0; h < 2; h++) {
-          const L0 = lerp(a, b, h / 2), L1 = lerp(a, b, (h + 1) / 2), R0 = lerp(d, c, h / 2), R1 = lerp(d, c, (h + 1) / 2);
-          const pa = lerp(L0, R0, s / across), pb = lerp(L1, R1, s / across), pc = lerp(L1, R1, (s + 1) / across), pd = lerp(L0, R0, (s + 1) / across);
-          const keys = [pa, pb, pc, pd].map((p) => depthOf(p.x, p.y, p.z));
-          pieces.push({ pa, pb, pc, pd, key: Math.max(...keys) + 0.01, span: Math.max(...keys) - Math.min(...keys), outerL: s === 0, outerR: s === across - 1 });
-        }
-        for (const p of pieces) deckSpan = Math.max(deckSpan, p.span);
-        const last = pieces.reduce((m, p) => (p.key > m.key ? p : m), pieces[0]);
-        for (const p of pieces) {
-          items.push({ layer: 1, key: p.key, tag: audit && { kind: "deck", id: `${road.id}#${i}`, poly: [p.pa, p.pb, p.pc, p.pd] }, paint: () => {
-            /* The slab: its outer sides, a metre deep, so the deck reads as
-               a thing with thickness standing in the air rather than a
-               ribbon floating. */
-            const drop = (q) => ({ ...q, z: q.z - 1.0 });
-            for (const [e0, e1, out] of [...(p.outerL ? [[p.pa, p.pb, -1]] : []), ...(p.outerR ? [[p.pd, p.pc, 1]] : [])]) {
-              quad(ctx, P, e0, e1, drop(e1), drop(e0));
-              const t = sub(e1, e0);
-              ctx.fillStyle = shade("#3b3f47", { x: -t.y * out, y: t.x * out, z: 0 }, 0.45); ctx.fill();
-            }
-            fill(p.pa, p.pb, p.pc, p.pd);
-            if (p === last) lines();
-          } });
-        }
-        /* Piers at the ends of the span, so the deck visibly stands on
-           something -- and only at the ends, because the road it crosses
-           runs under the middle. */
-        const spanEnd = !(isDeck(road, i - 1) && i > 0) || !(i + 2 < pts.length && isDeck(road, i + 2));
-        if (spanEnd) {
-          const ground = { x: pts[i].x, y: pts[i].y, z: 0 };
-          for (const side of [left, right]) {
-            const top = { x: side[i].x * 0.85 + pts[i].x * 0.15, y: side[i].y * 0.85 + pts[i].y * 0.15, z: pts[i].z - 1.0 };
-            const foot = { x: top.x, y: top.y, z: ground.z };
-            const pier = boxCorners({ x: top.x, y: top.y, z: foot.z }, 0, 0, { l: 1.2, w: 1.2, h: top.z - foot.z });
-            items.push({ layer: 1, key: depthOf(top.x, top.y, foot.z) + 0.01, tag: audit && { kind: "pier", at: foot }, paint: () => paintBox(ctx, view, pier, "#8a8d93") });
-          }
-        }
-      }
+      if (!onScreen(left[i].x, left[i].y, left[i].z) && !onScreen(right[i + 1].x, right[i + 1].y, right[i + 1].z)) continue;
+      segment(road, i);
     }
   }
 
@@ -372,12 +427,12 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      hair past the nearest of its corners, which is past every ribbon
      segment under it. */
   for (const j of junctions) {
-    if (!j.surface.length || !onScreen(P(j.at.x, j.at.y, j.at.z ?? 0))) continue;
+    if (!j.surface.length || !onScreen(j.at.x, j.at.y, j.at.z ?? 0)) continue;
     const key = Math.max(...j.surface.map((p) => depthOf(p.x, p.y, p.z ?? 0))) + 0.05;
     counts.segments++;
     items.push({ layer: 0, key, tag: audit && { kind: "junction", id: j.node, poly: j.surface.map((p) => ({ x: p.x, y: p.y, z: p.z ?? 0 })) }, paint: () => {
       ctx.beginPath();
-      j.surface.forEach((p, i) => { const [x, y] = P(p.x, p.y, p.z ?? 0); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+      for (let i = 0; i < j.surface.length; i++) { const p = j.surface[i]; view.into(p.x, p.y, p.z ?? 0, PT); if (i === 0) ctx.moveTo(PT[0], PT[1]); else ctx.lineTo(PT[0], PT[1]); }
       ctx.closePath();
       ctx.fillStyle = shade(C.asphalt, { x: 0, y: 0, z: 1 }, 0.45); ctx.fill();
       ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke();
@@ -482,9 +537,9 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      deck is keyed past the widest deck piece's span, so it follows the
      piece it stands on whatever the piece's orientation to the view. */
   const carKey = (at) => depthOf(at.x, at.y, at.z) + (at.z - groundAt(at.x, at.y) > 1.0 ? deckSpan + 0.02 : 0.01);
-  for (const a of actors) {
-    const [px, py] = P(a.x, a.y, a.z ?? 0);
-    if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
+  /* ONE ROAD USER ON SCREEN, past the cull: as for a segment, so the
+     city's parked cars off screen build nothing (draw-alloc.mjs). */
+  const actorItem = (a, px, py) => {
     counts.cars++;
     const at = { x: a.x, y: a.y, z: a.z ?? 0 };
     /* Quantised RELATIVE TO THE VIEW: a sprite set has 32 headings as
@@ -493,11 +548,11 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     /* Far: a person is under a pixel -- except somebody struck, who is a
        dot that flashes, so it is never missed. A car is one dot. */
     if (far) {
-      if (a.ped && !a.struck) continue;
+      if (a.ped && !a.struck) return;
       const colour = a.struck ? (Math.floor((scene.t ?? 0) * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour ?? CAR_COLOURS[(a.n ?? 0) % CAR_COLOURS.length];
       const r = Math.max(1.5, (a.length ?? CAR_LEN) * k * 0.6);
       items.push({ layer: 1, key: carKey(at), tag: audit && { kind: a.ped ? "ped" : "car", id: a.id ?? a.n, at }, paint: () => { ctx.fillStyle = colour; ctx.fillRect(px - r / 2, py - r / 2, r, r); } });
-      continue;
+      return;
     }
     /* A PERSON: a narrow upright box, 0.5 m square and 1.7 m tall. */
     if (a.ped) {
@@ -505,7 +560,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const person = a.struck ? boxCorners(at, deg, 0, { l: 1.7, w: 0.5, h: 0.3 }) : boxCorners(at, deg, 0, { l: 0.5, w: 0.5, h: 1.7 });
       const colour = a.struck ? (Math.floor((scene.t ?? 0) * 2) % 2 ? "#ff8a1e" : "#5a2a08") : PED_COLOURS[(a.n ?? 0) % PED_COLOURS.length];
       items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "ped", id: a.id, at }, paint: () => paintBox(ctx, view, person, colour) });
-      continue;
+      return;
     }
     const colour = a.colour ?? CAR_COLOURS[(a.n ?? 0) % CAR_COLOURS.length];
     /* A TRUCK (sim/traffic.js VEHICLES): a cargo box behind a cab, both
@@ -519,7 +574,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const body = boxCorners(at, deg, 0, { l: L, w: W, h: H });
       const glass = boxCorners(at, deg, 0, { l: L - 0.6, w: W + 0.04, h: 0.9 }, H - 1.4);
       items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, a.crashed ? colour : C.bus); if (!flat) paintBox(ctx, view, glass, "#2a3340"); } });
-      continue;
+      return;
     }
     if (a.kind === "truck") {
       const L = a.length ?? 9, W = a.width ?? 2.55, H = a.height ?? 3.4;
@@ -529,12 +584,17 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const parts = [[boxCorners(at, deg, 0, box), "#e9e6df", along(-box.back)], [boxCorners(at, deg, 0, cab), colour, along(-cab.back)]]
         .sort((p, q) => depthOf(p[2].x, p[2].y, p[2].z) - depthOf(q[2].x, q[2].y, q[2].z));
       items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { for (const [c, col] of parts) paintBox(ctx, view, c, col); } });
-      continue;
+      return;
     }
     const body = boxCorners(at, deg, 0, BODY);
     const cabin = boxCorners(at, deg, 0, CABIN, BODY.h);
     /* Between the two tiers a car is its body alone: the cabin is a few pixels. */
     items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, colour); if (!flat) paintBox(ctx, view, cabin, colour); } });
+  };
+  for (const a of actors) {
+    if (!onScreen(a.x, a.y, a.z ?? 0)) continue;
+    const [px, py] = P(a.x, a.y, a.z ?? 0);
+    actorItem(a, px, py);
   }
 
   for (const { road, cars = [] } of roads) {
@@ -563,7 +623,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      where a bus pulls up. Too small to read far out. */
   if (!far) for (const st of stops) {
     const z = groundAt(st.at.x, st.at.y);
-    if (!onScreen(P(st.at.x, st.at.y, z))) continue;
+    if (!onScreen(st.at.x, st.at.y, z)) continue;
     const at = { x: st.at.x, y: st.at.y, z };
     const post = boxCorners(at, st.heading, 0, { l: 0.12, w: 0.12, h: 2.6 });
     const flag = boxCorners(at, st.heading, 0, { l: 0.08, w: 0.6, h: 0.45 }, 2.1);
@@ -579,7 +639,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     counts.props++;
     const box = boxCorners({ x: b.x, y: b.y, z }, b.heading, 0, { l: b.l, w: b.w, h: b.h });
     items.push({ layer: 1, key: depthOf(b.x, b.y, z) + 0.01, tag: audit && { kind: "prop", at: { x: b.x, y: b.y, z } }, paint: far
-      ? () => { quad(ctx, P, box[4], box[5], box[6], box[7]); ctx.fillStyle = "#8a8f9c"; ctx.fill(); }
+      ? () => { quad(ctx, P, cornerOf(box, 4), cornerOf(box, 5), cornerOf(box, 6), cornerOf(box, 7)); ctx.fillStyle = "#8a8f9c"; ctx.fill(); }
       : () => paintBox(ctx, view, box, "#7d8290") });
   }
 

@@ -66,11 +66,26 @@ export function projector(k, cam, canvas) {
 export function viewOf(k, cam, rot, canvas, { centreY = 0.55 } = {}) {
   const a = ((rot ?? 0) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
   const cx = canvas.w / 2, cy = canvas.h * centreY + cam.z * LIFT * k;
-  const turn = (x, y) => { const dx = x - cam.x, dy = y - cam.y; return [dx * c - dy * s, dx * s + dy * c]; };
+  /* NO ARRAY BUT THE ONE RETURNED. These run for every cell, segment and
+     sidewalk piece in the city every frame, on screen or not, and an
+     intermediate [u, v] apiece was most of the 13 MB of garbage a frame
+     made at street zoom (tools/measure/draw-alloc.mjs). Same arithmetic,
+     in the same order, so not one pixel or key moves. */
+  const cx0 = cam.x, cy0 = cam.y, W = canvas.w, H = canvas.h;
   return {
     rot: rot ?? 0, k,
-    P: (x, y, z) => { const [u, v] = turn(x, y); return [cx + (u - v) * k, cy + ((u + v) / 2 - z * LIFT) * k]; },
-    key: (x, y, z) => { const [u, v] = turn(x, y); return u + v + z / LIFT; },
+    P: (x, y, z) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; return [cx + (u - v) * k, cy + ((u + v) / 2 - z * LIFT) * k]; },
+    key: (x, y, z) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; return u + v + z / LIFT; },
+    /* P written into `o` rather than a new array, for the hot paths that
+       use the point at once (a box's faces). */
+    into: (x, y, z, o) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; o[0] = cx + (u - v) * k; o[1] = cy + ((u + v) / 2 - z * LIFT) * k; return o; },
+    /* Whether a point lands within `m` pixels of the canvas -- P's test,
+       without building P's array. */
+    onScreen: (x, y, z, m) => {
+      const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c;
+      const px = cx + (u - v) * k, py = cy + ((u + v) / 2 - z * LIFT) * k;
+      return px > -m && px < W + m && py > -m && py < H + m;
+    },
     /* The direction toward the eye, in world coordinates: (1, 1, 1/LIFT)
        in the rotated frame, turned back. */
     eye: { x: c + s, y: -s + c, z: 1 / LIFT },

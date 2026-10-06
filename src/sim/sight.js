@@ -30,18 +30,25 @@ export const tallerThanEye = (a) => !a.crash && vehicleOf(a).height > HIDES;
 export const boxOf = (p, id = null) => ({ id, x: p.x, y: p.y, heading: p.rot ?? p.heading ?? 0, l: p.length, w: p.width });
 
 /* Does the segment p-q pass through box b (l along its heading, w across)? */
+/* ALLOCATES NOTHING: it runs for every eye, every target and every box
+   on every tick, and a version that built arrays for each corner and edge
+   was a tenth of all the garbage the sim made (step-alloc.mjs, 2 October)
+   -- and garbage is what made the step stall. Liang-Barsky clipping, the
+   four edges written out. */
 export function segHitsBox(p, q, b, l = b.l, w = b.w) {
   const h = ((b.heading ?? 0) * Math.PI) / 180, c = Math.cos(h), s = Math.sin(h);
-  const to = (x, y) => { const dx = x - b.x, dy = y - b.y; return [dx * c + dy * s, -dx * s + dy * c]; };
-  const [u0, v0] = to(p.x, p.y), [u1, v1] = to(q.x, q.y);
-  let t0 = 0, t1 = 1;
+  const ax = p.x - b.x, ay = p.y - b.y, bx = q.x - b.x, by = q.y - b.y;
+  const u0 = ax * c + ay * s, v0 = -ax * s + ay * c, u1 = bx * c + by * s, v1 = -bx * s + by * c;
   const du = u1 - u0, dv = v1 - v0;
-  for (const [pp, qq] of [[-du, u0 + l / 2], [du, l / 2 - u0], [-dv, v0 + w / 2], [dv, w / 2 - v0]]) {
-    if (pp === 0) { if (qq < 0) return false; continue; }
+  let t0 = 0, t1 = 1;
+  /* One edge: the segment's parameter where it crosses, and which side it enters from. */
+  const clip = (pp, qq) => {
+    if (pp === 0) return qq >= 0;
     const r = qq / pp;
     if (pp < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; }
-  }
-  return t0 <= t1;
+    return true;
+  };
+  return clip(-du, u0 + l / 2) && clip(du, l / 2 - u0) && clip(-dv, v0 + w / 2) && clip(dv, w / 2 - v0) && t0 <= t1;
 }
 
 /* Hidden from `eye`: every line from it to the point passes through a box

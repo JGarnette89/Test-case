@@ -85,8 +85,22 @@ export function initialParked(course, seed = 1) {
   return parked;
 }
 
-/* Parked cars as poses, for the renderer and the contact test. */
+/* Parked cars as poses, for the renderer and the contact test. ONCE PER
+   PARKING STATE: the step makes a new `parked` object only when somebody
+   pulls in or out, and the poses were rebuilt every frame -- 1835 objects
+   sixty times a second in the city, about a third of all the garbage the
+   frame made (tools/measure/step-alloc.mjs, 2 October). The array is
+   shared: copy it before adding to it -- frozen, so forgetting to throws. */
+const posesOf = new WeakMap();
 export function parkedPoses(course, parked) {
+  if (!parked) return [];
+  const hit = posesOf.get(parked);
+  if (hit && hit.course === course) return hit.out;
+  const out = Object.freeze(buildParkedPoses(course, parked));
+  posesOf.set(parked, { course, out });
+  return out;
+}
+function buildParkedPoses(course, parked) {
   const { byKey } = parkingOf(course);
   const out = [];
   for (const [key, car] of Object.entries(parked ?? {})) {

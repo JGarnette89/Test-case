@@ -2224,6 +2224,102 @@ The report's cap line read "held up to 322 cars... broke at step 1
 and was being counted as the break. Fixed in `perf.js` -- the probe
 is reported on its own line as the control it is.
 
+##### 1.2.3 THE STUTTER WAS GARBAGE -- 6 October, the city with everything in it
+
+The ramp above is stage 0's roads and boxes. It has never seen a truck,
+a bus, a bay, a pedestrian, a walker, a parked car, a building, a
+sidewalk, a sight blocker or the free camera, so "the city tanks at
+times" was something it could not reproduce. The measuring now lives
+in four scripts, run on the city with 200 moving cars, 1835 parked and
+264 walking:
+
+- `tools/measure/frame-cost.mjs` -- #/map's own frame loop over a
+  canvas that counts calls. It reports the frame distribution and the
+  WORST frames, each split into sim step, poses, draw and garbage
+  collection. It also gives the sim step with each kind of content
+  switched off, and the draw with each kind left out, at street,
+  district and whole-map zoom. Spikes, not averages, and the cost
+  split by category and by side.
+- `tools/measure/step-spikes.mjs` -- a CPU profile of only the slow
+  steps.
+- `tools/measure/step-alloc.mjs` and `draw-alloc.mjs` -- who allocates,
+  per step and per frame.
+
+**What it found: the spikes are the garbage collector.** 85% of a slow
+step's time was the collector, not the sim (`step-spikes.mjs`). The
+worst frames are frames where a major collection landed. So the cause
+is how much garbage is made, and the answer is to make less, not to
+compute less.
+
+**The renderer was the biggest source, and nobody would have guessed
+it.** The garbage `drawFrame` made per frame:
+
+| | street | district | whole map |
+|---|---|---|---|
+| before | 13.0 MB | 14.8 MB | 14.7 MB |
+| after | 0.8 MB | 1.9 MB | 3.5 MB |
+
+That was about 780 MB a second at 60 fps. Almost all of it came from
+things that were NOT on screen:
+
+- Every terrain cell, road segment, sidewalk piece and parked car in
+  the city was projected into a fresh array just to be culled.
+- A sidewalk's polygon was rebuilt for every piece every frame.
+- Loop bodies that made closures had V8 build their scope on every
+  pass, before the cull could skip them.
+
+The fixes:
+
+- an allocation-free cull (`view.onScreen`);
+- sidewalk pieces built once and kept;
+- the per-thing bodies moved into functions called only past the cull;
+- a box as one flat array rather than nine objects;
+- faces sorted in scratch space;
+- points projected into a reused pair (`view.into`).
+
+**The arithmetic is the same arithmetic in the same order.** The old
+renderer and the new were run side by side on every test map, at five
+zooms and six rotations, and logged every canvas call with its
+arguments. 1.34 million calls were identical, in identical order, with
+the audit order identical too. The comparison catches a 1 mm change in
+one face's sort key.
+
+**The sim side**: 4.45 MB a step before, 4.77 MB with the frame's
+poses after (it had been 7.06 MB). Parked cars' poses are now cached
+per parking state, since they only change when somebody parks. The
+sight test (`segHitsBox`) is allocation-free, and identical on a
+million random cases.
+
+What the whole frame does now, 30 s following a car:
+
+| | p50 | p95 | p99 | GC |
+|---|---|---|---|---|
+| before | 3.66 ms | 8.71 ms | 13.57 ms | 541 ms in 552 pauses |
+| after | 1.38 ms | 5.95 ms | 7.30 ms | 244 ms in 208 pauses |
+
+These are desk-machine numbers; the phone is several times slower.
+
+**By category, sim against draw.** Parked cars cost the sim almost
+nothing (0.2 ms a step); they are a DRAW cost, 17-21% of canvas calls.
+Sidewalks are the most expensive thing drawn per call, 0.24-0.34 ms
+of a 0.8-1.0 ms frame. Trucks are the most expensive thing simulated:
+0.9 ms of a 4 ms step, which is the sight blocking. Walkers, people
+crossing and parking are 0.1-0.2 ms each.
+
+**What remains, worst first:**
+
+1. **The sim step is now the frame.** It is ~4 ms every third frame on
+   the desk. On a phone several times slower, that is a long frame
+   every third frame at 20 Hz -- the likeliest stutter left. It still
+   allocates ~4.8 MB a step: `whatStops` ~800 KB, the step's per-car
+   copies ~730 KB, `poseOf`/`poseOnGraph` ~860 KB, `walkerPose`
+   ~320 KB.
+2. **Occasional major collections** still reach ~20 ms, now rarer.
+3. Drawing parked cars as two shaded boxes each, at every zoom.
+
+The phone number for the city, with all this in, is the measurement
+still owed: open the city on `#/map` and read the fps readout.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,

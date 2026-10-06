@@ -127,7 +127,7 @@ export function actorsOf(scene, carry) {
   const w = scene.world;
   /* Parked cars first: they are part of the world the traffic drives past
      and the player can hit (sim/parking.js). */
-  const out = w.parked ? parkedPoses(w.course, w.parked) : [];
+  const out = w.parked ? parkedPoses(w.course, w.parked).slice() : [];   // the cached poses are shared (parking.js): copy before adding
   for (const a of w.actors) {
     if (a.player) {
       const p = driverPose({ ...a, s: a.s + a.v * carry }, w.course);
