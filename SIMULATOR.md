@@ -2303,8 +2303,18 @@ These are desk-machine numbers; the phone is several times slower.
 nothing (0.2 ms a step); they are a DRAW cost, 17-21% of canvas calls.
 Sidewalks are the most expensive thing drawn per call, 0.24-0.34 ms
 of a 0.8-1.0 ms frame. Trucks are the most expensive thing simulated:
-0.9 ms of a 4 ms step, which is the sight blocking. Walkers, people
-crossing and parking are 0.1-0.2 ms each.
+0.9 ms of a 4 ms step. Walkers, people crossing and parking are
+0.1-0.2 ms each.
+
+**CORRECTED, 6 October:** this paragraph first said the trucks' 0.9 ms
+"is the sight blocking". That was inferred, never measured. The
+script's see-through row passed `seeThrough` to `seedGraph`, which
+does not take it -- the step reads it off the world -- so the row
+compared a world with itself and its "saving" was noise. The city
+also has no crosswalks, so its "nobody crossing" row measured nothing
+either. Both are fixed, and every row now prints what the world held,
+so a switch that does nothing shows as nothing gone (1.2.4 has the
+real numbers).
 
 **What remains, worst first:**
 
@@ -2319,6 +2329,68 @@ crossing and parking are 0.1-0.2 ms each.
 
 The phone number for the city, with all this in, is the measurement
 still owed: open the city on `#/map` and read the fps readout.
+
+##### 1.2.4 THE INSTRUMENT WAS MEASURING A SIMPLER GAME -- 6 October, and the bench
+
+**What the phone said, on the garbage fix (`8b8237f`).** The maintainer
+ran `#/iso` on the Pixel 7 Pro over HTTPS, a secure context now:
+
+- every step held 60 fps with zero hitches and zero stalls, worst
+  frame 16.8 ms, from 50 cars up to 200 cars with 200 props;
+- the DOM probe hitched 12 times, so the control still bites;
+- the step at 308 cars and 1238 things failed on p95 (25.1 ms) with no
+  hitches -- graceful degradation, not stutter.
+
+So the stutter is gone. **But the cap is not the game's.** In his
+words, "the performance test appeared visually the same, no buses or
+anything newer". `#/iso` is stage 0's roads with cars and boxes, so
+200 cars was the ceiling of a scene without trucks, buses, walkers,
+people crossing, parked cars, sidewalks or sight blocking. The desk
+scripts had been rewritten for the real city and the phone instrument
+had not, and the report's own columns said so.
+
+**The bench (`src/iso/bench.js`, `#/bench`, the menu's Performance
+entry).** It is the real sim on a map built to hold everything --
+`BENCH_BRIEF`: every intersection type, a downtown with crosswalks,
+curb stops and bays with buses, buildings on every lot, parked cars,
+trucks at their share, sight blocking on. It is stepped and drawn as
+`#/map`'s Watch does it, following a car at street zoom.
+
+- **First, the ramp:** 50 to 400 cars, held eight seconds each, until
+  a step's steady state fails. The DOM probe is still step 1.
+- **Then the split:** at the steady cap, the same scene with each kind
+  of thing switched off in turn, and once from further out. Every row
+  prints the count proving its thing went to zero, and every frame is
+  timed as sim step, poses and draw.
+- `tools/measure/frame-cost.mjs` runs the same map by default, so a
+  desk number and a phone number are of one scene.
+- `tools/verify-bench.mjs` drives the screen's own frame through both
+  phases. It holds each switch to removing its own thing and only its
+  own thing; a "no trucks" that did nothing was planted and caught.
+
+Building it found a real bug: a brief asking for downtown AND buses
+had no bus stops at all. Downtown splits every collector at its
+intersections, and the stop placer looked only at whole blocks. Fixed,
+and `verify-briefs` asks for the pair.
+
+**What the desk says about the bench at 200 cars, and what the phone
+will probably say:** the sim step is 13.7 ms here, against 4 ms on the
+plain city. Every third frame is a 16 ms frame on the desk, so on a
+phone several times slower it will not hold 200. Switched off one at a
+time:
+
+| switched off | what went | step p50 (ms) | saved |
+|---|---|---|---|
+| nothing | -- | 13.72 | |
+| people crossing | 60 crossing | 5.64 | **8.07** |
+| walkers | 277 walking (crossers then come from the edges: 160) | 11.78 | 1.94 |
+| sight blocking | trucks see-through | 11.81 | 1.91 |
+| parking | 2646 parked | 12.55 | 1.17 |
+| buses | 11 buses | 13.13 | 0.59 |
+| trucks | 13 trucks | 13.33 | 0.39 |
+
+**People crossing are 60% of the step.** That is the next thing to
+diagnose, worst first, once the phone's number confirms it.
 
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 

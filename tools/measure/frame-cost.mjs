@@ -17,7 +17,10 @@
    as the phone's milliseconds. `actorsOf` is #/map's, copied here (that
    module is JSX); keep the two in step.
 
-   Usage: node --expose-gc tools/measure/frame-cost.mjs [map=city] [cars=200] [seconds=30] */
+   The default map is the BENCH's (src/iso/bench.js), the scene the phone
+   runs at #/bench, so a desk number and a phone number are of one thing.
+
+   Usage: node --expose-gc tools/measure/frame-cost.mjs [map=bench] [cars=200] [seconds=30] */
 import { PerformanceObserver, performance } from "node:perf_hooks";
 import { loadMap, groundFor } from "../../src/map/load.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
@@ -32,10 +35,11 @@ import { terrain } from "../../src/iso/road.js";
 import { drawFrame } from "../../src/iso/draw.js";
 import { zoomFor } from "../../src/iso/chase.js";
 import { DT } from "../../src/sim/traffic.js";
+import { BENCH_BRIEF } from "../../src/iso/bench.js";
 
-const [mapId = "city", carsArg = "200", secsArg = "30"] = process.argv.slice(2);
+const [mapId = "bench", carsArg = "200", secsArg = "30"] = process.argv.slice(2);
 const cars = Number(carsArg), secs = Number(secsArg);
-const raw = mapId === "downtown" ? mapFromBrief({ downtown: true, buses: true }, 1) : TEST_MAPS.find((m) => m.id === mapId).build();
+const raw = mapId === "bench" ? mapFromBrief(BENCH_BRIEF, 1) : mapId === "downtown" ? mapFromBrief({ downtown: true, buses: true }, 1) : TEST_MAPS.find((m) => m.id === mapId).build();
 const loaded = loadMap(raw);
 
 /* A canvas that does nothing and counts what it was asked to do. */
@@ -114,21 +118,28 @@ for (const x of frames.slice().sort((p, q) => q.ms - p.ms).slice(0, 10)) console
 /* 2a. SIMULATION BY CATEGORY: the same seed stepped with each kind of content off. */
 const stepCost = (opts, label, mutateMap = null) => {
   const L = mutateMap ? loadMap(mutateMap(raw)) : loaded;
-  let v = seedGraph(1, 50, L, { every: 2.0, target: cars, posted: true, walkers: true, ...opts });
+  const { seeThrough, ...seed } = opts;
+  let v = seedGraph(1, 50, L, { every: 2.0, target: cars, posted: true, walkers: true, ...seed });
+  /* NOT a seed option: the step reads it off the world (crossing.js
+     `tallNow`). Passed to seedGraph, as this row first did, it was
+     silently ignored and the row measured nothing (6 October). */
+  if (seeThrough) v = { ...v, seeThrough: true };
   for (let i = 0; i < 100; i++) v = step(v);   // past the first churn
   const t = [];
   for (let i = 0; i < 400; i++) { const s0 = performance.now(); v = step(v); t.push(performance.now() - s0); }
-  return { label, p50: pct(t, 0.5), p99: pct(t, 0.99), max: Math.max(...t), cars: v.actors.length };
+  const kinds = v.actors.reduce((o, a) => { o[a.kind ?? "car"] = (o[a.kind ?? "car"] ?? 0) + 1; return o; }, {});
+  return { label, p50: pct(t, 0.5), p99: pct(t, 0.99), max: Math.max(...t), cars: v.actors.length, held: `${kinds.truck ?? 0} trucks, ${kinds.bus ?? 0} buses, ${(v.walkers ?? []).length} walking, ${(v.peds ?? []).length} crossing, ${Object.keys(v.parked ?? {}).length} parked, sight ${v.seeThrough ? "off" : "on"}` };
 };
 console.log("\n2a. a sim step (ms), with each kind of content switched off -- the difference is what it costs:");
 const base = stepCost({}, "everything");
 for (const r of [base,
   stepCost({ walkers: false }, "no walkers"),
   stepCost({ trucks: 0 }, "no trucks"),
+  stepCost({ buses: 0 }, "no buses"),
   stepCost({ pedEvery: Infinity, gapRate: 0 }, "nobody crossing"),
   stepCost({ seeThrough: true }, "trucks see-through (no sight)"),
   stepCost({}, "no parking", (m) => ({ ...m, roads: m.roads.map((r) => ({ ...r, parking: "none" })) })),
-]) console.log(`   ${r.label.padEnd(30)} p50 ${fmt(r.p50)}  p99 ${fmt(r.p99)}  max ${fmt(r.max)}   (${r.cars} cars)   ${r === base ? "" : `saves ${fmt(base.p50 - r.p50)} at the median`}`);
+]) console.log(`   ${r.label.padEnd(30)} p50 ${fmt(r.p50)}  p99 ${fmt(r.p99)}  max ${fmt(r.max)}   (${r.cars} cars: ${r.held})   ${r === base ? "" : `saves ${fmt(base.p50 - r.p50)} at the median`}`);
 
 /* 2b. DRAWING BY CATEGORY: one frame, drawn at three views, without each kind. */
 console.log("\n2b. one frame drawn (ms, median of 30, and canvas calls), without each kind of content:");

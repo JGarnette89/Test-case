@@ -179,9 +179,16 @@ export function mapFromBrief(input = {}, seed = 1) {
     const joins = loadMap(m).nodes.map((q) => q.at);
     const clear = (p) => joins.every((q) => Math.hypot(q.x - p.x, q.y - p.y) >= 55);
     let n = 0;
-    for (const r of m.roads.filter((q) => q.kind === "collector" && /^[hv]\d+-\d+$/.test(q.id))) {
+    /* DOWNTOWN HAS SPLIT EVERY COLLECTOR at its intersections (above), so
+       no piece is a full block or keeps its block's name, and a brief
+       asking for downtown AND buses got no stops at all (6 October). With
+       downtown, any collector piece inside the city is a candidate; the
+       clearance from intersections below still decides where a stop fits.
+       Without it the candidates are the full blocks, exactly as before. */
+    const inCity = (p) => p.x >= -1 && p.x <= W + 1 && p.y >= -1 && p.y <= H + 1;
+    for (const r of m.roads.filter((q) => q.kind === "collector" && (b.downtown ? inCity(q.points[0]) && inCity(q.points.at(-1)) : /^[hv]\d+-\d+$/.test(q.id)))) {
       const [a, z] = [r.points[0], r.points.at(-1)], L = Math.hypot(z.x - a.x, z.y - a.y);
-      if (L < CELL - 1) continue;
+      if (!b.downtown && L < CELL - 1) continue;
       const along = (f) => ({ x: a.x + (z.x - a.x) * f, y: a.y + (z.y - a.y) * f });
       const spots = [];
       for (let f = 0.15; f <= 0.85 && spots.length < 2; f += 0.01) if (clear(along(f)) && (!spots.length || f - spots[0] > 0.2)) spots.push(f);

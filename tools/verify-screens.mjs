@@ -137,6 +137,7 @@ try {
     ["#/tests", "the test maps and their sections"],
     ["#/wheel", "stage 1 of the simulator: the player at the wheel"],
     ["#/iso", "stage 0 of the simulator: isometric"],
+    ["#/bench", "the bench: the budget test on the whole game"],
     ["#/sim", "stage 0 of the rebuild"],
     ["#/crossing", "stage 1 of the rebuild"],
     ["#/candidates", "stage 2 of the rebuild"],

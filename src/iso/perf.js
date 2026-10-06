@@ -49,7 +49,7 @@
 /* WHICH INSTRUMENT. Bumped whenever the ramp or the report changes
    shape, and printed with the build stamp on the screen and in the
    report, so a report from a stale tab says so on its first line. */
-export const INSTRUMENT = 4;
+export const INSTRUMENT = 5;   // 5: the bench (#/bench) -- the whole game, and where the frame goes
 export const BUILD = typeof __BUILD__ !== "undefined" ? __BUILD__ : "unbundled";   // vite.config.js bakes it in; bare node has none
 
 export const HITCH = 50;     // ms: a frame long enough to see as a stutter (three missed vsyncs at 60)
@@ -306,9 +306,14 @@ export function rampSteps() {
    a lighter one did not -- and a hitch fails the step without stopping
    the ramp, because a stutter says nothing about how much the device
    can draw. */
-export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = perfMeter() } = {}) {
+/* `stopOnFail`: a ramp stops at its first unsteady step; a set of
+   comparisons (the bench's category split) runs every step whatever it
+   finds. A frame's `flags.split` -- milliseconds by part, `{ step,
+   poses, draw }` -- is summarised per step, so the report says where a
+   frame's time went as well as how long it was. */
+export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = perfMeter(), stopOnFail = true } = {}) {
   let i = 0, at = null, settled = false, started = false, last = null, counts = null;
-  let log = [], gcFrames = 0, gcMs = 0;
+  let log = [], gcFrames = 0, gcMs = 0, split = {};
   const results = [];
   const finish = () => {
     const strict = results.filter((x) => x.pass);
@@ -330,13 +335,14 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       let dt = null;
       if (last != null) { dt = now - last; meter.record(dt); }
       last = now;
-      if (drew) counts = { cars: drew.cars, items: drew.items };
+      if (drew) counts = { cars: drew.cars, items: drew.items, ...(drew.extra ?? {}) };
       if (!started) { started = true; return { load: steps[0] }; }
-      if (at == null) { at = now; settled = false; meter.reset(); log = []; gcFrames = 0; gcMs = 0; return {}; }
+      if (at == null) { at = now; settled = false; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; return {}; }
       const held = (now - at) / 1000;
-      if (!settled && held >= settle) { settled = true; meter.reset(); log = []; gcFrames = 0; gcMs = 0; }
+      if (!settled && held >= settle) { settled = true; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; }
       if (settled && dt != null) {
         if (flags.gc) { gcFrames++; gcMs += dt; }
+        if (flags.split) for (const key in flags.split) (split[key] ??= []).push(flags.split[key]);
         if (dt > HITCH) {
           log.push({
             t: Math.round((held - settle) * 100) / 100, dt: Math.round(dt),
@@ -354,28 +360,64 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
         step: i + 1, ...steps[i], ...sum, ...(counts ?? {}),
         pass: meter.passes(sum), steady: meter.steady(sum),
         stallLog: log, gcFrames, gcMeanMs: gcFrames ? Math.round((gcMs / gcFrames) * 10) / 10 : 0,
+        ...(Object.keys(split).length ? { split: splitSummary(split) } : {}),
       });
       i++;
-      if (i >= steps.length || !results[results.length - 1].steady) return finish();
+      if (i >= steps.length || (stopOnFail && !results[results.length - 1].steady)) return finish();
       at = null;
       return { load: steps[i] };
     },
   };
 }
 
-export function reportText({ device, results, cap, steadyCap, canvas }) {
+/* Per part: the median and 95th percentile over the frames where the
+   part ran at all (a sim step runs on one frame in three), and how often
+   it ran. Milliseconds, one decimal. */
+function splitSummary(split) {
+  const out = {};
+  for (const [key, xs] of Object.entries(split)) {
+    const ran = xs.filter((x) => x > 0).sort((a, b) => a - b);
+    const q = (p) => (ran.length ? Math.round(ran[Math.min(ran.length - 1, Math.floor(p * ran.length))] * 10) / 10 : 0);
+    out[key] = { p50: q(0.5), p95: q(0.95), max: q(1), share: xs.length ? Math.round((100 * ran.length) / xs.length) : 0 };
+  }
+  return out;
+}
+
+/* The device, as both reports open with it. */
+export function deviceLines(device, canvas, title) {
   const lines = [];
-  lines.push(`performance report ${new Date().toISOString()} · instrument v${INSTRUMENT} · build ${BUILD}`);
+  lines.push(`${title} ${new Date().toISOString()} · instrument v${INSTRUMENT} · build ${BUILD}`);
   const platform = [device.platform, device.platformVersion].filter(Boolean).join(" ");
   const who = device.model ? `${device.model} · ${platform}`.trim() : `model unknown${device.note ? ` (${device.note})` : ""}${platform ? ` · ${platform}` : ""}`;
   lines.push(`device: ${who}`);
   lines.push(`ua: ${device.ua} (a Chrome UA is reduced: "Android 10; K" is every Android device)`);
   lines.push(`cores ${device.cores} · memory ${device.memoryGB != null ? `${device.memoryGB}GB` : "n/a (secure contexts only)"} · ${device.secure === false ? "plain http, not a secure context" : device.secure ? "secure context" : "context unknown"} · dpr ${device.dpr}${device.canvasDpr != null ? ` (canvas at ${device.canvasDpr})` : ""} · screen ${device.screen} · viewport ${device.viewport} · canvas ${canvas}${device.build ? ` · ${device.build}` : ""}${device.longTasks === false ? " · no long-task API" : ""}${device.loaf === false ? " · no long-animation-frame API" : ""}`);
   lines.push(`budget: p95 <= ${BUDGET.p95}ms, no frame over ${BUDGET.max}ms (a hitch), no second under 30 fps`);
+  return lines;
+}
+
+export function reportText({ device, results, cap, steadyCap, canvas }) {
+  const lines = deviceLines(device, canvas, "performance report");
   lines.push("step           traffic  props  cars(drawn)  things  fps  p50   p95   worst  hitches  stalls  slow-s  gc-frames(mean ms)  steady  pass");
   for (const r of results) {
     lines.push(`${String(r.label ?? r.step).padEnd(14)} ${String(r.traffic).padStart(7)}  ${String(r.props).padStart(5)}  ${String(r.cars).padStart(11)}  ${String(r.items).padStart(6)}  ${String(r.fps).padStart(3)}  ${String(r.p50).padStart(4)}  ${String(r.p95).padStart(4)}  ${String(r.worst).padStart(5)}  ${String(r.hitches).padStart(7)}  ${String(r.stalls).padStart(6)}  ${String(r.slowSeconds).padStart(6)}  ${String(`${r.gcFrames ?? 0} (${r.gcMeanMs ?? 0})`).padStart(18)}  ${r.steady ? "yes" : "NO "}     ${r.pass ? "yes" : "NO"}`);
   }
+  lines.push(...stallLines(results));
+  const probe = results.find((x) => x.probe);
+  if (probe) lines.push(probeLine(probe));
+  lines.push(cap ? `cap (budget, no hitching): held up to ${cap.cars} cars drawn with ${cap.props} props (step ${cap.label}); broke at step ${cap.brokeAt ?? "-"}` : "cap (budget, no hitching): the budget did not hold at any step");
+  lines.push(steadyCap ? `cap (steady state, stutter set aside): held up to ${steadyCap.cars} cars drawn with ${steadyCap.props} props (step ${steadyCap.label}); broke at step ${steadyCap.brokeAt ?? "-"}` : "cap (steady state): did not hold at any step");
+  return lines.join("\n");
+}
+
+/* The positive control's line: it must hitch. */
+export function probeLine(probe) {
+  return `dom probe (positive control, hitches on purpose): ${probe.hitches ?? 0} hitches -- ${(probe.hitches ?? 0) > 0 ? "the instrument still sees a React update from the frame loop, so the rule against them still matters on this device" : "NO hitches: either this device absorbs a React update per second, or the probe did not run"}`;
+}
+
+/* Every frame over the hitch line, and what was going on in the gap. */
+export function stallLines(results) {
+  const lines = [];
   const stalls = results.flatMap((r) => (r.stallLog ?? []).map((s) => ({ step: r.label ?? r.step, ...s })));
   if (stalls.length) {
     lines.push("stalls: every frame over the hitch line, and what was going on in the gap");
@@ -392,9 +434,5 @@ export function reportText({ device, results, cap, steadyCap, canvas }) {
   } else {
     lines.push("stalls: none");
   }
-  const probe = results.find((x) => x.probe);
-  if (probe) lines.push(`dom probe (positive control, hitches on purpose): ${probe.hitches ?? 0} hitches -- ${(probe.hitches ?? 0) > 0 ? "the instrument still sees a React update from the frame loop, so the rule against them still matters on this device" : "NO hitches: either this device absorbs a React update per second, or the probe did not run"}`);
-  lines.push(cap ? `cap (budget, no hitching): held up to ${cap.cars} cars drawn with ${cap.props} props (step ${cap.label}); broke at step ${cap.brokeAt ?? "-"}` : "cap (budget, no hitching): the budget did not hold at any step");
-  lines.push(steadyCap ? `cap (steady state, stutter set aside): held up to ${steadyCap.cars} cars drawn with ${steadyCap.props} props (step ${steadyCap.label}); broke at step ${steadyCap.brokeAt ?? "-"}` : "cap (steady state): did not hold at any step");
-  return lines.join("\n");
+  return lines;
 }

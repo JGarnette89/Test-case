@@ -16,6 +16,7 @@ import MergeRush from "./apps/MergeRush.jsx";
    it. */
 import SimRoad from "./apps/SimRoad.jsx";
 import IsoRoad from "./apps/IsoRoad.jsx";
+import Bench from "./apps/Bench.jsx";
 import Wheel from "./apps/Wheel.jsx";
 import MapRoad from "./apps/MapRoad.jsx";
 import Editor from "./apps/Editor.jsx";
@@ -122,12 +123,25 @@ const MODES = [
     Component: Wheel,
   },
   {
-    id: "iso",
+    id: "bench",
     live: true,
     name: "Performance",
-    kicker: "Live — the budget ramp, run on the phone",
+    kicker: "Live — the budget test on the whole game, run on the phone",
     blurb:
-      "The performance instrument: a ramp of loads on stage 0's isometric roads, held until the frame budget breaks, and a report to copy. Run it on the device being measured, from the production build.",
+      "The bench: the real sim on a city with trucks, buses, people walking and crossing, parked cars, buildings and sidewalks. More and more cars until the frame budget breaks, then each kind of thing switched off in turn to say what it costs. About five minutes; copy the report at the end.",
+    Icon: Milestone,
+    accent: C.amber,
+    Component: Bench,
+  },
+  {
+    /* Stage 0's ramp, superseded by the bench on 6 October: it measured
+       roads with cars and boxes, a scene simpler than the game. Kept by
+       address for comparison with the reports it produced. */
+    id: "iso",
+    name: "Stage 0 — the old budget ramp",
+    kicker: "Superseded by Performance (#/bench)",
+    blurb:
+      "The first performance instrument: a ramp of loads on stage 0's isometric roads, with no trucks, buses, people, parked cars or sidewalks.",
     Icon: Milestone,
     accent: C.amber,
     Component: IsoRoad,

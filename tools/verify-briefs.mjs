@@ -38,6 +38,8 @@ const CASES = [
   { brief: { everyType: true }, want: (r) => ["signal", "signal-arrow", "all-stop", "minor-stop", "minor-yield", "none"].every((t) => r.types[t] > 0), say: (r) => `every intersection type: ${JSON.stringify(r.types)}` },
   { brief: { downtown: true }, want: (r, L) => downtownCovered(L) === 1, say: (r, L) => `downtown: crosswalks at ${(downtownCovered(L) * 100).toFixed(0)}% of its intersections (${r.crosswalks} ends)` },
   { brief: { buses: true, arterials: "cross" }, want: (r) => r.stops.curb > 0 && r.stops.bay > 0, say: (r) => `buses: ${r.stops.curb} curb stops and ${r.stops.bay} bays` },
+  /* Downtown splits every collector at its intersections, and the stop placer looked only at whole blocks: downtown with buses had none (6 October). */
+  { brief: { downtown: true, buses: true }, want: (r, L) => r.stops.curb > 0 && r.stops.bay > 0 && downtownCovered(L) === 1, say: (r) => `downtown with buses: ${r.stops.curb} curb stops and ${r.stops.bay} bays` },
 ];
 /* Every intersection of three or more roads inside a commercial district has a crosswalk on every leg. */
 function downtownCovered(L) {
