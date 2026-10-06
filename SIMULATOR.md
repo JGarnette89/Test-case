@@ -3424,6 +3424,128 @@ turned into a brief here -- the vocabulary is the contract); traffic
 levels and truck share are the screen's, not the map's; parking lots and
 roundabouts are not expressible.
 
+### FIRST AFTER THE RESET: green waves (designed 1 October, not built)
+
+**The problem, named.** The maintainer, from play: *"the driving feels
+good, however traffic makes it difficult to ever really get moving,
+getting stuck at a light is simply boring. could we integrate a system
+where a player can 'green' a stop or another proper action (like greening
+a shot in nba2k) and have a favourable result such as making the light
+change for them. this gives the player an almost magical control over the
+road and traffic by driving really well."* Realistic traffic produces
+waiting, and waiting is boring. That tension has to be RESOLVED, not
+tolerated.
+
+**The mechanism is green waves, and they are real.** Signal progression:
+an arterial's lights timed so a car at the posted speed catches green
+after green. It gives exactly the feeling he describes with no magic --
+drive at the speed the road was designed for and the lights open ahead of
+you; speed and you arrive early and sit at red; dawdle and you miss it.
+**It needs no invented mechanic, only honest signal timing.** Today every
+signal on a map runs one shared cycle with no offset (sim/signal.js
+`intoPhase`, whose own comment says progression "would be an `offset` on
+the plan and nothing else here would change"). The build: derive each
+signal's offset along a corridor from the distance between intersections
+and the road's posted speed, so the wave runs at least in the corridor's
+main direction. Mostly signal timing rather than new systems, and it
+changes the feel of every signalled road in the game -- which is why it is
+first.
+
+**It pays out on the skill the controls already test.** The throttle's
+whole skill is finding and holding the right speed; the green wave rewards
+exactly that, which is why it will feel earned rather than granted.
+
+**And it inverts the problem.** Waiting stops being a property of traffic
+and becomes the consequence of driving badly: a player who speeds, brakes
+late and sits in the wrong lane stops at every light; one who holds a line
+flows through. The boredom is not removed -- it becomes something the
+player causes and can escape.
+
+**On "greening" a stop: change what it pays.** A perfect stop must NOT
+turn a light green -- that is the world bending, and it will read as
+arbitrary. **A perfect stop gives a better LAUNCH**: off the line sooner
+and cleaner, to the next light sooner, catching it. The reward is still
+the green, earned by arriving properly rather than by the light noticing.
+Chain a few and you are in the wave.
+
+**THE GOVERNING RULE: EVERY REWARD MUST BE SOMETHING A GENUINELY GOOD
+DRIVER WOULD GET.** Better momentum, better position, catching the
+progression, reading the road earlier. The moment a reward can only be
+explained by "the game liked that", the world stops being a place. It is
+the same principle as the scorer never knowing something the screen did
+not show.
+
+**A second payout, informational rather than physical, worth
+considering:** driving well reveals more of the road ahead -- the next
+lights' timing, which lane is about to clear. Not changing the world,
+reading it better: true to life, and it feeds the observation axis from
+the player's side rather than the traffic's.
+
+**Feedback must be immediate and legible** -- why the 2K meter works: you
+know at once whether you nailed it and why. The braking marker already
+makes a perfect stop a visible event; it must announce itself and pay out
+visibly.
+
+**Two consequences, recorded on purpose:**
+- **It teaches the exam mode.** A player rewarded for good stops arrives at
+  examining already knowing in their hands what a good stop feels like,
+  then holds somebody else to it. Better than a rulebook.
+- **It answers the cold review's open finding** that the four jobs do not
+  compete hard enough to make each other fail, because the driving was
+  never demanding enough to keep the player busy. A wave you can hold or
+  lose gives the driving moment-to-moment stakes.
+
+### Parking lots: the maintainer's rulings (recorded 2 October, not built)
+
+**Rules:** standard uncontrolled-intersection rules apply inside a lot.
+**But busy lots are chaotic and drivers take tight chances** -- so the
+rules are the same and the RISK TOLERANCE is higher: the same gap
+acceptance, with drivers in a lot accepting tighter gaps than they would
+on a street (a lot-wide shift in caution, the way a district's character
+already shifts its drivers -- sim/towns.js).
+
+### Objectives: what separates traffic from life (scoped 2 October, not built)
+
+His words: *"imagine modeling a Costco parking lot, you'd have people
+entering and leaving on foot/pushing carts, loading cars, waiting for spots
+in their car, circling the lot (driving to and lining up and then leaving
+the gas station as well) among other things. so parking lots are a big job
+and require giving our drivers objectives not just simply to reach the
+other side of the map."*
+
+**He has named the real prerequisite.** Every car's objective today is to
+traverse. A lot needs cars that want to PARK, wait for a space, queue for
+fuel, load, and leave -- and people on foot with errands. That is an
+**objectives layer**: a car going somewhere specific to do something there
+reads as inhabited; a car passing through reads as traffic.
+
+**What already exists, in primitive form:**
+- **District trips:** a car pulls out from a curb slot, drives a trip of a
+  few intersections, and pulls in at a free slot (crossing.js `leaveAt`,
+  parking.js) -- an objective of "go home".
+- **Bus routes and stops:** a bus has a next stop, stands its dwell, is
+  served, moves on (buses.js) -- an objective sequence.
+- **Walkers:** out of a door, along, in at another; wait at a bus stop,
+  board, alight (walkers.js) -- errands on foot.
+- **Wants:** a car that needs a lane for its turn gets into it or misses
+  it (lanechange.js `want`) -- the machinery for "I need to be over there".
+
+**What an objective needs that does not exist:** a DESTINATION that is a
+place rather than an edge (a lot, a pump, a door); a route chosen TO it
+rather than drawn at random at each node (routing on the graph); an
+ACTIVITY at the destination with its own duration and queue (park, fuel,
+load); and the open-space motion a lot needs -- a lot is an area, not a
+lane path (the scoping in the next section).
+
+**How much is reusable beyond lots -- most of it.** Routing to a
+destination serves every trip in the city (people drive to places, so
+traffic would thicken where places are); queues at an activity serve
+drive-throughs, gas stations, school drop-offs, loading zones and bus
+stops; errands on foot serve every door and crossing. Only the open-area
+motion is specific to lots. So the order, when it comes: destinations and
+routing first (every car benefits at once), activities and queues second
+(gas station first: a lane-based queue, no open area), lots last.
+
 #### Parking lots: what it would take (scoped 29 September, not started)
 
 **What exists.** Everything that moves runs on the lane graph: a car is
