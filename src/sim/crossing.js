@@ -54,7 +54,7 @@ import { reads } from "../core/driver.js";
 import { BAY } from "../map/format.js";
 import { lookingAway } from "./attention.js";
 import { parkingOf, initialParked } from "./parking.js";
-import { tallerThanEye, boxOf, eyeOf, hiddenFrom, blocked, segHitsBox } from "./sight.js";
+import { tallerThanEye, boxOf, eyeOf, hiddenFrom, blocked, segHitsBox, conesFrom, blockedFrom } from "./sight.js";
 import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
 
 /* =====================================================================
@@ -999,6 +999,31 @@ function poseOnce(world, a) {
    last saw it, carried forward: a flagged figure, about the time a truck
    takes to pass between two cars. */
 const MEMORY = 6;   // seconds of road back from the meeting point, at its speed
+/* THE POINTS phantomHolds LOOKS AT: every 3 m back from where a crossing
+   path meets mine. A path and a meeting point are fixed for the life of
+   the map, so the poses are too; worked out the first time and kept, they
+   were 1,470 `poseAt` calls a tick at 150 cars on the bench (6 October).
+   `poseAt` returns a fresh object nobody changes, so sharing them is safe. */
+/* An intersection's paths as a list, once: `Object.entries` was a new
+   array of arrays on every call, for every driver near a truck. */
+const pathListOf = new WeakMap();
+const pathList = (layout) => pathListOf.get(layout.paths) ?? (pathListOf.set(layout.paths, Object.entries(layout.paths)), pathListOf.get(layout.paths));
+/* Each actor by id, once a tick (actors are new objects each tick, so the
+   array is the key): the trucks a box stands for, without walking the
+   whole world for every driver near one. */
+const byIdOf = new WeakMap();
+const actorById = (actors) => byIdOf.get(actors) ?? (byIdOf.set(actors, new Map(actors.map((a) => [a.id, a]))), byIdOf.get(actors));
+const samplesOf = new WeakMap();
+function sampleAt(p2, from, j) {
+  let byFrom = samplesOf.get(p2);
+  if (!byFrom) samplesOf.set(p2, (byFrom = new Map()));
+  let list = byFrom.get(from);
+  if (!list) byFrom.set(from, (list = { at: [from], pose: [] }));
+  /* Each s is the one before less 3, exactly as the loop counts, so the
+     same floating-point s is asked of poseAt. */
+  while (list.at.length <= j) list.at.push(list.at[list.at.length - 1] - 3);
+  return list.pose[j] ?? (list.pose[j] = poseAt(p2, list.at[j]));
+}
 function phantomHolds(world, me, layout, mine, eye, tall) {
   const assume = Math.max(0, Math.min(1, me.caution ?? 1));
   if (assume <= 0) return false;
@@ -1007,8 +1032,12 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
      get there (scanning for every approaching car was a fifth of a step). */
   if (me.s < waitAt(mine, me) - Math.max(10, stoppingRoom(me.v ?? 0) + 5)) return false;
   const myBase = layout.legs[mine.from]?.base ?? mine.from;
-  const trucksHere = world.actors.filter((a) => (a.k ?? 0) === (me.k ?? 0) && tall.some((b) => b.id === a.id));
-  for (const [r2, p2] of Object.entries(layout.paths)) {
+  const ids = actorById(world.actors);
+  const trucksHere = [];
+  for (const b of tall) { const a = ids.get(b.id); if (a && (a.k ?? 0) === (me.k ?? 0)) trucksHere.push(a); }
+  /* Every point below is tested from this one eye: the trucks' cones once (sight.js `conesFrom`). */
+  const cones = conesFrom(eye, tall);
+  for (const [r2, p2] of pathList(layout)) {
     if (r2 === me.route || (layout.legs[p2.from]?.base ?? p2.from) === myBase) continue;
     const meet = layout.conflicts[r2 + "|" + me.route];
     if (!meet) continue;
@@ -1018,10 +1047,10 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
        this a truck waiting at its line held every driver whose path it
        crossed: drivers at a line held 26% of the time against 14%.) */
     const inLane = trucksHere.filter((a) => pathOf(world, a)?.from === p2.from);
-    for (let s = meet.a; s >= Math.max(0, meet.a - speed * PHANTOM_LOOK); s -= 3) {
+    for (let s = meet.a, j = 0; s >= Math.max(0, meet.a - speed * PHANTOM_LOOK); s -= 3, j++) {
       if (inLane.some((a) => a.s > s)) break;
-      const q = poseAt(p2, s);
-      if (!blocked(eye, q, tall)) continue;
+      const q = sampleAt(p2, meet.a, j);
+      if (!blockedFrom(eye, q, cones)) continue;
       /* ...nor where a truck itself stands: road a truck covers is hidden
          and has no room for anybody (a truck crossing the box ahead held
          the car behind it for the stretch of cross road it stood on). */
@@ -1035,7 +1064,7 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
          truck hid, while the truck and everybody else waited for them --
          a lock that grew for five minutes (30 September). */
       let far = null;
-      for (let s2 = s - 3; s2 >= Math.max(0, meet.a - speed * PHANTOM_LOOK); s2 -= 3) if (!blocked(eye, poseAt(p2, s2), tall)) { far = s2; break; }
+      for (let s2 = s - 3, j2 = j + 1; s2 >= Math.max(0, meet.a - speed * PHANTOM_LOOK); s2 -= 3, j2++) if (!blockedFrom(eye, sampleAt(p2, meet.a, j2), cones)) { far = s2; break; }
       const waited = me.stoppedAt != null ? (world.t ?? 0) - me.stoppedAt : 0;
       if (far != null && waited > (s - far) / Math.max(speed, 1) + REACTION_FLOOR) break;
       /* AND WHERE THE WHOLE APPROACH IS HIDDEN, not for ever: past the

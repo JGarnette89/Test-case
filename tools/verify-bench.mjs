@@ -16,11 +16,14 @@
       a new world;
    4. the controls: every stall made on purpose is seen, and the React
       updates are counted, so a run that cannot see a hitch says so;
-   5. every frame says where its time went, and the report renders.
+   5. every frame says where its time went, and the report renders;
+   6. a load is not play: a long frame in the window after a world is
+      built is reported as a load-time hitch and does not fail the play
+      budget, one in play does, and the split ends with a soak.
 
    Usage: node tools/verify-bench.mjs */
 import { budgetRamp } from "../src/iso/perf.js";
-import { benchState, loadStep, benchFrame, benchSteps, categorySteps, benchReport, controlLines, OFF } from "../src/iso/bench.js";
+import { benchState, loadStep, benchFrame, benchSteps, categorySteps, benchReport, controlLines, OFF, LOAD_WINDOW, SOAK } from "../src/iso/bench.js";
 
 let failed = 0;
 const ok = (c, msg) => { console.log(`${c ? " ok " : " FAIL"} ${msg}`); if (!c) failed++; };
@@ -28,30 +31,37 @@ const noop = () => {};
 const ctx = new Proxy({}, { get: (t, p) => (p in t ? t[p] : noop), set: (t, p, v) => { t[p] = v; return true; } });
 const size = { w: 412, h: 560 };
 
-/* Drive a ramp to its end on a synthetic clock: `dtFor(step)` is the
-   frame time to pretend, so pass and fail can be steered. */
+/* Drive a ramp to its end on a synthetic clock: `dtFor(step, k)` is the
+   frame time to pretend, k frames after the step's world was loaded, so
+   pass, fail and a hitch at a chosen moment can be steered. The load
+   window and the soak are shortened to keep the check quick; which
+   steps carry them is the bench's own. */
 function run(steps, { stopOnFail = true, dtFor = () => 16.7 } = {}) {
-  const ramp = budgetRamp({ steps, settle: 0.2, hold: 0.6, stopOnFail });
-  let st = null, now = 0, out = null, builds = [], stall = false, issued = false;
-  for (let f = 0; f < 200000 && !out; f++) {
+  const short = steps.map((x) => ({ ...x, ...(x.settle != null ? { settle: 0.5 } : {}), ...(x.hold != null ? { hold: 1 } : {}) }));
+  const ramp = budgetRamp({ steps: short, settle: 0.2, hold: 0.6, stopOnFail });
+  let st = null, now = 0, out = null, builds = [], stall = false, issued = false, k = 0;
+  for (let f = 0; f < 200000 && !out; f++, k++) {
     const step = ramp.step;
     /* The screen's controls in the probe step: a React update every 60
        frames, and an 80 ms stall every 120 (denser here), which lengthens the gap the
        NEXT frame closes -- exactly as Bench.jsx makes them. */
-    const dt = dtFor(step ?? {}) + (stall ? 80 : 0);
+    const dt = dtFor(step ?? {}, k) + (stall ? 80 : 0);
     now += dt;
     let fr = null;
     if (st) fr = benchFrame(st, dt, ctx, size);
     const want = ramp.frame(now, fr?.drew, { split: fr?.split, injected: stall, issued, dom: issued });
     stall = !!step?.probe && f % 12 === 5; issued = !!step?.probe && f % 6 === 0;   // denser than the screen: the check holds a step for well under a second
     if (want.done) out = want;
-    else if (want.load) { st = st ? loadStep(st, want.load) : benchState(want.load); builds.push({ label: want.load.label, built: st.buildS > 0 }); }
+    else if (want.load) { st = st ? loadStep(st, want.load) : benchState(want.load); builds.push({ label: want.load.label, built: st.buildS > 0 }); k = 0; }
   }
   return { ...out, builds };
 }
 
 console.log("1. the ramp is the whole game at every step");
-const ramp = run(benchSteps());
+/* Two planted long frames: one ten frames after step 100's world is
+   built -- inside its load window -- and one sixty frames into step 150,
+   in play. */
+const ramp = run(benchSteps(), { dtFor: (s, k) => (s.label === "100" && k === 10 ? 120 : s.label === "150" && k === 60 ? 120 : 16.7) });
 ok(ramp.results.length === benchSteps().length, `every step ran (${ramp.results.length} of ${benchSteps().length}) on a clock that never fails`);
 for (const r of ramp.results) {
   const have = r.trucks > 0 && r.buses > 0 && r.walkers > 0 && r.crossing > 0 && r.parked > 0 && r.buildings > 0 && r.sidewalks > 0 && r.sight === "on";
@@ -93,7 +103,7 @@ ok(failing.results.length === categorySteps(50).length && failing.results.some((
 const stopped = run(benchSteps(), { dtFor: (s) => (s.fleet >= 150 ? 40 : 16.7) });
 ok(stopped.results.at(-1)?.fleet === 150 && !stopped.results.at(-1).steady, `the ramp stops at its first unsteady step (${stopped.results.at(-1)?.label}), and the steady cap is the step before (${stopped.steadyCap?.label})`);
 const rebuilt = split.builds.filter((b) => b.built).map((b) => b.label);
-const want = ["everything", "no trucks", "no buses", "no walkers", "no crossers", "no parked"];   // the five that change the traffic, and the baseline
+const want = ["everything", "no trucks", "no buses", "no walkers", "no crossers", "no parked", "soak"];   // the five that change the traffic, the baseline, and the soak's fresh city
 ok(rebuilt.length === want.length && want.every((x) => rebuilt.includes(x)), `new worlds only for: ${rebuilt.join(", ")}`);
 
 console.log("\n4. the controls: every stall made on purpose is seen, and the React updates are counted");
@@ -110,6 +120,17 @@ ok(ramp.results.every((r) => r.split.step.share > 15 && r.split.step.share < 50)
 const text = benchReport({ device: { ua: "test", cores: 8, memoryGB: 8, secure: true, dpr: 3, screen: "1x1", viewport: "1x1" }, canvas: "412x560", ramp, split, loaded: ramp.results.length ? (await import("../src/iso/bench.js")).benchMap() : null });
 ok(/THE RAMP/.test(text) && /WHERE THE BUDGET GOES/.test(text) && benchSteps().every((s) => text.includes(s.label)), "the report has the ramp, every step, and the split");
 ok(Object.values(OFF).every((label) => text.includes(label.slice(0, 22))), "the split names every switch");
+console.log("\n6. a load is not play: hitches in a step's load window are reported apart, and do not fail the play budget");
+const r100 = ramp.results.find((r) => r.label === "100"), r150 = ramp.results.find((r) => r.label === "150");
+ok(r100.builds && r100.loadHitches.length === 1 && r100.hitches === 0 && r100.pass, `step 100 built a world: its long frame in the load window is a load-time hitch (${r100.loadHitches.length}), not a play hitch (${r100.hitches}), and the step passes`);
+ok(r150.loadHitches.length === 0 && r150.hitches === 1 && !r150.pass, `step 150's long frame in play is a play hitch (${r150.hitches}) and fails the budget`);
+ok(/no hitching in play\): held at 100 cars .*broke at step 150/.test(text) && /load-time hitches counted too\): held at 50 cars .*broke at step 100/.test(text), "the play cap is 100, broken at 150 -- never a later step that passed again; counted with load-time hitches it would be 50, broken at 100");
+ok(/load-time hitches: frames over/.test(text) && /^  100 /m.test(text), "the report lists the load-time hitch under its step");
+ok(benchSteps().filter((x) => x.builds).every((x) => x.settle === LOAD_WINDOW) && benchSteps().filter((x) => !x.builds).every((x) => x.settle == null), `every step that builds a world, and only those, has the ${LOAD_WINDOW} s load window`);
+const soak = split.results.find((r) => r.label === "soak");
+ok(soak && categorySteps(100).at(-1).hold === SOAK && soak.builds, `the split ends with a soak: a fresh city, then ${SOAK} s of play (shortened here)`);
+ok(/^soak: /m.test(text), "and the report says what the soak found");
+
 console.log("\n" + text.split("\n").slice(4).join("\n"));
 
 console.log(failed ? `\n${failed} FAILED` : "\nOK: the bench is the whole game at every step, each switch takes away only its own thing, and the report says where the frame went.");

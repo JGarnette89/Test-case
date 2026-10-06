@@ -337,6 +337,17 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
     const capOf = (list, key) => (list.length ? { ...list[list.length - 1], brokeAt: results.find((x) => !x.probe && !x[key])?.label ?? null } : null);
     return { done: true, results, cap: capOf(strict, "pass"), steadyCap: capOf(steadyOnes, "steady") };
   };
+  /* A STEP MAY CARRY ITS OWN `settle` AND `hold`. The bench gives a step
+     that builds a new world a LOAD WINDOW for its settle: construction
+     and whatever the browser does about it afterwards fall there, the
+     way a loading screen falls outside play, and the step then records
+     a full hold of play. Hitches in a settle are not discarded: they are
+     kept as `loadHitches`, with seconds since the step began, so a load
+     cost is reported as one rather than failing the play budget or
+     vanishing (6 October: one hitch on every step that rebuilt, 3.9 to
+     5.8 s after the build, with our own callback 6-30 ms of it). */
+  const settleOf = () => steps[i]?.settle ?? settle, holdOf = () => steps[i]?.hold ?? hold;
+  let loadLog = [];
   return {
     get step() { return steps[i]; },
     get index() { return i; },
@@ -347,9 +358,10 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       last = now;
       if (drew) counts = { cars: drew.cars, items: drew.items, ...(drew.extra ?? {}) };
       if (!started) { started = true; return { load: steps[0] }; }
-      if (at == null) { at = now; settled = false; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); return {}; }
+      if (at == null) { at = now; settled = false; meter.reset(); log = []; loadLog = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); return {}; }
       const held = (now - at) / 1000;
-      if (!settled && held >= settle) { settled = true; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); }
+      if (!settled && dt != null && dt > HITCH) loadLog.push({ since: Math.round(held * 100) / 100, dt: Math.round(dt), tickMs: flags.tickMs != null ? Math.round(flags.tickMs) : null, tasks: flags.tasks ?? null, gc: !!flags.gc });
+      if (!settled && held >= settleOf()) { settled = true; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); }
       if (settled && dt != null) {
         if (flags.gc) { gcFrames++; gcMs += dt; }
         if (flags.split) for (const key in flags.split) (split[key] ??= []).push(flags.split[key]);
@@ -358,7 +370,7 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
         if (flags.dom && !flags.injected) { ctl.domFrames++; ctl.domSum += dt; ctl.domMax = Math.max(ctl.domMax, dt); } else if (!flags.injected) { ctl.restFrames++; ctl.restSum += dt; }
         if (dt > HITCH) {
           log.push({
-            t: Math.round((held - settle) * 100) / 100, dt: Math.round(dt),
+            t: Math.round((held - settleOf()) * 100) / 100, dt: Math.round(dt),
             tickMs: flags.tickMs != null ? Math.round(flags.tickMs) : null,
             tasks: flags.tasks ?? null, longest: flags.longest ?? 0,
             gc: !!flags.gc, dom: !!flags.dom, hidden: !!flags.hidden, input: flags.input ?? 0,
@@ -367,12 +379,12 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
           });
         }
       }
-      if (!settled || held < settle + hold) return {};
+      if (!settled || held < settleOf() + holdOf()) return {};
       const sum = meter.summary();
       results.push({
         step: i + 1, ...steps[i], ...sum, ...(counts ?? {}),
         pass: meter.passes(sum), steady: meter.steady(sum),
-        stallLog: log, gcFrames, gcMeanMs: gcFrames ? Math.round((gcMs / gcFrames) * 10) / 10 : 0,
+        stallLog: log, loadHitches: loadLog, gcFrames, gcMeanMs: gcFrames ? Math.round((gcMs / gcFrames) * 10) / 10 : 0,
         ...(Object.keys(split).length ? { split: splitSummary(split) } : {}),
         control: { injected: ctl.injected, injectedSeen: ctl.injectedSeen, issued: ctl.issued,
           domMean: ctl.domFrames ? Math.round((ctl.domSum / ctl.domFrames) * 10) / 10 : null, domMax: Math.round(ctl.domMax * 10) / 10,

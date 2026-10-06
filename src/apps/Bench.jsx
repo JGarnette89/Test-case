@@ -136,7 +136,7 @@ export default function Bench() {
       <div style={S.panel}>
         <div style={S.row}>
           <button className="btn" style={{ ...S.chip, borderColor: running ? C.amber : C.green, color: C.white }} onClick={start} disabled={running}>
-            {running ? "Running (about five minutes)…" : "Run the bench on this device"}
+            {running ? "Running (six to eight minutes)…" : "Run the bench on this device"}
           </button>
           {report && (
             <button className="btn" style={{ ...S.chip, borderColor: copied ? C.green : copied === false ? C.amber : "rgba(255,255,255,0.12)" }}
@@ -156,7 +156,10 @@ export default function Bench() {
           the same scene with one kind of thing switched off at a time —
           trucks, buses, walkers, people crossing, parked cars, sight
           blocking, sidewalks, buildings — and once from further out, so
-          the report says what each one costs. The first step updates the
+          the report says what each one costs. A step that builds a new city first gives it eight seconds to
+          load, and anything slow in that time is listed as a load-time
+          hitch, apart from play; the last step is half a minute of plain
+          play, to show whether anything hitches once loading is over. The first step updates the
           page once a second on purpose; it should show hitches, and that
           proves the test can see one. Keep the screen on and the phone
           still until the report appears, then copy it.

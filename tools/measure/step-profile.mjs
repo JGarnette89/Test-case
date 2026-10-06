@@ -35,6 +35,6 @@ for (const id0 of profile.samples) {
 console.log(`fleet ${fleetArg}${offArg ? `, off ${offArg}` : ""}: ${ms.toFixed(2)} ms a step; ${(sc.world.peds ?? []).length} crossing, ${(sc.world.walkers ?? []).length} walking`);
 const pct = (c) => `${(100 * c / total).toFixed(0).padStart(3)}%  ${(ms * c / total).toFixed(2).padStart(6)} ms`;
 console.log("inclusive (src only):");
-for (const [k, c] of [...inc].filter(([k]) => /src\/|\.js:/.test(k) && !/node:/.test(k)).sort((a, b) => b[1] - a[1]).slice(0, 28)) console.log(`  ${pct(c)}  ${k}`);
+for (const [k, c] of [...inc].filter(([k]) => /src\/|\.js:/.test(k) && !/node:/.test(k)).sort((a, b) => b[1] - a[1]).slice(0, Number(process.env.TOP ?? 28))) console.log(`  ${pct(c)}  ${k}`);
 console.log("self:");
 for (const [k, c] of [...self].sort((a, b) => b[1] - a[1]).slice(0, 14)) console.log(`  ${pct(c)}  ${k}`);

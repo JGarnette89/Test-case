@@ -2476,6 +2476,78 @@ minutes at 50 cars and one at 150, and both hashes are unchanged.
 the cost is now the cars' own decisions (`whatStops`), as it should
 be. The pedestrian side is about 1 ms at 200.
 
+##### 1.2.6 LOAD IS NOT PLAY -- 6 October, the phone on `c38ecb9`
+
+**What the phone said:**
+
+- **The pedestrian fix held:** the step at 50 cars went from 17.6 ms to
+  5.9; at 150 it is 13.8; the steady cap went from 50 to 150. People
+  crossing now save 2.5 ms at 150 and people walking nothing, against
+  13.4 and 10.6 before.
+- **Both controls work.** Four stalls made, four seen. And a React
+  update from the frame loop costs NOTHING on this page on this phone:
+  16.7 ms on the frames it lands on against 16.9 for the rest. Recorded,
+  not acted on: it cost twelve hitches on `#/iso`'s heavier page, so the
+  rule stands.
+- **The budget cap read 50**, because steps 100, 150 and 200 had one
+  hitch each: 75, 67 and 108 ms frames with our own callback 6-30 ms of
+  them and no long task in the gap. So the page got no frames, and it
+  was not our code. Every one landed 3.9 to 5.8 s after a step had
+  built a new city, and only on steps that had.
+
+**The question that decides the cap: a cost a player meets once, when a
+map opens, or in play?** The desk cannot answer for the phone --
+node's collector is not Chrome's (`tools/measure/after-build.mjs` shows
+large collections round each build and one 5.2 s after) -- so the bench
+now answers it on every run:
+
+- **A step that builds a new city gets a LOAD WINDOW** (`LOAD_WINDOW`,
+  8 s, a chosen figure past the latest load hitch seen). It settles
+  through it before recording a full 8 s of play.
+- **Hitches in the window are not discarded.** They are listed as
+  load-time hitches, with seconds since the step began, and do not fail
+  the play budget.
+- **The split ends with a SOAK:** the cap's city, built fresh, then 30
+  s of play with construction well behind it. A hitch there is a
+  play-time hitch whatever the window says. So is a hitch in any built
+  step's 8 s of play.
+- **The report gives the cap both ways**, play only and with load-time
+  hitches counted, beside the steady-state cap. `verify-bench` plants a
+  long frame in a load window, which must be filed as load-time, and
+  one in play, which must fail.
+
+Building that check found the cap itself was worded wrong. A hitch
+fails a step without ending the ramp, so a later step can pass again,
+and "the last step that passed" produced "held at 400, broke at 150".
+A cap is now the last step that held BEFORE the first that did not.
+
+**Sight blocking, measured directly** -- not by its switch, because
+switching it off changes how the traffic behaves: with sight on, the
+desk at 150 cars has 81 people crossing against 71 with it off.
+Temporary timers round the sight code alone at 150 cars (desk) gave:
+
+- **The sight code proper was about 0.6 ms of a 5 ms step.** Most of it
+  was `phantomHolds`: a driver near their line looks every 3 m along
+  every road that crosses theirs for anything a truck might hide. That
+  is about 23 calls and 1,470 points a tick, of which 7 were hidden.
+- **The rest of the switch's 1 ms is the world being different**, not
+  sight being computed.
+
+The fixes:
+
+- each truck's CONE from the driver's eye is computed once per call
+  (`sight.js` `conesFrom`/`blockedFrom`), so a point outside every cone
+  skips the box test it could only fail. 1.2 million random cases, many
+  at box corners, gave 0 differences, and a narrowed cone was caught
+  with 83,102;
+- the points along each path are fixed for the life of the map, so
+  they are computed once, accumulated exactly as the loop counted them;
+- an intersection's path list is built once;
+- the trucks are found by id rather than by walking the world.
+
+`phantomHolds`: 0.37 -> 0.21 ms. The bench world hashes identically at
+50 and 150 cars.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,

@@ -55,6 +55,33 @@ export function segHitsBox(p, q, b, l = b.l, w = b.w) {
    (other than those in `skip`, the looker's own and the target's). */
 export const blocked = (eye, q, boxes, skip = null) => boxes.some((b) => (!skip || !skip.has(b.id)) && segHitsBox(eye, q, b));
 
+/* THE SAME QUESTION, ASKED OF MANY POINTS FROM ONE EYE. A driver deciding
+   at a line tests every few metres of every road that crosses theirs
+   against every truck near them -- about 1,470 points a tick at 150 cars
+   on the bench, of which 7 were hidden (6 October). So, once per eye,
+   each box's CONE: the circle round it, as seen from the eye. A point can
+   be behind a box only if it lies inside that cone and further away than
+   the circle's near edge; any other point skips the box test, which it
+   could only have failed. Inside the cone the test is \`segHitsBox\`
+   itself, so the answer is \`blocked\`'s, always -- the circle is a little
+   wider than the box's own corners, so a point on the edge is never
+   skipped. A box the eye is inside or beside is always tested. */
+export function conesFrom(eye, boxes) {
+  return boxes.map((b) => {
+    const dx = b.x - eye.x, dy = b.y - eye.y, d = Math.hypot(dx, dy), r = Math.hypot(b.l, b.w) / 2 + 0.05;
+    if (d <= r * 1.5) return { b, always: true };
+    return { b, always: false, ux: dx / d, uy: dy / d, cos: Math.sqrt(1 - (r / d) ** 2) * 0.999, near: d - r };
+  });
+}
+export function blockedFrom(eye, q, cones) {
+  const qx = q.x - eye.x, qy = q.y - eye.y, dq = Math.hypot(qx, qy);
+  for (const c of cones) {
+    if (!c.always && (dq < c.near || qx * c.ux + qy * c.uy < dq * c.cos)) continue;
+    if (segHitsBox(eye, q, c.b)) return true;
+  }
+  return false;
+}
+
 /* A driver's eye: in their own car, a little behind its nose. */
 export function eyeOf(pose, me) {
   const h = ((pose.rot ?? pose.heading ?? 0) * Math.PI) / 180, d = lenOf(me) / 2 - 1.8;

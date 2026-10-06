@@ -191,14 +191,37 @@ export function benchCounts(sc) {
   };
 }
 
+/* THE LOAD WINDOW. A step that builds a new world settles for this long
+   before it records, and anything over the hitch line in that time is
+   reported as a LOAD-TIME hitch rather than failing the play budget
+   (perf.js `loadHitches`). The maintainer's question, 6 October: one
+   hitch on every step that rebuilt, 3.9 to 5.8 s after the build, our
+   own callback 6-30 ms of a 67-133 ms frame and no long task seen -- is
+   that something a player meets once, when a map opens, or in play?
+   A CHOSEN number, flagged: past the latest load hitch the phone has
+   shown. The soak step and every built step's recorded play are what
+   would show a play-time hitch it had wrongly swallowed. */
+export const LOAD_WINDOW = 8;
+
+/* Which steps build a new world, from the order they run in, and the
+   load window for those. `prevKey`: the world before the first. */
+function withLoad(steps, prevKey = null) {
+  let prev = prevKey;
+  return steps.map((st) => {
+    const key = worldKey(st.fleet, st.off ?? {}), builds = key !== prev;
+    prev = key;
+    return builds ? { ...st, builds: true, settle: LOAD_WINDOW } : { ...st, builds: false };
+  });
+}
+
 /* THE RAMP: the whole game at more and more cars, street zoom, until a
    step's steady state fails. The first step is the DOM probe, the
    positive control (perf.js). */
 export function benchSteps() {
-  return [
+  return withLoad([
     { fleet: 50, probe: true, label: "1 (DOM probe)" },
     ...[50, 100, 150, 200, 250, 300, 400].map((fleet) => ({ fleet, label: String(fleet) })),
-  ];
+  ]);
 }
 
 /* THE SPLIT: at a load the device held, the same scene with each kind
@@ -209,13 +232,18 @@ export function benchSteps() {
 const KEEPS_WORLD = ["sight", "sidewalks", "buildings"];
 export function categorySteps(fleet) {
   const no = (key) => ({ fleet, label: `no ${key}`, off: { [key]: true }, without: key });
-  return [
+  return withLoad([
     { fleet, label: "everything", off: {} },
     ...KEEPS_WORLD.map(no),
     { fleet, label: "wide view", off: {}, view: "place" },
     ...Object.keys(OFF).filter((k) => !KEEPS_WORLD.includes(k)).map(no),
-  ];
+    /* THE SOAK: the cap's city, built fresh, then half a minute of play
+       with construction well behind it. A hitch here is a play-time
+       hitch, whatever the load window says. */
+    { fleet, label: "soak", off: {}, hold: SOAK },
+  ]);
 }
+export const SOAK = 30;
 
 /* THE TWO CONTROLS, which answer different questions. Can this run see a
    hitch at all: stalls made on purpose, every one of which must be seen.
@@ -246,17 +274,34 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
   L.push(`scene: the bench map (src/iso/bench.js BENCH_BRIEF) -- ${loaded.roads.length} roads, ${loaded.props.length} buildings, ${(loaded.stops ?? []).length} bus stops, ${loaded.laneKm.toFixed(0)} lane-km; watching a car at #/map's street zoom`);
   L.push("");
   L.push("THE RAMP: the whole game, more cars each step");
-  const head = "step           fleet  trucks buses walking crossing parked  drawn things  fps  p50   p95   worst hitch stall slow-s gc(ms)     step p50/p95  poses p50/p95  draw p50/p95  build-s  steady pass";
-  const row = (r) => `${String(r.label).padEnd(14)} ${pad(r.fleet, 5)}  ${pad(r.trucks, 6)} ${pad(r.buses, 5)} ${pad(r.walkers, 7)} ${pad(r.crossing, 8)} ${pad(r.parked, 6)}  ${pad(r.cars, 5)} ${pad(r.items, 6)}  ${pad(r.fps, 3)}  ${pad(r.p50, 4)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)} ${pad(r.stalls, 5)} ${pad(r.slowSeconds, 6)} ${pad(`${r.gcFrames ?? 0}(${r.gcMeanMs ?? 0})`, 8)}  ${pad(part(r, "step"), 12)}  ${pad(part(r, "poses"), 13)}  ${pad(part(r, "draw"), 12)}  ${pad(r.buildS, 7)}  ${r.steady ? "yes" : "NO "}    ${r.pass ? "yes" : "NO"}`;
+  const head = "step           fleet  trucks buses walking crossing parked  drawn things  fps  p50   p95   worst hitch stall slow-s gc(ms)     step p50/p95  poses p50/p95  draw p50/p95  build-s load-h  steady pass";
+  const row = (r) => `${String(r.label).padEnd(14)} ${pad(r.fleet, 5)}  ${pad(r.trucks, 6)} ${pad(r.buses, 5)} ${pad(r.walkers, 7)} ${pad(r.crossing, 8)} ${pad(r.parked, 6)}  ${pad(r.cars, 5)} ${pad(r.items, 6)}  ${pad(r.fps, 3)}  ${pad(r.p50, 4)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)} ${pad(r.stalls, 5)} ${pad(r.slowSeconds, 6)} ${pad(`${r.gcFrames ?? 0}(${r.gcMeanMs ?? 0})`, 8)}  ${pad(part(r, "step"), 12)}  ${pad(part(r, "poses"), 13)}  ${pad(part(r, "draw"), 12)}  ${pad(r.buildS, 7)} ${pad(r.builds ? (r.loadHitches ?? []).length : "-", 6)}  ${r.steady ? "yes" : "NO "}    ${r.pass ? "yes" : "NO"}`;
   L.push(head);
   for (const r of ramp.results) L.push(row(r));
   L.push("  step = the sim step, on the frames that ran one (a third of them at 60 fps); poses and draw every frame; ms, median/95th");
+  L.push(`  hitch, worst, p95, pass: PLAY only. A step that built a new world settles ${LOAD_WINDOW} s first, and load-h is the hitches in that time (- where nothing was built)`);
   L.push(...stallLines([...ramp.results, ...(split?.results ?? [])]));
   const probe = ramp.results.find((x) => x.probe);
   if (probe) L.push(...controlLines(probe));
   const cap = ramp.cap, steady = ramp.steadyCap;
-  L.push(cap ? `cap (budget, no hitching): held at ${cap.fleet} cars with everything in (step ${cap.label}); broke at step ${cap.brokeAt ?? "-"}` : "cap (budget, no hitching): the budget did not hold at any step");
+  /* A CAP IS THE LAST STEP THAT HELD BEFORE THE FIRST THAT DID NOT. A
+     hitch fails a step without ending the ramp, so a later step can pass
+     again, and "the last step that passed" read "held at 400, broke at
+     150" -- a cap above the break. */
+  const capBy = (holds) => {
+    let held = null;
+    for (const r of ramp.results.filter((x) => !x.probe)) { if (holds(r)) held = r; else return { held, broke: r }; }
+    return { held, broke: null };
+  };
+  const capLine = (what, { held, broke }) => (held ? `${what}: held at ${held.fleet} cars with everything in (step ${held.label}); broke at step ${broke?.label ?? "-"}` : `${what}: the budget did not hold at any step`);
+  L.push(capLine("cap (budget, no hitching in play)", capBy((r) => r.pass)));
+  L.push(capLine("cap (budget, load-time hitches counted too)", capBy((r) => r.pass && !(r.loadHitches ?? []).length)));
   L.push(steady ? `cap (steady state, stutter set aside): held at ${steady.fleet} cars (step ${steady.label}); broke at step ${steady.brokeAt ?? "-"}` : "cap (steady state): did not hold at any step");
+  const loads = [...ramp.results, ...(split?.results ?? [])].flatMap((r) => (r.loadHitches ?? []).map((h) => ({ step: r.label, ...h })));
+  L.push(loads.length ? "load-time hitches: frames over the hitch line in a step's load window, seconds since the step began (the frame after the build)" : "load-time hitches: none");
+  for (const h of loads) L.push(`  ${String(h.step).padEnd(14)} ${String(h.since.toFixed(2)).padStart(6)} s  ${String(h.dt).padStart(5)} ms  ours ${h.tickMs ?? "?"} ms  tasks ${h.tasks ?? "?"} ms  gc ${h.gc ? "yes" : "no"}`);
+  const soak = split?.results?.find((r) => r.label === "soak");
+  if (soak) L.push(`soak: ${soak.hold ?? SOAK} s of play at ${soak.fleet} cars after a ${soak.settle ?? LOAD_WINDOW} s load window -- ${soak.hitches} hitches in play, ${(soak.loadHitches ?? []).length} in the load window; worst frame in play ${soak.worst} ms, p95 ${soak.p95}${soak.hitches ? " -- A PLAY-TIME HITCH: the cap is not clean" : ""}`);
   if (split?.results?.length) {
     const all = split.results.find((r) => r.label === "everything") ?? split.results[0];
     L.push("");
@@ -266,7 +311,7 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
     const COUNT = { trucks: "trucks", buses: "buses", walkers: "walkers", crossers: "crossing", parked: "parked", sight: "sight", sidewalks: "sidewalks", buildings: "buildings" };
     for (const r of split.results) {
       const key = r.without, c = key ? COUNT[key] : null;
-      const gone = c ? `${all[c]} -> ${r[c]}` : r.label === "wide view" ? "(further out)" : "(baseline)";
+      const gone = c ? `${all[c]} -> ${r[c]}` : r.label === "wide view" ? "(further out)" : r.label === "soak" ? `(${r.hold ?? SOAK} s of play)` : "(baseline)";
       const saved = (k) => (r === all ? "" : ` (${(ms(all, k) - ms(r, k)).toFixed(1)})`);
       L.push(`${(key ? OFF[key] : r.label).slice(0, 22).padEnd(22)}  ${gone.padEnd(16)}  ${pad(r.fps, 3)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)}  ${pad(`${ms(r, "step")}${saved("step")}`, 16)}   ${pad(`${ms(r, "draw")}${saved("draw")}`, 16)}   ${pad(r.items, 6)}`);
     }
