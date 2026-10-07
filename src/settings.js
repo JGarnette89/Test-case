@@ -18,6 +18,7 @@ export const DEFAULTS = {
   mode: "drive",        // "drive" | "watch" on the map
   cars: 120,            // how many cars the map is kept topped up to (the maintainer: "a way for me to directly determine how many cars are in the map") -- test map 1's; kept for it
   carsByMap: {},
+  assist: "gentle",     // lane-keeping assist (sim/player.js): "off" | "gentle" | "firm" -- the maintainer asked for it, so it starts on, lightly
   lookAway: false,      // drivers who look away now and then (sim/attention.js) -- off by default: it makes crashes        // the same, PER MAP: a count chosen for one map is not a count for another (the city has 2.5x test map 1's road)
 };
 

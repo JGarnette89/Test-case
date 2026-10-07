@@ -2079,7 +2079,7 @@ node tools/verify-crossing.mjs     stage 1: paths through an intersection, who g
 node tools/verify-telling.mjs      stage 2: one driver model, and each weak axis showing as itself
 node tools/verify-course.mjs       stage 3: intersections that join, and traffic that is the same traffic
 node tools/verify-perf.mjs         the budget ramp terminates, stops at the first failure, and derives the cap
-node tools/verify-wheel.mjs        the player at the wheel: a monotone pedal, a grip-limited wheel, a lane that can be held, honest contact
+node tools/verify-wheel.mjs        the player at the wheel: a monotone pedal, a grip-limited wheel, a lane that can be held, honest contact; and the lane assist -- hands off it centres and straightens on a straight and a gentle bend, a sharp bend is still driven, and hands on (a steady steer, a weave, a slow weave near centre) it leaves the car exactly where no assist does, never inside an intersection
 node tools/verify-map.mjs          a map loads normalised and warned, never thrown; stage 0 is the first map and reproduces the hand-built roads
 node tools/verify-graph.mjs        the sim on a road network: the map's crossroads IS the compass crossroads; a T, a five-way, a loop, a bend, a hill and an overpass run the same rules
 node tools/verify-drive.mjs        the player on the map: the signal picks the exit it means and only before the line, the box is committed to, the road is driven, the traffic treats the player as its own

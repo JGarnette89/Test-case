@@ -3881,6 +3881,28 @@ is wrong by this project's own evidence.
    steering input and never fights one. The strength is a setting.
    It is the lighter cousin of the auto-steer ruling (1.1.19), not the
    same thing.
+
+   **BUILT, 7 October** (`sim/player.js` `assistSteer`, the "Lane assist"
+   button on `#/map` in drive mode, saved; default GENTLE):
+   - **Hands off means no input for 0.6 s** -- the wheel out of its dead
+     band OR MOVING resets the clock -- and then it fades in over half a
+     second. A first version read the wheel's position this instant and
+     grabbed it at every crossing of centre in a weave; a second woke up
+     during a slow weave lingering near centre. Both are now held
+     identical to no assist by `verify-wheel`, and the slow weave was
+     sabotaged once to prove it.
+   - **Hands off, it aims the car at the lane centre a little way ahead**
+     (8 m, or 1.5 s at speed) and points it along the road with the
+     bend fed forward. From 1.2 m out and 3.4 degrees off, the lane is
+     held within 0.07 m after 4 s on a straight or a gentle bend, against
+     a drift of 3.7 m and 10.9 m with none.
+   - **Authority is limited**: at most 0.35 of the wheel at firm, 0.175 at
+     gentle. A sharp bend (R 80 m) is not driven for you at gentle; a
+     bend is still driven.
+   - **Never inside an intersection**: the turn there is committed.
+   - Strengths: off, gentle (0.5), firm (1). Released partway into a
+     lane change, it brings you back to the lane you were leaving;
+     released once across, it centres you in the new one.
 3. **A long highway:** multi-lane, sweeping curves, elevation, mixed
    speeds, trucks to pass, few or no intersections. The home of
    threading traffic, and the test bed for the green wave.

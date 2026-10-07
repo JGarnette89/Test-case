@@ -44,6 +44,7 @@ import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawSto
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter } from "../iso/perf.js";
 import { loadSettings, setSetting, settings } from "../settings.js";
+import { ASSIST } from "../sim/player.js";
 
 const LIMITS = [40, 50, 60];
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
@@ -159,6 +160,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [limit, setLimit] = useState(50);
   const [playing, setPlaying] = useState(true);
   const [lookAway, setLookAway] = useState(false);
+  const [assist, setAssist] = useState("gentle");   // lane assist (settings.js); the frame loop reads assistRef
+  const assistRef = useRef("gentle");
   /* THE FREE CAMERA (iso/freecam.js). Watching, it is the view called
      "free look" and any drag on the map enters it. Driving, the canvas is
      the wheel and the pedal, so it is "Look around": the world pauses and
@@ -217,6 +220,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const look = s.lookAway === true;
       if (kmh !== limit || m !== mode || n !== cars || look !== lookAway) restart(seed, kmh, m, n, look);
       if (s.slider === "spring") input.current.state.spring = true;
+      if (s.assist in ASSIST) { assistRef.current = s.assist; setAssist(s.assist); }
     });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,7 +256,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       if (last.current) meter.current.record(now - last.current);
       last.current = now;
       if (held.current.size) input.current.keys(held.current, dt);
-      const inp = { steer: input.current.state.steer, slider: input.current.state.slider };
+      const inp = { steer: input.current.state.steer, slider: input.current.state.slider, assist: ASSIST[assistRef.current] ?? 0 };
       const sc = scene.current;
 
       /* THE SIM STEPS AT 20 Hz FROM AN ACCUMULATOR. Driving, the player
@@ -512,6 +516,13 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             <button key={id} className="btn" style={{ ...S.chip, borderColor: follow === id ? C.amber : "rgba(255,255,255,0.12)", color: follow === id ? C.white : DIM }}
               onClick={() => { if (id === "free") { if (!free.current && lastView.current) free.current = { ...lastView.current }; } else { free.current = null; cam.current = { x: 0, y: 0, z: 0, id: null }; } setFollow(id); }}>{label}</button>
           ))}
+          {/* LANE ASSIST (sim/player.js assistSteer): off, gentle, firm. Read by the
+              frame loop from a ref, never from React state. */}
+          {mode === "drive" && (
+            <button className="btn" style={{ ...S.chip, borderColor: assist !== "off" ? C.green : "rgba(255,255,255,0.12)", color: assist !== "off" ? C.white : DIM }}
+              onClick={() => { const next = { off: "gentle", gentle: "firm", firm: "off" }[assist] ?? "gentle"; assistRef.current = next; setAssist(next); setSetting("assist", next); }}>
+              Lane assist: {assist}</button>
+          )}
           {mode === "drive" && (
             <button className="btn" style={{ ...S.chip, borderColor: rotate ? C.amber : "rgba(255,255,255,0.12)", color: rotate ? C.white : DIM }}
               onClick={() => setRotate((r) => !r)}>{rotate ? "View turns with the car" : "Fixed view"}</button>

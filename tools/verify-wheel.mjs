@@ -11,7 +11,7 @@
    yes for a car you hit and never for one a lane away; and the pointer
    arithmetic puts the thumb where it says.
    ===================================================================== */
-import { accelFor, yawRateFor, curvatureAt, stepPlayer, playerPose, touching, newPlayer, ACCEL_MAX, BRAKE_MAX, NEUTRAL, HOLD_W, holdAt, holdBand, resistance, T_MAX, V_MAX } from "../src/sim/player.js";
+import { accelFor, yawRateFor, curvatureAt, stepPlayer, playerPose, touching, newPlayer, stepPlayerOn, ASSIST, ACCEL_MAX, BRAKE_MAX, NEUTRAL, HOLD_W, holdAt, holdBand, resistance, T_MAX, V_MAX } from "../src/sim/player.js";
 import { controls, sliderValue, STEER_TRAVEL, SLIDER_W, SLIDER_TOP, SIGNAL_ZONE } from "../src/iso/controls.js";
 import { valleyRoad, poseAt, LANE } from "../src/iso/road.js";
 import { seedScene, stepWithPlayer, carsOf, DT } from "../src/iso/world.js";
@@ -196,5 +196,31 @@ const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (
   check(SIGNAL_ZONE.h < SLIDER_TOP, "the slider's track starts below the right-hand signal zone, so a thumb on it is never a signal");
 }
 
+
+console.log("\nLANE ASSIST: it removes drift with the hands off, and never touches a car the player is steering");
+{
+  /* Synthetic roads in the player's own frame: a straight, a gentle bend, a sharp one. */
+  const road = (R, box = null) => ({ length: 2000, headingAt: (s) => (R ? (s / R) * 180 / Math.PI : 0), edges: { left: -5.4, right: 1.8 }, lane: 3.6, ...(box ? { box, arcAt: () => 0 } : {}) });
+  const drive = (geom, strength, steerFn, secs, start = { off: 1.2, psi: 0.06 }) => {
+    let me = { ...newPlayer(0, start.off, 13.9), psi: start.psi };
+    const tr = [];
+    for (let i = 0; i < secs * 20; i++) { me = stepPlayerOn(me, { steer: steerFn(i * 0.05), slider: 0.25, assist: strength }, geom, 0.05); tr.push(me); }
+    return tr;
+  };
+  const worstAfter = (t, from) => Math.max(...t.slice(from).map((m) => Math.abs(m.off)));
+  for (const [name, R] of [["a straight", 0], ["a gentle bend (R 400 m)", 400]]) {
+    const none = drive(road(R), ASSIST.off, () => 0, 12), gentle = drive(road(R), ASSIST.gentle, () => 0, 12);
+    check(worstAfter(gentle, 80) < 0.5 && Math.abs(gentle.at(-1).psi) < 0.01 && worstAfter(none, 80) > 3,
+      `on ${name}, hands off from 1.2 m out and 3.4 degrees off: gentle assist holds the lane centre within ${worstAfter(gentle, 80).toFixed(2)} m after 4 s; with none the car drifts ${worstAfter(none, 80).toFixed(1)} m`);
+  }
+  const sharp = drive(road(80), ASSIST.gentle, () => 0, 12);
+  check(worstAfter(sharp, 60) > 3, `and its authority is limited: on a sharp bend (R 80 m) gentle does not drive the corner for you (${worstAfter(sharp, 60).toFixed(1)} m off) -- a bend is still driven`);
+  for (const [label, fn] of [["a steady steer", () => 0.1], ["a weave", (t) => 0.2 * Math.cos(t * 2)], ["a slow weave, long near centre", (t) => 0.12 * Math.cos(t * 0.8)]]) {
+    const a = drive(road(0), ASSIST.firm, fn, 8), b = drive(road(0), ASSIST.off, fn, 8);
+    check(a.every((m, i) => m.off === b[i].off && m.psi === b[i].psi), `hands on (${label}): the firmest assist leaves the car exactly where no assist does -- it never fights the wheel`);
+  }
+  const inBox = drive(road(0, [0, 2000]), ASSIST.firm, () => 0, 4), inBoxOff = drive(road(0, [0, 2000]), ASSIST.off, () => 0, 4);
+  check(inBox.every((m, i) => m.off === inBoxOff[i].off && m.psi === inBoxOff[i].psi), "and inside an intersection it does nothing: the turn there is committed");
+}
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
 console.log("\nOK: the car, the two controls and contact hold up; whether it feels right to drive is the phone's question.");

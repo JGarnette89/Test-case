@@ -222,6 +222,48 @@ export const CLEAN = 4.1;
 const SCRUB = 3.0;
 const HALF_W = 0.9;                        // the car's half-width: over the line by this and the body is across it
 
+/* LANE-KEEPING ASSIST (7 October, the maintainer: "the user will need some
+   slight assist to stay in the lane and pointing straight so they aren't
+   constantly adjusting"). The lighter cousin of the auto-steer ruling
+   (SIMULATOR.md 1.1.19), and one principle decides whether it feels good:
+
+     IT REMOVES UNINTENTIONAL DRIFT AND NEVER RESISTS INTENTIONAL STEERING.
+
+   So it acts only with the HANDS OFF: no input past ASSIST_DEAD (where a
+   thumb resting on the control sits) for ASSIST_WAIT seconds, and then it
+   fades in over ASSIST_FADE. The moment the player steers it is gone
+   entirely: it never adds to an input and never pushes against one. Not
+   the wheel's position this instant -- a first version read that, and a
+   player weaving through centre had the assist grab the wheel at every
+   crossing, which is fighting them.
+   Hands off, it aims the car back at the lane's centre a little way ahead
+   (further at speed, so it eases rather than darts) and points it along
+   the road, with the road's own bend fed forward. Its AUTHORITY is
+   limited: at most ASSIST_AUTH of the wheel at full strength, so a gentle
+   bend is held and a sharp one still has to be driven -- a bend is driven,
+   not followed, and the assist does not take that away. Never inside an
+   intersection: there the turn is committed (stepPlayerOn).
+
+   `strength` is the player's setting: 0 off, 0.5 gentle, 1 firm. */
+export const ASSIST = { off: 0, gentle: 0.5, firm: 1 };
+export const ASSIST_DEAD = 0.05;    // wheel deflection below which the hands are off it
+export const ASSIST_WAIT = 0.6;     // s with no input before it acts
+const ASSIST_STILL = 0.001;         // wheel travel in a tick below which the thumb is at rest
+const ASSIST_FADE = 0.5;            // s over which it comes in once it does
+export const ASSIST_AUTH = 0.35;    // the most of the wheel the assist may use, at full strength
+const ASSIST_TAU = 0.8;             // s: how soon it aims to have the heading where it wants it
+export function assistSteer(me, input, kappa, strength, handsOff = Infinity) {
+  if (!strength || Math.abs(input.steer ?? 0) > ASSIST_DEAD || me.v < 1 || handsOff < ASSIST_WAIT) return 0;
+  const fade = Math.min(1, (handsOff - ASSIST_WAIT) / ASSIST_FADE);
+  const v = me.v, look = Math.max(8, 1.5 * v);
+  /* Positive `off` is right of the line, and a positive heading drifts the car right. */
+  const psiWant = -Math.atan2(me.off, look);
+  const rate = kappa * v + (psiWant - me.psi) / ASSIST_TAU;
+  const full = yawRateFor(1, v);
+  const cap = ASSIST_AUTH * strength;
+  return full > 0 ? fade * Math.max(-cap, Math.min(cap, rate / full)) : 0;
+}
+
 /* THE SAME TICK ALONG ANY PATH, given as its heading at a distance
    along, the road's edges either side of the line the car is measured
    from, and -- on a path through an intersection -- the BOX, between
@@ -255,13 +297,21 @@ export function stepPlayerOn(me, input, geom, dt) {
     a -= scrub;
   } else kappa = curvatureOf(geom, me.s, geom.box);
   const v = Math.max(0, Math.min(onRoad ? V_MAX : V_MAX / 4, me.v + a * dt));
+  /* The wheel the car actually gets: the player's, plus the lane assist where it may act (assistSteer). */
+  /* How long the hands have been off the wheel: reset by any input past the
+     dead band, AND by the wheel MOVING -- a thumb easing through centre is
+     steering, and a slow weave through centre had the assist wake mid-way. */
+  const moving = Math.abs(input.steer - (me.steer ?? input.steer)) > ASSIST_STILL;
+  const handsOff = Math.abs(input.steer) > ASSIST_DEAD || moving ? 0 : (me.handsOff ?? Infinity) + dt;
+  const assist = inBox ? 0 : assistSteer(me, input, kappa, input.assist ?? 0, handsOff);
+  const wheel = input.steer + assist;
   let psiDot;
   if (inBox) {
     const want = kappa * v + yawRateFor(input.steer, v);
     const cap = v > 0 ? GRIP / v : 0;
     const omega = Math.max(-cap, Math.min(cap, want));
     psiDot = omega - kappa * v * Math.cos(me.psi);
-  } else psiDot = yawRateFor(input.steer, v) - kappa * v * Math.cos(me.psi);
+  } else psiDot = yawRateFor(wheel, v) - kappa * v * Math.cos(me.psi);
   const psi = me.psi + psiDot * dt;
   const s = me.s + v * Math.cos(psi) * dt;
   const off = me.off + v * Math.sin(psi) * dt;
@@ -287,7 +337,7 @@ export function stepPlayerOn(me, input, geom, dt) {
     turns = { ...(turns ?? {}), [verdict]: (turns?.[verdict] ?? 0) + 1 };
     turn = null;
   }
-  return { ...me, v, a, s, psi, off, grade, lat, steer: input.steer, slider: input.slider, turn, lastTurn, turns };
+  return { ...me, v, a, s, psi, off, grade, lat, steer: input.steer, slider: input.slider, assist, handsOff, turn, lastTurn, turns };
 }
 
 /* The speed a corner wants: the arc's tightest radius at CLEAN. From a
