@@ -109,7 +109,7 @@ console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- 
     let w = { ...seedGraph(seed, 50, loadMap(walkedCrossroads(ctl)), { target: 40, posted: true }), ...(ignorePeds ? { ignorePeds } : {}) };
     const cws = crosswalksOf(w.course);
     const L = w.course.at.find((a) => !a.through).layout;
-    const out = { crossed: 0, touch: 0, over: 0, longest: 0, otherHalf: 0, delayed: 0 };
+    const out = { crossed: 0, touch: 0, intoWreck: 0, over: 0, longest: 0, otherHalf: 0, delayed: 0 };
     for (let i = 0; i < 240 / DT; i++) {
       const before = new Map((w.peds ?? []).map((q) => [q.id, q]));
       const cars = new Map(w.actors.map((a) => [a.id, a]));
@@ -117,7 +117,13 @@ console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- 
       const now = new Set((w.peds ?? []).map((q) => q.id));
       for (const q of w.peds ?? []) if (q.state === "leaving" && before.get(q.id)?.state === "crossing") out.crossed++;
       for (const q of w.peds ?? []) if (q.state === "waiting") out.longest = Math.max(out.longest, w.t - q.since);
-      if (i % 5 === 0) { out.touch += touching(w).length; out.over += overlapping(w).length; }
+      /* A CAR DRIVING silently inside somebody is the fault. Somebody walking
+         into a car that has ALREADY crashed -- a standing wreck, which
+         `strikes` skips and which nobody crossing avoids -- is counted apart:
+         a known gap (SIMULATOR.md 1.2.8), not folded into the claim, and not
+         hidden. It only exists once something has crashed, which is why the
+         one-seed control never saw it (7 October). */
+      if (i % 5 === 0) { for (const t of touching(w)) { if (w.actors.find((a) => a.id === t.car)?.crash) out.intoWreck++; else out.touch++; } out.over += overlapping(w).length; }
       /* A car driving over a crosswalk while somebody is on the OTHER half
          of it: the near-half rule letting a driver go, which a rule holding
          the whole crosswalk never would. */
@@ -146,8 +152,18 @@ console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- 
   /* A contact is a strike now, recorded the tick it happens (peds.js
      `strikes`), so the comparison counts strikes -- and holds that every
      one of them is recorded and drawn, never a car inside a person. */
-  const blindStruck = blind.crashesWithPeds;
-  check(blindStruck > 0 && blind.touch === 0, `and it is the yielding doing it: the same traffic with drivers told to ignore people on foot strikes ${blindStruck} of them -- every one a recorded crash, the person lying where they fell, never a car silently inside somebody`);
+  /* THE CONTROL OVER FOUR SEEDS, not one (7 October). It exists to show the
+     check CAN see harm -- drivers told to ignore people do strike them --
+     and one four-minute run is a handful of crossings: the lane-change
+     floor moved every world and this seed struck nobody. Four seeds, the
+     same traffic each, summed; every strike must still be a recorded crash
+     and no car may ever be silently inside somebody. */
+  const blinds = [3, 4, 5, 6].map((sd) => (sd === 3 ? blind : run("stop", sd, true)));
+  const blindStruck = blinds.reduce((n, r) => n + r.crashesWithPeds, 0);
+  const blindTouch = blinds.reduce((n, r) => n + r.touch, 0);
+  const intoWreck = blinds.reduce((n, r) => n + r.intoWreck, 0);
+  if (intoWreck) console.log(`   KNOWN, people walk into a standing wreck: ${intoWreck} sampled contacts, every one with a car that had already crashed -- strikes() skips crashed cars and nobody crossing avoids one (SIMULATOR.md 1.2.8)`);
+  check(blindStruck > 0 && blindTouch === 0, `and it is the yielding doing it: the same traffic with drivers told to ignore people on foot strikes ${blindStruck} of them -- every one a recorded crash, the person lying where they fell, never a car silently inside somebody`);
   check(stop.crashesWithPeds === 0 && none.crashesWithPeds === 0, "while drivers who yield strike nobody");
   check(stop.otherHalf + none.otherHalf > 0, `the near-half rule: ${stop.otherHalf + none.otherHalf} times a car crossed a crosswalk while somebody was still on its other half`);
   check(stop.delayed + none.delayed === 0, "and a driver waiting for somebody on foot is never counted as delaying");

@@ -115,7 +115,13 @@ console.log("\n3. COMPLIANCE IS SITUATIONAL, KNOWLEDGE IS CONSISTENT: THE READAB
   lit.bounds = { x: 0, y: 0, w: 600, h: 600 };
   for (const [id, a] of [["w", P(0, 300)], ["e", P(600, 300)], ["n", P(300, 0)], ["s", P(300, 600)]]) lit.roads.push(road({ id, points: [a, P(300, 300)], control: { start: "none", end: "signal" } }));
   const litMap = loadMap(lit);
-  const MANY = Array.from({ length: 24 }, (_, i) => 3 + i);
+  /* SEVENTY-TWO SEEDS, not twenty-four (7 October). A quiet red is rare, so
+     the right-on-red rows rest on a few DOZEN occasions, and the bound on
+     alone against in company (25 points) is read off them: the lane-change
+     floor moved every world, the sample moved with it, and 100% of 10
+     against 73% of 15 failed it by two points -- inside the noise of ten.
+     More road time, not a looser bound. */
+  const MANY = Array.from({ length: 72 }, (_, i) => 3 + i);
   const RUNS = [[city, 200, [3, 5, 7]], [litMap, 4, MANY], [litMap, 40, MANY]];
   for (const [map, cars, seeds] of RUNS) for (const seed of seeds) {
     let w = seedGraph(seed, 50, map, { target: cars, posted: true, trucks: 0 });

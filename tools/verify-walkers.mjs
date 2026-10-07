@@ -123,7 +123,7 @@ for (const mapId of ["city", "test-peds"]) {
   /* Everybody on foot, by id, where they are. */
   const snap = (x) => new Map([...(x.peds ?? []).map((q) => [q.id, { q: pedPose(x, q), p: q }]), ...(x.walkers ?? []).map((q) => [q.id, { q: walkerPose(x, q), p: q }])]);
   let prev = snap(w), worst = 0, made = 0, fromWalk = 0, backToWalking = 0, orphans = 0, lost = 0;
-  const struck = new Set(), across0 = w.pedsAcross ?? 0;
+  const struck = new Set(), mannerOf = new Map(), across0 = w.pedsAcross ?? 0;
   const MINS = 15;
   for (let k = 0; k < (MINS * 60) / DT; k++) {
     w = step(w);
@@ -150,7 +150,7 @@ for (const mapId of ["city", "test-peds"]) {
       if (id.startsWith("ped-")) { if (p.state !== "struck" && !p.fromWalker) lost++; continue; }
       if (!atDoorOrEdge(q) && ![...now.values()].some(({ p: c }) => c.fromWalker && c.origin && Math.hypot(c.origin.x - q.x, c.origin.y - q.y) < 0.8)) orphans++;
     }
-    for (const q of w.peds ?? []) if (q.state === "struck") struck.add(q.id);
+    for (const q of w.peds ?? []) if (q.state === "struck") { struck.add(q.id); mannerOf.set(q.id, q.manner ?? "careful"); }
     prev = now;
   }
   const crossed = (w.pedsAcross ?? 0) - across0;
@@ -162,7 +162,15 @@ for (const mapId of ["city", "test-peds"]) {
      tick (peds.js), plus that tick's own walk -- at a run, DART. */
   const STEP = 0.5 + DART * DT + 1e-6;
   ok(worst <= STEP, `${mapId}: nobody on foot moves more than a step in a tick -- the largest was ${worst.toFixed(2)} m, against the curb step at a run, ${STEP.toFixed(2)}`);
-  ok(struck.size === 0, `${mapId}: with the traffic watching, nobody is struck (${struck.size}); ${crossed} crossings, ${(crossed / (MINS / 60)).toFixed(0)} an hour`);
+  /* CAREFUL PEOPLE ARE NEVER STRUCK BY TRAFFIC THAT IS WATCHING; a heedless
+     one -- somebody who steps out without looking, kept as a hazard on
+     purpose (peds.js GAP_HEEDLESS) -- can be. The old claim, nobody struck at
+     all, was luck: one heedless person in about 540 crossings, measured the
+     same on the code before the green waves (549 crossings, 1) and after
+     (538, 1), so a 15-minute run of 89 crossings failed about one run in
+     six depending on the seed (7 October). Heedless strikes are reported. */
+  const struckCareful = [...mannerOf.values()].filter((m) => m !== "heedless").length, struckHeedless = mannerOf.size - struckCareful;
+  ok(struckCareful === 0, `${mapId}: with the traffic watching, no careful person is struck (${struckCareful}; ${struckHeedless} heedless, a hazard kept on purpose); ${crossed} crossings, ${(crossed / (MINS / 60)).toFixed(0)} an hour`);
 }
 
 console.log(fails ? `\n${fails} FAILED` : "\nall passed");

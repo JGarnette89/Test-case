@@ -2606,6 +2606,41 @@ a misdraw.
 non-bridge road it lies beside, while keeping a climbing road's land
 rising with it (1.1.5). Then turn the KNOWN line into a check.
 
+##### 1.2.8 Three checks that were passing on luck, and one gap they hid -- 7 October
+
+The lane-change floor moved every world, and the samples under three
+checks moved with it. None was a regression; all three had been resting
+on a sample too small to bear the claim.
+
+- **`verify-compliance`: the right-on-red rows.** A quiet red is rare, so
+  a few dozen occasions carry a bound of 25 points between "alone" and
+  "in company"; 100% of 10 against 73% of 15 failed it by two points.
+  72 seeds instead of 24 gives 95% of 22 against 79% of 34, and sound
+  drivers 0% either way. More road time, not a looser bound.
+- **`verify-walkers`: "nobody is struck".** A heedless person -- somebody
+  who steps out without looking, a hazard kept on purpose -- is struck
+  about once in 540 crossings, measured the same before the green waves
+  (549 crossings, 1) and after (538, 1), so 89 crossings failed about one
+  run in six. The claim that holds, and that the project's own rule says,
+  is that CAREFUL people are never struck by traffic that is watching:
+  asserted, sabotaged once, and the heedless strikes reported.
+- **`verify-peds`: the ignore-people control.** One four-minute seed is a
+  handful of crossings and struck nobody. Four seeds strike ten.
+
+**The gap it exposed, KNOWN AND NOT FIXED: people walk into a standing
+wreck.** Once a car has crashed into somebody it stands where it
+stopped, in the crosswalk, and the next person to cross walks straight
+into it: 14 sampled contacts over four seeds, every one with a car that
+had already crashed. `strikes` (peds.js) skips crashed cars, and a
+careful person's "keeps watching, lane by lane" loop skips them too. It
+only exists after a crash, which is why a control that never crashed
+anybody never saw it. The default traffic does not crash into people,
+so it is not reached in ordinary play, but it is reachable after a
+player strike, and a person walking through a wreck is a state the
+screen would draw as a lie (CLAUDE.md item 6). The fix is for people on
+foot to treat a standing wreck as an obstacle: wait, or go round.
+`verify-peds` reports it on its own line.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,
