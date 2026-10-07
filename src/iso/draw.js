@@ -23,7 +23,7 @@
    would buy if the level look reads wrong.
    ===================================================================== */
 import { viewOf } from "./project.js";
-import { lightAt, arrowAt } from "../sim/signal.js";
+import { lightAt, arrowAt, movementLight } from "../sim/signal.js";
 import { poseAt, groundAt as stage0Ground, LANE } from "./road.js";
 import { C } from "../theme.js";
 
@@ -74,6 +74,9 @@ const BODY = { l: 4.5, w: 1.8, h: 0.75 };
    still reads as three lenses rather than a black slab. */
 const LENS = { red: "#e4483c", amber: "#f2b84b", green: "#4fd07a" };
 const DARK = { red: "#4a2622", amber: "#4a3d22", green: "#22402e" };
+/* A signal's stop line in its light, and the halo round a lit lens. */
+const LINE_LIT = { red: "#ff3b30", amber: "#ffa600", green: "#2fd468" };
+const GLOW = { red: "rgba(255,59,48,0.35)", amber: "rgba(255,176,32,0.35)", green: "rgba(47,212,104,0.35)" };
 const CABIN = { l: 2.3, w: 1.55, h: 0.62, back: 0.25 };
 const CAR_COLOURS = [C.red, C.green, C.amber, C.blue, "#F2E8D5"];
 const PED_COLOURS = ["#3a6fd8", "#d85a3a", "#2e9a5a", "#9a4fd0", "#d8b43a"];
@@ -129,6 +132,37 @@ function paintBox(ctx, view, b, colour) {
     ctx.fillStyle = shadeN(colour, FACE_N[3 * q], FACE_N[3 * q + 1], FACE_N[3 * q + 2]);
     ctx.fill();
     ctx.strokeStyle = "rgba(0,0,0,0.55)"; ctx.lineWidth = 1; ctx.stroke();
+  }
+}
+
+/* A VEHICLE'S LAMPS, as map symbols (6 October, the maintainer: "world
+   needs signals and brake lights"). Threading traffic is reading what the
+   drivers round you are about to do, and a real lamp is a pixel at these
+   zooms, so these are drawn larger than life with a floor in pixels -- as
+   signs are. On the top of the body at its corners, where a camera above
+   always sees them. Tail lamps are always there, dim, and BRIGHT with a
+   halo while braking, so the change is what reads; a turn signal blinks
+   amber at both corners of its side, a second and a half a cycle out of
+   step from car to car so a queue does not blink in unison. `a` carries
+   `brakeLamp` and `blinker` (sim/crossing.js); `L`, `W` the footprint,
+   `rearZ`/`frontZ` the height of the top at each end. */
+function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t) {
+  const h = (deg * Math.PI) / 180, fx = Math.cos(h), fy = Math.sin(h), rx = -fy, ry = fx;   // forward, and the right of travel
+  const r = Math.max(2.2, 0.28 * k);
+  const spot = (along, across, z) => view.into(at.x + fx * along + rx * across, at.y + fy * along + ry * across, at.z + z, PT);
+  const dot = (p, rad, fill) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(p[0], p[1], rad, 0, 2 * Math.PI); ctx.fill(); };
+  const back = -L / 2 + 0.35, front = L / 2 - 0.35, side = W / 2 - 0.3;
+  for (const sgn of [-1, 1]) {
+    const p = spot(back, sgn * side, rearZ);
+    if (a.brakeLamp) { dot(p, r * 2.1, "rgba(255,40,30,0.35)"); dot(p, r, "#ff2a1e"); }
+    else dot(p, r * 0.8, "#5c1714");
+  }
+  if (a.blinker && Math.floor((t + ((a.n ?? 0) % 7) * 0.09) * 3) % 2 === 0) {
+    const sgn = a.blinker === "right" ? 1 : -1;
+    for (const [along, z] of [[front, frontZ], [back, rearZ]]) {
+      const p = spot(along, sgn * (W / 2 - 0.15), z);
+      dot(p, r * 1.9, "rgba(255,176,32,0.4)"); dot(p, r, "#ffb020");
+    }
   }
 }
 
@@ -438,9 +472,37 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke();
       ctx.lineCap = "butt";
       if (!flat) for (const l of j.lines) {
-        /* A crosswalk bar is half a metre of paint; a stop line 0.45. */
-        ctx.lineWidth = Math.max(1.5, (l.kind === "zebra" ? 0.5 : 0.45) * k);
-        ctx.strokeStyle = l.kind === "stop" || l.kind === "zebra" ? "rgba(250,250,242,0.95)" : "rgba(250,250,242,0.7)";
+        /* MAP SYMBOLS, NOT SCALE MODELS (6 October, the maintainer: "it's
+           very hard to see the state of the traffic light and the stop
+           lines in general"). A real stop line is 0.45 m of paint -- two
+           pixels at street zoom -- so lines are drawn the way signs are,
+           larger than life with a floor in pixels.
+
+           A SIGNAL'S LINE IS PAINTED IN ITS LIGHT: red, amber or green
+           across the lane, from `movementLight` -- the call the drivers
+           obey, so a left bay under its arrow shows the arrow and the
+           screen cannot show a light the rules are not holding. The state
+           reads off the road itself, at any zoom, without finding the
+           head. Dark edges keep it off the asphalt. */
+        if (l.kind === "signal") {
+          const lit = movementLight(j.signal, l.base, l.intent ?? "straight", scene.t ?? 0) ?? "red";
+          const w = Math.min(20, Math.max(5, 0.9 * k));
+          ctx.lineWidth = w + 2; ctx.strokeStyle = "rgba(10,10,12,0.85)"; seg(ctx, P, l.a, l.b);
+          ctx.lineWidth = w; ctx.strokeStyle = LINE_LIT[lit] ?? LINE_LIT.red; seg(ctx, P, l.a, l.b);
+          continue;
+        }
+        if (l.kind === "stop" || l.kind === "yield") {
+          ctx.lineWidth = Math.min(14, Math.max(3.5, 0.7 * k));
+          ctx.strokeStyle = "rgba(252,252,246,0.98)";
+          /* A yield line is broken -- the line a driver may roll over -- where a stop line is solid. */
+          if (l.kind === "yield") ctx.setLineDash([Math.max(3, 0.6 * k), Math.max(3, 0.5 * k)]);
+          seg(ctx, P, l.a, l.b);
+          if (l.kind === "yield") ctx.setLineDash([]);
+          continue;
+        }
+        /* A crosswalk bar is half a metre of paint. */
+        ctx.lineWidth = Math.max(1.5, 0.5 * k);
+        ctx.strokeStyle = "rgba(250,250,242,0.95)";
         seg(ctx, P, l.a, l.b);
       }
     } });
@@ -484,9 +546,11 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const post = boxCorners({ x: s.at.x, y: s.at.y, z: s.at.z ?? 0 }, s.heading, 0, { l: 0.12, w: 0.12, h: postH });
       const lens = isLight ? ["red", "amber", "green"].map((c, i) => ({
         c,
-        box: boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 0.9 - i * 0.42 }, s.heading + 90, 0, { l: 0.34, w: 0.12, h: 0.34 }),
+        box: boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 1.5 - i * 0.68 }, s.heading + 90, 0, { l: 0.6, w: 0.14, h: 0.6 }),
+        mid: { x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 1.8 - i * 0.68 },
       })) : null;
-      const housing = isLight ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 0.06 }, s.heading + 90, 0, { l: 0.5, w: 0.16, h: 1.3 }) : null;
+      /* The head as a map symbol: lenses 0.6 m (life is about 0.3), the housing round them. */
+      const housing = isLight ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 0.06 }, s.heading + 90, 0, { l: 0.8, w: 0.18, h: 2.1 }) : null;
       /* A PROTECTED LEFT has its own lens beside the stack, toward the
          road -- lit green or amber by `arrowAt`, the same call the
          left-turners obey (signal.js). */
@@ -523,6 +587,15 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
         paintBox(ctx, view, housing, "#2a2d33");
         const lit = lightAt(j.signal, s.base, scene.t ?? 0);
         for (const l of lens) paintBox(ctx, view, l.box, l.c === lit ? LENS[l.c] : DARK[l.c]);
+        /* THE LIT LENS GLOWS: a disc in its colour round it, never under a few pixels, so the state reads from across the screen. */
+        const on = lens.find((l) => l.c === lit);
+        if (on) {
+          view.into(on.mid.x, on.mid.y, on.mid.z, PT);
+          const r = Math.max(4, 0.55 * k);
+          ctx.fillStyle = GLOW[lit]; ctx.beginPath(); ctx.arc(PT[0], PT[1], r * 1.6, 0, 2 * Math.PI); ctx.fill();
+          ctx.fillStyle = LENS[lit]; ctx.beginPath(); ctx.arc(PT[0], PT[1], r, 0, 2 * Math.PI); ctx.fill();
+          ctx.strokeStyle = "rgba(10,10,12,0.8)"; ctx.lineWidth = 1; ctx.stroke();
+        }
         if (arrowLens) { const a = arrowAt(j.signal, s.base, scene.t ?? 0); paintBox(ctx, view, arrowLens, a ? LENS[a] : DARK.green); }
       } });
     }
@@ -573,7 +646,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const L = a.length ?? 12.2, W = a.width ?? 2.6, H = a.height ?? 3.2;
       const body = boxCorners(at, deg, 0, { l: L, w: W, h: H });
       const glass = boxCorners(at, deg, 0, { l: L - 0.6, w: W + 0.04, h: 0.9 }, H - 1.4);
-      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, a.crashed ? colour : C.bus); if (!flat) paintBox(ctx, view, glass, "#2a3340"); } });
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, a.crashed ? colour : C.bus); if (!flat) paintBox(ctx, view, glass, "#2a3340"); if (!a.crashed) paintLamps(ctx, view, a, at, deg, L, W, H, H, k, scene.t ?? 0); } });
       return;
     }
     if (a.kind === "truck") {
@@ -583,13 +656,13 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const rad = (deg * Math.PI) / 180, along = (d) => ({ x: at.x + Math.cos(rad) * d, y: at.y + Math.sin(rad) * d, z: at.z });
       const parts = [[boxCorners(at, deg, 0, box), "#e9e6df", along(-box.back)], [boxCorners(at, deg, 0, cab), colour, along(-cab.back)]]
         .sort((p, q) => depthOf(p[2].x, p[2].y, p[2].z) - depthOf(q[2].x, q[2].y, q[2].z));
-      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { for (const [c, col] of parts) paintBox(ctx, view, c, col); } });
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { for (const [c, col] of parts) paintBox(ctx, view, c, col); if (!a.crashed) paintLamps(ctx, view, a, at, deg, L, W, H, H * 0.8, k, scene.t ?? 0); } });
       return;
     }
     const body = boxCorners(at, deg, 0, BODY);
     const cabin = boxCorners(at, deg, 0, CABIN, BODY.h);
     /* Between the two tiers a car is its body alone: the cabin is a few pixels. */
-    items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, colour); if (!flat) paintBox(ctx, view, cabin, colour); } });
+    items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, colour); if (!flat) paintBox(ctx, view, cabin, colour); if (!a.crashed) paintLamps(ctx, view, a, at, deg, a.length ?? BODY.l, a.width ?? BODY.w, BODY.h, BODY.h, k, scene.t ?? 0); } });
   };
   for (const a of actors) {
     if (!onScreen(a.x, a.y, a.z ?? 0)) continue;

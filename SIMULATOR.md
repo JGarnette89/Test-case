@@ -2548,6 +2548,64 @@ The fixes:
 `phantomHolds`: 0.37 -> 0.21 ms. The bench world hashes identically at
 50 and 150 cars.
 
+##### 1.2.7 What the green waves shook loose -- 6 October
+
+Retiming the lights put cars in places they had never been at the
+moments the checks sample, and two old faults surfaced.
+
+**1. A crash in the default traffic: a lane change into a car
+alongside.** `verify-bays`, test map 1 at 300 cars, recorded 180
+overlapping car-ticks. One driver crawled toward a red at 3 m/s and
+moved left for its turn bay. Its blind-spot check was MISSED (an
+observation deficit), with the car behind only 0.8 m back at 8 m/s.
+That car drove on past, and 1.2 s later they met.
+
+A missed check is meant to be found out: the driver registers the car
+and swings back, and `verify-lanes` holds that it never touches. But a
+missed check skipped the WHOLE lag test, including its physical floor
+-- whether the car behind can stop behind the changer at all.
+
+The first fix, refusing only a car level with the changer, moved the
+crash somewhere else. On test map 1 at 150 cars, a missed change went
+in with the car behind 6.2 m back closing at 6 m/s. That car braked as
+hard as it could and stopped overlapping, and the swing back touched.
+
+So now a missed check costs the driver the margin their temperament
+would have left (`lagOk`), never the floor under it (`lagSurvivable`,
+`lanechange.js` `attempt`). It is the same rule as a bold gap: an
+observation failure is a car missed, never one that cannot be survived.
+
+With the waves off the same seeds had no crash. These were waiting
+for two cars to be put there.
+
+**And the neighbour index went stale after a crash.** The step replaces
+a crashed car in `next` in place, and anything the index had already
+grouped from that array (`byK`) kept the car as it was before the
+crash. For one tick every driver asking the index saw the wreck still
+moving (0.91 m/s), while one scanning everybody saw it stopped.
+`verify-generate` holds the index to the full scan tick for tick; it
+had never seen a crash, so it had never caught this. The cache is now
+dropped after each in-place replacement. Through a crash on that seed,
+the two stay identical.
+
+**2. The LAND stands above a road at the test map's overpass.
+KNOWN, NOT FIXED.** `verify-paint` caught a car on the lower road at the
+overpass junction (about 622, 795) 1.77-2.02 m below the grass drawn
+round it. `groundFor` (map/load.js) pins a 20 m grid to the average
+height of nearby road points, so the embankment's points and the road
+beneath share nodes and the land interpolates above the road.
+
+It is not a draw-order fault. Grass is painted before anything with
+height and can hide nobody, and the road is drawn over it, so the car
+shows. The audit had been folding it into the draw-order count, and
+passed until now only because no car happened to stand there. It is
+reported on its own line ("KNOWN, the land model"), never counted as
+a misdraw.
+
+**The fix belongs in `groundFor`:** never let the land stand above a
+non-bridge road it lies beside, while keeping a climbing road's land
+rising with it (1.1.5). Then turn the KNOWN line into a check.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,
@@ -3748,6 +3806,52 @@ turned into a brief here -- the vocabulary is the contract); traffic
 levels and truck share are the screen's, not the map's; parking lots and
 roundabouts are not expressible.
 
+### THE PLEASURE IS IN THREADING TRAFFIC (the maintainer's verdict, 6 October)
+
+After driving the build with the bench, green-wave and performance
+work in, he said, verbatim: *"I'm really enjoying the driving, it would
+be nice to have a long highway scenario. we could have a great swim
+simulator here, moving between cars feels really good. world needs
+signals and brake lights. my initial thoughts are that the user will
+need some slight assist to stay in the lane and pointing straight so
+they aren't constantly adjusting."*
+
+**The thesis under it: the fun is FLOW -- moving between cars -- and
+the intersections are the assessment content.** One idea points the
+highway scenario, the green waves and the traffic density the same
+way: give the player traffic worth threading and roads long enough to
+thread it on.
+
+**This is the third time the road BETWEEN intersections has turned out
+to matter more than the intersections:**
+1. the ruling that the road between intersections is content
+   (REBUILD.md 8);
+2. the axes reading on the approach rather than in the box;
+3. now, where the pleasure is.
+
+Anything that treats a link as transit between the interesting parts
+is wrong by this project's own evidence.
+
+**What follows from it, in his order:**
+
+1. **Brake lights and turn signals, legible.** This is information,
+   not decoration. Threading traffic is reading what the drivers
+   around you are about to do. A car braking ahead is invisible until
+   you are closing on it, and a lane change or a turn is unpredictable
+   without a signal. It feeds the observation axis from the player's
+   side: a driver who notices brake lights early is doing what the axis
+   measures in the AI.
+2. **Lane-keeping assist.** It removes UNINTENTIONAL drift and never
+   resists INTENTIONAL positioning: it centres the car when there is no
+   steering input and never fights one. The strength is a setting.
+   It is the lighter cousin of the auto-steer ruling (1.1.19), not the
+   same thing.
+3. **A long highway:** multi-lane, sweeping curves, elevation, mixed
+   speeds, trucks to pass, few or no intersections. The home of
+   threading traffic, and the test bed for the green wave.
+4. **The green wave**, which the highway will show off better than a
+   city street.
+
 ### FIRST AFTER THE RESET: green waves (designed 1 October, not built)
 
 **The problem, named.** The maintainer, from play: *"the driving feels
@@ -3819,6 +3923,77 @@ visibly.
   never demanding enough to keep the player busy. A wave you can hold or
   lose gives the driving moment-to-moment stakes.
 
+#### Green waves: BUILT (6 October) -- the timing; the better launch and the feedback are not yet
+
+`src/sim/progression.js`. Nothing in it knows the player exists: it times
+the lights, and every driver who holds the posted speed gets the benefit.
+
+- **Corridors.** Between signalled intersections, the road goes straight
+  on through any intersection where it has priority: its own approach is
+  free, and the road crossing it stops or yields. **An uncontrolled
+  crossroads ends a corridor.** Nobody has priority there, so a platoon
+  stops whatever its leg says. The first version timed straight through
+  two of them on the bench: traffic averaged 3 and 16 km/h at those
+  crossings and took 131 s over a 1,500 m link timed for 90.
+  `CORRIDOR_MAX` (2 km) is the one flagged figure: past it a platoon has
+  spread out and there is no wave left to time.
+- **Which links.** A spanning tree, fastest roads first, so an
+  arterial's lights are coordinated before any side street's. A real
+  system can time a line of lights for one direction, not a grid in
+  every direction, and so can this.
+- **One cycle per system.** Every signal in a connected system runs
+  the longest cycle among them; the shorter plans lengthen every green
+  equally to fill it. No green is ever shortened.
+- **The offset.** The next light's green begins one AMBER before a car
+  that left the last one at the posted speed arrives. Amber is the
+  reaction plus the comfortable stop from that speed, so the green is
+  up just as an approaching driver would have had to start braking for
+  a red. Derived, not chosen.
+
+**What it does, measured** (`tools/measure/waves.mjs`): a controlled
+comparison, same map and seeds, timing on and off. The platoon is cars
+released by the light before by the timed exit; "all arrivals" includes
+cars joining from side streets, which no timing can help.
+
+| map | platoon through the next light without stopping | all arrivals |
+|---|---|---|
+| a long arterial, three signals 500 m apart | **25% -> 73-75%** | 31% -> 62% |
+| the bench (four signals, links of 1,000-1,500 m) | 48% -> 68% | 46% -> 61% |
+| test map 1 (850 m) | | 27% -> 35% (4 seeds) |
+
+**On the clock**, leaving two seconds into a green: on a 500 m link a car
+finds green arriving at anything from 0.7 to 1.2 times the posted speed,
+and red at 1.35. On the 1,000-1,500 m links the window narrows to about
+0.8-1.0, so a driver who speeds sits at red. That is the design's
+"speed and you arrive early" turning up by itself.
+
+`tools/verify-waves.mjs` holds it:
+
+- a car at the posted speed from a green arrives on a green on every
+  timed link of every map;
+- no corridor passes an uncontrolled crossroads;
+- one cycle per system, and no green is shortened;
+- a map with fewer than two linked signals keeps exactly its plans;
+- in the sim, the platoon's through-rate beats the untimed rate by 25
+  points or more;
+- nothing crashes.
+
+It caught both sabotages: zeroed offsets, and the uncontrolled-crossroads
+guard removed.
+
+**Not yet built, and next:**
+- **The better launch from a perfect stop.** It needs a definition of
+  "perfect" from the braking marker, and a launch the player's car
+  earns. A real driver who stopped smoothly at the right place is not
+  faster off the line, so the true version is about the driver being
+  READY -- already looking, foot on the pedal as the light changes --
+  rather than a boost. That needs the maintainer's word before it is
+  built.
+- **The legible feedback.** The player should know at once that they
+  are in the wave: the next light greening as they approach is itself
+  the payout, so drawing the next signal's state earlier, or a marker
+  for the wave's speed, is the cheap first form.
+
 ### Parking lots: the maintainer's rulings (recorded 2 October, not built)
 
 **Rules:** standard uncontrolled-intersection rules apply inside a lot.
@@ -3869,6 +4044,111 @@ stops; errands on foot serve every door and crossing. Only the open-area
 motion is specific to lots. So the order, when it comes: destinations and
 routing first (every car benefits at once), activities and queues second
 (gas station first: a lane-based queue, no open area), lots last.
+
+**THE COST, BY HOW FAR IT GOES (6 October, for the maintainer to
+decide).** Measured against the code as it stands. Today every car
+picks a random exit at each intersection (crossing.js `wantFor`) and
+ends its trip at any free curb slot after 3 to 10 intersections
+(`TRIP`). The size anchor is the bus work: stops, bays, passengers and
+passing were four increments.
+
+1. **Destinations and routing -- about one increment, the cheapest by
+   far.** A trip picks a PLACE, weighted by what is there (a commercial
+   block draws more than a house), and the route to it is a shortest
+   path over the graph's links, compiled into the per-intersection turn
+   list the sim already follows (`me.plan`, which the exam mode's
+   candidates use today). The car parks in a free slot near the place;
+   a walker from its door is the driver going in.
+   - What it buys: traffic thickens where places are and thins where
+     they are not; cars come back the way they went; a street's busyness
+     says something about the city.
+   - What it risks: lane changes now have to make every turn a plan
+     asks for, so a missed turn needs a re-route, as real drivers do.
+   - Cost per tick: about nothing. A route is computed once per trip.
+2. **Activities and queues -- about one increment for the first, less
+   for each after.** A gas station is a bus bay with pumps: a place
+   beside the road a car pulls into, stands at for a while, and leaves.
+   `buses.js` already does pull-in, dwell and pull-out, and a queue is
+   cars waiting behind a stopped car, which the sim has always done. It
+   needs a map element, an editor tool and drawing.
+   - Drive-throughs, school drop-offs and loading zones are the same
+     shape at smaller cost each.
+   - Still lane-based, with no open-area motion anywhere.
+3. **Parking lots -- the large one, several increments, and it
+   depends on 1 and 2.** The cheaper honest version runs a lot's aisles
+   as one-way lanes on the graph and its stalls as slots (`parking.js`
+   already has slots, pulling in and pulling out). Circling for a space
+   is then a route choice inside the aisles, people walk between car and
+   door as walkers already do, and the maintainer's rulings (uncontrolled
+   rules, a higher risk tolerance, recorded above) are a lot-wide shift
+   in caution.
+   - Truly free motion -- cutting across empty stalls, carts -- is the
+     expensive part, and the part to decide whether it is wanted.
+   - The bench's cap (1.2.6) matters here: a lot puts many actors in a
+     small area.
+
+**THE PLAYER'S SIDE: "I just find myself needing somewhere to go"
+(the maintainer, 6 October).** Driving is the fun and free roam has no
+purpose; the exam mode has one, driving does not. That is the
+objectives layer from the PLAYER's side, and it is not the same as map
+size. Three levels, cheapest first:
+
+1. **Distinct places.** A downtown that feels unlike a suburb that
+   feels unlike a highway, so getting from one to another is its own
+   reward. Largely CONTENT, and much of it exists:
+   - the brief already makes downtowns (crosswalks, people on every
+     sidewalk), residential grids and arterials;
+   - districts carry a driver character (towns.js);
+   - the highway (next on the list) adds the third kind.
+
+   What is missing is the player KNOWING where they are: names on the
+   map, and roads that change character visibly at a boundary.
+   About one increment beyond the highway.
+2. **Errands: "drive to X."** A named place picked for the player (a
+   door, a district, a lot later), its direction and distance on the
+   HUD, arrival detected, the next one offered. The route hint is the
+   same shortest path NPC routing needs (level 1 above), so built
+   together they share it. About one increment, and it gives free roam
+   a loop at once.
+3. **Chains with stakes.** Deliveries, a fare, a schedule -- a reason
+   to drive WELL as well as somewhere to drive. It needs a design
+   decision about what is being rewarded, under the green-wave rule
+   (every reward something a good driver would really get), and is the
+   maintainer's to shape. Not costed until he has.
+
+**Map scale, measured** (`tools/measure/scale.mjs`, the area the roads
+actually cover):
+
+| map | roads | lane-km | km^2 | of the 8 km^2 target | lane-km per km^2 |
+|---|---|---|---|---|---|
+| test map 1 | 16 | 29 | 1.84 | 23% | 16 |
+| the city (stand-in) | 143 | 71 | 2.85 | 36% | 25 |
+| the bench (medium brief) | 234 | 90 | 3.00 | 38% | 30 |
+| a large brief | 435 | 150 | 5.00 | 63% | 30 |
+
+At the bench's density, 8 km^2 is about 240 lane-km and some 620 roads.
+
+**Whether that is drivable at the density he wants: not yet, and the
+reason is the SIM, not the drawing.**
+
+- Drawing is per visible content: the renderer culls to the view, and
+  a phone sees four to nine 256 m chunks of any map, however big.
+- The sim steps EVERY car, walker and crosser on the map every tick.
+  Nothing in `src/sim` uses chunks; they only narrow who a car asks
+  about. So the sim's cost grows with what the map holds, not with
+  what is on screen.
+- The phone held 150 cars steady on the bench (1.2.6), which is 1.7
+  cars per lane-km. The same 150 cars on an 8 km^2 map is 0.6 per
+  lane-km: drivable but sparse.
+- Keeping the bench's density needs about 400 cars, beyond the phone's
+  cap at today's cost per car.
+
+**The answer is the one 1.2.2 named for stage 5: simulate far traffic
+cheaply.** Full decisions for cars near the player, and something far
+lighter for the rest -- moving along their lanes at the road's speed,
+promoted to full decisions as they come near. That is the piece of
+work that makes an 8 km^2 city with Jay's density possible on the
+phone, and it is a performance increment of its own.
 
 #### Parking lots: what it would take (scoped 29 September, not started)
 

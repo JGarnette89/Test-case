@@ -17,13 +17,17 @@
    4. the controls: every stall made on purpose is seen, and the React
       updates are counted, so a run that cannot see a hitch says so;
    5. every frame says where its time went, and the report renders;
+   7. what other drivers are about to do is drawn -- brake lamps, turn
+      signals -- and every signal's stop line in the light its lane obeys;
    6. a load is not play: a long frame in the window after a world is
       built is reported as a load-time hitch and does not fail the play
       budget, one in play does, and the split ends with a soak.
 
    Usage: node tools/verify-bench.mjs */
 import { budgetRamp } from "../src/iso/perf.js";
-import { benchState, loadStep, benchFrame, benchSteps, categorySteps, benchReport, controlLines, OFF, LOAD_WINDOW, SOAK } from "../src/iso/bench.js";
+import { benchState, loadStep, benchFrame, benchSteps, categorySteps, benchReport, controlLines, OFF, LOAD_WINDOW, SOAK, benchScene, benchStep, benchActors } from "../src/iso/bench.js";
+import { drawFrame } from "../src/iso/draw.js";
+import { movementLight } from "../src/sim/signal.js";
 
 let failed = 0;
 const ok = (c, msg) => { console.log(`${c ? " ok " : " FAIL"} ${msg}`); if (!c) failed++; };
@@ -133,5 +137,35 @@ ok(/^soak: /m.test(text), "and the report says what the soak found");
 
 console.log("\n" + text.split("\n").slice(4).join("\n"));
 
+
+console.log("\n7. what other drivers are about to do is drawn: brake lamps, turn signals, and every signal's line in its light");
+{
+  /* A canvas that remembers every colour it was handed. */
+  const seen = new Map();
+  const tally = new Proxy({}, { get: (t, p) => (p in t ? t[p] : noop), set: (t, p, v) => { if (p === "fillStyle" || p === "strokeStyle") seen.set(v, (seen.get(v) ?? 0) + 1); t[p] = v; return true; } });
+  const sc = benchScene(100, {});
+  benchStep(sc, 30);
+  const sigs = sc.junctions.filter((j) => j.signal);
+  const LIT = { red: "#ff3b30", amber: "#ffa600", green: "#2fd468" };   // draw.js LINE_LIT
+  const lampSeen = new Map();
+  let lineMatch = 0, lineAll = 0;
+  for (const j of sigs) for (const dt of [0, 0.34]) {
+    const t = sc.world.t + dt;
+    seen.clear();
+    drawFrame(tally, size, { roads: sc.roads, terrain: sc.terrain, cam: { x: j.at.x, y: j.at.y, z: 0 }, rot: 0, k: 8, tilt: false, actors: benchActors(sc, 0), groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t });
+    /* Every signal line at this node drew in the light its lane obeys. */
+    for (const l of j.lines.filter((x) => x.kind === "signal")) {
+      lineAll++;
+      const want = LIT[movementLight(j.signal, l.base, l.intent, t) ?? "red"];
+      if (seen.has(want)) lineMatch++;
+    }
+    for (const [c, n] of seen) lampSeen.set(c, (lampSeen.get(c) ?? 0) + n);
+  }
+  const cars = benchActors(sc, 0).filter((a) => !a.ped && !String(a.id).startsWith("parked-"));
+  ok(cars.some((a) => a.brakeLamp) && cars.some((a) => !a.brakeLamp) && cars.some((a) => a.blinker), `the traffic carries its lamps: ${cars.filter((a) => a.brakeLamp).length} of ${cars.length} braking, ${cars.filter((a) => a.blinker).length} signalling`);
+  ok((lampSeen.get("#ff2a1e") ?? 0) > 0 && (lampSeen.get("#5c1714") ?? 0) > 0, `brake lamps drawn lit (${lampSeen.get("#ff2a1e") ?? 0}) and dim (${lampSeen.get("#5c1714") ?? 0}) round ${sigs.length} signals`);
+  ok((lampSeen.get("#ffb020") ?? 0) > 0, `turn signals drawn blinking (${lampSeen.get("#ffb020") ?? 0} lit lamps across the two phases)`);
+  ok(lineAll > 0 && lineMatch === lineAll, `every signal's stop line drawn in the light its lane obeys: ${lineMatch} of ${lineAll}`);
+}
 console.log(failed ? `\n${failed} FAILED` : "\nOK: the bench is the whole game at every step, each switch takes away only its own thing, and the report says where the frame went.");
 process.exit(failed ? 1 : 0);

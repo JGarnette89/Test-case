@@ -131,14 +131,15 @@ export function actorsOf(scene, carry) {
   for (const a of w.actors) {
     if (a.player) {
       const p = driverPose({ ...a, s: a.s + a.v * carry }, w.course);
-      out.push({ id: a.id, n: -1, ...p, colour: "#f4f4f2", player: true });
+      /* The player's lamps: the turn tap IS their signal, and the brake lamp follows the car slowing as theirs does. */
+      out.push({ id: a.id, n: -1, ...p, colour: "#f4f4f2", player: true, blinker: a.signal ?? null, brakeLamp: (a.a ?? 0) < -0.6 || (a.v ?? 0) < 0.1 });
       continue;
     }
     const p = poseOf(w, { ...a, s: Math.min(a.s + a.v * carry, w.course.at[a.k].layout.paths[a.route].length) });
     /* A CRASHED car flashes its hazards: orange and dark, twice a second,
        so a wreck is never just another stopped car. */
     const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;
-    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height });
+    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, blinker: a.blinker ?? null });
   }
   /* PEOPLE ON FOOT (sim/peds.js): waiting at the curb or crossing. */
   for (const q of w.peds ?? []) out.push({ id: q.id, n: q.look ?? q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });

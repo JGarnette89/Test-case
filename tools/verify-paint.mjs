@@ -61,7 +61,7 @@ const levelOf = (poly, x, y) => poly.reduce((m, p) => { const d = (p.x - x) ** 2
 function audit(scene, canvas, rot) {
   const out = drawFrame(stub, canvas, { ...scene, rot }, { audit: true });
   const order = out.order;
-  const bad = [];
+  const bad = [], belowGround = [];
   /* People on foot stand on the same surfaces cars do (sim/peds.js). */
   const cars = order.map((t, i) => ({ ...t, i })).filter((t) => t.kind === "car" || t.kind === "ped");
   const surfaces = order.map((t, i) => ({ ...t, i })).filter((t) => t.poly);
@@ -70,22 +70,31 @@ function audit(scene, canvas, rot) {
       if (!inside(s.poly, c.at.x, c.at.y)) continue;
       const dz = c.at.z - levelOf(s.poly, c.at.x, c.at.y);
       if (Math.abs(dz) < 1.5) { if (c.i < s.i) bad.push({ car: c.id, on: `${s.kind} ${s.id ?? ""}`.trim(), rot, why: "drawn before the surface it stands on" }); }
+      /* A GROUND CELL IS NEVER A DECK. It is painted before anything with
+         height, so it can hide nobody, and a car well below one is not a
+         draw-order fault: it is the LAND standing above the road, which
+         is the land model's (map/load.js groundFor, a 20 m grid pinned to
+         nearby road heights -- at an overpass the embankment's points and
+         the road beneath share a node). Reported on its own line, never
+         folded into the draw-order count (6 October: a car on the lower
+         road at the test map's overpass junction, 1.77 m below its grass). */
+      else if (dz < -1.5 && s.kind === "cell") belowGround.push({ car: c.id, rot, dz });
       else if (dz < -1.5) { if (c.i > s.i) bad.push({ car: c.id, on: `${s.kind} ${s.id ?? ""}`.trim(), rot, why: "drawn over the deck it is under" }); }
     }
   }
-  return { bad, cars: cars.length, surfaces: surfaces.length, items: out.items };
+  return { bad, belowGround, cars: cars.length, surfaces: surfaces.length, items: out.items };
 }
 
 const ROTS = Array.from({ length: 24 }, (_, i) => i * 15);
 const summarise = (name, scene, canvas, cams) => {
-  let bad = [], frames = 0, carsSeen = 0;
+  let bad = [], below = [], frames = 0, carsSeen = 0;
   for (const cam of cams) for (const rot of ROTS) {
     const r = audit({ ...scene, cam }, canvas, rot);
-    bad = bad.concat(r.bad); frames++; carsSeen += r.cars;
+    bad = bad.concat(r.bad); below = below.concat(r.belowGround); frames++; carsSeen += r.cars;
   }
   const kinds = {};
   for (const b of bad) kinds[`${b.why} (${b.on.split(" ")[0]})`] = (kinds[`${b.why} (${b.on.split(" ")[0]})`] ?? 0) + 1;
-  return { bad, frames, carsSeen, kinds };
+  return { bad, below, frames, carsSeen, kinds };
 };
 
 /* 1. The test map: junctions, two-lane roads, the overpass. */
@@ -131,6 +140,8 @@ const summarise = (name, scene, canvas, cams) => {
   check(r.bad.length === 0, `on the test map no car is ever drawn under the surface it stands on or over a deck it is under, at any of 24 rotations from 4 cameras${r.bad.length ? ` (${worst})` : ""}`);
   const atJunctions = r.bad.filter((x) => x.on.startsWith("junction")).length, onRoads = r.bad.filter((x) => x.on.startsWith("road")).length, decks = r.bad.filter((x) => x.on.startsWith("deck")).length;
   console.log(`   of which at junctions ${atJunctions}, on roads ${onRoads}, decks ${decks}`);
+  /* The land model's defect, not the painter's: named so it is never mistaken for either. */
+  if (r.below.length) console.log(`   KNOWN, the land model: ${r.below.length} car-frames stand more than 1.5 m below the grass drawn round them (worst ${Math.min(...r.below.map((x) => x.dz)).toFixed(2)} m) -- groundFor at an overpass; the road is drawn over the grass, so nothing is hidden (SIMULATOR.md 1.2.7)`);
 }
 
 /* 2. Stage 0: the valley road and its bridge, cars on `road.cars`. */

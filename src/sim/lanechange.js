@@ -401,7 +401,9 @@ function gapFor(out, nb, kappa) {
   const lagGap = nb.behind ? clearBetween(nb.db, nb.behind, out) : Infinity;
   const needLead = Math.max(1.5 + stopIn(out.v, nb.ahead?.v ?? out.v, out), kappa * wantedGap(out, nb.ahead ?? { v: out.v }));
   const needLag = Math.max(1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind), kappa * wantedGap(nb.behind ?? { v: 0 }, out));
-  return { leadGap, lagGap, leadOk: leadGap >= needLead, lagOk: lagGap >= needLag };
+  /* The floor alone, for the car behind: whether it can stop behind this one at all. */
+  const lagSurvivable = lagGap >= 1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind);
+  return { leadGap, lagGap, leadOk: leadGap >= needLead, lagOk: lagGap >= needLag, lagSurvivable };
 }
 
 /* THE GAP, THE LOOK AND THE GO -- the same for a change a driver wants
@@ -412,7 +414,7 @@ function attempt(world, out, path, best, T0) {
   /* The gap, at this driver's confidence (gapFor). */
   const kappa = Math.max(0.3, Math.min(1.7, caution));
   const { nb } = best;
-  const { leadGap, lagGap, leadOk, lagOk } = gapFor(out, nb, kappa);
+  const { leadGap, lagGap, leadOk, lagOk, lagSurvivable } = gapFor(out, nb, kappa);
 
   /* THE BLIND-SPOT CHECK, AT THIS DRIVER'S OBSERVATION. Drawn once per
      manoeuvre from the driver's own seed, so a run replays exactly. */
@@ -427,6 +429,20 @@ function attempt(world, out, path, best, T0) {
   const counted = inBlind ? { ...out, blindOcc: (out.blindOcc ?? 0) + 1, blindMiss: (out.blindMiss ?? 0) + (missed ? 1 : 0) } : out;
   if (!missed && !lagOk) return counted;
   if (!missed && inBlind && clearBetween(nb.db, nb.behind, out) < 1) return counted;   // somebody beside: a driver who looked does not go
+  /* ...AND A MISSED CHECK STILL CANNOT DEFY PHYSICS. Not looking costs a
+     driver the margin their temperament would have left the car behind
+     (`lagOk`), never the floor under it: whether that car can stop behind
+     this one at its hardest braking. A missed check is meant to be FOUND
+     OUT -- the driver registers the car and swings back, and the lanes
+     check holds that nobody touches -- and below the floor there is no
+     time for that. Measured, 6 October, both on test map 1 once the green
+     waves moved the traffic: a car crawling to a red moved over with the
+     car behind 0.8 m back at 8 m/s (180 overlapping car-ticks at 300
+     cars), and another with the car behind 6.2 m back closing at 6 m/s,
+     which braked as hard as it could and stopped overlapping it. The same
+     rule as a bold gap (gapFor): an observation failure is a car missed,
+     never one that cannot be survived. */
+  if (missed && !lagSurvivable) return counted;
 
   /* GO. The steering axis decides the blend. */
   const steer = deficitOf(out.ratings ?? {}, "steering").deficit ?? 0;

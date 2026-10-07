@@ -45,6 +45,7 @@ import { CAR, weaveRoom } from "./traffic.js";
 import { conflictsBetween, poseAt, LINE_SETBACK } from "./intersection.js";
 import { CROSSWALK_W } from "../map/format.js";
 import { signalFor, isSignal } from "./signal.js";
+import { coordinate } from "./progression.js";
 import { defaultTurns, receive, checkTurns } from "./lanes.js";
 import { ribbonOf } from "../iso/road.js";
 import { rng } from "../core/rng.js";
@@ -238,7 +239,7 @@ const unit = (a, b) => { const L = dist(a, b) || 1; return { x: (b.x - a.x) / L,
 /* The sharpest turn offered at a node, in degrees off straight ahead. */
 export const HAIRPIN = 120;
 
-export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withConflicts = true } = {}) {
+export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withConflicts = true, progression = true } = {}) {
   const roads = loaded.roads;
   /* AUTHORING ERRORS: lanes whose permitted movement has nowhere to land,
      named by lane and intersection (lanes.js). The graph is still built
@@ -539,7 +540,11 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
     }
   }
 
-  return { graph: true, n: at.length, at, joins, links, lanes, roads, map: loaded, errors, approaches, ...(withConflicts ? {} : { conflictsSkipped: true }) };
+  /* GREEN WAVES (progression.js): the signals along a road timed for a
+     car at the posted speed. `progression: false` keeps every light on
+     the shared cycle it had before, for comparing against. */
+  const waves = progression ? coordinate(at, links, roadOf, lanes) : null;
+  return { graph: true, n: at.length, at, joins, links, lanes, roads, map: loaded, errors, approaches, ...(waves?.systems?.length ? { waves } : {}), ...(withConflicts ? {} : { conflictsSkipped: true }) };
 }
 
 /* The lane-leg a car should start on for a road end: the curb lane,
@@ -769,7 +774,12 @@ export function junctionsOf(course) {
       }
       const lit = isSignal(leg.control);
       if (leg.control === "stop" || leg.control === "yield" || lit) {
-        lines.push({ kind: lit ? "signal" : leg.control, a: { x: pose.x - nx * lane / 2, y: pose.y - ny * lane / 2, z }, b: { x: pose.x + nx * lane / 2, y: pose.y + ny * lane / 2, z } });
+        /* A signal's line carries its approach and whether the lane follows the
+           arrow (a left bay, or a lane that may only turn left), so the
+           renderer can paint it in the light THIS lane obeys -- the same
+           `movementLight` the drivers do. */
+        const followsArrow = leg.bay === "left" || (Array.isArray(leg.turns) && leg.turns.length === 1 && leg.turns[0] === "left");
+        lines.push({ kind: lit ? "signal" : leg.control, a: { x: pose.x - nx * lane / 2, y: pose.y - ny * lane / 2, z }, b: { x: pose.x + nx * lane / 2, y: pose.y + ny * lane / 2, z }, ...(lit ? { base: leg.base, intent: followsArrow ? "left" : "straight" } : {}) });
         /* One per road end, at the curb lane's right-hand edge, level with the line, facing the approaching driver. */
         /* A sign stands where the map puts it: `back` metres before the line
            along the approach (map/load.js `signAt`), level with it by default. */

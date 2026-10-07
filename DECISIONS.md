@@ -3055,6 +3055,40 @@ wrong one; the trace said otherwise.
    same from outside; one tick of `whatStops` for each party tells them
    apart.
 
+## 10.8 A STATE THE PLAYER CANNOT READ IS A STATE THE SCREEN DID NOT SHOW
+
+Recorded 6 October 2026, from the maintainer driving the build, in two
+messages running: first "world needs signals and brake lights", then
+"it's very hard to see the state of the traffic light and the stop lines
+in general".
+
+**The simulation models these things honestly and the player cannot see
+them. That is a READABILITY problem, not a simulation problem, and it is
+the same rule already held for the scorer from the other side: the
+scorer must never know something the screen did not show, and the player
+cannot reasonably be asked to respond to a state he cannot read.**
+CLAUDE.md item 6 says the same of a state nothing draws; this is the
+case where something draws it and it is a few pixels.
+
+- **Real-world scale is wrong for a map.** A stop line is 0.45 m of
+  paint, a lens 0.3 m, a lamp a few centimetres: a pixel or two at street
+  zoom. The precedent is the sign, drawn 1.4 m across for a 0.75 m face.
+  Everything the player must read is a MAP SYMBOL: larger than life, with
+  a floor in pixels, and legible at four to forty pixels.
+- **The state goes where the eye already is.** A signal's state is
+  painted ON ITS STOP LINE in the light that lane obeys (`movementLight`,
+  the call the drivers use), not only on a head the player has to find.
+- **Brake lights and turn signals are information, not decoration.**
+  Threading traffic is reading what the drivers around you are about to
+  do. They are on the cars as `brakeLamp` and `blinker`
+  (sim/crossing.js), and NOTHING reads them back: they change no
+  decision, so the traffic is the traffic it was. They are not called
+  `brake`, which is a driver's braking rate, and a lamp written over it
+  made every car brake at 1 m/s^2.
+- **Whether it is legible is only testable by eye.** `verify-bench`
+  section 7 checks it is DRAWN and in the right colour, not that it can
+  be read. The maintainer judges that.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

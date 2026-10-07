@@ -1187,7 +1187,34 @@ export function step(world) {
       const amberGo = me.amberGo || (!!layoutOf(world, me).signal && s < waitAt(mine, me) + AT_LINE
         && movementLight(layoutOf(world, me).signal, layoutOf(world, me).legs[mine.from]?.base, mine.intent, world.t) === "amber"
         && controlOf(me, layoutOf(world, me), mine, world.t) === "none");
-      const at = { ...raw, v, s, stoppedAt, going, accepted, ...(amberGo ? { amberGo } : {}), pass: pass && s <= pass.s3 ? pass : null };
+      /* THE LAMPS OTHER DRIVERS READ (6 October, the maintainer: "world
+         needs signals and brake lights"). Information for the player and
+         nothing else: no rule here reads them, so the traffic is the
+         traffic it was. Threading traffic is reading what the drivers
+         round you are about to do.
+
+         BRAKE LIGHTS: on while braking firmly -- past what letting off the
+         pedal does -- and while standing or creeping without pulling away,
+         as a driver holds the brake in a queue; and held for half a second
+         after, as a foot stays on the pedal. Thresholds on speed alone
+         flickered: a queue's cars hover on them tick to tick (measured on
+         the bench, nearly half of all lamp changes came within 0.3 s of
+         the last).
+
+         TURN SIGNALS: for the turn this path makes, from three seconds
+         before the line (the established rule: two to three seconds
+         before a change of direction) or 25 m, whichever is further out,
+         until the car is through the intersection; and for a lane change,
+         toward the lane being entered while the move lasts. */
+      const decel = ((me.v ?? 0) - v) / DT;
+      const pressing = decel > BRAKE_LAMP_ON || (v < 0.5 && decel > -0.5);
+      /* NOT `brake`: that name is the driver's own braking rate (traffic.js), and a lamp written over it made every car brake at 1 m/s^2. */
+      const brakeLampAt = pressing ? world.t : me.brakeLampAt;
+      const brakeLamp = pressing || (brakeLampAt != null && world.t - brakeLampAt < BRAKE_LAMP_HOLD);
+      const turning = (mine.intent === "left" || mine.intent === "right") && s < (mine.clearAt ?? mine.stopAt) + 2 && mine.stopAt - s < Math.max(25, 3 * v);
+      const changing = raw.lc && !raw.lc.abort && world.t < raw.lc.t0 + raw.lc.T;
+      const blinker = turning ? mine.intent : changing ? (raw.lc.L0 < 0 ? "right" : "left") : null;
+      const at = { ...raw, v, s, stoppedAt, going, accepted, ...(amberGo ? { amberGo } : {}), pass: pass && s <= pass.s3 ? pass : null, brakeLamp, brakeLampAt: brakeLampAt ?? null, blinker };
       const sitting = stoppedAt != null && !going;
       /* How long the opening in front of them has been there this time,
          and -- latched -- when the first one they could have acted on
@@ -1368,6 +1395,13 @@ export function step(world) {
     const a = next[i];
     if (a && !a.player && lenOf(a) > CAR.length) next[i] = { ...a, rear: rearOf(world, a) };
   }
+  /* REPLACED IN PLACE, so whatever the neighbour index grouped from this
+     array is stale: drop it (byK). The same after a crash, below. Measured,
+     6 October: a car crashed at tick 435 and, the next tick, every driver
+     asking the index saw it still moving at 0.91 m/s while one scanning
+     everybody saw the wreck -- the index and the full scan disagreed only
+     when somebody crashed. */
+  byKCache.delete(next);
   /* At the NEW clock: `next` is where everybody is at t + DT, and a car
      changing lanes is placed across by the clock -- tested at the old one,
      its lateral position lagged a tick behind everything else, and a
@@ -1381,6 +1415,7 @@ export function step(world) {
       const c = hit.get(next[i].id);
       if (c && !next[i].crash && !next[i].player) next[i] = { ...next[i], v: 0, a: 0, crash: { t: world.t + DT, with: c.a === next[i].id ? c.b : c.a, at: c.at } };
     }
+    byKCache.delete(next);
     crashes = [...(crashes ?? []), ...hits.filter((c) => c.fresh).map((c) => ({ t: world.t + DT, a: c.a, b: c.b, at: c.at }))].slice(-50);
   }
 
@@ -1416,6 +1451,10 @@ export function step(world) {
   if (walked) for (const hit of strikes(out, poseOf)) out = crashWith(strikePed(out, hit.ped), hit.car, hit.at, hit.ped);
   return out;
 }
+
+/* When a brake lamp comes on and goes off (m/s^2 of deceleration): past
+   letting off the pedal, which sheds well under one, and clearly over. */
+const BRAKE_LAMP_ON = 0.6, BRAKE_LAMP_HOLD = 0.5;   // m/s^2; s
 
 /* JOINING THE ROAD, AT THE SPEED THE ROAD IS DOING.
 
@@ -1879,8 +1918,9 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks = TRUCK_SHARE, buses = BUS_SHARE, walkers = false, passing = true } = {}) {
-  const course = graphOf(loaded, { lane: 3.6, control });
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks = TRUCK_SHARE, buses = BUS_SHARE, walkers = false, passing = true, progression = true } = {}) {
+  /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
+  const course = graphOf(loaded, { lane: 3.6, control, progression });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
      carried a speed per road since the format existed and the sim drove

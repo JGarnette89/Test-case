@@ -297,8 +297,13 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
      gained a 60 arterial, and comparing against 50 then moved the
      geometry too, which is not a controlled comparison.) */
   const fastest = Math.max(...Object.values(speeds));
+  /* Green waves off in BOTH worlds: the lights are timed for the posted
+     speeds (progression.js) whichever limit the cars are told, so with
+     them on the one-limit world drives through lights timed for speeds
+     it is not doing -- a second difference, which changed which cars
+     were on the 60 roads (6 October). The waves have their own check. */
   const drive = (posted) => {
-    let w = seedGraph(3, fastest, l, { every: 1.1, posted });
+    let w = seedGraph(3, fastest, l, { every: 1.1, posted, progression: false });
     for (let i = 0; i < 1200; i++) w = step(w);
     const by = {};
     for (const a of w.actors) {

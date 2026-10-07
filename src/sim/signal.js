@@ -133,16 +133,28 @@ export function signalFor(legs, ids, boxHalf, { greenFor = GREEN_FOR, arrowFor =
   };
 }
 
-/* WHAT THIS LEG'S LIGHT IS DOING AT TIME t. The cycle is the same for
-   every node on a map -- offsetting them so a driver meets a green wave
-   is a real thing signals do and is not modelled; it would be an
-   `offset` on the plan and nothing else here would change. */
+/* A PLAN WITH LONGER GREENS: every phase's green set to `greenFor`, the
+   starts and the cycle following. How a coordinated system fills a
+   shorter plan out to the cycle its neighbours run (progression.js). */
+export function retime(plan, greenFor) {
+  const step = greenFor + plan.amber + plan.allRed, starts = [];
+  let t0 = 0;
+  for (let i = 0; i < plan.phases.length; i++) { starts.push(t0); t0 += (plan.lead?.[i] ?? 0) + step; }
+  return { ...plan, greenFor, starts, cycle: t0 };
+}
+
+/* WHAT THIS LEG'S LIGHT IS DOING AT TIME t. A plan may carry an
+   `offset`: where its cycle stands at t = 0, set by progression.js so
+   the lights along a road open one after another for a car at the
+   posted speed -- a green wave. Without one, every light starts its
+   cycle together, as it always did. */
 /* Where in its own phase this base is at time t: seconds since the
    phase began, or null outside it. */
 function intoPhase(signal, base, t) {
   const i = signal.forBase[base];
   if (i == null) return undefined;
-  const into = ((t % signal.cycle) + signal.cycle) % signal.cycle;
+  const tt = t - (signal.offset ?? 0);
+  const into = ((tt % signal.cycle) + signal.cycle) % signal.cycle;
   const mine = into - (signal.starts?.[i] ?? i * (signal.greenFor + signal.amber + signal.allRed));
   const span = (signal.lead?.[i] ?? 0) + signal.greenFor + signal.amber + signal.allRed;
   return mine < 0 || mine >= span ? null : mine;

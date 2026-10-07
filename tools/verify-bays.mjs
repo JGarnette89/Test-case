@@ -126,7 +126,11 @@ console.log("\n3. IN TRAFFIC, AT 300 CARS");
   const L = w.course.at[kE].layout;
   let overlaps = 0, early = 0, earlyEg = null, overtakeIn = 0, bayEntries = 0, leftsE = 0, leftsNotBay = 0;
   const seenLc = new Set(), counted = new Set();
-  for (let i = 0; i < 20 * 120; i++) {
+  /* THREE MINUTES, not two (6 October): the green waves retimed this
+     map's lights and two minutes gave exactly 20 lefts, one short of the
+     sample the bay claim needs. More road time, not a lower bar -- and
+     the overlap count is held over the longer run too. */
+  for (let i = 0; i < 20 * 180; i++) {
     w = step(w);
     if (i % 5 === 0) overlaps += overlapping(w).length;
     for (const a of w.actors) {
@@ -144,7 +148,7 @@ console.log("\n3. IN TRAFFIC, AT 300 CARS");
       }
     }
   }
-  check(overlaps === 0, `two minutes, the whole map at 300 cars: ${overlaps} overlapping car-ticks`);
+  check(overlaps === 0, `three minutes, the whole map at 300 cars: ${overlaps} overlapping car-ticks`);
   check(leftsE > 20 && leftsNotBay === 0, `${leftsE} lefts through E, every one from a bay`);
   check(bayEntries > 20 && early === 0, `${bayEntries} cars moved into a bay, and nobody was ever in one before it opens${earlyEg ? ` (${earlyEg})` : ""}`);
   check(overtakeIn === 0, `and every one of them moved in for the turn it makes -- a bay is never used to get past somebody (${overtakeIn} were)`);
