@@ -683,6 +683,17 @@ export function postedAt(course, k, route) {
   return typeof s === "number" && s > 0 ? s : null;
 }
 
+/* The posted speed of the road a route LEAVES by. A path runs on past the
+   box along its exit road to the seam, which on a long road is most of a
+   kilometre: the car is on the new road from the box's far edge, and its
+   limit with it (crossing.js). */
+export function postedOutAt(course, k, route) {
+  const layout = course.at?.[k]?.layout;
+  const to = layout?.paths?.[route]?.to;
+  const s = to == null ? null : layout.legs?.[to]?.speed;
+  return typeof s === "number" && s > 0 ? s : null;
+}
+
 /* Every leg of every node with nothing beyond it: where traffic enters,
    weighted so a through road carries more than the street that stops
    for it (crossing.js). A lane with no node spawns at its start. */

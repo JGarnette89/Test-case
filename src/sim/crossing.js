@@ -38,7 +38,7 @@ import {
   courseOf, laneSpan, nextFor, joinedTo, poseOn,
   radiusFor,
 } from "./course.js";
-import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt } from "./graph.js";
+import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt } from "./graph.js";
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel, speedBy, fits } from "./corner.js";
@@ -1269,6 +1269,15 @@ export function step(world) {
         if (me.parkSlot) parkedNow.push(me);
         return null;
       }
+      /* PAST THE BOX, THE NEW ROAD'S LIMIT. The seam below is where the
+         next intersection's path begins, which can be most of a kilometre
+         along the road just joined: measured on the highway, a car that
+         turned onto it from a 50 km/h side road drove the next 940 m at
+         52 km/h. The limit is the road's, from the box's far edge. */
+      if (me && !me.player && !me.crash && world.road.posted && me.held == null && me.s > pathOf(world, me).clearAt) {
+        const out = postedOutAt(world.course, me.k ?? 0, me.route);
+        if (out != null) { const v0 = wantedFor(me, out, me.caution); if (v0 !== me.v0) me = { ...me, v0 }; }
+      }
       if (!me || me.player || me.s <= pathOf(world, me).length) return me;
       let wanted = null;
       const on = nextFor(world.course, me.k ?? 0, me.route, (k, side) => { const w = wantFor(world, me, k, side); wanted = w.want; return w.route; });
@@ -1918,7 +1927,9 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks = TRUCK_SHARE, buses = BUS_SHARE, walkers = false, passing = true, progression = true } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true } = {}) {
+  /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
+  const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
   const course = graphOf(loaded, { lane: 3.6, control, progression });
   const layout = course.at[0].layout;

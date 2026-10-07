@@ -38,7 +38,7 @@ import { laneSpanOnGraph } from "../src/sim/graph.js";
 import { stopsOf, DWELL, MIN_DWELL, MAX_DWELL, inBay, laneAt } from "../src/sim/buses.js";
 import { planPass } from "../src/sim/passing.js";
 import { onRoadSurface } from "../src/map/sidewalks.js";
-import { reads } from "../src/core/driver.js";
+import { reads, DIFFICULTY } from "../src/core/driver.js";
 import { walkNetOf, walkerPose, WAIT_PATIENCE } from "../src/sim/walkers.js";
 import { DT, lenOf } from "../src/sim/traffic.js";
 
@@ -199,7 +199,17 @@ console.log("6. bays: out of the lane, passed, and given way to -- by those who 
   const episodes = new Map();   // bus id -> { t, cars: Map(car id -> { reads, couldStop, outcome }) }
   const outcomes = [];
   const close = (bus, how) => { const ep = episodes.get(bus); if (!ep) return; for (const c of ep.cars.values()) if (!c.outcome) c.outcome = how; outcomes.push(...ep.cars.values()); episodes.delete(bus); };
-  for (const seed of [5, 6, 7]) {
+  /* AND A FOURTH RUN WITH THE RULE MADE HARD, for the other half. At the
+     rule's own difficulty (0.15, the maintainer's ruling) so few drivers
+     do not know it that three runs held one or none of them -- the check
+     passed on whoever happened to turn up, and went 0 of 0 when an
+     unrelated change moved the traffic (7 October). A controlled run, as
+     verify-compliance makes a map's signs hard: the same drivers, the
+     rule harder, so many do not know it. The three runs at the real
+     difficulty still hold everybody who knows. */
+  const realDifficulty = DIFFICULTY["yield-to-bus"];
+  for (const [seed, hard] of [[5, false], [6, false], [7, false], [8, true]]) {
+  DIFFICULTY["yield-to-bus"] = hard ? 0.9 : realDifficulty;
   let v = seedGraph(seed, 50, L, { every: 2.0, target: 90, posted: true, buses: 0.3 });
   episodes.clear();
   for (let k = 0; k < (MINS6 * 60) / DT; k++) {
@@ -220,7 +230,7 @@ console.log("6. bays: out of the lane, passed, and given way to -- by those who 
         if (!o || o.lane !== m.lane) continue;
         const front = o.along + lenOf(car) / 2;
         if (!ep) { if (front > tail && front < tail + 1 && (car.v ?? 0) > 1) passedStanding++; continue; }
-        if (!ep.cars.has(car.id) && front < tail && tail - front < 80 && v.t - ep.t < DT * 1.5) ep.cars.set(car.id, { reads: reads(car, "yield-to-bus"), couldStop: tail - front >= ((car.v ?? 0) ** 2) / (2 * (car.brake ?? 2.7)) + 1, outcome: null });
+        if (!ep.cars.has(car.id) && front < tail && tail - front < 80 && v.t - ep.t < DT * 1.5) ep.cars.set(car.id, { hard, reads: reads(car, "yield-to-bus"), couldStop: tail - front >= ((car.v ?? 0) ** 2) / (2 * (car.brake ?? 2.7)) + 1, outcome: null });
         const c = ep.cars.get(car.id);
         if (c && !c.outcome && front > tail) c.outcome = "passed";
       }
@@ -228,14 +238,15 @@ console.log("6. bays: out of the lane, passed, and given way to -- by those who 
   }
   crashes6 += vehicleCrashes(v);
   }
-  const knew = outcomes.filter((c) => c.reads && c.couldStop), didNot = outcomes.filter((c) => !c.reads);
+  DIFFICULTY["yield-to-bus"] = realDifficulty;
+  const knew = outcomes.filter((c) => c.reads && c.couldStop), didNot = outcomes.filter((c) => !c.reads && c.couldStop && c.hard);
   ok(passedStanding > 0 && inLane < 1, `a bus in its bay is out of the lane (${inLane.toFixed(1)} s standing in it) and the traffic goes past it (${passedStanding} times)`);
-  ok(signalled > 10, `buses had to wait to pull out ${signalled} times in three runs of ${MINS6} minutes`);
+  ok(signalled > 10, `buses had to wait to pull out ${signalled} times in four runs of ${MINS6} minutes`);
   ok(knew.length >= 5 && knew.every((c) => c.outcome === "let out"), `everybody who knows to give way and could stop let the bus out (${knew.filter((c) => c.outcome === "let out").length} of ${knew.length})`);
-  /* Thin since the maintainer lowered the rule's difficulty (1 October):
-     few drivers do not know it now. At least one, and the half that
-     matters -- everybody who knew -- is held over every case above. */
-  ok(didNot.filter((c) => c.outcome === "passed").length >= 1, `and drivers who do not know drove on past it (${didNot.filter((c) => c.outcome === "passed").length} of ${didNot.length})`);
+  /* Measured 5 of 9 (7 October); with everybody made to yield whatever they
+     know it is 0 of 8, so the floor sits between the two rather than on
+     the measurement. */
+  ok(didNot.filter((c) => c.outcome === "passed").length >= 3, `and, with the rule made hard, drivers who do not know and could have stopped drove on past it (${didNot.filter((c) => c.outcome === "passed").length} of ${didNot.length})`);
   ok(longest < 90, `and no bus waited for ever to get out: the longest was ${longest.toFixed(1)} s`);
   ok(crashes6 === 0, `no vehicle touched another (${crashes6})`);
 }

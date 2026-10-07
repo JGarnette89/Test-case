@@ -561,7 +561,11 @@ export function loadMap(map) {
     ...roads.flatMap((r) => ["start", "end"].filter((e) => r.signAt?.[e]).map((e) => ({ ...r.signAt[e], road: r.id, end: e }))),
     ...roads.flatMap((r) => ["start", "end"].filter((e) => r.noLeft?.[e]).map((e) => ({ id: r.noLeft[e].id, kind: "no-left-turn", back: 0, road: r.id, end: e }))),
   ];
-  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, stops, laneKm, warnings };
+  /* THE TRAFFIC MIX a map asks for: today the share of trucks, for a road
+     where trucks are the point (the highway). Absent, the sim's own share. */
+  const tr = Number(map.traffic?.trucks);
+  const traffic = Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : null;
+  return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, stops, laneKm, warnings, ...(traffic ? { traffic } : {}) };
 }
 
 /* THE LAND, WHERE THE MAP GIVES NONE.

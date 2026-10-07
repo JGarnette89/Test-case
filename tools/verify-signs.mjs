@@ -45,8 +45,14 @@ const asSigns = (m) => {
 };
 
 console.log("\n1. A SIGN IS THE RULE AT ITS APPROACH");
+let signed = 0;
 for (const t of TEST_MAPS) {
   const m = t.build(), s = asSigns(m);
+  /* A map with no stop or yield at all (the highway: signals only) has
+     nothing to write as a sign; it is named, not passed. At least one map
+     must have some (below), or this section tests nothing. */
+  if (!s.signs.length) { console.log(`  --   ${t.name}: no stop or yield anywhere, nothing to compare`); continue; }
+  signed++;
   const a = loadMap(m), b = loadMap(s);
   const ctl = (l) => JSON.stringify(l.roads.map((r) => [r.id, r.control]));
   const legs = (l) => JSON.stringify(graphOf(l, { conflicts: false }).at.map((q) => q.layout.place.control));
@@ -56,6 +62,7 @@ for (const t of TEST_MAPS) {
   for (let i = 0; i < 1200 && same; i++) { wa = step(wa); wb = step(wb); same = JSON.stringify(wa.actors) === JSON.stringify(wb.actors); }
   check(same, `${t.name}: and the traffic is identical, tick for tick, for a minute`);
 }
+check(signed >= 3, `${signed} test maps carry stops or yields to compare`);
 
 console.log("\n2. DISAGREEMENTS ARE SAID");
 {

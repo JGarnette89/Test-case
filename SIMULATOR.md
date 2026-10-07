@@ -3906,6 +3906,85 @@ is wrong by this project's own evidence.
 3. **A long highway:** multi-lane, sweeping curves, elevation, mixed
    speeds, trucks to pass, few or no intersections. The home of
    threading traffic, and the test bed for the green wave.
+
+   **BUILT, 7 October: test map "Highway"** (`src/map/samples.js`
+   `testHighway`, on `#/tests`, five sections):
+   - **Six kilometres of three lanes each way at 100 km/h**, on a long
+     sine 180 m either side of straight. The tightest bend is about
+     810 m, inside the 525 m the loader allows 100 km/h on, so every
+     curve is driven at the posted speed and none is a corner.
+   - **10 m crests** between the crossroads, level at each crossroads,
+     1.75% at the steepest. The player's car feels the climb (`resistance`
+     in `player.js`); the traffic does not -- nothing in the AI reads
+     grade yet, and the section says so rather than claiming otherwise.
+   - **Two signalled crossroads 1.8 km apart**, so 1,896 m of curving
+     road. At 2 km apart the road came to 2,045 m, past `CORRIDOR_MAX`,
+     and no wave formed; the map was moved rather than the constant.
+   - **A collector on a bridge** 7.5 m over the highway near the east end.
+   - **15% trucks.** A map can now carry its own traffic mix
+     (`traffic: { trucks }` in the format, clamped to 0-0.5 by the
+     loader, read by `seedGraph` after an explicit option and before
+     `TRUCK_SHARE`). A map without it is unchanged. A flagged choice:
+     the upper end of what a real highway carries, so there is always a
+     truck to pass.
+   - Measured, 150 cars for 3 minutes: no crashes, no overlaps.
+
+   **What building it shook loose: a car joining a road kept the old
+   road's limit for most of a kilometre.** A path runs from one
+   intersection's approach, through the box, and along the exit road to
+   the next seam; the limit was set at the seam from the road the path
+   ENTERS by. On a city block that is a hundred metres of error and
+   nobody saw it. On the highway a car turning on from a 50 km/h side
+   road drove the next 940 m at 52 km/h, and the open-highway median
+   was 70 km/h against a wanted 93. The limit is now the exit road's
+   from the box's far edge (`postedOutAt` in `graph.js`, applied in the
+   step). Open-highway median after: **92 km/h** (p10 64, p90 105; `tools/measure/highway-speed.mjs`).
+   It also means a car turning OFF a fast road onto a slow one slows
+   for it straight away rather than at the next seam. It moves every
+   map with roads of different speeds, so the world-hash baseline was
+   re-recorded; with the new block disabled the old hash comes back
+   exactly, so nothing else moved.
+
+   **The wave on it, measured** (`tools/measure/waves.mjs test-highway
+   150 10 2`): the clock holds -- a car holding 100 km/h from
+   the first green finds the second green anywhere from 0.9 to 1.1 times
+   the posted speed, red at 1.2 times and amber at 0.8 -- but **the
+   traffic gains nothing from it: 45% of the platoon through without
+   stopping with the wave, 43% without** (2 seeds, 10 minutes, 150 cars).
+   The reason is spread, not timing: over 1.9 km the platoon's travel
+   time runs p10 69 s, p50 83 s, p90 107 s against the 68 s the offset
+   assumes (`tools/measure/wave-miss.mjs highway`). The fast tenth make
+   it; the median car, which started from rest and drives a little under
+   the limit, arrives as the green ends. That is a real property of long
+   links, and why `CORRIDOR_MAX` exists; this link is just inside it.
+   **For the player it works as designed**: hold the limit off the line
+   and the second light is green. Whether the offset should allow for
+   the launch from rest (about 6 s at 100 km/h) is the open question --
+   it would centre the window on the platoon rather than on a car
+   already at speed, and it moves every timed map, so it is its own
+   measured increment rather than a tweak made here.
+
+   **Three checks it caught out.** The suite's first run with the
+   highway in it failed three, none of them on the highway's driving:
+   - `verify-generate`: four of the highway's section starts could not
+     be driven from. A start names the road end you drive TOWARD; I had
+     named the dangling west end, which is driving off the map. Fixed
+     in the map, not the check.
+   - `verify-signs` asserted every test map has a stop or yield to
+     rewrite as a sign; the highway has only signals. A map with none
+     is now named and skipped, and at least three maps must carry some
+     (sabotaged: with no sign written anywhere it fails, 0 maps).
+   - `verify-buses`: "drivers who do not know drove on past it (0 of
+     0)". At the rule's real difficulty (0.15) three runs held one or no
+     driver who does not know it, so the half passed on whoever turned
+     up, and the new speed limit past the box moved the traffic enough
+     that nobody did. A fourth, controlled run makes the rule hard
+     (0.9), as `verify-compliance` does with signs. Counted among those who
+     could have stopped, 5 of 9 who do not know drove on past, with 46 of
+     46 who do know letting the bus out across all four runs. Sabotaged
+     (everybody made to yield whatever they know): 0 of 8, and it fails.
+     The floor is 3, between the two; a first version counted drivers who
+     could not have stopped either and still read 4 under sabotage.
 4. **The green wave**, which the highway will show off better than a
    city street.
 

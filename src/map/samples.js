@@ -281,6 +281,65 @@ export function testBuses() {
   return m;
 }
 
+/* THE HIGHWAY (7 October, the maintainer: "it would be nice to have a long
+   highway scenario ... moving between cars feels really good"). The pleasure
+   is threading traffic, and this is a road built for it: six kilometres of
+   three lanes each way, curving the whole length and climbing over low
+   hills, with two signalled crossroads 1.8 km apart, a road
+   crossing over on a bridge, and a heavier share of trucks to get past.
+   Few intersections on purpose: the road between them is the content.
+
+   - CURVES: the line is a long sine, 180 m either side over 2.4 km, so the
+     tightest bend is about 810 m -- inside what the loader allows 100 km/h
+     on (radiusFor at LATERAL, 525 m), so every curve is driven at the
+     posted speed and none of them is a corner.
+   - HILLS: 10 m crests between the crossroads, back to the flat at each so
+     the crossroads are level; under 2.1% grade anywhere.
+   - THE CROSSROADS are signalled on every approach, 1.8 km apart along the
+     line (about 1.84 km of curving road): inside the green waves' corridor
+     (progression.js CORRIDOR_MAX, 2 km -- at 2 km apart the curve made the
+     road 2.05 km and no wave formed), so the lights are
+     timed for a car at 100 km/h -- the test bed for the wave.
+   - TRUCKS: 15% of the traffic (`traffic.trucks`), a flagged choice: the
+     upper end of what a real highway carries, so there is always one to
+     pass. */
+export function testHighway() {
+  const m = emptyMap("test-highway", "Highway -- six kilometres of three lanes, two signals, a bridge");
+  m.bounds = { x: -150, y: -700, w: 6300, h: 1400 };
+  m.traffic = { trucks: 0.15 };
+  const yAt = (x) => 180 * Math.sin((2 * Math.PI * x) / 2400);
+  const zAt = (x) => 10 * Math.sin((Math.PI * x) / 1800) ** 2;
+  /* Every 4 m: the loader reads curvature between its own samples, and points 25 m apart were kinks it read as 210 m bends. */
+  const line = (x0, x1, step = 4) => {
+    const pts = [];
+    for (let x = x0; x < x1; x += step) pts.push({ x, y: yAt(x), z: zAt(x) });
+    pts.push({ x: x1, y: yAt(x1), z: zAt(x1) });
+    return pts.map((p) => ({ x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100, z: Math.round(p.z * 100) / 100 }));
+  };
+  const A = { x: 1800, y: yAt(1800) }, B = { x: 3600, y: yAt(3600) };
+  m.roads.push(
+    road({ id: "hw-west", kind: "highway", points: line(0, 1800), control: { start: "none", end: "signal" } }),
+    road({ id: "hw-mid", kind: "highway", points: line(1800, 3600), control: { start: "signal", end: "signal" } }),
+    road({ id: "hw-east", kind: "highway", points: line(3600, 6000), control: { start: "signal", end: "none" } }),
+    road({ id: "a-north", kind: "collector", points: stroke({ x: A.x, y: A.y - 650 }, A), control: { start: "none", end: "signal" } }),
+    road({ id: "a-south", kind: "collector", points: stroke({ x: A.x, y: A.y + 650 }, A), control: { start: "none", end: "signal" } }),
+    road({ id: "b-north", kind: "collector", points: stroke({ x: B.x, y: B.y - 650 }, B), control: { start: "none", end: "signal" } }),
+    road({ id: "b-south", kind: "collector", points: stroke({ x: B.x, y: B.y + 650 }, B), control: { start: "none", end: "signal" } }),
+  );
+  /* THE BRIDGE: a road over the highway at x = 5200, 7 m clear of it, ramping
+     up from the flat at either end under the loader's grade limit. */
+  const xb = 5200, top = zAt(xb) + 7.5;
+  m.roads.push(road({ id: "bridge", kind: "collector", points: stroke({ x: xb, y: yAt(xb) - 650 }, { x: xb, y: yAt(xb) + 650 }, { n: 52, z: (f) => top * Math.sin(Math.PI * f) ** 0.5 }) }));
+  m.sections = [
+    { id: "west-end", name: "the west end, eastbound", look: { x: 300, y: yAt(300) }, start: { road: "hw-west", end: "end" }, judge: "Three lanes and a long curve: get up to speed, find a lane, and work past the trucks. With the lane assist on, let go of the wheel and it holds the curve." },
+    { id: "curves", name: "the curves and the hills", look: { x: 1000, y: yAt(1000) }, start: { road: "hw-west", end: "end" }, judge: "Sweeping curves over 10 m crests: your car feels the climb -- more pedal to hold 100 -- while the traffic holds its speed over them (it does not feel hills yet). Lanes stay true round the curves; let go with the assist on and it keeps the bend." },
+    { id: "signal-a", name: "the first signal", look: { x: A.x, y: A.y }, start: { road: "hw-west", end: "end" }, judge: "A signalled crossroads at 100 km/h: the lit stop line says the light from a long way back. Arrive at the posted speed and the next one, 1.8 km on, opens for you." },
+    { id: "signal-b", name: "the second signal -- the wave", look: { x: B.x, y: B.y }, start: { road: "hw-west", end: "end" }, judge: "Leave the first light on its green at the posted speed and this one should be green as you arrive. Too fast and you sit at it; too slow and you miss it." },
+    { id: "bridge", name: "the bridge", look: { x: xb, y: yAt(xb) }, start: { road: "hw-east", end: "start" }, judge: "A road crossing over the highway: the deck stays above the traffic underneath at every angle." },
+  ];
+  return m;
+}
+
 /* THE TEST MAPS, for the Test maps screen: each builds its map on demand
    (the city is generated, so it is built only when opened). */
 export const TEST_MAPS = [
@@ -289,4 +348,5 @@ export const TEST_MAPS = [
   { id: "test-signs", name: "Signs", blurb: "A yield crossroads and an uncontrolled crossroads on one through road.", build: testSigns },
   { id: "test-buses", name: "Buses", blurb: "Curb stops and bays on a two-lane collector: a bus stops, people get off and on, the traffic waits behind it or passes the bay, and gives way to a bus pulling out -- if it knows to.", build: testBuses },
   { id: "test-1", name: "Test map 1", blurb: "The loop, the T, the crossroads, the five-way, the overpass and the big arterial.", build: testMap1 },
+  { id: "test-highway", name: "Highway", blurb: "Six kilometres of three lanes each way, curving over low hills: two signalled crossroads timed as a green wave, a bridge, and trucks to pass.", build: testHighway },
 ];
