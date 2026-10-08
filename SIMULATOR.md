@@ -4197,13 +4197,60 @@ It caught both sabotages: zeroed offsets, and the uncontrolled-crossroads
 guard removed.
 
 **Not yet built, and next:**
-- **The better launch from a perfect stop.** It needs a definition of
-  "perfect" from the braking marker, and a launch the player's car
-  earns. A real driver who stopped smoothly at the right place is not
-  faster off the line, so the true version is about the driver being
-  READY -- already looking, foot on the pedal as the light changes --
-  rather than a boost. That needs the maintainer's word before it is
-  built.
+- ~~**The better launch from a perfect stop.**~~ **RULED OUT, 8 October
+  -- replaced by the ruling below.**
+
+### GOOD DRIVING IS PAID IN FLOW (the maintainer's ruling, 8 October)
+
+Verbatim: *"A better launch makes no sense if there's 3 cars ahead of you
+starting at a 'normal' speed. The intent is to keep the player moving
+along, changing lanes and driving skillfully through traffic situations.
+A good stop (distance and harshness), sensible signal, following
+distances etc should reward the user with less waiting time. I want
+players to enjoy maneuvering between traffic, while being rewarded for
+'good' driving habits with more situations to 'swim' in traffic."*
+
+**What it settles.** The reward for a good habit is TIME MOVING -- less
+standing, more traffic to thread -- never speed off the line. The habits
+named: the stop (where, and how hard), the turn signal, following
+distance, "etc". The pleasure being protected is manoeuvring between
+traffic.
+
+**THE DESIGN, AGREED 8 October** (his answers to four questions):
+
+1. **ACTUATED SIGNALS ARE THE CORE.** *Agreed.* A loop at the stop line
+   calls the green for a car standing on it; a car stopped well short is
+   not detected and waits the cycle, or for somebody to pull up behind.
+   Advance loops further back extend a green for a car coming on at a
+   steady speed, so the driver who eases off early rolls through and the
+   one who brakes late and hard finds the green gone. Where you stop and
+   how hard both pay in waiting time -- and both are true of real roads,
+   so the green wave's rule (every reward real) holds.
+2. **A TIMELY SIGNAL OPENS A GAP.** *Agreed, and:* "some drivers might
+   never see the signal at all, players should be ready for that." A
+   courteous driver who registers the signal makes room; one who does
+   not see it -- the observation axis -- or will not -- compliance --
+   drives on. A signal is a request, never a guarantee, and reading WHO
+   will let you in is part of the skill.
+3. **NOT MORE TRAFFIC.** Verbatim: *"more traffic isn't necessarily more
+   fun, i want the player to feel like they are cutting up traffic by
+   controlling their vehicle expertly and predicting gaps and the
+   actions of other drivers (signals)."* The world is not made denser
+   around a good driver. The reward is the flow itself; the skill is
+   control and PREDICTION -- reading gaps and reading other drivers'
+   signals, which is the readability pass's brake lights and blinkers
+   doing their job.
+4. **THE PLAYER IS TOLD, ON THE THING THAT RESPONDED.** Verbatim: *"the
+   player should have some indication they are doing well, perhaps a
+   small indicator on the thing that is interacting with you well (the
+   signal light or another car for example)."* No score screen and no
+   HUD tally: a small mark on the signal head whose loop saw you, on the
+   car that opened a gap for you. Map-symbol legible, like the lamps.
+
+**Build order:** actuated signals with the stop-line and advance loops,
+and the mark on the head; then courtesy gaps with the mark on the car.
+Following distance needs no mechanism -- room ahead already keeps you
+moving -- only making it legible, which the brake lamps begin.
 - **The legible feedback.** The player should know at once that they
   are in the wave: the next light greening as they approach is itself
   the payout, so drawing the next signal's state earlier, or a marker
