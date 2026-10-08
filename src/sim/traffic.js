@@ -405,7 +405,7 @@ export function driver(road, seed, n, ratings = null, town = null, kind = "car")
        gone green; since when the car ahead has sat at a green in front of
        them; and their horn (crossing.js). Here so every car has the same
        shape from the start. */
-    heldRed: false, wake: null, fumeSince: null, honkAt: null, honkTo: null,
+    heldRed: false, wake: null, fumeSince: null, honkAt: null, honkTo: null, grudge: null, leadId: null, freeStop: false, freeSince: null,
     /* Where in the weave they happen to be, so two equally poor drivers
        are not in lockstep. */
     weavePhase: r() * WEAVE_OVER,

@@ -523,6 +523,22 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               onClick={() => { const next = { off: "gentle", gentle: "firm", firm: "off" }[assist] ?? "gentle"; assistRef.current = next; setAssist(next); setSetting("assist", next); }}>
               Lane assist: {assist}</button>
           )}
+          {/* TEST HORN: the nearest car honks at the player, now -- so the
+              badge and its pointer can be seen to render before anybody
+              judges when the traffic honks (the maintainer could not tell,
+              8 October, whether the horn never fired or was missed). A
+              real horn by the sim's own rule: the world is not otherwise
+              touched. */}
+          {mode === "drive" && (
+            <button className="btn" style={S.chip} onClick={() => {
+              const sc = scene.current;
+              if (!sc?.me) return;
+              const me = driverPose(sc.me, sc.world.course);
+              let best = null, bd = Infinity;
+              for (const a of sc.world.actors) { if (a.player || a.crash) continue; const p = poseOf(sc.world, a); const d = Math.hypot(p.x - me.x, p.y - me.y); if (d < bd) { bd = d; best = a; } }
+              if (best) sc.world = { ...sc.world, actors: sc.world.actors.map((a) => (a.id === best.id ? { ...a, honkAt: sc.world.t, honkTo: "player" } : a)) };
+            }}>Test horn</button>
+          )}
           {mode === "drive" && (
             <button className="btn" style={{ ...S.chip, borderColor: rotate ? C.amber : "rgba(255,255,255,0.12)", color: rotate ? C.white : DIM }}
               onClick={() => setRotate((r) => !r)}>{rotate ? "View turns with the car" : "Fixed view"}</button>

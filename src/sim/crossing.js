@@ -39,7 +39,7 @@ import {
   radiusFor,
 } from "./course.js";
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt } from "./graph.js";
-import { stepLights } from "./actuated.js";
+import { stepLights, LOOP } from "./actuated.js";
 import { HONK_AGAIN } from "./horn.js";
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
@@ -858,7 +858,19 @@ export function whatStops(me, world) {
        across, and was nearly sideways and into it 1.2 s later, before the
        notice that would have swung them back. */
     const unseen = me.lc?.missed && !me.lc.abort && them.id === me.lc.unseen && world.t < me.lc.t0 + me.lc.noticeAfter;
-    if (shareLane && them.s > me.s && !unseen) {
+    /* THE PLAYER ACROSS TWO LANES is in both (the maintainer, 8 October: "if
+       I stop across two lanes ... both drivers approaching should be
+       honking at me"). Their lane is the one their route is in; their body
+       reaches into the next lane once it is more than half the spare width
+       of a lane off their line, and to the traffic in that lane they are
+       then the car in front. */
+    const straddles = them.player && (() => {
+      const lm = layout.legs[mine.from], lt = layout.legs[theirs.from];
+      if (!lm || !lt || lm.base !== lt.base) return false;
+      const d = (lm.pos ?? lm.lane) - (lt.pos ?? lt.lane), reach = ((world.road?.lane ?? 3.6) - widthOf(them)) / 2, off = them.off ?? 0;
+      return (d === 1 && off > reach) || (d === -1 && off < -reach);
+    })();
+    if ((shareLane || straddles) && them.s > me.s && !unseen) {
       consider(clearBetween(them.s - me.s, me, them), them);
     }
 
@@ -1161,6 +1173,22 @@ export function patienceOf(me) {
   return UNDUE_AT * c * (2 - (me.ratings?.compliance ?? 1));
 }
 
+/* NOTHING HOLDING THEM, from what stops them (`whatStops`): no traffic
+   holding them, no car close in front of them, nobody on foot, and not at
+   their line under a red. A line they are merely sitting at does not
+   count -- a driver who has not noticed the green is held by their own
+   lapse -- and nor does a red they have stopped well short of: stopped
+   sixty metres back from a red with the road empty to the line, they keep
+   everybody behind from pulling up (and from the loop that calls the
+   green). */
+export function freeOf(view) {
+  const lid = view.leader?.id ?? null;
+  if (view.held || lid === "ped") return false;
+  if (view.queued && lid !== "line") return false;
+  /* At the line under a red means within the stop-line loop's reach (actuated.js LOOP): close enough for the light to know they are there. */
+  return !(lid === "line" && view.red && view.gap <= LOOP);
+}
+
 /* Every signalled node's plan, once per course. */
 const plansCache = new WeakMap();
 function signalPlans(course) {
@@ -1186,6 +1214,22 @@ export function step(world) {
   /* WHO WAS HONKED AT LAST TICK: a horn is heard at once, by the car it is meant for. */
   const honked = new Set();
   for (const a of world.actors) if (a.honkAt != null && (world.t ?? 0) - a.honkAt < DT * 1.5) honked.add(a.honkTo);
+  /* Who is who this tick, and whether a car is stopped with nothing holding it (the horn, below):
+     a traffic car's own last verdict, the player's asked of the rules once a tick when somebody wants it. */
+  const byIdNow = actorById(world.actors);
+  /* The player, free and for how long, every tick they are on the map: the
+     same test, and the same time to notice -- a poor observer's, the most
+     generous a driver gets (core/perception.js). */
+  const pl = world.actors.find((a) => a.player);
+  let playerFreeSince = null, playerFree = false;
+  if (pl) {
+    const ws = whatStops(pl, world);
+    if ((pl.v ?? 0) < AT_REST && freeOf(ws)) { playerFreeSince = world.playerFreeSince ?? world.t; playerFree = world.t - playerFreeSince >= REGISTER_FLOOR + REGISTER_SPAN; }
+  }
+  const isFreeStop = (c) => {
+    if (!c.player) return !!c.freeStop;
+    return playerFree;
+  };
   const next = world.actors
     .map((raw) => {
       /* A PLAYER AT THE WHEEL is an actor everybody else perceives,
@@ -1331,30 +1375,68 @@ export function step(world) {
       else if (raw.heldRed && !view.red) { out.heldRed = false; out.wake = (world.t ?? 0) + noticeAfter(raw, world.t ?? 0); }
       if (out.wake != null && honked.has(raw.id)) out.wake = Math.min(out.wake, (world.t ?? 0) + REACTION_FLOOR);
       if (out.wake != null && (world.t ?? 0) >= out.wake) out.wake = null;
-      /* THE HORN (the same ruling: "cars honking to correct the poor
-         behavior of other drivers"). Queued behind a car that sits at its
-         line on a green, a driver's patience runs (`patienceOf`); when it
-         runs out they honk, and again if it goes on. Who honks and how fast
-         is the driver: confidence and compliance, nothing new. */
-      /* Only a driver who would ever honk keeps the count -- a timid one never
-         does -- and the cheap tests come before the intersection scan: at 300
-         cars the scan for every queued follower cost lane changing its budget
-         (verify-lanes, 8 October). */
+      /* THE HORN -- WHEN ANOTHER DRIVER'S ERROR UNREASONABLY IMPEDES OR
+         ENDANGERS YOU (the maintainer, 8 October, rebuilding the first
+         version: "this feature should work anytime a driver is blocked when
+         they otherwise shouldn't be"). The first version honked only at a car
+         within two metres of a stop line on a green, and only from directly
+         behind it; a player stopped short, stopped mid-block, or a few cars
+         back never heard one. Now:
+         - OBSTRUCTED: stopped behind a car that is stopped with nothing
+           holding it (`freeStop`: no red, no traffic, no queue, nobody on
+           foot, no stop it owes -- the car ahead not going on a green, a
+           driver dawdling at a stop sign when it is their turn, a car
+           stopped in a live lane or across two); or held at an
+           intersection by a car standing in the box with nothing holding it.
+         - A FEW CARS BACK: stopped behind a car that is itself stuck behind
+           the offender -- the grudge passes back up the queue, and every
+           horn is aimed at whoever is causing it.
+         - A NEAR MISS: braking at more than twice a comfortable stop (the
+           established line between a controlled stop and an abrupt one) for
+           a car that has just come in front from another lane or another
+           road, which had no right to: a horn at once.
+         The player is an offender like anybody, in every case. How soon is
+         the driver (`patienceOf`); a timid one never honks. */
       const patience = patienceOf(raw);
-      const lead = patience < Infinity && view.queued && view.leader?.k != null && (view.leader.k ?? 0) === (raw.k ?? 0) ? view.leader : null;
-      let fume = null;
-      if (lead && v < AT_REST && layoutOf(world, raw).signal) {
-        const L = layoutOf(world, raw), lp = pathOf(world, lead);
-        if (lp && (lead.v ?? 0) < AT_REST && lead.s >= waitAt(lp, lead) - AT_LINE
-          && movementLight(L.signal, L.legs[lp.from]?.base, lp.intent, world.t, liveOf(world, lead.k)) === "green"
-          /* ...AND COULD HAVE GONE: nothing in their way, judged at the
-             competent standard undue delay uses. A left-turner waiting on a
-             green for a gap in the oncoming traffic is doing it right, and
-             a horn at them would teach the wrong thing. */
-          && openTo(lead, world, COMPETENT)) fume = raw.fumeSince ?? world.t;
+      const lid = view.leader?.id ?? null;
+      let grudge = null, nearMiss = null;
+      if (patience < Infinity) {
+        const ld = lid != null ? byIdNow.get(lid) : null;
+        if (v < 1 && ld && !ld.crash && view.queued && (ld.v ?? 0) < AT_REST) {
+          if (isFreeStop(ld)) grudge = ld.id;
+          else if (ld.grudge) grudge = ld.grudge;
+        }
+        if (!grudge && v < 1 && view.held && !view.queued) {
+          for (const c of atNode(world, world.actors, raw.k ?? 0)) {
+            if (c.id === raw.id || c.crash || (c.v ?? 0) >= AT_REST) continue;
+            const cp = pathOf(world, c);
+            if (!cp || c.s <= cp.stopAt || c.s >= cp.clearAt) continue;
+            if (blockedBy(raw, c, layoutOf(world, raw), raw.caution, world.t ?? 0, liveOf(world, raw.k)) && isFreeStop(c)) { grudge = c.id; break; }
+          }
+        }
+        const decel = ((raw.v ?? 0) - v) / DT;
+        if (lid != null && lid !== raw.leadId && decel > 2 * (raw.brake ?? vehicleOf(raw).brake)) {
+          const c = byIdNow.get(lid), cp = c && pathOf(world, c);
+          /* A car that has just come in front -- not the one I was following,
+             so it cut in or crossed (a cutter is already in my lane the tick
+             it arrives, so the lane cannot tell) -- judged without its
+             commitment, as if still at its line: did it owe me the way? */
+          if (cp && !c.crash && !blockedBy(raw, { ...c, going: false, s: Math.min(c.s, cp.stopAt - 0.1) }, layoutOf(world, raw), raw.caution, world.t ?? 0, liveOf(world, raw.k))) nearMiss = c.id;
+        }
       }
-      out.fumeSince = fume;
-      if (fume != null && world.t - fume >= patience && (raw.honkAt == null || world.t - raw.honkAt >= Math.max(patience, HONK_AGAIN))) { out.honkAt = world.t; out.honkTo = lead.id; }
+      const fume = grudge != null ? (raw.grudge === grudge && raw.fumeSince != null ? raw.fumeSince : world.t) : null;
+      out.grudge = grudge; out.fumeSince = fume; out.leadId = lid;
+      /* What the cars behind read next tick: stopped, and nothing holding them. */
+      /* ...and FREE LONG ENOUGH TO HAVE NOTICED: a car that has just made its
+         full stop, or whose gap has just opened, is not yet in anybody's way
+         -- it gets its own registration delay (`notices`) first. Without it a
+         bold driver honked at a right on red 0.7 s after the required stop. */
+      const freeNow = v < AT_REST && freeOf(view) && !raw.crash && raw.leaveAt == null && !(raw.busStop && raw.dwellFrom != null);
+      out.freeSince = freeNow ? (raw.freeSince ?? world.t) : null;
+      out.freeStop = freeNow && world.t - out.freeSince >= (raw.notices ?? REACTION_FLOOR);
+      const quiet = raw.honkAt == null || world.t - raw.honkAt >= HONK_AGAIN;
+      if (nearMiss != null && quiet) { out.honkAt = world.t; out.honkTo = nearMiss; }
+      else if (fume != null && world.t - fume >= patience && (raw.honkAt == null || world.t - raw.honkAt >= Math.max(patience, HONK_AGAIN))) { out.honkAt = world.t; out.honkTo = grudge; }
       /* WHAT THEY SAW THIS TICK, remembered for when a truck hides it (see
          `whatStops`); nothing to remember with no truck near. */
       if (view.seen) {
@@ -1586,7 +1668,7 @@ export function step(world) {
   /* THE LIGHTS (actuated.js), decided from the traffic as it was at the
      start of this tick -- what the loops saw -- like every driver. */
   const lights = world.lights ? stepLights(signalPlans(world.course), world.lights, (k) => loopDets(world, k), t) : null;
-  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(lights ? { lights } : {}), ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walkedRest : {}), ...(strolled ? strolled : {}) };
+  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(lights ? { lights } : {}), playerFreeSince, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walkedRest : {}), ...(strolled ? strolled : {}) };
   if (tall) out.tall = tall; else if (out.tall) delete out.tall;
   /* A CAR THAT REACHES SOMEBODY ON FOOT has struck them (peds.js
      `strikes`): they fall where they are, the car stops as a wreck, and

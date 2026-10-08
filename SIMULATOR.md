@@ -4418,6 +4418,72 @@ under a few pixels.
 not the axis; horns at cars that could not go; timid drivers honking;
 the off-screen badge missing) -- each fails it.
 
+**REBUILT, 8 October, after the maintainer drove it.** His report: *"haven't
+been able to get a car to honk at me, or perhaps I haven't noticed the
+visual cue. does it only work when I'm stopped at the green line? a few
+places back in traffic it doesn't work. this feature should work anytime a
+driver is blocked when they otherwise shouldn't be (if I stop across two
+lanes for example and block the road, both drivers approaching should be
+honking at me)."*
+
+**What it actually was, reproduced before anything changed**: mostly, the
+horn never fired. It fired only at a car within two metres of its stop line
+on a green, and only from the car directly behind: stopped 3 or 6 m short,
+stopped mid-block, a few cars back, across two lanes, in the box, at a stop
+sign, or cutting somebody up -- no horn, ever. A sound driver also waited
+4-7 s and a timid one never honked, so the one case that worked was slow.
+And when it did fire the cue was easy to miss: thin 2 px white arcs, 8-17
+px across, for 0.8 s, over a 52 px car, with no line to whom. Built for
+the case that prompted it, not the rule -- the pattern this project keeps
+meeting.
+
+**THE PRINCIPLE: A DRIVER HONKS WHEN ANOTHER DRIVER'S ERROR UNREASONABLY
+IMPEDES OR ENDANGERS THEM.** As built:
+- **Obstructed**: stopped behind a car that is stopped with NOTHING HOLDING
+  IT -- no traffic holding it, no car close in front, nobody on foot, not at
+  its line under a red -- and has been so for its own registration delay
+  (it gets the time to notice first: without that, a required full stop
+  before a right on red drew a horn 0.7 s later). A line it is merely
+  sitting at does not count (a driver who has not noticed the green is held
+  by their own lapse); "at its line under a red" means within the stop-line
+  loop's reach (LOOP, 10 m): stopped further back than that with the road
+  empty to the line, a driver is keeping everybody behind from pulling up --
+  and from the loop. Or: held at an intersection by a car standing in the
+  box with nothing holding it.
+- **A few cars back**: stopped behind a car that is itself stuck behind the
+  offender, the grudge passes back up the queue, and every horn is aimed at
+  the car causing it.
+- **A near miss**: braking at more than twice a comfortable stop (the
+  established line between a controlled stop and an abrupt one) for a car
+  that has just come in front -- cut in, or crossed -- which, judged as if
+  still at its line, did not have the way: a horn at once.
+- **The player across two lanes** is in front of the traffic in both, once
+  their body reaches into the next lane.
+- **The player is an offender like anybody**, with a poor observer's time
+  to notice (the most generous a driver gets). Patience is still
+  confidence and compliance; a timid driver still never honks.
+
+**Measured against the player** (`verify-greens` 4): 3 or 6 m short at a
+signal -- honked 6.4 s into an unused green, never at the red; stopped
+mid-block with three queued -- all three honk at the player, the third a
+second after the first; across two lanes -- the car in each lane stops short
+and honks; stopped in the box -- the crossing car honks; cutting in 9 m
+ahead at 18 km/h of a car at 50 -- it brakes at 8 m/s^2 and honks at once;
+waiting at the line on a red -- never, even from the most impatient driver.
+**In ordinary traffic** horns are now rare and always at an error (on test
+map 1 a few in ten minutes, every one a near miss or an obstruction): the
+traffic seldom errs enough, and the horn is for the player.
+
+**The cue, as a map symbol** (`paintHorns`): a white disc with a black rim
+and bold sound arcs aimed at the target, never under 11 px, 1.5 s with a
+pulsing ring; a bold pointer to the car it is aimed at; the badge on the
+screen's edge when the honker is off it. **And a "Test horn" button** on
+`#/map` (drive mode): the nearest car honks at the player at once, so the
+symbol can be seen to render before anybody judges when the traffic honks.
+
+`verify-greens` holds all of it; six sabotages -- no queue, no straddle, no
+box, no near miss, no red excuse, no pointer -- each fail it.
+
 **What the other checks needed** (the new timing moved every world):
 - `verify-graph`'s drain test judged "arrived while over 40" on the count
   BEFORE the tick: two cars leaving at once from 41 and one arriving to

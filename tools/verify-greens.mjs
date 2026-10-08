@@ -24,7 +24,9 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, noticeAfter, patienceOf, pathOf, waitAt, openTo, COMPETENT, UNDUE_AT, AT_LINE } from "../src/sim/crossing.js";
+import { seedGraph, step, noticeAfter, patienceOf, pathOf, waitAt, whatStops, UNDUE_AT } from "../src/sim/crossing.js";
+import { LOOP } from "../src/sim/actuated.js";
+import { HONK_FOR } from "../src/sim/horn.js";
 import { playerOn, withDriver } from "../src/sim/drive.js";
 import { driver, DT } from "../src/sim/traffic.js";
 import { movementLight } from "../src/sim/signal.js";
@@ -59,11 +61,21 @@ console.log("\n2. WHO HONKS, AND HOW SOON: confidence and compliance");
 
 console.log("\n3. IN THE SIM: test map 1, two seeds, five minutes at 120 cars");
 {
+  /* What a horn may be aimed at, judged from outside the horn's own code: a
+     car stopped with no traffic holding it, no car close in front, nobody on
+     foot, and not at its line under a red; or a car moving that had just
+     come in front of the honker. */
+  const atError = (wb, tgt, honker) => {
+    if (!tgt) return false;
+    if ((tgt.v ?? 0) >= 0.5) return honker.leadId === tgt.id;   // `honker` as it is after the tick: a near miss is the leader that has just appeared
+    const ws = whatStops(tgt, wb);
+    return !ws.held && ws.leader?.id !== "ped" && !(ws.queued && ws.leader?.id !== "line") && !(ws.leader?.id === "line" && ws.red && ws.gap <= LOOP);
+  };
   const starts = { sharp: [], poor: [] };
-  let honks = 0, aimedWell = 0, timidHonks = 0, woken = 0, wokenFast = 0, crashes = 0;
+  let honks = 0, atErrors = 0, timidHonks = 0, crashes = 0;
   for (const seed of [1, 2]) {
     let w = seedGraph(seed, 50, loaded, { every: 2.0, target: 120, posted: true });
-    const greenAt = new Map(), honkAtTarget = new Map();
+    const greenAt = new Map();
     for (let i = 0; i < 300 / DT; i++) {
       const before = new Map(w.actors.map((a) => [a.id, a])), wb = w;
       w = step(w);
@@ -74,19 +86,11 @@ console.log("\n3. IN THE SIM: test map 1, two seeds, five minutes at 120 cars");
         if (a.honkAt != null && a.honkAt !== b.honkAt) {
           honks++;
           if (a.caution > 1) timidHonks++;
-          /* Aimed well: at a car stopped at its line (AT_LINE, the sim's own), on its green, with its way open. */
-          const tgt = wb.actors.find((x) => x.id === a.honkTo);
-          if (tgt) {
-            const tp = pathOf(wb, tgt), L = wb.course.at[tgt.k ?? 0].layout;
-            const green = movementLight(L.signal, L.legs[tp.from]?.base, tp.intent, wb.t, wb.lights?.[tgt.k ?? 0]?.live) === "green";
-            if (green && tgt.v < 0.3 && tgt.s >= waitAt(tp, tgt) - AT_LINE && openTo(tgt, wb, COMPETENT)) aimedWell++;
-            honkAtTarget.set(tgt.id, a.honkAt);
-          }
+          if (atError(wb, wb.actors.find((x) => x.id === a.honkTo), a)) atErrors++;
         }
         if (greenAt.has(a.id) && a.v > 0.5) {
           const d = deficitOf(a.ratings, "observation").deficit;
           if (d < 0.2) starts.sharp.push(w.t - greenAt.get(a.id)); else if (d >= 0.6) starts.poor.push(w.t - greenAt.get(a.id));
-          if (honkAtTarget.has(a.id) && honkAtTarget.get(a.id) >= greenAt.get(a.id)) { woken++; if (w.t - honkAtTarget.get(a.id) <= REACTION_FLOOR + 1.5) wokenFast++; }
           greenAt.delete(a.id);
         }
       }
@@ -96,49 +100,112 @@ console.log("\n3. IN THE SIM: test map 1, two seeds, five minutes at 120 cars");
   const med = (xs) => { const s = xs.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
   check(starts.sharp.length >= 20 && starts.poor.length >= 10 && med(starts.poor) > med(starts.sharp) + 0.5,
     `poor observers sit visibly longer at a green going straight: median ${med(starts.poor)?.toFixed(1)} s against ${med(starts.sharp)?.toFixed(1)} s for sharp ones (${starts.poor.length} and ${starts.sharp.length} starts)`);
-  check(honks >= 3 && aimedWell === honks, `horns are heard (${honks}), and every one is aimed at a car stopped at its line on its green with its way open (${aimedWell} of ${honks})`);
+  check(atErrors === honks, `every horn in ordinary traffic is aimed at an error -- a car stopped with nothing holding it, or one that has just come in front (${atErrors} of ${honks}); traffic doing its job draws none`);
   check(timidHonks === 0, `no timid driver honked (${timidHonks})`);
-  check(woken >= 1 && wokenFast === woken, `a driver honked at starts within a reaction and a pull-away of hearing it (${wokenFast} of ${woken})`);
   check(crashes === 0, `no vehicle touched another (${crashes})`);
 }
 
-console.log("\n4. A PLAYER WHO SITS AT A GREEN IS HONKED AT");
+console.log("\n4. THE PLAYER IS HONKED AT WHEREVER THEY IMPEDE OR ENDANGER SOMEBODY (the maintainer's cases)");
 {
-  let w = seedGraph(3, 50, loaded, { every: 1e9, target: 0, posted: true });
-  const me0 = playerOn(w.course, "A-north", "end");
-  const path = w.course.at[me0.k].layout.paths[me0.route];
-  const me = { ...me0, s: path.stopAt - 2.25, v: 0, a: 0 };
-  const car = { ...driver(w.road, 3, 9001), n: 9001, k: me.k, route: me.route, s: me.s - 7.5, v: 0, leg: 0, stoppedAt: 0, going: false, accepted: false, openFor: 0, openedAt: null, waited: 0, delayed: false };
-  car.caution = 0.2; car.ratings = { ...car.ratings, compliance: 1 };
-  w = withDriver({ ...w, actors: [car] }, me);
-  const L = w.course.at[me.k].layout, base = L.legs[path.from].base;
-  let greenFrom = null, honk = null;
-  for (let i = 0; i < 120 / DT && honk == null; i++) {
-    w = withDriver(step(w), me);
-    const lit = movementLight(L.signal, base, path.intent, w.t, w.lights?.[me.k]?.live);
-    if (lit === "green" && greenFrom == null) greenFrom = w.t;
-    const c = w.actors.find((a) => a.id === car.id);
-    if (c?.honkAt != null && c.honkTo === "player") honk = c.honkAt;
+  const mk = (w, n, k, route, s, v = 0, caution = 1, compliance = 0.9) => {
+    const c = { ...driver(w.road, 3, n), n, k, route, s, v, leg: 0, stoppedAt: v ? null : 0, going: false, accepted: false, openFor: 0, openedAt: null, waited: 0, delayed: false };
+    c.caution = caution; c.ratings = { ...c.ratings, compliance }; return c;
+  };
+  /* Run with the player held where they are; every first horn, and the hardest any car braked. */
+  const run = (w, me, secs) => {
+    const honks = new Map();
+    let hardest = 0;
+    for (let i = 0; i < secs / DT; i++) {
+      const wb = w;
+      w = withDriver(step(w), me);
+      for (const c of w.actors) {
+        const b = wb.actors.find((x) => x.id === c.id);
+        if (b && !c.player) hardest = Math.max(hardest, (b.v - c.v) / DT);
+        if (c.honkAt != null && !honks.has(c.id)) honks.set(c.id, { to: c.honkTo, at: c.honkAt });
+      }
+    }
+    return { honks, hardest, w };
+  };
+  const test1 = loadMap(TEST_MAPS.find((m) => m.id === "test-1").build());
+  const fresh = (loaded) => seedGraph(3, 50, loaded, { every: 1e9, target: 0, posted: true });
+  /* a. At a signal, a few metres short of the line: honked once the green has gone unused, never at the red. */
+  for (const back of [3, 6]) {
+    let w = fresh(test1);
+    const me0 = playerOn(w.course, "A-north", "end"), L = w.course.at[me0.k].layout, path = L.paths[me0.route];
+    const me = { ...me0, s: waitAt(path, me0) - back, v: 0, a: 0 };
+    w = withDriver({ ...w, actors: [mk(w, 9001, me.k, me.route, me.s - 7.5)] }, me);
+    let green = null;
+    const r = (() => { const honks = new Map(); for (let i = 0; i < 40 / DT; i++) { w = withDriver(step(w), me); if (green == null && movementLight(L.signal, L.legs[path.from].base, path.intent, w.t, w.lights?.[me.k]?.live) === "green") green = w.t; for (const c of w.actors) if (c.honkAt != null && !honks.has(c.id)) honks.set(c.id, c.honkAt); } return honks; })();
+    const at = r.get("car-9001");
+    check(green != null && at != null && at > green, `${back} m short of the line at a signal: the light came round and the player sat, and the car behind honked ${at != null && green != null ? (at - green).toFixed(1) : "never"} s into the green -- never at the red`);
   }
-  const wait = honk != null && greenFrom != null ? honk - greenFrom : null;
-  check(greenFrom != null && wait != null && wait <= patienceOf(car) + 0.2, `the light came round to the player on the loop, the player sat, and the bold driver behind honked ${wait?.toFixed(1)} s into the green (patience ${patienceOf(car).toFixed(1)} s)`);
+  /* b. Stopped mid-block in a live lane, three cars queued behind: all three honk, at the player. */
+  {
+    let w = fresh(test1);
+    const me0 = playerOn(w.course, "A-north", "end");
+    const me = { ...me0, s: 60, v: 0, a: 0 };
+    w = withDriver({ ...w, actors: [1, 2, 3].map((q) => mk(w, 9000 + q, me.k, me.route, 60 - 7.5 * q)) }, me);
+    const { honks } = run(w, me, 20);
+    check(honks.size === 3 && [...honks.values()].every((h) => h.to === "player"), `stopped mid-block, three cars queued behind: ${honks.size} of them honk, all at the player -- a few cars back too (${[...honks.entries()].map(([id, h]) => `${id} at ${h.at.toFixed(1)} s`).join(", ")})`);
+  }
+  /* c. Stopped across two lanes: the cars in both lanes honk. */
+  {
+    let w = fresh(test1);
+    const me0 = playerOn(w.course, "A-B", "end"), L = w.course.at[me0.k].layout, path = L.paths[me0.route], leg = L.legs[path.from];
+    const me = { ...me0, s: 60, v: 0, a: 0, off: -1.5 };
+    const other = L.legAt(leg.base, (leg.pos ?? leg.lane) - 1), r2 = L.routesFrom(other)[0];
+    w = withDriver({ ...w, actors: [mk(w, 9001, me.k, me.route, 52.5), mk(w, 9002, me.k, r2, 51)] }, me);
+    const { honks, w: after } = run(w, me, 20);
+    const c2 = after.actors.find((a) => a.id === "car-9002");
+    check(honks.size === 2 && [...honks.values()].every((h) => h.to === "player") && c2.s < 60 - 4, `stopped across two lanes: the car in each lane stops short of the player and honks (${honks.size}; the one in the next lane stood ${(60 - c2.s).toFixed(1)} m back)`);
+  }
+  /* d. Stopped in the box of an uncontrolled crossroads: the car on the crossing road honks. */
+  {
+    const signs = loadMap(TEST_MAPS.find((m) => m.id === "test-signs").build());
+    let w = fresh(signs);
+    const me0 = playerOn(w.course, "U-south", "end"), L = w.course.at[me0.k].layout, path = L.paths[me0.route];
+    const me = { ...me0, s: (path.stopAt + path.clearAt) / 2, v: 0, a: 0 };
+    const cross = Object.entries(L.paths).find(([r, p]) => p.intent === "straight" && L.conflicts[`${r}|${me.route}`] && !p.from.startsWith("U-south"));
+    w = withDriver({ ...w, actors: [mk(w, 9001, me.k, cross[0], cross[1].stopAt - 60, 10)] }, me);
+    const { honks } = run(w, me, 30);
+    check(honks.get("car-9001")?.to === "player", `stopped in the middle of an intersection: the car held on the crossing road honks at the player (at ${honks.get("car-9001")?.at.toFixed(1)} s)`);
+  }
+  /* e. Cutting in close and slow in front of a car at speed: an instant horn. */
+  {
+    let w = fresh(test1);
+    const me0 = playerOn(w.course, "A-B", "end"), L = w.course.at[me0.k].layout, path = L.paths[me0.route], leg = L.legs[path.from];
+    const other = L.legAt(leg.base, (leg.pos ?? leg.lane) - 1), r2 = L.routesFrom(other).find((r) => L.paths[r].intent === "straight") ?? L.routesFrom(other)[0];
+    const me = { ...me0, route: r2, s: 40 + 4.5 + 9, v: 5, a: 0 };
+    w = withDriver({ ...w, actors: [mk(w, 9001, me0.k, r2, 40, 14)] }, me);
+    const { honks, hardest } = run(w, me, 4);
+    const h = honks.get("car-9001");
+    check(h?.to === "player" && h.at < 0.5 && hardest > 5, `cutting in 9 m ahead at 18 km/h of a car at 50: it brakes at ${hardest.toFixed(1)} m/s^2 and honks at once (${h ? `${h.at.toFixed(2)} s` : "never"})`);
+  }
+  /* f. And not where the player is doing it right: waiting at a red, at their line. */
+  {
+    let w = fresh(test1);
+    const me0 = playerOn(w.course, "A-north", "end"), L = w.course.at[me0.k].layout, path = L.paths[me0.route];
+    const me = { ...me0, s: waitAt(path, me0), v: 0, a: 0 };
+    w = withDriver({ ...w, actors: [mk(w, 9001, me.k, me.route, me.s - 7.5, 0, 0.05, 1)] }, me);
+    let honkedAtRed = false;
+    for (let i = 0; i < 40 / DT; i++) { w = withDriver(step(w), me); const c = w.actors.find((a) => a.id === "car-9001"); const lit = movementLight(L.signal, L.legs[path.from].base, path.intent, w.t, w.lights?.[me.k]?.live); if (c?.honkAt != null && c.honkAt >= w.t - 2 * DT && lit === "red") honkedAtRed = true; }
+    check(!honkedAtRed, "a player waiting at their line on a red is never honked at, even by the most impatient driver behind");
+  }
 }
 
 console.log("\n5. THE HORN IS DRAWN, AND SAYS WHO AND WHERE");
 {
-  const strokes = [];
-  const ctx = new Proxy({}, { get: (t, p) => (p in t ? t[p] : p === "arc" ? (...args) => strokes.push({ arc: args, colour: t.strokeStyle }) : () => {}), set: (t, p, v) => { t[p] = v; return true; } });
+  const fills = [], lines = [];
+  const ctx = new Proxy({}, { get: (t, p) => (p in t ? t[p] : p === "fill" ? () => fills.push(t.fillStyle) : p === "lineTo" ? () => lines.push(t.strokeStyle) : () => {}), set: (t, p, v) => { t[p] = v; return true; } });
   const canvas = { w: 400, h: 600 };
-  const scene = (x, honkTo) => ({ roads: [], terrain: [], cam: { x: 0, y: 0 }, k: 8, tilt: false, t: 10.2, actors: [{ id: "car-1", n: 1, x, y: 0, z: 0, heading: 0, length: 4.5, width: 1.8, height: 1.5, honkAt: 10, honkTo }] });
-  const whites = () => strokes.filter((s) => /255,255,255/.test(String(s.colour)) || s.colour === "#ffffff").length;
-  strokes.length = 0; drawFrame(ctx, canvas, scene(0, "car-2")); const onScreen = whites();
-  strokes.length = 0; drawFrame(ctx, canvas, scene(5000, "player")); const atPlayer = whites();
-  strokes.length = 0; drawFrame(ctx, canvas, scene(5000, "car-2")); const elsewhere = whites();
-  strokes.length = 0; drawFrame(ctx, canvas, { ...scene(0, "car-2"), t: 11 }); const over = whites();
-  check(onScreen >= 3, `a honking car on screen throws white arcs over it (${onScreen})`);
-  check(atPlayer >= 3, `a horn at the player from off the screen is a badge on its edge (${atPlayer} white strokes)`);
-  check(elsewhere === 0, `a horn off the screen aimed at somebody else is not drawn (${elsewhere})`);
-  check(over === 0, `and a horn is shown for its moment and gone (${over} strokes 1 s on)`);
+  const car = (id, x, extra = {}) => ({ id, n: 1, x, y: 0, z: 0, heading: 0, length: 4.5, width: 1.8, height: 1.5, ...extra });
+  const scene = (honkerX, honkTo, t = 10.3) => ({ roads: [], terrain: [], cam: { x: 0, y: 0, z: 0 }, k: 8, tilt: false, t, actors: [car("car-1", honkerX, { honkAt: 10, honkTo }), car("player", 25, { player: true }), car("car-2", -20)] });
+  const draw = (sc) => { fills.length = 0; lines.length = 0; drawFrame(ctx, canvas, sc); return { badge: fills.filter((f) => f === "#ffffff").length, pointer: lines.filter((s) => s === "#ffffff").length }; };
+  const on = draw(scene(0, "player")), edge = draw(scene(5000, "player")), elsewhere = draw(scene(5000, "car-2")), gone = draw(scene(0, "player", 10 + HONK_FOR + 0.1));
+  check(on.badge >= 1 && on.pointer >= 1, `a honking car on screen carries the badge, with a pointer to the player it is aimed at (${on.badge} white discs, ${on.pointer} white pointer strokes)`);
+  check(edge.badge >= 1, `a horn at the player from off the screen is the badge on the screen's edge (${edge.badge})`);
+  check(elsewhere.badge === 0, `a horn off the screen aimed at somebody else is not drawn (${elsewhere.badge})`);
+  check(gone.badge === 0 && HONK_FOR >= 1.5, `a horn shows for ${HONK_FOR} s and is then gone (${gone.badge} after)`);
 }
 
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nall passed");

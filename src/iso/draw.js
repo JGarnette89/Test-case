@@ -170,43 +170,62 @@ function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t) {
 /* A HORN, MADE VISIBLE (the maintainer, 8 October: "a visual indicator of
    honking would be helpful since 360 degree audio will be difficult to
    portray on phone speakers"). It has to say WHO and roughly WHERE:
-   - over the honking car, white sound-arcs thrown forward from its roof,
-     opening out over the honk -- white with a dark edge, a colour no lamp
-     or light uses, so it never reads as a signal;
-   - and when it is aimed at the player from off the screen, a badge on
-     the screen's edge on the line to it, with the arcs, so a horn from
-     behind is still placed.
-   Drawn over the world, as information is: a horn is not hidden by a
-   building. Sized like the lamps, never under a few pixels. */
+   - over the honking car, a BADGE: a white disc with a black rim and bold
+     black sound arcs pointed at its target, a ring pulsing out over the
+     1.5 s it shows -- never under 11 px, a map symbol rather than a scale
+     picture of sound (the first version, thin white arcs for 0.8 s, was
+     easy to miss: 8 October);
+   - a bold POINTER from the badge to the car it is aimed at, so who honked
+     at whom reads at a glance;
+   - and when it is aimed at the player from off the screen, the badge on
+     the screen's edge on the line toward the honker, still pointing.
+   White on black, colours no lamp or light uses. Drawn over the world, as
+   information is: a horn is not hidden by a building. */
 function paintHorns(ctx, canvas, view, scene, k) {
   const t = scene.t ?? 0;
+  const W = canvas.w ?? canvas.width, H = canvas.h ?? canvas.height, m = 22;
+  const roof = (a, out) => view.into(a.x, a.y, (a.z ?? 0) + (a.height ?? 1.5) + 1.6, out);
+  const byId = new Map((scene.actors ?? []).map((a) => [a.id, a]));
   for (const a of scene.actors ?? []) {
     if (a.honkAt == null || t - a.honkAt < 0 || t - a.honkAt >= HONK_FOR) continue;
     const u = (t - a.honkAt) / HONK_FOR;
-    const h = ((a.heading ?? 0) * Math.PI) / 180;
-    const len = a.length ?? 4.5;
-    const p = view.into(a.x + Math.cos(h) * len * 0.3, a.y + Math.sin(h) * len * 0.3, (a.z ?? 0) + (a.height ?? 1.5) + 0.8, PT).slice();
-    const q = view.into(a.x + Math.cos(h) * (len * 0.3 + 4), a.y + Math.sin(h) * (len * 0.3 + 4), (a.z ?? 0) + (a.height ?? 1.5) + 0.8, PT2);
-    let dir = Math.atan2(q[1] - p[1], q[0] - p[0]);
-    let [x, y] = p;
-    const W = canvas.w ?? canvas.width, H = canvas.h ?? canvas.height, m = 18;
+    let [x, y] = roof(a, PT).slice();
+    const tgt = byId.get(a.honkTo);
+    const tp = tgt ? roof(tgt, PT2).slice() : null;
     const off = x < 0 || y < 0 || x > W || y > H;
     if (off) {
       if (a.honkTo !== "player") continue;
-      /* On the edge, on the line from the screen's middle toward the car, pointing in. */
+      /* ON THE SCREEN'S EDGE, on the line from its middle toward the honker. */
       const cx = W / 2, cy = H / 2, dx = x - cx, dy = y - cy;
       const s = Math.min((W / 2 - m) / Math.max(1e-6, Math.abs(dx)), (H / 2 - m) / Math.max(1e-6, Math.abs(dy)));
-      x = cx + dx * s; y = cy + dy * s; dir = Math.atan2(-dy, -dx);
-      ctx.fillStyle = "rgba(20,20,24,0.85)"; ctx.beginPath(); ctx.arc(x, y, 13, 0, 2 * Math.PI); ctx.fill();
-      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.stroke();
+      x = cx + dx * s; y = cy + dy * s;
     }
-    const r0 = off ? 5 : Math.max(5, 0.7 * k);
-    for (let i = 0; i < 3; i++) {
-      const r = r0 * (1 + i * 0.7 + u * 0.8);
-      ctx.lineWidth = Math.max(2, r0 * 0.28);
-      ctx.strokeStyle = "rgba(10,10,12,0.75)"; ctx.beginPath(); ctx.arc(x, y, r, dir - 0.7, dir + 0.7); ctx.stroke();
-      ctx.lineWidth = Math.max(1.2, r0 * 0.16);
-      ctx.strokeStyle = `rgba(255,255,255,${(1 - u * 0.6).toFixed(2)})`; ctx.beginPath(); ctx.arc(x, y, r, dir - 0.7, dir + 0.7); ctx.stroke();
+    const R = Math.max(11, 0.75 * k);
+    /* THE POINTER, to whoever it is aimed at: bold, white on a dark edge. */
+    if (tp) {
+      const dx = tp[0] - x, dy = tp[1] - y, d = Math.hypot(dx, dy);
+      if (d > 2.2 * R) {
+        const ux = dx / d, uy = dy / d, x0 = x + ux * R * 1.15, y0 = y + uy * R * 1.15, x1 = tp[0] - ux * R * 0.6, y1 = tp[1] - uy * R * 0.6;
+        for (const [wd, col] of [[6, "rgba(10,10,12,0.85)"], [3, "#ffffff"]]) {
+          ctx.lineWidth = wd; ctx.strokeStyle = col; ctx.lineCap = "round";
+          ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+          const h = R * 0.55;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - ux * h - uy * h * 0.6, y1 - uy * h + ux * h * 0.6); ctx.moveTo(x1, y1); ctx.lineTo(x1 - ux * h + uy * h * 0.6, y1 - uy * h - ux * h * 0.6); ctx.stroke();
+        }
+      }
+    }
+    /* THE BADGE: a white disc with a black rim and bold black sound arcs
+       pointed at the target, a pulse ring opening out over the honk. */
+    const dir = tp ? Math.atan2(tp[1] - y, tp[0] - x) : -Math.PI / 2;
+    ctx.strokeStyle = `rgba(255,255,255,${(0.9 * (1 - u)).toFixed(2)})`; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(x, y, R * (1.2 + u * 1.2), 0, 2 * Math.PI); ctx.stroke();
+    ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(x, y, R, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = "#111114"; ctx.lineWidth = Math.max(2, R * 0.16); ctx.stroke();
+    ctx.lineCap = "round";
+    ctx.beginPath(); ctx.arc(x - Math.cos(dir) * R * 0.35, y - Math.sin(dir) * R * 0.35, R * 0.14, 0, 2 * Math.PI); ctx.fillStyle = "#111114"; ctx.fill();
+    for (const f of [0.38, 0.66]) {
+      ctx.lineWidth = Math.max(2, R * 0.16);
+      ctx.beginPath(); ctx.arc(x - Math.cos(dir) * R * 0.35, y - Math.sin(dir) * R * 0.35, R * f, dir - 0.75, dir + 0.75); ctx.stroke();
     }
   }
 }
