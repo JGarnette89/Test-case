@@ -49,6 +49,7 @@
 /* WHICH INSTRUMENT. Bumped whenever the ramp or the report changes
    shape, and printed with the build stamp on the screen and in the
    report, so a report from a stale tab says so on its first line. */
+export const HIDDEN_RESTARTS = 3;
 export const INSTRUMENT = 5;   // 5: the bench (#/bench) -- the whole game, and where the frame goes
 export const BUILD = typeof __BUILD__ !== "undefined" ? __BUILD__ : "unbundled";   // vite.config.js bakes it in; bare node has none
 
@@ -314,6 +315,13 @@ export function rampSteps() {
 export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = perfMeter(), stopOnFail = true } = {}) {
   let i = 0, at = null, settled = false, started = false, last = null, counts = null;
   let log = [], gcFrames = 0, gcMs = 0, split = {}, ctl = null;
+  /* A HIDDEN PAGE GETS NO FRAMES, so a step the page was hidden during
+     measured the gap, not the game (8 October: the phone's screen went
+     off in the soak, and the report printed "0 hitches, worst 0" for 38
+     s of nothing). Such a step starts its clock again, up to
+     HIDDEN_RESTARTS times, and past that is reported INVALID and counted
+     for no cap. */
+  let restarts = 0, invalid = false;
   /* THE CONTROLS, counted apart from the meter. `flags.injected`: the
      frame closed a stall the screen made on purpose -- the instrument
      must see every one, or nothing it reports about hitches can be
@@ -326,15 +334,15 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
   ctl = freshCtl();
   const results = [];
   const finish = () => {
-    const strict = results.filter((x) => x.pass);
-    const steadyOnes = results.filter((x) => x.steady);
+    const strict = results.filter((x) => x.pass && !x.invalid);
+    const steadyOnes = results.filter((x) => x.steady && !x.invalid);
     /* The DOM probe is a POSITIVE CONTROL -- it issues one React update a
        second on purpose, so it hitches by design -- and it is never where
        the budget "broke". Counting it made the 24 September report say
        "held up to 322 cars; broke at step 1", which reads as a
        contradiction and was one. Its own result is reported on its own
        line instead. */
-    const capOf = (list, key) => (list.length ? { ...list[list.length - 1], brokeAt: results.find((x) => !x.probe && !x[key])?.label ?? null } : null);
+    const capOf = (list, key) => (list.length ? { ...list[list.length - 1], brokeAt: results.find((x) => !x.probe && !x.invalid && !x[key])?.label ?? null } : null);
     return { done: true, results, cap: capOf(strict, "pass"), steadyCap: capOf(steadyOnes, "steady") };
   };
   /* A STEP MAY CARRY ITS OWN `settle` AND `hold`. The bench gives a step
@@ -360,6 +368,7 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       if (!started) { started = true; return { load: steps[0] }; }
       if (at == null) { at = now; settled = false; meter.reset(); log = []; loadLog = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); return {}; }
       const held = (now - at) / 1000;
+      if (flags.hidden) { if (restarts < HIDDEN_RESTARTS) { restarts++; at = null; return {}; } invalid = true; }
       if (!settled && dt != null && dt > HITCH) loadLog.push({ since: Math.round(held * 100) / 100, dt: Math.round(dt), tickMs: flags.tickMs != null ? Math.round(flags.tickMs) : null, tasks: flags.tasks ?? null, gc: !!flags.gc });
       if (!settled && held >= settleOf()) { settled = true; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); }
       if (settled && dt != null) {
@@ -383,16 +392,17 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       const sum = meter.summary();
       results.push({
         step: i + 1, ...steps[i], ...sum, ...(counts ?? {}),
-        pass: meter.passes(sum), steady: meter.steady(sum),
+        pass: meter.passes(sum), steady: meter.steady(sum), restarts, invalid,
         stallLog: log, loadHitches: loadLog, gcFrames, gcMeanMs: gcFrames ? Math.round((gcMs / gcFrames) * 10) / 10 : 0,
         ...(Object.keys(split).length ? { split: splitSummary(split) } : {}),
         control: { injected: ctl.injected, injectedSeen: ctl.injectedSeen, issued: ctl.issued,
           domMean: ctl.domFrames ? Math.round((ctl.domSum / ctl.domFrames) * 10) / 10 : null, domMax: Math.round(ctl.domMax * 10) / 10,
           restMean: ctl.restFrames ? Math.round((ctl.restSum / ctl.restFrames) * 10) / 10 : null },
       });
-      i++;
-      /* The probe hitches by design, so it never ends a ramp. */
-      if (i >= steps.length || (stopOnFail && !results[results.length - 1].steady && !results[results.length - 1].probe)) return finish();
+      i++; restarts = 0; invalid = false;
+      /* The probe hitches by design, so it never ends a ramp; nor does a step the page was hidden through. */
+      const r = results[results.length - 1];
+      if (i >= steps.length || (stopOnFail && !r.steady && !r.probe && !r.invalid)) return finish();
       at = null;
       return { load: steps[i] };
     },

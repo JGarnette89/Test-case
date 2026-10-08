@@ -275,7 +275,7 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
   L.push("");
   L.push("THE RAMP: the whole game, more cars each step");
   const head = "step           fleet  trucks buses walking crossing parked  drawn things  fps  p50   p95   worst hitch stall slow-s gc(ms)     step p50/p95  poses p50/p95  draw p50/p95  build-s load-h  steady pass";
-  const row = (r) => `${String(r.label).padEnd(14)} ${pad(r.fleet, 5)}  ${pad(r.trucks, 6)} ${pad(r.buses, 5)} ${pad(r.walkers, 7)} ${pad(r.crossing, 8)} ${pad(r.parked, 6)}  ${pad(r.cars, 5)} ${pad(r.items, 6)}  ${pad(r.fps, 3)}  ${pad(r.p50, 4)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)} ${pad(r.stalls, 5)} ${pad(r.slowSeconds, 6)} ${pad(`${r.gcFrames ?? 0}(${r.gcMeanMs ?? 0})`, 8)}  ${pad(part(r, "step"), 12)}  ${pad(part(r, "poses"), 13)}  ${pad(part(r, "draw"), 12)}  ${pad(r.buildS, 7)} ${pad(r.builds ? (r.loadHitches ?? []).length : "-", 6)}  ${r.steady ? "yes" : "NO "}    ${r.pass ? "yes" : "NO"}`;
+  const row = (r) => `${String(r.label).padEnd(14)} ${pad(r.fleet, 5)}  ${pad(r.trucks, 6)} ${pad(r.buses, 5)} ${pad(r.walkers, 7)} ${pad(r.crossing, 8)} ${pad(r.parked, 6)}  ${pad(r.cars, 5)} ${pad(r.items, 6)}  ${pad(r.fps, 3)}  ${pad(r.p50, 4)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)} ${pad(r.stalls, 5)} ${pad(r.slowSeconds, 6)} ${pad(`${r.gcFrames ?? 0}(${r.gcMeanMs ?? 0})`, 8)}  ${pad(part(r, "step"), 12)}  ${pad(part(r, "poses"), 13)}  ${pad(part(r, "draw"), 12)}  ${pad(r.buildS, 7)} ${pad(r.builds ? (r.loadHitches ?? []).length : "-", 6)}  ${r.steady ? "yes" : "NO "}    ${r.pass ? "yes" : "NO"}${r.invalid ? "  INVALID (page hidden)" : ""}`;
   L.push(head);
   for (const r of ramp.results) L.push(row(r));
   L.push("  step = the sim step, on the frames that ran one (a third of them at 60 fps); poses and draw every frame; ms, median/95th");
@@ -290,7 +290,7 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
      150" -- a cap above the break. */
   const capBy = (holds) => {
     let held = null;
-    for (const r of ramp.results.filter((x) => !x.probe)) { if (holds(r)) held = r; else return { held, broke: r }; }
+    for (const r of ramp.results.filter((x) => !x.probe && !x.invalid)) { if (holds(r)) held = r; else return { held, broke: r }; }
     return { held, broke: null };
   };
   const capLine = (what, { held, broke }) => (held ? `${what}: held at ${held.fleet} cars with everything in (step ${held.label}); broke at step ${broke?.label ?? "-"}` : `${what}: the budget did not hold at any step`);
@@ -300,8 +300,14 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
   const loads = [...ramp.results, ...(split?.results ?? [])].flatMap((r) => (r.loadHitches ?? []).map((h) => ({ step: r.label, ...h })));
   L.push(loads.length ? "load-time hitches: frames over the hitch line in a step's load window, seconds since the step began (the frame after the build)" : "load-time hitches: none");
   for (const h of loads) L.push(`  ${String(h.step).padEnd(14)} ${String(h.since.toFixed(2)).padStart(6)} s  ${String(h.dt).padStart(5)} ms  ours ${h.tickMs ?? "?"} ms  tasks ${h.tasks ?? "?"} ms  gc ${h.gc ? "yes" : "no"}`);
+  /* A step the page was hidden during: restarted, or past that INVALID (perf.js HIDDEN_RESTARTS). */
+  for (const r of [...ramp.results, ...(split?.results ?? [])]) {
+    if (r.invalid) L.push(`step ${r.label}: INVALID -- the page went hidden (screen off or app switched) ${r.restarts + 1} times; a hidden page gets no frames, so its numbers are the gap, not the game, and it counts for no cap`);
+    else if (r.restarts) L.push(`step ${r.label}: restarted ${r.restarts} time${r.restarts > 1 ? "s" : ""} after the page went hidden; its numbers are from a visible run`);
+  }
   const soak = split?.results?.find((r) => r.label === "soak");
-  if (soak) L.push(`soak: ${soak.hold ?? SOAK} s of play at ${soak.fleet} cars after a ${soak.settle ?? LOAD_WINDOW} s load window -- ${soak.hitches} hitches in play, ${(soak.loadHitches ?? []).length} in the load window; worst frame in play ${soak.worst} ms, p95 ${soak.p95}${soak.hitches ? " -- A PLAY-TIME HITCH: the cap is not clean" : ""}`);
+  if (soak?.invalid) L.push(`soak: INVALID -- the page went hidden; no verdict on play at ${soak.fleet} cars`);
+  else if (soak) L.push(`soak: ${soak.hold ?? SOAK} s of play at ${soak.fleet} cars after a ${soak.settle ?? LOAD_WINDOW} s load window -- ${soak.hitches} hitches in play, ${(soak.loadHitches ?? []).length} in the load window; worst frame in play ${soak.worst} ms, p95 ${soak.p95}${soak.hitches ? " -- A PLAY-TIME HITCH: the cap is not clean" : ""}`);
   if (split?.results?.length) {
     const all = split.results.find((r) => r.label === "everything") ?? split.results[0];
     L.push("");
@@ -313,7 +319,7 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
       const key = r.without, c = key ? COUNT[key] : null;
       const gone = c ? `${all[c]} -> ${r[c]}` : r.label === "wide view" ? "(further out)" : r.label === "soak" ? `(${r.hold ?? SOAK} s of play)` : "(baseline)";
       const saved = (k) => (r === all ? "" : ` (${(ms(all, k) - ms(r, k)).toFixed(1)})`);
-      L.push(`${(key ? OFF[key] : r.label).slice(0, 22).padEnd(22)}  ${gone.padEnd(16)}  ${pad(r.fps, 3)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)}  ${pad(`${ms(r, "step")}${saved("step")}`, 16)}   ${pad(`${ms(r, "draw")}${saved("draw")}`, 16)}   ${pad(r.items, 6)}`);
+      L.push(`${(key ? OFF[key] : r.label).slice(0, 22).padEnd(22)}  ${gone.padEnd(16)}  ${pad(r.fps, 3)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)}  ${pad(`${ms(r, "step")}${saved("step")}`, 16)}   ${pad(`${ms(r, "draw")}${saved("draw")}`, 16)}   ${pad(r.items, 6)}${r.invalid ? "  INVALID (page hidden)" : ""}`);
     }
     L.push("  a switch whose count did not go to its 'off' value did nothing, and its row says nothing");
   }

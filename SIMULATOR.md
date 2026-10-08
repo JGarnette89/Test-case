@@ -2641,6 +2641,85 @@ screen would draw as a lie (CLAUDE.md item 6). The fix is for people on
 foot to treat a standing wreck as an obstacle: wait, or go round.
 `verify-peds` reports it on its own line.
 
+##### 1.2.9 THE CAP, ANSWERED -- 8 October, the phone on `673c847`, two runs
+
+**150 cars with everything in is the play cap, and it is not perfectly
+clean.** The second run (the first is below) held the budget at every
+step to 150 and broke at 200 (p95 25 ms, step p50 19 ms). Its 30 s soak at
+150 had TWO play-time frames over the hitch line, 67 and 75 ms, with our
+own callback 12 and 28 ms of them and no long task: the page missed
+frames it was not busy for. The split rows at 150 show the same, about
+one 58-92 ms frame in each 8 s hold, mostly with our callback well under
+the frame. So: 150 plays at 60 fps with a visible stutter every 15-30 s,
+not of our code's making on most of them; 100 plays clean.
+
+**Where the step goes at 150** (phone, 13.6 ms p50 on the frames that run
+one; a third of them): people crossing 3.2 ms, sight 3.6, buses 1.4,
+parked cars 1.2, trucks 1.1. Each switch changes the traffic as well as
+removing code, so these are upper bounds. Desk, `tools/measure/step-
+profile.mjs 150`: 5.5 ms a step, of which the per-car decision is 2.7 and
+the people crossing 1.1 -- no single function over a fifth of it. A
+cache of the cars crossing each crosswalk (asked several times a tick per
+person) left the traffic identical and saved nothing measurable (4.72 ms
+a step either way, `tools/measure/step-time.mjs`), and was taken out
+again. **There is no hot spot left to cut; the step is spread thin.**
+
+**The levers that remain are structural**, in the order they pay:
+1. **The sim in a Web Worker.** A frame at 150 is step (on one frame in
+   three) + poses + draw = 13.6 + 1.6 + 4.2 ms, over 16.7 on the frames
+   that step. Off the main thread, the frame is poses + draw (about 6 ms)
+   every frame and the step has 50 ms per tick on another core: the
+   cap moves from the main thread to the sim's own budget, about three
+   times what it is. Workers run over plain HTTP. The sim is already
+   pure and a world is plain data, so this is plumbing, not a rewrite.
+2. **Cheap far traffic** (1.2.2, and the 8 km^2 answer): full decisions
+   near the player only.
+
+**The instrument lied once, and is fixed.** In the first run the phone's
+screen went off during the split: the "no walkers" step saw a 1.6 s gap
+and the soak a 38 s one, both flagged hidden in the stall table -- and
+the report still printed the soak as "0 hitches, worst 0". A hidden page
+gets no frames, so a step it was hidden in measured the gap. Now a step
+the page goes hidden in starts its clock again (perf.js, up to
+`HIDDEN_RESTARTS` = 3) and past that is reported INVALID and counted for
+no cap. `verify-perf` 3b holds both; with the restart removed it fails.
+
+##### 1.2.10 A car across your path is in front of you, committed or not -- 8 October
+
+**`673c847` shipped with a check failing, and the report said the suite
+was green.** `verify-trucks` allows trucks that hide things at most one
+more vehicle crash than see-through trucks in five minutes of the city at
+15% trucks; it read 1 against 0 before the new speed limit past the box,
+and 2 against 0 after. The suite run that cleared the commit had written
+49 lines where 55 were due -- six checks never reported -- and it was read
+as green without counting them. Now a run is counted: every check's line
+and DONE, or it did not finish.
+
+**What the two crashes were.**
+- **One was not about sight at all.** On the arterial at a T, a bold driver
+  (caution 0.28) turning left took a one-second gap in front of an
+  oncoming car, in full view of each other for four seconds. The
+  oncoming car braked, could not stop short of its line, rolled over it at
+  20 km/h -- and past the line counted as committed, so it let go of the
+  brake and drove into the turner still crossing its lane.
+  The rule that was missing is physical, not
+  legal: **right of way says who goes first; it never lets a car drive
+  into one that is physically in its way.** In `whatStops`, once another
+  car is inside the region where our paths overlap and until it is clear
+  of it, the point where I would first touch it is a stopped car to stop
+  short of. Only the car already inside the region holds the other, so
+  two cars cannot hold each other there.
+- **The other is the allowance the check names**: a car turning right
+  into a lane while the car it merged in front of was hidden by a truck
+  until two seconds before. It was the one crash before the speed limit
+  change too.
+
+After: 1 against 0, the full suite green (54 of 54, counted), no crash in
+five minutes on the signal five-way, crossroads, test map 1 at 150 or
+the city at 300 (`tools/measure/default-crashes.mjs 5`), and of the
+world-hash maps only the city moved in two minutes -- the rule fires
+rarely, where it matters.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,

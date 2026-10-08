@@ -13,7 +13,7 @@
    What it cannot check is a real frame time -- that is the phone's job,
    and the report it produces is the number that matters.
    ===================================================================== */
-import { perfMeter, budgetRamp, rampSteps, reportText, gcProbe, taskProbe, deviceIdentity, BUDGET, HITCH, INSTRUMENT, BUILD } from "../src/iso/perf.js";
+import { perfMeter, budgetRamp, rampSteps, reportText, gcProbe, taskProbe, deviceIdentity, BUDGET, HITCH, HIDDEN_RESTARTS, INSTRUMENT, BUILD } from "../src/iso/perf.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -73,6 +73,20 @@ function drive(frameMs, flagsFor = () => ({}), { settle = 1, hold = 8, build = 3
   check(r.cap?.label === rampSteps()[N - 1].label && r.cap?.brokeAt === rampSteps()[1].label, `the strict cap is the last step that passed the budget, and it names the step that broke it (${r.cap?.brokeAt})`);
   check(r.steadyCap?.brokeAt === null, "the steady cap saw nothing break");
   check(r.results[1].stallLog.length === 1 && r.results[1].stallLog[0].dt === HITCH + 5, "the hitch is in the step's stall log with its length");
+}
+
+/* 3b. A HIDDEN PAGE GETS NO FRAMES (8 October: the phone's screen went off
+   in the soak and the report printed "0 hitches, worst 0" for 38 s of
+   nothing). A step the page goes hidden in starts its clock again; one
+   hidden again and again is INVALID and counts for no cap. */
+{
+  const gapOf = (i, f) => (i === 1 && f === 200) || (i === 2 && f % 150 === 100);
+  const r = drive((i, f) => (gapOf(i, f) ? 5000 : 16.7), (i, f) => ({ hidden: gapOf(i, f) }));
+  const once = r.results[1], always = r.results[2];
+  check(r.results.length === N, `hidden steps do not end the ramp (${r.results.length} of ${N} ran)`);
+  check(once.restarts === 1 && !once.invalid && once.pass && once.worst < HITCH, `hidden once: the step restarted (${once.restarts}) and its record is a visible run (worst ${once.worst} ms)`);
+  check(always.invalid && always.restarts === HIDDEN_RESTARTS, `hidden again and again: INVALID after ${always.restarts} restarts`);
+  check(r.cap?.label === rampSteps()[N - 1].label && r.cap?.brokeAt === null && r.steadyCap?.brokeAt === null, `and it is counted for no cap: both caps run past it (${r.cap?.label}, broke at ${r.cap?.brokeAt})`);
 }
 
 /* 4. The stall log says what the gap was doing, and the GC frames are counted. */

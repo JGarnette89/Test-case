@@ -857,6 +857,25 @@ export function whatStops(me, world) {
       consider(clearBetween(them.s - me.s, me, them), them);
     }
 
+    /* SOMEBODY ALREADY ACROSS MY PATH IS IN FRONT OF ME, committed or not.
+       Right of way says who goes first; it does not let a car drive into
+       one that is physically in its way. Without this, a driver past their
+       own line counted as committed and finished whatever was there:
+       measured (8 October, the city at 15% trucks), a bold driver turning
+       left took a one-second gap in front of an oncoming car; the oncoming
+       car braked, could not stop short of its line, rolled over it at 20
+       km/h -- and, past the line and so "committed", let go of the brake
+       and drove into the turner still crossing its lane. So: once they are
+       into the region where our paths overlap (`back.a` along theirs) and
+       until they are clear of it, the point where I would first touch
+       them (`hit.a` along mine) is a stopped car to stop short of. Only
+       ever the one INSIDE the region holds the other, so two cars cannot
+       hold each other here. */
+    if (theirs.from !== mine.from && !me.player) {
+      const hit = layout.conflicts[me.route + "|" + them.route], back = hit && layout.conflicts[them.route + "|" + me.route];
+      if (back && me.s < hit.a && them.s >= back.a && them.s <= hit.clearOf) consider(Math.max(0, hit.a - me.s - 1), { v: 0, s: hit.a, id: them.id });
+    }
+
     /* AND THE CAR IN FRONT ON MY WAY OUT, which is a different car and
        was the bug. Two paths that leave by the same leg share their whole
        final stretch -- a car going straight from the north and one
