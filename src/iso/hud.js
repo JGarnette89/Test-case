@@ -7,7 +7,7 @@
    on top; no DOM changes while the world moves (CLAUDE.md,
    Conventions).
    ===================================================================== */
-import { SLIDER_W, SLIDER_TOP, SIGNAL_ZONE } from "./controls.js";
+import { SLIDER_W, SLIDER_TOP, SIGNAL_ZONE, HORN_ZONE } from "./controls.js";
 import { NEUTRAL, holdBand } from "../sim/player.js";
 
 const FONT = "600 10px system-ui, sans-serif";
@@ -129,6 +129,21 @@ export function drawSignals(ctx, size, signal, now, { label = true } = {}) {
       ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = FONT; ctx.textAlign = "center"; ctx.textBaseline = "top";
       ctx.fillText(side === "left" ? "signal left" : "signal right", cx, cy + 20);
     }
+  }
+}
+
+/* THE HORN BUTTON, top centre between the signals: a disc with the horn's
+   sound arcs, white while the player's own horn is sounding. */
+export function drawHorn(ctx, size, sounding, { label = true } = {}) {
+  const cx = size.w / 2, cy = HORN_ZONE.h / 2, r = 16;
+  ctx.fillStyle = sounding ? "#ffffff" : "rgba(255,255,255,0.14)";
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.fill();
+  ctx.strokeStyle = sounding ? "#111114" : "rgba(255,255,255,0.55)"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.arc(cx - 5, cy, 2.5, 0, 2 * Math.PI); ctx.stroke();
+  for (const f of [7, 12]) { ctx.beginPath(); ctx.arc(cx - 5, cy, f, -0.75, 0.75); ctx.stroke(); }
+  if (label) {
+    ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = FONT; ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.fillText("horn", cx, cy + 20);
   }
 }
 

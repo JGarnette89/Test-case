@@ -4484,6 +4484,46 @@ symbol can be seen to render before anybody judges when the traffic honks.
 `verify-greens` holds all of it; six sabotages -- no queue, no straddle, no
 box, no near miss, no red excuse, no pointer -- each fail it.
 
+**THE MAINTAINER'S RULING ON PATIENCE (8 October), after the rebuild:**
+*"A 6s delay before a horn at a driver sitting at a fresh green is way too
+tolerant. This would be more like 2-3 seconds tops."* The 6 s was two
+things stacked: patience on the undue-delay standard (4 s), counted only
+AFTER the other car's own time to notice (2 s). Now patience is
+HONK_AFTER (2.5 s) as the driver feels it -- scaled by caution and
+compliance as before -- and never past HONK_TOPS (3 s); and it is counted
+from when the other car COULD HAVE GONE, so their time to notice is inside
+it. Measured: a player sitting through a fresh green is honked at 2.8 s
+into it; stopped mid-block, 2.8 s after stopping. The grace before a
+stopped car counts as in the way is a poor observer's time to notice
+(about 2 s) for everybody -- not the driver's own delay, which let a badly
+distracted driver buy themselves eight seconds with the very lapse that
+was the fault.
+
+**WHAT THE NOTE MEANT, clarified by the maintainer the same day:** *"When
+I was speaking of the player experience I meant that the cars ahead
+honking faster solve that problem without having the player input, this
+works too."* The problem is the player stuck a few cars back behind a
+driver who has not noticed the green. THE FIX IS THE 2-3 s RULING ITSELF:
+the cars between honk within seconds, a horn wakes the driver it is aimed
+at, and the grudge passes back up the queue -- so the queue moves with no
+input from the player. The player's own horn below was built on a
+different reading of the note; the maintainer kept it ("this works too")
+as an option, not as the mechanism.
+
+**THE PLAYER'S HORN** (the same note: *"we think about the player
+experience of being the car behind the car behind and now we have a way
+to keep the player moving along while still having some world flavor"*).
+A tap at the top centre of the screen (between the signal taps; `h` on a
+keyboard) honks. It is aimed at whoever is holding the player up -- the car
+in front, or the driver the queue has already counted in the way, or the
+head of the stopped queue in front -- and it is drawn like anybody's horn,
+the badge over the player's car with its pointer. A driver who has not
+noticed their green, honked at, goes a reaction later: measured, from
+directly behind and from two cars back past a car that would never honk
+itself, the driver at the head goes within 2 s of the horn instead of
+sitting ten. Knowing who is holding you up is every driver's, a timid one
+included; only HONKING is temperament.
+
 **What the other checks needed** (the new timing moved every world):
 - `verify-graph`'s drain test judged "arrived while over 40" on the count
   BEFORE the tick: two cars leaving at once from 41 and one arriving to

@@ -33,14 +33,15 @@ import { loadMap, groundFor } from "../map/load.js";
 import { testMap1 } from "../map/samples.js";
 import { firstEdge } from "../map/edges.js";
 import { seedGraph, step, poseOf, DT, crashWith } from "../sim/crossing.js";
-import { playerOn, stepDriver, driverPose, withDriver, aheadOf } from "../sim/drive.js";
+import { playerOn, stepDriver, driverPose, withDriver, aheadOf, playerHonk } from "../sim/drive.js";
 import { junctionsOf, postedAt } from "../sim/graph.js";
 import { touching } from "../sim/player.js";
 import { parkedPoses, contactWith } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
-import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop } from "../iso/hud.js";
+import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn } from "../iso/hud.js";
+import { HONK_FOR } from "../sim/horn.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter } from "../iso/perf.js";
 import { loadSettings, setSetting, settings } from "../settings.js";
@@ -133,7 +134,7 @@ export function actorsOf(scene, carry) {
     if (a.player) {
       const p = driverPose({ ...a, s: a.s + a.v * carry }, w.course);
       /* The player's lamps: the turn tap IS their signal, and the brake lamp follows the car slowing as theirs does. */
-      out.push({ id: a.id, n: -1, ...p, colour: "#f4f4f2", player: true, blinker: a.signal ?? null, brakeLamp: (a.a ?? 0) < -0.6 || (a.v ?? 0) < 0.1 });
+      out.push({ id: a.id, n: -1, ...p, colour: "#f4f4f2", player: true, blinker: a.signal ?? null, brakeLamp: (a.a ?? 0) < -0.6 || (a.v ?? 0) < 0.1, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null });
       continue;
     }
     const p = poseOf(w, { ...a, s: Math.min(a.s + a.v * carry, w.course.at[a.k].layout.paths[a.route].length) });
@@ -244,6 +245,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
 
     const onKey = (e) => {
       if (e.type === "keydown" && !e.repeat && (e.key === "q" || e.key === "e")) input.current.signal(e.key === "q" ? "left" : "right");
+      if (e.type === "keydown" && !e.repeat && e.key === "h") input.current.horn();
       if (e.type === "keydown") held.current.add(e.key); else held.current.delete(e.key);
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
     };
@@ -268,6 +270,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           owed.current -= DT;
           let w = sc.world;
           if (sc.me) {
+            /* THE PLAYER'S HORN: a tap (or h) since the last tick honks, at whoever is holding them up (drive.js). */
+            if (input.current.state.horn !== (sc.hornSeen ?? 0)) { sc.hornSeen = input.current.state.horn; sc.me = { ...sc.me, ...playerHonk(sc.me, w) }; }
             sc.me = stepDriver({ ...sc.me, signal: input.current.state.signal }, inp, w, DT);
             input.current.state.signal = sc.me.signal;   // spent by the turn it caused
             w = withDriver(w, sc.me);
@@ -397,6 +401,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         drawSlider(ctx, size, inp.slider, me.v, me.grade ?? 0, ahead.stop);
         drawWheelBar(ctx, size, inp.steer);
         drawSignals(ctx, size, input.current.state.signal, now);
+        drawHorn(ctx, size, sc.me?.honkAt != null && sc.world.t - sc.me.honkAt < HONK_FOR);
         drawReadout(ctx, readout.current, 8, size.h - 44);
         if (flash.current > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * flash.current})`; ctx.fillRect(0, 0, size.w, size.h); flash.current = Math.max(0, flash.current - dt * 2); }
       } else {

@@ -55,6 +55,24 @@ export function playerAt(course, k, route) {
   return { ...newPlayer(0, 0, 0), id: "player", player: true, n: -1, k, route, leg: 0, signal: null, stoppedAt: null, going: false, accepted: false, contacts: 0 };
 }
 
+/* THE PLAYER'S HORN: aimed at whoever is holding them up -- the car in front
+   if it is moving or alone, else the driver the queue has already counted
+   in the way (its `grudge`, crossing.js), else the head of the stopped
+   queue in front. A
+   horn at nobody still sounds. The sim wakes a driver who has not noticed
+   their green when a horn is aimed at them, the player's like any other. */
+export function playerHonk(me, world) {
+  const ws = whatStops(me, world);
+  const byId = new Map(world.actors.map((a) => [a.id, a]));
+  let c = ws.leader?.k != null ? byId.get(ws.leader.id) : null;
+  if (c?.grudge && byId.has(c.grudge)) return { honkAt: world.t, honkTo: c.grudge };
+  /* ...or the head of the stopped queue in front, walked car to car: from
+     behind a queue, a horn is at whoever is at its front, before the queue
+     itself has counted them in the way. */
+  for (let n = 0; c && (c.v ?? 0) < 0.5 && n < 30; n++) { const next = c.leadId != null ? byId.get(c.leadId) : null; if (!next || (next.v ?? 0) >= 0.5 || next.id === me.id) break; c = next; }
+  return { honkAt: world.t, honkTo: c ? c.id : null };
+}
+
 /* The player at the start of a road, in its curb lane, with no signal. */
 export function playerOn(course, roadId, end, opts) {
   const at = curbLegOf(course, roadId, end, opts);

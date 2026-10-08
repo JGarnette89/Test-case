@@ -23,11 +23,16 @@ export const SLIDER_W = 64;        // px, the track's width, wider than a thumb
    steering, not a signal. The slider's track starts below the right
    zone (SLIDER_TOP). */
 export const SIGNAL_ZONE = { w: 96, h: 72 };
+/* THE HORN (the maintainer, 8 October: being "the car behind the car
+   behind" a driver who has not noticed the green, the player can honk and
+   get the traffic moving): a tap zone at the top centre, between the two
+   signal zones. Each tap is one honk (`state.horn` counts them). */
+export const HORN_ZONE = { w: 88, h: 72 };
 export const SLIDER_TOP = SIGNAL_ZONE.h + 12;
 const TAP_MS = 350, TAP_PX = 12;
 
 export function controls({ spring = false } = {}) {
-  const state = { steer: 0, slider: 0, signal: null, spring, touches: {} };
+  const state = { steer: 0, slider: 0, signal: null, horn: 0, spring, touches: {} };
   return {
     state,
     /* `kind` is down | move | up; `id` the pointer; (x, y) in canvas
@@ -36,7 +41,7 @@ export function controls({ spring = false } = {}) {
     pointer(kind, id, x, y, box, now = 0) {
       const t = state.touches;
       if (kind === "down") {
-        const zone = y < SIGNAL_ZONE.h ? (x < SIGNAL_ZONE.w ? "left" : x > box.w - SIGNAL_ZONE.w ? "right" : null) : null;
+        const zone = y < SIGNAL_ZONE.h ? (x < SIGNAL_ZONE.w ? "left" : x > box.w - SIGNAL_ZONE.w ? "right" : Math.abs(x - box.w / 2) < HORN_ZONE.w / 2 ? "horn" : null) : null;
         const onSlider = !zone && x >= box.w - SLIDER_W;
         t[id] = onSlider ? { role: "slider" } : { role: "steer", x0: x, y0: y, at: now, zone };
         if (onSlider) state.slider = sliderValue(y, box);
@@ -48,7 +53,8 @@ export function controls({ spring = false } = {}) {
       } else if (kind === "up" && t[id]) {
         if (t[id].role === "steer") {
           state.steer = 0;
-          if (t[id].zone && now - t[id].at < TAP_MS) state.signal = state.signal === t[id].zone ? null : t[id].zone;
+          if (t[id].zone === "horn" && now - t[id].at < TAP_MS) state.horn++;
+          else if (t[id].zone && now - t[id].at < TAP_MS) state.signal = state.signal === t[id].zone ? null : t[id].zone;
         } else if (state.spring) state.slider = 0;
         delete t[id];
       }
@@ -64,6 +70,8 @@ export function controls({ spring = false } = {}) {
       if (held.has(" ")) state.slider = -1;
       return { steer: state.steer, slider: state.slider, signal: state.signal };
     },
+    /* The horn from a key: h. */
+    horn() { state.horn++; return state.horn; },
     /* The indicator from a key: q left, e right, each a toggle. */
     signal(side) {
       state.signal = state.signal === side ? null : side;

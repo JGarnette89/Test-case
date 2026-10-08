@@ -24,10 +24,11 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, noticeAfter, patienceOf, pathOf, waitAt, whatStops, UNDUE_AT } from "../src/sim/crossing.js";
+import { seedGraph, step, noticeAfter, patienceOf, pathOf, waitAt, whatStops, HONK_AFTER, HONK_TOPS } from "../src/sim/crossing.js";
 import { LOOP } from "../src/sim/actuated.js";
 import { HONK_FOR } from "../src/sim/horn.js";
-import { playerOn, withDriver } from "../src/sim/drive.js";
+import { playerOn, withDriver, playerHonk } from "../src/sim/drive.js";
+import { controls } from "../src/iso/controls.js";
 import { driver, DT } from "../src/sim/traffic.js";
 import { movementLight } from "../src/sim/signal.js";
 import { deficitOf } from "../src/core/driver.js";
@@ -55,8 +56,8 @@ console.log("\n2. WHO HONKS, AND HOW SOON: confidence and compliance");
 {
   const p = (caution, compliance) => patienceOf({ caution, ratings: { compliance } });
   check(p(1.4, 1) === Infinity && p(1.01, 0.5) === Infinity, "a timid driver (caution above the optimum) never honks");
-  check(p(0.15, 1) < p(0.15, 0.3) && p(0.15, 0.3) < p(1, 1) && p(1, 1) < p(1, 0.3), `bold and rule-minded first (${p(0.15, 1).toFixed(1)} s), bold and careless next (${p(0.15, 0.3).toFixed(1)}), a sound driver at the undue-delay standard (${p(1, 1).toFixed(1)}), a careless sound one later (${p(1, 0.3).toFixed(1)})`);
-  check(Math.abs(p(1, 1) - UNDUE_AT) < 1e-9, `a sound, compliant driver honks exactly where the maintainer marks undue delay (${UNDUE_AT} s)`);
+  check(p(0.15, 1) < p(0.15, 0.3) && p(0.15, 0.3) < p(1, 1) && p(1, 1) < p(1, 0.3), `bold and rule-minded first (${p(0.15, 1).toFixed(1)} s), bold and careless next (${p(0.15, 0.3).toFixed(1)}), a sound driver at the maintainer's 2.5 s (${p(1, 1).toFixed(1)}), a careless sound one later (${p(1, 0.3).toFixed(1)})`);
+  check(Math.abs(p(1, 1) - HONK_AFTER) < 1e-9 && [0.05, 0.3, 0.6, 1].every((c) => [0, 0.5, 1].every((k) => p(c, k) <= HONK_TOPS)), `a sound, compliant driver honks at the maintainer's ${HONK_AFTER} s, and nobody who honks waits past ${HONK_TOPS} s ("2-3 seconds tops")`);
 }
 
 console.log("\n3. IN THE SIM: test map 1, two seeds, five minutes at 120 cars");
@@ -137,7 +138,7 @@ console.log("\n4. THE PLAYER IS HONKED AT WHEREVER THEY IMPEDE OR ENDANGER SOMEB
     let green = null;
     const r = (() => { const honks = new Map(); for (let i = 0; i < 40 / DT; i++) { w = withDriver(step(w), me); if (green == null && movementLight(L.signal, L.legs[path.from].base, path.intent, w.t, w.lights?.[me.k]?.live) === "green") green = w.t; for (const c of w.actors) if (c.honkAt != null && !honks.has(c.id)) honks.set(c.id, c.honkAt); } return honks; })();
     const at = r.get("car-9001");
-    check(green != null && at != null && at > green, `${back} m short of the line at a signal: the light came round and the player sat, and the car behind honked ${at != null && green != null ? (at - green).toFixed(1) : "never"} s into the green -- never at the red`);
+    check(green != null && at != null && at > green && at - green <= HONK_TOPS + 0.1, `${back} m short of the line at a signal: the light came round and the player sat, and the car behind honked ${at != null && green != null ? (at - green).toFixed(1) : "never"} s into the green -- within the maintainer's 2-3 s, never at the red`);
   }
   /* b. Stopped mid-block in a live lane, three cars queued behind: all three honk, at the player. */
   {
@@ -206,6 +207,45 @@ console.log("\n5. THE HORN IS DRAWN, AND SAYS WHO AND WHERE");
   check(edge.badge >= 1, `a horn at the player from off the screen is the badge on the screen's edge (${edge.badge})`);
   check(elsewhere.badge === 0, `a horn off the screen aimed at somebody else is not drawn (${elsewhere.badge})`);
   check(gone.badge === 0 && HONK_FOR >= 1.5, `a horn shows for ${HONK_FOR} s and is then gone (${gone.badge} after)`);
+}
+
+console.log("\n6. THE PLAYER'S HORN: the car behind the car behind can get the traffic moving");
+{
+  /* The control: a tap at the top centre honks; a drag that starts there steers; the signal taps are where they were. */
+  const c = controls(), box = { w: 400, h: 700 };
+  c.pointer("down", 1, 200, 30, box, 0); c.pointer("up", 1, 200, 30, box, 100);
+  const tapped = c.state.horn;
+  c.pointer("down", 2, 200, 30, box, 1000); c.pointer("move", 2, 260, 32, box, 1050); const steer = c.state.steer; c.pointer("up", 2, 260, 32, box, 1100);
+  c.pointer("down", 3, 20, 30, box, 2000); c.pointer("up", 3, 20, 30, box, 2100);
+  check(tapped === 1 && c.state.horn === 1 && steer > 0.4 && c.state.signal === "left", `a tap at the top centre is one honk, a drag that starts there steers (${steer.toFixed(2)}), and the left signal tap still signals`);
+  /* In the sim: a driver at the head of a queue who will not notice the green for a long while; the player behind them, or behind the car behind them. */
+  const test1 = loadMap(TEST_MAPS.find((m) => m.id === "test-1").build());
+  const mk = (w, n, k, route, s, extra = {}) => ({ ...driver(w.road, 3, n), n, k, route, s, v: 0, leg: 0, stoppedAt: 0, going: false, accepted: false, openFor: 0, openedAt: null, waited: 0, delayed: false, ...extra });
+  const trial = (back, honk, midCaution = 1.6) => {
+    let w = seedGraph(3, 50, test1, { every: 1e9, target: 0, posted: true });
+    const me0 = playerOn(w.course, "A-north", "end"), L = w.course.at[me0.k].layout, path = L.paths[me0.route];
+    const line = waitAt(path, me0);
+    /* The head car does not notice for a long time (a registration delay of 8 s), and the one between, if any, would never honk (timid). */
+    const head = mk(w, 9001, me0.k, me0.route, line, { notices: 8, caution: 1.6 });
+    const mid = back === 2 ? [mk(w, 9002, me0.k, me0.route, line - 7.5, { caution: midCaution })] : [];
+    let me = { ...me0, s: line - 7.5 * back, v: 0, a: 0 };
+    w = withDriver({ ...w, actors: [head, ...mid] }, me);
+    let green = null, honked = null, started = null;
+    for (let i = 0; i < 40 / DT && started == null; i++) {
+      if (green != null && honked == null && honk && w.t >= green + 1) { me = { ...me, ...playerHonk(me, w) }; honked = { at: w.t, to: me.honkTo }; }
+      w = withDriver(step(w), me);
+      if (green == null && movementLight(L.signal, L.legs[path.from].base, path.intent, w.t, w.lights?.[me.k]?.live) === "green") green = w.t;
+      const h = w.actors.find((a) => a.id === head.id);
+      if (green != null && h && h.v > 0.5) started = w.t;
+    }
+    return { green, honked, started };
+  };
+  const quiet = trial(1, false), loud = trial(1, true), twoBack = trial(2, true), byTraffic = trial(2, false, 1);
+  check(quiet.started - quiet.green > 6, `left alone, the driver at the head who has not noticed sits ${(quiet.started - quiet.green).toFixed(1)} s into the green`);
+  check(loud.honked?.to === "car-9001" && loud.started - loud.honked.at < 2, `the player behind honks a second in: the horn is aimed at them and they go ${(loud.started - loud.honked.at).toFixed(1)} s after it`);
+  check(twoBack.honked?.to === "car-9001" && twoBack.started - twoBack.honked.at < 2, `two cars back, the player's horn passes the car between and reaches the driver holding everybody up, who goes ${(twoBack.started - twoBack.honked.at).toFixed(1)} s after it`);
+  /* WHAT THE MAINTAINER MEANT (8 October): "the cars ahead honking faster solve that problem without having the player input". The player two back does nothing; a sound driver between them honks within the 2-3 s, and the queue moves. */
+  check(byTraffic.started != null && byTraffic.started - byTraffic.green <= HONK_TOPS + 2, `with no input from the player two cars back, the sound driver between honks and the driver at the head goes ${(byTraffic.started - byTraffic.green).toFixed(1)} s into the green -- against ${(quiet.started - quiet.green).toFixed(1)} s with nobody to honk`);
 }
 
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nall passed");

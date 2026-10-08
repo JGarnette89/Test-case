@@ -1161,16 +1161,21 @@ export function noticeAfter(me, t) {
   const away = lookingAway(t, { ...me, lag });
   return lag + (away > 0 ? lag - away : 0);
 }
-/* HOW LONG A DRIVER WILL SIT BEHIND A CAR THAT HAS NOT GONE ON A GREEN
-   BEFORE HONKING. The maintainer's undue-delay standard (UNDUE_AT) as this
-   driver feels it: scaled by their caution -- the bold short of it, the
-   sound at it -- and stretched by how little the rules matter to them,
-   since honking here is correcting somebody's driving. A timid driver
-   (caution above the optimum) never honks. */
+/* HOW LONG A DRIVER WILL SIT BEHIND A CAR THAT HAS NOT GONE BEFORE
+   HONKING, counted from when that car could have gone. The maintainer's
+   ruling (8 October), on a driver sitting at a fresh green: "6s ... is way
+   too tolerant. This would be more like 2-3 seconds tops." So HONK_AFTER
+   (2.5 s) as this driver feels it -- scaled by their caution, the bold
+   short of it, and stretched by how little the rules matter to them,
+   since a horn here corrects somebody's driving -- and never past
+   HONK_TOPS (3 s). A timid driver (caution above the optimum) never
+   honks. (It was the undue-delay standard, 4 s, counted only after the
+   other car's time to notice: 6 s at the first test.) */
+export const HONK_AFTER = 2.5, HONK_TOPS = 3;
 export function patienceOf(me) {
   const c = me.caution ?? 1;
   if (c > 1) return Infinity;
-  return UNDUE_AT * c * (2 - (me.ratings?.compliance ?? 1));
+  return Math.min(HONK_TOPS, HONK_AFTER * c * (2 - (me.ratings?.compliance ?? 1)));
 }
 
 /* NOTHING HOLDING THEM, from what stops them (`whatStops`): no traffic
@@ -1400,12 +1405,17 @@ export function step(world) {
       const patience = patienceOf(raw);
       const lid = view.leader?.id ?? null;
       let grudge = null, nearMiss = null;
-      if (patience < Infinity) {
+      /* WHO IS HOLDING THEM UP is known to every driver, a timid one too --
+         it is what a horn from behind them is passed on to (drive.js
+         `playerHonk`); only HONKING is the driver's temperament. */
+      {
         const ld = lid != null ? byIdNow.get(lid) : null;
         if (v < 1 && ld && !ld.crash && view.queued && (ld.v ?? 0) < AT_REST) {
           if (isFreeStop(ld)) grudge = ld.id;
           else if (ld.grudge) grudge = ld.grudge;
         }
+      }
+      if (patience < Infinity) {
         if (!grudge && v < 1 && view.held && !view.queued) {
           for (const c of atNode(world, world.actors, raw.k ?? 0)) {
             if (c.id === raw.id || c.crash || (c.v ?? 0) >= AT_REST) continue;
@@ -1424,19 +1434,27 @@ export function step(world) {
           if (cp && !c.crash && !blockedBy(raw, { ...c, going: false, s: Math.min(c.s, cp.stopAt - 0.1) }, layoutOf(world, raw), raw.caution, world.t ?? 0, liveOf(world, raw.k))) nearMiss = c.id;
         }
       }
-      const fume = grudge != null ? (raw.grudge === grudge && raw.fumeSince != null ? raw.fumeSince : world.t) : null;
+      /* The clock runs from when the offender COULD HAVE GONE, not from when
+         this driver noticed the grudge: the offender's own time to notice is
+         inside it, not added to it. */
+      const since = grudge == null ? null : grudge === "player" ? playerFreeSince : byIdNow.get(grudge)?.freeSince;
+      const fume = grudge != null ? (raw.grudge === grudge && raw.fumeSince != null ? raw.fumeSince : since ?? world.t) : null;
       out.grudge = grudge; out.fumeSince = fume; out.leadId = lid;
       /* What the cars behind read next tick: stopped, and nothing holding them. */
       /* ...and FREE LONG ENOUGH TO HAVE NOTICED: a car that has just made its
          full stop, or whose gap has just opened, is not yet in anybody's way
-         -- it gets its own registration delay (`notices`) first. Without it a
-         bold driver honked at a right on red 0.7 s after the required stop. */
+         -- it gets a poor observer's time to notice first, the most generous a
+         driver gets, the same for everybody and for the player. Without it a
+         bold driver honked at a right on red 0.7 s after the required stop.
+         NOT the driver's OWN delay: a badly distracted driver's slowness to
+         notice is the fault, and must not buy them time (the first version
+         gave one with an 8 s lapse 8 s before anybody counted them in the way). */
       const freeNow = v < AT_REST && freeOf(view) && !raw.crash && raw.leaveAt == null && !(raw.busStop && raw.dwellFrom != null);
       out.freeSince = freeNow ? (raw.freeSince ?? world.t) : null;
-      out.freeStop = freeNow && world.t - out.freeSince >= (raw.notices ?? REACTION_FLOOR);
+      out.freeStop = freeNow && world.t - out.freeSince >= REGISTER_FLOOR + REGISTER_SPAN;
       const quiet = raw.honkAt == null || world.t - raw.honkAt >= HONK_AGAIN;
       if (nearMiss != null && quiet) { out.honkAt = world.t; out.honkTo = nearMiss; }
-      else if (fume != null && world.t - fume >= patience && (raw.honkAt == null || world.t - raw.honkAt >= Math.max(patience, HONK_AGAIN))) { out.honkAt = world.t; out.honkTo = grudge; }
+      else if (fume != null && patience < Infinity && world.t - fume >= patience && (raw.honkAt == null || world.t - raw.honkAt >= Math.max(patience, HONK_AGAIN))) { out.honkAt = world.t; out.honkTo = grudge; }
       /* WHAT THEY SAW THIS TICK, remembered for when a truck hides it (see
          `whatStops`); nothing to remember with no truck near. */
       if (view.seen) {
