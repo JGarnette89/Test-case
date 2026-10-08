@@ -340,6 +340,81 @@ export function testHighway() {
   return m;
 }
 
+/* THE ENDLESS HIGHWAY (8 October, the maintainer: "build a highway map that
+   is an endless loop, letting me drive endlessly through traffic"). One
+   carriageway of three lanes, one way round a long stadium -- 2.5 km
+   straights and 600 m bends, inside the 525 m the loader allows 100 km/h
+   on, so nobody brakes for a bend -- about 8.8 km a lap.
+
+   RAMPS ARE NOT OPTIONAL; THEY ARE THE FIX. A closed loop homogenises:
+   stage 0's ring settled into a queue behind its slowest car and stayed
+   there. So the highway has no open end at all, and every car on it came
+   up an on-ramp and will leave by an off-ramp: four interchanges, an exit
+   and then an entrance 900 m on, on the outside of the loop at 35 degrees.
+   The mix is refreshed all the time (tools/measure/loop.mjs measures it).
+
+   THE START is the far end of an on-ramp, standing: accelerate up the
+   slip road and take a gap in traffic at 100 km/h -- the hardest form of
+   gap acceptance, and the opening move. When parking lots exist, the
+   start is a lot beside the ramp.
+
+   Hills only on the bends (10 m crests), so every interchange is level. */
+export function testLoop() {
+  const m = emptyMap("test-loop", "The endless highway -- a one-way loop, four interchanges");
+  const L = 2500, R = 600, P = 2 * L + 2 * Math.PI * R;
+  m.bounds = { x: -L / 2 - R - 700, y: -R - 700, w: L + 2 * R + 1400, h: 2 * R + 1400 };
+  m.traffic = { trucks: 0.12 };
+  /* Where the loop is, u metres round: the straight along y = -R heading +x, the far bend, back along y = +R, the near bend. */
+  const at = (u) => {
+    u = ((u % P) + P) % P;
+    if (u < L) return { x: -L / 2 + u, y: -R, h: 0, bend: 0 };
+    u -= L;
+    if (u < Math.PI * R) { const a = -Math.PI / 2 + u / R; return { x: L / 2 + R * Math.cos(a), y: R * Math.sin(a), h: a + Math.PI / 2, bend: u / (Math.PI * R) }; }
+    u -= Math.PI * R;
+    if (u < L) return { x: L / 2 - u, y: R, h: Math.PI, bend: 0 };
+    u -= L;
+    const a = Math.PI / 2 + u / R;
+    return { x: -L / 2 + R * Math.cos(a), y: R * Math.sin(a), h: a + Math.PI / 2, bend: u / (Math.PI * R) };
+  };
+  const zAt = (p) => 10 * Math.sin(Math.PI * p.bend) ** 2;
+  /* To the tenth of a millimetre: a 600 m bend bows 3 mm over a 4 m step, and points rounded to the centimetre read as a 409 m bend. */
+  const r2 = (v) => Math.round(v * 10000) / 10000;
+  const pt = (u) => { const p = at(u); return { x: r2(p.x), y: r2(p.y), z: r2(zAt(p)) }; };
+  /* The interchanges: an exit at u, an entrance at u + 500, two on each straight. */
+  const ex = [300, 1300, L + Math.PI * R + 300, L + Math.PI * R + 1300];
+  /* 900 m on: two 400 m ramps at 35 degrees reach 330 m along the loop each, and an exit and the next entrance must not cross. */
+  const nodes = ex.flatMap((u) => [{ u, off: true }, { u: u + 900, off: false }]).sort((a, b) => a.u - b.u);
+  nodes.forEach((n, i) => {
+    const a = n.u, b = i + 1 < nodes.length ? nodes[i + 1].u : nodes[0].u + P;
+    const pts = [];
+    for (let u = a; u < b; u += 4) pts.push(pt(u));
+    pts.push(pt(b));
+    m.roads.push(road({ id: `loop-${i}`, kind: "highway", oneWay: true, points: pts }));
+  });
+  /* The ramps, 35 degrees off the loop to the right of travel -- y is DOWN in the map, so the right of a heading h is h + 90 degrees -- 400 m long. */
+  const RAMP = 400, ANG = (35 * Math.PI) / 180;
+  const ramps = [];
+  nodes.forEach((n, i) => {
+    const p = at(n.u), right = (h, d) => ({ x: Math.cos(h) * d, y: Math.sin(h) * d });
+    if (n.off) {
+      const dir = right(p.h + ANG, RAMP);
+      m.roads.push(road({ id: `off-${i}`, kind: "arterial", lanes: 1, oneWay: true, speed: 60, points: stroke({ x: r2(p.x), y: r2(p.y), z: 0 }, { x: r2(p.x + dir.x), y: r2(p.y + dir.y), z: 0 }, { n: 40 }) }));
+    } else {
+      const dir = right(p.h - ANG, RAMP);
+      const id = `on-${i}`;
+      ramps.push(id);
+      m.roads.push(road({ id, kind: "arterial", lanes: 1, oneWay: true, speed: 80, points: stroke({ x: r2(p.x - dir.x), y: r2(p.y - dir.y), z: 0 }, { x: r2(p.x), y: r2(p.y), z: 0 }, { n: 40 }), control: { start: "none", end: "yield" } }));
+    }
+  });
+  const first = at(ex[0] + 900);
+  m.sections = [
+    { id: "on-ramp", name: "join from the slip road", look: { x: first.x - 250, y: first.y + 180 }, start: { road: ramps[0], end: "end" }, judge: "You start standing on a slip road, as you would leaving a lot beside the highway. Get up to speed on the ramp and take a gap into traffic doing 100 -- the hardest gap there is. Then keep going: it never ends." },
+    { id: "loop", name: "the loop, after ten minutes", look: { x: 0, y: -R }, start: { road: ramps[0], end: "end" }, judge: "Drive a few laps. Cars come up the on-ramps and leave by the off-ramps all the time, so the traffic should never settle into one slow queue: is it still alive, with gaps to thread, after ten minutes?" },
+    { id: "interchange", name: "an interchange", look: { x: at(ex[1]).x + 250, y: at(ex[1]).y }, start: { road: ramps[1], end: "end" }, judge: "An exit, then an entrance 900 m on: cars move right to leave, and the ones joining yield to the traffic and slot in." },
+  ];
+  return m;
+}
+
 /* THE TEST MAPS, for the Test maps screen: each builds its map on demand
    (the city is generated, so it is built only when opened). */
 export const TEST_MAPS = [
@@ -349,4 +424,5 @@ export const TEST_MAPS = [
   { id: "test-buses", name: "Buses", blurb: "Curb stops and bays on a two-lane collector: a bus stops, people get off and on, the traffic waits behind it or passes the bay, and gives way to a bus pulling out -- if it knows to.", build: testBuses },
   { id: "test-1", name: "Test map 1", blurb: "The loop, the T, the crossroads, the five-way, the overpass and the big arterial.", build: testMap1 },
   { id: "test-highway", name: "Highway", blurb: "Six kilometres of three lanes each way, curving over low hills: two signalled crossroads timed as a green wave, a bridge, and trucks to pass.", build: testHighway },
+  { id: "test-loop", name: "Endless highway", blurb: "A one-way loop of three lanes, about 8.8 km round, with four interchanges keeping the traffic fresh. You start on a slip road and merge.", build: testLoop },
 ];

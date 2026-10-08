@@ -123,9 +123,13 @@ export function intentOf(layout, from, to) {
    following is per lane already, and a car that moves to the next lane
    is a car on the next polyline. The player does it now (drive.js);
    the traffic will. */
-export function laneAlong(road, dir, lane, index = 0) {
+export function laneAlong(road, dir, lane, index = 0, oneWayOf = 0) {
   const pts = dir > 0 ? road.pts : road.pts.slice().reverse();
-  const { right } = ribbonOf(pts, lane * (2 * index + 1));   // ribbonOf offsets by width/2 each side
+  /* ribbonOf offsets by width/2 each side. A two-way road's lane i is
+     (i + 1/2) lanes right of the centre line; a ONE-WAY road's lanes are
+     centred on it, lane 0 leftmost -- a negative width puts `right` on the
+     left (8 October: one-way was drawn one-way and driven two-way). */
+  const { right } = ribbonOf(pts, lane * (2 * index + 1 - oneWayOf));
   const at = [0];
   for (let i = 1; i < right.length; i++) at.push(at[i - 1] + dist(right[i], right[i - 1]));
   return { id: `${road.id}:${dir > 0 ? "fwd" : "rev"}#${index}`, road: road.id, dir, index, pts: right, at, length: at[at.length - 1] };
@@ -258,7 +262,14 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
   const lanes = {};
   for (const r of roads) {
     if (hasBays(r)) { Object.assign(lanes, lanesWithBays(r)); continue; }
+    /* ONE-WAY: the road's lanes all run from its start to its end, and
+       there is no other direction. Until 8 October the format, the loader
+       and the renderer all carried `oneWay` and the graph built both
+       directions on every road anyway: a one-way street the editor could
+       draw was driven two-way, in a carriageway one direction wide -- a
+       state the screen expressed and the sim silently did not honour. */
     for (let i = 0; i < lanesOf(r); i++) {
+      if (r.oneWay) { lanes[`${r.id}:fwd#${i}`] = laneAlong(r, 1, lane, i, lanesOf(r)); continue; }
       lanes[`${r.id}:fwd#${i}`] = laneAlong(r, 1, lane, i);
       lanes[`${r.id}:rev#${i}`] = laneAlong(r, -1, lane, i);
     }
@@ -328,8 +339,9 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
       /* ONE LEG PER LANE: `road|end#i`. Travelling TOWARD the node on
          this road is the lane whose direction ends at this end. */
       for (let i = 0; i < count; i++) {
-        const inLane = lanes[`${r.id}:${l.end === "end" ? "fwd" : "rev"}#${i}`];
-        const outLane = lanes[`${r.id}:${l.end === "end" ? "rev" : "fwd"}#${i}`];
+        /* On a one-way road a leg is only inbound (at its end) or only outbound (at its start). */
+        const inLane = lanes[`${r.id}:${l.end === "end" ? "fwd" : "rev"}#${i}`] ?? null;
+        const outLane = lanes[`${r.id}:${l.end === "end" ? "rev" : "fwd"}#${i}`] ?? null;
         const id = `${base}#${i}`;
         legs[id] = {
           id, base, lane: i, lanes: count, pos: leftBays + i, across, bay: null, inner: i === 0, curb: i === count - 1,
@@ -341,12 +353,12 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
              drove the whole map at one limit. It rides on the leg
              because the leg is what a car knows it is on. */
           speed: (r.speed ?? 50) / 3.6,
-          inLane, outLane,
+          inLane, outLane, oneWay: !!r.oneWay,
           /* Arc positions on the two lanes: where the approach begins
              (the lane's midpoint, or the far edge) and where the exit
              ends (the lane's midpoint, or the road's end). */
-          inFrom: seam ? inLane.length / 2 : 0,
-          outTo: seam ? outLane.length / 2 : outLane.length,
+          inFrom: seam && inLane ? inLane.length / 2 : 0,
+          outTo: outLane ? (seam ? outLane.length / 2 : outLane.length) : 0,
         };
       }
     }
@@ -364,6 +376,8 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
     const recv = {};
     for (const a of bases) {
       const A0 = legs[first(a)];
+      /* A one-way road leaving here brings nobody in: no approach. */
+      if (!A0.inLane) continue;
       const exits = new Map();
       /* NO HAIRPINS (28 September). At a leg that meets another at 45
          degrees, "right" onto it is a 135 degree turn, and the arc the sim
@@ -375,7 +389,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
          other exits. The maintainer is asked whether such turns are
          normally allowed; this is the default until he answers. */
       const turnOf = (b) => Math.abs(norm(legs[first(b)].bearing - (legs[first(a)].bearing + 180)));
-      for (const b of bases) if (b !== a && turnOf(b) <= HAIRPIN) exits.set(b, intentOf({ legs }, first(a), first(b)));
+      for (const b of bases) if (b !== a && legs[first(b)].outLane && turnOf(b) <= HAIRPIN) exits.set(b, intentOf({ legs }, first(a), first(b)));
       const offered = new Set(exits.values());
       /* A NO-LEFT-TURN SIGN (the maintainer's sign list, fifth) takes the
          left off what this approach is offered, before any lane is given
@@ -467,7 +481,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
       const A = legs[from];
       for (const to of ids) {
         const B = legs[to];
-        if (B.base === A.base) continue;
+        if (B.base === A.base || !A.inLane || !B.outLane) continue;
         const kind = intentOf({ legs }, from, to);
         /* The one lane this lane lands in for this movement, from the
            permissions and pairing above -- or none, which is a lane that
@@ -529,7 +543,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
      conflicts. Cars spawn at the start and are gone at the end. */
   for (const r of roads) {
     if (endNode[`${r.id}|start`] || endNode[`${r.id}|end`]) continue;
-    for (const dir of ["fwd", "rev"]) {
+    for (const dir of r.oneWay ? ["fwd"] : ["fwd", "rev"]) {
       for (let i = 0; i < lanesOf(r); i++) {
         const L = lanes[`${r.id}:${dir}#${i}`];
         const id = `${r.id}:${dir}#${i}`;
@@ -703,6 +717,7 @@ export function edgesOfGraph(course, busier = 2) {
     for (const id of Object.keys(spot.layout.legs)) {
       if (course.joins[`${k}|${id}`]) continue;
       if (spot.layout.legs[id].bay) continue;   // nobody appears in a turn bay
+      if (!spot.layout.legs[id].inLane) continue;   // nor comes in down a one-way road leaving the map
       out.push({ k, side: id, weight: spot.layout.legs[id].control === "stop" ? 1 : busier });
     }
   });

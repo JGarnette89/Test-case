@@ -4438,7 +4438,7 @@ the off-screen badge missing) -- each fails it.
   the bound is now held on the code itself, profiled; the switch's ratio is
   reported beside it. A busy loop planted in `laneStep` reads 27%.
 
-### THE ENDLESS HIGHWAY (the maintainer, 8 October) -- QUEUED behind the green-light work
+### THE ENDLESS HIGHWAY (the maintainer, 8 October) -- BUILT
 
 Verbatim, "when it's not too disruptive": *"build a highway map that is
 an endless loop, letting me drive endlessly through traffic. if it needs
@@ -4448,7 +4448,9 @@ for the player as well, rather than sitting at 0 already on the highway
 starting from a parking lot just off the highway is how you'd actually
 begin that journey)."*
 
-**RAMPS ARE NOT OPTIONAL; THEY ARE THE FIX.** Stage 0's first test road
+**CORRECTED BY MEASUREMENT (8 October): the premise below was wrong, and the record keeps both.** Stage 0's ring went stale because it was ONE LANE with no way past: nobody could overtake, so everybody ended up at the slowest car's speed. Three lanes with lane changing prevent that -- the closed control (exits removed) still had its speeds spread and 400-500 overtakes a minute at fifteen minutes. So the ramps are not what keeps the loop from queueing. Their real value is the PEOPLE: with them about two thirds of the drivers on the loop turn over every ten minutes, so the characters around the player keep changing; with the exits removed, 4-9% do. And they give the merge. **NOT MEASURED: runs longer than fifteen minutes.** The closed loop's spread sagged a little over the fifteen (sd 12.6 to 11.1 on one seed), so a much longer closed run may still homogenise; nobody has run one.
+
+The premise as briefed, kept for the record: **RAMPS ARE NOT OPTIONAL; THEY ARE THE FIX.** Stage 0's first test road
 was a loop, and it was wrong for a reason recorded at the time: six cars
 circulating settled into a uniform ring at the slowest car's speed and
 stayed there, and after the transient there was nothing to watch. A
@@ -4477,6 +4479,58 @@ the opening move.
 **Questions for the maintainer when it lands**: does the loop still feel
 alive after ten minutes, and does joining from the ramp feel like a real
 start?
+
+**BUILT, 8 October** (`samples.js` `testLoop`, test map "Endless
+highway"; `verify-loop`; `tools/measure/loop.mjs`):
+- **The loop**: one carriageway, three lanes, one way round a stadium --
+  2.5 km straights, 600 m bends (inside the 525 m 100 km/h needs, so no
+  bend lowers the limit; the points are written to a tenth of a
+  millimetre, because a 600 m bend bows 3 mm over a 4 m step and points
+  rounded to the centimetre read as a 409 m bend), 10 m crests on the
+  bends, about 8.8 km a lap. One way because it is one side of a divided
+  highway, and so that no ramp traffic ever crosses oncoming lanes.
+- **Four interchanges**, an exit and then an entrance 900 m on (two 400 m
+  ramps at 35 degrees reach 330 m along the loop each, and must not
+  cross), on the outside -- the right of travel. The loop has no open end:
+  every car came up an on-ramp and will leave by an off-ramp. An exit is a
+  right turn from the curb lane; an entrance yields to the loop.
+- **The start**: standing at the far end of an on-ramp, 400 m from the
+  merge -- get up to speed and take a gap at 100 km/h. A lot beside the
+  ramp when lots exist.
+- 12% trucks (`traffic.trucks`).
+
+**WHAT BUILDING IT FOUND: ONE-WAY ROADS WERE DRIVEN TWO-WAY.** The format,
+the loader and the renderer all carried `oneWay` -- the editor draws one,
+it is drawn one direction wide with ONE WAY and DO NOT ENTER signs -- and
+the graph built both directions on every road anyway. The first loop ran
+two-way traffic in a one-direction carriageway: 21 crashes in three
+minutes. A state the screen expressed and the sim silently did not honour
+(CLAUDE.md item 6). Now (`graph.js`): a one-way road's lanes all run start
+to end, centred on the road with lane 0 to the left of travel; a leg at
+its start is outbound only and at its end inbound only, so nobody turns
+into it against the flow; nobody spawns on it where it leaves the map;
+the player's left edge is the road's own, with no oncoming carriageway.
+Every one-way street on every map now runs one way -- test-signs' among
+them, so its traffic moved.
+
+**DOES IT GO STALE? Measured, and the answer is more interesting than the
+premise.** Minute 5 against minute 15, 200 cars, two seeds:
+
+| | speed sd at 5 / 15 | overtakes a minute at 5 / 15 | loop cars new since minute 5 |
+|---|---|---|---|
+| ramps open | 15-18 / 15-16 km/h | 89-99 / 120-227 | **62-69%** |
+| exits removed (the control) | 13-14 / 11-14 km/h | 353-448 / 403-520 | **4-9%** |
+
+The speeds stay spread and overtaking stays high EITHER WAY: three lanes
+and lane changing let fast drivers get round slow ones, so even a closed
+loop does not settle into a queue in fifteen minutes. Stage 0's ring
+failed because it was ONE lane with no way past -- the mechanism that went
+stale there is the one the sim now has. What the ramps buy is the PEOPLE:
+with them, two thirds of the loop's drivers are new every ten minutes, so
+the characters around the player keep changing; without them almost
+nobody is. And they buy the merge. (The closed loop's spread does sag a
+little -- sd 12.6 to 11.1 on one seed -- so a much longer closed run may
+still homogenise; fifteen minutes is what was measured.)
 
 ### ROADMAP, RECORDED NOT BUILT (8 October)
 

@@ -91,7 +91,8 @@ function geomOf(path, leg, lane = LANE) {
     /* From this lane's centre: the lanes to the right of it and half of
        this one to the right edge; this half-lane, the lanes to the
        left and the whole oncoming carriageway to the left edge. */
-    edges: { left: -(0.5 + mine + count) * lane, right: (across - mine - 0.5) * lane },
+    /* ...and on a one-way road there is no oncoming carriageway: the left edge is the road's own. */
+    edges: { left: -(0.5 + mine + (leg?.oneWay ? 0 : count)) * lane, right: (across - mine - 0.5) * lane },
     box: [path.stopAt, path.clearAt],
   };
 }
