@@ -301,9 +301,13 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
      speeds (progression.js) whichever limit the cars are told, so with
      them on the one-limit world drives through lights timed for speeds
      it is not doing -- a second difference, which changed which cars
-     were on the 60 roads (6 October). The waves have their own check. */
+     were on the 60 roads (6 October). The waves have their own check.
+     And the lights on their clock in both: an actuated light answers the
+     traffic at it (actuated.js), so a different limit on one road moves
+     every light that road's cars reach, and the change leaks to the
+     roads whose sign did not change (8 October: 3 of 6 moved). */
   const drive = (posted) => {
-    let w = seedGraph(3, fastest, l, { every: 1.1, posted, progression: false });
+    let w = seedGraph(3, fastest, l, { every: 1.1, posted, progression: false, actuated: false });
     for (let i = 0; i < 1200; i++) w = step(w);
     const by = {};
     for (const a of w.actors) {

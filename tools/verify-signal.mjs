@@ -160,7 +160,7 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
     w = step(w); ticks += w.actors.length;
     for (const a of w.actors) {
       const L = w.course.at[a.k ?? 0].layout, p = L.paths[a.route];
-      const light = lightAt(L.signal, L.legs[p.from]?.base, w.t);
+      const light = lightAt(L.signal, L.legs[p.from]?.base, w.t, w.lights?.[a.k ?? 0]?.live);
       const was = before.get(a.id);
       if (was && !was.going && a.going) {
         launches.push({ intent: p.intent, light });
@@ -169,7 +169,10 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
       /* The CLOCK running, not the sticky flag: a driver who was
          genuinely delayed earlier at a green is still flagged when the
          light later goes red, and that is not this. */
-      if ((a.openFor ?? 0) > 0 && light === "red" && !a.going) delayedAtRed.add(a.id);
+      /* HELD at a red: a right turn on a red is not held -- it stops and may go on a gap, and its clock
+         runs on that gap as at a stop sign (actuated lights, resting on light traffic, put rights on red
+         in front of open gaps far more often than the clock did: 8 October). */
+      if ((a.openFor ?? 0) > 0 && light === "red" && p.intent !== "right" && !a.going) delayedAtRed.add(a.id);
       if (-(a.a ?? 0) > HARSH_AT) harsh++;
     }
   }
@@ -188,7 +191,7 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
       lw = step(lw);
       for (const a of lw.actors) {
         const L = lw.course.at[a.k ?? 0].layout, p = L.paths[a.route], was = before.get(a.id);
-        if (!was || was.going || !a.going || lightAt(L.signal, L.legs[p.from]?.base, lw.t) !== "red") continue;
+        if (!was || was.going || !a.going || lightAt(L.signal, L.legs[p.from]?.base, lw.t, lw.lights?.[a.k ?? 0]?.live) !== "red") continue;
         if (p.intent !== "right") lightWrong++; else { lightR++; if (was.stoppedAt != null) lightStopped++; }
       }
     }
@@ -221,7 +224,8 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
    map: 20 of 56 launches were on a red, 13 of them left turns.) */
 {
   const loaded = mapOf(CROSS);
-  const base = seedGraph(11, 50, loaded, { every: 60 });
+  /* On the clock: the comparison sets the time to a green and a red. What drives a light is actuated.js's business (verify-actuated); what a red DOES is this. */
+  const base = seedGraph(11, 50, loaded, { every: 60, actuated: false });
   const L = base.course.at[0].layout;
   const sig = L.signal;
   const route = Object.keys(L.paths).find((r) => L.paths[r].from.startsWith("N|") && L.paths[r].intent === "straight");

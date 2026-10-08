@@ -83,11 +83,11 @@ for (const [id, raw] of MAPS) {
 }
 
 console.log("\n4. in the sim: the platoon goes through far more often with the wave than without");
-function platoon(loaded, g, progression, seed) {
+function platoon(loaded, g, progression, seed, actuated = false) {
   const tree = g.waves.tree;
   const upstream = new Map(tree.map((e) => [e.to, e]));
   const signals = new Set(g.at.map((a, k) => (a.layout?.signal ? k : -1)).filter((k) => k >= 0));
-  let w = seedGraph(seed, 50, loaded, { every: 2.0, target: 120, posted: true, progression });
+  let w = seedGraph(seed, 50, loaded, { every: 2.0, target: 120, posted: true, progression, actuated });
   const left = new Map(), rider = new Map(), minV = new Map();
   let through = 0, stopped = 0, crashes = 0;
   for (let i = 0; i < 8 * 60 * 20; i++) {
@@ -110,12 +110,20 @@ function platoon(loaded, g, progression, seed) {
 }
 const long = timedMaps.find((m) => m.id.startsWith("long"));
 const add = (a, b) => ({ through: a.through + b.through, stopped: a.stopped + b.stopped, crashes: a.crashes + b.crashes });
+/* THE OFFSETS' OWN WORTH is measured with the lights on their clock: an
+   actuated light already answers a platoon arriving on its advance loop
+   (actuated.js), which would credit the wave with the loops' work and
+   hide a broken offset behind them. The loops are held below to not
+   undo it. */
 const on = [1, 2].map((sd) => platoon(long.loaded, long.g, true, sd)).reduce(add);
 const off = [1, 2].map((sd) => platoon(long.loaded, long.g, false, sd)).reduce(add);
+const onA = [1, 2].map((sd) => platoon(long.loaded, long.g, true, sd, true)).reduce(add);
+const offA = [1, 2].map((sd) => platoon(long.loaded, long.g, false, sd, true)).reduce(add);
 const rate = (r) => r.through / Math.max(1, r.through + r.stopped);
 ok(on.through + on.stopped >= 60 && off.through + off.stopped >= 60, `enough of the platoon to judge: ${on.through + on.stopped} arrivals with the wave, ${off.through + off.stopped} without (two seeds, eight minutes each)`);
 ok(rate(on) >= rate(off) + 0.25, `released by the light before, through the next without stopping: ${(100 * rate(on)).toFixed(0)}% with the wave against ${(100 * rate(off)).toFixed(0)}% without`);
-ok(on.crashes === 0 && off.crashes === 0, `and nothing crashes either way (${on.crashes}, ${off.crashes})`);
+ok(rate(onA) >= rate(on) - 0.05 && rate(onA) >= rate(offA), `and with the lights actuated the platoon still goes through as often or more: ${(100 * rate(onA)).toFixed(0)}% with the wave (${(100 * rate(on)).toFixed(0)}% on the clock), ${(100 * rate(offA)).toFixed(0)}% actuated without it`);
+ok(on.crashes + off.crashes + onA.crashes + offA.crashes === 0, `and nothing crashes any way (${on.crashes}, ${off.crashes}, ${onA.crashes}, ${offA.crashes})`);
 
 console.log(failed ? `\n${failed} FAILED` : "\nOK: a car holding the posted speed from a green meets the next green, corridors run only where the road has priority, one cycle per system, and the platoon goes through far more often with the wave.");
 process.exit(failed ? 1 : 0);

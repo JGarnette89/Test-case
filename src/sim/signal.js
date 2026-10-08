@@ -126,6 +126,10 @@ export function signalFor(legs, ids, boxHalf, { greenFor = GREEN_FOR, arrowFor =
     greenFor, amber, allRed, arrowFor,
     arrows, lead, starts,
     cycle: t0,
+    /* WHERE EACH APPROACH'S ADVANCE LOOP LIES (actuated.js): the start of
+       its dilemma zone -- reaction plus the comfortable stop from its own
+       speed, the quantity the amber is derived from. */
+    advance: Object.fromEntries(bases.map((b) => { const v = Math.max(...ids.filter((id) => legs[id].base === b.base).map((id) => legs[id].speed ?? 50 / 3.6)); return [b.base, REACTION_FLOOR * v + stoppingRoom(v)]; })),
     /* PER APPROACH, not per node: one leg may post no-right-on-red
        while the others allow it, which is how the sign is actually
        used. */
@@ -160,9 +164,12 @@ function intoPhase(signal, base, t) {
   return mine < 0 || mine >= span ? null : mine;
 }
 
-/* THE BALL: what the round light on this approach shows. */
-export function lightAt(signal, base, t) {
+/* THE BALL: what the round light on this approach shows. `live` is an
+   actuated light's state this tick (actuated.js, world.lights[k].live);
+   without it the light runs on its clock. */
+export function lightAt(signal, base, t, live = null) {
   if (!signal) return null;
+  if (live) return live.ball[base] ?? null;
   const mine = intoPhase(signal, base, t);
   if (mine === undefined) return null;
   if (mine === null) return "red";
@@ -175,8 +182,9 @@ export function lightAt(signal, base, t) {
 
 /* THE ARROW: "green" or "amber" while this approach's protected left is
    lit, null when it is dark (or the approach has none). */
-export function arrowAt(signal, base, t) {
+export function arrowAt(signal, base, t, live = null) {
   if (!signal?.arrows?.[base]) return null;
+  if (live) return live.arrow[base] ?? null;
   const mine = intoPhase(signal, base, t);
   if (mine == null) return null;
   if (mine < signal.arrowFor) return "green";
@@ -186,9 +194,9 @@ export function arrowAt(signal, base, t) {
 
 /* THE LIGHT THIS MOVEMENT OBEYS: the arrow, for a left while it is lit;
    the ball otherwise. */
-export function movementLight(signal, base, intent, t) {
-  if (intent === "left") { const a = arrowAt(signal, base, t); if (a) return a; }
-  return lightAt(signal, base, t);
+export function movementLight(signal, base, intent, t, live = null) {
+  if (intent === "left") { const a = arrowAt(signal, base, t, live); if (a) return a; }
+  return lightAt(signal, base, t, live);
 }
 
 /* THE CONTROL A DRIVER IS ACTUALLY UNDER, this instant: the standing
@@ -200,8 +208,8 @@ export function movementLight(signal, base, intent, t) {
    still stop comfortably must, and one who cannot must carry on,
    because a car that stands on the brakes at an amber it could not
    make is the fault this model already calls `harshStop`. */
-export function controlUnder(signal, base, intent, t, { v = 0, toLine = Infinity, standing = "none", brake, readsNoRightOnRed = true } = {}) {
-  const light = movementLight(signal, base, intent, t);
+export function controlUnder(signal, base, intent, t, { v = 0, toLine = Infinity, standing = "none", brake, readsNoRightOnRed = true, live = null } = {}) {
+  const light = movementLight(signal, base, intent, t, live);
   if (light == null) return standing === "stop" ? "stop" : "none";
   if (light === "green") return "none";
   /* At THIS vehicle's comfortable braking: a truck that judged the amber

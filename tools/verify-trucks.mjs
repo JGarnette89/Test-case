@@ -75,7 +75,7 @@ console.log("\n2. IN TRAFFIC");
         /* Over a red: nose past the line under a red, not committed on
            the amber -- the thing a truck judging by a car's braking did. */
         const L = layoutOf(w, a), p = pathOf(w, a);
-        if (L.signal && !a.amberGo && movementLight(L.signal, L.legs[p.from]?.base, p.intent, w.t) === "red" && p.intent !== "right"
+        if (L.signal && !a.amberGo && movementLight(L.signal, L.legs[p.from]?.base, p.intent, w.t, w.lights?.[a.k ?? 0]?.live) === "red" && p.intent !== "right"
           && a.s + lenOf(a) / 2 > p.stopAt + 0.5 && a.s - lenOf(a) / 2 < p.stopAt && a.v > 0.5 && !over.has(a.id + a.k)) { over.add(a.id + a.k); redRun++; }
       }
       if (i % 5 === 0) {
@@ -160,7 +160,8 @@ console.log("\n6. THE NEXT LINE, SEEN ACROSS THE SEAM -- SET UP RATHER THAN WAIT
      crossing the seam into a signalled intersection whose line is a short
      way past it, under a red that lasts. Waiting for traffic to produce it
      again is luck -- the fix itself moved the city off that occasion. */
-  let w = seedGraph(1, 50, city, { target: 0, posted: true, trucks: 0 });
+  /* On the clock (`actuated: false`): the scenario picks a red that lasts by time, which an actuated light would not hold. */
+  let w = seedGraph(1, 50, city, { target: 0, posted: true, trucks: 0, actuated: false });
   const course = w.course;
   let best = null;
   for (let k0 = 0; k0 < course.at.length; k0++) {

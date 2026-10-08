@@ -4249,6 +4249,83 @@ traffic.
 
 **Build order:** actuated signals with the stop-line and advance loops,
 and the mark on the head; then courtesy gaps with the mark on the car.
+
+#### ACTUATED SIGNALS -- BUILT, 8 October (`src/sim/actuated.js`)
+
+Every signal now runs on its loops by default (`seedGraph`'s
+`actuated: false` puts them back on the clock, for comparing against).
+- **The stop-line loop** is presence, LOOP (10 m) back from the line: a
+  car on it calls its phase. A car stopped well short is never detected,
+  and its phase is never called -- creep up, as on a real road.
+- **The advance loop** sits where the dilemma zone starts -- reaction
+  plus the comfortable stop from the approach's speed, the quantity the
+  amber is derived from, so nothing new is chosen. A car crossing it
+  calls ahead of arriving, and on a green extends it.
+- **An isolated light** rests in green with nobody waiting; a call
+  elsewhere ends the green once it has run MIN_GREEN (6 s) and gapped
+  out (no actuation for PASSAGE, 3 s), or maxed out at the plan's own
+  green counted FROM THE CALL. A protected left leads only when a left
+  lane is called.
+- **A coordinated light** (a green wave) keeps its clock: a side phase
+  is skipped when nobody calls it, served late when a call comes while
+  its window still has room, and hands its time back when its traffic
+  has gone. The coordinated windows never move, so the wave holds.
+- **THE MARK** (the ruling's point 4): a cyan dot on top of the signal
+  head whose loop sees the player -- on the stop-line loop or coming on
+  over the advance loop. Not a signal colour, so never read as the light.
+- MIN_GREEN, PASSAGE, LOOP and MIN_ARROW are traffic-engineering
+  settings, flagged as design constants.
+
+**Measured** (`tools/measure/actuated.mjs`, `verify-actuated` 6): on
+test map 1, cars stand at signalled lines **8.7-9.3 s a crossing against
+11.4 on the clock** (40 cars, three seeds); 7.3 against 9.0 at 30 cars;
+16.6 against 18.5 at 120. On the long arterial the platoon goes through
+92% with the wave and the loops against 76% with the wave on the clock
+and 84% with the loops alone -- the loops do some of the wave's work,
+which is why `verify-waves` measures the offsets on the clock.
+
+**Two lights went green straight to red on the way, and both are now a
+checked invariant.** The warm-up's rebase re-read a coordinated light's
+clock and jumped it, under a car already crossing (a light now carries
+the shift on its own clock, and every light shifts alike, so the wave is
+untouched); and a leading arrow ran under a green that had carried on
+from an early return. The arrow now leads only when the light comes from
+another phase or a left-turner calls for it, and then the green ends
+with its amber first. `verify-actuated` holds "no green ever goes
+straight to red" under random calls (lefts on both axes, coordinated and
+isolated) and in the sim; sabotaging the arrow fix fails it three ways.
+
+**What the other checks needed.** `verify-signal` 4, `-compliance` and
+`-trucks`' red-run count read the light the world is actually showing
+(`world.lights[k].live`), not the clock. `verify-signal` 5 and
+`-trucks`' seam case set the time to get a red and test what a red
+DOES -- rule tests, so they run on the clock. `verify-signal`'s
+undue-delay test excluded rights on red, which are not held: lights
+resting on light traffic put more of them in front of open gaps.
+`verify-waves` measures the offsets on the clock (otherwise the loops'
+work is credited to the wave and a broken offset hides behind them) and
+holds the loops to not undoing it.
+
+**What the new timing shook loose, again.** The loops change when cars
+arrive everywhere, and two faults surfaced away from any signal:
+- **Two committed cars bound for the same place.** At a wide uncontrolled
+  junction on the generated city's arterial, the lines sit 12-15 m back
+  from where the paths meet. Each driver judged at their line who would
+  arrive first, both judged in their own favour, and both were past their
+  lines and moving when the first reached the conflict -- two lefts met
+  at 35 km/h. The rule of 1.2.10 (a car inside the overlap is a stopped
+  car to me) fired with the second 1.7 m away. Its anticipating half:
+  between two committed cars not yet in the region, the one that will get
+  there second gives way if it can still stop at all; a tie goes by id,
+  so both can never give way. No vehicle crash after it.
+- **A heedless pedestrian struck** in the default city, by a turning car:
+  the 5% who do not look, a strike the design allows and `verify-peds`
+  holds. `verify-crashes`' "the default traffic never crashes" now counts
+  crashes between vehicles and reports people struck beside it.
+
+`verify-graph`'s posted-speed comparison runs its lights on the clock as
+well as its waves off: an actuated light answers the traffic at it, so a
+different limit on one road moved every light that road's cars reached.
 Following distance needs no mechanism -- room ahead already keeps you
 moving -- only making it legible, which the brake lamps begin.
 - **The legible feedback.** The player should know at once that they

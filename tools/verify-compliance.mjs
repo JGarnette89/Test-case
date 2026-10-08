@@ -132,7 +132,7 @@ console.log("\n3. COMPLIANCE IS SITUATIONAL, KNOWLEDGE IS CONSISTENT: THE READAB
         if (a.player || a.crash) continue;
         const path = pathOf(w, a), L = layoutOf(w, a);
         /* The two occasions: a stop sign, and a right on red. */
-        const kind = L.signal ? (path.intent === "right" && movementLight(L.signal, L.legs[path.from]?.base, "right", w.t) === "red" ? "right-on-red" : null)
+        const kind = L.signal ? (path.intent === "right" && movementLight(L.signal, L.legs[path.from]?.base, "right", w.t, w.lights?.[a.k ?? 0]?.live) === "red" ? "right-on-red" : null)
           : L.place.control[path.from] === "stop" ? "stop" : null;
         const key = `${a.id}@${a.k}@${a.route}`;
         let o = open.get(key);
@@ -148,7 +148,7 @@ console.log("\n3. COMPLIANCE IS SITUATIONAL, KNOWLEDGE IS CONSISTENT: THE READAB
           if (o.before) continue;
           /* A right on red is one only if it is still red at the line --
              a light gone green on the way in asks for no stop. */
-          if (o.kind === "right-on-red" && (movementLight(L.signal, L.legs[path.from]?.base, "right", w.t) !== "red" || a.amberGo)) continue;
+          if (o.kind === "right-on-red" && (movementLight(L.signal, L.legs[path.from]?.base, "right", w.t, w.lights?.[a.k ?? 0]?.live) !== "red" || a.amberGo)) continue;
           const g = !reads(a, o.kind) ? "unread" : a.rollsStops === "unwatched" ? "scofflaw" : deficitOf(a.ratings, "compliance").deficit < 0.2 ? "sound" : null;
           if (!g) continue;
           bump(`${o.kind}:${g}`, `${o.seen ? "seen" : "alone"}.${o.rested ? "rest" : "roll"}`);

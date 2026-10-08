@@ -485,7 +485,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
            reads off the road itself, at any zoom, without finding the
            head. Dark edges keep it off the asphalt. */
         if (l.kind === "signal") {
-          const lit = movementLight(j.signal, l.base, l.intent ?? "straight", scene.t ?? 0) ?? "red";
+          const lit = movementLight(j.signal, l.base, l.intent ?? "straight", scene.t ?? 0, scene.lights?.[j.k]?.live) ?? "red";
           const w = Math.min(20, Math.max(5, 0.9 * k));
           ctx.lineWidth = w + 2; ctx.strokeStyle = "rgba(10,10,12,0.85)"; seg(ctx, P, l.a, l.b);
           ctx.lineWidth = w; ctx.strokeStyle = LINE_LIT[lit] ?? LINE_LIT.red; seg(ctx, P, l.a, l.b);
@@ -585,7 +585,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
         if (s.kind === "no-left-turn") { paintBox(ctx, view, face, "#f4f4ee"); paintBox(ctx, view, band, "#c8322b"); return; }
         if (!isLight) { if (plate) paintBox(ctx, view, plate, "#f4f4ee"); paintBox(ctx, view, face, s.kind === "stop" ? "#c8322b" : "#f2b84b"); return; }
         paintBox(ctx, view, housing, "#2a2d33");
-        const lit = lightAt(j.signal, s.base, scene.t ?? 0);
+        const lit = lightAt(j.signal, s.base, scene.t ?? 0, scene.lights?.[j.k]?.live);
         for (const l of lens) paintBox(ctx, view, l.box, l.c === lit ? LENS[l.c] : DARK[l.c]);
         /* THE LIT LENS GLOWS: a disc in its colour round it, never under a few pixels, so the state reads from across the screen. */
         const on = lens.find((l) => l.c === lit);
@@ -596,7 +596,20 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
           ctx.fillStyle = LENS[lit]; ctx.beginPath(); ctx.arc(PT[0], PT[1], r, 0, 2 * Math.PI); ctx.fill();
           ctx.strokeStyle = "rgba(10,10,12,0.8)"; ctx.lineWidth = 1; ctx.stroke();
         }
-        if (arrowLens) { const a = arrowAt(j.signal, s.base, scene.t ?? 0); paintBox(ctx, view, arrowLens, a ? LENS[a] : DARK.green); }
+        if (arrowLens) { const a = arrowAt(j.signal, s.base, scene.t ?? 0, scene.lights?.[j.k]?.live); paintBox(ctx, view, arrowLens, a ? LENS[a] : DARK.green); }
+        /* THE LOOP HAS SEEN YOU (the maintainer, 8 October: "a small
+           indicator on the thing that is interacting with you well"): a
+           cyan mark on top of the head of the approach whose loop detects
+           the player -- standing on the stop-line loop, or coming on over
+           the advance loop (actuated.js). Not a signal colour, so it can
+           never be read as the light. */
+        if (scene.lights?.[j.k]?.saw?.[s.base]) {
+          view.into(s.at.x, s.at.y, (s.at.z ?? 0) + postH + 2.45, PT);
+          const r = Math.max(3.5, 0.42 * k);
+          ctx.fillStyle = "rgba(63,208,255,0.35)"; ctx.beginPath(); ctx.arc(PT[0], PT[1], r * 1.7, 0, 2 * Math.PI); ctx.fill();
+          ctx.fillStyle = "#3fd0ff"; ctx.beginPath(); ctx.arc(PT[0], PT[1], r, 0, 2 * Math.PI); ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 1.5; ctx.stroke();
+        }
       } });
     }
   }

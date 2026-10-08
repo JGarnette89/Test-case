@@ -156,5 +156,13 @@ export function coordinate(at, links, roadOf, lanes) {
       offsets[e.to] = offset;
     }
   }
+  /* WHICH PHASE IS THE COORDINATED ONE at each timed light: the phase
+     holding the corridor's approaches. An actuated light keeps that
+     phase's windows on the clock and skips a side phase nobody calls
+     (actuated.js). */
+  for (const e of tree) for (const [k, side] of [[e.from, e.side], [e.to, e.toSide]]) {
+    const p = plan(k), i = p.forBase[side];
+    if (i != null && offsets[k] != null && !(p.coord ?? []).includes(i)) at[k].layout.signal = { ...p, coord: [...(p.coord ?? []), i] };
+  }
   return { offsets, systems, tree };
 }

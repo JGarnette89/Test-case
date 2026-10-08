@@ -26,7 +26,7 @@
    scheduler once before anybody moves.
    ===================================================================== */
 import {
-  decide, wantedGap, driver, timeToCover, weaveAt, wantedSpeed, stoppingRoom, underLoad,
+  decide, wantedGap, driver, timeToCover, weaveAt, wantedSpeed, stoppingRoom, underLoad, MOST_BRAKE,
   CAR, DT, PX_PER_M, M, vehicleOf, lenOf, widthOf, clearBetween, wantedFor,
 } from "./traffic.js";
 import {
@@ -39,6 +39,7 @@ import {
   radiusFor,
 } from "./course.js";
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt } from "./graph.js";
+import { stepLights } from "./actuated.js";
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel, speedBy, fits } from "./corner.js";
@@ -297,7 +298,9 @@ const UNDUE_AT = 4.0;
    what it must not do is go, and that is `whatStops`'s business. */
 /* `viewer` is who is asking: the actor about their own approach reads it
    (sim/reading.js); anybody else expects the rule as posted. */
-function controlOf(actor, layout, path, t = 0, viewer = actor) {
+/* An actuated light's state at node k this tick (actuated.js), or null: a light on its clock. */
+const liveOf = (world, k) => world.lights?.[k ?? 0]?.live ?? null;
+function controlOf(actor, layout, path, t = 0, viewer = actor, live = null) {
   const standing = viewer === actor ? knownControl(actor, layout, path, t) : theirControl(layout, path);
   if (!layout.signal) return standing === "stop" || standing === "yield" ? standing : "none";
   /* COMMITTED ON THE AMBER. A driver who found at the amber that they
@@ -317,6 +320,7 @@ function controlOf(actor, layout, path, t = 0, viewer = actor) {
     brake: vehicleOf(actor).brake,
     /* A NO RIGHT ON RED sign misread is a right on red after stopping. */
     readsNoRightOnRed: viewer !== actor || reads(actor, "no-right-on-red"),
+    live,
   });
 }
 
@@ -359,7 +363,7 @@ export const YIELD_AT = 20 / 3.6;
 function yieldAccel(me, world) {
   if (me.going || me.crash) return Infinity;
   const layout = layoutOf(world, me), path = layout.paths[me.route];
-  if (!path || me.s > waitAt(path, me) || controlOf(me, layout, path, world.t ?? 0) !== "yield") return Infinity;
+  if (!path || me.s > waitAt(path, me) || controlOf(me, layout, path, world.t ?? 0, me, liveOf(world, me.k)) !== "yield") return Infinity;
   return speedBy(me, wantedSpeed(YIELD_AT, me.caution ?? 1), waitAt(path, me));
 }
 
@@ -472,7 +476,7 @@ function settle(me, them, mine, theirs, layout) {
           - both of us stop: the all-way stop, unchanged. Whoever
             stopped first goes.
    ===================================================================== */
-export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
+export function blockedBy(me, them, layout, caution = me.caution, t = 0, live = null) {
   /* RIGHT OF WAY IS A QUESTION ABOUT ONE INTERSECTION. Two cars at
      different ones are half a kilometre apart and have nothing to settle
      between them; what they may have to do is FOLLOW each other, which is
@@ -509,7 +513,7 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0) {
   if (me.going || me.s >= mine.stopAt) return false;
 
   /* What I expect of them is their posted rule, not whether they read it. */
-  const iCtl = controlOf(me, layout, mine, t), theyCtl = controlOf(them, layout, theirs, t, me);
+  const iCtl = controlOf(me, layout, mine, t, me, live), theyCtl = controlOf(them, layout, theirs, t, me, live);
   const iStop = iCtl !== "none", theyStop = theyCtl !== "none";
   /* A YIELD SIGN (the maintainer's ruling: slow, give way, stop only if
      needed) gives way to a road with no sign exactly as a stop does, by
@@ -680,11 +684,11 @@ export function openTo(me, world, caution) {
      it is said nowhere: the undue-delay clock runs on `openTo`, so
      without it every driver waiting properly at a red would be marked
      for the wait the light imposed on them. */
-  if (controlOf(me, layout, layout.paths[me.route], world.t ?? 0) === "hold") return false;
+  if (controlOf(me, layout, layout.paths[me.route], world.t ?? 0, me, liveOf(world, me.k)) === "hold") return false;
   /* Nor is a crosswalk somebody holds where this driver would cross it:
      waiting for them is not undue delay. */
   if (heldAhead(world, me, layout.paths[me.route])) return false;
-  return !atNode(world, world.actors, me.k ?? 0).some((a) => a.id !== me.id && blockedBy(me, a, layout, caution, world.t ?? 0));
+  return !atNode(world, world.actors, me.k ?? 0).some((a) => a.id !== me.id && blockedBy(me, a, layout, caution, world.t ?? 0, liveOf(world, me.k)));
 }
 
 /* What is in this driver's way: the most constraining of the car in front and the
@@ -874,6 +878,21 @@ export function whatStops(me, world) {
     if (theirs.from !== mine.from && !me.player) {
       const hit = layout.conflicts[me.route + "|" + them.route], back = hit && layout.conflicts[them.route + "|" + me.route];
       if (back && me.s < hit.a && them.s >= back.a && them.s <= hit.clearOf) consider(Math.max(0, hit.a - me.s - 1), { v: 0, s: hit.a, id: them.id });
+      /* ...AND TWO COMMITTED CARS BOUND FOR THE SAME PLACE: the one that
+         will get there second gives way, if it still can. Where the lines
+         sit well back from where the paths meet -- a wide uncontrolled
+         junction on the arterial, 12-15 m -- each driver judged at their
+         line who would arrive first, both judged in their own favour, and
+         both were committed and moving when the first entered the region
+         (8 October, the generated city: two lefts met at 35 km/h). The
+         later arrival is the one with the time to stop; a tie goes by id,
+         so two cars never both give way. Only while I can stop short at
+         all -- a car that cannot is committed in the full sense. */
+      else if (back && me.s < hit.a && them.s < back.a && (me.going || me.s >= mine.stopAt) && (them.going || them.s >= theirs.stopAt) && (them.v ?? 0) > 1) {
+        const room = hit.a - me.s - 1;
+        const mineT = room / Math.max(me.v ?? 0, 0.5), theirT = (back.a - them.s) / Math.max(them.v, 0.5);
+        if ((theirT < mineT || (theirT === mineT && String(them.id) < String(me.id))) && stoppingRoom(me.v ?? 0, MOST_BRAKE) <= room) consider(Math.max(0, room), { v: 0, s: hit.a, id: them.id });
+      }
     }
 
     /* AND THE CAR IN FRONT ON MY WAY OUT, which is a different car and
@@ -941,7 +960,7 @@ export function whatStops(me, world) {
      itself -- holding at the line had a car registering somebody and
      driving through them to reach its own stop line. */
   const walkerAtLine = !!walker && walker.s >= waitAt(mine, me);
-  const held = short && (walkerAtLine || others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0))
+  const held = short && (walkerAtLine || others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0, liveOf(world, me.k)))
     /* The margin, only for the driver at the head of the queue: one behind
        somebody is held by them, and what the head can see decides. */
     || (tall.length > 0 && !(leader && leader.id !== "line" && gap < 15) && phantomHolds(world, me, layout, mine, eye, tall)));
@@ -950,7 +969,7 @@ export function whatStops(me, world) {
      A red or an unmakeable amber HOLDS -- gap or no gap; a sign or a
      right on red waits for a stop and then a gap; a green or an
      uncontrolled leg waits only for somebody. */
-  const under = controlOf(me, layout, mine, world.t ?? 0);
+  const under = controlOf(me, layout, mine, world.t ?? 0, me, liveOf(world, me.k));
   if (short) {
     const waiting = under === "hold" ? true : under === "stop" ? (!me.stoppedAt || held) : held;
     if (waiting) {
@@ -985,7 +1004,7 @@ export function whatStops(me, world) {
     if (r2) {
       const p2 = L2.paths[r2];
       const there = { ...me, k: j.k, route: r2, s: me.s - mine.length, stoppedAt: null, going: false, amberGo: false };
-      const u = controlOf(there, L2, p2, world.t ?? 0);
+      const u = controlOf(there, L2, p2, world.t ?? 0, there, liveOf(world, j.k));
       if (u === "hold" || u === "stop") consider(toEnd + waitAt(p2, me), { id: "line", v: 0, headway: me.headway });
     }
   }
@@ -1095,7 +1114,7 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
          and a truck that waited for them stood each other off for ever. */
       if (far == null && waited > UNDUE_AT * (me.caution ?? 1)) break;
       const ghost = { id: "phantom", k: me.k ?? 0, route: r2, s, v: speed * assume, stoppedAt: null, going: false, accepted: false, kind: "car", caution: 1 };
-      if (blockedBy(me, ghost, layout, me.caution, world.t ?? 0)) return true;
+      if (blockedBy(me, ghost, layout, me.caution, world.t ?? 0, liveOf(world, me.k))) return true;
       break;
     }
   }
@@ -1106,6 +1125,26 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
    The tick. Same four phases as stage 0, and the same order: perceive
    and decide from the PREVIOUS committed state, integrate, commit.
    ===================================================================== */
+/* Every signalled node's plan, once per course. */
+const plansCache = new WeakMap();
+function signalPlans(course) {
+  let p = plansCache.get(course);
+  if (!p) { p = {}; course.at.forEach((spot, k) => { if (spot.layout?.signal) p[k] = spot.layout.signal; }); plansCache.set(course, p); }
+  return p;
+}
+/* What a node's loops can see: every car on one of its approaches, with
+   how far it is from where it waits (negative past the line). */
+function loopDets(world, k) {
+  const layout = world.course.at[k].layout, out = [];
+  for (const a of atNode(world, world.actors, k)) {
+    if (a.crash || a.parked) continue;
+    const p = layout.paths[a.route];
+    if (!p) continue;
+    out.push({ base: layout.legs[p.from]?.base, intent: p.intent, toLine: waitAt(p, a) - a.s, v: a.v ?? 0, player: !!a.player });
+  }
+  return out;
+}
+
 export function step(world) {
   const parkedNow = [];   // cars that pulled into a slot this tick (parking.js)
   const next = world.actors
@@ -1204,8 +1243,8 @@ export function step(world) {
       /* The amber decision, remembered (see `controlOf`): released at an
          amber while still short of the line is committed to going. */
       const amberGo = me.amberGo || (!!layoutOf(world, me).signal && s < waitAt(mine, me) + AT_LINE
-        && movementLight(layoutOf(world, me).signal, layoutOf(world, me).legs[mine.from]?.base, mine.intent, world.t) === "amber"
-        && controlOf(me, layoutOf(world, me), mine, world.t) === "none");
+        && movementLight(layoutOf(world, me).signal, layoutOf(world, me).legs[mine.from]?.base, mine.intent, world.t, liveOf(world, me.k)) === "amber"
+        && controlOf(me, layoutOf(world, me), mine, world.t, me, liveOf(world, me.k)) === "none");
       /* THE LAMPS OTHER DRIVERS READ (6 October, the maintainer: "world
          needs signals and brake lights"). Information for the player and
          nothing else: no rule here reads them, so the traffic is the
@@ -1471,7 +1510,10 @@ export function step(world) {
   const { walkersTaken, walkersFreed, ...walkedRest } = walked ?? {};
   const away = (walkedRest.peds ?? []).filter((q) => q.fromWalker && q.state !== "struck").length;
   const strolled = world.walkers ? stepWalkers({ ...world, t, actors: next, walkersTaken, walkersFreed: (walkersFreed ?? []).map((q) => ({ ...q, pose: pedPose({ ...world, t }, q) })), walkersAway: away }) : null;
-  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walkedRest : {}), ...(strolled ? strolled : {}) };
+  /* THE LIGHTS (actuated.js), decided from the traffic as it was at the
+     start of this tick -- what the loops saw -- like every driver. */
+  const lights = world.lights ? stepLights(signalPlans(world.course), world.lights, (k) => loopDets(world, k), t) : null;
+  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(lights ? { lights } : {}), ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walkedRest : {}), ...(strolled ? strolled : {}) };
   if (tall) out.tall = tall; else if (out.tall) delete out.tall;
   /* A CAR THAT REACHES SOMEBODY ON FOOT has struck them (peds.js
      `strikes`): they fall where they are, the car stops as a wreck, and
@@ -1946,7 +1988,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
@@ -1978,6 +2020,8 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
   const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, ...(passing ? {} : { passing: false }), spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
+  /* `actuated: false`: every light on its clock, as before the loops (actuated.js) -- for comparing against. */
+  if (actuated && Object.keys(signalPlans(course)).length) w.lights = {};
   if (parkingOf(course).slots.length) w.parked = initialParked(course, seed);
   /* People walking the sidewalks (walkers.js): asked for by the screen,
      off for the checks until one of them crosses (SIMULATOR.md, ambient
@@ -2039,6 +2083,11 @@ function warmed(w0, acrossIt) {
   const { past: _warm, fill: _fill, ...rebased } = w;
   return {
     ...rebased, t: 0, tick: 0, nextAt: Math.max(0, w.nextAt - shift),
+    /* ...and the lights: an actuated light's instants move back with it, and
+       a coordinated one carries the shift on its own clock, so no light
+       changes under the rebase (one went green to red with no amber, under
+       a car already crossing, before this). */
+    ...(w.lights ? { lights: Object.fromEntries(Object.entries(w.lights).map(([k, l]) => [k, l.mode === "coord" ? { ...l, shift: (l.shift ?? 0) + shift } : { ...l, at: l.at - shift, lastAct: l.lastAct - shift, ...(l.callAt != null ? { callAt: l.callAt - shift } : {}) }])) } : {}),
     ...(w.peds ? { peds: w.peds.map((p) => ({ ...p, since: back(p.since) })) } : {}),
     /* ...and so are the people walking: how long somebody stands, and the
        ease onto a sidewalk -- left on the warm-up's clock it lay in the

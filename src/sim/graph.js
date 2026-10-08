@@ -729,7 +729,7 @@ export const roadsOfGraph = (course) => course.roads;
 export function junctionsOf(course) {
   const out = [];
   const roadOf = Object.fromEntries(course.roads.map((r) => [r.id, r]));
-  for (const spot of course.at) {
+  for (const [k, spot] of course.at.entries()) {
     if (spot.through) continue;
     const { legs, paths, place } = spot.layout;
     const centre = place.at;
@@ -877,7 +877,7 @@ export function junctionsOf(course) {
     /* The surface: the corners in order round the centre. */
     const c2 = { x: centre.x, y: centre.y };
     corners.sort((p, q) => Math.atan2(p.y - c2.y, p.x - c2.x) - Math.atan2(q.y - c2.y, q.x - c2.x));
-    out.push({ node: spot.node, at: centre, surface: corners, lines, signs, arrows, crossings, signal: spot.layout.signal });
+    out.push({ k, node: spot.node, at: centre, surface: corners, lines, signs, arrows, crossings, signal: spot.layout.signal });
   }
   return out;
 }

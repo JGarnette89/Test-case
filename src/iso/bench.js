@@ -366,7 +366,7 @@ export function benchFrame(st, dtMs, ctx, size) {
   const { cam, k } = benchCamera(st.cam, st.sc, actors, st.view, size, dtMs / 1000);
   st.cam = cam;
   const sc = st.sc;
-  const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam, rot: 0, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + st.owed });
+  const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam, rot: 0, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + st.owed, lights: sc.world.lights });
   const t3 = clock();
   /* The counts walk every parked car: twice a second, not every frame. */
   if (++st.frames % 30 === 0) st.counts = benchCounts(sc);
