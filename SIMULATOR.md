@@ -4333,6 +4333,173 @@ moving -- only making it legible, which the brake lamps begin.
   the payout, so drawing the next signal's state earlier, or a marker
   for the wave's speed, is the cheap first form.
 
+### THE GREEN, NOTICED, AND THE HORN (the maintainer, 8 October) -- BUILT
+
+Verbatim: *"another idea for driver behavior, people responding
+differently to lights turning green. some people get distracted or are
+on their phones and don't start right away. Cars honking to correct the
+poor behavior of other drivers should be included. a visual indicator of
+honking would be helpful since 360 degree audio will be difficult to
+portray on phone speakers. not every driver would also be the type to
+honk right away, or at all while some might honk as soon as the light is
+green."*
+
+**Why both pieces earn their place structurally** (the brief that came
+with it):
+- **Reacting to a green is the best content OBSERVATION has ever been
+  offered.** Failing to notice a light has changed is literally a failure
+  to observe, and unlike everything that axis had before IT IS VISIBLE:
+  the car ahead does not move. Observation has never dominated a fault
+  kind in this project, largely because its failures left no evidence a
+  player could read. This leaves evidence at every light, for every
+  driver.
+- **A horn is the world commenting on driving**: a teaching signal, not
+  decoration. It says something was poor without a tutorial or a UI
+  element -- including when it is aimed at the player, so dawdling at a
+  green gets you honked at and you learn the standard by meeting it. The
+  same principle as the green wave paying for good driving diegetically.
+- **Who honks is personality**, derived from the axes, not a new trait.
+- **The visual is a requirement**: a phone speaker cannot place a sound,
+  so a horn must be seen, and say WHO and roughly WHERE, at four to forty
+  pixels -- the readability family of the lamps and the lit stop lines.
+
+**Built** (`crossing.js` `noticeAfter`/`patienceOf`, `horn.js`,
+`draw.js` `paintHorns`; `verify-greens`):
+- **Noticing the green is the observation axis and nothing else**: a
+  driver at the head of a queue under a red, when it goes green, sits for
+  their registration delay (`lagFor` -- REACTION_FLOOR plus REGISTER_SPAN
+  times the observation deficit, jittered; the same draw perception uses)
+  and, if the change came mid-glance (attention.js: a glance every
+  LOOK_EVERY seconds, as long as that delay), the rest of the glance
+  first. No new parameter. **Measured** (`tools/measure/greens.mjs`,
+  going straight): sharp observers start in a median **0.8 s**, poor ones
+  **1.6-2.0 s**, up to about **3-4 s** mid-glance.
+- **The horn**: queued behind a car that sits at its line on its green
+  with its way open -- a left-turner waiting for a gap is doing it right,
+  and is never honked at -- a driver's patience runs, and when it runs out
+  they honk, and again after HONK_AGAIN if it goes on. A horn wakes the
+  driver it is aimed at: they start a reaction after it.
+- **Patience** is the maintainer's own undue-delay standard (UNDUE_AT,
+  4 s) as the driver feels it: times their caution, stretched by how
+  little the rules matter to them (x (2 - compliance)), since a horn here
+  corrects somebody's driving. A timid driver -- caution past the
+  optimum -- never honks.
+
+**THE INSTANT-HONKER, as asked: BOLD AND RULE-MINDED.** Low caution
+(confidence's bold tail) with high compliance: patience about 0.6 s, so
+the horn goes the moment the car ahead fails to move. Bold and careless
+honks next (about 1 s): impatient, but not invested in anybody else's
+standard. A sound driver honks only at a genuinely undue delay (4 s,
+exactly the maintainer's mark); a careless sound one later still; a timid
+one never. **Does it read as a type? Yes, and a familiar one**: the
+commuter in a hurry who is sure the rules are on their side -- the person
+who leans on the horn at a green and would never run a red. It is the
+same person in both halves of the model, which is what makes it
+recognisable rather than random. Measured: every horn on test map 1 over
+ten minutes came from a bold, compliant driver; in the city three of four.
+
+**Honest about the size of it.** The axis's own numbers give dawdles up
+to about 4 s, so horns are RARE -- about 4 in 10 minutes on test map 1 at
+120 cars, from around 140 greens -- and a sound driver almost never gets
+impatient enough. Jay's "on their phones" picture is longer than that: a
+5-10 s lapse at a red. The registration delay cannot produce it; a longer
+glance away while STANDING (when people really do look at phones) would,
+and that is a new quantity -- the maintainer's call, not made here.
+
+**The visual** (`paintHorns`): white sound-arcs thrown forward from the
+honking car's roof, opening over the 0.8 s it shows -- white with a dark
+edge, a colour no lamp or light uses, so it never reads as a signal --
+and, for a horn aimed at the player from off the screen, a badge on the
+screen's edge on the line toward the honker, with the arcs, so a horn
+from behind is still placed. Drawn over the world as information; never
+under a few pixels.
+
+`verify-greens` holds all of it, and was sabotaged four ways (noticing
+not the axis; horns at cars that could not go; timid drivers honking;
+the off-screen badge missing) -- each fails it.
+
+**What the other checks needed** (the new timing moved every world):
+- `verify-graph`'s drain test judged "arrived while over 40" on the count
+  BEFORE the tick: two cars leaving at once from 41 and one arriving to
+  make 40 read as a violation. It now judges the count the spawner fills
+  to, after departures.
+- `verify-compliance`'s quiet right-on-red sample fell to 9 against a
+  floor of 10: an actuated light comes to a car alone at it, which removes
+  the occasion. Its own crossroads runs on the clock (the subject is what
+  a driver does at a red); the city runs stay actuated. 21 occasions after.
+- `verify-waves` counts crashes between vehicles; a heedless person struck
+  is `verify-peds`' business.
+- **`verify-lanes` 6 measured lane changing by its switch**, and the
+  switch changes the traffic. Its ratio sat at 13-15% until actuated
+  signals kept traffic moving, then at 20% -- already so at `0554afd`,
+  measured side by side (`tools/measure/lane-share.mjs`) -- while lane
+  changing's own code is **0.4%** of a step (`tools/measure/lane-profile.mjs`).
+  The bound was being spent on the rest of the sim. As with sight (1.2.6),
+  the bound is now held on the code itself, profiled; the switch's ratio is
+  reported beside it. A busy loop planted in `laneStep` reads 27%.
+
+### THE ENDLESS HIGHWAY (the maintainer, 8 October) -- QUEUED behind the green-light work
+
+Verbatim, "when it's not too disruptive": *"build a highway map that is
+an endless loop, letting me drive endlessly through traffic. if it needs
+some on/off ramps to introduce new cars into the flow of traffic allow
+the agent to make that determination (this would be a helpful startpos
+for the player as well, rather than sitting at 0 already on the highway
+starting from a parking lot just off the highway is how you'd actually
+begin that journey)."*
+
+**RAMPS ARE NOT OPTIONAL; THEY ARE THE FIX.** Stage 0's first test road
+was a loop, and it was wrong for a reason recorded at the time: six cars
+circulating settled into a uniform ring at the slowest car's speed and
+stayed there, and after the transient there was nothing to watch. A
+closed highway loop fails the same way, more slowly -- the mix
+homogenises into a queue behind the slowest vehicle and the threading
+the maintainer enjoys disappears. So traffic must ENTER AND LEAVE: on
+and off ramps at intervals, cars joining and leaving, so the mix keeps
+refreshing.
+
+**Measured, as the point rather than a formality**: speed spread and the
+overtaking rate after five and after fifteen minutes, and the loop shown
+not to go stale.
+
+**THE START: a slip road, not a parking lot -- yet.** Joining from off
+the highway is how the journey really starts, and starting at 0 on a
+highway is not. Parking lots do not exist (they wait on the objectives
+layer, unscoped for building), so the player starts stationary on a short
+slip road / service road / layby and merges into the flow. **It becomes a
+parking lot when lots exist.**
+
+**THE MERGE IS CONTENT, NOT A SPAWN MECHANISM.** Merging onto a highway
+is the hardest form of gap acceptance -- at speed, with a closing
+differential -- and a skill the player has not yet been asked for. It is
+the opening move.
+
+**Questions for the maintainer when it lands**: does the loop still feel
+alive after ten minutes, and does joining from the ramp feel like a real
+start?
+
+### ROADMAP, RECORDED NOT BUILT (8 October)
+
+- **Cosmetic upgrades for the player's car, as monetisation**: paint,
+  wheels, appearance. Safe, cheap, and no architectural consequence --
+  the player's car is drawn from its own colour and size today, and
+  nothing in the sim reads how it looks.
+- **Multiplayer**: cruising the town or the highway with other players.
+  One thing in its favour that is easy to lose: **THE SIMULATION IS
+  DETERMINISTIC AND SEEDED** -- a stepped world where every actor decides
+  from the last committed state, with every random draw from a seeded
+  stream (replay is checked: the world hash). That is exactly what
+  networked simulation wants (lockstep, or one server stepping one
+  world). An asset worth not discarding in a later refactor: no unseeded
+  random, no wall-clock time in the step, no order that depends on a
+  Map's history. The honest questions it raises, NOT answered now: who
+  owns the traffic (one host stepping it, or every client in lockstep);
+  how the density is agreed (each phone's cap differs); what happens when
+  two players are in different parts of a map (does the whole map step,
+  or only near players -- the cheap-far-traffic question again); and how
+  a player's car, stepped from their own controls, joins the others'
+  worlds without a round trip inside a frame.
+
 ### Parking lots: the maintainer's rulings (recorded 2 October, not built)
 
 **Rules:** standard uncontrolled-intersection rules apply inside a lot.

@@ -114,7 +114,7 @@ export function testMap1() {
   /* THE PLACES TO LOOK, as data: these were the view buttons hard-coded
      into #/map, and now the map carries them like any test map. */
   m.sections = [
-    { id: "crossroads", name: "the crossroads", look: { x: 400, y: 400 }, start: { road: "A-north", end: "end" }, judge: "Signals that answer the traffic: drive down A-north and pull right up to the line on a red -- a cyan mark lights on the signal head when its loop has seen you, and the light comes round to you. Stop well short and nothing marks you: creep up. Left turns across oncoming traffic still wait for a gap." },
+    { id: "crossroads", name: "the crossroads", look: { x: 400, y: 400 }, start: { road: "A-north", end: "end" }, judge: "Signals that answer the traffic: drive down A-north and pull right up to the line on a red -- a cyan mark lights on the signal head when its loop has seen you, and the light comes round to you. Stop well short and nothing marks you: creep up. Left turns across oncoming traffic still wait for a gap. Sit at the green yourself and the car behind honks -- white arcs over it, or a badge on the screen's edge if it is behind you; some drivers sit at greens too, and a bold one behind them honks." },
     { id: "tee", name: "the T", look: { x: 800, y: 400 }, judge: "A stop on the minor leg: drivers wait for a real gap in the through traffic." },
     { id: "fiveway", name: "the five-way", look: { x: 400, y: 800 }, judge: "Five legs and stop signs: whose turn it is." },
     { id: "arterial", name: "the arterial", look: { x: 1250, y: 400 }, judge: "Turn bays and protected left arrows: lefts leave from the bay, on their arrow." },

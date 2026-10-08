@@ -35,6 +35,7 @@
 
 import { composeDriver, stuckFor, deficitOf, lackingIn, LACKING_AT, severityOf, pressureOf, skillUnderPressure, cautionOf } from "../core/driver.js";
 import { rng } from "../core/rng.js";
+import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
 
 /* The project's scale, and the one thing here that must agree with the
    old engine while both exist: verify-sim checks it against `M(1)`. */
@@ -394,6 +395,17 @@ export function driver(road, seed, n, ratings = null, town = null, kind = "car")
     brake,
     weave,
     lag,
+    /* HOW LONG THEY TAKE TO NOTICE A CHANGE IN FRONT OF THEM -- a light
+       gone green -- whether or not the world is perceiving: the
+       registration delay itself (`lagFor`, the same draw `lag` is), so
+       the observation axis is all of it and nothing new is chosen
+       (crossing.js `noticeAfter`). */
+    notices: lagFor(who.ratings, { floor: REGISTER_FLOOR, span: REGISTER_SPAN, jitter: JITTER }, rng(seed * 7 + n + 3)),
+    /* At a red, at the head of the queue; when they will notice it has
+       gone green; since when the car ahead has sat at a green in front of
+       them; and their horn (crossing.js). Here so every car has the same
+       shape from the start. */
+    heldRed: false, wake: null, fumeSince: null, honkAt: null, honkTo: null,
     /* Where in the weave they happen to be, so two equally poor drivers
        are not in lockstep. */
     weavePhase: r() * WEAVE_OVER,

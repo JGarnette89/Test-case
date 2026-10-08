@@ -140,7 +140,7 @@ export function actorsOf(scene, carry) {
     /* A CRASHED car flashes its hazards: orange and dark, twice a second,
        so a wreck is never just another stopped car. */
     const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;
-    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, blinker: a.blinker ?? null });
+    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, blinker: a.blinker ?? null, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null });
   }
   /* PEOPLE ON FOOT (sim/peds.js): waiting at the curb or crossing. */
   for (const q of w.peds ?? []) out.push({ id: q.id, n: q.look ?? q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });

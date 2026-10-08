@@ -122,9 +122,15 @@ console.log("\n3. COMPLIANCE IS SITUATIONAL, KNOWLEDGE IS CONSISTENT: THE READAB
      against 73% of 15 failed it by two points -- inside the noise of ten.
      More road time, not a looser bound. */
   const MANY = Array.from({ length: 72 }, (_, i) => 3 + i);
+  /* AND THE CROSSROADS ON ITS CLOCK (8 October). An actuated light comes
+     to a car alone at it almost at once (actuated.js), which is the point
+     of it -- and which takes away the occasion this section samples, a
+     red stood at with nobody about: the count fell under its floor. What a
+     driver does at a red is the subject here, not what brings the green. */
+  const onClock = (map) => map === litMap;
   const RUNS = [[city, 200, [3, 5, 7]], [litMap, 4, MANY], [litMap, 40, MANY]];
   for (const [map, cars, seeds] of RUNS) for (const seed of seeds) {
-    let w = seedGraph(seed, 50, map, { target: cars, posted: true, trucks: 0 });
+    let w = seedGraph(seed, 50, map, { target: cars, posted: true, trucks: 0, actuated: !onClock(map) });
     const open = new Map();
     for (let i = 0; i < 300 / DT; i++) {
       w = step(w);

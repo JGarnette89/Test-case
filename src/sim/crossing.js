@@ -40,6 +40,7 @@ import {
 } from "./course.js";
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt } from "./graph.js";
 import { stepLights } from "./actuated.js";
+import { HONK_AGAIN } from "./horn.js";
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel, speedBy, fits } from "./corner.js";
@@ -890,7 +891,12 @@ export function whatStops(me, world) {
          all -- a car that cannot is committed in the full sense. */
       else if (back && me.s < hit.a && them.s < back.a && (me.going || me.s >= mine.stopAt) && (them.going || them.s >= theirs.stopAt) && (them.v ?? 0) > 1) {
         const room = hit.a - me.s - 1;
-        const mineT = room / Math.max(me.v ?? 0, 0.5), theirT = (back.a - them.s) / Math.max(them.v, 0.5);
+        /* THE SAME MEASURE FROM BOTH SIDES, or both can think they are
+           first: with the stopping margin on my time and not on theirs, two
+           cars 0.80 and 0.97 s out each read themselves the earlier, and met
+           (8 October, the city, seed 2). Exactly one of two cars computing
+           this sees the other first. */
+        const mineT = (hit.a - me.s) / Math.max(me.v ?? 0, 0.5), theirT = (back.a - them.s) / Math.max(them.v, 0.5);
         if ((theirT < mineT || (theirT === mineT && String(them.id) < String(me.id))) && stoppingRoom(me.v ?? 0, MOST_BRAKE) <= room) consider(Math.max(0, room), { v: 0, s: hit.a, id: them.id });
       }
     }
@@ -970,8 +976,13 @@ export function whatStops(me, world) {
      right on red waits for a stop and then a gap; a green or an
      uncontrolled leg waits only for somebody. */
   const under = controlOf(me, layout, mine, world.t ?? 0, me, liveOf(world, me.k));
+  /* NOT YET NOTICED THE GREEN (`noticeAfter`): the light has changed and
+     this driver, at the head of the queue, has not seen it yet. Held at the
+     line as by the red -- including the tick it changed, before a wake
+     time is set, or they would launch in it. */
+  const dawdling = (me.wake != null && (world.t ?? 0) < me.wake) || (me.heldRed && under !== "hold");
   if (short) {
-    const waiting = under === "hold" ? true : under === "stop" ? (!me.stoppedAt || held) : held;
+    const waiting = under === "hold" || dawdling ? true : under === "stop" ? (!me.stoppedAt || held) : held;
     if (waiting) {
       /* THE NOSE STOPS AT THE LINE, NOT THE MIDDLE OF THE CAR. `s` is a
          car's centre -- stage 0 defines the gap as `ahead - CAR.length`,
@@ -1008,7 +1019,7 @@ export function whatStops(me, world) {
       if (u === "hold" || u === "stop") consider(toEnd + waitAt(p2, me), { id: "line", v: 0, headway: me.headway });
     }
   }
-  return { leader, gap, held, queued, hold: short && under === "hold", ...(seenNow ? { seen: seenNow } : {}) };
+  return { leader, gap, held, queued, hold: short && (under === "hold" || dawdling), red: short && under === "hold", ...(seenNow ? { seen: seenNow } : {}) };
 }
 
 /* THE MARGIN FOR WHAT YOU CANNOT SEE IS CONFIDENCE (CLAUDE.md: occlusion
@@ -1125,6 +1136,31 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
    The tick. Same four phases as stage 0, and the same order: perceive
    and decide from the PREVIOUS committed state, integrate, commit.
    ===================================================================== */
+/* HOW LONG A DRIVER AT THE HEAD OF A QUEUE TAKES TO NOTICE THEIR LIGHT
+   HAS GONE GREEN: their registration delay (`notices`, traffic.js) --
+   0.35 s for a sharp observer, about two seconds for a poor one -- and,
+   if the change came while they were looking away (attention.js: a glance
+   every LOOK_EVERY seconds, as long as that same delay), the rest of the
+   glance first. All of it the observation axis; nothing chosen here. And
+   unlike anything that axis had before it is visible: the car in front
+   does not move. */
+export function noticeAfter(me, t) {
+  const lag = me.notices ?? REACTION_FLOOR;
+  const away = lookingAway(t, { ...me, lag });
+  return lag + (away > 0 ? lag - away : 0);
+}
+/* HOW LONG A DRIVER WILL SIT BEHIND A CAR THAT HAS NOT GONE ON A GREEN
+   BEFORE HONKING. The maintainer's undue-delay standard (UNDUE_AT) as this
+   driver feels it: scaled by their caution -- the bold short of it, the
+   sound at it -- and stretched by how little the rules matter to them,
+   since honking here is correcting somebody's driving. A timid driver
+   (caution above the optimum) never honks. */
+export function patienceOf(me) {
+  const c = me.caution ?? 1;
+  if (c > 1) return Infinity;
+  return UNDUE_AT * c * (2 - (me.ratings?.compliance ?? 1));
+}
+
 /* Every signalled node's plan, once per course. */
 const plansCache = new WeakMap();
 function signalPlans(course) {
@@ -1147,6 +1183,9 @@ function loopDets(world, k) {
 
 export function step(world) {
   const parkedNow = [];   // cars that pulled into a slot this tick (parking.js)
+  /* WHO WAS HONKED AT LAST TICK: a horn is heard at once, by the car it is meant for. */
+  const honked = new Set();
+  for (const a of world.actors) if (a.honkAt != null && (world.t ?? 0) - a.honkAt < DT * 1.5) honked.add(a.honkTo);
   const next = world.actors
     .map((raw) => {
       /* A PLAYER AT THE WHEEL is an actor everybody else perceives,
@@ -1282,6 +1321,40 @@ export function step(world) {
       const openedAt = me.openedAt ?? (openFor >= REACTION_FLOOR ? world.t : null);
       const waited = sitting && openedAt != null ? world.t - openedAt : (me.waited || 0);
       const out = { ...at, a, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
+      /* THE GREEN, NOTICED (the maintainer, 8 October: "some people get
+         distracted or are on their phones and don't start right away").
+         At the head of the queue under a red; when it goes green, a wake
+         time -- `noticeAfter`, the observation axis and nothing else --
+         and until then they sit (`whatStops`, `dawdling`). A horn wakes
+         them: they start a reaction after hearing it. */
+      if (view.red && atLine && v < AT_REST) { out.heldRed = true; out.wake = null; }
+      else if (raw.heldRed && !view.red) { out.heldRed = false; out.wake = (world.t ?? 0) + noticeAfter(raw, world.t ?? 0); }
+      if (out.wake != null && honked.has(raw.id)) out.wake = Math.min(out.wake, (world.t ?? 0) + REACTION_FLOOR);
+      if (out.wake != null && (world.t ?? 0) >= out.wake) out.wake = null;
+      /* THE HORN (the same ruling: "cars honking to correct the poor
+         behavior of other drivers"). Queued behind a car that sits at its
+         line on a green, a driver's patience runs (`patienceOf`); when it
+         runs out they honk, and again if it goes on. Who honks and how fast
+         is the driver: confidence and compliance, nothing new. */
+      /* Only a driver who would ever honk keeps the count -- a timid one never
+         does -- and the cheap tests come before the intersection scan: at 300
+         cars the scan for every queued follower cost lane changing its budget
+         (verify-lanes, 8 October). */
+      const patience = patienceOf(raw);
+      const lead = patience < Infinity && view.queued && view.leader?.k != null && (view.leader.k ?? 0) === (raw.k ?? 0) ? view.leader : null;
+      let fume = null;
+      if (lead && v < AT_REST && layoutOf(world, raw).signal) {
+        const L = layoutOf(world, raw), lp = pathOf(world, lead);
+        if (lp && (lead.v ?? 0) < AT_REST && lead.s >= waitAt(lp, lead) - AT_LINE
+          && movementLight(L.signal, L.legs[lp.from]?.base, lp.intent, world.t, liveOf(world, lead.k)) === "green"
+          /* ...AND COULD HAVE GONE: nothing in their way, judged at the
+             competent standard undue delay uses. A left-turner waiting on a
+             green for a gap in the oncoming traffic is doing it right, and
+             a horn at them would teach the wrong thing. */
+          && openTo(lead, world, COMPETENT)) fume = raw.fumeSince ?? world.t;
+      }
+      out.fumeSince = fume;
+      if (fume != null && world.t - fume >= patience && (raw.honkAt == null || world.t - raw.honkAt >= Math.max(patience, HONK_AGAIN))) { out.honkAt = world.t; out.honkTo = lead.id; }
       /* WHAT THEY SAW THIS TICK, remembered for when a truck hides it (see
          `whatStops`); nothing to remember with no truck near. */
       if (view.seen) {

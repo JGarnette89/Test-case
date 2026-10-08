@@ -24,6 +24,7 @@
    ===================================================================== */
 import { viewOf } from "./project.js";
 import { lightAt, arrowAt, movementLight } from "../sim/signal.js";
+import { HONK_FOR } from "../sim/horn.js";
 import { poseAt, groundAt as stage0Ground, LANE } from "./road.js";
 import { C } from "../theme.js";
 
@@ -106,7 +107,7 @@ const FACES = [[4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4,
 
 /* Scratch for paintBox, which is never re-entered: the faces that show,
    their keys and normals, and one projected point. */
-const FACE_I = [0, 0, 0, 0, 0], FACE_KEY = [0, 0, 0, 0, 0], FACE_N = new Float64Array(15), PT = [0, 0];
+const FACE_I = [0, 0, 0, 0, 0], FACE_KEY = [0, 0, 0, 0, 0], FACE_N = new Float64Array(15), PT = [0, 0], PT2 = [0, 0];
 function paintBox(ctx, view, b, colour) {
   const e = view.eye;
   let m = 0;
@@ -162,6 +163,50 @@ function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t) {
     for (const [along, z] of [[front, frontZ], [back, rearZ]]) {
       const p = spot(along, sgn * (W / 2 - 0.15), z);
       dot(p, r * 1.9, "rgba(255,176,32,0.4)"); dot(p, r, "#ffb020");
+    }
+  }
+}
+
+/* A HORN, MADE VISIBLE (the maintainer, 8 October: "a visual indicator of
+   honking would be helpful since 360 degree audio will be difficult to
+   portray on phone speakers"). It has to say WHO and roughly WHERE:
+   - over the honking car, white sound-arcs thrown forward from its roof,
+     opening out over the honk -- white with a dark edge, a colour no lamp
+     or light uses, so it never reads as a signal;
+   - and when it is aimed at the player from off the screen, a badge on
+     the screen's edge on the line to it, with the arcs, so a horn from
+     behind is still placed.
+   Drawn over the world, as information is: a horn is not hidden by a
+   building. Sized like the lamps, never under a few pixels. */
+function paintHorns(ctx, canvas, view, scene, k) {
+  const t = scene.t ?? 0;
+  for (const a of scene.actors ?? []) {
+    if (a.honkAt == null || t - a.honkAt < 0 || t - a.honkAt >= HONK_FOR) continue;
+    const u = (t - a.honkAt) / HONK_FOR;
+    const h = ((a.heading ?? 0) * Math.PI) / 180;
+    const len = a.length ?? 4.5;
+    const p = view.into(a.x + Math.cos(h) * len * 0.3, a.y + Math.sin(h) * len * 0.3, (a.z ?? 0) + (a.height ?? 1.5) + 0.8, PT).slice();
+    const q = view.into(a.x + Math.cos(h) * (len * 0.3 + 4), a.y + Math.sin(h) * (len * 0.3 + 4), (a.z ?? 0) + (a.height ?? 1.5) + 0.8, PT2);
+    let dir = Math.atan2(q[1] - p[1], q[0] - p[0]);
+    let [x, y] = p;
+    const W = canvas.w ?? canvas.width, H = canvas.h ?? canvas.height, m = 18;
+    const off = x < 0 || y < 0 || x > W || y > H;
+    if (off) {
+      if (a.honkTo !== "player") continue;
+      /* On the edge, on the line from the screen's middle toward the car, pointing in. */
+      const cx = W / 2, cy = H / 2, dx = x - cx, dy = y - cy;
+      const s = Math.min((W / 2 - m) / Math.max(1e-6, Math.abs(dx)), (H / 2 - m) / Math.max(1e-6, Math.abs(dy)));
+      x = cx + dx * s; y = cy + dy * s; dir = Math.atan2(-dy, -dx);
+      ctx.fillStyle = "rgba(20,20,24,0.85)"; ctx.beginPath(); ctx.arc(x, y, 13, 0, 2 * Math.PI); ctx.fill();
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.stroke();
+    }
+    const r0 = off ? 5 : Math.max(5, 0.7 * k);
+    for (let i = 0; i < 3; i++) {
+      const r = r0 * (1 + i * 0.7 + u * 0.8);
+      ctx.lineWidth = Math.max(2, r0 * 0.28);
+      ctx.strokeStyle = "rgba(10,10,12,0.75)"; ctx.beginPath(); ctx.arc(x, y, r, dir - 0.7, dir + 0.7); ctx.stroke();
+      ctx.lineWidth = Math.max(1.2, r0 * 0.16);
+      ctx.strokeStyle = `rgba(255,255,255,${(1 - u * 0.6).toFixed(2)})`; ctx.beginPath(); ctx.arc(x, y, r, dir - 0.7, dir + 0.7); ctx.stroke();
     }
   }
 }
@@ -732,5 +777,6 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   /* The floor first, then everything with height; each by depth. */
   items.sort((a, b) => a.layer - b.layer || a.key - b.key);
   for (const it of items) it.paint();
+  paintHorns(ctx, canvas, view, scene, k);
   return { items: items.length, ...counts, ...(audit ? { order: items.map((it) => ({ ...it.tag, key: it.key })) } : {}) };
 }

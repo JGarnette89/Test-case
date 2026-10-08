@@ -105,7 +105,8 @@ function platoon(loaded, g, progression, seed, actuated = false) {
     }
     for (const [key, v] of minV) if (!here.has(key)) { if (v < 1) stopped++; else through++; minV.delete(key); }
   }
-  crashes = (w.crashes ?? []).length;
+  /* Between vehicles: a heedless person stepping out is a strike the design allows, and verify-peds' business. */
+  crashes = (w.crashes ?? []).filter((c) => !String(c.a).startsWith("ped-") && !String(c.b).startsWith("ped-")).length;
   return { through, stopped, crashes };
 }
 const long = timedMaps.find((m) => m.id.startsWith("long"));

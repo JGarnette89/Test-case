@@ -379,9 +379,15 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   let w = { ...at120.w, target: 40 };
   let arrivedWhileOver = 0, drained = null;
   for (let i = 0; i < 20 * 120; i++) {
-    const over = w.actors.length > 40, before = w.spawned;   /* at exactly 40 a car leaving this tick is rightly replaced */
+    const before = w.spawned;
     w = step(w);
-    if (over && w.spawned > before) arrivedWhileOver++;
+    /* AN ARRIVAL WHILE THE MAP IS AT OR OVER ITS TARGET once this tick's
+       departures are out -- the count the spawner fills to. Judged on the
+       count BEFORE the tick, two cars leaving in one tick from 41 and one
+       arriving to make 40 read as an arrival over target, which it is not
+       (8 October). */
+    const arrived = w.spawned - before;
+    if (arrived > 0 && w.actors.length - arrived >= 40) arrivedWhileOver++;
     if (drained == null && w.actors.length <= 40) drained = w.t;
   }
   check(arrivedWhileOver === 0 && drained != null && Math.abs(w.actors.length - 40) <= 3,
