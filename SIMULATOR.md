@@ -4638,6 +4638,34 @@ nobody is. And they buy the merge. (The closed loop's spread does sag a
 little -- sd 12.6 to 11.1 on one seed -- so a much longer closed run may
 still homogenise; fifteen minutes is what was measured.)
 
+**THE PLAYER STARTS CLEAR, WHEREVER THEY START (9 October, `drive.js`
+`placePlayer`, `verify-start`).** The maintainer on `4828823`: *"the player
+spawns on top of another car on the slip road, instant collision and game
+over."* The cause: the slip road's open end is one of the four places that
+map's traffic ENTERS, the world is warmed up before the player is placed,
+and nothing cleared the start -- stage 1's guarantee (`clearAround`,
+`iso/world.js`) was written for the wheel screen's one road and never
+carried to the map scene. The spawner's room test already counted the
+player, so it was never a NEW car: it was one the warm-up had left there.
+And it was not only the slip road -- with the guarantee removed, 75 of 264
+placements across every map's starts had a car on top of the player or
+within 12 m, the city's default start among them.
+
+Now every map start goes through one function. The player appears with
+nobody within START_NEAR (12 m) on any lane or path, and nobody travelling
+the same way behind them inside what that car needs to stop for a car
+standing there -- its reaction, its comfortable stop from its own speed,
+its gap -- measured in the plane, so a car across a seam is found too.
+Those cars are taken off the map before it starts. A collision before the
+player has had any chance to act is impossible by construction.
+`verify-start` holds it at EVERY start, enumerated rather than listed --
+every section of every test map, the editor's default, every edge where
+traffic enters, a generated map -- 88 starts, three seeds, the player then
+standing still for five seconds untouched; with the guarantee removed it
+fails at 75 placements. It also found `playerOn` handing back a route that
+does not exist from a curb lane with no movement out of it; that is now
+"nowhere to start", which the screen says in words.
+
 ### ROADMAP, RECORDED NOT BUILT (8 October)
 
 - **Cosmetic upgrades for the player's car, as monetisation**: paint,

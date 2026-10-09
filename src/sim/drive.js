@@ -21,7 +21,8 @@
    their route from the signal. Pure: the screen owns the state.
    ===================================================================== */
 import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand } from "./player.js";
-import { whatStops, AT_LINE } from "./crossing.js";
+import { whatStops, poseOf, AT_LINE } from "./crossing.js";
+import { REACTION_FLOOR } from "../core/perception.js";
 import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
 import { poseOnGraph, intentOf, normDeg, curbLegOf } from "./graph.js";
 import { poseAt } from "./intersection.js";
@@ -77,7 +78,10 @@ export function playerHonk(me, world) {
 export function playerOn(course, roadId, end, opts) {
   const at = curbLegOf(course, roadId, end, opts);
   if (!at) return null;
-  return playerAt(course, at.k, routeForSignal(course.at[at.k].layout, at.leg, null));
+  /* A curb lane with no movement out of it is nowhere to start: null, which the screen refuses in words (found by verify-start, 8 October). */
+  const route = routeForSignal(course.at[at.k].layout, at.leg, null);
+  if (!route || !course.at[at.k].layout.paths[route]) return null;
+  return playerAt(course, at.k, route);
 }
 
 /* The geometry a path presents to the car model: its heading along,
@@ -228,6 +232,46 @@ export function driverPose(me, course) {
   const p = poseOnGraph(course, me.k, me.route, Math.min(me.s, course.at[me.k].layout.paths[me.route].length));
   const h = (p.rot * Math.PI) / 180;
   return { x: p.x - Math.sin(h) * me.off, y: p.y + Math.cos(h) * me.off, z: p.z ?? 0, heading: p.rot + (me.psi * 180) / Math.PI };
+}
+
+/* PUTTING THE PLAYER IN THE WORLD, CLEAR -- wherever they start. A start
+   is a place in an already-running world: the traffic has been warmed up,
+   and the player appears among it standing still. Nothing may already be
+   where they appear, and nothing may be able to reach them before they
+   have had any chance to act: a collision on the first frame is made
+   impossible here, by construction, rather than unlikely (8 October: the
+   endless highway's slip road is where its traffic enters the map, the
+   warm-up had left a car standing on the start, and the player appeared on
+   top of it). Stage 1's `clearAround` (iso/world.js) did this for the
+   wheel screen's one road and was never carried to the map; this is the
+   one place every map start goes through (MapRoad `sceneFor`).
+   - NO ONE NEAR: any road user within START_NEAR of the player, whatever
+     lane or path it is on -- the body of a car beside them, a queue they
+     would be standing in.
+   - NO ONE ABLE TO REACH THEM: a road user travelling the same way behind
+     them, within what it needs to stop for a car standing there -- its
+     reaction, its comfortable stop from its own speed and its own gap --
+     measured in the plane, so a car across a seam (the lane belongs to the
+     intersection before) is found as surely as one on the same path.
+   They are taken off the map before it starts, as a world that had never
+   put them there; the spawner already leaves room for the player
+   (crossing.js `joinAt`), so nobody new arrives on top of them either. */
+export const START_NEAR = 12;   // m: a car's length and a half each way and the lanes either side
+export function placePlayer(world, me) {
+  const p = driverPose(me, world.course);
+  const h = (p.heading * Math.PI) / 180, fx = Math.cos(h), fy = Math.sin(h);
+  const clearOf = (a) => {
+    const q = poseOf(world, a), dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy);
+    if (Math.abs((q.z ?? 0) - p.z) > 4) return true;   // a deck above or a road beneath
+    if (d < START_NEAR) return false;
+    const along = dx * fx + dy * fy, across = Math.abs(-dx * fy + dy * fx);
+    const sameWay = Math.cos((((q.rot ?? q.heading ?? 0) - p.heading) * Math.PI) / 180) > 0.7;
+    if (!sameWay || along >= 0 || across > 2 * LANE) return true;
+    const v = a.v ?? 0, brake = a.brake ?? 2.7;
+    const reach = v * REACTION_FLOOR + stoppingRoom(v, brake) + wantedGap({ ...a, v }, { v: 0 }) + CAR.length;
+    return -along > reach;
+  };
+  return withDriver({ ...world, actors: world.actors.filter((a) => a.player || clearOf(a)) }, me);
 }
 
 /* The world with the player written in as an actor everybody else can

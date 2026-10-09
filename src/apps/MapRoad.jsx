@@ -33,7 +33,7 @@ import { loadMap, groundFor } from "../map/load.js";
 import { testMap1 } from "../map/samples.js";
 import { firstEdge } from "../map/edges.js";
 import { seedGraph, step, poseOf, DT, crashWith } from "../sim/crossing.js";
-import { playerOn, stepDriver, driverPose, withDriver, aheadOf, playerHonk } from "../sim/drive.js";
+import { playerOn, stepDriver, driverPose, withDriver, aheadOf, playerHonk, placePlayer } from "../sim/drive.js";
 import { junctionsOf, postedAt } from "../sim/graph.js";
 import { touching } from "../sim/player.js";
 import { parkedPoses, contactWith } from "../sim/parking.js";
@@ -103,7 +103,8 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
        catches this and says so; #/map's own hardcoded start can never
        hit it. */
     if (!me) throw new Error("nowhere to start driving from on this map");
-    world = withDriver(world, me);
+    /* Clear of every car, and of every car able to reach a car standing there (drive.js `placePlayer`). */
+    world = placePlayer(world, me);
   }
   const ground = groundFor(loaded, { cell: 20 });
   return {
