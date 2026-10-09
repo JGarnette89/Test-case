@@ -4682,6 +4682,17 @@ fails at 75 placements. It also found `playerOn` handing back a route that
 does not exist from a curb lane with no movement out of it; that is now
 "nowhere to start", which the screen says in words.
 
+### OBJECTIVES: ALL THREE LEVELS (the maintainer, 9 October) -- PLANNING, NOT BUILT
+
+Verbatim: *"I think the clear choice is every level needs to be present.
+places feel distinct, if we give the player a storyline to follow we'll
+need to send them places, and filling the world with things to do (taxi
+missions, truck driving, street racing to make a few) is what makes this
+worth playing."* So: distinct places (level 1), being sent places (level
+2) in service of a STORYLINE, and a world full of activities -- taxi,
+trucking, street racing, and more -- (level 3). Planning only until usage
+allows building; open questions were put to him the same day.
+
 ### ROADMAP, RECORDED NOT BUILT (8 October)
 
 - **Cosmetic upgrades for the player's car, as monetisation**: paint,
