@@ -25,8 +25,17 @@ import { hasBays, baySurfaceOf, baysAt } from "./bays.js";
 /* A road's ribbon and, for more than one lane each way, the lines
    between lanes: the centreline offset a whole lane, two lanes, each
    side -- the same offsets the sim drives its lanes between. */
-function surfaceOf(pts, width, lanes) {
+function surfaceOf(pts, width, lanes, oneWay = false) {
   const out = { ...ribbonOf(pts, width), laneLines: [] };
+  /* A ONE-WAY ROAD'S LANES ARE CENTRED ON IT (sim/graph.js `laneAlong`), so
+     its lines sit between them -- (k - lanes/2) lanes off the centreline.
+     Painted the two-way way, the highway carried six lanes' lines over a
+     three-lane surface, two of them out on the grass, and every lane's
+     centre lay on a painted line (the maintainer's screenshot, 9 October). */
+  if (oneWay) {
+    for (let k = 1; k < lanes; k++) out.laneLines.push(ribbonOf(pts, 2 * (k - lanes / 2) * LANE).right);
+    return out;
+  }
   for (let k = 1; k < lanes; k++) {
     const { left, right } = ribbonOf(pts, 2 * k * LANE);
     out.laneLines.push(left, right);
@@ -36,7 +45,7 @@ function surfaceOf(pts, width, lanes) {
 /* A road's surface from the road itself: the plain ribbon, or -- where an
    end carries turn bays -- the widening one (map/bays.js). A road with no
    bays goes the old way, byte for byte. */
-const surfaceFor = (r) => (hasBays(r) ? baySurfaceOf(r) : surfaceOf(r.pts, r.outer ?? r.width, r.lanes));
+const surfaceFor = (r) => (hasBays(r) ? baySurfaceOf(r) : surfaceOf(r.pts, r.outer ?? r.width, r.lanes, !!r.oneWay));
 import { radiusFor, LATERAL } from "../sim/course.js";
 
 export const THIN = 0.5;                 // m: points closer than this are one point

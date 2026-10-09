@@ -4638,6 +4638,22 @@ nobody is. And they buy the merge. (The closed loop's spread does sag a
 little -- sd 12.6 to 11.1 on one seed -- so a much longer closed run may
 still homogenise; fifteen minutes is what was measured.)
 
+**AND ITS PAINT WAS STILL TWO-WAY (9 October, the maintainer's screenshot:
+"Lanes that should be road are just painted on-top of the grass, and the
+auto-lane assist pulls the user between lanes").** The one-way fix made
+the graph drive a one-way road one way, with its lanes centred on it; the
+loader still painted it the two-way way -- a double yellow down the
+middle, lane lines either side as if for three lanes each way, two of them
+out on the grass beyond the three-lane surface. Every lane's centre then
+lay on a painted line, so the lane assist, holding the car in the centre
+of its real lane, looked as if it held it on the paint: ONE fault, not
+two. Now a one-way road's lines lie between its own lanes, it has no
+centre line, and its left edge is yellow and its right white, as on a real
+one-way carriageway. `verify-loop` holds the paint to the lanes the sim
+drives; with the loader's one-way branch removed it fails (four lines for
+three lanes). One more instance of a state the sim and the screen
+disagreed about -- the second half of yesterday's, found by eye.
+
 **THE PLAYER STARTS CLEAR, WHEREVER THEY START (9 October, `drive.js`
 `placePlayer`, `verify-start`).** The maintainer on `4828823`: *"the player
 spawns on top of another car on the slip road, instant collision and game

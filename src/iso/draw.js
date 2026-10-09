@@ -410,7 +410,11 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     const lines = () => {
       ctx.lineWidth = Math.max(1, 0.15 * k);
       ctx.strokeStyle = "rgba(250,250,242,0.8)";
-      seg(ctx, P, a, b); seg(ctx, P, d, c);
+      /* A ONE-WAY ROAD has no centre line: its LEFT edge is yellow and its
+         right edge white, as on a real one-way carriageway -- which also
+         says which way it runs. */
+      if (road.oneWay) { seg(ctx, P, d, c); ctx.strokeStyle = C.yellow; seg(ctx, P, a, b); }
+      else { seg(ctx, P, a, b); seg(ctx, P, d, c); }
       /* THE CENTRE LINE SAYS WHAT KIND OF ROAD THIS IS, the way it does
          on a real one: an arterial carries a solid double yellow, a
          collector the broken single, a residential street nothing at
@@ -419,7 +423,8 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       /* Where a turn bay opens the median, the line moves to its far
          side (map/bays.js `centre`); elsewhere it is the centreline. */
       const mid = road.centre ?? pts;
-      if (road.kind === "arterial" || road.kind === "highway") {
+      if (road.oneWay) { /* no centre line */ }
+      else if (road.kind === "arterial" || road.kind === "highway") {
         const p0 = mid[i], p1 = mid[i + 1], len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
         const ox = (-(p1.y - p0.y) / len) * 0.14, oy = ((p1.x - p0.x) / len) * 0.14;
         ctx.strokeStyle = C.yellow;

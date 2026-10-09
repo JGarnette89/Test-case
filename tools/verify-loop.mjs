@@ -53,6 +53,20 @@ console.log("\n1. A ONE-WAY ROAD IS DRIVEN ONE WAY");
   check(!edges.some((x) => x.side.startsWith("e|")) && edges.some((x) => x.side.startsWith("n|")), "traffic arrives down the one-way road toward the node, and never up the one leaving the map");
   const me = playerOn(g, "n", "end");
   check(!!me, "the player can start on it");
+  /* THE PAINT AGREES WITH THE LANES (9 October: the highway was painted as
+     six lanes over a three-lane one-way surface -- lines on the grass, and
+     every lane's centre on a painted line). Each line sits midway between
+     two of the sim's lane centres, inside the surface. */
+  const er = L.roads.find((r) => r.id === "e"), i = 10;
+  const mid = (p, q) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+  const want = mid(g.lanes["e:fwd#0"].pts[i], g.lanes["e:fwd#1"].pts[i]);
+  const lines = er.laneLines ?? [];
+  const off = lines.length === 1 ? Math.hypot(lines[0][i].x - want.x, lines[0][i].y - want.y) : Infinity;
+  const half = Math.hypot(er.left[i].x - er.right[i].x, er.left[i].y - er.right[i].y) / 2;
+  const inside = lines.every((ln) => Math.hypot(ln[i].x - er.pts[i].x, ln[i].y - er.pts[i].y) < half);
+  check(lines.length === 1 && off < 0.01 && inside, `its one lane line lies between its two lanes (${off.toFixed(3)} m from midway) and inside the surface, half-width ${half.toFixed(1)} m`);
+  const hw = loadMap(testLoop()).roads.find((r) => r.id === "loop-0");
+  check(hw.laneLines.length === hw.lanes - 1 && hw.laneLines.every((ln) => Math.hypot(ln[50].x - hw.pts[50].x, ln[50].y - hw.pts[50].y) < hw.width / 2), `the highway carries ${hw.laneLines.length} lane lines for its ${hw.lanes} lanes, every one on the surface`);
   let w = seedGraph(1, 50, L, { target: 60 });
   let wrong = 0, over = 0;
   for (let i = 0; i < 120 / DT; i++) {
