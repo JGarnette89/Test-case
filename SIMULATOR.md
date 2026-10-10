@@ -4693,6 +4693,11 @@ worth playing."* So: distinct places (level 1), being sent places (level
 trucking, street racing, and more -- (level 3). Planning only until usage
 allows building; open questions were put to him the same day.
 
+**The frame these sit in is DAY AND NIGHT: [DAY-NIGHT.md](DAY-NIGHT.md)**
+(9 October) -- two densities and two rule sets over one world, the
+constraints that keep it honest, and the twelve open questions PARKED with
+the default taken for each.
+
 ### ROADMAP, RECORDED NOT BUILT (8 October)
 
 - **Cosmetic upgrades for the player's car, as monetisation**: paint,
