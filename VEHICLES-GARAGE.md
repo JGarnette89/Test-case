@@ -90,3 +90,37 @@ NIGHT-ONLY**, and at night beating the grid is the point. So:
   form (the lamps' drawn halo, as `paintLamps` does).
 - **Engine tuning** above the traffic's speeds touches the player model's
   top speed and acceleration only; the traffic is unaffected.
+
+## DECIDED, 13 October: ARTICULATED TRUCKS -- YES, AS A JOB
+
+The maintainer, verbatim: *"this gives the player another activity,
+hauling a articulated truck is a whole different activity than driving any
+other vehicle. we want this for gameplay purposes."*
+
+So the semi is **not a vehicle variant, it is a JOB**, and that sets what it
+has to support. **THE PLAYER DRIVES ONE**, which is harder than an AI
+following a path:
+- wider swept paths under MANUAL steering (the trailer cuts inside the
+  cab's line through every corner);
+- no view behind;
+- **jackknife risk -- CONTENT, NOT A FAILURE STATE TO PREVENT.** It is what
+  a bad reverse or an over-tight turn does, and the player learns to avoid
+  it; the model must allow it and show it;
+- **reversing a trailer** -- the classic hard driving skill, which this game
+  has never asked for. Under the two-control scheme it is genuinely
+  difficult and genuinely satisfying.
+
+It connects to the objectives layer: a hauling run is a DELIVERY, a day
+task. **Articulated trucks and objectives together give the day job its
+first real shape** (DAY-NIGHT.md; parked default 8 already put trucking
+behind a licence class).
+
+**It reopens the turn geometry, the lane rules and the clearance work**
+(correction 4 above) -- the maintainer accepted that cost explicitly. The
+supplied code's faults are fixed in the build, not carried: the hitch uses
+heading-zero-EAST (cos for x, sin for y), the jackknife clamp is a clamp
+(the angle is limited after every rotation, never rotated past it), and
+every dimension is in metres (correction 1).
+
+Sequenced AFTER courtesy gaps and the Web Worker: the Worker buys the
+frame budget all of this consumes.

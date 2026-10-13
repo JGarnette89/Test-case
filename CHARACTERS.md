@@ -53,3 +53,32 @@ Each rival's territory needs content that does not exist:
   changed before anything ships.
 - **The shared Vance surname** -- Victor and Brenda -- may or may not be
   deliberate (a family? a coincidence?). Ask.
+
+## DECIDED, 13 October: RIVALS CHEAP NOW, HEAVY WORK UNDERNEATH
+
+The maintainer, verbatim: *"rivals are cheap now, but we need to get the
+heavy work underway so it can sit underneath the rest."*
+
+**First, cheap: the five recognisable in the world that exists**, as axis
+profiles -- Victor forcing gaps, Brenda stopping short and over-yielding,
+Mason threading at speed, Hannah reading obstacles -- to test in front of
+the maintainer whether they read as PEOPLE before their worlds are built.
+
+**Then the heavy work, and the line is SHARED FOUNDATION versus DISTRICT
+DECORATION** -- build what every district needs, not what one district
+needs:
+
+| shared, underneath everything (now) | district-specific (later) |
+|---|---|
+| head-to-head racing -- all four rivals need it | school zones |
+| police pursuit -- the night's, not one place's | livestock |
+| road surfaces beyond asphalt -- Hannah's, and weather reuses it | farm equipment |
+| A.U.T.O.'s punishment side -- city-wide (STORY.md) | nightclub crowds, loading docks |
+
+Sequenced after courtesy gaps and the Web Worker.
+
+## DECIDED, 13 October: BOTH VANCES CHANGE, AND STAY RELATED
+
+The maintainer leaves the name open. Both change; they stay one family.
+Options go to him; the choice is his (Voss is the minimal change -- almost
+the same sound).
