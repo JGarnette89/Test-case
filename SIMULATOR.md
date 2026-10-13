@@ -4249,6 +4249,7 @@ traffic.
 
 **Build order:** actuated signals with the stop-line and advance loops,
 and the mark on the head; then courtesy gaps with the mark on the car.
+Both built (below).
 
 #### ACTUATED SIGNALS -- BUILT, 8 October (`src/sim/actuated.js`)
 
@@ -4332,6 +4333,67 @@ moving -- only making it legible, which the brake lamps begin.
   are in the wave: the next light greening as they approach is itself
   the payout, so drawing the next signal's state earlier, or a marker
   for the wave's speed, is the cheap first form.
+
+#### COURTESY GAPS -- BUILT, 13 October (`src/sim/courtesy.js`)
+
+Item 2 of the ruling. The player signals toward the lane beside them on an
+approach; the one driver whose space they need -- the nearest car in that
+lane with its centre behind theirs, and only one actually in the way,
+inside its own following gap -- may let them in.
+
+- **WHO, FROM THE AXES, NOTHING NEW.** Courteous = competent on compliance
+  AND not on the bold side of confidence, both at the model's own
+  COMPETENT_AT. The timid are in (over-yielding is what the timid tail
+  is); the bold and the scofflaw never. Measured (`tools/measure/courtesy.mjs`):
+  **59% of the highway's drivers and 46% of the city's**; the courteous
+  average compliance 0.90 and caution 1.15 (they lean timid), the rest
+  compliance 0.48 and caution 0.78 -- the bold, the careless and both.
+  **It reads as a type: the considerate driver, rule-minded and
+  unhurried, and Brenda Braga is its extreme** (CHARACTERS.md). The third
+  mechanic derived from the axes rather than added beside them, after the
+  horn's patience and the green's delay.
+- **SEEN, OR NOT.** The signal counts once it has been on for that
+  driver's own time to notice something (`noticeAfter`, observation
+  alone). A signal put on as the wheel turns is noticed by nobody in time;
+  "some drivers might never see the signal at all" is the observation
+  axis, and a driver who will not is compliance.
+- **COMFORTABLE.** The driver follows the player as if they were already
+  in the lane, braking no harder than their own rate, and never less than
+  the real traffic ahead demands; one closing too fast to do that is not
+  asked.
+- **THE CLOCK RUNS FROM WHEN THE GAP IS THERE.** Dropping back from level
+  to a following gap at a comfortable rate takes about 4.5 s at highway
+  speed -- longer than the wait itself -- so the 4 s undue-delay standard
+  (COURTESY_FOR) counts from the gap opening, and an offer that has not
+  opened in twice that is dropped. Withdrawn, it is not made again while
+  the player keeps signalling.
+- **WHAT IT BUYS**, measured on the endless highway with the player level
+  with a car in the lane beside at its speed, everything else cleared
+  60 m (`tools/measure/courtesy-trial.mjs`): the car offered in 6 of 19
+  such moments (the middle lane carries more of the bold); where it did, a
+  gap a competent driver takes came **2.7-4.2 s after the signal went on
+  in 5 of 6**, against 1 of those 6 without courtesy. A signal is a
+  request, never a guarantee -- 13 of 19 drivers level with you would not.
+- **THE MARK, ON THE CAR, IN THE HORN'S FAMILY** (ruling item 4; the
+  readability lesson that a real-world cue is invisible at these zooms):
+  over the offering car a GREEN badge with a black rim and two bold white
+  chevrons pointing into the gap, a ring pulsing out once a second,
+  never under 11 px -- the horn badge's size -- and on the road in front
+  of its nose a green patch a car and a half long, outlined in white:
+  WHERE to go, not only who is offering. Green-and-white is used by
+  nothing else drawn on the road.
+- **Lane changes are made on the approach**, as they always were
+  (`drive.js` `laneChange`), so courtesy is offered there; the first part
+  of a block, the previous intersection's exit, has none.
+- `verify-courtesy` holds all of it, and was sabotaged twice: everybody
+  courteous (the axes checks fail, and the gap rate drops), and the
+  easing removed (gaps stop arriving; the offerer brakes at 8 m/s^2).
+
+**To judge** (test map "Endless highway", any section): in the curb or
+middle lane beside a car, signal toward its lane and hold it. Watch for
+the green badge over that car and the green patch in front of it -- can
+you see them in time to act, a second or two? About a third to a half of
+drivers will offer; the rest will not, and that is meant.
 
 ### THE GREEN, NOTICED, AND THE HORN (the maintainer, 8 October) -- BUILT
 

@@ -230,6 +230,57 @@ function paintHorns(ctx, canvas, view, scene, k) {
   }
 }
 
+/* A COURTESY GAP, MADE VISIBLE (sim/courtesy.js). The player has a second
+   or two to act on it, and a real driver's cue -- a flash of the lights, a
+   hand, a car dropping back a few metres -- is invisible at these zooms,
+   so it is a map symbol in the horn's family, read the same way:
+   - over the car letting them in, a BADGE: a green disc with a black rim
+     and two bold white chevrons pointing into the gap, a ring pulsing
+     out once a second for as long as the offer stands -- never under
+     11 px, exactly the horn's size;
+   - ON THE ROAD, THE GAP ITSELF: a green patch a car and a half long in
+     front of that car's nose, in its lane, outlined in white -- where to
+     go, not only who is offering.
+   Green and white, which nothing else drawn on the road uses together
+   (a green light is a lamp, never a disc with a rim); over the world, as
+   the horn is. */
+export function paintCourtesy(ctx, canvas, view, scene, k) {
+  const t = scene.t ?? 0;
+  for (const a of scene.actors ?? []) {
+    if (!a.courtesy) continue;
+    const h = ((a.heading ?? 0) * Math.PI) / 180, fx = Math.cos(h), fy = Math.sin(h), rx = -fy, ry = fx;
+    const L = a.length ?? 4.5, z = (a.z ?? 0) + 0.05;
+    const n0 = L / 2 + 1, n1 = n0 + 7, half = 1.25;
+    const corner = (u, v) => view.into(a.x + fx * u + rx * v, a.y + fy * u + ry * v, z, [0, 0]);
+    const q = [corner(n0, -half), corner(n1, -half), corner(n1, half), corner(n0, half)];
+    const pulse = 0.5 + 0.5 * Math.sin(t * 2 * Math.PI);
+    ctx.beginPath(); ctx.moveTo(q[0][0], q[0][1]); for (const p of q.slice(1)) ctx.lineTo(p[0], p[1]); ctx.closePath();
+    ctx.fillStyle = `rgba(34,190,84,${(0.35 + 0.25 * pulse).toFixed(2)})`; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = "rgba(10,10,12,0.85)"; ctx.stroke();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = "#ffffff"; ctx.stroke();
+    /* The badge, and the direction the gap lies in on the screen. */
+    const [x, y] = view.into(a.x, a.y, (a.z ?? 0) + (a.height ?? 1.5) + 1.6, [0, 0]);
+    const g = view.into(a.x + fx * (n0 + n1) / 2, a.y + fy * (n0 + n1) / 2, z, [0, 0]);
+    const dir = Math.atan2(g[1] - y, g[0] - x);
+    const R = Math.max(11, 0.75 * k);
+    const u = t % 1;
+    ctx.strokeStyle = `rgba(255,255,255,${(0.9 * (1 - u)).toFixed(2)})`; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(x, y, R * (1.2 + u * 1.2), 0, 2 * Math.PI); ctx.stroke();
+    ctx.fillStyle = "#22be54"; ctx.beginPath(); ctx.arc(x, y, R, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = "#111114"; ctx.lineWidth = Math.max(2, R * 0.16); ctx.stroke();
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(2.5, R * 0.2); ctx.lineCap = "round"; ctx.lineJoin = "round";
+    const c = Math.cos(dir), s = Math.sin(dir), w = R * 0.42;
+    for (const off of [-0.28, 0.22]) {
+      const tx = x + c * R * off, ty = y + s * R * off;
+      ctx.beginPath();
+      ctx.moveTo(tx - c * w * 0.6 - s * w, ty - s * w * 0.6 + c * w);
+      ctx.lineTo(tx + c * w * 0.4, ty + s * w * 0.4);
+      ctx.lineTo(tx - c * w * 0.6 + s * w, ty - s * w * 0.6 - c * w);
+      ctx.stroke();
+    }
+  }
+}
+
 function quad(ctx, P, a, b, c, d) {
   ctx.beginPath();
   let p = P(a.x, a.y, a.z); ctx.moveTo(p[0], p[1]);
@@ -801,6 +852,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   /* The floor first, then everything with height; each by depth. */
   items.sort((a, b) => a.layer - b.layer || a.key - b.key);
   for (const it of items) it.paint();
+  paintCourtesy(ctx, canvas, view, scene, k);
   paintHorns(ctx, canvas, view, scene, k);
   return { items: items.length, ...counts, ...(audit ? { order: items.map((it) => ({ ...it.tag, key: it.key })) } : {}) };
 }

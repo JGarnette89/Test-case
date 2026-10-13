@@ -16,8 +16,8 @@ expensive** (below).
 |---|---|---|---|
 | **A.U.T.O.** | the whole grid | the system, not a driver | -- |
 | **Jay "The Clockmaker"** | -- | the mentor | (a mentor; not a rival profile) |
-| **Victor Vance** -- *name to change, see below* | industrial district and port | aggressive gap-forcing, bullying merges | high confidence, **no caution** (confidence's bold tail), **low compliance** |
-| **Brenda Vance** | suburbs | ultra-conservative: early braking, stopping ten feet short of lines, over-yielding | **confidence's TIMID tail**, maximum compliance |
+| **Victor Braga** | industrial district and port | aggressive gap-forcing, bullying merges | high confidence, **no caution** (confidence's bold tail), **low compliance** |
+| **Brenda Braga** | suburbs | ultra-conservative: early braking, stopping ten feet short of lines, over-yielding | **confidence's TIMID tail**, maximum compliance |
 | **Mason "Swerve" Lin** | downtown and the nightclub district | precision gap-threading at speed | high confidence AND high skill (steering, observation) -- bold but able |
 | **"Grizzly" Hannah Miller** | the rural county | rally weight transfer, gravel drifting | high observation and steering |
 
@@ -47,12 +47,12 @@ Each rival's territory needs content that does not exist:
 - **Head-to-head racing** against a named rival.
 - **A.U.T.O.'s punishment side** (STORY.md).
 
-## To flag back to Jay, NOT adopted
+## The name: BRAGA (the maintainer's choice, 13 October)
 
-- **"Victor Vance" is a Grand Theft Auto character name** and should be
-  changed before anything ships.
-- **The shared Vance surname** -- Victor and Brenda -- may or may not be
-  deliberate (a family? a coincidence?). Ask.
+The documents named them Victor and Brenda **Vance**. "Victor Vance" is a
+Grand Theft Auto character, so both changed before anything ships, and they
+stay one family: **Victor Braga** and **Brenda Braga**. Braga replaces the
+borrow everywhere.
 
 ## DECIDED, 13 October: RIVALS CHEAP NOW, HEAVY WORK UNDERNEATH
 
@@ -77,8 +77,7 @@ needs:
 
 Sequenced after courtesy gaps and the Web Worker.
 
-## DECIDED, 13 October: BOTH VANCES CHANGE, AND STAY RELATED
+## DECIDED, 13 October: THE FAMILY IS BRAGA
 
-The maintainer leaves the name open. Both change; they stay one family.
-Options go to him; the choice is his (Voss is the minimal change -- almost
-the same sound).
+Both changed and stay related. Offered Voss (the minimal change), Varga and
+Thorne; the maintainer chose **Braga**. See "The name", above.

@@ -41,6 +41,7 @@ import {
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt } from "./graph.js";
 import { stepLights, LOOP } from "./actuated.js";
 import { HONK_AGAIN } from "./horn.js";
+import { askOf, askedOf, offerOf, courtesyAccel } from "./courtesy.js";
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel, speedBy, fits } from "./corner.js";
@@ -1231,6 +1232,11 @@ export function step(world) {
     const ws = whatStops(pl, world);
     if ((pl.v ?? 0) < AT_REST && freeOf(ws)) { playerFreeSince = world.playerFreeSince ?? world.t; playerFree = world.t - playerFreeSince >= REGISTER_FLOOR + REGISTER_SPAN; }
   }
+  /* COURTESY (courtesy.js): what the player is signalling for, since when,
+     and the one driver it asks. Nothing when there is no player signalling. */
+  const signalOn = pl?.signal ? (world.signalOn?.dir === pl.signal ? world.signalOn : { dir: pl.signal, since: world.t }) : null;
+  const ask = pl && world.courtesy !== false ? askOf({ ...world, signalOn }, pl) : null;   // off only for the controlled comparison (verify-courtesy)
+  const asked = ask ? askedOf(world, ask, world.actors) : null;
   const isFreeStop = (c) => {
     if (!c.player) return !!c.freeStop;
     return playerFree;
@@ -1267,11 +1273,13 @@ export function step(world) {
          the traffic's. `dual` is the instructor's brake, which is not
          theirs at all. Read from `raw`, never written back. */
       const own = decide(me, view);
+      /* Letting the player in (courtesy.js): the one driver asked, if they offer. */
+      const offer = asked && raw.id === asked.id ? offerOf(world, raw, ask, pl, noticeAfter(raw, ask.since)) : null;
       const told = raw.ease ? Math.min(own, Math.max(decide({ ...me, v0: me.v0 * (1 - raw.ease) }, view), -(me.brake ?? 2.7))) : own;
       /* THE CORNER (corner.js): on a map, a turning path slows the car to
          the speed this driver takes it at, through the same following
          model. The real `view` still decides right of way below. */
-      const a = Math.min(told, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world));
+      const a = Math.min(told, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world), offer && !offer.done ? courtesyAccel(world, me, ask, pl) : Infinity);
       const v = Math.max(0, me.v + a * DT);
       const s = me.s + v * DT;
       const mine = pathOf(world, me);
@@ -1370,6 +1378,7 @@ export function step(world) {
       const openedAt = me.openedAt ?? (openFor >= REACTION_FLOOR ? world.t : null);
       const waited = sitting && openedAt != null ? world.t - openedAt : (me.waited || 0);
       const out = { ...at, a, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
+      if (offer || raw.courtesy) out.courtesy = offer;
       /* THE GREEN, NOTICED (the maintainer, 8 October: "some people get
          distracted or are on their phones and don't start right away").
          At the head of the queue under a red; when it goes green, a wake
@@ -1686,7 +1695,7 @@ export function step(world) {
   /* THE LIGHTS (actuated.js), decided from the traffic as it was at the
      start of this tick -- what the loops saw -- like every driver. */
   const lights = world.lights ? stepLights(signalPlans(world.course), world.lights, (k) => loopDets(world, k), t) : null;
-  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(lights ? { lights } : {}), playerFreeSince, ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walkedRest : {}), ...(strolled ? strolled : {}) };
+  let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(lights ? { lights } : {}), playerFreeSince, ...(signalOn || world.signalOn ? { signalOn } : {}), ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walkedRest : {}), ...(strolled ? strolled : {}) };
   if (tall) out.tall = tall; else if (out.tall) delete out.tall;
   /* A CAR THAT REACHES SOMEBODY ON FOOT has struck them (peds.js
      `strikes`): they fall where they are, the car stops as a wreck, and
