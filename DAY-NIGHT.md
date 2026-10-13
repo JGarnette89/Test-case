@@ -92,6 +92,11 @@ word from him.
 
 ## Cross-references
 
+- The story it is set in (Metro Grid, A.U.T.O., three acts): [STORY.md](STORY.md);
+  the rivals as axis profiles: [CHARACTERS.md](CHARACTERS.md); vehicle classes
+  and the garage, with corrections: [VEHICLES-GARAGE.md](VEHICLES-GARAGE.md)
+  (13 October).
+
 - Green wave and actuated lights -- the day's reward as flow: SIMULATOR.md
   ("GREEN WAVES", "GOOD DRIVING IS PAID IN FLOW", "ACTUATED SIGNALS").
 - Compliance -- the night's player as a chosen scofflaw: R2-DESIGN.md 17,

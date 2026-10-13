@@ -1,0 +1,55 @@
+# CHARACTERS — five people as axis profiles (recorded 13 October 2026, NOT BUILT)
+
+From the maintainer's CHARACTERS document (written with another model;
+recorded from its summary -- the original is not yet in the repo). Setting
+and campaign: [STORY.md](STORY.md).
+
+## They are axis profiles, which makes them cheap
+
+Every driver in the sim is five skills and compliance (`core/driver.js`:
+observation, confidence, steering, braking, knowledge; compliance beside
+them). A rival is a profile on those axes, and the sim already turns a
+profile into behaviour. **Who they are is cheap. Where they live is
+expensive** (below).
+
+| Character | Territory | Driving | Axis profile |
+|---|---|---|---|
+| **A.U.T.O.** | the whole grid | the system, not a driver | -- |
+| **Jay "The Clockmaker"** | -- | the mentor | (a mentor; not a rival profile) |
+| **Victor Vance** -- *name to change, see below* | industrial district and port | aggressive gap-forcing, bullying merges | high confidence, **no caution** (confidence's bold tail), **low compliance** |
+| **Brenda Vance** | suburbs | ultra-conservative: early braking, stopping ten feet short of lines, over-yielding | **confidence's TIMID tail**, maximum compliance |
+| **Mason "Swerve" Lin** | downtown and the nightclub district | precision gap-threading at speed | high confidence AND high skill (steering, observation) -- bold but able |
+| **"Grizzly" Hannah Miller** | the rural county | rally weight transfer, gravel drifting | high observation and steering |
+
+**BRENDA VALIDATES A DECISION THAT HAD ALMOST NO CONTENT.** The two-tailed
+confidence axis was argued for on the grounds that being bad at BOTH ends
+makes drivers feel like people (CLAUDE.md, "Confidence is two-tailed";
+`cautionOf`), and the timid tail has had barely any expression. Brenda is a
+driver who commits faults by being TOO careful -- and the sim already
+expresses her: `stopsShort` (stopping short of the line), undue delay
+(waiting past an opening), the timid caution margin, and the horn's
+timid-never-honks. She is the first character the timid tail was built for.
+
+Mason is the player's own fantasy -- bold AND good -- which is the
+combination the axes separate most cleanly (a bold driver with poor
+observation is the dangerous one; with good observation, the fast one).
+
+## Where they live is expensive -- unbuilt
+
+Each rival's territory needs content that does not exist:
+
+- **Gravel and wet surfaces** (Hannah), and **drifting / weight transfer**
+  -- the player's car model (`sim/player.js`) has grip, not a slip model.
+- **Livestock and farm equipment** (the rural county).
+- **School zones** (the suburbs).
+- **Police pursuit** (night; DAY-NIGHT.md parks police as actors, after
+  racing).
+- **Head-to-head racing** against a named rival.
+- **A.U.T.O.'s punishment side** (STORY.md).
+
+## To flag back to Jay, NOT adopted
+
+- **"Victor Vance" is a Grand Theft Auto character name** and should be
+  changed before anything ships.
+- **The shared Vance surname** -- Victor and Brenda -- may or may not be
+  deliberate (a family? a coincidence?). Ask.
