@@ -255,6 +255,26 @@ dependency argument, placed below where their blocker is built.
 
 ---
 
+## 4a. The content already written, against what can be built
+
+**Three external content files now exist, all written against real
+mechanics:** the dialogue set ([DIALOGUE.md](DIALOGUE.md), twenty-odd
+triggers, five speakers), sixteen day jobs ([JOBS.md](JOBS.md), about nine
+distinct activities), and five district briefs ([DISTRICTS.md](DISTRICTS.md),
+each with its own layout, hazards, naming and landmarks). **Together they
+describe considerably more content than this plan can build soon** -- a
+year of the order above would not exhaust them. They are a well to draw
+from, not a backlog to clear, and nothing in them moves the order: each
+piece is built when the foundation under it exists, and the parts outside
+the buildable palette (DISTRICTS.md: alleyways, multi-lane roundabouts,
+ditches, farm machinery, gantries) are cut or added deliberately.
+
+The district briefs carry one finding worth building toward: **each
+district has a different relationship to the green wave** -- highway speed
+discipline, industrial long phases, suburban stop signs with no waves,
+downtown reaction over rhythm, rural no signals and grip -- so the core
+mechanic means something different in each place (DISTRICTS.md).
+
 ## 5. At a glance: how far off
 
 | horizon | what |
