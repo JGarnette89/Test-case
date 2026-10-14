@@ -1,24 +1,22 @@
 /* =====================================================================
-   VERIFY CORE -- the live screens stand on src/core/, never on the engine
+   VERIFY CORE -- src/core/ stands on nothing, the old engine is gone,
+   and no name core defines is defined twice.
 
-   On 24 September the live screens (#/map, #/iso) imported 4,052 lines
-   of src/engine/ to use about fifteen things from six files: the seeded
-   random source, the turn arc, the driver model, the load curve and the
-   reaction and registration lags. Those moved to src/core/ and the
-   engine re-exports them, so the old engine can be cut without touching
-   anything the simulator runs on.
+   On 24 September the live screens imported 4,052 lines of src/engine/
+   to use about fifteen things from six files; those moved to src/core/.
+   On 14 October the engine itself was deleted (cut C, the maintainer:
+   "it's just bloat at this point"), its grading moved to src/sim/detect.js.
 
-   Three properties keep that true, and each is structural rather than a
-   value, so each is checked at source:
+   Three properties, each structural, each checked at source:
 
    1. src/core/ imports nothing outside src/core/. Otherwise it is the
       engine again under another name.
-   2. No screen the menu marks `live` reaches any file in src/engine/.
-      The list is read from App.jsx's MODES, not typed here, so a screen
-      that goes live is held to it the day it earns the flag.
-   3. Every name the engine re-exports from core is the SAME OBJECT. A
-      second definition of rng or REACTION_FLOOR in the engine is the
-      two-implementations bug CLAUDE.md's cold-start item 2 is about.
+   2. src/engine/ does not exist, and nothing in src/ or tools/ imports a
+      path under it -- a stale import fails only at run time, in whichever
+      check happened to load it.
+   3. A name core exports is declared nowhere else in src/: a second
+      REACTION_FLOOR is the two-implementations bug CLAUDE.md's cold-start
+      item 2 is about.
 
      node tools/verify-core.mjs
    ===================================================================== */
@@ -44,20 +42,15 @@ function resolve(from, spec) {
   for (const c of [f, f + ".js", f + ".jsx", f + ".mjs"]) if (fs.existsSync(c) && fs.statSync(c).isFile()) return path.normalize(c);
   return null;
 }
-/* The closure, with the first path found to each file, so a failure can
-   say HOW the engine got in rather than only that it did. */
-function closure(entry) {
-  const via = new Map([[entry, null]]), stack = [entry];
-  while (stack.length) {
-    const f = stack.pop();
-    for (const s of specsOf(f)) {
-      const t = resolve(f, s);
-      if (t && !via.has(t)) { via.set(t, f); stack.push(t); }
-    }
+const walk = (d, o = []) => {
+  if (!fs.existsSync(d)) return o;
+  for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+    const f = path.join(d, e.name);
+    if (e.isDirectory()) { if (!["scratch", "node_modules"].includes(e.name)) walk(f, o); }
+    else if (/\.(js|jsx|mjs)$/.test(e.name)) o.push(f);
   }
-  return via;
-}
-const chain = (via, f) => { const out = []; for (let x = f; x; x = via.get(x)) out.unshift(rel(x)); return out.join(" -> "); };
+  return o;
+};
 
 const CORE = path.join(ROOT, "src/core");
 const coreFiles = fs.readdirSync(CORE).filter((f) => f.endsWith(".js")).map((f) => path.join(CORE, f));
@@ -71,73 +64,37 @@ console.log("\n1. SRC/CORE IMPORTS NOTHING OUTSIDE ITSELF");
   }
   leaks.length === 0
     ? ok(`${coreFiles.length} files, every import inside src/core/`)
-    : leaks.forEach((l) => fail(`${l} -- core must stand on nothing, or the live screens inherit whatever it reaches`));
+    : leaks.forEach((l) => fail(`${l} -- core must stand on nothing`));
 }
 
-console.log("\n2. NO LIVE SCREEN REACHES SRC/ENGINE");
+console.log("\n2. THE OLD ENGINE IS GONE, AND NOTHING REACHES FOR IT");
 {
-  const app = fs.readFileSync(path.join(ROOT, "src/App.jsx"), "utf8");
-  const body = app.slice(app.indexOf("const MODES = ["));
-  /* An entry is the text from one `id:` to the next; the live ones carry
-     `live: true` and name their Component. */
-  const entries = body.split(/\n\s*\{\s*\n\s*id:/).slice(1);
-  const live = entries.filter((e) => /\blive:\s*true\b/.test(e.split(/\n\s*\},?\s*\n/)[0]))
-    .map((e) => e.match(/Component:\s*(\w+)/)?.[1]).filter(Boolean);
-  const files = live.map((name) => {
-    const m = app.match(new RegExp(`import\\s+${name}\\s+from\\s+["']([^"']+)["']`));
-    return m && resolve(path.join(ROOT, "src/App.jsx"), m[1]);
-  });
-  if (live.length === 0 || files.some((f) => !f)) {
-    fail(`could not read the live screens from App.jsx (found ${JSON.stringify(live)}), so nothing below means anything`);
-  } else {
-    ok(`the menu's live screens: ${live.join(", ")}`);
-    for (const entry of files) {
-      const via = closure(entry);
-      const engine = [...via.keys()].filter((f) => rel(f).startsWith("src/engine/"));
-      engine.length === 0
-        ? ok(`${rel(entry)} reaches ${via.size} files and none of them is in src/engine/`)
-        : engine.forEach((f) => fail(`${rel(entry)} reaches the old engine: ${chain(via, f)}`));
-    }
+  !fs.existsSync(path.join(ROOT, "src/engine")) ? ok("src/engine/ does not exist") : fail("src/engine/ is back");
+  const reach = [];
+  for (const f of [...walk(path.join(ROOT, "src")), ...walk(path.join(ROOT, "tools"))]) {
+    for (const sp of specsOf(f)) if (/(^|\/)engine\//.test(sp)) reach.push(`${rel(f)} imports "${sp}"`);
   }
+  reach.length === 0 ? ok("and nothing in src/ or tools/ imports anything under it") : reach.forEach((r) => fail(r));
 }
 
-console.log("\n3. THE ENGINE RE-EXPORTS CORE, IT DOES NOT REDEFINE IT");
+console.log("\n3. A NAME CORE DEFINES IS DEFINED NOWHERE ELSE");
 {
-  const core = {};
-  for (const f of coreFiles) Object.assign(core, Object.fromEntries(Object.entries(await import(pathToFileURL(f))).map(([k, v]) => [k, { v, from: rel(f) }])));
-  const ENGINE = path.join(ROOT, "src/engine");
-  let shared = 0;
-  const before = failures;
-  for (const name of fs.readdirSync(ENGINE).filter((f) => f.endsWith(".js"))) {
-    const mod = await import(pathToFileURL(path.join(ENGINE, name)));
-    for (const [k, v] of Object.entries(mod)) {
-      if (!(k in core)) continue;
-      shared++;
-      v === core[k].v
-        ? null
-        : fail(`engine/${name} exports its own ${k}, not the one in ${core[k].from} -- two implementations of one quantity`);
-    }
-  }
-  shared > 0 && failures === before
-    ? ok(`${shared} engine exports share a name with core, and every one is core's own object`)
-    : shared === 0 && fail("no engine module re-exports anything from core, which is not the shape this check was written for");
-
   /* IDENTITY CANNOT SEE A COPIED NUMBER: a second `REACTION_FLOOR = 0.35`
-     is === the first, and passed the test above when planted on purpose.
-     So also read the source, all of src/ and not only the engine -- the
-     MOST_BRAKE copies that started this were in src/sim/. A name core
-     exports may be imported anywhere and declared only in core. */
+     is === the first. So read the source, all of src/ -- the MOST_BRAKE
+     copies that started this were in src/sim/. A name core exports may be
+     imported anywhere and declared only in core. */
+  const core = {};
+  for (const f of coreFiles) Object.assign(core, Object.fromEntries(Object.keys(await import(pathToFileURL(f))).map((k) => [k, rel(f)])));
   const names = Object.keys(core);
   const decl = new RegExp(`(?:^|[\\s;{(])(?:const|let|var|function\\*?|class)\\s+(${names.join("|")})\\b`, "gm");
-  const walk = (d, o = []) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); e.isDirectory() ? walk(f, o) : /\.(js|jsx)$/.test(e.name) && o.push(f); } return o; };
   const copies = [];
   for (const f of walk(path.join(ROOT, "src")).filter((f) => !f.startsWith(CORE + path.sep))) {
-    for (const m of strip(fs.readFileSync(f, "utf8")).matchAll(decl)) copies.push(`${rel(f)} declares ${m[1]}, which ${core[m[1]].from} already defines`);
+    for (const m of strip(fs.readFileSync(f, "utf8")).matchAll(decl)) copies.push(`${rel(f)} declares ${m[1]}, which ${core[m[1]]} already defines`);
   }
   copies.length === 0
-    ? ok(`and none of core's ${names.length} names is declared anywhere else in src/, so a copied constant cannot hide behind an equal value`)
+    ? ok(`none of core's ${names.length} names is declared anywhere else in src/, so a copied constant cannot hide behind an equal value`)
     : copies.forEach((c) => fail(c));
 }
 
-console.log(failures === 0 ? "\nOK: the live screens stand on src/core/ alone.\n" : `\n${failures} FAILURE(S)\n`);
+console.log(failures === 0 ? "\nOK: core stands alone, the engine is gone, and no name is defined twice.\n" : `\n${failures} FAILURE(S)\n`);
 process.exit(failures === 0 ? 0 : 1);

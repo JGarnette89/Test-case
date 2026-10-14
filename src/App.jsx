@@ -25,7 +25,6 @@ import TestMaps from "./apps/TestMaps.jsx";
 import ErrorBoundary from "./apps/ErrorBoundary.jsx";
 import SimCrossing from "./apps/SimCrossing.jsx";
 import SimCandidates from "./apps/SimCandidates.jsx";
-import SimCourse from "./apps/SimCourse.jsx";
 import { isPersistent } from "./storage.js";
 
 /* Palette and font stacks are copied from the apps rather than imported,
@@ -175,16 +174,6 @@ const MODES = [
     Icon: Milestone,
     accent: C.blue,
     Component: SimCandidates,
-  },
-  {
-    id: "course",
-    name: "Stage 3 — a course, and a route",
-    kicker: "The rebuild — a candidate with somewhere to be",
-    blurb:
-      "Until now every car was created at the far end of an approach and destroyed at the far end of its exit, so the traffic at one intersection had nothing to do with the traffic at the next. Here the car that leaves one is the car that arrives at the other — same speed, same place in the queue, same person — and the candidate is driving a route through a grid of them, a sequence of intersections and what to do at each. Nothing about it is new geometry: the exit of one intersection and the approach of the next are the same piece of road, so placing them a reach apart makes the two paths meet exactly. When the instructions run out they carry straight on.",
-    Icon: Milestone,
-    accent: C.amber,
-    Component: SimCourse,
   },
 ];
 

@@ -52,9 +52,13 @@
 
    Pure. No React, no DOM, no colour.
    ===================================================================== */
-import { sectionSheet } from "../engine/detect.js";
-import { POS_VISIBLE } from "../engine/faults.js";
+import { sectionSheet } from "./detect.js";
 import { HARSH_AT, PX_PER_M } from "./traffic.js";
+/* THE VISIBILITY FLOOR: how far off its line a car has to be before anybody
+   watching could see it -- the old engine's own number (engine/faults.js
+   POS_VISIBLE, in pixels), moved here with the engine's deletion on 14
+   October. ONE place: a second 0.45 anywhere is the two-implementations bug. */
+export const POS_VISIBLE = 0.45 * PX_PER_M;
 import { AT_REST, AT_LINE, waitAt, pathOf, layoutOf, strayOf, wideAt } from "./crossing.js";
 import { KEEP_RIGHT_FAULT } from "./lanechange.js";
 

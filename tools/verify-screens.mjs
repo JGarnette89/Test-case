@@ -141,7 +141,6 @@ try {
     ["#/sim", "stage 0 of the rebuild"],
     ["#/crossing", "stage 1 of the rebuild"],
     ["#/candidates", "stage 2 of the rebuild"],
-    ["#/course", "stage 3 of the rebuild"],
     ["#/merge-rush", "the unwired prototype"],
     ["#/nonsense", "an unknown route"],
   ];

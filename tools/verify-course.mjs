@@ -22,11 +22,10 @@ import {
   roadsOf, alongDir, dirOut, radiusFor, OPPOSITE,
 } from "../src/sim/course.js";
 import { exitFor, tightestOf, intersectionFor } from "../src/sim/intersection.js";
-import { POS_VISIBLE } from "../src/engine/faults.js";
 import {
   withCandidates, keepDriving, toTell, tell, stillTellable, PROFILES,
 } from "../src/sim/candidate.js";
-import { noticing, mark, sheetFor, sectionDone, SECTION } from "../src/sim/marking.js";
+import { noticing, mark, sheetFor, sectionDone, SECTION, POS_VISIBLE } from "../src/sim/marking.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
 import fs from "node:fs";
 import {
@@ -686,9 +685,9 @@ console.log("\n9. DEFERRED MARKING, AND THE SECTION SHEET");
   /* The wide line is judged against the old engine's visibility floor,
      IMPORTED. A second 0.45 written here would be the two-implementations
      bug; and the floor must not be lowered to make a fault appear. */
-  /POS_VISIBLE \/ PX_PER_M/.test(src) && !/0\.45/.test(src.replace(/\/\/.*$/gm, ""))
-    ? ok("lane-keeping is judged against POS_VISIBLE imported from faults.js, not a second copy of the number")
-    : fail("marking.js restates the visibility floor instead of importing it, or lowered it");
+  /POS_VISIBLE \/ PX_PER_M/.test(src) && (src.replace(/\/\/.*$/gm, "").match(/0\.45/g) ?? []).length === 1 && /POS_VISIBLE = 0\.45 \* PX_PER_M/.test(src)
+    ? ok("lane-keeping is judged against POS_VISIBLE, defined once in marking.js at the old engine's 0.45 m, not a second copy of the number")
+    : fail("marking.js restates the visibility floor, or lowered it");
 
   /* --- and it replays --- */
   const twice = () => JSON.stringify(drive("scofflaw", perfect, 200).sheets.map((s) => [s.result.score, s.result.hits.length, s.directionsOnYou]));

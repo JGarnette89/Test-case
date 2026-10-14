@@ -65,6 +65,19 @@ still exists. Much of this file below describes the deleted screens and
 the roguelike; read it as history. The live screens stand on
 `src/core/` and never on the engine (Architecture, and `verify-core`).
 
+**CUT C, 14 OCTOBER: THE OLD ENGINE IS GONE.** The maintainer: "delete it,
+it's just bloat at this point." Deleted: `src/engine/` (22 files, 8,470
+lines), the `#/course` screen and `frame.js` (the only things still
+reaching into it), the 22 checks that guarded only the engine, the
+engine's golden, the scoring re-derivation (it re-derived the engine's
+curve), and the probes that imported it. Kept: the exam mode's grading,
+moved to `src/sim/detect.js`, and the visibility floor, moved to
+`src/sim/marking.js`. Everything in this file about `src/engine/`,
+the driver game, the examiner game's old screens, the roguelike and its
+checks is HISTORY -- the reasoning still holds where it is about the law
+or the axes, and the code is in git. `verify-core` holds that nothing
+reaches for it.
+
 **[HANDOVER.md](HANDOVER.md) is the residue of the session that built
 signals, corner slowing, lane changing and keep-right (24 September),
 written as it was retired.** Not a summary -- these documents are the
@@ -181,12 +194,7 @@ Eight things to know before your first change:
      -- `src/core/`, `crossing.js` or `traffic.js` together with anything
      outside `src/sim/` -- before a milestone ships, and when something
      unexplained happens. Not per iteration, ever.
-   - **`tools/legacy/` holds the 22 checks that guard only the old engine**
-     (`src/engine/`), which nothing that ships reaches (`verify-core`
-     holds that). They run when their closure is touched -- a change to
-     `src/engine/` -- and with `--legacy`; never in the default run
-     otherwise. Deleting the engine with them is cut C, the maintainer's
-     call.
+   - **The old engine's 22 checks are gone with it** (cut C, 14 October).
    - **A slow check is cut to the sample it needs, measured, never
      guessed.** Its floors are compared with what it actually counts; the
      sample comes down while every count stays clear of its floor, a
@@ -1603,27 +1611,6 @@ makes a 3D view a second renderer rather than a rewrite — that is the agreed
 direction, 2D now, 3D later, so do not put anything visual into the engine.
 
 ```
-src/engine/index.js      the conflict rules, driver traits, and what is where at time t
-src/engine/road.js       an intersection described: legs, lanes, control per leg
-src/engine/paths.js      path shapes — line, curve, polyline — and no road at all
-src/engine/sight.js      what the driver can see, the examiner's cone, and what creeping costs
-src/engine/faults.js     what the candidate did wrong, derived by controlled comparison
-src/engine/candidate.js  one driver across a whole drive, and where each habit can show
-src/engine/ratings.js    a driver as four axes, and the errors that follow from them
-src/engine/clearance.js  how much of somebody else's space the candidate took, in seconds
-src/engine/awareness.js  what the candidate registered, and whether they gathered it at all
-src/engine/reaction.js   the traffic giving way to a driver who took its space
-src/engine/directions.js the instruction you give, and what stacking them costs
-src/engine/belief.js     where you think the traffic is once you stop looking
-src/engine/detect.js     grading the examiner on what they caught and invented
-src/engine/actions.js    manoeuvres: ordered actions, fault tiers, the mark sheet
-src/engine/score.js      grading a press against a derived window
-src/engine/route.js      several intersections in one drive, and continuity
-src/engine/world.js      intersections placed in one coordinate space, and the roads between
-src/engine/tiles.js      road character, the tile library, route planning and pacing
-src/engine/compose.js    a brief in, a scene that measurably matches it out
-src/engine/scenarios.js  the set situations, as data
-src/engine/routes.js     drives, as data
 src/core/rng.js          one seeded random source (mulberry32), for everything
 src/core/turn.js         a turn is an arc tangent to both lanes, radius derived by the caller
 src/core/driver.js       a driver: five skills and compliance, knowledge checked against each sign's DIFFICULTY once per driver per kind, a deficit, how a character is drawn, caution, and load
@@ -1692,7 +1679,6 @@ src/apps/ExamRide.jsx    STAGE 3 (#/exam): ride with a candidate on the test map
 src/apps/Wheel.jsx       the wheel screen (#/wheel): the controls on stage 0's roads
 src/apps/IsoRoad.jsx     stage 0 (#/iso): the isometric world and the budget sweep
 src/theme.js             palette and type — the engine must never import this
-src/frame.js             the camera: frameFor and cameraFor — no React
 src/storage.js           adapter chain: artifact host, localStorage, memory
 src/apps/MergeRush.jsx   a minigame prototype, deliberately not wired in
 ```
@@ -2010,27 +1996,6 @@ for the bosses; a new hand-authored situation must not skip it.
 generator must be re-verified numerically before it is considered done.**
 
 ```
-node tools/legacy/verify-windows.mjs      every window; each trait removed on its own
-node tools/legacy/verify-route.mjs        rotation, continuity, run mechanics
-node tools/legacy/verify-roundabout.mjs   direction, geometry, the exit tell
-node tools/legacy/verify-wontstop.mjs     a driver who fails to yield: tell, safety, the extended window
-node tools/legacy/verify-task.mjs         manoeuvres: order, deadlines, fault tiers
-node tools/legacy/verify-sight.mjs        occlusion, and the creep trade
-node tools/legacy/verify-compose.mjs      briefs produce scenes that match them
-node tools/legacy/verify-camera.mjs       the camera opens gradually, never shrinks, keeps a revealed actor in frame
-node tools/legacy/verify-events.mjs       the crossing button and the emergency vehicle: rule, readable, worth reading, generated
-node tools/legacy/verify-turns.mjs        turns are steered, not cut: radius, lane discipline, and honest fault tells
-node tools/legacy/verify-faults.mjs       examiner: faults derive from a control, and the cone decides what was markable
-node tools/legacy/verify-directions.mjs   the instruction window, and what stacking costs the candidate
-node tools/legacy/verify-belief.mjs       what you still think is true once you look away
-node tools/legacy/verify-detect.mjs       grading the examiner: caught, missed, invented, and when
-node tools/legacy/verify-outcome.mjs      how a drive ends: contact, and who taking the wheel lands on
-node tools/legacy/verify-tiles.mjs        a declared runway is a promise, held to measured geometry
-node tools/legacy/verify-world.mjs        the continuous drive: culling, routes, pacing, hazards, and what draws them
-node tools/legacy/verify-candidate.mjs    one driver across a drive, and habits that repeat enough to be named
-node tools/legacy/verify-clearance.mjs    encroachment in seconds, and bands derived from the engine's own claim
-node tools/legacy/verify-awareness.mjs    what the candidate registered, and observation kept off outcome
-node tools/legacy/verify-reaction.mjs     the world gives way, and never decides whether a fault happened
 node tools/verify-screens.mjs      every reachable screen actually mounts and draws
 node tools/verify-sim.mjs          stage 0 of the rebuild: nobody drives through anybody
 node tools/verify-crossing.mjs     stage 1: paths through an intersection, who gives way, and what waiting too long costs
@@ -2047,7 +2012,6 @@ node tools/verify-signal.mjs       traffic signals: phases derived and never con
 node tools/verify-lanes.mjs        lane changes are temperament: confidence decides whether and how tight, observation whether it was seen, steering how cleanly; drivers get over for their turn or miss it; knowledge keeps them right, the exceptions restated from the ruling, and failing is markable; honest, touch-free, and a few percent of the sim
 node tools/verify-connect.mjs      permitted movements are the network's: the general rule by default, overridable per lane, and a lane with nowhere to land refused at authoring time, named by lane and intersection
 node tools/verify-bays.mjs          turn bays: a lane lies on its neighbour until it opens and a lane out once it has, is for its turn only, and the traffic uses it for that turn and nothing else
-node tools/legacy/verify-equivalence.mjs  nothing moved that was not meant to
 node tools/verify-core.mjs         the live screens stand on src/core/ alone: core imports nothing outside itself, no live screen reaches the engine, no core name is declared twice
 node tools/verify-editor.mjs       the editor: the draft IS the map format, a hand-written map replayed through it round-trips exactly, snap preview finds an end and only an end, nothing drawn however badly can throw validation, Drive it is the real pipeline run headlessly, an overpass is authorable and distinguishable from a refused tight crossing, the map library never collides on id or leaves a stale entry openable, pinch and zoom keep the world under the fingers, an arterial drawn through the approach controls (signal, bays, arrow) comes out with bay legs, protected lefts, and traffic that runs clean, and a T, a made crossroads and a hump-made overpass all come out as the loader should see them, validation runs the graph without its conflict table (the editor validates on every tap) and still agrees with the full graph on every node and leg, and a road tapped as right angles comes out faster once smoothed, with its ends unmoved, and a map with no intersection at all still has somewhere to start driving, and the lane arrows show what the graph applies and write the format's own per-end override, and a building faces its street, keeps off the road (the loader drops one that does not), and still drives, and undo takes one intention per step and loses nothing going back and forth, and an intersection's controls are set in one tap -- the minor road stopped and the major left free, signals on every approach, all-way stop as signs, "minor" refused in words where every road is one kind -- and a bus stop tapped beside a road serves the direction of the side tapped, becomes a bay without a warning, and the drawn map drives with buses clean
 node tools/verify-exam.mjs         stage 3, the exam mode: silence is straight on, a direction in time is taken, a late one is not by the corner's own arithmetic, past the line it is for the next, easing slows them by their own braking and the bottom of the slider is the instructor's brake, and with no hand on them nothing changes
@@ -2074,13 +2038,13 @@ node tools/verify-lanecost.mjs     what lane changing costs the sim (split from 
 node tools/verify-busbays.mjs      bus bays (split from verify-buses): out of the lane, passed, and let out by those who know to give way and could stop, over a run at the rule's own difficulty and one with it made hard
 node tools/verify-passing.mjs      going round a bus at a curb stop (split from verify-buses): on a broken line or none, never a solid one, the gap the passer's to misjudge, less time stood behind the bus
 node tools/verify-waves.mjs        green waves: a car holding the posted speed from a green meets the next green on every timed link of every map; a corridor runs only where the road has priority (never through an uncontrolled crossroads); one cycle per system and no green shortened; a map with fewer than two linked signals keeps its plans; and in the sim the platoon goes through far more often with the wave than without, nothing crashing
-python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
 **Run them through `node tools/check.mjs`** (item 8 of the cold-start
 section): the checks a change can break, derived from the import graph,
-each with a timeout; `--all` for the whole suite, `--legacy` for the 22
-old-engine checks in `tools/legacy/`. Fourteen
+each with a timeout; `--all` for the whole suite. (The old engine and its checks were deleted
+on 14 October; several of the fourteen below described them and are
+history.) Fourteen
 things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central

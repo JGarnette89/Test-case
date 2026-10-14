@@ -98,7 +98,13 @@ async function ownShare(target) {
     const noKeep = [];
     for (const seed of [3, 5]) noKeep.push(tick(target, true, seed, false));
     const keepCost = mean(on) / mean(noKeep) - 1;
-    check(keepCost < 0.1, `and keeping right is ${(keepCost * 100).toFixed(0)}% of it (${mean(noKeep).toFixed(2)} -> ${mean(on).toFixed(2)} ms)`);
+    /* REPORTED, NOT ASSERTED (14 October). Keeping right's code is inside
+       lanechange.js, so the profiled share above already bounds it; this
+       is the switch's ratio, which changes the traffic as well as removing
+       code -- the instrument this file already refused for lane changing
+       -- and under the suite's load it read -3% at 120 cars and 14% at 300
+       in one run. */
+    console.log(`  .. and switching keeping right off moves the step by ${(keepCost * 100).toFixed(0)}% (${mean(noKeep).toFixed(2)} -> ${mean(on).toFixed(2)} ms) -- the traffic changes with it; its code is inside the profiled share above`);
   }
 }
 

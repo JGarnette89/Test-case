@@ -287,10 +287,9 @@ dependency argument, placed below where their blocker is built.
   indefinitely; no network code until asked.
 - **Livestock and farm equipment** -- last of the decoration, cut if time
   runs short.
-- **The old engine (`src/engine/`)** -- its checks are HALF of every
-  pre-commit suite (13 of 27 minutes, measured 24 Sep). Once the exam mode
-  runs on the simulator (item 21), retire it rather than carry it; until
-  then, keep it, since STORY's Act I is the exam.
+- **The old engine (`src/engine/`)** -- DELETED 14 October, with its
+  checks (the maintainer: "it's just bloat at this point"). The exam
+  mode's grading moved to `src/sim/detect.js`.
 
 ---
 

@@ -105,6 +105,14 @@ and the earlier failures the documents record.
   piece of this work, and `--direct` makes it affordable (each check
   against its own module, minutes each).
 
+## Cut C, the same day
+
+The maintainer: "delete it, it's just bloat at this point." The old
+engine, its 22 checks, `#/course`, `frame.js`, the engine's golden, the
+scoring re-derivation and the probes are deleted (57 files); the exam
+mode's grading lives on in `src/sim/detect.js`. The suite is now the 43
+checks above and nothing guards code that does not ship.
+
 ## The rule that comes out of it
 
 CLAUDE.md, cold-start item 8. In short: iterate with `node tools/check.mjs

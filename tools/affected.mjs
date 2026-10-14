@@ -14,14 +14,12 @@
      node tools/affected.mjs --base main~3   changes since a commit
      node tools/affected.mjs src/sim/x.js    these files
      node tools/affected.mjs --why X         why check X is in the set
-   Prints one check name per line (verify-x), legacy ones marked; exit 0.
-   `--json` prints { changed, checks, legacy }.
+   Prints one check name per line (verify-x); exit 0.
+   `--json` prints { changed, checks }.
 
-   tools/legacy/ holds the checks that guard only the old engine
-   (src/engine/), which nothing that ships reaches (verify-core): they are
-   in the set only when their closure is touched -- in practice, a change
-   to src/engine/ or src/core/ -- and never in the default pre-commit run
-   otherwise.
+   (A tools/legacy/ directory, if one ever exists again, is read too and
+   its checks marked -- it held the old engine's checks until the engine
+   was deleted on 14 October.)
    ===================================================================== */
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { execSync } from "node:child_process";

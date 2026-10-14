@@ -17,7 +17,6 @@
  * determinism, and agreeing with the old engine about how big a metre
  * is while the two exist side by side.
  */
-import { M as engineM } from "../src/engine/index.js";
 import {
   seedTraffic, step, run, overlapping, perceive, wantedGap, roadFor,
   cautionOf as simCaution,
@@ -133,9 +132,10 @@ console.log("\n3. IT AGREES WITH THE OLD ENGINE ABOUT HOW BIG A METRE IS");
      about the scale is the recurring bug of this project (DECISIONS.md
      section 10) and it would show up as a renderer drawing one world at
      the wrong size. */
-  M(1) === engineM(1)
-    ? ok(`${PX_PER_M} px per metre, the same figure the old engine uses`)
-    : fail(`sim says ${M(1)} px per metre and the engine says ${engineM(1)}`);
+  /* The old engine was deleted on 14 October; the figure it agreed on stays the project's (CLAUDE.md, true-to-life scale). */
+  M(1) === 20
+    ? ok(`${PX_PER_M} px per metre, the project's true-to-life scale`)
+    : fail(`sim says ${M(1)} px per metre against the project's 20`);
   CAR.length === 4.5 && CAR.width === 1.8 && ROAD.laneWidth === 3.6
     ? ok("and about how big a car and a lane are (4.5 x 1.8m, 3.6m lane)")
     : fail("the sim's car or lane dimensions have drifted from the project's true-to-life scale");

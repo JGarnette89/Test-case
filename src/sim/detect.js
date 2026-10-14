@@ -38,9 +38,32 @@
 
    Pure. No React, no DOM, no colour.
    ===================================================================== */
-import { REACTION_FLOOR } from "./score.js";
-import { attribute } from "./directions.js";
-import { MIN_DURATION } from "./faults.js";
+import { REACTION_FLOOR } from "../core/perception.js";
+
+/* MOVED FROM src/engine/detect.js on 14 October, when the old engine was
+   deleted (cut C, the maintainer: "it's just bloat at this point"). The
+   grading is the exam mode's and outlives the engine; the three things it
+   borrowed from it are written here, unchanged. */
+
+/* The shortest fault that can be called at all (engine/faults.js
+   MIN_DURATION): a fault shorter than this was gone before anybody could
+   register it. */
+export const MIN_DURATION = 0.2;
+
+/* What a candidate does with no instruction: carries on ahead (CLAUDE.md,
+   "silence means straight on"). */
+const DEFAULT_INTENT = "straight";
+
+/* Whose fault a missed direction is (engine/directions.js `attribute`). */
+export function attribute(givenAt, window) {
+  if (givenAt == null) return { verdict: "never-given", blame: "examiner", followed: DEFAULT_INTENT };
+  if (givenAt > window.deadline) return { verdict: "late", blame: "examiner", followed: DEFAULT_INTENT };
+  /* Not a fault. This is the trade: you called it before it was strictly
+     unambiguous, which is allowed and sometimes right, and the cost lands
+     on the candidate as load rather than on you as a mark. */
+  if (givenAt < window.opensAt) return { verdict: "stacked", blame: null, followed: window.intent };
+  return { verdict: "in-window", blame: null, followed: window.intent };
+}
 
 /* How long the screen has to have SHOWN a fault before failing to call it
    counts against you.

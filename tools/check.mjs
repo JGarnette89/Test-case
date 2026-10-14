@@ -5,8 +5,7 @@
 
      node tools/check.mjs                 the checks the working tree's changes can break (tools/affected.mjs)
      node tools/check.mjs --direct        while iterating: only the checks that import a changed file themselves, and screens and core
-     node tools/check.mjs --all           every check but the legacy ones, and the scoring re-derivation
-     node tools/check.mjs --legacy        the old engine's checks (tools/legacy/)
+     node tools/check.mjs --all           every check
      node tools/check.mjs verify-x ...    these
      --jobs N        how many at once (default: half the cores)
      --timeout S     the same timeout for every check, overriding the recorded ones
@@ -47,16 +46,13 @@ const named = args.filter((a, i) => !a.startsWith("--") && !["--jobs", "--timeou
 const times = existsSync(TIMES) ? JSON.parse(readFileSync(TIMES, "utf8")) : {};
 const every = allChecks();
 const byName = new Map(every.map((c) => [c.name, c]));
-const SCORING = { name: "verify-scoring", cmd: ["python", [join(ROOT, "tools", "verify-scoring.py")]] };
 
 let list;
-if (named.length) list = named.map((n) => (n === "verify-scoring" ? SCORING : byName.get(n) ?? (() => { console.error(`no such check: ${n}`); process.exit(2); })()));
-else if (args.includes("--all")) list = [...every.filter((c) => !c.legacy), SCORING];
-else if (args.includes("--legacy")) list = every.filter((c) => c.legacy);
+if (named.length) list = named.map((n) => byName.get(n) ?? (() => { console.error(`no such check: ${n}`); process.exit(2); })());
+else if (args.includes("--all")) list = every;
 else {
   const changed = changedFiles();
-  list = affected(changed, { direct: args.includes("--direct") }).filter((c) => !c.legacy || changed.some((f) => f.startsWith("src/engine/") || f.startsWith("tools/legacy/")));
-  if (changed.some((f) => /verify-scoring\.py$|core\/perception/.test(f))) list.push(SCORING);
+  list = affected(changed, { direct: args.includes("--direct") });
   console.log(`${changed.length} changed file(s) -> ${list.length} check(s) can see them`);
 }
 const cmdOf = (c) => c.cmd ?? [process.execPath, [c.file]];
