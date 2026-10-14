@@ -81,7 +81,7 @@ export default function Bench() {
       const gap = last ? tasks.current.during(last, now) : {};
       const want = r.ramp.frame(now, fr?.drew, {
         gc: gc.current.tick(), dom: (before.domTtl ?? 0) > 0, ticks: fr?.ticks ?? 0, resized: before.resized, tickMs: before.tickMs,
-        tasks: gap.tasks, longest: gap.longest, hidden: gap.hidden, input: gap.input, frame: gap.frame, split: fr?.split, back: fr?.back,
+        tasks: gap.tasks, longest: gap.longest, hidden: gap.hidden, input: gap.input, frame: gap.frame, split: fr?.split, back: fr?.back, loading: fr?.loading,
         injected: before.injected, issued: before.issued,
       });
       if (want.load) {

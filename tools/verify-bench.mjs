@@ -177,8 +177,9 @@ console.log("\nthe motion drawn, through a worker: no frame draws the world at a
      which costs nothing and so no frame time shows. The pacing of 13-14
      October (DT off at send) made one every few frames; sim/pace.js makes
      none. */
-  let api = null;
+  let api = null, inits = 0;
   const makeRemote = (recipe, onWorld) => {
+    inits++;
     let state = null, seq = 0, waiting = 0;
     const out = [];
     const post = (m) => { const r = handle(state, { ...m, seq: ++seq }); state = r.state; if (r.reply) out.push(r.reply); return seq; };
@@ -187,19 +188,55 @@ console.log("\nthe motion drawn, through a worker: no frame draws the world at a
       get busy() { return waiting !== 0; },
       step(me) { waiting = post({ type: "step", me }); },
       set() {}, honk() {}, stop() {},
-      deliver() { for (const x of out.splice(0)) { if (x.seq === waiting) waiting = 0; onWorld(structuredClone(x.dyn), x.hit, x.seq); } },
+      rewind(off) { waiting = post({ type: "rewind", off }); },
+      deliver() { for (const x of out.splice(0)) { if (x.seq === waiting) waiting = 0; onWorld(structuredClone(x.dyn), x.hit, x.seq, !!x.fresh); } },
     };
     return api;
   };
   const st = benchState(benchSteps()[1], makeRemote);
-  let back = 0, frames = 0, ticks = 0;
+  /* THE PAGE HOLDS A SHELL, the worker builds the world: building it on
+     the page as well froze the phone for 6-21 s a step (14 October). */
+  const shellActors = st.sc.world.actors.length, shellWalkers = (st.sc.world.walkers ?? []).length;
+  const firstLoading = benchFrame(st, 16.7, ctx, size).loading;
+  ok(shellActors === 0 && shellWalkers === 0 && firstLoading, `with a worker the page builds no traffic of its own (${shellActors} cars, ${shellWalkers} walking) and the bench says it is waiting for the worker's world`);
+  let back = 0, frames = 0, ticks = 0, asBuilt = null;
+  const keyOf = (w) => JSON.stringify(w.actors.map((a) => [a.id, a.k, a.route, a.s, a.v]));
   for (let f = 0; f < 600; f++) {
     api.deliver();
+    if (f === 0) asBuilt = keyOf(st.sc.world);
     const fr = benchFrame(st, 16.7 + ((f * 7) % 5) - 2, ctx, size);
     if (f > 10) { frames++; if (fr.back) back++; ticks += fr.ticks; }
   }
   ok(ticks > 150, `the stand-in worker stepped the bench's world ${ticks} times in ${frames} frames`);
   ok(back === 0, `and no frame drew it at an earlier moment than the one before (${back} of ${frames})`);
+  const built = inits;
+  /* A DRAW-ONLY STEP REWINDS, never rebuilds: the same world, sight switched. */
+  const moved = keyOf(st.sc.world) !== asBuilt;
+  loadStep(st, { ...benchSteps()[1], off: { sidewalks: true } });
+  api.deliver();
+  benchFrame(st, 16.7, ctx, size);
+  ok(inits === built && st.remoteReady && moved && keyOf(st.sc.world) === asBuilt, `a step that changes only what is drawn goes back to the worker's world exactly as built -- no new worker, no new world (${inits - built} built)`);
+  /* THE CLOCK WAITS FOR THE WORLD: a worker that takes 15 s to build must
+     not have its first 15 s measured -- the 14 October report's 300 and 400
+     rows were mostly a world standing still. */
+  {
+    let slowApi = null;
+    const slowRemote = (recipe, onWorld) => { const a = makeRemote(recipe, onWorld); slowApi = a; return a; };
+    const steps = [{ ...benchSteps()[1], settle: 0.5, hold: 1 }];
+    const ramp = budgetRamp({ steps, settle: 0.5, hold: 1, stopOnFail: false });
+    let sst = null, now = 0, out = null, deliveredAt = null, doneAt = null;
+    for (let f = 0; f < 3000 && !out; f++) {
+      now += 16.7;
+      if (f === 900) { slowApi.deliver(); deliveredAt = now; }   // the world arrives 15 s in
+      else if (f > 900) slowApi.deliver();
+      const fr = sst ? benchFrame(sst, 16.7, ctx, size) : null;
+      const want = ramp.frame(now, fr?.drew, { split: fr?.split, loading: fr?.loading, back: fr?.back });
+      if (want.load) sst = benchState(want.load, slowRemote);
+      if (want.done) { out = want; doneAt = now; }
+    }
+    const measuredFrom = doneAt - (0.5 + 1) * 1000;
+    ok(out && deliveredAt != null && measuredFrom >= deliveredAt - 50, `the ramp's clock waits for the worker's world: delivered at ${deliveredAt == null ? "(not yet -- measured before it arrived)" : (deliveredAt / 1000).toFixed(1) + " s"}, the step's settle and hold from ${(measuredFrom / 1000).toFixed(1)} s`);
+  }
   ok(/back = frames that drew the world at an earlier moment/.test(benchReport({ device: {}, canvas: "1x1", ramp: { results: [], cap: null, steadyCap: null }, split: null, loaded: benchMap() })), "the report carries the back column and says what it means");
 }
 

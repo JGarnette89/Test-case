@@ -15,7 +15,7 @@
    Pure. No React, no DOM.
    ===================================================================== */
 import { groundFor } from "../map/load.js";
-import { step, poseOf } from "../sim/crossing.js";
+import { step, poseOf, seedGraph } from "../sim/crossing.js";
 import { merge } from "../sim/remote.js";
 import { newPace, paceFrame, paceReply, carryOf } from "../sim/pace.js";
 import { junctionsOf } from "../sim/graph.js";
@@ -51,12 +51,24 @@ function staticsOf(loaded) {
 
 /* A world and the scene that draws it, for a fleet of cars and a set
    of things switched off. */
-export function benchScene(fleet, off = {}) {
+export function benchScene(fleet, off = {}, { shell = false } = {}) {
   const loaded = benchMap({ parking: !off.parked });
-  /* Sight is switched by withOff on the base world, so the base has it on. */
-  const world = benchWorld(fleet, { ...off, sight: false });
+  /* Sight is switched by withOff on the base world, so the base has it on.
+     With the sim in a worker the worker builds the world, and the page
+     holds only a SHELL -- the course, and nobody on it -- until the
+     worker's world arrives: building it here too froze the page for the
+     whole warm-up, 6-21 s a step on the phone (14 October). */
+  const world = shell ? shellOf(loaded) : benchWorld(fleet, { ...off, sight: false });
   const st = staticsOf(loaded);
   return withOff({ loaded, world, base: world, key: worldKey(fleet, off), ...st, junctions: junctionsOf(world.course), full: st }, off);
+}
+
+/* An empty world on the map: its course built once per map, the warm-up
+   over an empty road -- the page's copy, for the worker's to be laid over. */
+const shells = new WeakMap();
+function shellOf(loaded) {
+  if (!shells.has(loaded)) shells.set(loaded, seedGraph(1, 50, loaded, { every: 2.0, target: 0, posted: true, walkers: false, trucks: 0, buses: 0, pedEvery: Infinity, gapRate: 0 }));
+  return shells.get(loaded);
 }
 
 /* The switches that need no new world: they RESTART the world the scene
@@ -304,18 +316,20 @@ export function benchState(step = { fleet: 50, off: {} }, makeRemote = null) {
    starts it afresh, as the page's own world is restarted. What the main
    thread still spends on the sim is laying the answer over its copy --
    timed, and reported as the step. */
-function restartRemote(st, step) {
+function restartRemote(st, step, same) {
   if (!st.makeRemote) return;
-  st.remote?.stop();
   st.remoteReady = false; st.mergeMs = 0; st.merged = 0; st.pace = newPace();
-  const own = st.sc;
-  st.remote = st.makeRemote({ bench: { fleet: step.fleet, off: step.off ?? {} } }, (dyn, hit, seq) => {
-    if (st.sc?.base !== own.base) return;
+  /* THE SAME WORLD, SEEN DIFFERENTLY: the worker goes back to the world it
+     built, sight switched -- never a rebuild, which on the phone is seconds
+     with nothing moving. */
+  if (same && st.remote) { st.remote.rewind(step.off ?? {}); return; }
+  st.remote?.stop();
+  st.remote = st.makeRemote({ bench: { fleet: step.fleet, off: step.off ?? {} } }, (dyn, hit, seq, fresh) => {
+    if (!st.sc) return;
     const t0 = clock();
     st.sc.world = merge(st.sc.world, dyn);
-    st.mergeMs += clock() - t0; st.merged++;
-    if (seq === 1) st.remoteReady = true;
-    else paceReply(st.pace);
+    if (fresh) st.remoteReady = true;
+    else { st.mergeMs += clock() - t0; st.merged++; paceReply(st.pace); }
   });
 }
 
@@ -323,19 +337,20 @@ function restartRemote(st, step) {
    changed; sight and what is drawn are switched on the world in hand. */
 export function loadStep(st, step) {
   const off = step.off ?? {};
-  if (st.sc && st.sc.key === worldKey(step.fleet, off)) {
+  const same = !!(st.sc && st.sc.key === worldKey(step.fleet, off));
+  if (same) {
     st.sc = withOff(st.sc, off);
     st.buildS = 0;
     st.cam = {}; st.owed = 0; st.frames = 0; st.lastDrawnT = null;   // the same moment, seen the same way
   } else {
     const t0 = clock();
-    st.sc = benchScene(step.fleet, off);
+    st.sc = benchScene(step.fleet, off, { shell: !!st.makeRemote });
     st.buildS = Math.round((clock() - t0) / 100) / 10;
     st.cam = {}; st.owed = 0; st.frames = 0; st.lastDrawnT = null;
   }
   st.view = step.view ?? "car";
   st.counts = benchCounts(st.sc);
-  restartRemote(st, step);
+  restartRemote(st, step, same);
   return st;
 }
 
@@ -346,7 +361,14 @@ const clock = () => (typeof performance !== "undefined" ? performance.now() : Da
 export function benchFrame(st, dtMs, ctx, size) {
   const t0 = clock();
   let r, stepMs = null;
-  if (st.remote) {
+  /* WAITING FOR THE WORKER'S WORLD: nothing is stepped and the ramp's
+     clock is held (perf.js `loading`), so no step is measured over a
+     world standing still -- which the 14 October report was, at 300 and
+     400 cars, for most of its hold. */
+  const loading = !!st.remote && !st.remoteReady;
+  if (loading) {
+    r = { ticks: 0 }; stepMs = 0;
+  } else if (st.remote) {
     /* One tick in flight, owed time held to two ticks, the clock down when
        the answer arrives -- as #/map does it (sim/pace.js). */
     if (paceFrame(st.pace, Math.min(0.25, dtMs / 1000), st.remoteReady && !st.remote.busy)) st.remote.step(null);
@@ -375,5 +397,10 @@ export function benchFrame(st, dtMs, ctx, size) {
   /* The counts walk every parked car: twice a second, not every frame. */
   if (++st.frames % 30 === 0) st.counts = benchCounts(sc);
   /* A frame that ran no tick spent no time on the sim: zero, so it is not counted as a step. */
-  return { back, drew: { ...drew, extra: { ...st.counts, buildS: st.buildS } }, split: { step: r.ticks ? stepMs ?? t1 - t0 : 0, poses: t2 - t1, draw: t3 - t2 }, ticks: r.ticks };
+  if (loading && ctx.fillText) {
+    ctx.save(); ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, size.h / 2 - 22, size.w, 44);
+    ctx.fillStyle = "#fff"; ctx.font = "15px system-ui, sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("building the world in the worker -- not measured", size.w / 2, size.h / 2 + 5); ctx.restore();
+  }
+  return { loading, back, drew: { ...drew, extra: { ...st.counts, buildS: st.buildS } }, split: { step: r.ticks ? stepMs ?? t1 - t0 : 0, poses: t2 - t1, draw: t3 - t2 }, ticks: r.ticks };
 }

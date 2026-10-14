@@ -52,13 +52,21 @@ export function merge(w, dyn) {
      step  {me}                -- the player written in (when driving), one tick, their contact
      set   {key, value}        -- a setting on the world (the car count)
      honk  {id, to}            -- a test horn: that car honks at `to` now
+     rewind {off}              -- back to the world as built, sight switched by `off` -- the bench's
+                                  draw-only steps, which must not rebuild (a bench world takes 6-21 s on the phone)
+   A reply that is a whole fresh world (init, rewind) carries `fresh: true`.
    The reply's `seq` is the message's, so the screen knows which step it answers. */
 export function handle(state, msg) {
   if (msg.type === "init") {
     const world = msg.bench ? benchWorld(msg.bench.fleet, msg.bench.off) : worldFor(...msg.args).world;
-    return { state: { world, sent: world }, reply: { type: "world", seq: msg.seq, dyn: changed(world, null), hit: false } };
+    return { state: { world, sent: world, base: world }, reply: { type: "world", seq: msg.seq, dyn: changed(world, null), hit: false, fresh: true } };
   }
   if (!state) return { state, reply: null };
+  if (msg.type === "rewind") {
+    const { seeThrough, ...rest } = state.base;
+    const world = msg.off?.sight ? { ...rest, seeThrough: true } : rest;
+    return { state: { ...state, world, sent: world }, reply: { type: "world", seq: msg.seq, dyn: changed(world, null), hit: false, fresh: true } };
+  }
   let w = state.world;
   if (msg.type === "set") { w = { ...w, [msg.key]: msg.value }; return { state: { ...state, world: w }, reply: null }; }
   if (msg.type === "honk") {
@@ -70,7 +78,7 @@ export function handle(state, msg) {
     w = step(w);
     let hit = false;
     if (msg.me) ({ world: w, hit } = playerContact(w, msg.me));
-    return { state: { world: w, sent: w }, reply: { type: "world", seq: msg.seq, dyn: changed(w, state.sent), hit } };
+    return { state: { ...state, world: w, sent: w }, reply: { type: "world", seq: msg.seq, dyn: changed(w, state.sent), hit } };
   }
   return { state, reply: null };
 }
@@ -88,7 +96,7 @@ export function remoteSim(recipe, onWorld, onError = () => {}) {
     const r = e.data;
     if (r.type === "error") { worker.terminate(); onError(r.message); return; }
     if (r.seq === waiting) waiting = 0;
-    onWorld(r.dyn, r.hit, r.seq);
+    onWorld(r.dyn, r.hit, r.seq, !!r.fresh);
   };
   worker.onerror = (e) => { worker.terminate(); onError(String(e.message ?? e)); };
   const post = (m) => { worker.postMessage({ ...m, seq: ++seq }); return seq; };
@@ -99,6 +107,7 @@ export function remoteSim(recipe, onWorld, onError = () => {}) {
     step(me) { waiting = post({ type: "step", me }); },
     set(key, value) { post({ type: "set", key, value }); },
     honk(id, to) { post({ type: "honk", id, to }); },
+    rewind(off) { waiting = post({ type: "rewind", off }); },
     stop() { worker.terminate(); },
   };
 }

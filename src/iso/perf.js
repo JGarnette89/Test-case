@@ -366,6 +366,8 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       last = now;
       if (drew) counts = { cars: drew.cars, items: drew.items, ...(drew.extra ?? {}) };
       if (!started) { started = true; return { load: steps[0] }; }
+      /* The world is not there yet (the bench's worker building it): the step's clock does not start. */
+      if (flags.loading) { at = null; return {}; }
       if (at == null) { at = now; settled = false; meter.reset(); log = []; loadLog = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); return {}; }
       const held = (now - at) / 1000;
       if (flags.hidden) { if (restarts < HIDDEN_RESTARTS) { restarts++; at = null; return {}; } invalid = true; }

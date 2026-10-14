@@ -4655,6 +4655,29 @@ anything still shakes, run `#/bench` with "Sim in a worker" and send the
 report: `back` says whether it is pacing, the step and draw columns
 whether it is cost.
 
+**THE BENCH WAS BUILDING EVERY WORLD TWICE, AND MEASURING SOME OF THEM
+STANDING STILL** (the maintainer, 14 October: "long pauses and then the
+car would jump ahead"). A bench world is warmed -- run until its roads
+fill -- before it is shown: 3.7 s at 100 cars and 9.4 s at 400 on the
+desk (`tools/measure/bench-build.mjs`), the phone's `build-s` 6-21 s.
+With the sim in a worker the PAGE built it (frozen meanwhile), then the
+worker built the same world again from scratch while the page showed it
+standing still, and a step that changes only what is drawn restarted the
+worker and rebuilt it a third way. And the ramp's load window started
+when the PAGE finished, so where the worker's build outlasted it the
+step was timed over a world that was not moving: the report's 300 and
+400 rows (step cost 0/0) cannot be read as the sim holding at 400 cars.
+
+Now, with a worker: the page holds only a shell (the course, nobody on
+it); the worker builds the world and the screen says it is building it;
+the ramp's clock does not start until the world arrives (`perf.js`,
+`loading`); a draw-only step rewinds the worker to the world as built
+(`remote.js` `rewind`). `verify-bench` holds all three against the
+real protocol through a stand-in worker -- including a world that takes
+15 s to arrive -- and each fails with its fix taken out. The in-page
+bench (no worker) is unchanged: it builds as before, inside the load
+window.
+
 ### THE GREEN, NOTICED, AND THE HORN (the maintainer, 8 October) -- BUILT
 
 Verbatim: *"another idea for driver behavior, people responding
