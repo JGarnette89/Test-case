@@ -1678,6 +1678,7 @@ src/iso/perf.js          the performance instrument: meter, probes, the budget r
 src/iso/road.js          stage 0's hand-built roads (a map now reproduces them)
 src/iso/world.js         stage 0's traffic on those roads
 src/settings.js          the player's settings, through the storage adapter
+src/wake.js              keep the screen on while testing: the wake lock where it exists (the https deploy), a playing video where it does not (plain http), the menu saying which
 src/copy.js              copy to the clipboard over plain HTTP: clipboard, execCommand, then select
 src/apps/MapRoad.jsx     STAGE 1 (#/map): drive the test map in traffic, or watch it -- and, given a `mapData` prop, whatever map the editor built
 src/apps/Editor.jsx      STAGE 2 (#/editor): draw roads and zones, set kinds/lanes/speed/elevation/control, validate, save, Drive it

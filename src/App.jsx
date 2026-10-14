@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Menu, X, Milestone, ChevronRight } from "lucide-react";
+import { Menu, X, Milestone, ChevronRight, Sun } from "lucide-react";
+import { keepAwake } from "./wake.js";
+import { loadSettings, setSetting } from "./settings.js";
 
 /* The driver game and the examiner game screens were removed on 24
    September (cut B, the maintainer's call); they are in git history. The
@@ -214,6 +216,14 @@ export default function App() {
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   useEffect(closeMenu, [id, closeMenu]);
 
+  /* KEEP THE SCREEN AWAKE (src/wake.js): a setting, so it is back on after a
+     reload, and the words for what is holding it shown in the menu. */
+  const [awake, setAwake] = useState({ on: false, note: "" });
+  useEffect(() => { loadSettings().then((s) => { if (s.keepAwake) keepAwake(true).then(setAwake); }); }, []);
+  const toggleAwake = useCallback(() => {
+    keepAwake(!awake.on).then((r) => { setAwake(r); setSetting("keepAwake", r.on); });
+  }, [awake.on]);
+
   // Bound only while the sheet is open, so the modes' own Escape handling
   // is left alone the rest of the time.
   useEffect(() => {
@@ -254,7 +264,7 @@ export default function App() {
         </>
       )}
 
-      {menuOpen && <Sheet current={mode} onClose={closeMenu} />}
+      {menuOpen && <Sheet current={mode} onClose={closeMenu} awake={awake} onAwake={toggleAwake} />}
     </>
   );
 }
@@ -319,7 +329,7 @@ function Home() {
 /* --- Switcher sheet -------------------------------------------------
    z-index sits above the modes' own modals (they top out at 40) so the way
    out is reachable from anywhere, including a dialog.                   */
-function Sheet({ current, onClose }) {
+function Sheet({ current, onClose, awake, onAwake }) {
   return (
     <div style={st.sheetWrap} onClick={onClose} role="dialog" aria-modal="true">
       <div style={st.sheet} onClick={(e) => e.stopPropagation()}>
@@ -360,6 +370,16 @@ function Sheet({ current, onClose }) {
             </React.Fragment>
           );
         })}
+
+        <button className="shell-card" style={{ ...st.row, borderColor: awake?.on ? C.amber : "rgba(255,255,255,0.10)" }} onClick={onAwake} aria-pressed={!!awake?.on}>
+          <div style={{ ...st.rowIcon, color: awake?.on ? C.amber : C.dim }}>
+            <Sun size={19} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+            <div style={st.rowName}>Keep screen awake: {awake?.on ? "on" : "off"}</div>
+            <div style={st.rowKicker}>{awake?.note || "for testing -- the screen will not sleep while this page is open"}</div>
+          </div>
+        </button>
 
         <button className="shell-card" style={st.row} onClick={() => go(null)}>
           <div style={{ ...st.rowIcon, color: C.dim }}>
