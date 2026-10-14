@@ -299,15 +299,20 @@ console.log("\n6. FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (the mai
 
   /* (b) With people who take risks (the defaults), everybody struck is one
      of them, and every strike is recorded. */
+  /* ONE SEED (14 October, the cost of a check): three of the city at 300
+     cars were 276 s of this check and struck nobody -- the claim held
+     vacuously on all three, as it does on one. Who heedless people are
+     struck by is (c) and (d) below, built to make it happen; this is the
+     exposure check that nothing careful is struck and nothing is silent. */
   let byManner = {}, silent = 0;
-  for (const seed of [3, 5, 7]) {
+  for (const seed of [3]) {
     let w = seedGraph(seed, 50, loadMap(TEST_MAPS.find((t) => t.id === "city").build()), { target: 300, posted: true });
     const manner = new Map();
     for (let i = 0; i < 300 / DT; i++) { w = step(w); for (const q of w.peds ?? []) manner.set(q.id, q.manner); silent += touching(w).length; }
     for (const c of (w.crashes ?? []).filter((c) => String(c.a).startsWith("ped-"))) byManner[manner.get(c.a)] = (byManner[manner.get(c.a)] ?? 0) + 1;
   }
   const struck = Object.values(byManner).reduce((q, x) => q + x, 0);
-  check(!byManner.careful && silent === 0, `fifteen minutes of the city with people who take risks: ${struck} struck (${JSON.stringify(byManner)}) -- none of them careful, every one a recorded crash`);
+  check(!byManner.careful && silent === 0, `five minutes of the city with people who take risks: ${struck} struck (${JSON.stringify(byManner)}) -- none of them careful, every one a recorded crash`);
 
   /* (c) THE PLAYER. A street lined with parked cars and people darting out
      between them -- every mid-block walker heedless, ten times the usual

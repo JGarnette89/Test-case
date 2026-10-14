@@ -28,7 +28,8 @@ export const gapBeside = (w, pl) => {
    ahead) at its speed -- the moment a gap is actually needed. Without
    courtesy the two hold station (the player holds that speed); signal on after 1 s; until a gap, the
    line, or 30 s. Returns { t, car } or null where no car fits. */
-export function trial(base, i, on, log) {
+/* `only`: keep the level cars this says yes to -- the trial asked of a driver of a given temperament (their drawn ratings, nothing authored). */
+export function trial(base, i, on, log, pick = null, only = null) {
   let w = { ...base, courtesy: on };
   const at0 = playerOn(w.course, `loop-${(i % 4) * 2}`, "end");
   const layout = w.course.at[at0.k].layout;
@@ -36,9 +37,11 @@ export function trial(base, i, on, log) {
   const curb = layout.legAt(base0, 2), mid = layout.legAt(base0, 1);
   const route = Object.keys(layout.paths).find((r) => layout.paths[r].from === curb);
   const cp = layout.paths[route];
-  const level = w.actors.filter((a) => (a.k ?? 0) === at0.k && layout.paths[a.route]?.from === mid && a.s > 60 && a.s < layout.paths[a.route].stopAt - 200 && !a.lc && a.kind !== "truck" && a.kind !== "bus").sort((a, b) => a.s - b.s);
+  const level = w.actors.filter((a) => (a.k ?? 0) === at0.k && layout.paths[a.route]?.from === mid && a.s > 60 && a.s < layout.paths[a.route].stopAt - 200 && !a.lc && a.kind !== "truck" && a.kind !== "bus").sort((a, b) => a.s - b.s).filter((a) => !only || only(a));
   if (!level.length) return null;
-  const c = level[Math.floor(i / 4) % level.length];
+  /* `pick`: which car level in the lane beside, nearest the start first -- several trials from one warmed moment. */
+  if (pick != null && pick >= level.length) return null;
+  const c = level[pick ?? Math.floor(i / 4) % level.length];
   const sc = (a) => a.s * (cp.stopAt / layout.paths[a.route].stopAt);
   const v = Math.min(c.v, c.v0 ?? c.v);
   let pl = { ...at0, route, s: sc(c) + 0.5, v, v0: v, caution: 1, headway: 1.6 };

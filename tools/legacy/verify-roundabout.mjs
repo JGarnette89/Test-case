@@ -1,6 +1,6 @@
 /* =====================================================================
    ROUNDABOUT VERIFICATION
-   Run:  node tools/verify-roundabout.mjs
+   Run:  node tools/legacy/verify-roundabout.mjs
 
    A roundabout that looks right and circulates the wrong way is entirely
    plausible on screen, so the direction of travel gets checked as a number
@@ -13,9 +13,9 @@
 import {
   simulate, poseAt, conflicts, spanOf, raPath, movementOf,
   CX, CY, RA_LANE, RA_OUTER, RA_ISLAND, RA_SPEED, STEP, M,
-} from "../src/engine/index.js";
-import { timeToCover } from "../src/engine/paths.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
+} from "../../src/engine/index.js";
+import { timeToCover } from "../../src/engine/paths.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
 
 /* When a car reaches a given distance along its own path. Was
    `distance / RA_SPEED`, which only held while everything moved at a

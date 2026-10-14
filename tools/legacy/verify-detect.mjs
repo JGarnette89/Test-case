@@ -14,19 +14,19 @@
 import {
   scoreDetection, promptness, callWindow, summarise,
   SHOWN_ENOUGH, CALL_GRACE, FALSE_COST, LATE_CREDIT,
-} from "../src/engine/detect.js";
-import { faultsIn, MIN_DURATION } from "../src/engine/faults.js";
-import { REACTION_FLOOR } from "../src/engine/score.js";
-import { sectionSheet } from "../src/engine/detect.js";
+} from "../../src/engine/detect.js";
+import { faultsIn, MIN_DURATION } from "../../src/engine/faults.js";
+import { REACTION_FLOOR } from "../../src/engine/score.js";
+import { sectionSheet } from "../../src/engine/detect.js";
 import {
   instructionWindow, runInFor, FOLLOW_LAG, pressureOf, loadCandidate, severityUnder,
-} from "../src/engine/directions.js";
-import { composeCandidate } from "../src/engine/candidate.js";
-import { composeDriver } from "../src/engine/ratings.js";
-import { planDrive, composeForTile, CHARACTER } from "../src/engine/tiles.js";
-import { simulate, M } from "../src/engine/index.js";
-import { approachDecel } from "../src/engine/paths.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
+} from "../../src/engine/directions.js";
+import { composeCandidate } from "../../src/engine/candidate.js";
+import { composeDriver } from "../../src/engine/ratings.js";
+import { planDrive, composeForTile, CHARACTER } from "../../src/engine/tiles.js";
+import { simulate, M } from "../../src/engine/index.js";
+import { approachDecel } from "../../src/engine/paths.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
 import { readFileSync } from "node:fs";
 
 let problems = 0;
@@ -140,7 +140,7 @@ console.log("\n2b. A BRIEF LOOK IS STILL A LOOK");
 
   /* And nothing anywhere may ask where within the screen the player was
      looking. If that argument comes back, so does the bug. */
-  const src = readFileSync(new URL("../src/engine/detect.js", import.meta.url), "utf8");
+  const src = readFileSync(new URL("../../src/engine/detect.js", import.meta.url), "utf8");
   // Prose may discuss the cone as history; CODE may not read gaze.
   const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
   /gaze|cone|lastSeenAt|LOOK_MEMORY/i.test(code)

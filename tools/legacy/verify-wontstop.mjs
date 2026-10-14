@@ -1,6 +1,6 @@
 /* =====================================================================
    WONTSTOP VERIFICATION
-   Run:  node tools/verify-wontstop.mjs
+   Run:  node tools/legacy/verify-wontstop.mjs
 
    "wontstop" is the first scenario where the road is legally the ego's
    the moment it arrives, and going anyway still meets a car. The other
@@ -17,10 +17,10 @@
    the extended window it grants is actually safe across the whole
    stretch the scorer will call good, at every depth of PULL UP too.
    ===================================================================== */
-import { simulate, poseAt, conflicts, spanOf, safeAtFor, STEP } from "../src/engine/index.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { GRACE } from "../src/engine/score.js";
-import { PULL_STEP } from "../src/engine/sight.js";
+import { simulate, poseAt, conflicts, spanOf, safeAtFor, STEP } from "../../src/engine/index.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { GRACE } from "../../src/engine/score.js";
+import { PULL_STEP } from "../../src/engine/sight.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 let problems = 0;

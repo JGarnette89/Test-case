@@ -1,7 +1,7 @@
 /* =====================================================================
    BEHAVIOURAL EQUIVALENCE
-   Run:  node tools/verify-equivalence.mjs
-   Bake: node tools/verify-equivalence.mjs --write
+   Run:  node tools/legacy/verify-equivalence.mjs
+   Bake: node tools/legacy/verify-equivalence.mjs --write
 
    The other harnesses check that the engine is right. This one checks
    that it has not CHANGED, which is a different job and the one that
@@ -25,14 +25,14 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { simulate, poseAt, spanOf } from "../src/engine/index.js";
-import { whatEgoSees, sightBlockersOf, noseOut, creepPose } from "../src/engine/sight.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { ROUTES } from "../src/engine/routes.js";
-import { planRoute } from "../src/engine/route.js";
+import { simulate, poseAt, spanOf } from "../../src/engine/index.js";
+import { whatEgoSees, sightBlockersOf, noseOut, creepPose } from "../../src/engine/sight.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { ROUTES } from "../../src/engine/routes.js";
+import { planRoute } from "../../src/engine/route.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const GOLDEN = path.join(HERE, "engine-golden.json");
+const GOLDEN = path.join(HERE, "..", "engine-golden.json");
 const WRITE = process.argv.includes("--write");
 
 const SAMPLE = 0.05;              // matches the engine's own resolution
@@ -178,6 +178,6 @@ if (problems === 0) {
   console.log("OK: the engine behaves exactly as the baseline.");
 } else {
   console.log(`${problems} DIFFERENCE(S) from the baseline.`);
-  console.log("If they were intended, rebake: node tools/verify-equivalence.mjs --write");
+  console.log("If they were intended, rebake: node tools/legacy/verify-equivalence.mjs --write");
 }
 process.exit(problems === 0 ? 0 : 1);

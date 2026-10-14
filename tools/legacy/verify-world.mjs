@@ -10,24 +10,24 @@
  * track the first is a proxy, and proxies drift silently. So this file
  * checks the derivation as well as the result.
  */
-import { simulate, poseAt, M, W } from "../src/engine/index.js";
+import { simulate, poseAt, M, W } from "../../src/engine/index.js";
 import {
   whatEgoSees, visibility, eyePoint, reachOf, withinReach, sightBlockersOf,
-} from "../src/engine/sight.js";
-import { driveThroughTiles, runwayFor, candidateAt, placeScenario } from "../src/engine/world.js";
-import { composeCandidate } from "../src/engine/candidate.js";
-import { composeDriver } from "../src/engine/ratings.js";
-import { chaseOn } from "../src/frame.js";
+} from "../../src/engine/sight.js";
+import { driveThroughTiles, runwayFor, candidateAt, placeScenario } from "../../src/engine/world.js";
+import { composeCandidate } from "../../src/engine/candidate.js";
+import { composeDriver } from "../../src/engine/ratings.js";
+import { chaseOn } from "../../src/frame.js";
 import {
   TILES, specFor, curbsideFor, roadsideLifeFor, CHARACTER, drivewaysFor,
   curbLayout, emergingAt, entryForLink, DRIVEWAY_CLEAR,
   planDrive, driveFromPlan, runwayNeededFor, composeForTile,
   markableTimeline, pacingOf, DEAD_AIR_CEILING, segmentHazards,
-} from "../src/engine/tiles.js";
-import { composeScenario } from "../src/engine/compose.js";
-import { faultsIn } from "../src/engine/faults.js";
-import { frameAround } from "../src/frame.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
+} from "../../src/engine/tiles.js";
+import { composeScenario } from "../../src/engine/compose.js";
+import { faultsIn } from "../../src/engine/faults.js";
+import { frameAround } from "../../src/frame.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
 import { readFileSync } from "node:fs";
 
 const m = (px) => Math.round((px / 20) * 10) / 10;

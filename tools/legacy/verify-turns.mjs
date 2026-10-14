@@ -18,10 +18,10 @@
  *   4. Bad driving still exists, but only where a scenario asked for it —
  *      and a trait whose tell claims a fault has to actually produce one.
  */
-import { movementOf, applyTraits, TRAITS, simulate, poseAt, STEP, M, CX, CY, LANE } from "../src/engine/index.js";
-import { pointOn, brakingApproach, approachDecel } from "../src/engine/paths.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { boxHalf, crossSpec } from "../src/engine/road.js";
+import { movementOf, applyTraits, TRAITS, simulate, poseAt, STEP, M, CX, CY, LANE } from "../../src/engine/index.js";
+import { pointOn, brakingApproach, approachDecel } from "../../src/engine/paths.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { boxHalf, crossSpec } from "../../src/engine/road.js";
 
 const m = (px) => Math.round((px / 20) * 100) / 100;
 const OFF = LANE / 2;

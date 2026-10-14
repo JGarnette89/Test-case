@@ -47,12 +47,27 @@ console.log("\n2-4. A PLAYER SIGNALLING LEFT AT 90 ON THE HIGHWAY");
 {
   const on = [], off = [], cars = [];
   let offers = 0, early = 0, overBrake = 0, hardest = 0, many = 0, over = 0, reoffer = 0, held = 0;
-  const T = 48, bases = [], offered = [];
-  for (let i = 0; i < T; i++) {
-    /* Each seed warmed once and carried on 37 s between its trials. */
-    let base = bases[i % 6] ?? seedGraph(1 + (i % 6), 50, loop, { target: 200, posted: true });
-    while (base.t < 90 + 37 * Math.floor(i / 6)) base = step(base);
-    bases[i % 6] = base;
+  /* EVERY STRETCH OF EVERY WARMED MOMENT (14 October, the cost of a check).
+     The warm-up was nearly all of this check's time -- 48 moments, one trial
+     each, 687 s -- and a moment holds a level car on each of the loop's four
+     long stretches. Moments from 120 s (the loop fills only by its ramps:
+     at 60 s there was hardly a car level with anybody), 30 s apart, every
+     stretch, up to two cars on each, until 24 trials. */
+  /* ASKED OF EACH TEMPERAMENT (14 October). Which drivers happen to sit
+     level in the middle lane is luck -- 6 of 19 offered on one set of
+     moments, 2 of 24 on another -- and the middle lane leans bold. So the
+     trial is asked of a level car the axes call courteous (section 1), and
+     of one they do not: the first must give a gap that the same moment
+     without courtesy does not, the second must never offer. Chosen by their
+     drawn ratings; what they then do is the sim's. */
+  const MOMENTS = 24, PICKS = 2, WANT = { yes: 8, no: 6 }, bases = [], offered = [], overPairs = [], kinds = [];
+  const got = { yes: 0, no: 0 };
+  for (let m = 0; m < MOMENTS && (got.yes < WANT.yes || got.no < WANT.no); m++) {
+    let base = bases[m % 6] ?? seedGraph(1 + (m % 6), 50, loop, { target: 200, posted: true });
+    while (base.t < 120 + 30 * Math.floor(m / 6)) base = step(base);
+    bases[m % 6] = base;
+    for (let i = 0; i < 4; i++) for (const kind of ["yes", "no"]) for (let pick = 0; pick < PICKS && got[kind] < WANT[kind]; pick++) {
+    const only = (a) => courteous(a) === (kind === "yes");
     const ever = new Map();
     const r = trial(base, i, true, (was, w, pl, sigAt) => {
       const active = w.actors.filter((c) => c.courtesy && !c.courtesy.done);
@@ -69,16 +84,21 @@ console.log("\n2-4. A PLAYER SIGNALLING LEFT AT 90 ON THE HIGHWAY");
         if (!c.courtesy.done) { hardest = Math.max(hardest, -(c.a ?? 0)); if (-(c.a ?? 0) > (c.brake ?? 2.7) + 1e-6) overBrake++; }
         if (!c.courtesy.done && (c.courtesy.open != null ? w.t - c.courtesy.open > COURTESY_FOR + DT : w.t - c.courtesy.since > 2 * COURTESY_FOR + DT)) held++;
       }
-      if (Math.round(w.t / DT) % 20 === 0) over += overlapping(w).length;
-    });
+      if (Math.round(w.t / DT) % 20 === 0) for (const o of overlapping(w)) { over++; overPairs.push(`${o.a}/${o.b}`); }
+    }, pick, only);
     if (r == null) continue;
-    on.push(r.t); off.push(trial(base, i, false).t); cars.push(r.car); offered.push(ever.size > 0);
+    got[kind]++;
+    on.push(r.t); off.push(trial(base, i, false, null, pick, only).t); cars.push(r.car); offered.push(ever.size > 0); kinds.push(kind);
+    }
   }
+  if (overPairs.length) console.log("   overlapping:", overPairs.join(", "));
   /* Level with somebody, a gap comes when THEY give one: the trials where the car beside offered, with and without courtesy. */
-  const idx = offered.map((o, j) => (o ? j : -1)).filter((j) => j >= 0);
-  const soonOn = idx.filter((j) => on[j] <= 6).length, soonOff = idx.filter((j) => off[j] <= 6).length;
-  check(idx.length >= 3, `the car level with the player offered in ${idx.length} of ${on.length} trials -- the rest were not courteous, which is the axes`);
-  check(soonOn >= 0.75 * idx.length && soonOff <= soonOn / 2, `where it offered, a gap a competent driver takes within 6 s of signalling in ${soonOn} of ${idx.length} (${idx.map((j) => on[j].toFixed(1)).join(", ")} s); the same moments without courtesy, ${soonOff}`);
+  const yes = kinds.map((k, j) => (k === "yes" ? j : -1)).filter((j) => j >= 0), no = kinds.map((k, j) => (k === "no" ? j : -1)).filter((j) => j >= 0);
+  const offeredYes = yes.filter((j) => offered[j]);
+  const soonOn = offeredYes.filter((j) => on[j] <= 6).length, soonOff = offeredYes.filter((j) => off[j] <= 6).length;
+  check(yes.length >= 6 && offeredYes.length >= 0.6 * yes.length, `level with a courteous driver (${yes.length} trials), they offered ${offeredYes.length} times -- the rest had not noticed the signal in time, or could not drop back comfortably`);
+  check(soonOn >= 0.75 * offeredYes.length && soonOff <= soonOn / 2, `and where they did, a gap a competent driver takes came within 6 s of signalling in ${soonOn} of ${offeredYes.length} (${offeredYes.map((j) => on[j].toFixed(1)).join(", ")} s); the same moments without courtesy, ${soonOff}`);
+  check(no.length >= 4 && no.every((j) => !offered[j]), `level with a driver the axes do not call courteous (${no.length} trials): no offer, ever (${no.filter((j) => offered[j]).length})`);
   check(overBrake === 0, `no offerer braked past their own comfortable rate (hardest ${hardest.toFixed(2)} m/s^2)`);
   check(many === 0 && over === 0, `one driver asked at a time (${many} ticks with two), nobody overlapping (${over})`);
   check(held === 0 && reoffer === 0, `an offer not taken is withdrawn at ${COURTESY_FOR} s (${held} held past it) and not made again (${reoffer})`);

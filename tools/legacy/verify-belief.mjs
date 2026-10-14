@@ -17,10 +17,10 @@
 import {
   observe, predictAt, confidenceAt, divergenceAt, deviatesEver,
   BELIEF_HOLD, BELIEF_FADE, BELIEF_SAME,
-} from "../src/engine/belief.js";
-import { simulate, poseAt, M } from "../src/engine/index.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { crossSpec } from "../src/engine/road.js";
+} from "../../src/engine/belief.js";
+import { simulate, poseAt, M } from "../../src/engine/index.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { crossSpec } from "../../src/engine/road.js";
 
 const m = (px) => Math.round((px / 20) * 100) / 100;
 let problems = 0;

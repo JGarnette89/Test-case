@@ -23,18 +23,18 @@
 import {
   composeCandidate, chancesAt, chancesIn, showingsIn, habitReport, masks,
   shapeOf, traitsForScene, SHOWINGS_FOR_A_HABIT, CLEAN_SHARE, TRAITS_PER_CANDIDATE,
-} from "../src/engine/candidate.js";
+} from "../../src/engine/candidate.js";
 import {
   AXES, CONFIDENT_ENOUGH, composeDriver, axisEvidence, vocabularyByAxis, ERROR_SCALE,
   WEAK_AXES, deficitOf, dominantAxis, strengthsOf, lackingIn, COMPETENT_AT, LACKING_AT,
-} from "../src/engine/ratings.js";
+} from "../../src/engine/ratings.js";
 import {
   planDrive, driveFromPlan, composeForTile, segmentHazards, CHARACTER,
-} from "../src/engine/tiles.js";
-import { faultsIn } from "../src/engine/faults.js";
-import { simulate, TRAIT_KEYS } from "../src/engine/index.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { crossSpec } from "../src/engine/road.js";
+} from "../../src/engine/tiles.js";
+import { faultsIn } from "../../src/engine/faults.js";
+import { simulate, TRAIT_KEYS } from "../../src/engine/index.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { crossSpec } from "../../src/engine/road.js";
 
 let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);

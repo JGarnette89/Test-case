@@ -4401,6 +4401,18 @@ inside its own following gap -- may let them in.
   gap a competent driver takes came **2.7-4.2 s after the signal went on
   in 5 of 6**, against 1 of those 6 without courtesy. A signal is a
   request, never a guarantee -- 13 of 19 drivers level with you would not.
+- **AND A BUG THE CHECK MISSED, FOUND BY MAKING IT CHEAPER (14 October).**
+  Cutting `verify-courtesy` to the sample it needs meant asking the trial
+  of each temperament directly -- a level car the axes call courteous, and
+  one they do not -- instead of whoever happened to sit level. Courteous
+  drivers offered only 2 times in 8: the "can they drop back comfortably"
+  test refused any car closing at all unless 1.5 m back, so a car LEVEL
+  with the player -- the case the courtesy is for -- was refused for a
+  fraction of a metre a second faster. Now only a car coming up from
+  behind faster than it can shed is refused (the easing is capped at its
+  own braking anyway): 7 of 8 offer, all 7 give a gap within 6 s (2.0-4.6
+  s), none without courtesy, and no driver the axes call uncourteous ever
+  offers. The "6 of 19" above was the bug's number, read as temperament.
 - **THE MARK, ON THE CAR, IN THE HORN'S FAMILY** (ruling item 4; the
   readability lesson that a real-world cue is invisible at these zooms):
   over the offering car a GREEN badge with a black rim and two bold white

@@ -12,20 +12,20 @@
  * matters most is an ASYMMETRY rather than a number: a candidate is never
  * penalised for the examiner's nerves.
  */
-import { simulate, poseAt, conflicts, spanOf, STEP, M } from "../src/engine/index.js";
+import { simulate, poseAt, conflicts, spanOf, STEP, M } from "../../src/engine/index.js";
 import {
   OUTCOME, INTERVENTION, ON, contactIn, judgeIntervention, wasPreventable,
   outcomeOf, describeOutcome,
   contactsAcross, driveOutcome, describeDrive, judgeGrab, graspHorizon,
-} from "../src/engine/outcome.js";
-import { faultsIn } from "../src/engine/faults.js";
-import { planDrive, composeForTile, CHARACTER } from "../src/engine/tiles.js";
-import { composeCandidate } from "../src/engine/candidate.js";
-import { composeDriver } from "../src/engine/ratings.js";
-import { sectionSheet } from "../src/engine/detect.js";
-import { instructionWindow, runInFor } from "../src/engine/directions.js";
-import { approachDecel } from "../src/engine/paths.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
+} from "../../src/engine/outcome.js";
+import { faultsIn } from "../../src/engine/faults.js";
+import { planDrive, composeForTile, CHARACTER } from "../../src/engine/tiles.js";
+import { composeCandidate } from "../../src/engine/candidate.js";
+import { composeDriver } from "../../src/engine/ratings.js";
+import { sectionSheet } from "../../src/engine/detect.js";
+import { instructionWindow, runInFor } from "../../src/engine/directions.js";
+import { approachDecel } from "../../src/engine/paths.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
 
 let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);

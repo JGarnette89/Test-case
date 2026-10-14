@@ -1,6 +1,6 @@
 /* =====================================================================
    CAMERA VERIFICATION
-   Run:  node tools/verify-camera.mjs
+   Run:  node tools/legacy/verify-camera.mjs
 
    frameFor is the resting board; cameraFor is what a merge or a long
    lane change will need instead — a frame that eases out to cover a
@@ -20,10 +20,10 @@
      - the transition is a transition: sampled fine enough, it takes more
        than one frame to open, so nothing pops
    ===================================================================== */
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { simulate, movementOf, poseAt, basePose, cleanPose, TRAIT_KEYS, M, CX, CY, STEP, W } from "../src/engine/index.js";
-import { specOf, crossSpec } from "../src/engine/road.js";
-import { rotateScenario } from "../src/engine/route.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { simulate, movementOf, poseAt, basePose, cleanPose, TRAIT_KEYS, M, CX, CY, STEP, W } from "../../src/engine/index.js";
+import { specOf, crossSpec } from "../../src/engine/road.js";
+import { rotateScenario } from "../../src/engine/route.js";
 
 const QUARTER = { S: "W", W: "N", N: "E", E: "S" };
 function turnsToFace(scn, from) {
@@ -31,7 +31,7 @@ function turnsToFace(scn, from) {
   for (let n = 0; n < 4; n++) { if (cur === from) return n; cur = QUARTER[cur]; }
   return 0;
 }
-import { frameFor, cameraFor, worldHalfFor, chaseFor } from "../src/frame.js";
+import { frameFor, cameraFor, worldHalfFor, chaseFor } from "../../src/frame.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 let problems = 0;

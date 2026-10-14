@@ -16,11 +16,11 @@
  * fails here, at authoring time, rather than becoming an intersection nobody
  * can direct several stages later.
  */
-import { TILES, CHARACTER, CHARACTERS, specFor, runwayNeededFor, curbsideFor, roadsideLifeFor } from "../src/engine/tiles.js";
-import { driveThroughTiles, runwayFor, linkBetween, spacingForRunway } from "../src/engine/world.js";
-import { simulate, poseAt, M } from "../src/engine/index.js";
-import { whatEgoSees, visibility, eyePoint } from "../src/engine/sight.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
+import { TILES, CHARACTER, CHARACTERS, specFor, runwayNeededFor, curbsideFor, roadsideLifeFor } from "../../src/engine/tiles.js";
+import { driveThroughTiles, runwayFor, linkBetween, spacingForRunway } from "../../src/engine/world.js";
+import { simulate, poseAt, M } from "../../src/engine/index.js";
+import { whatEgoSees, visibility, eyePoint } from "../../src/engine/sight.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
 
 const m = (px) => Math.round((px / 20) * 10) / 10;
 let problems = 0;

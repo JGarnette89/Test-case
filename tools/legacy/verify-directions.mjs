@@ -17,14 +17,14 @@
  *      carries on straight, because silence means straight on.
  *   4. An unloaded candidate is exactly today's candidate.
  */
-import { crossSpec } from "../src/engine/road.js";
+import { crossSpec } from "../../src/engine/road.js";
 import {
   instructionWindow, pressureOf, skillUnderPressure, severityUnder,
   loadCandidate, attribute, phraseFor, runwayNeeded, FOLLOW_LAG, DEFAULT_INTENT,
-} from "../src/engine/directions.js";
-import { faultsIn } from "../src/engine/faults.js";
-import { simulate } from "../src/engine/index.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
+} from "../../src/engine/directions.js";
+import { faultsIn } from "../../src/engine/faults.js";
+import { simulate } from "../../src/engine/index.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
 
 const m = (px) => Math.round((px / 20) * 100) / 100;
 let problems = 0;

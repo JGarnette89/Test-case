@@ -1,6 +1,6 @@
 /* =====================================================================
    COMPOSITION VERIFICATION
-   Run:  node tools/verify-compose.mjs
+   Run:  node tools/legacy/verify-compose.mjs
 
    The claim being checked is not "a scene was produced" — it is that the
    scene MATCHES THE BRIEF, measured rather than asserted. Placing a van
@@ -11,12 +11,12 @@
    different things gives different scenes, and that a long run does not
    quietly start repeating itself.
    ===================================================================== */
-import { composeScenario, measure, meetsBrief, signatureOf, TRAFFIC, VISIBILITY } from "../src/engine/compose.js";
-import { simulate, poseAt, spanOf, conflicts, STEP } from "../src/engine/index.js";
-import { specOf, validateRoad } from "../src/engine/road.js";
-import { GRACE } from "../src/engine/score.js";
-import { PULL_STEP } from "../src/engine/sight.js";
-import { worstEncroachment } from "../src/engine/clearance.js";
+import { composeScenario, measure, meetsBrief, signatureOf, TRAFFIC, VISIBILITY } from "../../src/engine/compose.js";
+import { simulate, poseAt, spanOf, conflicts, STEP } from "../../src/engine/index.js";
+import { specOf, validateRoad } from "../../src/engine/road.js";
+import { GRACE } from "../../src/engine/score.js";
+import { PULL_STEP } from "../../src/engine/sight.js";
+import { worstEncroachment } from "../../src/engine/clearance.js";
 
 let problems = 0;
 const fail = (m) => { problems++; console.log("  FAIL: " + m); };

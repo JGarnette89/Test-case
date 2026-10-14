@@ -1,6 +1,6 @@
 /* =====================================================================
    ENGINE VERIFICATION
-   Run:  node tools/verify-windows.mjs
+   Run:  node tools/legacy/verify-windows.mjs
 
    Three checks, in the order they matter:
 
@@ -21,10 +21,10 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { simulate } from "../src/engine/index.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { grade, GRACE, REACTION_FLOOR, EARLY_TOLERANCE } from "../src/engine/score.js";
-import { specOf, validateRoad, validIntents } from "../src/engine/road.js";
+import { simulate } from "../../src/engine/index.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { grade, GRACE, REACTION_FLOOR, EARLY_TOLERANCE } from "../../src/engine/score.js";
+import { specOf, validateRoad, validIntents } from "../../src/engine/road.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -176,7 +176,7 @@ for (const s of SCENARIOS) {
     rows.push(`${s.id},${la},${r2(la + o)},${g.verdict},${g.score}`);
   }
 }
-const csv = path.join(HERE, "scoring-samples.csv");
+const csv = path.join(HERE, "..", "scoring-samples.csv");   // tools/, where verify-scoring.py reads it
 writeFileSync(csv, rows.join("\n") + "\n", "utf8");
 console.log(`\nwrote ${rows.length - 1} scoring samples to tools/scoring-samples.csv`);
 

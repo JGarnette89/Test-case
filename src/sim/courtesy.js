@@ -118,8 +118,14 @@ export function offerOf(world, me, ask, pl, noticed) {
   /* Only a driver actually in the way: already a following gap back, there is nothing to give. */
   if (d >= wantedGap(me, { v: ask.v })) return null;
   const closing = Math.max(0, (me.v ?? 0) - ask.v), b = me.brake ?? vehicleOf(me).brake;
-  /* Level or slower, they fall back at leisure; closing, they need the room to shed it at their own rate. */
-  if (closing > 0 && d < 1.5 + (closing * closing) / (2 * b)) return null;
+  /* Coming up from BEHIND faster than the player, they need the room to shed
+     it at their own rate before they are alongside; level with the player
+     or slower, they fall back at leisure (the easing never brakes harder
+     than their own rate). The first version refused anybody closing at all
+     unless 1.5 m back, so a car level with the player -- the case the
+     courtesy is for -- was refused for a fraction of a metre a second
+     (verify-courtesy, 14 October: 2 offers from 8 courteous drivers). */
+  if (closing > 0 && d > 0 && d < (closing * closing) / (2 * b)) return null;
   return { since: world.t, leg: ask.toLeg };
 }
 

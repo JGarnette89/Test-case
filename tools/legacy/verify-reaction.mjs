@@ -10,13 +10,13 @@
  * scores BETTER, because the other car got out of the way.
  */
 import fs from "node:fs";
-import { simulate, safeAtFor, poseAt, CX, CY, M } from "../src/engine/index.js";
-import { cruiseProfile, yieldingProfile, distanceAt, speedAt, YIELD_RAMP, MOST_GIVE } from "../src/engine/paths.js";
-import { worstEncroachment, clampDepart } from "../src/engine/clearance.js";
-import { reactionsFor, withReactions, contactAfter, timeGivenUp, NOTICE, MOST_WAIT } from "../src/engine/reaction.js";
-import { departureOnAwareness } from "../src/engine/awareness.js";
-import { composeDriver } from "../src/engine/ratings.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
+import { simulate, safeAtFor, poseAt, CX, CY, M } from "../../src/engine/index.js";
+import { cruiseProfile, yieldingProfile, distanceAt, speedAt, YIELD_RAMP, MOST_GIVE } from "../../src/engine/paths.js";
+import { worstEncroachment, clampDepart } from "../../src/engine/clearance.js";
+import { reactionsFor, withReactions, contactAfter, timeGivenUp, NOTICE, MOST_WAIT } from "../../src/engine/reaction.js";
+import { departureOnAwareness } from "../../src/engine/awareness.js";
+import { composeDriver } from "../../src/engine/ratings.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
 
 let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);

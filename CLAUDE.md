@@ -146,133 +146,70 @@ Eight things to know before your first change:
    asking a person to open the page. This cost real time four times before
    it was written down.
 
-8. **RUN THE CHECKS THAT COULD HAVE BROKEN, NOT ALL OF THEM -- AND NONE
-   OF THIS WEAKENS THE DISCIPLINE.** The maintainer's instruction, after
-   one session ran past five thousand turns and the usage limit stopped
-   work three times in two days. A large share of those turns went on
-   full suite runs after changes confined to one subsystem, on sweeps
-   re-run per tweak, on re-verifying things nothing had touched, and on
-   waiting for background runs that a later edit had already made
-   meaningless. The account, with numbers, is DECISIONS.md 11.3. The
-   rules:
+8. **WHICH CHECKS TO RUN IS DERIVED, NOT REMEMBERED -- AND A HANG FAILS
+   LOUDLY.** The numbers and the audit of what the checks have actually
+   caught are [TESTING.md](TESTING.md): the suite went from 75 minutes to 24. Rewritten 14 October, after the rule it replaces was asked
+   for twice and never stuck: it had a hand-kept table of 40 rows and an
+   exception ("a `src/core/` change gets the full suite") that swallowed
+   the table, because nearly every change touches core. A thirty-minute
+   full suite was being run for a change to four driver profiles. The
+   fix is tools, not advice:
 
-   - **The import lines at the top of each `tools/verify-*.mjs` ARE the
-     dependency map.** `src/engine/` never imports `src/sim/`, so a
-     change confined to `src/sim/` can only break `verify-sim`,
-     `verify-crossing`, `verify-telling`, `verify-course` and
-     `verify-screens` -- about 100 seconds, against 18 minutes for the
-     suite. The table is below; re-derive it with
-     `grep -l "sim/" tools/verify-*.mjs` when in doubt, and whenever you
-     add a check.
-   - **Reserve the full suite for three occasions: before a commit;
-     after a change that crosses subsystems (`index.js`, `paths.js`,
-     `ratings.js`, `road.js`, `scenarios.js` and `score.js` are imported
-     by nearly every check); and when something unexplained happens.** A
-     subset run is REPORTED as a subset -- name the checks and say why
-     the others could not have broken. If you cannot say why, that is a
-     reason to run more, never fewer.
-   - **Don't re-verify what hasn't moved.** `verify-equivalence` and
-     `engine-golden.json` exist so that "did the engine change" is a
-     one-second question. Run it FIRST after any engine change: green
-     means no window, departure or pose moved, and the rest of the
-     engine suite is then checking things the change could not reach.
-   - **Batch measurement.** A sweep is a script with its range as
-     parameters, run once across the range, and kept beside the number
-     it produced -- under `tools/measure/`, or as the verify section it
-     became. Prefer one run that answers several questions to several
-     runs that each answer one. A number in the docs without its script
-     has to be measured again: REBUILD.md 8.2's bend table cost exactly
-     that when the bend came to be built.
-   - **Stop background work the moment an edit supersedes it.** Kill it
-     -- the harness's task stop, or the process -- do not wait on it,
-     and never read its result as evidence about the current tree. A
-     suite started against a tree that is still being edited costs the
-     run, the stale failure, the explanation, and the re-run; that
-     happened here, twice.
-   - **Prefer the cheap diagnostic.** `git status`, the log file, a
-     one-line `node -e` against the module, `grep` for the anchor --
-     before driving the whole system to reproduce anything. This
-     environment forces it anyway: the pane draws no frames (item 7).
-   - **Write patch scripts as files and run them; grep an anchor before
-     asserting on it.** Bash heredocs with quotes in them fail on this
-     Windows shell, and a documentation anchor drifts by a word.
-   - **Before a long operation, write down what you are doing and what
-     comes next**, in the scratchpad. Context is compacted and sessions
-     are cut off; re-deriving the state afterwards was one of the largest
-     costs of the session that produced this rule.
+   - **`node tools/check.mjs`** runs the checks the working tree's
+     changes can break and nothing else. Which those are is
+     `tools/affected.mjs`: a check's verdict depends only on its own file,
+     what it imports (statically, re-exported, by `import()`), transitively,
+     and the data files it names -- so the checks a change can break are
+     exactly those whose closure holds a changed file. `verify-screens`
+     and `verify-core` read every screen and run on any change under
+     `src/`. `node tools/affected.mjs --why verify-x` says why a check is
+     in the set. A `*.md` change runs nothing.
+   - **Every check has a timeout**: three times its last recorded time
+     (`tools/check-times.json`, written by every run), never under 90 s
+     nor over 20 minutes. Past it the check's whole process tree is
+     killed and the line reads `TIMEOUT` with the check named and its log
+     in `tools/scratch/check-logs/`. A hang costs minutes and leaves a
+     diagnosis. Nothing is left running: the runner kills its children on
+     a timeout, on Ctrl-C and on exit (the old shell lanes kept launching
+     checks after their wrapper was stopped).
+   - **While iterating**: `node tools/check.mjs --direct` -- only the
+     checks that import a changed file themselves (the check written
+     against it), and screens and core. Minutes for a feature module.
+   - **Before a commit**: `node tools/check.mjs` -- the derived set. It is
+     complete by construction for code the checks import. **`--all`** (the
+     whole suite but the legacy set) runs when a commit crosses subsystems
+     -- `src/core/`, `crossing.js` or `traffic.js` together with anything
+     outside `src/sim/` -- before a milestone ships, and when something
+     unexplained happens. Not per iteration, ever.
+   - **`tools/legacy/` holds the 22 checks that guard only the old engine**
+     (`src/engine/`), which nothing that ships reaches (`verify-core`
+     holds that). They run when their closure is touched -- a change to
+     `src/engine/` -- and with `--legacy`; never in the default run
+     otherwise. Deleting the engine with them is cut C, the maintainer's
+     call.
+   - **A slow check is cut to the sample it needs, measured, never
+     guessed.** Its floors are compared with what it actually counts; the
+     sample comes down while every count stays clear of its floor, a
+     sabotage still fails it, and the change is written into the check
+     with the numbers. A check that takes seven minutes gets skipped, and
+     a skipped check protects nothing.
 
-   | a change confined to | run | cost (run of 10 Sep) |
-   |---|---|---|
-   | `*.md` | nothing | 0 |
-   | `tools/verify-X.mjs` | X | |
-   | `src/apps/*`, `App.jsx`, `theme.js` | `verify-screens` | 6s |
-   | `src/editor/*`, `src/map/edges.js` | `verify-editor` FIRST (it is the one check written against them directly), then `verify-screens` (renders `#/editor`'s initial state) | ~2s |
-   | `src/apps/MapRoad.jsx` (`sceneFor`, the `mapData`/`startAt` props) | `verify-editor` (replays the same loadMap/seedGraph/firstEdge/playerOn pipeline `sceneFor` uses, on a drawn map, headlessly -- this is what caught `firstEdge` pointing at the wrong end), `verify-drive`, `verify-wheel`, `verify-screens` | ~20s |
-   | `src/iso/*` | `verify-perf`, `verify-wheel`, `verify-map`, `verify-screens`, and `verify-bench` for `perf.js`, `draw.js` or `bench.js` (the bench rides on all three) | 8s, 2m with the bench |
-   | `src/map/*` | `verify-map`, `verify-graph`, `verify-wheel`, `verify-perf`, `verify-editor` (validation and Drive it load through it), `verify-screens` (the scene loads its roads through it) | ~50s |
-   | `oneWay` in `src/sim/graph.js`, `testLoop` | `verify-loop` FIRST, then the `src/sim/graph.js` row |  |
-| `src/sim/graph.js` | `verify-graph`, `verify-drive`, `verify-signal`, `verify-bays`, `verify-generate` (junctions too close), `verify-editor` (validation calls `graphOf` with `conflicts: false` and section 13 holds it to the full graph), and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
-   | `noticeAfter`/`patienceOf`/the horn in `crossing.js`, `src/sim/horn.js`, `paintHorns` in `draw.js` | `verify-greens` FIRST, then the `src/sim/*` row and `verify-signal` | ~5m |
-| `src/sim/actuated.js`, `lights` in `crossing.js` | `verify-actuated` FIRST (seconds), then the `src/sim/signal.js` row -- every signalled map's lights come out of it | ~6m |
-| `src/sim/remote.js`, `src/sim/scene.js`, `src/sim/sim.worker.js`, the worker in `MapRoad.jsx` or `Bench.jsx`, `src/iso/benchworld.js` | `verify-worker` FIRST, then `verify-editor`, `verify-drive`, `verify-wheel`, `verify-start`, `verify-bench`, `verify-screens`, `verify-core` -- and a build: only the built bundle shows the worker loads (`tools/measure/worker-bundle.cjs`) | ~3m |
-| `src/sim/rivals.js`, `paintNames` in `draw.js`, `STOP_SHORT`/`short` in `traffic.js` | `verify-rivals` FIRST; `short` moves where every knowledge-weak driver waits, so the `src/sim/*` row and the full suite | |
-| `src/sim/courtesy.js`, `paintCourtesy` in `draw.js` | `verify-courtesy` FIRST, then the `src/sim/*` row (crossing.js imports it) and the `src/iso/*` row for the mark | ~8m |
-| `src/sim/progression.js` (green waves) | `verify-waves` FIRST, then the `src/sim/signal.js` row -- every signalled map's timing comes out of it | ~6m |
-   | `src/sim/signal.js` | `verify-waves`, `verify-signal`, `verify-graph`, `verify-drive`, `verify-paint`, `verify-screens`, `verify-bays`, and the `src/sim/` five (crossing.js imports it) | ~4m |
-   | `src/sim/lanechange.js` | `verify-lanes`, `verify-graph`, `verify-signal`, `verify-drive`, `verify-bays`, and the `src/sim/` five (crossing.js imports it) | ~7m |
-   | `src/sim/corner.js` | `verify-graph` (section 10), `verify-signal`, `verify-lanes`, `verify-drive`, and the `src/sim/` five (crossing.js imports it) | ~7m |
-   | `src/sim/lanes.js` | `verify-connect`, `verify-graph`, `verify-drive`, `verify-signal`, `verify-lanes`, `verify-bays`, and the `src/sim/` five (graph.js imports it) | ~8m |
-   | `src/map/format.js` (KINDS, lane defaults) | `verify-map`, `verify-graph`, `verify-drive`, `verify-screens` -- and READ the numbers the tests assert on, a lane count changes the leg count | ~1m |
-   | `src/map/bays.js`, `src/core/motion.js` | `verify-bays` FIRST, then `verify-map`, `verify-graph`, `verify-connect`, `verify-lanes`, `verify-signal`, `verify-drive`, `verify-screens` | ~9m |
-   | `placePlayer`/`playerOn` in `src/sim/drive.js`, a new start or a new map | `verify-start` FIRST, then the row below | ~5m |
-| `src/sim/drive.js`, `src/sim/player.js`, `src/iso/hud.js`, `src/iso/controls.js` | `verify-drive`, `verify-wheel`, `verify-screens` | ~10s |
-   | `src/iso/freecam.js` | `verify-chase` FIRST (its free-camera section), then `verify-paint` (the sweep across the free camera's range) and `verify-screens` | ~15s |
-   | `src/iso/chase.js`, `src/iso/project.js`, `src/iso/draw.js` | `verify-paint` FIRST (the painter's order, every rotation), `verify-chase`, `verify-perf`, `verify-wheel`, `verify-screens` | ~40s |
-   | `src/sim/traffic.js` | the `src/sim/` five, plus `verify-wheel` (the player rides its step) | ~3m |
-   | `VEHICLES` in `src/sim/traffic.js`, `poseOf` in `src/sim/crossing.js`, the seam look-ahead, `phantomHolds` or the memory in `whatStops`, `src/sim/sight.js` | `verify-trucks` FIRST, then `tools/measure/world-hash.mjs` against a saved hash (a world without trucks must not move unless meant to), then the `src/sim/` five, `verify-crashes`, `verify-signal`, `verify-paint` | ~6m |
-   | `src/sim/*` | `verify-sim`, `-crossing`, `-telling`, `-course`, `-screens`, `-exam` (exam.js rides on crossing, drive, graph, corner and the candidate profiles), `-generate` (a generated city is the biggest network any check drives) | ~2m |
-   | `src/map/generate.js`, `src/map/samples.js` `testCity0` | `verify-generate` FIRST, then `verify-editor`, `verify-screens` -- and `standsOn` in `map/load.js` is the one test of a building on a road that both the loader and the generator use | ~40s |
-   | `src/sim/intersection.js` `conflictsBetween` | `verify-generate` FIRST (section 0 holds it key for key to the old scan), then the `src/sim/` five -- every intersection's conflict table comes out of it | ~3m |
-   | `src/map/samples.js` (sections, `TEST_MAPS`), `src/apps/TestMaps.jsx` | `verify-generate` (section 13 opens every section headlessly), `verify-screens`, `verify-core` | ~1m |
-   | crashes in `src/sim/crossing.js` (`contactsIn`, `crashWith`, `CRASH_CLEAR`) | `verify-crashes` FIRST, then the `src/sim/` five and `verify-screens` | ~4m |
-   | `src/sim/reading.js`, signs in `src/map/load.js` or `src/map/format.js` | `verify-signs` FIRST (identical traffic with signs and shorthand), then `verify-observation`, the `src/sim/` five and `verify-editor` | ~5m |
-   | `src/sim/attention.js`, `seenBy` in `src/sim/crossing.js` | `verify-observation` FIRST, then `verify-crashes`, `verify-signs` and the `src/sim/` five (course section 13 is the candidate's perception) | ~6m |
-   | `src/sim/buses.js`, `src/sim/passing.js`, `stops` in `src/map/load.js`/`format.js`, `testBuses` | `verify-buses` FIRST, then the `VEHICLES` row (a bus is one), the `src/map/*` row and the `TEST_MAPS` row | ~15m |
-   | `src/map/brief.js`, Make a map in `src/apps/TestMaps.jsx` | `verify-briefs` FIRST, then `verify-screens` (renders `#/tests`) and `verify-bench` (its map is a brief); brief.js builds on `generate.js`, `load.js` and `editor/model.js`, so a change to any of those runs it too | ~5m |
-   | `src/iso/bench.js`, `src/apps/Bench.jsx` (the phone's budget test) | `verify-bench` FIRST, then `verify-perf` (the ramp and report it rides on), `verify-screens` and `verify-core` (a live screen) | ~2m |
-   | `src/map/sidewalks.js`, `src/sim/walkers.js` | `verify-walkers` FIRST, then `verify-paint` (sidewalks are a surface people stand on) and `verify-screens`; the walker step in `crossing.js` is the `src/sim/*` row, and the crossers drawn from walkers in `peds.js` are the crosswalks row | ~2m |
-   | crosswalks (`crosswalk` in `src/map/format.js`/`load.js`, `crossings` in `graph.js` `junctionsOf`), `src/sim/peds.js` | `verify-peds` FIRST, then the `src/sim/graph.js` row and `verify-screens` | ~5m |
-   | `src/sim/exam.js`, `src/apps/ExamRide.jsx` | `verify-exam` FIRST, then `verify-screens` (renders `#/exam`) and `verify-core` (a live screen) | ~10s |
-   | `src/core/driver.js` `DIFFICULTY`/`reads`, compliance, `rollsHere`/`nobodyAbout` in `crossing.js`, a sign's `difficulty` in `map/load.js` | `verify-compliance` FIRST, then `verify-generate` (section 10, the draw), `verify-lanes`, `verify-telling` and the full suite for core | |
-   | `src/core/*` | `verify-core` FIRST, then the full suite: the engine re-exports core and the sim imports it, so both sides can move | 18m |
-   | `src/frame.js` | `-screens`, `-camera`, `-clearance`, `-events`, `-world` | ~5m |
-   | `src/engine/detect.js` | `-detect`, `-faults`, `-outcome`, `-course` | ~2m |
-   | `src/engine/paths.js` | `-equivalence` first, then `-turns`, `-roundabout`, `-detect`, `-outcome`, `-reaction` and the `src/sim/` five | ~4m |
-   | `index.js`, `ratings.js`, `road.js`, `scenarios.js`, `score.js` | the full suite | 18m |
-   | `src/App.jsx`'s `live: true` flags, or any import in a live screen | `verify-core` (no live screen may reach `src/engine/`), `verify-screens` | 7s |
-
-   **The table's 18m is from 10 September and is stale.** Measured 24
-   September, after cut B, run end to end: **26m51s** for 38 checks, of
-   which the sim side is 13m09s and the old engine 13m42s. Before cut B
-   it was 29m48s over 42 checks; the four checks that went with the
-   deleted code were 3m00s of it (`-roguelike` 1m35s, `-generator` 35s,
-   `-stages` 34s, `-playthrough` 16s). Where it goes now: `verify-lanes`
-   7m35s, `verify-candidate` 6m58s, `verify-world` 4m09s, `verify-course`
-   2m24s, `verify-graph` 1m38s, `-outcome` 45s, `-events` 33s, `-compose`
-   28s, `-crossing` 24s, `-telling` 22s, `-awareness` 18s, `-signal` 18s,
-   `-drive` 14s; everything else under twelve seconds. `candidate` and
-   `world` are old-engine checks a `src/sim/` change cannot reach.
-
-   **WHAT DOES NOT CHANGE, AND IT MATTERS MORE THAN THE SAVINGS.**
-   Measure before building. Report a failure rather than building over
-   it. Never tune a number to make a check pass. Never claim a run was
-   green without it being green, and never let "the checks passed" stand
-   where "the five sim checks passed" is the truth. "Run fewer checks"
-   rots into "skip the inconvenient ones" the first time a subset is
-   chosen for convenience rather than justified from the imports -- so
-   the justification is said out loud every time, and a commit still
-   gets the whole suite. A saving that trades against any of this is not
+   **WHAT DOES NOT CHANGE.** Measure before building. Report a failure
+   rather than building over it. Never tune a number to make a check
+   pass. Never claim a run was green without it being green, and say
+   which run it was -- "the 31 checks the change can reach passed" is a
+   different sentence from "the suite passed". Sabotage a new check
+   before believing it. A saving that trades against any of this is not
    a saving.
+
+   Still true and still worth doing by hand: **prefer the cheap
+   diagnostic** (`git status`, the log, a one-line `node -e`, `grep`)
+   before driving the whole system; **write patch scripts as files** and
+   grep an anchor before asserting on it (heredocs with quotes fail on
+   this Windows shell); **before a long operation, write down what you are
+   doing and what comes next** in the scratchpad; and **stop background
+   work the moment an edit supersedes it** -- never read a stale run as
+   evidence about the current tree.
 
 **LANGUAGE IS ONTARIO, CANADA — American English, North American road
 terms.** intersection not junction, curb not kerb, sidewalk not pavement,
@@ -2073,27 +2010,27 @@ for the bosses; a new hand-authored situation must not skip it.
 generator must be re-verified numerically before it is considered done.**
 
 ```
-node tools/verify-windows.mjs      every window; each trait removed on its own
-node tools/verify-route.mjs        rotation, continuity, run mechanics
-node tools/verify-roundabout.mjs   direction, geometry, the exit tell
-node tools/verify-wontstop.mjs     a driver who fails to yield: tell, safety, the extended window
-node tools/verify-task.mjs         manoeuvres: order, deadlines, fault tiers
-node tools/verify-sight.mjs        occlusion, and the creep trade
-node tools/verify-compose.mjs      briefs produce scenes that match them
-node tools/verify-camera.mjs       the camera opens gradually, never shrinks, keeps a revealed actor in frame
-node tools/verify-events.mjs       the crossing button and the emergency vehicle: rule, readable, worth reading, generated
-node tools/verify-turns.mjs        turns are steered, not cut: radius, lane discipline, and honest fault tells
-node tools/verify-faults.mjs       examiner: faults derive from a control, and the cone decides what was markable
-node tools/verify-directions.mjs   the instruction window, and what stacking costs the candidate
-node tools/verify-belief.mjs       what you still think is true once you look away
-node tools/verify-detect.mjs       grading the examiner: caught, missed, invented, and when
-node tools/verify-outcome.mjs      how a drive ends: contact, and who taking the wheel lands on
-node tools/verify-tiles.mjs        a declared runway is a promise, held to measured geometry
-node tools/verify-world.mjs        the continuous drive: culling, routes, pacing, hazards, and what draws them
-node tools/verify-candidate.mjs    one driver across a drive, and habits that repeat enough to be named
-node tools/verify-clearance.mjs    encroachment in seconds, and bands derived from the engine's own claim
-node tools/verify-awareness.mjs    what the candidate registered, and observation kept off outcome
-node tools/verify-reaction.mjs     the world gives way, and never decides whether a fault happened
+node tools/legacy/verify-windows.mjs      every window; each trait removed on its own
+node tools/legacy/verify-route.mjs        rotation, continuity, run mechanics
+node tools/legacy/verify-roundabout.mjs   direction, geometry, the exit tell
+node tools/legacy/verify-wontstop.mjs     a driver who fails to yield: tell, safety, the extended window
+node tools/legacy/verify-task.mjs         manoeuvres: order, deadlines, fault tiers
+node tools/legacy/verify-sight.mjs        occlusion, and the creep trade
+node tools/legacy/verify-compose.mjs      briefs produce scenes that match them
+node tools/legacy/verify-camera.mjs       the camera opens gradually, never shrinks, keeps a revealed actor in frame
+node tools/legacy/verify-events.mjs       the crossing button and the emergency vehicle: rule, readable, worth reading, generated
+node tools/legacy/verify-turns.mjs        turns are steered, not cut: radius, lane discipline, and honest fault tells
+node tools/legacy/verify-faults.mjs       examiner: faults derive from a control, and the cone decides what was markable
+node tools/legacy/verify-directions.mjs   the instruction window, and what stacking costs the candidate
+node tools/legacy/verify-belief.mjs       what you still think is true once you look away
+node tools/legacy/verify-detect.mjs       grading the examiner: caught, missed, invented, and when
+node tools/legacy/verify-outcome.mjs      how a drive ends: contact, and who taking the wheel lands on
+node tools/legacy/verify-tiles.mjs        a declared runway is a promise, held to measured geometry
+node tools/legacy/verify-world.mjs        the continuous drive: culling, routes, pacing, hazards, and what draws them
+node tools/legacy/verify-candidate.mjs    one driver across a drive, and habits that repeat enough to be named
+node tools/legacy/verify-clearance.mjs    encroachment in seconds, and bands derived from the engine's own claim
+node tools/legacy/verify-awareness.mjs    what the candidate registered, and observation kept off outcome
+node tools/legacy/verify-reaction.mjs     the world gives way, and never decides whether a fault happened
 node tools/verify-screens.mjs      every reachable screen actually mounts and draws
 node tools/verify-sim.mjs          stage 0 of the rebuild: nobody drives through anybody
 node tools/verify-crossing.mjs     stage 1: paths through an intersection, who gives way, and what waiting too long costs
@@ -2110,7 +2047,7 @@ node tools/verify-signal.mjs       traffic signals: phases derived and never con
 node tools/verify-lanes.mjs        lane changes are temperament: confidence decides whether and how tight, observation whether it was seen, steering how cleanly; drivers get over for their turn or miss it; knowledge keeps them right, the exceptions restated from the ruling, and failing is markable; honest, touch-free, and a few percent of the sim
 node tools/verify-connect.mjs      permitted movements are the network's: the general rule by default, overridable per lane, and a lane with nowhere to land refused at authoring time, named by lane and intersection
 node tools/verify-bays.mjs          turn bays: a lane lies on its neighbour until it opens and a lane out once it has, is for its turn only, and the traffic uses it for that turn and nothing else
-node tools/verify-equivalence.mjs  nothing moved that was not meant to
+node tools/legacy/verify-equivalence.mjs  nothing moved that was not meant to
 node tools/verify-core.mjs         the live screens stand on src/core/ alone: core imports nothing outside itself, no live screen reaches the engine, no core name is declared twice
 node tools/verify-editor.mjs       the editor: the draft IS the map format, a hand-written map replayed through it round-trips exactly, snap preview finds an end and only an end, nothing drawn however badly can throw validation, Drive it is the real pipeline run headlessly, an overpass is authorable and distinguishable from a refused tight crossing, the map library never collides on id or leaves a stale entry openable, pinch and zoom keep the world under the fingers, an arterial drawn through the approach controls (signal, bays, arrow) comes out with bay legs, protected lefts, and traffic that runs clean, and a T, a made crossroads and a hump-made overpass all come out as the loader should see them, validation runs the graph without its conflict table (the editor validates on every tap) and still agrees with the full graph on every node and leg, and a road tapped as right angles comes out faster once smoothed, with its ends unmoved, and a map with no intersection at all still has somewhere to start driving, and the lane arrows show what the graph applies and write the format's own per-end override, and a building faces its street, keeps off the road (the loader drops one that does not), and still drives, and undo takes one intention per step and loses nothing going back and forth, and an intersection's controls are set in one tap -- the minor road stopped and the major left free, signals on every approach, all-way stop as signs, "minor" refused in words where every road is one kind -- and a bus stop tapped beside a road serves the direction of the side tapped, becomes a bay without a warning, and the drawn map drives with buses clean
 node tools/verify-exam.mjs         stage 3, the exam mode: silence is straight on, a direction in time is taken, a late one is not by the corner's own arithmetic, past the line it is for the next, easing slows them by their own braking and the bottom of the slider is the instructor's brake, and with no hand on them nothing changes
@@ -2132,14 +2069,19 @@ node tools/verify-start.mjs        the player starts clear wherever they start: 
 node tools/verify-courtesy.mjs     courtesy gaps: who offers is compliance and confidence at COMPETENT_AT and nothing else; level with a car that offers, a gap comes within seconds of a signal that the same moment without courtesy does not give; never past the offerer's own braking, one driver asked, withdrawn 4 s after the gap opens and not offered again, never before the signal could be noticed; nothing moves with nobody signalling; the mark is a badge never under 11 px and the gap on the road
 node tools/verify-worker.mjs       the sim in a Web Worker: the page's copy laid over with what the worker sends is the in-thread world tick for tick, the player's contact included; what crosses is data and never the course; the bench's worker runs the bench's own world under its switches
 node tools/verify-rivals.mjs       the rivals: each profile derives what the character says through the same driver as anybody; each is on the map within minutes, never two of one, back after leaving; measured against the crowd, Victor fastest for the limit and closest, Brenda slowest and furthest back and stopping well short, Mason changing lane more; and stopping short is the knowledge deficit times the old engine's 3.2 m, and nothing else
+node tools/verify-keepright.mjs    keeping right (split from verify-lanes, 14 October): the exceptions are the ruling's, knowledge and compliance decide who is marked, the return is not a snap, the left lane clears, and it is markable
+node tools/verify-lanecost.mjs     what lane changing costs the sim (split from verify-lanes): its own code a few percent of a step, keeping right a part of that, the neighbour index no dearer
+node tools/verify-busbays.mjs      bus bays (split from verify-buses): out of the lane, passed, and let out by those who know to give way and could stop, over a run at the rule's own difficulty and one with it made hard
+node tools/verify-passing.mjs      going round a bus at a curb stop (split from verify-buses): on a broken line or none, never a solid one, the gap the passer's to misjudge, less time stood behind the bus
 node tools/verify-waves.mjs        green waves: a car holding the posted speed from a green meets the next green on every timed link of every map; a corridor runs only where the road has priority (never through an uncontrolled crossroads); one cycle per system and no green shortened; a map with fewer than two linked signals keeps its plans; and in the sim the platoon goes through far more often with the wave than without, nothing crashing
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All sixty-one must exit 0 **before a commit**. Between commits, run
-the subset the change could have broken and say which -- item 8 of the
-cold-start section has the dependency table and the rule. Fourteen things
-they check are worth understanding:
+**Run them through `node tools/check.mjs`** (item 8 of the cold-start
+section): the checks a change can break, derived from the import graph,
+each with a timeout; `--all` for the whole suite, `--legacy` for the 22
+old-engine checks in `tools/legacy/`. Fourteen
+things they check are worth understanding:
 
 - **`verify-faults.mjs` guards the examiner game's honesty.** Its central
   check is the one that separates a derived fault from an asserted one: take
@@ -2311,6 +2253,11 @@ invisible to the encroachment fault because it only ever watches priors — in
   path it took; for anything else in that list, feature-test it, fall
   back, and tell the person when there is no fallback. The permanent
   answer is the HTTPS deploy (SETUP.md 6), which is a secure context.
+- **WHICH CHECKS TO RUN: `node tools/check.mjs`.** Derived from the
+  import graph (`tools/affected.mjs`), every check timed out at three
+  times its recorded time and killed as a tree, nothing left running. The
+  rule and the reasons are item 8 of the cold-start section; there is no
+  hand-kept table to consult.
 - **VERIFY FROM THE SERVER SIDE, NOT THE BROWSER SIDE.** The maintainer,
   25 September, after the browser pane's approval prompts piled up: an
   agent here cannot judge anything visual anyway -- no animation frames

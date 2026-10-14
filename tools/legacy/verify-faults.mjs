@@ -15,15 +15,15 @@
  */
 import {
   faultsIn, faultWindow, faultAt, isTraitFault, POS_VISIBLE, MIN_DURATION,
-} from "../src/engine/faults.js";
+} from "../../src/engine/faults.js";
 import {
   whatEgoSees, faultSeenAt, faultShownFor, sightBlockersOf,
-} from "../src/engine/sight.js";
-import { SHOWN_ENOUGH } from "../src/engine/detect.js";
-import { simulate, poseAt, M, TRAIT_KEYS } from "../src/engine/index.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { crossSpec } from "../src/engine/road.js";
-import { masks } from "../src/engine/candidate.js";
+} from "../../src/engine/sight.js";
+import { SHOWN_ENOUGH } from "../../src/engine/detect.js";
+import { simulate, poseAt, M, TRAIT_KEYS } from "../../src/engine/index.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { crossSpec } from "../../src/engine/road.js";
+import { masks } from "../../src/engine/candidate.js";
 
 const m = (px) => Math.round((px / 20) * 100) / 100;
 let problems = 0;

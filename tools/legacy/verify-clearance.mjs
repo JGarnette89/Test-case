@@ -12,15 +12,15 @@
  * metres means nothing without closing speed.
  */
 import fs from "node:fs";
-import { simulate, safeAtFor, poseAt, LOOKAHEAD, M } from "../src/engine/index.js";
+import { simulate, safeAtFor, poseAt, LOOKAHEAD, M } from "../../src/engine/index.js";
 import {
   ENTITLED, REACTION_ENVELOPE, BANDS, bandFor, petBetween,
   encroachmentIn, worstEncroachment, PET_STEP,
-} from "../src/engine/clearance.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { composeScenario } from "../src/engine/compose.js";
-import { specOf } from "../src/engine/road.js";
-import { chaseFor } from "../src/frame.js";
+} from "../../src/engine/clearance.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { composeScenario } from "../../src/engine/compose.js";
+import { specOf } from "../../src/engine/road.js";
+import { chaseFor } from "../../src/frame.js";
 
 let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);

@@ -16,20 +16,20 @@
  *     the information was gathered, and never by what happened next.
  */
 import fs from "node:fs";
-import { simulate, earliestClear, approachDecelOf, M } from "../src/engine/index.js";
-import { REACTION_FLOOR } from "../src/engine/score.js";
+import { simulate, earliestClear, approachDecelOf, M } from "../../src/engine/index.js";
+import { REACTION_FLOOR } from "../../src/engine/score.js";
 import {
   REGISTER_FLOOR, REGISTER_SPAN, JITTER, registrationDelay, sightingsIn,
   registrationsIn, awarenessAt, departureOnAwareness, causeOf,
   unseenShare, cautionOf, marginAt, crossingTimeOf,
   controlSightingsIn, causeOfStop, ABRUPT_AT,
-} from "../src/engine/awareness.js";
-import { composeDriver, AXES, deficitOf, CONFIDENT_ENOUGH, TAIL } from "../src/engine/ratings.js";
-import { traitsForScene } from "../src/engine/candidate.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { composeScenario } from "../src/engine/compose.js";
-import { crossSpec } from "../src/engine/road.js";
-import { worstEncroachment } from "../src/engine/clearance.js";
+} from "../../src/engine/awareness.js";
+import { composeDriver, AXES, deficitOf, CONFIDENT_ENOUGH, TAIL } from "../../src/engine/ratings.js";
+import { traitsForScene } from "../../src/engine/candidate.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { composeScenario } from "../../src/engine/compose.js";
+import { crossSpec } from "../../src/engine/road.js";
+import { worstEncroachment } from "../../src/engine/clearance.js";
 
 let problems = 0;
 const ok = (s) => console.log(`  ok   ${s}`);

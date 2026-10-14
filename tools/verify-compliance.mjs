@@ -134,7 +134,8 @@ console.log("\n3. COMPLIANCE IS SITUATIONAL, KNOWLEDGE IS CONSISTENT: THE READAB
      red stood at with nobody about: the count fell under its floor. What a
      driver does at a red is the subject here, not what brings the green. */
   const onClock = (map) => map === litMap;
-  const RUNS = [[city, 200, [3, 5, 7]], [litMap, 4, MANY], [litMap, 40, MANY]];
+  /* The city's stop signs gave 376 scofflaw occasions alone and 103 drivers seen both ways over three seeds, against floors of 30 and 10: one seed holds them with room (14 October, the cost of a check). The right on red keeps every seed it has -- its counts sit near their floors. */
+  const RUNS = [[city, 200, [3]], [litMap, 4, MANY], [litMap, 40, MANY]];
   for (const [map, cars, seeds] of RUNS) for (const seed of seeds) {
     let w = seedGraph(seed, 50, map, { target: cars, posted: true, trucks: 0, actuated: !onClock(map) });
     const open = new Map();

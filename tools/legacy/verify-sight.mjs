@@ -1,6 +1,6 @@
 /* =====================================================================
    SIGHTLINE VERIFICATION
-   Run:  node tools/verify-sight.mjs
+   Run:  node tools/legacy/verify-sight.mjs
 
    Creeping for a view is only a mechanic if both halves are true: it has
    to buy sight, and it has to cost safety. If it only buys sight it is a
@@ -14,13 +14,13 @@
 import {
   M, CX, CY, HALF, OFF, LANE, CAR_L, CAR_W, PED_SETBACK, STOP_LINE_AT,
   simulate, poseAt, crossingOf, conflicts, spanOf,
-} from "../src/engine/index.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
+} from "../../src/engine/index.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
 import {
   eyePoint, segmentHitsBox, visibility, creepPose, noseOut, crossedStopLine,
   encroaches, carWaitingInBox, assessCreep, whatEgoSees, PULL_STEP, EYE_BACK,
-} from "../src/engine/sight.js";
-import { boxHalf } from "../src/engine/road.js";
+} from "../../src/engine/sight.js";
+import { boxHalf } from "../../src/engine/road.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const m = (px) => r2(px / 20);

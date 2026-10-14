@@ -1,6 +1,6 @@
 /* =====================================================================
    EVENT VERIFICATION
-   Run:  node tools/verify-events.mjs
+   Run:  node tools/legacy/verify-events.mjs
 
    Two things that happen DURING the wait rather than before it, added so
    that a longer wait is spent reading rather than sitting: a pedestrian
@@ -18,15 +18,15 @@
    none of the crossing, and an emergency vehicle outranks everybody
    whatever the arrival order says.
    ===================================================================== */
-import { C } from "../src/theme.js";
+import { C } from "../../src/theme.js";
 import {
   simulate, safeAtFor, poseAt, spanOf, movementOf, conflicts, crossingOf, eventsAreReadable, M,
-} from "../src/engine/index.js";
-import { SCENARIOS, S } from "../src/engine/scenarios.js";
-import { ENDLESS_BRIEFS, composeScenario } from "../src/engine/compose.js";
-import { cameraFor } from "../src/frame.js";
-import { specOf } from "../src/engine/road.js";
-import { GRACE } from "../src/engine/score.js";
+} from "../../src/engine/index.js";
+import { SCENARIOS, S } from "../../src/engine/scenarios.js";
+import { ENDLESS_BRIEFS, composeScenario } from "../../src/engine/compose.js";
+import { cameraFor } from "../../src/frame.js";
+import { specOf } from "../../src/engine/road.js";
+import { GRACE } from "../../src/engine/score.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 let problems = 0;

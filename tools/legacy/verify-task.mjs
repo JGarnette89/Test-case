@@ -1,6 +1,6 @@
 /* =====================================================================
    MANOEUVRE VERIFICATION
-   Run:  node tools/verify-task.mjs
+   Run:  node tools/legacy/verify-task.mjs
 
    Covers src/engine/actions.js, which encodes rules the maintainer stated,
    so the checks are written as those rules rather than as assertions about
@@ -25,8 +25,8 @@ import {
   ACTIONS, MAX_BUTTONS, SLOW_LEAD, OUT_OF_ORDER_CREDIT, FAULT,
   sequenceFor, orderingRules, deriveWindows, gradeTask,
   emptySheet, addToSheet, sheetOutcome,
-} from "../src/engine/actions.js";
-import { PROPER_SIGNAL_LEAD } from "../src/engine/index.js";
+} from "../../src/engine/actions.js";
+import { PROPER_SIGNAL_LEAD } from "../../src/engine/index.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 let problems = 0;

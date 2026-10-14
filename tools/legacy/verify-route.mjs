@@ -1,6 +1,6 @@
 /* =====================================================================
    ROUTE VERIFICATION
-   Run:  node tools/verify-route.mjs
+   Run:  node tools/legacy/verify-route.mjs
 
    Multi-intersection play has one failure mode that is invisible on screen:
    arriving at a leg from the wrong side. It looks fine and silently changes
@@ -14,15 +14,15 @@
    3. A deliberately broken route is caught, not silently played.
    4. A run accumulates score, ends on collision, and finishes cleanly.
    ===================================================================== */
-import { simulate, poseAt, conflicts, spanOf, OPPOSITE } from "../src/engine/index.js";
-import { SCENARIOS } from "../src/engine/scenarios.js";
-import { specOf, validateRoad, hasLeg, SIDES } from "../src/engine/road.js";
-import { ROUTES } from "../src/engine/routes.js";
-import { grade } from "../src/engine/score.js";
+import { simulate, poseAt, conflicts, spanOf, OPPOSITE } from "../../src/engine/index.js";
+import { SCENARIOS } from "../../src/engine/scenarios.js";
+import { specOf, validateRoad, hasLeg, SIDES } from "../../src/engine/road.js";
+import { ROUTES } from "../../src/engine/routes.js";
+import { grade } from "../../src/engine/score.js";
 import {
   planRoute, startRun, recordLeg, currentLeg, summary,
   rotateScenario, alignScenario, entrySideAfter, exitHeading, isRotatable,
-} from "../src/engine/route.js";
+} from "../../src/engine/route.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 let problems = 0;
