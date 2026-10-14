@@ -2,10 +2,18 @@
 
 The line set was **authored externally** (the maintainer, with another
 model) and **revised once** against review notes. It is good enough to use.
-It is stored as DATA, verbatim, keyed by trigger and speaker, so the game
-reads it directly: **`src/content/dialogue.json`** -- pending: the file is
-to be pasted by the maintainer and committed as given. Nothing here builds
-the delivery system beyond what is recorded below.
+It will be stored as DATA keyed by trigger and speaker, so the game reads
+it directly (`src/content/dialogue.json`). Nothing here builds the
+delivery system beyond what is recorded below.
+
+**NO SOURCE FILE IS COMING (the maintainer, 14 October).** This record
+-- written from the maintainer's description of the external set -- IS the
+source. When the content is built, it is written here, against this record
+and the decisions below, and stored as data then. The lines themselves are therefore written when delivery is built,
+to the spec below: five or six A.U.T.O. lines, four or five from Jay and
+one or two from the relevant rivals per trigger; every line under 90
+characters; metric; A.U.T.O. correct on the stop rule (a full stop, no
+time stated), Brenda's "three seconds" her own characterisation.
 
 Characters: [CHARACTERS.md](CHARACTERS.md) (Victor and Brenda Braga, Mason
 "Swerve" Lin, "Grizzly" Hannah Miller, Jay "The Clockmaker", A.U.T.O.).

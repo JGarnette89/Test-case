@@ -1,9 +1,12 @@
 # DISTRICTS — five district briefs (recorded 14 October 2026, CONTENT ONLY, NOT BUILT)
 
 **Authored externally** (the maintainer, with another model). Stored as DATA
-beside the dialogue and the jobs -- **`src/content/districts.json`**,
-pending: the file is to be pasted by the maintainer and committed as
-given. Five briefs -- Industrial and Port, Suburbs and Retail, Downtown and
+beside the dialogue and the jobs -- `src/content/districts.json`.
+
+**NO SOURCE FILE IS COMING (the maintainer, 14 October).** This record
+-- written from the maintainer's description of the external set -- IS the
+source. When the content is built, it is written here, against this record
+and the decisions below, and stored as data then. Five briefs -- Industrial and Port, Suburbs and Retail, Downtown and
 Nightclub, Rural Outer County, and the Highway Network -- each with a name,
 driver feel, street layout and road mix, characteristic hazards, building
 style, a street-naming convention with six examples, and three or four
@@ -50,8 +53,8 @@ Everything else in the briefs is buildable as written.
    five metres short" is the external model's mistake. Verbatim: *"If our
    drivers will only stop up to 3.2m short, that is the number we will go
    with."* The model's `STOP_SHORT` (`traffic.js`), from the knowledge
-   axis, is the number; the brief's text is corrected when the data file is
-   committed, and the brief's driver-feel line describes it as the model does.
+   axis, is the number; whatever is written for the suburbs
+   describes it as the model does.
 2. **Names: functional, North American, in an Ontario context -- the city
    is modelled on no one place.** Verbatim: *"We want functional names that
    wouldn't be out of place throughout North America, most will
@@ -62,6 +65,5 @@ Everything else in the briefs is buildable as written.
    name in the file: a name that reads as a generic North American road
    (King Street, Mill Road, Harbour Drive) is fine even though somewhere
    has one; a name that pins the city to one real place is not -- so a
-   named real route like **"Highway 401"** takes a numbered highway of the
-   same kind that does not single out one real road (e.g. "Highway 47")
-   when the file is committed, and the change is listed there.
+   named real route like **"Highway 401"** is not used: the highway takes a
+   number of the same kind that does not single out one real road.

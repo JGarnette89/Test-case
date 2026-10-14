@@ -1,9 +1,14 @@
 # JOBS — sixteen daytime jobs (recorded 13 October 2026, CONTENT ONLY, NOT BUILT)
 
 **Authored externally** (the maintainer, with another model). Stored as DATA
-beside the dialogue -- **`src/content/jobs.json`**, pending: the file is to
-be pasted by the maintainer and committed as given, each job with a vehicle
-class, a district, its specific difficulty and a scoring metric. Built on
+beside the dialogue -- `src/content/jobs.json` -- each job with a vehicle
+class, a district, its specific difficulty and a scoring metric.
+
+**NO SOURCE FILE IS COMING (the maintainer, 14 October).** This record
+-- written from the maintainer's description of the external set -- IS the
+source. When the content is built, it is written here, against this record
+and the decisions below, and stored as data then. What is known per job is the table below; each job's district,
+difficulty and metric are written when the job machinery is built. Built on
 the job machinery in [PLAN.md](PLAN.md) (phase 3); the dialogue is
 [DIALOGUE.md](DIALOGUE.md).
 
