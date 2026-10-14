@@ -214,6 +214,7 @@ Eight things to know before your first change:
 | `src/sim/graph.js` | `verify-graph`, `verify-drive`, `verify-signal`, `verify-bays`, `verify-generate` (junctions too close), `verify-editor` (validation calls `graphOf` with `conflicts: false` and section 13 holds it to the full graph), and the `src/sim/` five (crossing.js and course.js import it) | ~4m |
    | `noticeAfter`/`patienceOf`/the horn in `crossing.js`, `src/sim/horn.js`, `paintHorns` in `draw.js` | `verify-greens` FIRST, then the `src/sim/*` row and `verify-signal` | ~5m |
 | `src/sim/actuated.js`, `lights` in `crossing.js` | `verify-actuated` FIRST (seconds), then the `src/sim/signal.js` row -- every signalled map's lights come out of it | ~6m |
+| `src/sim/remote.js`, `src/sim/scene.js`, `src/sim/sim.worker.js`, the worker in `MapRoad.jsx` or `Bench.jsx`, `src/iso/benchworld.js` | `verify-worker` FIRST, then `verify-editor`, `verify-drive`, `verify-wheel`, `verify-start`, `verify-bench`, `verify-screens`, `verify-core` -- and a build: only the built bundle shows the worker loads (`tools/measure/worker-bundle.cjs`) | ~3m |
 | `src/sim/courtesy.js`, `paintCourtesy` in `draw.js` | `verify-courtesy` FIRST, then the `src/sim/*` row (crossing.js imports it) and the `src/iso/*` row for the mark | ~8m |
 | `src/sim/progression.js` (green waves) | `verify-waves` FIRST, then the `src/sim/signal.js` row -- every signalled map's timing comes out of it | ~6m |
    | `src/sim/signal.js` | `verify-waves`, `verify-signal`, `verify-graph`, `verify-drive`, `verify-paint`, `verify-screens`, `verify-bays`, and the `src/sim/` five (crossing.js imports it) | ~4m |
@@ -1699,6 +1700,10 @@ src/sim/marking.js       stage 3: deferred marking and the section sheet, fed to
 src/sim/graph.js         THE SIMULATOR (SIMULATOR.md): the sim on a road network -- nodes at any bearing, ONE LEG PER LANE, junction geometry
 src/sim/signal.js        traffic signals: phases derived from the geometry, and a light that resolves to the controls the sim already had plus HOLD
 src/sim/horn.js          the horn's two constants, read by the sim and the renderer alike
+src/sim/scene.js         the world for a map and the player's contact with it -- one place, so the page and the sim's worker build the same world
+src/sim/remote.js        the sim in a Web Worker: a pure protocol (`handle`), what crosses (only what changed), and the page's end (`remoteSim`)
+src/sim/sim.worker.js    the worker's shell around `handle`
+src/iso/benchworld.js    the bench's map and world, where the worker can build it too
 src/sim/courtesy.js      courtesy gaps: the one driver whose space a signalling player needs lets them in -- compliant and not bold, once they have noticed, at their own comfortable braking
 src/sim/actuated.js      actuated signals: the stop-line and advance loops call and extend a phase, a light rests with nobody waiting, a coordinated one keeps its wave and skips a side street nobody calls; the mark on the head the loop sees you by
 src/sim/progression.js   green waves: the signals along a road timed so a car at the posted speed meets green after green -- corridors where the road has priority, one cycle per system, offsets derived from the amber
@@ -2123,11 +2128,12 @@ node tools/verify-greens.mjs       the green, noticed, and the horn: noticing a 
 node tools/verify-loop.mjs         one-way roads and the endless highway: a one-way road is driven one way (lanes start to end, centred; nobody in against the flow; nobody spawned where it leaves the map) and painted that way (its lines between its own lanes, on its surface); the loop loads clean, is fed only by its on-ramps, starts the player on a slip road and runs clean; and at minute 15 most of its drivers are new since minute 5 against almost none with its exits removed, with speeds still spread and cars still overtaking
 node tools/verify-start.mjs        the player starts clear wherever they start: every section of every test map, the editor's default, every edge where traffic enters and a generated map, enumerated not listed -- nobody within START_NEAR and nobody able to reach a car standing there, and standing still for five seconds nobody touches them
 node tools/verify-courtesy.mjs     courtesy gaps: who offers is compliance and confidence at COMPETENT_AT and nothing else; level with a car that offers, a gap comes within seconds of a signal that the same moment without courtesy does not give; never past the offerer's own braking, one driver asked, withdrawn 4 s after the gap opens and not offered again, never before the signal could be noticed; nothing moves with nobody signalling; the mark is a badge never under 11 px and the gap on the road
+node tools/verify-worker.mjs       the sim in a Web Worker: the page's copy laid over with what the worker sends is the in-thread world tick for tick, the player's contact included; what crosses is data and never the course; the bench's worker runs the bench's own world under its switches
 node tools/verify-waves.mjs        green waves: a car holding the posted speed from a green meets the next green on every timed link of every map; a corridor runs only where the road has priority (never through an uncontrolled crossroads); one cycle per system and no green shortened; a map with fewer than two linked signals keeps its plans; and in the sim the platoon goes through far more often with the wave than without, nothing crashing
 python tools/verify-scoring.py     re-derives the scoring curve independently
 ```
 
-All fifty-nine must exit 0 **before a commit**. Between commits, run
+All sixty must exit 0 **before a commit**. Between commits, run
 the subset the change could have broken and say which -- item 8 of the
 cold-start section has the dependency table and the rule. Fourteen things
 they check are worth understanding:

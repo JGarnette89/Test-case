@@ -116,8 +116,8 @@ playable milestone.
    on the car. PLAYER. Days. *Finishing now.*
 2. **The sim in a Web Worker** -- the step off the main thread; the cap
    roughly triples by the measured split (SIMULATOR.md 1.2.9). SHARED.
-   Days. *Protocol built and checked against the in-thread loop; wiring
-   next.* Then the bench measures it on the phone.
+   Days. *Built, 13 October: `#/map` and `#/bench` ("Sim in a worker").*
+   The phone's bench says what it bought.
 3. **The rivals' cheap pass** -- Victor and Brenda Braga, Mason Lin,
    Hannah Miller as named drivers in the world that exists, each an axis
    profile (bold-and-scofflaw gap forcing; timid-and-compliant stopping
@@ -156,9 +156,25 @@ playable milestone.
    through `storage.js`. SHARED. Days.
 9. **The job machinery and TAXI** -- pick up, deliver, a standard, a fare
    (DAY-NIGHT.md defaults 7, 11, 12). PLAYER. A week on 7 and 8.
+9a. **PASSENGER COMFORT scoring** -- one mechanic serving taxi, the
+   commuter express and the VIP airport shuttle (JOBS.md): smoothness from
+   the sim's own harsh-braking and lateral measures. PLAYER. Days.
+9b. **HIGHWAY FLOW PACER** (JOBS.md) -- hold a steady buffer behind a
+   convoy and let merging traffic in: the win condition is NOT BEING THE
+   PROBLEM. Possible only because following and courtesy are modelled
+   (it needs the player-offers-a-gap event of item 5); probably the
+   cheapest genuinely distinctive job on the list. PLAYER. Days to a week.
+9c. **Multi-stop delivery** -- the courier sprint, the food run and the mail
+   route are ONE activity in three costumes; budget it once. PLAYER. Days.
 
 > **PLAYABLE MILESTONE 3 -- "The first fare."** A dispatch offers a fare;
-> drive it; get paid for how you drove.
+> drive it; get paid for how you drove. Then the flow pacer and the first
+> deliveries on the same machinery.
+
+**The job catalogue (JOBS.md) is budgeted as about NINE distinct
+activities, not sixteen.** Ten jobs need nothing beyond the objectives
+layer (and articulation for the two semi hauls); the rest are a
+dependency argument, placed below where their blocker is built.
 
 ### Phase 4 -- the hauling job (about six weeks)
 
@@ -170,7 +186,12 @@ playable milestone.
     content, REVERSING (the two-control scheme driving backwards).
     PLAYER. Two weeks.
 12. **Hauling as a job** -- a load, a dock to back into, a delivery on the
-    job machinery. PLAYER. A week on 7-11.
+    job machinery: the intermodal haul and the steel coil delivery first
+    (JOBS.md, nothing new), then **PORT FREIGHT REVERSE DOCK** -- the most
+    appealing job on the list, unlocked by REVERSING, which is what makes
+    the articulated truck an activity rather than a bigger vehicle. Its
+    loading bays are a dock as a destination, not the parking-lot work.
+    PLAYER. A week on 7-11.
 
 > **PLAYABLE MILESTONE 4 -- "Back it into the dock."**
 
@@ -182,6 +203,9 @@ playable milestone.
     did. SHARED. Two to three weeks.
 14. **Surfaces** -- gravel, wet asphalt; grip and the traffic's corner
     speeds follow; weather reuses it later. SHARED. One to two weeks.
+    **Gravel unlocks two jobs** (rural produce delivery, gravel quarry
+    haul) **and Hannah's district** -- the job list corroborates it as a
+    shared foundation independently.
 15. **Head-to-head racing** -- a course of checkpoints (C), an opponent
     that drives TO it with a rival's profile, sanctioned events first
     (DAY-NIGHT.md default 1). SHARED for all four rivals. Three weeks.
@@ -213,7 +237,16 @@ playable milestone.
 22. **The academy and ZONE QUALITY** -- a persistent population, a model
     of learning, a stored per-district quantity, its signal delays easing
     (DRIVING-SCHOOL.md 4). SHARED for Act II. Two to three months.
-23. **District decoration**, one at a time, after all of the above:
+22a. **Escort behaviour** -- shepherding one specific slow vehicle (the
+    Courtesy Pacer Escort, JOBS.md); the same family as the Act III convoy's
+    platoon control, so built once for both. SHARED. Two weeks.
+22b. **Blind-spot collisions as a scored category** (Port Warehouse
+    Distribution) -- adjacent to sight and contact, not the same; a small
+    addition once a box-truck job exists. PLAYER. Days.
+23. **District decoration**, one at a time, after all of the above. The
+    SCHOOL ZONE goes first of these: the school zone run (JOBS.md) is one
+    of the strongest jobs -- smoothness with pedestrians at stake is the
+    clearest use of the braking model:
     school zones (suburbs), loading docks (port, shares the dock from 12),
     nightclub crowds (downtown), livestock and farm equipment (county).
     DISTRICT. One to two weeks each.
@@ -228,8 +261,8 @@ playable milestone.
 |---|---|
 | **this week and next** | courtesy (shipping), the worker, the rivals' cheap pass |
 | **within a month** | events + rate limiter, dialogue on screen, streaks |
-| **one to two months** | destinations and routing, money, taxi |
-| **two to three months** | articulation, driving a semi, hauling |
+| **one to two months** | destinations and routing, money, taxi, passenger comfort, the flow pacer, multi-stop delivery |
+| **two to three months** | articulation, driving a semi, reversing, hauling, the reverse dock |
 | **three to six months** | handling refactor, surfaces, racing, day/night, A.U.T.O.'s punishments, pursuit, garage |
 | **six months and more** | the handmade 8 km² Metro Grid, the campaign, the academy and Zone Quality, district decoration, the convoy finale |
 
@@ -237,6 +270,8 @@ playable milestone.
 
 ## 6. Cut, or deferred indefinitely -- more is recorded than can be built
 
+- **The Downtown Medical Express** (JOBS.md) waits on a motorcycle, which
+  is deferred; the job is not a reason to build one.
 - **Multiplayer** -- deferred indefinitely. The deterministic seeded sim is
   kept as an asset (SIMULATOR.md roadmap), nothing more.
 - **Motorcycle lane filtering** -- cut (illegal in Ontario; breaks one

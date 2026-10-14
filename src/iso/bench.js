@@ -14,9 +14,9 @@
 
    Pure. No React, no DOM.
    ===================================================================== */
-import { mapFromBrief } from "../map/brief.js";
-import { loadMap, groundFor } from "../map/load.js";
-import { seedGraph, step, poseOf } from "../sim/crossing.js";
+import { groundFor } from "../map/load.js";
+import { step, poseOf } from "../sim/crossing.js";
+import { merge } from "../sim/remote.js";
 import { junctionsOf } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { pedPose } from "../sim/peds.js";
@@ -27,40 +27,9 @@ import { terrain } from "./road.js";
 import { deviceLines, stallLines, HITCH } from "./perf.js";
 import { drawFrame } from "./draw.js";
 
-/* THE MAP: a made-to-order city with everything the game has --
-   signals and every other kind of intersection, a downtown with
-   crosswalks and people on every sidewalk, curb stops and bays with
-   buses, buildings on every lot, parked cars on the residential
-   streets, trucks in the traffic at their ordinary share. */
-export const BENCH_BRIEF = { size: "medium", arterials: "loop", everyType: true, downtown: true, buses: true };
-
-/* WHAT CAN BE SWITCHED OFF, each to say what it costs. The sim-side
-   ones change the world; `sidewalks` and `buildings` only what is
-   drawn (walkers still use the buildings' doors). Every one is counted
-   in the report, so a switch that silently does nothing shows as
-   nothing having gone. */
-export const OFF = {
-  trucks: "trucks",
-  buses: "buses",
-  walkers: "people walking along",
-  crossers: "people crossing",
-  parked: "parked cars",
-  sight: "sight blocking (trucks see-through)",
-  sidewalks: "sidewalks (drawn)",
-  buildings: "buildings (drawn)",
-};
-
-const maps = new Map();
-/* The loaded bench map, with parking or without; built once each. */
-export function benchMap({ parking = true } = {}) {
-  const key = parking ? "with" : "without";
-  if (!maps.has(key)) {
-    let raw = mapFromBrief(BENCH_BRIEF, 1);
-    if (!parking) raw = { ...raw, roads: raw.roads.map((r) => ({ ...r, parking: "none" })) };
-    maps.set(key, loadMap(raw));
-  }
-  return maps.get(key);
-}
+/* The map, what can be switched off and the world for a step: iso/benchworld.js, where the sim's worker can build it too. */
+export { BENCH_BRIEF, OFF, benchMap, worldKey, benchWorld } from "./benchworld.js";
+import { OFF, benchMap, worldKey, benchWorld } from "./benchworld.js";
 
 /* What only the map decides -- the ground, the sidewalks, the buildings --
    built once per loaded map: on a phone a rebuild per step is seconds. */
@@ -79,19 +48,12 @@ function staticsOf(loaded) {
   return statics.get(loaded);
 }
 
-/* What has to be a new WORLD: the fleet, and what the traffic is made
-   of. Sight and what is drawn are switched on the world in hand. */
-export const worldKey = (fleet, off = {}) => [fleet, ...["trucks", "buses", "walkers", "crossers", "parked"].map((k) => (off[k] ? 1 : 0))].join("|");
-
 /* A world and the scene that draws it, for a fleet of cars and a set
    of things switched off. */
 export function benchScene(fleet, off = {}) {
   const loaded = benchMap({ parking: !off.parked });
-  const world = seedGraph(1, 50, loaded, {
-    every: 2.0, target: fleet, posted: true, walkers: !off.walkers,
-    ...(off.trucks ? { trucks: 0 } : {}), ...(off.buses ? { buses: 0 } : {}),
-    ...(off.crossers ? { pedEvery: Infinity, gapRate: 0 } : {}),
-  });
+  /* Sight is switched by withOff on the base world, so the base has it on. */
+  const world = benchWorld(fleet, { ...off, sight: false });
   const st = staticsOf(loaded);
   return withOff({ loaded, world, base: world, key: worldKey(fleet, off), ...st, junctions: junctionsOf(world.course), full: st }, off);
 }
@@ -328,9 +290,30 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
 
 /* THE BENCH'S STATE AND ITS FRAME, shared by the screen and the checks:
    the screen owns only the canvas, the animation frames and React. */
-export function benchState(step = { fleet: 50, off: {} }) {
-  const st = { sc: null, owed: 0, cam: {}, view: "car", counts: null, frames: 0, buildS: 0 };
+/* `makeRemote(recipe, onWorld)`, when given, runs the sim in a worker
+   (sim/remote.js `remoteSim`); the screen passes it, the checks do not. */
+export function benchState(step = { fleet: 50, off: {} }, makeRemote = null) {
+  const st = { sc: null, owed: 0, cam: {}, view: "car", counts: null, frames: 0, buildS: 0, makeRemote, remote: null, mergeMs: 0, merged: 0 };
   return loadStep(st, step);
+}
+
+/* A WORKER FOR THIS STEP'S WORLD: the same recipe the page's world came
+   from, so the worker's world is the page's (verify-worker); every load
+   starts it afresh, as the page's own world is restarted. What the main
+   thread still spends on the sim is laying the answer over its copy --
+   timed, and reported as the step. */
+function restartRemote(st, step) {
+  if (!st.makeRemote) return;
+  st.remote?.stop();
+  st.remoteReady = false; st.mergeMs = 0; st.merged = 0;
+  const own = st.sc;
+  st.remote = st.makeRemote({ bench: { fleet: step.fleet, off: step.off ?? {} } }, (dyn, hit, seq) => {
+    if (st.sc?.base !== own.base) return;
+    const t0 = clock();
+    st.sc.world = merge(st.sc.world, dyn);
+    st.mergeMs += clock() - t0; st.merged++;
+    if (seq === 1) st.remoteReady = true;
+  });
 }
 
 /* Move to a step: a new world only when the fleet or the traffic's make-up
@@ -349,6 +332,7 @@ export function loadStep(st, step) {
   }
   st.view = step.view ?? "car";
   st.counts = benchCounts(st.sc);
+  restartRemote(st, step);
   return st;
 }
 
@@ -358,8 +342,17 @@ const clock = () => (typeof performance !== "undefined" ? performance.now() : Da
    each timed, the way #/map runs them. */
 export function benchFrame(st, dtMs, ctx, size) {
   const t0 = clock();
-  const r = benchStep(st.sc, st.owed + Math.min(0.25, dtMs / 1000));
-  st.owed = r.owed;
+  let r, stepMs = null;
+  if (st.remote) {
+    /* One tick in flight, owed time held to two ticks -- as #/map does it. */
+    st.owed = Math.min(st.owed + Math.min(0.25, dtMs / 1000), 2 * DT);
+    if (st.remoteReady && !st.remote.busy && st.owed >= DT) { st.owed -= DT; st.remote.step(null); }
+    r = { ticks: st.merged }; stepMs = st.mergeMs;
+    st.merged = 0; st.mergeMs = 0;
+  } else {
+    r = benchStep(st.sc, st.owed + Math.min(0.25, dtMs / 1000));
+    st.owed = r.owed;
+  }
   const t1 = clock();
   const actors = benchActors(st.sc, st.owed);
   const t2 = clock();
@@ -371,5 +364,5 @@ export function benchFrame(st, dtMs, ctx, size) {
   /* The counts walk every parked car: twice a second, not every frame. */
   if (++st.frames % 30 === 0) st.counts = benchCounts(sc);
   /* A frame that ran no tick spent no time on the sim: zero, so it is not counted as a step. */
-  return { drew: { ...drew, extra: { ...st.counts, buildS: st.buildS } }, split: { step: r.ticks ? t1 - t0 : 0, poses: t2 - t1, draw: t3 - t2 }, ticks: r.ticks };
+  return { drew: { ...drew, extra: { ...st.counts, buildS: st.buildS } }, split: { step: r.ticks ? stepMs ?? t1 - t0 : 0, poses: t2 - t1, draw: t3 - t2 }, ticks: r.ticks };
 }

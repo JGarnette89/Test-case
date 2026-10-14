@@ -20,6 +20,7 @@ import { C, FONT_D, FONT_U } from "../theme.js";
 import { budgetRamp, perfMeter, deviceInfo, deviceIdentity, gcProbe, taskProbe, BUDGET, INSTRUMENT, BUILD } from "../iso/perf.js";
 import { benchState, loadStep, benchFrame, benchSteps, categorySteps, benchReport, benchMap } from "../iso/bench.js";
 import { copyText } from "../copy.js";
+import { remoteSim } from "../sim/remote.js";
 
 const DPR_CAP = 2;   // as #/iso and #/map: two device pixels per CSS pixel is all a phone can show
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
@@ -28,6 +29,9 @@ export default function Bench() {
   const canvasRef = useRef(null);
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState(null);
+  /* THE SIM IN A WORKER (sim/remote.js), as #/map now runs it -- or in the
+     page, as before, to compare. Where no worker can be made it is the page. */
+  const [worker, setWorker] = useState(typeof Worker !== "undefined");
   const [copied, setCopied] = useState(null);
   const [probe, setProbe] = useState(0);
   const reportRef = useRef(null);
@@ -39,7 +43,7 @@ export default function Bench() {
 
   const start = () => {
     setReport(null); setCopied(null); setRunning(true);
-    run.current = { phase: "ramp", ramp: budgetRamp({ steps: benchSteps(), meter: perfMeter() }), st: null, rampOut: null, identity: {} };
+    run.current = { phase: "ramp", ramp: budgetRamp({ steps: benchSteps(), meter: perfMeter() }), st: null, rampOut: null, identity: {}, worker };
     deviceIdentity().then((id) => { if (run.current) run.current.identity = id; });
   };
 
@@ -81,7 +85,7 @@ export default function Bench() {
         injected: before.injected, issued: before.issued,
       });
       if (want.load) {
-        r.st = r.st ? loadStep(r.st, want.load) : benchState(want.load);
+        r.st = r.st ? loadStep(r.st, want.load) : benchState(want.load, r.worker ? (recipe, onWorld) => remoteSim(recipe, onWorld, (m) => console.warn("bench: the sim's worker failed", m)) : null);
       } else if (want.done && r.phase === "ramp") {
         /* The split runs at the steady cap -- the most the device held --
            and at least the first step's fleet. */
@@ -90,7 +94,9 @@ export default function Bench() {
         r.phase = "split";
         r.ramp = budgetRamp({ steps: categorySteps(fleet), meter: perfMeter(), stopOnFail: false });
       } else if (want.done) {
-        const device = deviceInfo({ ...r.identity, canvasDpr: Math.min(DPR_CAP, window.devicePixelRatio || 1), longTasks: tasks.current.supported, loaf: tasks.current.loaf, build: import.meta.env?.DEV ? "dev server (unminified React, StrictMode)" : "production build" });
+        const sim = r.st?.remote ? "sim in a worker (step = laying its answer over the page's copy)" : "sim in the page";
+        r.st?.remote?.stop();
+        const device = deviceInfo({ ...r.identity, canvasDpr: Math.min(DPR_CAP, window.devicePixelRatio || 1), longTasks: tasks.current.supported, loaf: tasks.current.loaf, build: `${import.meta.env?.DEV ? "dev server (unminified React, StrictMode)" : "production build"}; ${sim}` });
         setReport(benchReport({ device, canvas: `${size.w}x${size.h}`, ramp: r.rampOut, split: want, loaded: benchMap() }));
         run.current = null; setRunning(false);
         return;
@@ -119,7 +125,7 @@ export default function Bench() {
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); run.current?.st?.remote?.stop(); };
   }, [running]);
 
   return (
@@ -144,6 +150,8 @@ export default function Bench() {
               {copied ? "Copied" : copied === false ? "Could not copy — the report is selected below, copy it by hand" : "Copy report"}
             </button>
           )}
+          <button className="btn" style={{ ...S.chip, borderColor: worker ? C.amber : "rgba(255,255,255,0.12)", color: worker ? C.white : DIM }} disabled={running}
+            onClick={() => setWorker((w) => !w && typeof Worker !== "undefined")}>{worker ? "Sim in a worker" : "Sim in the page"}</button>
           <span style={S.label}>instrument v{INSTRUMENT} · build {BUILD} — if this is not the latest, reload the page</span>
         </div>
         {report && <pre ref={reportRef} style={S.report}>{report}</pre>}

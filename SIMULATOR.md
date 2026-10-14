@@ -2675,6 +2675,33 @@ again. **There is no hot spot left to cut; the step is spread thin.**
 2. **Cheap far traffic** (1.2.2, and the 8 km^2 answer): full decisions
    near the player only.
 
+**THE SIM IN A WEB WORKER -- BUILT, 13 October** (`sim/remote.js`,
+`sim/sim.worker.js`, `sim/scene.js`). Lever 1 above. Both sides build the
+same world from the same arguments (`worldFor`, moved out of
+`MapRoad.jsx`'s `sceneFor` so a worker can import it; the bench's from
+`iso/benchworld.js`), so the course -- 7 MB of graph with functions in it
+-- never crosses. Each tick the page steps the player against the world
+it has, as it always did, and sends them; the worker writes them in,
+steps, judges their contact (`playerContact`, also moved, one copy) and
+returns only what changed. One tick in flight at most, owed time held to
+two ticks, so an overloaded worker slows the world rather than piling up
+-- and the order of events is the in-thread loop's: `verify-worker` holds
+the page's copy to the in-thread world tick for tick for 90 s at full
+throttle, contact included, and the bench's worker to the bench's world
+under its switches (sabotaged: the lights left out of what crosses, six
+failures). What crosses at 150 cars in the city: 229 KB a tick, 1.2-1.9
+ms to clone on the desk. The BUILT worker bundle was run in a Node worker
+thread shimmed as a browser worker (`tools/measure/worker-bundle.cjs`):
+it builds, answers, and steps, 7 ms a step on the desk. Where no worker
+can be made -- SSR, a browser without module workers -- or it fails, the
+page steps in-thread from its own copy, exactly as before.
+
+**TO JUDGE, ON THE PHONE: `#/bench`, twice -- "Sim in a worker" (the
+default) and "Sim in the page".** The report's first lines say which. In
+worker mode the `step` column is what the sim still costs the page --
+laying the worker's answer over its copy -- and the cap should rise; by
+how much is the question, since the clone is real work on a phone too.
+
 **The instrument lied once, and is fixed.** In the first run the phone's
 screen went off during the split: the "no walkers" step saw a 1.6 s gap
 and the soak a 38 s one, both flagged hidden in the stall table -- and

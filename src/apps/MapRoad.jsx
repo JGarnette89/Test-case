@@ -21,7 +21,7 @@
    the controls are drawn on the canvas, React draws the chrome and the
    contact banner, which is an event.
    ===================================================================== */
-import { pedPose, pedAt, strikePed } from "../sim/peds.js";
+import { pedPose } from "../sim/peds.js";
 import { walkerPose } from "../sim/walkers.js";
 import { sidewalksOf } from "../map/sidewalks.js";
 import { panFree, zoomFree, pinchFree, fitK, extentOf } from "../iso/freecam.js";
@@ -29,14 +29,13 @@ import { isTap } from "../editor/gesture.js";
 import React, { useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
-import { loadMap, groundFor } from "../map/load.js";
-import { testMap1 } from "../map/samples.js";
-import { firstEdge } from "../map/edges.js";
-import { seedGraph, step, poseOf, DT, crashWith } from "../sim/crossing.js";
-import { playerOn, stepDriver, driverPose, withDriver, aheadOf, playerHonk, placePlayer } from "../sim/drive.js";
+import { groundFor } from "../map/load.js";
+import { step, poseOf, DT } from "../sim/crossing.js";
+import { stepDriver, driverPose, withDriver, aheadOf, playerHonk } from "../sim/drive.js";
+import { worldFor, playerContact, START } from "../sim/scene.js";
+import { remoteSim, merge } from "../sim/remote.js";
 import { junctionsOf, postedAt } from "../sim/graph.js";
-import { touching } from "../sim/player.js";
-import { parkedPoses, contactWith } from "../sim/parking.js";
+import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
@@ -50,7 +49,7 @@ import { ASSIST } from "../sim/player.js";
 const LIMITS = [40, 50, 60];
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
 const DPR_CAP = 2;
-export const START = { road: "A-north", end: "end" };   // the player begins at the map's north edge, driving down to the crossroads
+export { START };   // the player begins at the map's north edge, driving down to the crossroads (sim/scene.js)
 
 /* The scene for one map: roads with their ribbons from the loader, the
    land the roads imply (load.js `groundFor` -- a map carries no terrain
@@ -78,34 +77,11 @@ import { CARS, carsFor, carsMaxFor } from "../map/cars.js";
    (`map/edges.js` -- a plain module, not this one, so a headless check
    can ask the same question without Node trying to parse JSX). */
 export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false) {
-  const loaded = loadMap(rawMap ?? testMap1());
-  if (cars == null) cars = carsFor(loaded);
-  if (!loaded.ok) throw new Error(`${rawMap ? "map" : "test map"}: ${loaded.error}`);
+  /* The world is built in sim/scene.js, where the sim's worker builds the
+     same one from the same arguments (sim/remote.js). */
+  const args = [seed, kmh, every, drive, cars, rawMap, startAt, lookAway];
+  const { loaded, world, me } = worldFor(...args);
   const b = loaded.bounds;
-  const start = rawMap ? (startAt ?? firstEdge(loaded) ?? START) : START;
-  /* POSTED SPEEDS ON (SIMULATOR.md 1.1.6): every road is driven at the
-     limit it posts, so an arterial and a residential street are not the
-     same road to drive -- which is the first thing that makes them feel
-     different. The `kmh` passed in is then only what sizes the geometry
-     (the fastest road's), never what anybody drives at. */
-  /* DRIVERS WHO LOOK AWAY (sim/attention.js): everybody glances off the
-     road now and then, for as long as their observation lets them, and
-     misses what changed meanwhile. Off by default -- it makes crashes,
-     which stay where they happened for the player to see. */
-  let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true, perceive: !!lookAway, walkers: true });
-  let me = null;
-  if (drive) {
-    me = playerOn(world.course, start.road, start.end, { through: !!start.through });   // the curb lane, driving down to the crossroads
-    /* A map with no drivable curb leg at its own chosen start -- a
-       lone one-way road backwards, say -- refuses cleanly rather than
-       pushing a null driver into the world, where every downstream
-       reader of `a.player` would throw on it instead. The editor
-       catches this and says so; #/map's own hardcoded start can never
-       hit it. */
-    if (!me) throw new Error("nowhere to start driving from on this map");
-    /* Clear of every car, and of every car able to reach a car standing there (drive.js `placePlayer`). */
-    world = placePlayer(world, me);
-  }
   const ground = groundFor(loaded, { cell: 20 });
   return {
     loaded,
@@ -119,7 +95,7 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
     /* The map's buildings, in the shape drawFrame's stand-in boxes
        already take. The loader has dropped any standing on a road. */
     props: (loaded.props ?? []).map((p) => ({ x: p.at.x, y: p.at.y, heading: p.heading, l: p.l, w: p.w, h: p.h })),
-    world, me,
+    world, me, args,
   };
 }
 
@@ -199,6 +175,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
 
   const restart = (s = seed, kmh = limit, m = mode, n = cars, look = lookAway) => {
     setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n); setLookAway(look);
+    scene.current?.remote?.stop();
     scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look);
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
     cam.current = { ...newChase(), id: null };
@@ -206,6 +183,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   };
 
   useEffect(() => { setWarnings(scene.current.loaded.warnings); }, []);
+  /* The sim's worker goes when the screen does. */
+  useEffect(() => () => scene.current?.remote?.stop(), []);
 
   /* What the player chose last time (settings.js), applied once after
      the first render, only where it differs from what shipped. */
@@ -265,7 +244,37 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       /* THE SIM STEPS AT 20 Hz FROM AN ACCUMULATOR. Driving, the player
          is stepped first and written into the world, so this tick's
          traffic sees where they really are. */
-      if (playing && !stopped && !(mode === "drive" && look)) {
+      /* THE SIM'S WORKER (sim/remote.js), made once per scene. Its answer
+         lays the stepped world over this copy and, on contact, stops the
+         player -- the in-thread loop's `break`, a message later. Where no
+         worker can be made, or it fails, the loop below steps in-thread
+         from this copy, exactly as before. */
+      if (sc.remote === undefined) {
+        const own = sc;
+        own.remoteReady = false;
+        own.remote = remoteSim({ args: own.args }, (dyn, hit, seq) => {
+          if (scene.current !== own) return;
+          own.world = merge(own.world, dyn);
+          if (seq === 1) own.remoteReady = true;
+          if (hit) { contacts.current++; flash.current = 1; setStopped(true); }
+        }, (message) => { console.warn("the sim's worker failed; stepping in the page", message); own.remote = null; });
+      }
+      if (playing && !stopped && !(mode === "drive" && look) && sc.remote) {
+        /* One tick in flight at most; a frame that finds the answer still
+           out draws the world it has. Owed time is held to two ticks, so
+           an overloaded worker slows the world rather than piling up. */
+        owed.current = Math.min(owed.current + dt, 2 * DT);
+        if (sc.remoteReady && !sc.remote.busy && owed.current >= DT) {
+          owed.current -= DT;
+          if (sc.me) {
+            if (input.current.state.horn !== (sc.hornSeen ?? 0)) { sc.hornSeen = input.current.state.horn; sc.me = { ...sc.me, ...playerHonk(sc.me, sc.world) }; }
+            sc.me = stepDriver({ ...sc.me, signal: input.current.state.signal }, inp, sc.world, DT);
+            input.current.state.signal = sc.me.signal;   // spent by the turn it caused
+            sc.world = withDriver(sc.world, sc.me);
+          }
+          sc.remote.step(sc.me);
+        }
+      } else if (playing && !stopped && !(mode === "drive" && look)) {
         owed.current += dt;
         while (owed.current >= DT) {
           owed.current -= DT;
@@ -279,24 +288,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           }
           w = step(w);
           sc.world = w;
-          /* Contact stops the car where it is: what a collision IS in
-             this game is still the maintainer's question. */
+          /* Contact stops the car where it is (sim/scene.js `playerContact`):
+             what a collision IS in this game is still the maintainer's question. */
           if (sc.me) {
-            const mine = driverPose(sc.me, w.course);
-            let hit = false;
-            for (const a of w.actors) {
-              if (a.player) continue;
-              const p = poseOf(w, a);
-              /* The car the player hit has crashed too -- it stops and is
-                 logged -- rather than driving on through them. */
-              if (touching(mine, { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, length: p.length, width: p.width })) { hit = true; w = crashWith(w, a.id, { x: p.x, y: p.y, z: p.z ?? 0 }); sc.world = w; }
-            }
-            /* A parked car is as solid as a moving one. */
-            if (!hit && w.parked && contactWith(w.course, w.parked, mine, touching)) hit = true;
-            /* And a person on foot: they fall where they are (sim/peds.js). */
-            const struck = hit ? null : pedAt(w, mine);
-            if (struck) { hit = true; w = strikePed(w, struck); sc.world = w; }
-            if (hit) { contacts.current++; flash.current = 1; setStopped(true); break; }
+            const c = playerContact(w, sc.me);
+            sc.world = c.world;
+            if (c.hit) { contacts.current++; flash.current = 1; setStopped(true); break; }
           }
         }
       }
@@ -542,7 +539,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               const me = driverPose(sc.me, sc.world.course);
               let best = null, bd = Infinity;
               for (const a of sc.world.actors) { if (a.player || a.crash) continue; const p = poseOf(sc.world, a); const d = Math.hypot(p.x - me.x, p.y - me.y); if (d < bd) { bd = d; best = a; } }
-              if (best) sc.world = { ...sc.world, actors: sc.world.actors.map((a) => (a.id === best.id ? { ...a, honkAt: sc.world.t, honkTo: "player" } : a)) };
+              if (best) { sc.world = { ...sc.world, actors: sc.world.actors.map((a) => (a.id === best.id ? { ...a, honkAt: sc.world.t, honkTo: "player" } : a)) }; sc.remote?.honk(best.id, "player"); }
             }}>Test horn</button>
           )}
           {mode === "drive" && (
@@ -555,7 +552,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           <label style={{ ...S.label, display: "inline-flex", alignItems: "center", gap: 8 }}>
             Cars <b style={{ color: C.white, minWidth: 28, textAlign: "right" }}>{cars}</b>
             <input type="range" min={CARS.min} max={carsMax} step={CARS.step} value={cars} style={{ width: 140, fontSize: 16 }}
-              onChange={(e) => { const n = Number(e.target.value); setCars(n); setSetting("carsByMap", { ...(settings().carsByMap ?? {}), [mapId]: n }); if (scene.current) scene.current.world = { ...scene.current.world, target: n }; }} />
+              onChange={(e) => { const n = Number(e.target.value); setCars(n); setSetting("carsByMap", { ...(settings().carsByMap ?? {}), [mapId]: n }); if (scene.current) { scene.current.world = { ...scene.current.world, target: n }; scene.current.remote?.set("target", n); } }} />
           </label>
           {/* A restart: a world keeps its drivers' recent past only when they can look away. */}
           <button className="btn" style={{ ...S.chip, borderColor: lookAway ? C.amber : "rgba(255,255,255,0.12)", color: lookAway ? C.white : DIM }}
