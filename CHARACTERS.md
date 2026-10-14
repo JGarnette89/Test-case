@@ -30,6 +30,12 @@ expresses her: `stopsShort` (stopping short of the line), undue delay
 (waiting past an opening), the timid caution margin, and the horn's
 timid-never-honks. She is the first character the timid tail was built for.
 
+**CORRECTED, 14 October:** `stopsShort` was the OLD ENGINE's; the
+simulator had no stopping short at all until the rivals' cheap pass added
+it, derived from the knowledge axis for every driver (SIMULATOR.md, "THE
+RIVALS, CHEAPLY"). Undue delay, the timid margin, courtesy and never
+honking were already the simulator's.
+
 Mason is the player's own fantasy -- bold AND good -- which is the
 combination the axes separate most cleanly (a bold driver with poor
 observation is the dangerous one; with good observation, the fast one).

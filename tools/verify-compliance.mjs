@@ -34,10 +34,16 @@ import { loadMap } from "../src/map/load.js";
 import { emptyMap, road } from "../src/map/format.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { SIGN_KINDS } from "../src/map/format.js";
-import { seedGraph, step, pathOf, layoutOf, DT } from "../src/sim/crossing.js";
+import { seedGraph, step, pathOf, layoutOf, DT, restAt, whatStops } from "../src/sim/crossing.js";
 import { movementLight } from "../src/sim/signal.js";
 import { crosswalksOf } from "../src/sim/peds.js";
-import { CAR, driver } from "../src/sim/traffic.js";
+import { CAR, driver, STANDSTILL } from "../src/sim/traffic.js";
+/* WHERE AN OCCASION IS WATCHED FROM (14 October). A car brakes for a line as
+   for a stopped car, so it comes to rest STANDSTILL (2 m) short of where it
+   means to stand -- and the window opened 2 m out, exactly there: whether a
+   rest was seen at all was decided in the second decimal place. Opened two
+   metres further out, so every rest at a line is inside it. */
+const WATCH = STANDSTILL + 2;
 import { composeDriver, AXES, SKILLS, COMPLY_WEAK, DIFFICULTY, reads, deficitOf, soundnessOf, LACKING_AT } from "../src/core/driver.js";
 import { townOf } from "../src/sim/towns.js";
 
@@ -142,16 +148,22 @@ console.log("\n3. COMPLIANCE IS SITUATIONAL, KNOWLEDGE IS CONSISTENT: THE READAB
           : L.place.control[path.from] === "stop" ? "stop" : null;
         const key = `${a.id}@${a.k}@${a.route}`;
         let o = open.get(key);
-        const toLine = path.stopAt - CAR.length / 2 - a.s;
+        /* From where THIS driver comes to rest (crossing.js `restAt`): a driver who stops short rests further back, and watched only from the line they were never seen to rest. */
+        const toLine = restAt(path, a) - a.s;
         /* An occasion is watched from its start: a car that stopped during
            the world's warm-up, before t = 0, was never seen to stop. (Not
            any earlier stop mark: a roller marks its crawl at the line.) */
-        if (!o && kind && toLine < 2 && toLine > -1) open.set(key, o = { kind, seen: witnessed(w, a), rested: false, before: a.stoppedAt != null && a.stoppedAt < 0 });
+        if (!o && kind && toLine < WATCH && toLine > -1) open.set(key, o = { kind, seen: witnessed(w, a), rested: false, before: a.stoppedAt != null && a.stoppedAt < 0 });
         if (!o) continue;
-        if (a.v < 0.3) o.rested = true;
+        /* A REST THE TRAFFIC FORCED is not a reading of the rule: held by
+           somebody crossing, a driver who does not know the right on red stops
+           like everybody else (CLAUDE.md: held by traffic, they stop like
+           everybody else, which is correct). Such an occasion is set aside --
+           it says nothing either way. */
+        if (a.v < 0.3 && !o.rested) { o.rested = true; if (whatStops(a, w).held) o.forced = true; }
         if (a.s >= path.stopAt && !o.done) {
           o.done = true;
-          if (o.before) continue;
+          if (o.before || o.forced) continue;
           /* A right on red is one only if it is still red at the line --
              a light gone green on the way in asks for no stop. */
           if (o.kind === "right-on-red" && (movementLight(L.signal, L.legs[path.from]?.base, "right", w.t, w.lights?.[a.k ?? 0]?.live) !== "red" || a.amberGo)) continue;
@@ -214,9 +226,9 @@ console.log("\n4. A SIGN'S OWN DIFFICULTY IS AUTHORED DIFFICULTY");
         if (a.rollsStops) continue;   // compliance held out: this is reading alone
         const p = pathOf(w, a), L = layoutOf(w, a);
         if (L.place.control[p.from] !== "stop") continue;
-        const key = `${a.id}@${a.k}@${a.route}`, toLine = p.stopAt - CAR.length / 2 - a.s;
+        const key = `${a.id}@${a.k}@${a.route}`, toLine = restAt(p, a) - a.s;
         let o = open.get(key);
-        if (!o && toLine < 2 && toLine > -1) open.set(key, o = { rested: false, before: a.stoppedAt != null && a.stoppedAt < 0 });
+        if (!o && toLine < WATCH && toLine > -1) open.set(key, o = { rested: false, before: a.stoppedAt != null && a.stoppedAt < 0 });
         if (!o) continue;
         if (a.v < 0.3) o.rested = true;
         if (a.s >= p.stopAt && !o.done) { o.done = true; if (o.before) continue; of++; if (!o.rested) n++; }

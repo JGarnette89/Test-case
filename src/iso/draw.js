@@ -244,6 +244,26 @@ function paintHorns(ctx, canvas, view, scene, k) {
    Green and white, which nothing else drawn on the road uses together
    (a green light is a lamp, never a disc with a rim); over the world, as
    the horn is. */
+/* A RIVAL'S NAME (sim/rivals.js), over their car: a pill in their colour,
+   bold, never under 12 px of type -- a map label, so they can be picked out
+   from across the screen before their driving gives them away. Higher than
+   the horn and courtesy badges, which sit just over the roof. */
+export function paintNames(ctx, view, scene, k) {
+  for (const a of scene.actors ?? []) {
+    if (!a.name) continue;
+    const [x, y] = view.into(a.x, a.y, (a.z ?? 0) + (a.height ?? 1.5) + 3.4, [0, 0]);
+    const size = Math.max(12, Math.min(18, 0.6 * k));
+    ctx.font = `700 ${size}px system-ui, sans-serif`;
+    const w = ctx.measureText(a.name).width + size, h = size * 1.5;
+    ctx.fillStyle = a.colour ?? "#ffffff";
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - w / 2, y - h / 2, w, h, h / 2) : ctx.rect(x - w / 2, y - h / 2, w, h); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = "#111114"; ctx.stroke();
+    const c = (a.colour ?? "#ffffff").replace("#", ""), lum = (0.299 * parseInt(c.slice(0, 2), 16) + 0.587 * parseInt(c.slice(2, 4), 16) + 0.114 * parseInt(c.slice(4, 6), 16)) / 255;
+    ctx.fillStyle = lum > 0.6 ? "#111114" : "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(a.name, x, y + 1);
+  }
+}
+
 export function paintCourtesy(ctx, canvas, view, scene, k) {
   const t = scene.t ?? 0;
   for (const a of scene.actors ?? []) {
@@ -852,6 +872,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   /* The floor first, then everything with height; each by depth. */
   items.sort((a, b) => a.layer - b.layer || a.key - b.key);
   for (const it of items) it.paint();
+  paintNames(ctx, view, scene, k);
   paintCourtesy(ctx, canvas, view, scene, k);
   paintHorns(ctx, canvas, view, scene, k);
   return { items: items.length, ...counts, ...(audit ? { order: items.map((it) => ({ ...it.tag, key: it.key })) } : {}) };

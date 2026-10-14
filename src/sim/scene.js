@@ -35,7 +35,8 @@ export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, st
      road now and then, for as long as their observation lets them, and
      misses what changed meanwhile. Off by default -- it makes crashes,
      which stay where they happened for the player to see. */
-  let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true, perceive: !!lookAway, walkers: true });
+  /* THE RIVALS (sim/rivals.js) drive every map the screen opens. */
+  let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true, perceive: !!lookAway, walkers: true, rivals: true });
   let me = null;
   if (drive) {
     me = playerOn(world.course, start.road, start.end, { through: !!start.through });   // the curb lane, driving down to the crossroads

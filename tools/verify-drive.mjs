@@ -13,7 +13,7 @@
    traffic treats the player as one of its own -- yielding, following,
    never driving through them.
    ===================================================================== */
-import { seedGraph, step, poseOf, overlapping, DT } from "../src/sim/crossing.js";
+import { seedGraph, step, poseOf, overlapping, DT, restAt } from "../src/sim/crossing.js";
 import { playerAt, playerOn, stepDriver, driverPose, withDriver, routeForSignal, aheadOf } from "../src/sim/drive.js";
 import { touching, holdAt, CLEAN, sliderFor, stopBand, accelFor } from "../src/sim/player.js";
 import { graphOf } from "../src/sim/graph.js";
@@ -185,7 +185,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
         if (touching(mine, { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot })) touches++;
         /* A stop-leg car at rest at its line while the player is within the box's reach: it waited. */
         const pa = ww.course.at[a.k].layout.paths[a.route];
-        if ((a.route.startsWith("N|") || a.route.startsWith("S|")) && a.v < 0.3 && Math.abs(a.s - (pa.stopAt - CAR.length / 2)) < 2.5 && Math.abs(mine.x - 500) < 40) minorWaited++;
+        if ((a.route.startsWith("N|") || a.route.startsWith("S|")) && a.v < 0.3 && Math.abs(a.s - restAt(pa, a)) < 2.5 && Math.abs(mine.x - 500) < 40) minorWaited++;
         /* A car behind the player on the same lane, closer than its own headway would be at speed: it is following. */
         if (a.k === mm.k && pa.from === ww.course.at[mm.k].layout.paths[mm.route].from && a.s < mm.s && mm.s - a.s < 60 && a.v > 1) followed++;
       }

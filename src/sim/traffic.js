@@ -157,7 +157,7 @@ export const HARSH_AT = BRAKE * ABRUPT;
    are reconciled. Flagged rather than solved. */
 const HEADWAY = 0.7;
 /* Bumper-to-bumper gap at a standstill. A real figure, not derived. */
-const STANDSTILL = 2.0;
+export const STANDSTILL = 2.0;
 /* Nobody brakes harder than this. An emergency stop is about 8 m/s^2. */
 export const MOST_BRAKE = 8.0;
 
@@ -283,6 +283,9 @@ export { cautionOf };
    bold tail and 14% in the timid one, which is the mix the maintainer
    asked for arriving from the driver model rather than from a
    distribution written to produce it. */
+/* How far short of a line the least-knowing driver stops: the old engine's
+   `stopsShort` (engine/index.js, M(3.2)), carried over rather than chosen. */
+export const STOP_SHORT = 3.2;
 export function driver(road, seed, n, ratings = null, town = null, kind = "car") {
   const who = ratings ? { ratings, weakOn: lackingIn({ ratings }), stuck: stuckFor(rng(seed * 15485863 + n + 7)) } : composeDriver(seed * 7919 + n, town);
   const r = rng(seed * 104729 + n + 1);
@@ -393,6 +396,12 @@ export function driver(road, seed, n, ratings = null, town = null, kind = "car")
     caution,
     rollsStops,
     brake,
+    /* WHERE THEY STOP AT A LINE: short of it by up to the old engine's own
+       `stopsShort` (3.2 m), by how little they know where a stop belongs.
+       A controlled stop in the wrong place is KNOWLEDGE (the maintainer's
+       ruling, CLAUDE.md: the three-way stop split) -- not caution, which
+       decides when they go, never where they wait. */
+    short: STOP_SHORT * deficitOf(who.ratings, "knowledge").deficit,
     weave,
     lag,
     /* HOW LONG THEY TAKE TO NOTICE A CHANGE IN FRONT OF THEM -- a light

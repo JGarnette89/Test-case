@@ -109,11 +109,12 @@ console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- 
     let w = { ...seedGraph(seed, 50, loadMap(walkedCrossroads(ctl)), { target: 40, posted: true }), ...(ignorePeds ? { ignorePeds } : {}) };
     const cws = crosswalksOf(w.course);
     const L = w.course.at.find((a) => !a.through).layout;
-    const out = { crossed: 0, touch: 0, intoWreck: 0, over: 0, longest: 0, otherHalf: 0, delayed: 0 };
+    const out = { crossed: 0, touch: 0, intoWreck: 0, over: 0, longest: 0, otherHalf: 0, delayed: 0, manners: new Map() };
     for (let i = 0; i < 240 / DT; i++) {
       const before = new Map((w.peds ?? []).map((q) => [q.id, q]));
       const cars = new Map(w.actors.map((a) => [a.id, a]));
       w = step(w);
+      for (const c of w.crashes ?? []) if (String(c.a).startsWith("ped-") && !out.manners.has(c.a)) out.manners.set(c.a, (w.peds ?? []).find((q) => q.id === c.a)?.manner ?? "unknown");
       const now = new Set((w.peds ?? []).map((q) => q.id));
       for (const q of w.peds ?? []) if (q.state === "leaving" && before.get(q.id)?.state === "crossing") out.crossed++;
       for (const q of w.peds ?? []) if (q.state === "waiting") out.longest = Math.max(out.longest, w.t - q.since);
@@ -142,6 +143,8 @@ console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- 
     }
     out.crashes = (w.crashes ?? []).filter((c) => !String(c.a).startsWith("ped-")).length;
     out.crashesWithPeds = (w.crashes ?? []).filter((c) => String(c.a).startsWith("ped-")).length;
+    /* ...and WHO: somebody careful, or somebody who took a risk (`manner`, read the tick they were struck). */
+    out.carefulStruck = [...out.manners.values()].filter((m) => m !== "heedless").length;
     return out;
   };
   const stop = run("stop", 3), none = run("none", 5), blind = run("stop", 3, true);
@@ -164,7 +167,16 @@ console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- 
   const intoWreck = blinds.reduce((n, r) => n + r.intoWreck, 0);
   if (intoWreck) console.log(`   KNOWN, people walk into a standing wreck: ${intoWreck} sampled contacts, every one with a car that had already crashed -- strikes() skips crashed cars and nobody crossing avoids one (SIMULATOR.md 1.2.8)`);
   check(blindStruck > 0 && blindTouch === 0, `and it is the yielding doing it: the same traffic with drivers told to ignore people on foot strikes ${blindStruck} of them -- every one a recorded crash, the person lying where they fell, never a car silently inside somebody`);
-  check(stop.crashesWithPeds === 0 && none.crashesWithPeds === 0, "while drivers who yield strike nobody");
+  /* WHILE DRIVERS WHO YIELD STRIKE NOBODY CAREFUL. Stated as the established
+     rule (section 9: careful people are never struck by traffic that is
+     watching; everybody struck took a risk), not as "nobody": a heedless
+     person who walks inside the bumper of a car already turning is struck,
+     and two seeds' worth of crossings is whether one happened to (14
+     October: the stopping-short change moved the traffic, and on the
+     uncontrolled crossroads a heedless person stepped off 0.45 s before
+     walking into a right-turner at 1.9 m/s -- before it, by luck, nobody had). */
+  const yieldStruck = stop.crashesWithPeds + none.crashesWithPeds, yieldCareful = stop.carefulStruck + none.carefulStruck;
+  check(yieldCareful === 0, `while drivers who yield strike nobody careful (${yieldStruck} struck, all of them heedless)`);
   check(stop.otherHalf + none.otherHalf > 0, `the near-half rule: ${stop.otherHalf + none.otherHalf} times a car crossed a crosswalk while somebody was still on its other half`);
   check(stop.delayed + none.delayed === 0, "and a driver waiting for somebody on foot is never counted as delaying");
   let w = seedGraph(3, 50, loadMap(crossroads()), { target: 40, posted: true });

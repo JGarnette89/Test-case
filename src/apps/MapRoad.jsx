@@ -34,6 +34,7 @@ import { step, poseOf, DT } from "../sim/crossing.js";
 import { stepDriver, driverPose, withDriver, aheadOf, playerHonk } from "../sim/drive.js";
 import { worldFor, playerContact, START } from "../sim/scene.js";
 import { remoteSim, merge } from "../sim/remote.js";
+import { RIVALS } from "../sim/rivals.js";
 import { junctionsOf, postedAt } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
@@ -118,7 +119,7 @@ export function actorsOf(scene, carry) {
     /* A CRASHED car flashes its hazards: orange and dark, twice a second,
        so a wreck is never just another stopped car. */
     const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;
-    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, blinker: a.blinker ?? null, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null, courtesy: !!(a.courtesy && !a.courtesy.done) });
+    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, blinker: a.blinker ?? null, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null, courtesy: !!(a.courtesy && !a.courtesy.done), name: a.rival ?? null });
   }
   /* PEOPLE ON FOOT (sim/peds.js): waiting at the curb or crossing. */
   for (const q of w.peds ?? []) out.push({ id: q.id, n: q.look ?? q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });
@@ -324,14 +325,18 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         rot = cam.current.rot;
       } else {
         let want = PLACES[follow] ?? { x: sc.centre.x, y: sc.centre.y, z: 0 };
-        if (follow === "car") {
+        /* A RIVAL (sim/rivals.js): ride them while they are on the map; between visits the view waits at the middle. */
+        if (follow.startsWith("rival-")) {
+          const target = actors.find((a) => a.id === follow);
+          if (target) want = target;
+        } else if (follow === "car") {
           let target = actors.find((a) => a.id === cam.current.id);
           if (!target) { const cars = actors.filter((a) => !a.ped); target = cars[Math.floor(cars.length / 2)] ?? null; cam.current.id = target?.id ?? null; }
           if (target) want = target;
         }
         const f = cam.current.snap ? 1 : 1 - Math.exp(-4 * dt);
         cam.current = { ...cam.current, x: cam.current.x + (want.x - cam.current.x) * f, y: cam.current.y + (want.y - cam.current.y) * f, z: cam.current.z + ((want.z ?? 0) - cam.current.z) * f, rot: 0, snap: false };
-        k = Math.max(1, (size.w / (follow === "car" ? 60 : 110)) * zoom);
+        k = Math.max(1, (size.w / (follow === "car" || follow.startsWith("rival-") ? 60 : 110)) * zoom);
       }
       lastView.current = { x: cam.current.x, y: cam.current.y, z: cam.current.z ?? 0, k, rot };
       const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + carry, lights: sc.world.lights });
@@ -515,7 +520,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               onClick={() => { setSetting("mode", id); restart(seed, limit, id); }}>{label}</button>
           ))}
           {mode === "watch" && <span style={S.label}>View</span>}
-          {mode === "watch" && [...(scene.current.loaded.sections ?? []).map((q) => [q.id, q.name]), ["car", "ride a car"], ["crash", "the last crash"], ["free", "free look"]].map(([id, label]) => (
+          {mode === "watch" && [...(scene.current.loaded.sections ?? []).map((q) => [q.id, q.name]), ["car", "ride a car"], ...RIVALS.map((r) => [r.id, r.name]), ["crash", "the last crash"], ["free", "free look"]].map(([id, label]) => (
             <button key={id} className="btn" style={{ ...S.chip, borderColor: follow === id ? C.amber : "rgba(255,255,255,0.12)", color: follow === id ? C.white : DIM }}
               onClick={() => { if (id === "free") { if (!free.current && lastView.current) free.current = { ...lastView.current }; } else { free.current = null; cam.current = { x: 0, y: 0, z: 0, id: null }; } setFollow(id); }}>{label}</button>
           ))}

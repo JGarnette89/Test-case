@@ -124,7 +124,7 @@ playable milestone.
    short and over-yielding; bold-and-able threading; observant-and-steady
    reading obstacles), findable on the map with a name tag. PLAYER, cheap.
    About a week. Tests whether they read as PEOPLE before their worlds
-   exist.
+   exist. *Built, 14 October (SIMULATOR.md, "THE RIVALS, CHEAPLY").*
 
 > **PLAYABLE MILESTONE 1 -- "Meet the rivals."** Drive the stand-in city
 > at the higher density the worker buys, with the courtesy gaps, and pick

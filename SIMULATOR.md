@@ -4422,6 +4422,96 @@ the green badge over that car and the green patch in front of it -- can
 you see them in time to act, a second or two? About a third to a half of
 drivers will offer; the rest will not, and that is meant.
 
+### THE RIVALS, CHEAPLY -- BUILT, 14 October (`src/sim/rivals.js`; PLAN.md item 3)
+
+Victor and Brenda Braga, Mason "Swerve" Lin and "Grizzly" Hannah Miller
+drive every map the screen opens (`worldFor` asks for them; `seedGraph`'s
+`rivals` is off by default, so every check's world is unchanged by their
+presence). Each is an AXIS PROFILE and nothing else, made a driver by the
+same `driver` as everybody; when one is not on the map the next car to
+arrive -- at an edge or out of a district's curb -- is them, with no trip
+to end. A name tag in their colour rides over the car (`paintNames`,
+never under 12 px), and Watch has a button each to ride them.
+
+**One new behaviour, derived, for everybody: WHERE A DRIVER STOPS AT A
+LINE.** Short of it by the old engine's own `stopsShort` distance (3.2 m)
+times the knowledge deficit (`STOP_SHORT`, traffic.js) -- a controlled
+stop in the wrong place is KNOWLEDGE, the maintainer's ruling. It was
+missing from the simulator: CHARACTERS.md had claimed `stopsShort`
+expressed Brenda, which was true only of the old engine. A drawn driver
+weak on knowledge now stops visibly back; a sound one at the line.
+
+**Only where a car comes to REST** (`restAt` in crossing.js): the line it
+brakes for and where it counts as stopped. Everything that asks where the
+LINE is -- a yield's slowing, the amber, the loops, the gaps -- still asks
+`waitAt`. The first version moved both, and the full suite found it: a
+yield road's cars slowed early and sped up again before the line
+(`verify-signs`), and a caller with no driver (`marking.js`) threw
+(`verify-course`). A short stopper misjudges where to stand, not where
+the line is.
+
+**And only at a STOP, and only with room** (the full suite again, twice):
+- Only where the control is a stop sign or a red. Held by traffic on a
+  road with no control a driver waits where everybody waits: a left-turner
+  standing 2.65 m back on a through road needed a gap the oncoming stream
+  never left, the right-turner beside it is held by any left-turner at its
+  line, and the lane starved (`verify-drive`: the player never reached the
+  box).
+- Only where they can still stop comfortably short of it. A target moved
+  BEHIND a car already standing -- stopped at the line, then the light
+  changed -- held it at full braking at rest, tick after tick: 2341 "harsh"
+  car-ticks at one signalled crossroads against 29 before (`verify-signal`),
+  every one a car not moving. Now 27.
+
+**And a check carried its own copy of where cars stop.**
+`verify-compliance` watched an occasion from 2 m before the old resting
+point -- exactly where every car comes to rest, STANDSTILL short of the
+line it brakes for -- so whether a rest was seen at all was decided in
+the second decimal place, and a short stopper was never seen to rest and
+was counted as rolling. It now watches from each driver's own `restAt`,
+two metres further out (`WATCH`), and sets aside rests the TRAFFIC forced
+(held by somebody crossing, a driver who does not know the right on red
+stops like everybody else -- the established rule). Before: 91% alone
+against 58% in company for the driver who does not read it, failing the
+consistency bound; after: 90% against 87%, the scofflaw still 0% in
+company. Sabotaged: that driver rolling only with nobody about.
+
+Measured over ten minutes of the stand-in city at 150 cars on two seeds
+(`verify-rivals`), against the crowd's medians (95% of the limit when
+free, 1.84 s behind a car ahead in steady following, 0 lane changes):
+
+| | % of the limit, free | steady following | lane changes | stops, from the box |
+|---|---|---|---|---|
+| Victor (bold, scofflaw) | 126% | never (too fast to sit behind anybody) | 2 | 2.2 m |
+| Brenda (timid, compliant) | 64% | never (nobody ahead within reach) | 0 | 4.1 m |
+| Mason (bold and able) | 115% | 1.25 s | 4 | 1.9 m |
+| Hannah (sound) | 97% | -- | 0 | 1.9 m |
+
+How closely Victor and Brenda follow (0.39 s and 1.02 s wanted) is
+asserted on their profiles: the city never holds either in steady
+following, and a traffic clause for it passed on no samples at all
+before it was taken out (14 October).
+
+Plus what the profile derives and the sim already expresses: Victor
+rolls stops with nobody about, honks at once, never lets anybody in,
+never keeps right; Brenda waits for gaps twice anybody's, never honks,
+lets everybody in; Hannah notices soonest. Sabotaged: rivals arriving as
+ordinary drawn drivers fails Victor's, Brenda's and the stop-short checks
+(Mason's lane changes passed by chance -- two changes against the crowd's
+none is thin, and is reported as such).
+
+**Honest limits of the cheap pass.** Mason's threading is lane changes for
+small gains into tight gaps: real, but the traffic is not dense enough on
+most maps to make it spectacular. Hannah is the steady expert in a world
+with no gravel and nothing to read but traffic -- her character lives in
+the county, which is unbuilt; here she reads as "the good driver". Victor's
+bullying merges are his tight lane changes and gaps; nothing yet makes
+anybody give way to him by intimidation.
+
+**To judge** (`#/map` or any test map, Watch, then "Victor", "Brenda",
+"Mason", "Hannah"; or drive and look for the name tags): do they read as
+PEOPLE by their driving -- would you know Brenda without the tag?
+
 ### THE GREEN, NOTICED, AND THE HORN (the maintainer, 8 October) -- BUILT
 
 Verbatim: *"another idea for driver behavior, people responding

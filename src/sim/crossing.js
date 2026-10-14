@@ -42,6 +42,7 @@ import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, post
 import { stepLights, LOOP } from "./actuated.js";
 import { HONK_AGAIN } from "./horn.js";
 import { askOf, askedOf, offerOf, courtesyAccel } from "./courtesy.js";
+import { rivalDue, asRival } from "./rivals.js";
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
 import { cornerAccel, speedBy, fits } from "./corner.js";
@@ -239,7 +240,7 @@ export function nobodyAbout(world, me) {
     const p = layout.paths[b.route];
     if (!p) continue;
     if ((layout.legs[p.from]?.base ?? p.from) === myBase && b.s <= me.s) continue;
-    if (Math.abs(waitAt(p, b) - b.s) < ABOUT) return false;
+    if (Math.abs(restAt(p, b) - b.s) < ABOUT) return false;
   }
   const cws = world.peds?.length ? crosswalksOf(world.course) : null;
   for (const q of world.peds ?? []) if (q.state !== "struck" && cws[q.cw]?.k === k) return false;
@@ -351,6 +352,14 @@ export const pathOf = (world, a) => layoutOf(world, a).paths[a.route];
    was total deadlock: nobody was ever recorded as having stopped, so
    nobody ever got priority, so nobody ever moved. */
 const waitAt = (path, a) => path.stopAt - lenOf(a) / 2;
+/* WHERE THEY COME TO REST at a line they must STOP at (a sign or a red; never where they are only held): short of it by however
+   far this driver stops short (traffic.js `short`, the knowledge axis).
+   Only where a car comes to REST -- the line it brakes for, and where it is
+   counted as stopped. Everything that asks where the LINE is (a yield's
+   slowing, the amber, the loops, the gaps) asks `waitAt`: a short stopper
+   misjudges where to stand, not where the line is (a yield road's cars
+   slowed early and sped up again before it, verify-signs, 14 October). */
+const restAt = (path, a) => waitAt(path, a) - (a.short ?? 0);
 
 /* THE YIELD APPROACH: slow, so as to be able to give way. A driver who has
    read a yield sign arrives at the line no faster than YIELD_AT, scaled by
@@ -1005,7 +1014,20 @@ export function whatStops(me, world) {
          That is not a cosmetic difference. It is where the remaining
          overlaps were coming from: 16 of 21 were a waiting car and a
          crossing car, and the waiting one was sticking into the box. */
-      const d = waitAt(mine, me) - me.s;
+      /* Short of the line only where the line is a STOP -- a sign or a red;
+         held by traffic on a road with no control a driver waits where
+         everybody waits (a left-turner standing 2.65 m back on a through
+         road needed a gap the oncoming stream never left, and the lane
+         beside it starved -- verify-drive, 14 October). */
+      /* ...and only where they can still stop comfortably short of it. A
+         driver who cannot -- the red met late, or already standing past
+         that spot when the light changed -- stops at the line instead. A
+         target BEHIND a standing car held it at full braking at rest, tick
+         after tick: 2314 "harsh" car-ticks at one signalled crossroads
+         (verify-signal, 14 October), every one a car not moving. */
+      const rest = restAt(mine, me);
+      const at = (under === "stop" || under === "hold") && me.s + stoppingRoom(me.v ?? 0, me.brake ?? 2.7) <= rest ? rest : waitAt(mine, me);
+      const d = at - me.s;
       /* A stationary obstacle exactly where the driver must not pass. */
       consider(d, { id: "line", v: 0, headway: me.headway });
     }
@@ -1029,7 +1051,7 @@ export function whatStops(me, world) {
       const p2 = L2.paths[r2];
       const there = { ...me, k: j.k, route: r2, s: me.s - mine.length, stoppedAt: null, going: false, amberGo: false };
       const u = controlOf(there, L2, p2, world.t ?? 0, there, liveOf(world, j.k));
-      if (u === "hold" || u === "stop") consider(toEnd + waitAt(p2, me), { id: "line", v: 0, headway: me.headway });
+      if (u === "hold" || u === "stop") consider(toEnd + restAt(p2, me), { id: "line", v: 0, headway: me.headway });
     }
   }
   return { leader, gap, held, queued, hold: short && (under === "hold" || dawdling), red: short && under === "hold", ...(seenNow ? { seen: seenNow } : {}) };
@@ -1286,7 +1308,8 @@ export function step(world) {
       /* WHEN THEY STOPPED, remembered because the queue at an all-way
          stop is made of arrival order and nothing else can reconstruct
          it after the fact. */
-      const atLine = Math.abs(s - waitAt(mine, me)) < AT_LINE;
+      /* At the line: where this driver rests for a stop, or the line itself where they were only held. */
+      const atLine = Math.abs(s - restAt(mine, me)) < AT_LINE || Math.abs(s - waitAt(mine, me)) < AT_LINE;
       const stoppedAt = me.stoppedAt ?? (atLine && (v < AT_REST || (v < ROLLING && rollsHere(me, world))) ? world.t : null);
       /* ACCEPTING A GAP IS A DECISION, AND IT STICKS. `LAUNCHED` alone
          made commitment a matter of SPEED, so a driver who had judged the
@@ -1923,8 +1946,10 @@ function arriving(world, n) {
      implementations of one quantity is the recurring bug here. */
   const posted = world.road.posted ? postedAt(world.course, where.k, route) : null;
   const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6) };
-  const who = driver(road, world.seed, n, null, null, kind);
-  return {
+  /* THE RIVALS (rivals.js): an absent one is the next car to arrive -- their profile, through the same `driver`. */
+  const rival = rivalDue(world, world.actors, kind);
+  const who = driver(road, world.seed, n, rival?.ratings ?? null, null, kind);
+  const car = {
     ...who,
     n,
     k: where.k,
@@ -1949,6 +1974,7 @@ function arriving(world, n) {
     tripLen: kind === "bus" ? null : tripLenFor(world, n),
     ...(kind === "bus" ? { busStop: nextStop(world.course, { kind }, world.course.at[where.k].layout.paths[route], 0, 15), riders: ridersFor(n) } : {}),
   };
+  return rival ? asRival(car, rival) : car;
 }
 
 /* =====================================================================
@@ -2042,14 +2068,16 @@ function pullingOut(world, n, actors) {
   /* FROM HERE: a car that pulls out of a district is one of its people,
      drawn from its character. Traffic arriving at the city's edge is from
      elsewhere and is drawn as it always was. */
-  const car = {
-    ...driver(road, world.seed, n, null, townOf(at.character)),
+  const rival = rivalDue(world, actors);
+  const drawn = {
+    ...driver(road, world.seed, n, rival?.ratings ?? null, rival ? null : townOf(at.character)),
     home: at.zone,
     n, k: at.k, route: chosen.route, ...(chosen.want ? { want: chosen.want } : {}),
     leg: 0, s, v: 0,
     stoppedAt: null, going: false, accepted: false, openFor: 0, openedAt: null, waited: 0, delayed: false,
     arriveIn: world.every, tripLen: tripLenFor(world, n), fromCurb: true, ...(fromSlot ? { fromSlot } : {}),
   };
+  const car = rival ? asRival(drawn, rival) : drawn;
   const mine = laneSpan(world.course, at.k, chosen.route, s)[0];
   for (const a of actors) {
     const on = laneSpan(world.course, a.k ?? 0, a.route, a.s).find((x) => x.lane === mine.lane);
@@ -2170,7 +2198,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
@@ -2199,7 +2227,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, ...(passing ? {} : { passing: false }), spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   /* `actuated: false`: every light on its clock, as before the loops (actuated.js) -- for comparing against. */
@@ -2533,4 +2561,4 @@ export const delayed = (world) => world.actors.filter((a) => a.delayed);
 /* The line-region and rest thresholds, for the marking sheet: whether a
    driver came to rest before a line is judged by the same numbers that
    decide it here. */
-export { PX_PER_M, M, CAR, DT, ALL_WAY, TWO_WAY, COMPETENT, UNDUE_AT, AT_REST, AT_LINE, waitAt, radiusFor };
+export { PX_PER_M, M, CAR, DT, ALL_WAY, TWO_WAY, COMPETENT, UNDUE_AT, AT_REST, AT_LINE, waitAt, restAt, radiusFor };
