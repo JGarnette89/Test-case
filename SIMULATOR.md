@@ -4524,6 +4524,59 @@ anybody give way to him by intimidation.
 "Mason", "Hannah"; or drive and look for the name tags): do they read as
 PEOPLE by their driving -- would you know Brenda without the tag?
 
+### A.U.T.O. SPEAKS -- BUILT, 14 October (PLAN.md phase 2; `src/sim/events.js`, `src/sim/voice.js`, `src/content/dialogue.js`)
+
+**The events** (`events.js`): one detector per trigger, each a comparison
+of the player and the world one tick apart -- what the sim already holds,
+never a judgement made here: rolling a stop sign, running a red (not in the
+original list; the most serious thing a driver can do at a light), a
+blocked box, a harsh stop and a short one (as stepDriver judged them), a
+late signal and none at all, a lane change into a gap the car behind could
+not keep half of, a horn aimed at the player, dawdling past the horn's own
+3 s, a missed turn, a wide turn (as the car model judged it), keeping out
+of the curb lane with no reason past KEEP_RIGHT_FAULT, crawling well under
+the limit on a clear road, a collision; and the praise -- a green wave
+caught, stopping for somebody on foot, letting somebody in, being let in,
+merging onto the highway at its pace, passing a truck, a clean run and a
+sustained streak.
+
+**The three things the game had as mechanics and not as moments, now
+noticed:** THE STREAK (fault-free distance and time; any fault restarts
+it; 2 km and 5 min each noticed once per streak); THE GREEN WAVE (three
+greens in a row without stopping, at the limit -- caught; brought to rest
+by a red after a wave, having driven the link over 1.1 times the limit --
+lost by speeding); and THE PLAYER LETTING SOMEBODY IN (a car changes into
+the player's lane close in front after the player eased off).
+
+**The voice** (`voice.js`) is the rate limiter DIALOGUE.md called the real
+design problem: one line per 12 s, 4 s for something severe (a crash, a
+red, a rolled stop, a blocked box); the most severe pending event and only
+it; nothing older than 3 s; no line twice in a session; a trigger once
+spoken to rests 2 min; speaking clears the queue. Who speaks is drawn
+from the session's seeded stream: a fault is A.U.T.O.'s most often, then
+Jay's, then a rival's when the rival is the other party; praise is Jay's
+more than A.U.T.O.'s.
+
+**The lines** (`content/dialogue.js`): 236, written to the record's spec
+(no external file came) -- five A.U.T.O. lines and four of Jay's per
+trigger, one or two from a rival where it fits, all under 90 characters,
+metric, A.U.T.O. right about the stop rule. They are drawn on the canvas
+under the horn for 4.5 s (`hud.js drawCaption`), never React state.
+
+**`verify-voice`** holds the limiter as properties over half an hour of
+random events (178 lines said of 1,821 noticed), the lines to their spec,
+and every detector but one on its situation AND its opposite. Sabotaged
+twice: the gap set to zero (it first PASSED -- the check measured spacing
+against the module's own constant; it now states the record's 12 s and
+4 s itself), and the rolled-stop detector removed. It found a real bug on
+the way: an urgent event with no lines left let a lesser one borrow its
+4-s gap. **Not tested there: stopping for somebody on foot.**
+
+**To judge** (`#/map`, drive): roll the stop sign at the end of B-north,
+run a red, sit at a clear stop, cruise in the inner lane of A-west. Is the
+voice there when it matters and quiet otherwise -- and do the lines read
+as A.U.T.O., Jay and the rivals?
+
 ### THE GREEN, NOTICED, AND THE HORN (the maintainer, 8 October) -- BUILT
 
 Verbatim: *"another idea for driver behavior, people responding

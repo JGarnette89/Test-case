@@ -134,13 +134,13 @@ playable milestone.
 
 4. **Events and the rate limiter** -- one event stream from the sim
    (the 22 triggers, DIALOGUE.md), a budget of at most one line per
-   interval, by severity, nothing repeated in a session. SHARED. A week.
+   interval, by severity, nothing repeated in a session. SHARED. A week. *Built, 14 October.*
 5. **Streak counter; green-wave caught/lost; the player offering a
    courtesy gap** -- the three things DIALOGUE.md lists as undetected.
-   SHARED. Days.
+   SHARED. Days. *Built, 14 October.*
 6. **Dialogue delivery** -- the stored lines on screen (a line, a
    speaker, a portrait slot), context-aware (day/night, racing).
-   PLAYER. Days, after 4.
+   PLAYER. Days, after 4. *Built, 14 October: 236 lines, a caption on the canvas.*
 
 > **PLAYABLE MILESTONE 2 -- "The city talks back."** Drive; A.U.T.O., Jay
 > and the rivals comment, rarely enough to matter.

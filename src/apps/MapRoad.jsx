@@ -35,12 +35,15 @@ import { stepDriver, driverPose, withDriver, aheadOf, playerHonk } from "../sim/
 import { worldFor, playerContact, START } from "../sim/scene.js";
 import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
+import { detect, newEventState } from "../sim/events.js";
+import { speak, newVoice } from "../sim/voice.js";
+import { LINES, SPEAKERS } from "../content/dialogue.js";
 import { junctionsOf, postedAt } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
-import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn } from "../iso/hud.js";
+import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption } from "../iso/hud.js";
 import { HONK_FOR } from "../sim/horn.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter } from "../iso/perf.js";
@@ -103,6 +106,19 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
 /* Where every car is, carried forward by the time since the last
    tick, as poses the renderer draws directly; the player in their own
    colour. */
+/* WHAT THE GAME NOTICED THIS TICK, AND WHAT IS SAID (sim/events.js, sim/voice.js):
+   the player and the world one tick apart, the detectors' memory kept on the
+   scene, and the line spoken -- drawn on the canvas (hud.js drawCaption),
+   never React state. Driving only. */
+export function noticeTick(sc, prev, now) {
+  if (!sc.me || !prev?.me) return;
+  const r = detect(prev, now, sc.ev ?? newEventState());
+  sc.ev = r.state;
+  const v = speak(sc.voice ?? newVoice(sc.args?.[0] ?? 1), r.events, now.world.t, LINES, { when: "day" });
+  sc.voice = v.state;
+  if (v.said) sc.said = { who: SPEAKERS[v.said.speaker] ?? v.said.speaker, text: v.said.text, at: (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000 };
+}
+
 export function actorsOf(scene, carry) {
   const w = scene.world;
   /* Parked cars first: they are part of the world the traffic drives past
@@ -257,6 +273,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           if (scene.current !== own) return;
           own.world = merge(own.world, dyn);
           if (seq === 1) own.remoteReady = true;
+          else if (own.sentPrev) { noticeTick(own, own.sentPrev, { me: own.sentMe, world: own.world, hit }); own.sentPrev = null; }
           if (hit) { contacts.current++; flash.current = 1; setStopped(true); }
         }, (message) => { console.warn("the sim's worker failed; stepping in the page", message); own.remote = null; });
       }
@@ -267,12 +284,14 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         owed.current = Math.min(owed.current + dt, 2 * DT);
         if (sc.remoteReady && !sc.remote.busy && owed.current >= DT) {
           owed.current -= DT;
+          const prevTick = { me: sc.me, world: sc.world };
           if (sc.me) {
             if (input.current.state.horn !== (sc.hornSeen ?? 0)) { sc.hornSeen = input.current.state.horn; sc.me = { ...sc.me, ...playerHonk(sc.me, sc.world) }; }
             sc.me = stepDriver({ ...sc.me, signal: input.current.state.signal }, inp, sc.world, DT);
             input.current.state.signal = sc.me.signal;   // spent by the turn it caused
             sc.world = withDriver(sc.world, sc.me);
           }
+          sc.sentPrev = prevTick; sc.sentMe = sc.me;
           sc.remote.step(sc.me);
         }
       } else if (playing && !stopped && !(mode === "drive" && look)) {
@@ -280,6 +299,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         while (owed.current >= DT) {
           owed.current -= DT;
           let w = sc.world;
+          const prevTick = { me: sc.me, world: w };
           if (sc.me) {
             /* THE PLAYER'S HORN: a tap (or h) since the last tick honks, at whoever is holding them up (drive.js). */
             if (input.current.state.horn !== (sc.hornSeen ?? 0)) { sc.hornSeen = input.current.state.horn; sc.me = { ...sc.me, ...playerHonk(sc.me, w) }; }
@@ -294,6 +314,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           if (sc.me) {
             const c = playerContact(w, sc.me);
             sc.world = c.world;
+            noticeTick(sc, prevTick, { me: sc.me, world: sc.world, hit: c.hit });
             if (c.hit) { contacts.current++; flash.current = 1; setStopped(true); break; }
           }
         }
@@ -405,6 +426,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         drawWheelBar(ctx, size, inp.steer);
         drawSignals(ctx, size, input.current.state.signal, now);
         drawHorn(ctx, size, sc.me?.honkAt != null && sc.world.t - sc.me.honkAt < HONK_FOR);
+        drawCaption(ctx, size, sc.said, now / 1000);
         drawReadout(ctx, readout.current, 8, size.h - 44);
         if (flash.current > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * flash.current})`; ctx.fillRect(0, 0, size.w, size.h); flash.current = Math.max(0, flash.current - dt * 2); }
       } else {

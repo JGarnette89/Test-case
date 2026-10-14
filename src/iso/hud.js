@@ -152,3 +152,37 @@ export function drawReadout(ctx, text, x = 8, y = 6) {
   ctx.fillStyle = "rgba(230,232,236,0.85)"; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top";
   ctx.fillText(text, x, y);
 }
+
+/* A LINE SPOKEN (sim/voice.js): the speaker's name and what they said, in
+   a band under the horn, across the top -- where the eye already goes for
+   the signal taps -- for SAID_FOR seconds, fading over the last. Never under
+   14 px of type; two lines at most on a phone, wrapped on words. */
+export const SAID_FOR = 4.5;
+const SPEAKER_TINT = { "A.U.T.O.": "#7fd3ff", Jay: "#f2b84b", Victor: "#ff6b6b", Brenda: "#f3b6d6", Mason: "#5fe0f0", Hannah: "#c9a56b" };
+export function drawCaption(ctx, size, said, now) {
+  if (!said) return;
+  const age = now - said.at;
+  if (age < 0 || age >= SAID_FOR) return;
+  const alpha = age > SAID_FOR - 0.8 ? (SAID_FOR - age) / 0.8 : 1;
+  const top = 80, maxW = Math.min(size.w - 32, 520), fs = 15;
+  ctx.font = `600 ${fs}px system-ui, sans-serif`;
+  const words = `${said.who}: ${said.text}`.split(" "), lines = [];
+  let cur = "";
+  for (const wd of words) { const next = cur ? cur + " " + wd : wd; if (ctx.measureText(next).width > maxW - 24 && cur) { lines.push(cur); cur = wd; } else cur = next; }
+  if (cur) lines.push(cur);
+  const h = lines.length * (fs + 5) + 14, w = Math.min(maxW, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 24);
+  const x = (size.w - w) / 2;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = "rgba(14,16,20,0.82)";
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, top, w, h, 10) : ctx.rect(x, top, w, h); ctx.fill();
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  lines.forEach((l, i) => {
+    const y = top + 7 + i * (fs + 5);
+    if (i === 0) {
+      const name = `${said.who}:`;
+      ctx.fillStyle = SPEAKER_TINT[said.who] ?? "#ffffff"; ctx.fillText(name, x + 12, y);
+      ctx.fillStyle = "#eef0f3"; ctx.fillText(l.slice(name.length), x + 12 + ctx.measureText(name).width, y);
+    } else { ctx.fillStyle = "#eef0f3"; ctx.fillText(l, x + 12, y); }
+  });
+  ctx.globalAlpha = 1;
+}
