@@ -22,6 +22,7 @@ import { placesOf, routeTo, alongTo, PLACE_REACH, ARRIVED_WITHIN } from "../src/
 import { noticeTick } from "../src/sim/session.js";
 import { postedAt, poseOnGraph } from "../src/sim/graph.js";
 import { firstEdge } from "../src/map/edges.js";
+import { worldFor } from "../src/sim/scene.js";
 import { DT, stoppingRoom } from "../src/sim/traffic.js";
 
 let failed = 0;
@@ -40,6 +41,7 @@ console.log("\n1. A PLACE IS THE CURB IN FRONT OF A BUILDING");
   const byId = new Map(L.props.map((b) => [b.id, b]));
   let far = 0, wrongSide = 0, notCurb = 0;
   for (const p of places) {
+    if (p.kind === "curb") continue;
     const b = byId.get(p.id), Lk = course.at[p.k].layout, path = Lk.paths[p.route];
     if (Math.hypot(b.at.x - p.x, b.at.y - p.y) > PLACE_REACH) far++;
     const leg = Lk.legs[p.part === "in" ? path.from : path.to];
@@ -50,7 +52,8 @@ console.log("\n1. A PLACE IS THE CURB IN FRONT OF A BUILDING");
     const tx = c.x - a.x, ty = c.y - a.y;
     if (tx * (b.at.y - p.y) - ty * (b.at.x - p.x) <= 0) wrongSide++;
   }
-  check(places.length >= 0.9 * L.props.length, `${places.length} of the city's ${L.props.length} buildings face a street and have a place`);
+  const bp = places.filter((p) => p.kind !== "curb").length;
+  check(bp >= 0.9 * L.props.length, `${bp} of the city's ${L.props.length} buildings face a street and have a place, and ${places.length - bp} stretches of curb with no building on them are places too`);
   check(far === 0 && notCurb === 0 && wrongSide === 0, `every place within ${PLACE_REACH} m of its building (${far} not), on a curb lane (${notCurb} not), the building on the right of travel (${wrongSide} not)`);
 }
 
@@ -147,6 +150,19 @@ console.log("\n4. IT CAN BE DRIVEN, AND ARRIVING IS NOTICED");
   }
   check(trips >= 5 && arrived >= trips - 1, `${arrived} of ${trips} trips across the empty city driven to their place by a player signalling only what the screen said (${times.map((t) => t.toFixed(0)).join(", ")} s)`);
   check(said >= 1, `and the session noticed the arrival -- the voice spoke to it on ${said} of them (the voice has its own budget)`);
+}
+
+console.log("\n5. A MAP WITH NO BUILDINGS STILL HAS SOMEWHERE TO GO (#/map's own test map 1)");
+{
+  /* The first build gave places only to buildings and was checked only on
+     the city: #/map runs test map 1, which has none, and said "nowhere to
+     go" on every tap (the maintainer, 14 October). */
+  const { loaded: L1, world: w1, me: m1 } = worldFor(1, 50, null, "drive");
+  const P1 = placesOf(w1.course, L1);
+  const reach = P1.map((p) => routeTo(w1.course, m1, p)).filter(Boolean);
+  const longest = Math.max(0, ...reach.map((r) => r.length));
+  check(L1.props.length === 0 && P1.length >= w1.course.at.filter((s) => !s.through).length, `test map 1, ${L1.props.length} buildings: ${P1.length} places on its curbs, ${reach.length} reachable from the start, the furthest ${longest.toFixed(0)} m`);
+  check(reach.length >= P1.length / 2 && longest > 200, "most of them reachable, and a real trip among them");
 }
 
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nall passed");

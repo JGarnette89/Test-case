@@ -17,6 +17,7 @@
 import { groundFor } from "../map/load.js";
 import { step, poseOf } from "../sim/crossing.js";
 import { merge } from "../sim/remote.js";
+import { newPace, paceFrame, paceReply, carryOf } from "../sim/pace.js";
 import { junctionsOf } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { pedPose } from "../sim/peds.js";
@@ -236,10 +237,11 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
   L.push(`scene: the bench map (src/iso/bench.js BENCH_BRIEF) -- ${loaded.roads.length} roads, ${loaded.props.length} buildings, ${(loaded.stops ?? []).length} bus stops, ${loaded.laneKm.toFixed(0)} lane-km; watching a car at #/map's street zoom`);
   L.push("");
   L.push("THE RAMP: the whole game, more cars each step");
-  const head = "step           fleet  trucks buses walking crossing parked  drawn things  fps  p50   p95   worst hitch stall slow-s gc(ms)     step p50/p95  poses p50/p95  draw p50/p95  build-s load-h  steady pass";
-  const row = (r) => `${String(r.label).padEnd(14)} ${pad(r.fleet, 5)}  ${pad(r.trucks, 6)} ${pad(r.buses, 5)} ${pad(r.walkers, 7)} ${pad(r.crossing, 8)} ${pad(r.parked, 6)}  ${pad(r.cars, 5)} ${pad(r.items, 6)}  ${pad(r.fps, 3)}  ${pad(r.p50, 4)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)} ${pad(r.stalls, 5)} ${pad(r.slowSeconds, 6)} ${pad(`${r.gcFrames ?? 0}(${r.gcMeanMs ?? 0})`, 8)}  ${pad(part(r, "step"), 12)}  ${pad(part(r, "poses"), 13)}  ${pad(part(r, "draw"), 12)}  ${pad(r.buildS, 7)} ${pad(r.builds ? (r.loadHitches ?? []).length : "-", 6)}  ${r.steady ? "yes" : "NO "}    ${r.pass ? "yes" : "NO"}${r.invalid ? "  INVALID (page hidden)" : ""}`;
+  const head = "step           fleet  trucks buses walking crossing parked  drawn things  back  fps  p50   p95   worst hitch stall slow-s gc(ms)     step p50/p95  poses p50/p95  draw p50/p95  build-s load-h  steady pass";
+  const row = (r) => `${String(r.label).padEnd(14)} ${pad(r.fleet, 5)}  ${pad(r.trucks, 6)} ${pad(r.buses, 5)} ${pad(r.walkers, 7)} ${pad(r.crossing, 8)} ${pad(r.parked, 6)}  ${pad(r.cars, 5)} ${pad(r.items, 6)}  ${pad(r.back, 4)}  ${pad(r.fps, 3)}  ${pad(r.p50, 4)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)} ${pad(r.stalls, 5)} ${pad(r.slowSeconds, 6)} ${pad(`${r.gcFrames ?? 0}(${r.gcMeanMs ?? 0})`, 8)}  ${pad(part(r, "step"), 12)}  ${pad(part(r, "poses"), 13)}  ${pad(part(r, "draw"), 12)}  ${pad(r.buildS, 7)} ${pad(r.builds ? (r.loadHitches ?? []).length : "-", 6)}  ${r.steady ? "yes" : "NO "}    ${r.pass ? "yes" : "NO"}${r.invalid ? "  INVALID (page hidden)" : ""}`;
   L.push(head);
   for (const r of ramp.results) L.push(row(r));
+  L.push("  back = frames that drew the world at an earlier moment than the frame before -- cars jumping backwards, a stutter no frame time shows; it must be 0");
   L.push("  step = the sim step, on the frames that ran one (a third of them at 60 fps); poses and draw every frame; ms, median/95th");
   L.push(`  hitch, worst, p95, pass: PLAY only. A step that built a new world settles ${LOAD_WINDOW} s first, and load-h is the hitches in that time (- where nothing was built)`);
   L.push(...stallLines([...ramp.results, ...(split?.results ?? [])]));
@@ -305,7 +307,7 @@ export function benchState(step = { fleet: 50, off: {} }, makeRemote = null) {
 function restartRemote(st, step) {
   if (!st.makeRemote) return;
   st.remote?.stop();
-  st.remoteReady = false; st.mergeMs = 0; st.merged = 0;
+  st.remoteReady = false; st.mergeMs = 0; st.merged = 0; st.pace = newPace();
   const own = st.sc;
   st.remote = st.makeRemote({ bench: { fleet: step.fleet, off: step.off ?? {} } }, (dyn, hit, seq) => {
     if (st.sc?.base !== own.base) return;
@@ -313,6 +315,7 @@ function restartRemote(st, step) {
     st.sc.world = merge(st.sc.world, dyn);
     st.mergeMs += clock() - t0; st.merged++;
     if (seq === 1) st.remoteReady = true;
+    else paceReply(st.pace);
   });
 }
 
@@ -323,12 +326,12 @@ export function loadStep(st, step) {
   if (st.sc && st.sc.key === worldKey(step.fleet, off)) {
     st.sc = withOff(st.sc, off);
     st.buildS = 0;
-    st.cam = {}; st.owed = 0; st.frames = 0;   // the same moment, seen the same way
+    st.cam = {}; st.owed = 0; st.frames = 0; st.lastDrawnT = null;   // the same moment, seen the same way
   } else {
     const t0 = clock();
     st.sc = benchScene(step.fleet, off);
     st.buildS = Math.round((clock() - t0) / 100) / 10;
-    st.cam = {}; st.owed = 0; st.frames = 0;
+    st.cam = {}; st.owed = 0; st.frames = 0; st.lastDrawnT = null;
   }
   st.view = step.view ?? "car";
   st.counts = benchCounts(st.sc);
@@ -344,9 +347,10 @@ export function benchFrame(st, dtMs, ctx, size) {
   const t0 = clock();
   let r, stepMs = null;
   if (st.remote) {
-    /* One tick in flight, owed time held to two ticks -- as #/map does it. */
-    st.owed = Math.min(st.owed + Math.min(0.25, dtMs / 1000), 2 * DT);
-    if (st.remoteReady && !st.remote.busy && st.owed >= DT) { st.owed -= DT; st.remote.step(null); }
+    /* One tick in flight, owed time held to two ticks, the clock down when
+       the answer arrives -- as #/map does it (sim/pace.js). */
+    if (paceFrame(st.pace, Math.min(0.25, dtMs / 1000), st.remoteReady && !st.remote.busy)) st.remote.step(null);
+    st.owed = carryOf(st.pace);
     r = { ticks: st.merged }; stepMs = st.mergeMs;
     st.merged = 0; st.mergeMs = 0;
   } else {
@@ -354,6 +358,13 @@ export function benchFrame(st, dtMs, ctx, size) {
     st.owed = r.owed;
   }
   const t1 = clock();
+  /* THE MOTION, not the cost: the moment this frame draws the world at.
+     It must never be earlier than the last frame's, or every car is drawn
+     behind where it just was -- the worker's stutter of 13-14 October,
+     which cost nothing and so showed in no frame time (sim/pace.js). */
+  const drawnT = st.sc.world.t + st.owed;
+  const back = st.lastDrawnT != null && drawnT < st.lastDrawnT - 1e-9;
+  st.lastDrawnT = drawnT;
   const actors = benchActors(st.sc, st.owed);
   const t2 = clock();
   const { cam, k } = benchCamera(st.cam, st.sc, actors, st.view, size, dtMs / 1000);
@@ -364,5 +375,5 @@ export function benchFrame(st, dtMs, ctx, size) {
   /* The counts walk every parked car: twice a second, not every frame. */
   if (++st.frames % 30 === 0) st.counts = benchCounts(sc);
   /* A frame that ran no tick spent no time on the sim: zero, so it is not counted as a step. */
-  return { drew: { ...drew, extra: { ...st.counts, buildS: st.buildS } }, split: { step: r.ticks ? stepMs ?? t1 - t0 : 0, poses: t2 - t1, draw: t3 - t2 }, ticks: r.ticks };
+  return { back, drew: { ...drew, extra: { ...st.counts, buildS: st.buildS } }, split: { step: r.ticks ? stepMs ?? t1 - t0 : 0, poses: t2 - t1, draw: t3 - t2 }, ticks: r.ticks };
 }

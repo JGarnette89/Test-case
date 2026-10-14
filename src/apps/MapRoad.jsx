@@ -37,6 +37,7 @@ import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
 import { placesOf, routeTo } from "../sim/route.js";
 import { noticeTick } from "../sim/session.js";
+import { newPace, paceFrame, paceReply, carryOf } from "../sim/pace.js";
 import { junctionsOf, postedAt, poseOnGraph } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
@@ -260,8 +261,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         own.remote = remoteSim({ args: own.args }, (dyn, hit, seq) => {
           if (scene.current !== own) return;
           own.world = merge(own.world, dyn);
+          /* The stepped world has arrived: the player stepped for it is now
+             the player drawn, and the clock comes down by a tick (sim/pace.js). */
+          if (seq !== 1) { if (own.pace) paceReply(own.pace); if (own.sentMe && own.me) { own.me = own.sentMe; own.world = withDriver(own.world, own.me); } }
           if (seq === 1) own.remoteReady = true;
           else if (own.sentPrev) { noticeTick(own, own.sentPrev, { me: own.sentMe, world: own.world, hit }); own.sentPrev = null; }
+          own.sentMe = null;
           if (hit) { contacts.current++; flash.current = 1; setStopped(true); }
         }, (message) => { console.warn("the sim's worker failed; stepping in the page", message); own.remote = null; });
       }
@@ -269,18 +274,21 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         /* One tick in flight at most; a frame that finds the answer still
            out draws the world it has. Owed time is held to two ticks, so
            an overloaded worker slows the world rather than piling up. */
-        owed.current = Math.min(owed.current + dt, 2 * DT);
-        if (sc.remoteReady && !sc.remote.busy && owed.current >= DT) {
-          owed.current -= DT;
+        /* The clock comes down when the answer ARRIVES, not when the step
+           is sent, and the player stepped for it is drawn only then -- or
+           every car is drawn a tick behind until the answer lands and then
+           jumps (sim/pace.js: the 20 Hz stutter of 13-14 October). */
+        sc.pace = sc.pace ?? newPace();
+        if (paceFrame(sc.pace, dt, sc.remoteReady && !sc.remote.busy)) {
           const prevTick = { me: sc.me, world: sc.world };
-          if (sc.me) {
-            if (input.current.state.horn !== (sc.hornSeen ?? 0)) { sc.hornSeen = input.current.state.horn; sc.me = { ...sc.me, ...playerHonk(sc.me, sc.world) }; }
-            sc.me = stepDriver({ ...sc.me, signal: input.current.state.signal }, inp, sc.world, DT);
-            input.current.state.signal = sc.me.signal;   // spent by the turn it caused
-            sc.world = withDriver(sc.world, sc.me);
+          let next = sc.me;
+          if (next) {
+            if (input.current.state.horn !== (sc.hornSeen ?? 0)) { sc.hornSeen = input.current.state.horn; next = { ...next, ...playerHonk(next, sc.world) }; }
+            next = stepDriver({ ...next, signal: input.current.state.signal }, inp, sc.world, DT);
+            input.current.state.signal = next.signal;   // spent by the turn it caused
           }
-          sc.sentPrev = prevTick; sc.sentMe = sc.me;
-          sc.remote.step(sc.me);
+          sc.sentPrev = prevTick; sc.sentMe = next;
+          sc.remote.step(next);
         }
       } else if (playing && !stopped && !(mode === "drive" && look)) {
         owed.current += dt;
@@ -308,7 +316,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         }
       }
 
-      const carry = playing && !stopped ? owed.current : 0;
+      const carry = playing && !stopped ? (sc.remote ? carryOf(sc.pace ?? newPace()) : owed.current) : 0;
       const actors = actorsOf(sc, carry);
 
       /* THE CAMERA. Driving: the chase camera (iso/chase.js), behind
@@ -328,7 +336,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         cam.current = { ...cam.current, x: free.current.x, y: free.current.y, z: free.current.z ?? 0 };
         k = free.current.k; rot = free.current.rot ?? 0;
       } else if (sc.me) {
-        const p = driverPose(sc.me, sc.world.course);
+        /* The camera follows the car where it is DRAWN, carried to this frame's moment
+           as actorsOf carries it -- not the stepped pose, which moves in 20 Hz steps. */
+        const p = driverPose({ ...sc.me, s: sc.me.s + (sc.me.v ?? 0) * carry }, sc.world.course);
         cam.current = { ...chaseStep(cam.current, { ...p, v: sc.me.v }, dt, { rotate }), id: null };
         k = zoomFor(size.w, size.h, cam.current.lead) * zoom;
         rot = cam.current.rot;
@@ -566,11 +576,14 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               const places = sc.places ?? (sc.places = placesOf(sc.world.course, sc.loaded));
               const n = (sc.sent = (sc.sent ?? 0) + 1);
               /* From a different place each time, the first one a real trip away -- never every place routed on a tap. */
-              let pick = null;
+              /* A small map has no trip that long: then the furthest of those tried. */
+              let pick = null, far = null, farLen = 0;
               for (let i = 0; i < Math.min(places.length, 80) && !pick; i++) {
                 const p = places[(n * 7919 + i * 104729) % places.length], r = routeTo(sc.world.course, sc.me, p);
                 if (r && r.length > 400 && r.length < 2500) pick = p;
+                else if (r && r.length > farLen) { far = p; farLen = r.length; }
               }
+              pick = pick ?? (farLen > 60 ? far : null);
               sc.dest = pick; sc.routeKey = null; sc.navText = pick ? "Working out the way..." : "Nowhere to go on this map";
             }}>Go somewhere</button>
           )}

@@ -330,7 +330,7 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
      against the rest, so a probe that ran and cost nothing is told apart
      from one that never ran (6 October: zero hitches on the bench, twelve
      on #/iso). */
-  const freshCtl = () => ({ injected: 0, injectedSeen: 0, issued: 0, domFrames: 0, domSum: 0, domMax: 0, restFrames: 0, restSum: 0 });
+  const freshCtl = () => ({ back: 0, injected: 0, injectedSeen: 0, issued: 0, domFrames: 0, domSum: 0, domMax: 0, restFrames: 0, restSum: 0 });
   ctl = freshCtl();
   const results = [];
   const finish = () => {
@@ -374,6 +374,7 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       if (settled && dt != null) {
         if (flags.gc) { gcFrames++; gcMs += dt; }
         if (flags.split) for (const key in flags.split) (split[key] ??= []).push(flags.split[key]);
+        if (flags.back) ctl.back++;
         if (flags.injected) { ctl.injected++; if (dt > HITCH) ctl.injectedSeen++; }
         if (flags.issued) ctl.issued++;
         if (flags.dom && !flags.injected) { ctl.domFrames++; ctl.domSum += dt; ctl.domMax = Math.max(ctl.domMax, dt); } else if (!flags.injected) { ctl.restFrames++; ctl.restSum += dt; }
@@ -392,7 +393,7 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       const sum = meter.summary();
       results.push({
         step: i + 1, ...steps[i], ...sum, ...(counts ?? {}),
-        pass: meter.passes(sum), steady: meter.steady(sum), restarts, invalid,
+        pass: meter.passes(sum), steady: meter.steady(sum), restarts, invalid, back: ctl.back,
         stallLog: log, loadHitches: loadLog, gcFrames, gcMeanMs: gcFrames ? Math.round((gcMs / gcFrames) * 10) / 10 : 0,
         ...(Object.keys(split).length ? { split: splitSummary(split) } : {}),
         control: { injected: ctl.injected, injectedSeen: ctl.injectedSeen, issued: ctl.issued,

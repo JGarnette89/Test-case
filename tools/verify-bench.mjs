@@ -25,7 +25,8 @@
 
    Usage: node tools/verify-bench.mjs */
 import { budgetRamp } from "../src/iso/perf.js";
-import { benchState, loadStep, benchFrame, benchSteps, categorySteps, benchReport, controlLines, OFF, LOAD_WINDOW, SOAK, benchScene, benchStep, benchActors } from "../src/iso/bench.js";
+import { benchState, loadStep, benchFrame, benchSteps, categorySteps, benchReport, controlLines, OFF, LOAD_WINDOW, SOAK, benchScene, benchStep, benchActors, benchMap } from "../src/iso/bench.js";
+import { handle } from "../src/sim/remote.js";
 import { drawFrame } from "../src/iso/draw.js";
 import { movementLight } from "../src/sim/signal.js";
 
@@ -167,5 +168,40 @@ console.log("\n7. what other drivers are about to do is drawn: brake lamps, turn
   ok((lampSeen.get("#ffb020") ?? 0) > 0, `turn signals drawn blinking (${lampSeen.get("#ffb020") ?? 0} lit lamps across the two phases)`);
   ok(lineAll > 0 && lineMatch === lineAll, `every signal's stop line drawn in the light its lane obeys: ${lineMatch} of ${lineAll}`);
 }
+console.log("\nthe motion drawn, through a worker: no frame draws the world at an earlier moment than the one before");
+{
+  /* The bench's "sim in a worker" path, with a stand-in for the worker: the
+     real protocol (sim/remote.js `handle`) answering each step one frame
+     later, as a worker that keeps up does. The `back` column counts frames
+     drawn at an earlier moment than the last -- cars jumping backwards,
+     which costs nothing and so no frame time shows. The pacing of 13-14
+     October (DT off at send) made one every few frames; sim/pace.js makes
+     none. */
+  let api = null;
+  const makeRemote = (recipe, onWorld) => {
+    let state = null, seq = 0, waiting = 0;
+    const out = [];
+    const post = (m) => { const r = handle(state, { ...m, seq: ++seq }); state = r.state; if (r.reply) out.push(r.reply); return seq; };
+    waiting = post({ type: "init", ...recipe });
+    api = {
+      get busy() { return waiting !== 0; },
+      step(me) { waiting = post({ type: "step", me }); },
+      set() {}, honk() {}, stop() {},
+      deliver() { for (const x of out.splice(0)) { if (x.seq === waiting) waiting = 0; onWorld(structuredClone(x.dyn), x.hit, x.seq); } },
+    };
+    return api;
+  };
+  const st = benchState(benchSteps()[1], makeRemote);
+  let back = 0, frames = 0, ticks = 0;
+  for (let f = 0; f < 600; f++) {
+    api.deliver();
+    const fr = benchFrame(st, 16.7 + ((f * 7) % 5) - 2, ctx, size);
+    if (f > 10) { frames++; if (fr.back) back++; ticks += fr.ticks; }
+  }
+  ok(ticks > 150, `the stand-in worker stepped the bench's world ${ticks} times in ${frames} frames`);
+  ok(back === 0, `and no frame drew it at an earlier moment than the one before (${back} of ${frames})`);
+  ok(/back = frames that drew the world at an earlier moment/.test(benchReport({ device: {}, canvas: "1x1", ramp: { results: [], cap: null, steadyCap: null }, split: null, loaded: benchMap() })), "the report carries the back column and says what it means");
+}
+
 console.log(failed ? `\n${failed} FAILED` : "\nOK: the bench is the whole game at every step, each switch takes away only its own thing, and the report says where the frame went.");
 process.exit(failed ? 1 : 0);

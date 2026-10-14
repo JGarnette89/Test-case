@@ -58,6 +58,21 @@ export function placesOf(course, loaded) {
     }
     if (best) out.push({ id: b.id, kind: b.kind ?? "building", k: best.k, route: best.route, s: best.s, base: best.base, part: best.part, x: best.x, y: best.y });
   }
+  /* A STRETCH OF CURB WITH NO BUILDING ON IT is still somewhere to go --
+     "pull in on Elm, past the lights" -- so a map with no buildings (test
+     map 1, #/map's own) is not a map with nowhere to go. One place per
+     stretch, at its middle. */
+  const served = new Set(out.map((p) => `${p.k}|${p.base}|${p.part}`));
+  const stretches = new Map();
+  for (const q of samples) {
+    const key = `${q.k}|${q.base}|${q.part}`;
+    if (served.has(key)) continue;
+    (stretches.get(key) ?? stretches.set(key, []).get(key)).push(q);
+  }
+  for (const [key, qs] of stretches) {
+    const q = qs[Math.floor(qs.length / 2)];
+    out.push({ id: `curb:${key}`, kind: "curb", k: q.k, route: q.route, s: q.s, base: q.base, part: q.part, x: q.x, y: q.y });
+  }
   return out;
 }
 

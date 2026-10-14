@@ -12,6 +12,8 @@
       the screen used to write them.
    3. How much crosses: bytes and clone time per tick at 150 cars in the
       city, reported.
+   5. The motion drawn is smooth: the page's pacing driven headlessly
+      against a worker's latency, and the pacing it replaced as the control.
    4. The bench's worker (Bench.jsx, "Sim in a worker") builds and steps
       the bench's own world, with sight and the traffic switched as it is.
    ===================================================================== */
@@ -21,6 +23,7 @@ import { step, DT } from "../src/sim/crossing.js";
 import { stepDriver, withDriver } from "../src/sim/drive.js";
 import { testCityReady } from "../src/map/samples.js";
 import { benchScene, withOff } from "../src/iso/bench.js";
+import { newPace, paceFrame, paceReply, carryOf, OWED_CAP } from "../src/sim/pace.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -101,6 +104,57 @@ console.log("\n4. THE BENCH'S WORKER RUNS THE BENCH'S WORLD");
     }
     check(same, `switched off ${JSON.stringify(off)}: the worker's world is the page's, 100 ticks`);
   }
+}
+
+console.log("\n5. THE MOTION DRAWN IS SMOOTH (sim/pace.js) -- what a frame-time meter cannot see");
+{
+  /* The page's pacing, driven headlessly: frames at a phone's ragged 60 Hz,
+     a worker answering each step after a latency, a car at a steady speed.
+     The drawn position is the answered world carried on by `carry`. What is
+     measured is the MOTION: each frame's drawn advance against v * dt. A
+     frame that draws the car behind where the last one did is a judder,
+     whatever the frame cost. THE CONTROL is the pacing this replaced --
+     DT taken off at send -- which must judder, or the check sees nothing. */
+  const v = 12;
+  const run = (scheme, latencyMs, seed) => {
+    let r = seed >>> 0 || 1;
+    const rand = () => ((r = (r * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+    const p = newPace();
+    let owed = 0, inFlight = false, worldS = 0, t = 0, arriveAt = Infinity, lastDrawn = null, back = 0, worst = 0, frames = 0;
+    for (let f = 0; f < 3600; f++) {
+      const dt = (rand() < 0.03 ? 33.3 : 16.7 + (rand() - 0.5) * 6) / 1000;
+      t += dt;
+      /* The answer lands between frames: the world is a tick on. */
+      if (t >= arriveAt) { worldS += v * DT; arriveAt = Infinity; if (scheme === "pace") paceReply(p); else inFlight = false; }
+      let carry;
+      if (scheme === "pace") {
+        if (paceFrame(p, dt, true)) arriveAt = t + latencyMs / 1000;
+        carry = carryOf(p);
+      } else {
+        owed = Math.min(owed + dt, OWED_CAP);
+        if (!inFlight && owed >= DT) { owed -= DT; inFlight = true; arriveAt = t + latencyMs / 1000; }
+        carry = owed;
+      }
+      const drawn = worldS + v * carry;
+      if (lastDrawn != null && f > 60) {
+        const d = drawn - lastDrawn;
+        if (d < -1e-6) back++;
+        worst = Math.max(worst, Math.abs(d - v * dt) / (v * DT));
+        frames++;
+      }
+      lastDrawn = drawn;
+    }
+    return { back, worst, frames };
+  };
+  const rows = [];
+  for (const L of [3, 15, 35, 70]) {
+    const a = run("pace", L, 7 + L), b = run("old", L, 7 + L);
+    rows.push({ L, a, b });
+    console.log(`    worker answers in ${String(L).padStart(2)} ms: drawn backwards on ${a.back} of ${a.frames} frames (the old pacing ${b.back}), worst frame off steady by ${a.worst.toFixed(2)} of a tick's travel (old ${b.worst.toFixed(2)})`);
+  }
+  check(rows.every((x) => x.a.back === 0), "with the pacing as shipped no frame draws a car behind where the last frame drew it, at any worker latency up to beyond a tick");
+  check(rows.filter((x) => x.L < 50).every((x) => x.a.worst < 0.5), "and while the worker keeps up, no frame's advance is off a steady car's by half a tick's travel -- the bench's frame times would never show the difference");
+  check(rows.filter((x) => x.L < 50).every((x) => x.b.back > 100), "THE CONTROL: the pacing it replaced (DT off at send) draws cars backwards on hundreds of frames whenever the worker keeps up -- the stutter seen on the phone (slower than a tick it only slowed)");
 }
 
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nall passed");

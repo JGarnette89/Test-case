@@ -4611,6 +4611,50 @@ each caught.
 **To judge** (`#/map`, drive, Go somewhere): is the line on the road
 easy to follow at speed, and is the lane hint early enough?
 
+**FIXED THE SAME DAY: "nowhere to go on this map"** on every tap (the
+maintainer). `#/map` runs test map 1, which has no buildings, and places
+came only from buildings -- while every check ran on the city. A stretch
+of curb with no building on it is now a place too (one per stretch, at
+its middle): 32 on test map 1, the furthest reachable 2.2 km. Section 5
+of `verify-places` holds test map 1 to it, and fails with the fallback
+removed. A small map with no trip of 400 m offers the furthest it has.
+
+### THE WORKER'S STUTTER -- FIXED, 14 October (`src/sim/pace.js`)
+
+The maintainer: "a lot of jittering regardless of what is on screen."
+Since the sim moved into a Web Worker (13 October) the page took a tick
+off its clock when it SENT a step, but the stepped world only arrived
+with the answer. Between the two every car was drawn a whole tick behind
+where the frame before had drawn it, then jumped forward -- a 20 Hz
+judder on every car, whatever was on screen. The player's own car was
+stepped at send, so it ran a tick ahead of the traffic until the answer.
+
+**No performance instrument could see it, because it cost nothing.** The
+bench, `frame-cost` and the in-app meter time frames; these frames were
+ordinary. The session's new per-tick work was measured too and cleared:
+0.02-0.06 ms a tick against a 9-10 ms step
+(`tools/measure/session-cost.mjs`).
+
+Now: the clock comes down when the answer arrives (`pace.js`, used by
+`#/map` and the bench), the player stepped for a tick is drawn when that
+tick's world is, and the chase camera follows the car where it is drawn
+rather than its 20 Hz pose. Measured, not watched:
+
+- `verify-worker` section 5 drives the pacing headlessly at a phone's
+  ragged 60 Hz against worker latencies of 3-70 ms: 0 frames drawn
+  backwards (the old pacing: 1,200 of 3,539 at 3-15 ms, 275 at 35 ms),
+  and no frame's advance off a steady car's by half a tick's travel.
+- **The bench now measures motion as well as cost**: a `back` column,
+  the frames that drew the world at an earlier moment than the frame
+  before. It must be 0. `verify-bench` runs the bench through the real
+  protocol with a stand-in worker: 0 of 589; with the old pacing put
+  back, 197 of 589 -- one every tick.
+
+**To judge** (`#/map`, drive and watch): is the traffic smooth now? If
+anything still shakes, run `#/bench` with "Sim in a worker" and send the
+report: `back` says whether it is pacing, the step and draw columns
+whether it is cost.
+
 ### THE GREEN, NOTICED, AND THE HORN (the maintainer, 8 October) -- BUILT
 
 Verbatim: *"another idea for driver behavior, people responding
