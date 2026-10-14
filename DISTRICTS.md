@@ -44,15 +44,24 @@ foundation versus district decoration" rule exists to protect.
 
 Everything else in the briefs is buildable as written.
 
-## TWO CORRECTIONS, FLAGGED BACK TO THE MAINTAINER -- NOT DECIDED HERE
+## TWO CORRECTIONS -- DECIDED BY THE MAINTAINER, 14 October
 
-1. **"Cautious drivers stop five metres short"** (Suburbs). The model stops
-   a knowledge-weak driver short by up to **3.2 m** (`STOP_SHORT`,
-   `traffic.js` -- the old engine's own `stopsShort`), and it is the
-   knowledge axis that does it, not caution (the maintainer's ruling: a
-   controlled stop in the wrong place is knowledge). Which is right -- the
-   brief's 5 m, or the constant? And should caution add to it?
-2. **"Interstate Connector"** (Highway Network) is American: Ontario has no
-   Interstates. It also sits oddly beside **"Highway 401"**, a real Ontario
-   road -- does the maintainer want real road names used directly, or
-   fictional ones in the Ontario style?
+1. **Stopping short: 3.2 m stands.** The brief's "cautious drivers stop
+   five metres short" is the external model's mistake. Verbatim: *"If our
+   drivers will only stop up to 3.2m short, that is the number we will go
+   with."* The model's `STOP_SHORT` (`traffic.js`), from the knowledge
+   axis, is the number; the brief's text is corrected when the data file is
+   committed, and the brief's driver-feel line describes it as the model does.
+2. **Names: functional, North American, in an Ontario context -- the city
+   is modelled on no one place.** Verbatim: *"We want functional names that
+   wouldn't be out of place throughout North America, most will
+   unavoidably exist somewhere in the real world though we aren't modeling
+   our city after one specific place."* So **"Interstate Connector"
+   becomes "Expressway Connector"** (Ontario has expressways and numbered
+   provincial highways, no Interstates). The same rule applies to every
+   name in the file: a name that reads as a generic North American road
+   (King Street, Mill Road, Harbour Drive) is fine even though somewhere
+   has one; a name that pins the city to one real place is not -- so a
+   named real route like **"Highway 401"** takes a numbered highway of the
+   same kind that does not single out one real road (e.g. "Highway 47")
+   when the file is committed, and the change is listed there.
