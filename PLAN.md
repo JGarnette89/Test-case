@@ -151,6 +151,14 @@ playable milestone.
    map data; a route on the graph TO it; for the player, the route shown
    (a line on the road, a turn arrow, the dispatch screen's marker).
    SHARED, the deepest one. Two weeks.
+   **BUILT 14 October** (`src/sim/route.js`, `src/sim/session.js`): a
+   place is the curb in front of a building, derived from the map's own
+   buildings (755 of the stand-in city's 786); a route is the shortest
+   path over the graph's joins; the screen draws it on the road, says
+   the next movement and WHICH LANE it needs, and notices arriving.
+   `#/map`'s Go somewhere sends the player to a place 400 m to 2.5 km
+   away. Docks and stands as typed places wait for the jobs that need
+   them. `verify-places`.
 8. **Money** -- earnings by SKILL not time (the sim's own standards:
    smooth, at the limit, no horns aimed at you), a balance, stored
    through `storage.js`. SHARED. Days.

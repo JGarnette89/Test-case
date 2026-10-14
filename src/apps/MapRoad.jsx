@@ -35,15 +35,14 @@ import { stepDriver, driverPose, withDriver, aheadOf, playerHonk } from "../sim/
 import { worldFor, playerContact, START } from "../sim/scene.js";
 import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
-import { detect, newEventState } from "../sim/events.js";
-import { speak, newVoice } from "../sim/voice.js";
-import { LINES, SPEAKERS } from "../content/dialogue.js";
-import { junctionsOf, postedAt } from "../sim/graph.js";
+import { placesOf, routeTo } from "../sim/route.js";
+import { noticeTick } from "../sim/session.js";
+import { junctionsOf, postedAt, poseOnGraph } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
-import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption } from "../iso/hud.js";
+import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption, drawNav } from "../iso/hud.js";
 import { HONK_FOR } from "../sim/horn.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter } from "../iso/perf.js";
@@ -106,18 +105,7 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
 /* Where every car is, carried forward by the time since the last
    tick, as poses the renderer draws directly; the player in their own
    colour. */
-/* WHAT THE GAME NOTICED THIS TICK, AND WHAT IS SAID (sim/events.js, sim/voice.js):
-   the player and the world one tick apart, the detectors' memory kept on the
-   scene, and the line spoken -- drawn on the canvas (hud.js drawCaption),
-   never React state. Driving only. */
-export function noticeTick(sc, prev, now) {
-  if (!sc.me || !prev?.me) return;
-  const r = detect(prev, now, sc.ev ?? newEventState());
-  sc.ev = r.state;
-  const v = speak(sc.voice ?? newVoice(sc.args?.[0] ?? 1), r.events, now.world.t, LINES, { when: "day" });
-  sc.voice = v.state;
-  if (v.said) sc.said = { who: SPEAKERS[v.said.speaker] ?? v.said.speaker, text: v.said.text, at: (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000 };
-}
+/* What the game notices and says, and where the player is going: sim/session.js. */
 
 export function actorsOf(scene, carry) {
   const w = scene.world;
@@ -360,7 +348,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         k = Math.max(1, (size.w / (follow === "car" || follow.startsWith("rival-") ? 60 : 110)) * zoom);
       }
       lastView.current = { x: cam.current.x, y: cam.current.y, z: cam.current.z ?? 0, k, rot };
-      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + carry, lights: sc.world.lights });
+      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + carry, lights: sc.world.lights, route: sc.me ? sc.routePts : null, dest: sc.me && sc.dest ? { x: sc.dest.x, y: sc.dest.y, z: 0 } : null });
 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
@@ -427,6 +415,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         drawSignals(ctx, size, input.current.state.signal, now);
         drawHorn(ctx, size, sc.me?.honkAt != null && sc.world.t - sc.me.honkAt < HONK_FOR);
         drawCaption(ctx, size, sc.said, now / 1000);
+        drawNav(ctx, size, sc.navText);
         drawReadout(ctx, readout.current, 8, size.h - 44);
         if (flash.current > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * flash.current})`; ctx.fillRect(0, 0, size.w, size.h); flash.current = Math.max(0, flash.current - dt * 2); }
       } else {
@@ -568,6 +557,22 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               for (const a of sc.world.actors) { if (a.player || a.crash) continue; const p = poseOf(sc.world, a); const d = Math.hypot(p.x - me.x, p.y - me.y); if (d < bd) { bd = d; best = a; } }
               if (best) { sc.world = { ...sc.world, actors: sc.world.actors.map((a) => (a.id === best.id ? { ...a, honkAt: sc.world.t, honkTo: "player" } : a)) }; sc.remote?.honk(best.id, "player"); }
             }}>Test horn</button>
+          )}
+          {/* GO SOMEWHERE (sim/route.js): a place on the map, the route there drawn and said, and the voice when you arrive. */}
+          {mode === "drive" && (
+            <button className="btn" style={S.chip} onClick={() => {
+              const sc = scene.current;
+              if (!sc?.me) return;
+              const places = sc.places ?? (sc.places = placesOf(sc.world.course, sc.loaded));
+              const n = (sc.sent = (sc.sent ?? 0) + 1);
+              /* From a different place each time, the first one a real trip away -- never every place routed on a tap. */
+              let pick = null;
+              for (let i = 0; i < Math.min(places.length, 80) && !pick; i++) {
+                const p = places[(n * 7919 + i * 104729) % places.length], r = routeTo(sc.world.course, sc.me, p);
+                if (r && r.length > 400 && r.length < 2500) pick = p;
+              }
+              sc.dest = pick; sc.routeKey = null; sc.navText = pick ? "Working out the way..." : "Nowhere to go on this map";
+            }}>Go somewhere</button>
           )}
           {mode === "drive" && (
             <button className="btn" style={{ ...S.chip, borderColor: rotate ? C.amber : "rgba(255,255,255,0.12)", color: rotate ? C.white : DIM }}

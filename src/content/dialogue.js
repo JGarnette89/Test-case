@@ -122,6 +122,10 @@ const RAW = {
     auto: ["Highway entry at corridor speed.", "Merge velocity matched.", "On-ramp acceleration adequate.", "Entry gap accepted at speed.", "Highway merge nominal."],
     jay: ["Up to speed on the ramp. That's the whole trick.", "Matching their speed is what makes a merge easy.", "Good merge. Mirror, signal, shoulder, go.", "You made it look simple. It isn't."],
   },
+  arrived: {
+    auto: ["Destination reached.", "Arrival logged. Route complete.", "You have arrived. Trip recorded.", "Destination confirmed. Vehicle stationary.", "Route complete. Efficiency noted."],
+    jay: ["That's the place. Nice and easy to the curb.", "Here we are. Check your mirror before the door opens.", "Arrived. Pull in tight, wheels straight.", "Good. That's a trip, start to finish."],
+  },
   passedTruck: {
     auto: ["Heavy vehicle passed.", "Overtake of a commercial vehicle completed.", "Large vehicle cleared.", "Pass completed.", "Blind zone exited."],
     jay: ["Don't hang beside a truck. Pass or drop back.", "Good. Don't sit in their blind spot.", "Clean pass. Make sure you see their lights before you move over.", "Trucks need room. You gave it."],

@@ -58,6 +58,8 @@ export const TRIGGERS = {
   letIn:           { severity: 1, praise: true },
   highwayMerge:    { severity: 1, praise: true },
   passedTruck:     { severity: 1, praise: true },
+  /* Raised by the screen, not detected here: it knows where the player was going (sim/route.js). */
+  arrived:         { severity: 2, praise: true },
 };
 
 /* Flagged design constants: what counts as a long clean run, a sustained

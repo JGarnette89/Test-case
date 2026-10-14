@@ -248,6 +248,30 @@ function paintHorns(ctx, canvas, view, scene, k) {
    bold, never under 12 px of type -- a map label, so they can be picked out
    from across the screen before their driving gives them away. Higher than
    the horn and courtesy badges, which sit just over the roof. */
+/* THE WAY TO GO (sim/route.js): the route ahead as a bold line along the
+   lanes the player is to drive, and a pin where they are going -- drawn
+   over the world, as information is, so a building cannot hide the way.
+   Width never under 4 px; the pin is the horn badge's size. */
+export function paintRoute(ctx, view, scene, k) {
+  const pts = scene.route, dest = scene.dest;
+  if (pts?.length > 1) {
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    for (const [wd, col] of [[Math.max(7, 0.9 * k), "rgba(10,10,12,0.45)"], [Math.max(4, 0.55 * k), "rgba(127,211,255,0.8)"]]) {
+      ctx.lineWidth = wd; ctx.strokeStyle = col; ctx.beginPath();
+      pts.forEach((p, i) => { const q = view.into(p.x, p.y, (p.z ?? 0) + 0.05, [0, 0]); if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); });
+      ctx.stroke();
+    }
+  }
+  if (dest) {
+    const [x, y] = view.into(dest.x, dest.y, (dest.z ?? 0) + 3, [0, 0]), [gx, gy] = view.into(dest.x, dest.y, dest.z ?? 0, [0, 0]);
+    const R = Math.max(11, 0.75 * k);
+    ctx.strokeStyle = "#111114"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(x, y + R); ctx.stroke();
+    ctx.fillStyle = "#7fd3ff"; ctx.beginPath(); ctx.arc(x, y, R, 0, 2 * Math.PI); ctx.fill();
+    ctx.lineWidth = Math.max(2, R * 0.16); ctx.stroke();
+    ctx.fillStyle = "#111114"; ctx.beginPath(); ctx.arc(x, y, R * 0.35, 0, 2 * Math.PI); ctx.fill();
+  }
+}
+
 export function paintNames(ctx, view, scene, k) {
   for (const a of scene.actors ?? []) {
     if (!a.name) continue;
@@ -872,6 +896,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   /* The floor first, then everything with height; each by depth. */
   items.sort((a, b) => a.layer - b.layer || a.key - b.key);
   for (const it of items) it.paint();
+  paintRoute(ctx, view, scene, k);
   paintNames(ctx, view, scene, k);
   paintCourtesy(ctx, canvas, view, scene, k);
   paintHorns(ctx, canvas, view, scene, k);

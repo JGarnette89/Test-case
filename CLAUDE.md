@@ -1630,6 +1630,8 @@ src/sim/remote.js        the sim in a Web Worker: a pure protocol (`handle`), wh
 src/sim/sim.worker.js    the worker's shell around `handle`
 src/iso/benchworld.js    the bench's map and world, where the worker can build it too
 src/sim/events.js        what the game notices about the player's driving: one detector per trigger, the player and the world a tick apart; the streak, the green wave caught and lost, the player letting somebody in
+src/sim/route.js         going somewhere: a place is the curb in front of a building on its own side, a route the shortest path over the joins, and the lane a movement needs
+src/sim/session.js       the screen's per-tick logic, where a check can run it: what was noticed, what is said, and the route
 src/sim/voice.js         the rate limiter: a line per 12 s (4 for the severe), the most severe pending, nothing stale, nothing twice
 src/content/dialogue.js  the lines, A.U.T.O., Jay and the rivals, keyed by trigger and speaker -- data
 src/sim/detect.js        grading the examiner (moved from the deleted engine): caught, missed, invented, and when
@@ -2041,6 +2043,7 @@ node tools/verify-keepright.mjs    keeping right (split from verify-lanes, 14 Oc
 node tools/verify-lanecost.mjs     what lane changing costs the sim (split from verify-lanes): its own code a few percent of a step, keeping right a part of that, the neighbour index no dearer
 node tools/verify-busbays.mjs      bus bays (split from verify-buses): out of the lane, passed, and let out by those who know to give way and could stop, over a run at the rule's own difficulty and one with it made hard
 node tools/verify-passing.mjs      going round a bus at a curb stop (split from verify-buses): on a broken line or none, never a solid one, the gap the passer's to misjudge, less time stood behind the bus
+node tools/verify-places.mjs       going somewhere: places on the right curb, routes that replay along the joins and are the shortest an independent search finds, and a player doing only what the screen says arrives and is noticed
 node tools/verify-voice.mjs        the voice: the limiter's budget held as properties over random events and stated in the check, the lines to their spec, and every detector on its situation and its opposite (stopping for somebody on foot not yet)
 node tools/verify-waves.mjs        green waves: a car holding the posted speed from a green meets the next green on every timed link of every map; a corridor runs only where the road has priority (never through an uncontrolled crossroads); one cycle per system and no green shortened; a map with fewer than two linked signals keeps its plans; and in the sim the platoon goes through far more often with the wave than without, nothing crashing
 ```

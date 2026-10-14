@@ -4577,6 +4577,40 @@ run a red, sit at a clear stop, cruise in the inner lane of A-west. Is the
 voice there when it matters and quiet otherwise -- and do the lines read
 as A.U.T.O., Jay and the rivals?
 
+### GOING SOMEWHERE -- BUILT, 14 October (PLAN.md item 7; `src/sim/route.js`, `src/sim/session.js`)
+
+The deepest shared foundation: jobs, racing, pursuit and A.U.T.O.'s
+rerouting all ask how to get from here to there.
+
+**A place is the curb in front of a building, on its own side of the
+road** -- the nearest curb-lane point within 25 m with the building on the
+right of travel, so arriving is pulling in at the curb, never crossing
+the road to it. Derived from the map's buildings, never typed in: 755 of
+the stand-in city's 786 buildings have one. **A route** is Dijkstra over
+(intersection, approach): a movement, then the join to the next
+approach, until the place's own stretch. 0.7 ms a route on the city.
+
+**The lane is part of the direction.** The first drive across the city
+failed at once: a left was asked for from the curb lane of an arterial,
+which offers none, and the car went straight on. A real navigator says
+"keep left", so the screen does -- from the exit BEFORE the intersection
+as well, because a short link leaves no room to move over once on the
+approach (`laneFor` in route.js, the join saying which lane the car
+arrives in).
+
+The session logic (the detectors, the voice, the route) moved out of
+`MapRoad.jsx` into `src/sim/session.js`, so a check can drive it where
+a React screen cannot be driven. `verify-places`: places on the right
+curb; every route replays along the joins and is the shortest an
+independent fixed-point search finds; and a scripted player who does
+only what the screen says reaches six places across the empty city
+(92-178 s) and the session notices. Sabotaged three ways (the wrong
+side, a search that pops the longest first, the arrival never raised);
+each caught.
+
+**To judge** (`#/map`, drive, Go somewhere): is the line on the road
+easy to follow at speed, and is the lane hint early enough?
+
 ### THE GREEN, NOTICED, AND THE HORN (the maintainer, 8 October) -- BUILT
 
 Verbatim: *"another idea for driver behavior, people responding

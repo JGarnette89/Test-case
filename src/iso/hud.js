@@ -186,3 +186,16 @@ export function drawCaption(ctx, size, said, now) {
   });
   ctx.globalAlpha = 1;
 }
+
+/* WHERE TO GO NEXT (sim/route.js): one line, top left under the readout,
+   for as long as there is a destination -- "Left at the next
+   intersection, 120 m", "Straight on", "Arriving". Never under 14 px. */
+export function drawNav(ctx, size, text) {
+  if (!text) return;
+  ctx.font = "600 14px system-ui, sans-serif";
+  const w = Math.min(size.w - 16, ctx.measureText(text).width + 20), x = 8, y = 26;
+  ctx.fillStyle = "rgba(14,16,20,0.82)";
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, 26, 8) : ctx.rect(x, y, w, 26); ctx.fill();
+  ctx.fillStyle = "#7fd3ff"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.fillText(text, x + 10, y + 13);
+}
