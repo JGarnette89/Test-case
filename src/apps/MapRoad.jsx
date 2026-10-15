@@ -37,7 +37,7 @@ import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
 import { placesOf, routeTo } from "../sim/route.js";
 import { noticeTick } from "../sim/session.js";
-import { newPace, paceFrame, paceReply, carryOf } from "../sim/pace.js";
+import { newPace, paceFrame, paceReply, carryOf, newSimClock, clockTick, clockSummary } from "../sim/pace.js";
 import { junctionsOf, postedAt, poseOnGraph } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
@@ -264,9 +264,11 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       if (sc.remote === undefined) {
         const own = sc;
         own.remoteReady = false;
-        own.remote = remoteSim({ args: own.args }, (dyn, hit, seq) => {
+        own.remote = remoteSim({ args: own.args }, (dyn, hit, seq, fresh, ms) => {
           if (scene.current !== own) return;
           own.world = merge(own.world, dyn);
+          /* THE SIM'S CLOCK (pace.js): every tick as it lands, against the wall. */
+          if (!fresh) { const at = performance.now(); clockTick(own.clock ??= newSimClock(), at, own.world.t, { stepMs: ms, rtMs: own.sentAt != null ? at - own.sentAt : null }); }
           /* The stepped world has arrived: the player stepped for it is now
              the player drawn, and the clock comes down by a tick (sim/pace.js). */
           if (seq !== 1) { if (own.pace) paceReply(own.pace); if (own.sentMe && own.me) { own.me = own.sentMe; own.world = withDriver(own.world, own.me); } }
@@ -293,7 +295,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             next = stepDriver({ ...next, signal: input.current.state.signal }, inp, sc.world, DT);
             input.current.state.signal = next.signal;   // spent by the turn it caused
           }
-          sc.sentPrev = prevTick; sc.sentMe = next;
+          sc.sentPrev = prevTick; sc.sentMe = next; sc.sentAt = performance.now();
           sc.remote.step(next);
         }
       } else if (playing && !stopped && !(mode === "drive" && look)) {
@@ -309,8 +311,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             input.current.state.signal = sc.me.signal;   // spent by the turn it caused
             w = withDriver(w, sc.me);
           }
+          const t0 = performance.now();
           w = step(w);
           sc.world = w;
+          clockTick(sc.clock ??= newSimClock(), performance.now(), w.t, { stepMs: performance.now() - t0 });
           /* Contact stops the car where it is (sim/scene.js `playerContact`):
              what a collision IS in this game is still the maintainer's question. */
           if (sc.me) {
@@ -369,7 +373,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
         const nCrash = sc.world.crashes?.length ?? 0;
-        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms`;
+        /* The world's own rate beside the frames' (pace.js): a world at half speed with perfect frames read as healthy until 15 October. */
+        const ck = sc.clock ? clockSummary(sc.clock) : null;
+        const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step ${ck.step.p50}/${ck.step.p95}${ck.rt.p50 != null ? ` · trip ${ck.rt.p50}/${ck.rt.p95}` : ""} ms ${sc.remote ? "(worker)" : "(page)"}` : "";
+        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
         fpsAt = now;
       }
       /* A CRASH ANYWHERE IS SAID, for eight seconds, with where it is from
@@ -435,7 +442,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         drawNav(ctx, size, sc.jobText, { y: 54, colour: "#ffd34d" });
         drawReceipt(ctx, size, sc.receipt, now / 1000);
         if (sc.wallet) walletRef.current = sc.wallet; else if (walletRef.current) sc.wallet = walletRef.current;
-        drawReadout(ctx, readout.current, 8, size.h - 44);
+        drawReadout(ctx, readout.current, 8, size.h - 44, { up: true });
         if (flash.current > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * flash.current})`; ctx.fillRect(0, 0, size.w, size.h); flash.current = Math.max(0, flash.current - dt * 2); }
       } else {
         drawReadout(ctx, readout.current);

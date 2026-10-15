@@ -237,6 +237,44 @@ console.log("\nthe motion drawn, through a worker: no frame draws the world at a
     const measuredFrom = doneAt - (0.5 + 1) * 1000;
     ok(out && deliveredAt != null && measuredFrom >= deliveredAt - 50, `the ramp's clock waits for the worker's world: delivered at ${deliveredAt == null ? "(not yet -- measured before it arrived)" : (deliveredAt / 1000).toFixed(1) + " s"}, the step's settle and hold from ${(measuredFrom / 1000).toFixed(1)} s`);
   }
+  /* THE WORLD MUST KEEP REAL TIME (15 October: "the fps is solid but
+     it's like the simulation itself is slowing down"). A stand-in worker
+     whose every answer comes `late` frames after the step was asked for:
+     at three frames (50 ms, a tick) the world keeps the wall's pace; at six
+     (100 ms) it runs at half -- with every frame still a perfect 16.7 ms.
+     The ramp must say so, and fail the step, whatever the frames. */
+  const slowRun = (late) => {
+    const queue = [];
+    let fno = 0;
+    const lagged = (recipe, onWorld) => {
+      let state = null, seq = 0, waiting = 0;
+      const post = (m) => { const r = handle(state, { ...m, seq: ++seq }); state = r.state; if (r.reply) queue.push({ at: fno + (m.type === "step" ? late : 0), r: r.reply }); return seq; };
+      waiting = post({ type: "init", ...recipe });
+      return {
+        get busy() { return waiting !== 0; },
+        step(me) { waiting = post({ type: "step", me }); },
+        set() {}, honk() {}, stop() {}, rewind(off) { waiting = post({ type: "rewind", off }); },
+        deliver() { while (queue.length && queue[0].at <= fno) { const x = queue.shift().r; if (x.seq === waiting) waiting = 0; onWorld(structuredClone(x.dyn), x.hit, x.seq, !!x.fresh, x.ms ?? null); } },
+      };
+    };
+    let api2 = null;
+    const make = (recipe, onWorld) => (api2 = lagged(recipe, onWorld));
+    const ramp = budgetRamp({ steps: [{ ...benchSteps()[1], settle: 0.3, hold: 3 }], settle: 0.3, hold: 3, stopOnFail: false });
+    let sst = null, now = 0, out = null;
+    for (; fno < 2000 && !out; fno++) {
+      now += 16.7;
+      api2?.deliver();
+      const fr = sst ? benchFrame(sst, 16.7, ctx, size) : null;
+      const want = ramp.frame(now, fr?.drew, { split: fr?.split, loading: fr?.loading, back: fr?.back, simT: fr?.simT, stepMs: fr?.stepMs });
+      if (want.load) sst = benchState(want.load, make);
+      if (want.done) out = want;
+    }
+    return out.results[0];
+  };
+  const quick = slowRun(3), slow = slowRun(6);
+  ok(quick.sim && quick.sim.rate > 0.97 && quick.sim.stalls === 0 && quick.pass, `a worker answering within a tick: the world at ${quick.sim?.rate}x real time, ticks ${quick.sim?.tickP50}/${quick.sim?.tickP95} ms, no stall -- the step passes`);
+  ok(slow.sim && slow.sim.rate < 0.7 && !slow.pass && slow.p95 < 20, `a worker answering in two ticks: frames still ${slow.p95} ms at the 95th, the world at ${slow.sim?.rate}x real time, ticks ${slow.sim?.tickP50}/${slow.sim?.tickP95} ms -- the step FAILS, as it never did before`);
+  ok(/sim-x = simulated seconds per real second/.test(benchReport({ device: {}, canvas: "1x1", ramp: { results: [slow], cap: null, steadyCap: null }, split: null, loaded: benchMap() })), "and the report shows the world's own pace beside the frames'");
   ok(/back = frames that drew the world at an earlier moment/.test(benchReport({ device: {}, canvas: "1x1", ramp: { results: [], cap: null, steadyCap: null }, split: null, loaded: benchMap() })), "the report carries the back column and says what it means");
 }
 

@@ -54,6 +54,12 @@ export const INSTRUMENT = 5;   // 5: the bench (#/bench) -- the whole game, and 
 export const BUILD = typeof __BUILD__ !== "undefined" ? __BUILD__ : "unbundled";   // vite.config.js bakes it in; bare node has none
 
 export const HITCH = 50;     // ms: a frame long enough to see as a stutter (three missed vsyncs at 60)
+/* THE WORLD MUST KEEP REAL TIME (15 October). A step whose world ran
+   slower than this share of the wall clock fails, however good its
+   frames; and a gap between ticks past SIM_STALL ms is a stall of the
+   world, counted like a hitch is for a frame. */
+export const SIM_RATE_MIN = 0.97;
+export const SIM_STALL = 100;   // ms between ticks: the world froze for at least one
 export const STALL = 100;    // ms: a frame long enough to feel as a freeze
 /* "No hitching" is taken at its word: the worst frame of a step must
    stay under HITCH, not merely under a freeze. A phone browser's garbage
@@ -330,6 +336,10 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
      against the rest, so a probe that ran and cost nothing is told apart
      from one that never ran (6 October: zero hitches on the bench, twelve
      on #/iso). */
+  /* The world's clock over the step's hold: its time at the first and last
+     frame, and the wall gaps between the frames on which it moved. */
+  const freshSim = () => ({ t0: null, now0: null, t1: null, now1: null, lastAt: null, lastT: null, gaps: [], stepMs: [] });
+  let simLog = freshSim();
   const freshCtl = () => ({ back: 0, injected: 0, injectedSeen: 0, issued: 0, domFrames: 0, domSum: 0, domMax: 0, restFrames: 0, restSum: 0 });
   ctl = freshCtl();
   const results = [];
@@ -368,15 +378,23 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       if (!started) { started = true; return { load: steps[0] }; }
       /* The world is not there yet (the bench's worker building it): the step's clock does not start. */
       if (flags.loading) { at = null; return {}; }
-      if (at == null) { at = now; settled = false; meter.reset(); log = []; loadLog = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); return {}; }
+      if (at == null) { at = now; settled = false; meter.reset(); log = []; loadLog = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); simLog = freshSim(); return {}; }
       const held = (now - at) / 1000;
       if (flags.hidden) { if (restarts < HIDDEN_RESTARTS) { restarts++; at = null; return {}; } invalid = true; }
       if (!settled && dt != null && dt > HITCH) loadLog.push({ since: Math.round(held * 100) / 100, dt: Math.round(dt), tickMs: flags.tickMs != null ? Math.round(flags.tickMs) : null, tasks: flags.tasks ?? null, gc: !!flags.gc });
-      if (!settled && held >= settleOf()) { settled = true; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); }
+      if (!settled && held >= settleOf()) { settled = true; meter.reset(); log = []; gcFrames = 0; gcMs = 0; split = {}; ctl = freshCtl(); simLog = freshSim(); }
       if (settled && dt != null) {
         if (flags.gc) { gcFrames++; gcMs += dt; }
         if (flags.split) for (const key in flags.split) (split[key] ??= []).push(flags.split[key]);
         if (flags.back) ctl.back++;
+        if (flags.simT != null) {
+          if (simLog.t0 == null) { simLog.t0 = flags.simT; simLog.now0 = now; }
+          simLog.t1 = flags.simT; simLog.now1 = now;
+          if (simLog.lastT != null && flags.simT > simLog.lastT + 1e-9) { simLog.gaps.push(now - simLog.lastAt); simLog.lastAt = now; }
+          if (simLog.lastT == null) simLog.lastAt = now;
+          simLog.lastT = flags.simT;
+        }
+        if (flags.stepMs != null) simLog.stepMs.push(flags.stepMs);
         if (flags.injected) { ctl.injected++; if (dt > HITCH) ctl.injectedSeen++; }
         if (flags.issued) ctl.issued++;
         if (flags.dom && !flags.injected) { ctl.domFrames++; ctl.domSum += dt; ctl.domMax = Math.max(ctl.domMax, dt); } else if (!flags.injected) { ctl.restFrames++; ctl.restSum += dt; }
@@ -393,9 +411,11 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       }
       if (!settled || held < settleOf() + holdOf()) return {};
       const sum = meter.summary();
+      const sim = simOf(simLog);
+      const keeps = !sim || (sim.rate >= SIM_RATE_MIN && sim.stalls === 0);
       results.push({
         step: i + 1, ...steps[i], ...sum, ...(counts ?? {}),
-        pass: meter.passes(sum), steady: meter.steady(sum), restarts, invalid, back: ctl.back,
+        pass: meter.passes(sum) && keeps, steady: meter.steady(sum) && keeps, restarts, invalid, back: ctl.back, sim,
         stallLog: log, loadHitches: loadLog, gcFrames, gcMeanMs: gcFrames ? Math.round((gcMs / gcFrames) * 10) / 10 : 0,
         ...(Object.keys(split).length ? { split: splitSummary(split) } : {}),
         control: { injected: ctl.injected, injectedSeen: ctl.injectedSeen, issued: ctl.issued,
@@ -409,6 +429,19 @@ export function budgetRamp({ steps = rampSteps(), settle = 1, hold = 8, meter = 
       at = null;
       return { load: steps[i] };
     },
+  };
+}
+
+/* The world's own rate over a step, the spread of its tick gaps, and the
+   step's cost where it ran (the worker reports its own). */
+function simOf(s) {
+  if (s.t0 == null || s.now1 - s.now0 < 500) return null;
+  const q = (xs, f) => { const v = [...xs].sort((a, b) => a - b); return v.length ? Math.round(v[Math.min(v.length - 1, Math.floor(f * v.length))] * 10) / 10 : null; };
+  return {
+    rate: Math.round(((s.t1 - s.t0) / ((s.now1 - s.now0) / 1000)) * 1000) / 1000,
+    tickP50: q(s.gaps, 0.5), tickP95: q(s.gaps, 0.95), tickMax: s.gaps.length ? Math.round(Math.max(...s.gaps)) : null,
+    stalls: s.gaps.filter((g) => g > SIM_STALL).length,
+    stepP50: q(s.stepMs, 0.5), stepP95: q(s.stepMs, 0.95),
   };
 }
 

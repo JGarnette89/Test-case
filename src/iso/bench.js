@@ -25,7 +25,7 @@ import { walkerPose } from "../sim/walkers.js";
 import { DT } from "../sim/traffic.js";
 import { sidewalksOf } from "../map/sidewalks.js";
 import { terrain } from "./road.js";
-import { deviceLines, stallLines, HITCH } from "./perf.js";
+import { deviceLines, stallLines, HITCH, SIM_RATE_MIN, SIM_STALL } from "./perf.js";
 import { drawFrame } from "./draw.js";
 
 /* The map, what can be switched off and the world for a step: iso/benchworld.js, where the sim's worker can build it too. */
@@ -249,10 +249,11 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
   L.push(`scene: the bench map (src/iso/bench.js BENCH_BRIEF) -- ${loaded.roads.length} roads, ${loaded.props.length} buildings, ${(loaded.stops ?? []).length} bus stops, ${loaded.laneKm.toFixed(0)} lane-km; watching a car at #/map's street zoom`);
   L.push("");
   L.push("THE RAMP: the whole game, more cars each step");
-  const head = "step           fleet  trucks buses walking crossing parked  drawn things  back  fps  p50   p95   worst hitch stall slow-s gc(ms)     step p50/p95  poses p50/p95  draw p50/p95  build-s load-h  steady pass";
-  const row = (r) => `${String(r.label).padEnd(14)} ${pad(r.fleet, 5)}  ${pad(r.trucks, 6)} ${pad(r.buses, 5)} ${pad(r.walkers, 7)} ${pad(r.crossing, 8)} ${pad(r.parked, 6)}  ${pad(r.cars, 5)} ${pad(r.items, 6)}  ${pad(r.back, 4)}  ${pad(r.fps, 3)}  ${pad(r.p50, 4)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)} ${pad(r.stalls, 5)} ${pad(r.slowSeconds, 6)} ${pad(`${r.gcFrames ?? 0}(${r.gcMeanMs ?? 0})`, 8)}  ${pad(part(r, "step"), 12)}  ${pad(part(r, "poses"), 13)}  ${pad(part(r, "draw"), 12)}  ${pad(r.buildS, 7)} ${pad(r.builds ? (r.loadHitches ?? []).length : "-", 6)}  ${r.steady ? "yes" : "NO "}    ${r.pass ? "yes" : "NO"}${r.invalid ? "  INVALID (page hidden)" : ""}`;
+  const head = "step           fleet  trucks buses walking crossing parked  drawn things  back  fps  sim-x tick-p95/max stall  wkr p50/p95  p50   p95   worst hitch stall slow-s gc(ms)     step p50/p95  poses p50/p95  draw p50/p95  build-s load-h  steady pass";
+  const row = (r) => `${String(r.label).padEnd(14)} ${pad(r.fleet, 5)}  ${pad(r.trucks, 6)} ${pad(r.buses, 5)} ${pad(r.walkers, 7)} ${pad(r.crossing, 8)} ${pad(r.parked, 6)}  ${pad(r.cars, 5)} ${pad(r.items, 6)}  ${pad(r.back, 4)}  ${pad(r.fps, 3)}  ${pad(r.sim?.rate?.toFixed(2), 5)} ${pad(r.sim ? `${r.sim.tickP95}/${r.sim.tickMax}` : null, 13)} ${pad(r.sim?.stalls, 5)}  ${pad(r.sim ? `${r.sim.stepP50}/${r.sim.stepP95}` : null, 11)}  ${pad(r.p50, 4)}  ${pad(r.p95, 4)}  ${pad(r.worst, 5)} ${pad(r.hitches, 5)} ${pad(r.stalls, 5)} ${pad(r.slowSeconds, 6)} ${pad(`${r.gcFrames ?? 0}(${r.gcMeanMs ?? 0})`, 8)}  ${pad(part(r, "step"), 12)}  ${pad(part(r, "poses"), 13)}  ${pad(part(r, "draw"), 12)}  ${pad(r.buildS, 7)} ${pad(r.builds ? (r.loadHitches ?? []).length : "-", 6)}  ${r.steady ? "yes" : "NO "}    ${r.pass ? "yes" : "NO"}${r.invalid ? "  INVALID (page hidden)" : ""}`;
   L.push(head);
   for (const r of ramp.results) L.push(row(r));
+  L.push(`  sim-x = simulated seconds per real second over the step -- the world's own pace, which no frame time shows (a world at half speed with perfect frames passed every check until 15 October); below ${SIM_RATE_MIN} fails the step. tick = wall ms between the frames the world moved on; stall = ticks more than ${SIM_STALL} ms apart, failing the step. wkr = the step's own cost where it ran -- in the worker, as it reports it`);
   L.push("  back = frames that drew the world at an earlier moment than the frame before -- cars jumping backwards, a stutter no frame time shows; it must be 0");
   L.push("  step = the sim step, on the frames that ran one (a third of them at 60 fps); poses and draw every frame; ms, median/95th");
   L.push(`  hitch, worst, p95, pass: PLAY only. A step that built a new world settles ${LOAD_WINDOW} s first, and load-h is the hitches in that time (- where nothing was built)`);
@@ -324,12 +325,12 @@ function restartRemote(st, step, same) {
      with nothing moving. */
   if (same && st.remote) { st.remote.rewind(step.off ?? {}); return; }
   st.remote?.stop();
-  st.remote = st.makeRemote({ bench: { fleet: step.fleet, off: step.off ?? {} } }, (dyn, hit, seq, fresh) => {
+  st.remote = st.makeRemote({ bench: { fleet: step.fleet, off: step.off ?? {} } }, (dyn, hit, seq, fresh, ms) => {
     if (!st.sc) return;
     const t0 = clock();
     st.sc.world = merge(st.sc.world, dyn);
     if (fresh) st.remoteReady = true;
-    else { st.mergeMs += clock() - t0; st.merged++; paceReply(st.pace); }
+    else { st.mergeMs += clock() - t0; st.merged++; paceReply(st.pace); if (ms != null) st.workerMs = ms; }
   });
 }
 
@@ -361,6 +362,7 @@ const clock = () => (typeof performance !== "undefined" ? performance.now() : Da
 export function benchFrame(st, dtMs, ctx, size) {
   const t0 = clock();
   let r, stepMs = null;
+  st.workerMs = null;
   /* WAITING FOR THE WORKER'S WORLD: nothing is stepped and the ramp's
      clock is held (perf.js `loading`), so no step is measured over a
      world standing still -- which the 14 October report was, at 300 and
@@ -378,6 +380,7 @@ export function benchFrame(st, dtMs, ctx, size) {
   } else {
     r = benchStep(st.sc, st.owed + Math.min(0.25, dtMs / 1000));
     st.owed = r.owed;
+    if (r.ticks) st.workerMs = (clock() - t0) / r.ticks;   // in the page: the step's own cost, a tick
   }
   const t1 = clock();
   /* THE MOTION, not the cost: the moment this frame draws the world at.
@@ -402,5 +405,6 @@ export function benchFrame(st, dtMs, ctx, size) {
     ctx.fillStyle = "#fff"; ctx.font = "15px system-ui, sans-serif"; ctx.textAlign = "center";
     ctx.fillText("building the world in the worker -- not measured", size.w / 2, size.h / 2 + 5); ctx.restore();
   }
-  return { loading, back, drew: { ...drew, extra: { ...st.counts, buildS: st.buildS } }, split: { step: r.ticks ? stepMs ?? t1 - t0 : 0, poses: t2 - t1, draw: t3 - t2 }, ticks: r.ticks };
+  /* THE WORLD'S TIME this frame, and what its last tick cost where it ran (perf.js: the world must keep real time). */
+  return { loading, back, simT: loading ? null : st.sc.world.t, stepMs: st.workerMs, drew: { ...drew, extra: { ...st.counts, buildS: st.buildS } }, split: { step: r.ticks ? stepMs ?? t1 - t0 : 0, poses: t2 - t1, draw: t3 - t2 }, ticks: r.ticks };
 }

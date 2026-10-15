@@ -148,9 +148,11 @@ export function drawHorn(ctx, size, sounding, { label = true } = {}) {
 }
 
 /* A line of readout at the top left, small and steady. */
-export function drawReadout(ctx, text, x = 8, y = 6) {
+export function drawReadout(ctx, text, x = 8, y = 6, { up = false } = {}) {
   ctx.fillStyle = "rgba(230,232,236,0.85)"; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top";
-  ctx.fillText(text, x, y);
+  /* One line per newline; `up`: the last line at y, the others above it. */
+  const lines = String(text ?? "").split("\n");
+  lines.forEach((l, i) => ctx.fillText(l, x, up ? y - (lines.length - 1 - i) * 15 : y + i * 15));
 }
 
 /* A LINE SPOKEN (sim/voice.js): the speaker's name and what they said, in

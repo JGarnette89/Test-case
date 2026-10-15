@@ -4710,6 +4710,39 @@ length is what the page keeps live (the map, the course, 2,600 parked
 cars), which this did not touch. The phone's bench decides whether the
 long frames are gone; if they are not, the next lever is the live heap.
 
+### THE WORLD'S OWN PACE, MEASURED -- 15 October (`src/sim/pace.js` sim clock; diagnosis open)
+
+The maintainer: *"still seeing jitter. the fps is solid but it's like the
+simulation itself is slowing down."* Test map 1, on the phone, the sim in
+its worker (`#/map` uses it whenever it can).
+
+**The instrument could not see this.** Every meter measured frames. A
+world running at half speed with perfect frames passed all of them -- the
+same class of gap as every other here: the thing that matters was not the
+thing measured. Now:
+- **`#/map`'s readout** has a second line: simulated seconds per real
+  second over the last 5 s, the wall ms between ticks (p50/p95/max), the
+  step's cost where it ran (the worker reports its own), and the round
+  trip.
+- **The bench** reports the same per step (`sim-x`, `tick-p95/max`,
+  `stall`, `wkr`), and **a step fails if its world ran under 0.97x real
+  time or any two ticks landed more than 100 ms apart**, however good its
+  frames. `verify-bench`: a stand-in worker answering in two ticks gives
+  perfect 16.7 ms frames and a world at 0.499x -- the step fails; with the
+  rate removed from the verdict the check fails.
+
+**The leading hypothesis, from the pacing's own arithmetic** (not yet
+confirmed on the phone): one tick is in flight at a time, the next is
+asked for on the first FRAME after the answer, and owed time is capped at
+two ticks. So the tick period is the round trip rounded up to a frame:
+50 ms keeps real time, 51 ms is four frames and 0.75x, and a single 100 ms
+step is a stall whose time past the cap is lost. A desk worker steps test
+map 1 in 7.4 ms (p95 10, max 38; `tools/measure/worker-step.mjs`); a
+phone several times slower, with its spikes, would wander between 0.75
+and 1.0 -- smooth frames, a world that hesitates. And the PLAYER is
+stepped only when a tick is sent, so their own car runs at the world's
+pace: the slowness is felt as input lag. The numbers on the phone decide.
+
 ### MONEY AND THE FIRST FARE -- BUILT, 15 October (PLAN.md items 8 and 9; `src/sim/money.js`, `src/sim/jobs.js`)
 
 **Paid for skill, never time** (DAY-NIGHT.md constraint 3 and default 7).

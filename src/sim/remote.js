@@ -109,11 +109,14 @@ export function handle(state, msg) {
     return { state: { ...state, world: w }, reply: null };
   }
   if (msg.type === "step") {
+    const t0 = typeof performance !== "undefined" ? performance.now() : 0;
     if (msg.me) w = withDriver(w, msg.me);
     w = step(w);
     let hit = false;
     if (msg.me) ({ world: w, hit } = playerContact(w, msg.me));
-    return { state: { ...state, world: w, sent: w }, reply: { type: "world", seq: msg.seq, dyn: changed(w, state.sent), hit } };
+    /* `ms`: what the step cost where it ran -- the page cannot see inside the worker otherwise (pace.js, the sim's clock). */
+    const ms = typeof performance !== "undefined" ? performance.now() - t0 : null;
+    return { state: { ...state, world: w, sent: w }, reply: { type: "world", seq: msg.seq, dyn: changed(w, state.sent), hit, ms } };
   }
   return { state, reply: null };
 }
@@ -131,7 +134,7 @@ export function remoteSim(recipe, onWorld, onError = () => {}) {
     const r = e.data;
     if (r.type === "error") { worker.terminate(); onError(r.message); return; }
     if (r.seq === waiting) waiting = 0;
-    onWorld(r.dyn, r.hit, r.seq, !!r.fresh);
+    onWorld(r.dyn, r.hit, r.seq, !!r.fresh, r.ms ?? null);
   };
   worker.onerror = (e) => { worker.terminate(); onError(String(e.message ?? e)); };
   const post = (m) => { worker.postMessage({ ...m, seq: ++seq }); return seq; };
