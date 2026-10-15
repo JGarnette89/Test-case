@@ -4710,6 +4710,56 @@ length is what the page keeps live (the map, the course, 2,600 parked
 cars), which this did not touch. The phone's bench decides whether the
 long frames are gone; if they are not, the next lever is the live heap.
 
+### MONEY AND THE FIRST FARE -- BUILT, 15 October (PLAN.md items 8 and 9; `src/sim/money.js`, `src/sim/jobs.js`)
+
+**Paid for skill, never time** (DAY-NIGHT.md constraint 3 and default 7).
+The base is the TASK: a flag fall ($4.50) and $1.90 a kilometre of the
+route as planned when the fare was offered -- so a detour pays nothing and
+dawdling pays nothing. Taken off it, each named on the receipt: every
+fault the game's event stream raised during the ride at its OWN SEVERITY
+(4% of the base a point -- the one number that already ranks the faults, so
+no second table can drift from it); time over the posted limit (1% a
+second past a 2 s grace, to 30%); arriving past a reasonable time (the
+route's own driving time at its limits x1.5, plus 12 s an intersection; to
+20%). Contact voids the fare. A ride with nothing taken off is tipped 15%.
+All flagged design constants -- the maintainer's to move.
+
+**The taxi**: `#/map`, drive, **Taxi: find a fare** -- an offer (the pickup
+120 m-1.2 km away, the ride 0.7-3 km, the clean fare quoted), Accept; the
+route to the pickup; stop at the curb and stand 3 s while they get in
+(move off and they are still getting in); the meter runs to the drop-off,
+3 s getting out, and the receipt on the canvas: the base, what came off and
+why, the tip, the balance. The wallet goes through `storage.js`.
+
+**Three things the first drive found:**
+- **A route asked for a turn no signal could make.** Test map 1's five-way
+  (n2) offers two lefts from one lane, and the signal means the one most a
+  left (`routeForSignal`); the planner had chosen the other, and the car,
+  signalling left as told, drove to the map's edge. Routes now use only the
+  movements a signal can select (`route.js` `selectable`). The other left
+  is unreachable for the player at all -- a property of that five-way, not
+  fixed here.
+- **Standing for a fare was dawdling,** and slowing to the curb was
+  crawling under the limit. The session now tells the detectors when the
+  player is pulling in at, or standing at, a place they were sent to
+  (`atPlace`), and those two clocks start again when the reason ends.
+- **A rough script earns nothing**, correctly: braking flat at every line
+  took the whole fare. So the check drives with a GOOD driver
+  (`tools/lib/good-driver.mjs`): the slider where the screen's own marker
+  says, the turn and lane the directions say, keeping right, waiting for
+  the rules before moving off. It earns the full fare and the tip ($8.36 on
+  a $7.27 quote); the same ride at 1.3x the limit earns $5.09.
+
+`verify-money`: the fare's properties (stated without the module's own
+constants -- the first version compared each cost with `PER_SEVERITY` and
+passed with it set to zero), the wallet through storage, and the fare
+driven end to end. Sabotaged four ways (faults free, paid by time,
+standing as dawdling, routes through unselectable turns); each caught.
+
+**To judge** (`#/map`, drive, Taxi: find a fare): does the fare feel fair
+-- what a clean drive pays, what a harsh stop or a red costs? The numbers
+are a first pick.
+
 ### THE GREEN, NOTICED, AND THE HORN (the maintainer, 8 October) -- BUILT
 
 Verbatim: *"another idea for driver behavior, people responding

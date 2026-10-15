@@ -16,6 +16,7 @@
    (intersection, approach) -- a few hundred states on the stand-in city.
    ===================================================================== */
 import { poseOnGraph } from "./graph.js";
+import { routeForSignal } from "./drive.js";
 
 const baseOf = (layout, legId) => layout.legs[legId]?.base ?? legId;
 export const PLACE_REACH = 25;   // m: a door further than this from any curb lane is not on a street
@@ -76,6 +77,26 @@ export function placesOf(course, loaded) {
   return out;
 }
 
+/* THE MOVEMENTS A PLAYER CAN MAKE: from each lane, the one its signal
+   picks for left, for right, and for none (drive.js `routeForSignal`) --
+   the turn signal is the player's only way to choose. A five-way can
+   offer two lefts from one lane, and the signal means the one most a
+   left; the other is no movement the player can make, so no route may
+   ask for it (14 October: a ride on test map 1 planned the other left at
+   n2 and the car, signalling left as told, took the one a signal means). */
+const selectableOf = new WeakMap();
+export function selectable(layout) {
+  let set = selectableOf.get(layout);
+  if (set) return set;
+  set = new Set();
+  for (const legId of Object.keys(layout.legs)) {
+    if (!layout.routesFrom(legId).length) continue;
+    for (const sig of [null, "left", "right"]) { const r = routeForSignal(layout, legId, sig); if (r) set.add(r); }
+  }
+  selectableOf.set(layout, set);
+  return set;
+}
+
 /* Is the car on the place's own stretch of road, and how far along it from the place (negative: still short of it)? */
 export function alongTo(course, me, place) {
   if ((me.k ?? 0) !== place.k) return null;
@@ -114,11 +135,11 @@ export function routeTo(course, me, place) {
     const cur = queue.shift(), ck = key(cur.k, cur.base);
     if (done.has(ck)) continue;
     done.add(ck);
-    const L = course.at[cur.k].layout;
+    const L = course.at[cur.k].layout, sel = selectable(L);
     /* The place is on this approach. */
     if (place.part === "in" && place.k === cur.k && place.base === cur.base) { goal = { ck, d: cur.d }; break; }
     for (const [route, p] of Object.entries(L.paths)) {
-      if (baseOf(L, p.from) !== cur.base) continue;
+      if (baseOf(L, p.from) !== cur.base || !sel.has(route)) continue;
       /* The place is on the exit this movement takes: done after it. */
       if (place.part === "out" && place.k === cur.k && baseOf(L, p.to) === place.base) {
         const d = cur.d + (place.s - p.stopAt);
@@ -167,7 +188,8 @@ export function nextTurn(course, me, route) {
 export function laneFor(layout, mine, want) {
   if (!mine || !want) return 0;
   const legs = layout.legs, from = legs[mine.from], toBase = baseOf(layout, want.to);
-  const makes = (legId) => layout.routesFrom(legId).some((r) => { const q = layout.paths[r]; return q.intent === want.intent && baseOf(layout, q.to) === toBase; });
+  const sel = selectable(layout);
+  const makes = (legId) => layout.routesFrom(legId).some((r) => { const q = layout.paths[r]; return sel.has(r) && q.intent === want.intent && baseOf(layout, q.to) === toBase; });
   if (!from || makes(mine.from)) return 0;
   const here = from.pos ?? from.lane ?? 0;
   let best = null;

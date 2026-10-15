@@ -13,6 +13,8 @@ import { speak, newVoice } from "./voice.js";
 import { LINES, SPEAKERS } from "../content/dialogue.js";
 import { routeTo, nextTurn, alongTo, ARRIVED_WITHIN } from "./route.js";
 import { poseOnGraph } from "./graph.js";
+import { jobTick, jobText } from "./jobs.js";
+import { credit, newWallet, saveWallet } from "./money.js";
 
 /* WHAT THE GAME NOTICED THIS TICK, AND WHAT IS SAID (sim/events.js, sim/voice.js):
    the player and the world one tick apart, the detectors' memory kept on the
@@ -20,10 +22,29 @@ import { poseOnGraph } from "./graph.js";
    never React state. Driving only. */
 export function noticeTick(sc, prev, now) {
   if (!sc.me || !prev?.me) return;
-  const r = detect(prev, now, sc.ev ?? newEventState());
+  /* Pulling in at the place the player was sent to, or standing there for a fare. */
+  const along = sc.dest ? alongTo(now.world.course, now.me, sc.dest) : null;
+  const atPlace = (along != null && along > -PULL_IN && along <= ARRIVED_WITHIN) || sc.job?.state === "boarding" || sc.job?.state === "alighting";
+  const r = detect(prev, { ...now, atPlace }, sc.ev ?? newEventState());
   sc.ev = r.state;
   const events = r.events;
-  if (navigate(sc, now.me, now.world.course)) events.push({ id: "arrived", t: now.world.t, ...TRIGGERS.arrived });
+  const arrived = navigate(sc, now.me, now.world.course);
+  /* A JOB (sim/jobs.js) owns what arriving means while it runs; a plain trip says "arrived". */
+  if (sc.job) {
+    const r = jobTick(sc.job, { arrived, me: now.me, t: now.world.t, course: now.world.course, events });
+    sc.job = r.job;
+    if (r.dest) { sc.dest = r.dest; sc.routeKey = null; }
+    if (r.paid) {
+      sc.wallet = credit(sc.wallet ?? newWallet(), { what: sc.job.kind, amount: r.paid.total, quality: Math.round(r.paid.quality * 100) / 100, at: now.world.t });
+      if (sc.saveWallet !== false) saveWallet(sc.wallet);
+      sc.receipt = { fare: r.paid, balance: sc.wallet.balance, at: (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000 };
+      sc.job = null;
+    }
+    sc.jobText = jobText(sc.job, now.world.t);
+  } else {
+    sc.jobText = null;
+    if (arrived) events.push({ id: "arrived", t: now.world.t, ...TRIGGERS.arrived });
+  }
   const v = speak(sc.voice ?? newVoice(sc.args?.[0] ?? 1), events, now.world.t, LINES, { when: "day" });
   sc.voice = v.state;
   if (v.said) sc.said = { who: SPEAKERS[v.said.speaker] ?? v.said.speaker, text: v.said.text, at: (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000 };
@@ -34,7 +55,8 @@ export function noticeTick(sc, prev, now) {
    approach -- the line drawn along it, the next movement said on the
    screen. Returns true the tick they arrive: stopped at the curb within
    ARRIVED_WITHIN of the place. */
-export const ROUTE_STEP = 4;   // m between the points of the drawn route
+export const ROUTE_STEP = 4;
+export const PULL_IN = 60;     // m short of a place where slowing to it is pulling in, not crawling   // m between the points of the drawn route
 export function navigate(sc, me, course) {
   const dest = sc.dest;
   if (!dest) { sc.navText = null; sc.routePts = null; return false; }

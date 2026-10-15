@@ -162,8 +162,17 @@ playable milestone.
 8. **Money** -- earnings by SKILL not time (the sim's own standards:
    smooth, at the limit, no horns aimed at you), a balance, stored
    through `storage.js`. SHARED. Days.
+   **BUILT 15 October** (`src/sim/money.js`): the base is the task (a
+   flag and a rate on the route as planned), every fault the game raises
+   costs its own severity, contact voids the fare, time over the limit and
+   lateness cost, a clean drive is tipped; a wallet through storage.js.
 9. **The job machinery and TAXI** -- pick up, deliver, a standard, a fare
    (DAY-NIGHT.md defaults 7, 11, 12). PLAYER. A week on 7 and 8.
+   **BUILT 15 October** (`src/sim/jobs.js`): `#/map`'s Taxi: find a
+   fare -- an offer, accept, the pickup, 3 s at the curb, the meter, the
+   drop-off, a receipt on the canvas. `verify-money`. Milestone 3's
+   first half: "a dispatch offers a fare; drive it; get paid for how you
+   drove".
 9a. **PASSENGER COMFORT scoring** -- one mechanic serving taxi, the
    commuter express and the VIP airport shuttle (JOBS.md): smoothness from
    the sim's own harsh-braking and lateral measures. PLAYER. Days.

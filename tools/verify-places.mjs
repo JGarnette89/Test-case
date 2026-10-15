@@ -17,7 +17,7 @@
 import { loadMap } from "../src/map/load.js";
 import { testCityReady } from "../src/map/samples.js";
 import { seedGraph, step } from "../src/sim/crossing.js";
-import { playerOn, stepDriver, stopFor, withDriver } from "../src/sim/drive.js";
+import { playerOn, stepDriver, stopFor, withDriver, routeForSignal } from "../src/sim/drive.js";
 import { placesOf, routeTo, alongTo, PLACE_REACH, ARRIVED_WITHIN } from "../src/sim/route.js";
 import { noticeTick } from "../src/sim/session.js";
 import { postedAt, poseOnGraph } from "../src/sim/graph.js";
@@ -64,6 +64,8 @@ console.log("\n2-3. A ROUTE IS REAL, AND SHORTEST");
   course.at.forEach((spot, k) => {
     if (spot.through) return;
     for (const [r, p] of Object.entries(spot.layout.paths)) {
+      /* Only what a signal can select: the player's one way of choosing (drive.js routeForSignal). */
+      if (![null, "left", "right"].some((sig) => routeForSignal(spot.layout, p.from, sig) === r)) continue;
       const from = `${k}|${baseOf(k, p.from)}`;
       const j = course.joins[`${k}|${p.to}`];
       if (!j) continue;
@@ -97,6 +99,7 @@ console.log("\n2-3. A ROUTE IS REAL, AND SHORTEST");
     r.steps.forEach((st, j) => {
       const p = course.at[st.k].layout.paths[st.route];
       if (st.k !== k || baseOf(st.k, p.from) !== base) ok = false;
+      if (![null, "left", "right"].some((sig) => routeForSignal(course.at[st.k].layout, p.from, sig) === st.route)) ok = false;   // a movement a signal can select
       const last = j === r.steps.length - 1;
       if (last && place.part === "out") { if (!(st.k === place.k && baseOf(st.k, p.to) === place.base)) ok = false; return; }
       const jn = course.joins[`${st.k}|${p.to}`];
@@ -107,7 +110,7 @@ console.log("\n2-3. A ROUTE IS REAL, AND SHORTEST");
     if (!ok) replayBad++;
     if (Math.abs(r.length - ref) > 1) { notShortest++; worst = Math.max(worst, Math.abs(r.length - ref)); }
   }
-  check(missing === 0 && replayBad === 0, `${n} routes from the start of the map: every one reachable the independent search can reach (${missing} missed), every one replays along the graph's joins to its place's stretch (${replayBad} did not)`);
+  check(missing === 0 && replayBad === 0, `${n} routes from the start of the map: every one reachable the independent search can reach (${missing} missed), every one replays along the graph's joins, each movement one a signal can select, to its place's stretch (${replayBad} did not)`);
   check(notShortest === 0, `and every one is the shortest the independent search finds (${notShortest} longer, worst by ${worst.toFixed(1)} m)`);
 }
 
@@ -163,6 +166,15 @@ console.log("\n5. A MAP WITH NO BUILDINGS STILL HAS SOMEWHERE TO GO (#/map's own
   const longest = Math.max(0, ...reach.map((r) => r.length));
   check(L1.props.length === 0 && P1.length >= w1.course.at.filter((s) => !s.through).length, `test map 1, ${L1.props.length} buildings: ${P1.length} places on its curbs, ${reach.length} reachable from the start, the furthest ${longest.toFixed(0)} m`);
   check(reach.length >= P1.length / 2 && longest > 200, "most of them reachable, and a real trip among them");
+  /* Its five-way (n2) offers two lefts from one lane, and a signal means
+     only one of them: every route here must be made of movements a signal
+     can select, or the player is told to make a turn they cannot. */
+  let unselectable = 0;
+  for (const r of reach) for (const st of r.steps) {
+    const L1k = w1.course.at[st.k].layout, p = L1k.paths[st.route];
+    if (![null, "left", "right"].some((sig) => routeForSignal(L1k, p.from, sig) === st.route)) unselectable++;
+  }
+  check(unselectable === 0, `and every movement on those routes is one the turn signal can select (${unselectable} are not) -- test map 1's five-way has a left no signal means`);
 }
 
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nall passed");

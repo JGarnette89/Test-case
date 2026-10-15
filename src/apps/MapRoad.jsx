@@ -43,7 +43,9 @@ import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
-import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption, drawNav } from "../iso/hud.js";
+import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption, drawNav, drawReceipt } from "../iso/hud.js";
+import { offerFare, accept } from "../sim/jobs.js";
+import { loadWallet } from "../sim/money.js";
 import { HONK_FOR } from "../sim/horn.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter } from "../iso/perf.js";
@@ -146,6 +148,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [lookAway, setLookAway] = useState(false);
   const [assist, setAssist] = useState("gentle");   // lane assist (settings.js); the frame loop reads assistRef
   const assistRef = useRef("gentle");
+  /* THE WALLET (sim/money.js): loaded once, carried from scene to scene; a fare paid is written by the session. */
+  const walletRef = useRef(null);
+  const [offer, setOffer] = useState(null);   // a fare on offer, or a cancel to confirm -- set by taps, never by the frame loop
   /* THE FREE CAMERA (iso/freecam.js). Watching, it is the view called
      "free look" and any drag on the map enters it. Driving, the canvas is
      the wheel and the pedal, so it is "Look around": the world pauses and
@@ -189,6 +194,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   };
 
   useEffect(() => { setWarnings(scene.current.loaded.warnings); }, []);
+  useEffect(() => { loadWallet().then((w) => { walletRef.current = w; if (scene.current && !scene.current.wallet) scene.current.wallet = w; }); }, []);
   /* The sim's worker goes when the screen does. */
   useEffect(() => () => scene.current?.remote?.stop(), []);
 
@@ -426,6 +432,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         drawHorn(ctx, size, sc.me?.honkAt != null && sc.world.t - sc.me.honkAt < HONK_FOR);
         drawCaption(ctx, size, sc.said, now / 1000);
         drawNav(ctx, size, sc.navText);
+        drawNav(ctx, size, sc.jobText, { y: 54, colour: "#ffd34d" });
+        drawReceipt(ctx, size, sc.receipt, now / 1000);
+        if (sc.wallet) walletRef.current = sc.wallet; else if (walletRef.current) sc.wallet = walletRef.current;
         drawReadout(ctx, readout.current, 8, size.h - 44);
         if (flash.current > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * flash.current})`; ctx.fillRect(0, 0, size.w, size.h); flash.current = Math.max(0, flash.current - dt * 2); }
       } else {
@@ -586,6 +595,33 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               pick = pick ?? (farLen > 60 ? far : null);
               sc.dest = pick; sc.routeKey = null; sc.navText = pick ? "Working out the way..." : "Nowhere to go on this map";
             }}>Go somewhere</button>
+          )}
+          {/* THE TAXI (sim/jobs.js): dispatch offers a fare; accept it and drive it; the fare is what the drive earned. */}
+          {mode === "drive" && (
+            <button className="btn" style={S.chip} onClick={() => {
+              const sc = scene.current;
+              if (!sc?.me) return;
+              if (sc.job) { setOffer({ cancel: true }); return; }
+              const places = sc.places ?? (sc.places = placesOf(sc.world.course, sc.loaded));
+              const o = offerFare(sc.world.course, sc.me, places, (sc.fares = (sc.fares ?? 0) + 1) * 31 + seed);
+              setOffer(o ?? { none: true });
+            }}>Taxi: find a fare</button>
+          )}
+          {mode === "drive" && offer && (
+            <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ ...S.label, color: C.white }}>
+                {offer.none ? "No fare on this map from here" : offer.cancel ? "Cancel this fare? It pays nothing" : `Fare: pick up ${(offer.toPickup / 1000).toFixed(1)} km away, ride ${(offer.length / 1000).toFixed(1)} km -- about ${offer.estimate.toFixed(2)} driven clean`}
+              </span>
+              {!offer.none && (
+                <button className="btn" style={{ ...S.chip, borderColor: C.amber, color: C.white }} onClick={() => {
+                  const sc = scene.current;
+                  if (offer.cancel) { sc.job = null; sc.dest = null; sc.jobText = null; sc.routeKey = null; }
+                  else if (sc?.me) { const r = accept(offer); sc.job = r.job; sc.dest = r.dest; sc.routeKey = null; sc.navText = "Working out the way..."; }
+                  setOffer(null);
+                }}>{offer.cancel ? "Cancel it" : "Accept"}</button>
+              )}
+              <button className="btn" style={S.chip} onClick={() => setOffer(null)}>{offer.none ? "OK" : offer.cancel ? "Keep driving" : "Decline"}</button>
+            </span>
           )}
           {mode === "drive" && (
             <button className="btn" style={{ ...S.chip, borderColor: rotate ? C.amber : "rgba(255,255,255,0.12)", color: rotate ? C.white : DIM }}

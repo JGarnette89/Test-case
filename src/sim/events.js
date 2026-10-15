@@ -140,9 +140,15 @@ export function detect(prev, now, state0 = newEventState()) {
   /* THE TURN, as the car model judged it leaving the box. */
   if (me.lastTurn && me.lastTurn !== pm.lastTurn && me.lastTurn.verdict === "wide") say("wideTurn");
 
+  /* STANDING FOR A REASON: `now.atPlace` -- the screen says the player is
+     pulling in at, or standing at, a place they were sent to (a fare
+     getting in, sim/jobs.js). Slowing to the curb is not crawling and
+     standing there is not dawdling; the clock for either starts again
+     when the reason ends. */
+  if (now.atPlace) { st.dawdleFrom = t; st.crawlFor = 0; }
   /* DAWDLING: free to go and still sitting, past the horn's own patience. */
   const since = w.playerFreeSince;
-  if (since != null && t - since >= DAWDLE && st.dawdleSince !== since) { st.dawdleSince = since; say("dawdling"); }
+  if (since != null && t - Math.max(since, st.dawdleFrom ?? -Infinity) >= DAWDLE && st.dawdleSince !== since) { st.dawdleSince = since; say("dawdling"); }
 
   /* BLOCKING THE BOX: standing between the line and the far side. */
   if (path && (me.v ?? 0) < AT_REST && me.s > path.stopAt && me.s < path.clearAt) {
@@ -192,7 +198,7 @@ export function detect(prev, now, state0 = newEventState()) {
   } else if (!path || (me.v ?? 0) <= 5) { st.hogFor = 0; st.hogSaid = false; }
 
   /* CRAWLING: well under the limit on a clear road, away from any line. */
-  if (path && (me.v ?? 0) > 1 && (me.v ?? 0) < posted * CRAWL_SHARE && me.s < path.stopAt - 60) {
+  if (!now.atPlace && path && (me.v ?? 0) > 1 && (me.v ?? 0) < posted * CRAWL_SHARE && me.s < path.stopAt - 60) {
     const view = whatStops({ ...me, caution: 1, headway: 1.6 }, w);
     if (!view.leader || view.gap > 60) { st.crawlFor += DT; if (st.crawlFor >= CRAWL && !st.crawlSaid) { st.crawlSaid = true; say("underLimit"); } }
     else st.crawlFor = 0;

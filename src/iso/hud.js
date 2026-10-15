@@ -190,12 +190,37 @@ export function drawCaption(ctx, size, said, now) {
 /* WHERE TO GO NEXT (sim/route.js): one line, top left under the readout,
    for as long as there is a destination -- "Left at the next
    intersection, 120 m", "Straight on", "Arriving". Never under 14 px. */
-export function drawNav(ctx, size, text) {
+export function drawNav(ctx, size, text, { y = 26, colour = "#7fd3ff" } = {}) {
   if (!text) return;
   ctx.font = "600 14px system-ui, sans-serif";
-  const w = Math.min(size.w - 16, ctx.measureText(text).width + 20), x = 8, y = 26;
+  const w = Math.min(size.w - 16, ctx.measureText(text).width + 20), x = 8;
   ctx.fillStyle = "rgba(14,16,20,0.82)";
   ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, 26, 8) : ctx.rect(x, y, w, 26); ctx.fill();
-  ctx.fillStyle = "#7fd3ff"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.fillStyle = colour; ctx.textAlign = "left"; ctx.textBaseline = "middle";
   ctx.fillText(text, x + 10, y + 13);
 }
+
+/* THE FARE, PAID (sim/money.js): what the job paid, what the drive took
+   off it and why, the tip, and the balance -- on the canvas for
+   RECEIPT_FOR seconds, never React state. `now` and `receipt.at` in seconds. */
+export const RECEIPT_FOR = 7;
+export function drawReceipt(ctx, size, receipt, now) {
+  if (!receipt) return;
+  const age = now - receipt.at;
+  if (age < 0 || age >= RECEIPT_FOR) return;
+  const f = receipt.fare, lines = [];
+  lines.push([`Fare ${money(f.base)}`, "#ffffff"]);
+  for (const o of f.off) lines.push([`  -${Math.round(o.share * 100)}%  ${o.why}`, "#ff9b8a"]);
+  if (f.tip) lines.push([`  tip +${money(f.tip)}  -- a clean drive`, "#8ff0a4"]);
+  lines.push([`Paid ${money(f.total)}   balance ${money(receipt.balance)}`, "#ffd34d"]);
+  ctx.globalAlpha = age > RECEIPT_FOR - 0.8 ? (RECEIPT_FOR - age) / 0.8 : 1;
+  ctx.font = "600 15px system-ui, sans-serif";
+  const w = Math.min(size.w - 32, Math.max(...lines.map(([t]) => ctx.measureText(t).width)) + 28), h = 14 + lines.length * 22;
+  const x = (size.w - w) / 2, y = size.h * 0.32;
+  ctx.fillStyle = "rgba(14,16,20,0.88)";
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 10) : ctx.rect(x, y, w, h); ctx.fill();
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  lines.forEach(([t, c], i) => { ctx.fillStyle = c; ctx.fillText(t, x + 14, y + 18 + i * 22); });
+  ctx.globalAlpha = 1;
+}
+const money = (x) => `${(x ?? 0).toFixed(2)}`;
