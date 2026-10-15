@@ -4743,6 +4743,39 @@ and 1.0 -- smooth frames, a world that hesitates. And the PLAYER is
 stepped only when a tick is sent, so their own car runs at the world's
 pace: the slowness is felt as input lag. The numbers on the phone decide.
 
+**DIAGNOSED, 15 October: the worker's way BACK.** Three phone readings on
+test map 1 at 156-170 cars: step 17-21 ms, steady; wait 0.4-0.6 ms; building
+the answer 0.7 ms; **back 110-179 ms**, of which reading the message (the
+browser turning the answer back into objects) 65-104 ms; our own frame
+3.6-4.4 ms; the browser's long tasks 2.5-2.8 s in every 5 s. The world ran
+at 0.25-0.36x real time with a frame counter that looked fine. The worker
+was costing six to nine times the step it carried. And the way back scales
+with the cars while the step barely does -- 164 cars 110 ms, 156 cars 165,
+170 cars 179: noisy, but TRANSFER VOLUME, not compute -- which points at the
+payload: the whole changed world, structured-cloned every tick.
+
+**THE PATTERN, again (DECISIONS.md 10):** every instrument measured frames,
+and the frames were fine. Nothing measured whether the world kept pace with
+the clock, so a sim at a quarter speed passed everything. The readout's
+"sim 0.27x real time" is what caught it, and only because the maintainer
+could see it.
+
+**THE WORKER IS OFF BY DEFAULT** (`#/map`'s "Sim: page" / "Sim: worker",
+the `simWorker` setting; the bench's switch starts on the page). On the page
+the same step fits the tick: `tools/measure/page-loop.mjs` replays #/map's
+in-page loop with each real step scaled by the phone's own factor (its
+worker steps over the desk's at the same densities, about 1.6): **1.000x real
+time** at 156, 164 and 170 cars, frames 33 ms where a step lands (about 40
+fps), and still 1.000x at three times the desk's cost. The phone's own
+"(page)" readout is the measurement that counts.
+
+**Before the worker goes back on**, the way back is rebuilt: what the
+renderer draws (positions, headings, kind, lights, lamps) packed into a
+preallocated buffer and TRANSFERRED, two buffers ping-ponged, never
+allocated per tick. If the way back is still a meaningful fraction of the
+step after that, the worker does not earn its place and is deleted rather
+than kept as an option.
+
 ### MONEY AND THE FIRST FARE -- BUILT, 15 October (PLAN.md items 8 and 9; `src/sim/money.js`, `src/sim/jobs.js`)
 
 **Paid for skill, never time** (DAY-NIGHT.md constraint 3 and default 7).

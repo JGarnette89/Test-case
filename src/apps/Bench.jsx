@@ -31,7 +31,7 @@ export default function Bench() {
   const [report, setReport] = useState(null);
   /* THE SIM IN A WORKER (sim/remote.js), as #/map now runs it -- or in the
      page, as before, to compare. Where no worker can be made it is the page. */
-  const [worker, setWorker] = useState(typeof Worker !== "undefined");
+  const [worker, setWorker] = useState(false);   // the page by default since 15 October (SIMULATOR.md: the worker's way back)
   const [copied, setCopied] = useState(null);
   const [probe, setProbe] = useState(0);
   const reportRef = useRef(null);

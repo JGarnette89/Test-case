@@ -148,6 +148,14 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [lookAway, setLookAway] = useState(false);
   const [assist, setAssist] = useState("gentle");   // lane assist (settings.js); the frame loop reads assistRef
   const assistRef = useRef("gentle");
+  /* THE SIM IN A WORKER: off by default (15 October). On the phone the
+     worker's answers took 110-179 ms to come back for a 17-21 ms step --
+     most of it the page turning each answer back into objects -- and the
+     world ran at 0.25-0.36x real time with the frame counter looking fine.
+     On the page the same step fits a 20 Hz tick. A setting, so the
+     return-path fix can be measured against it. */
+  const [simWorker, setSimWorker] = useState(false);
+  const workerRef = useRef(false);
   /* THE WALLET (sim/money.js): loaded once, carried from scene to scene; a fare paid is written by the session. */
   const walletRef = useRef(null);
   const [offer, setOffer] = useState(null);   // a fare on offer, or a cancel to confirm -- set by taps, never by the frame loop
@@ -212,6 +220,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const saved = s.carsByMap?.[mapId] ?? (mapId === "test-1" ? s.cars : undefined);
       const n = Number.isFinite(saved) ? Math.max(CARS.min, Math.min(carsMax, saved)) : cars;
       const look = s.lookAway === true;
+      if (s.simWorker === true && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look); return; }
       if (kmh !== limit || m !== mode || n !== cars || look !== lookAway) restart(seed, kmh, m, n, look);
       if (s.slider === "spring") input.current.state.spring = true;
       if (s.assist in ASSIST) { assistRef.current = s.assist; setAssist(s.assist); }
@@ -263,6 +272,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
          player -- the in-thread loop's `break`, a message later. Where no
          worker can be made, or it fails, the loop below steps in-thread
          from this copy, exactly as before. */
+      if (sc.remote === undefined && !workerRef.current) sc.remote = null;   // the page steps the world (below)
       if (sc.remote === undefined) {
         const own = sc;
         own.remoteReady = false;
@@ -600,6 +610,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               if (best) { sc.world = { ...sc.world, actors: sc.world.actors.map((a) => (a.id === best.id ? { ...a, honkAt: sc.world.t, honkTo: "player" } : a)) }; sc.remote?.honk(best.id, "player"); }
             }}>Test horn</button>
           )}
+          <button className="btn" style={{ ...S.chip, borderColor: simWorker ? C.amber : "rgba(255,255,255,0.12)", color: simWorker ? C.white : DIM }}
+            title="where the simulation runs: on the page (the default) or in a Web Worker (being fixed; for measuring)"
+            onClick={() => { const on = !simWorker && typeof Worker !== "undefined"; workerRef.current = on; setSimWorker(on); setSetting("simWorker", on); restart(); }}>{simWorker ? "Sim: worker" : "Sim: page"}</button>
           {/* GO SOMEWHERE (sim/route.js): a place on the map, the route there drawn and said, and the voice when you arrive. */}
           {mode === "drive" && (
             <button className="btn" style={S.chip} onClick={() => {

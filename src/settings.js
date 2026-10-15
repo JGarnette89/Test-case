@@ -19,7 +19,8 @@ export const DEFAULTS = {
   cars: 120,            // how many cars the map is kept topped up to (the maintainer: "a way for me to directly determine how many cars are in the map") -- test map 1's; kept for it
   carsByMap: {},
   assist: "gentle",     // lane-keeping assist (sim/player.js): "off" | "gentle" | "firm" -- the maintainer asked for it, so it starts on, lightly
-  keepAwake: false,    // keep the phone's screen on while testing (src/wake.js) -- the maintainer, 14 October
+  keepAwake: false,
+  simWorker: false,     // the sim in a Web Worker: OFF by default since 15 October -- on the phone its answers cost 6-9x the step they carried (SIMULATOR.md); on, to measure the fix against    // keep the phone's screen on while testing (src/wake.js) -- the maintainer, 14 October
   lookAway: false,      // drivers who look away now and then (sim/attention.js) -- off by default: it makes crashes        // the same, PER MAP: a count chosen for one map is not a count for another (the city has 2.5x test map 1's road)
 };
 
