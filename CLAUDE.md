@@ -123,6 +123,14 @@ Eight things to know before your first change:
    - **It compares a quantity with itself.** A check that set the gap
      horizon to the approach length and then asserted the approach
      covered it. §5.15.3.
+   - **It reads the same constant as the code.** A check that reads the
+     code's own constant cannot detect that constant being wrong: it is
+     the two-implementations pattern (item 2) inverted -- one
+     implementation where the check needed a second, independent
+     statement. `verify-money` asserted each fault cost
+     `severity * PER_SEVERITY` and passed with `PER_SEVERITY` set to
+     zero (15 October). State the expectation in the check itself, or as
+     a property no wrong value can satisfy -- and sabotage the constant.
 
 4. **A CHECK HAS A BOUNDARY, AND IT IS INVISIBLE IN ITS OUTPUT.** The
    second recurring failure, three times in two days: `verify-turns`

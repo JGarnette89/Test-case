@@ -330,12 +330,18 @@ mechanic means something different in each place (DISTRICTS.md).
 
 ---
 
-## 7. The next three, plainly
+## 7. The next three, plainly (updated 15 October)
 
-1. **Ship courtesy gaps** (checked; the full suite is running).
-2. **Wire the Web Worker into `#/map`** and measure it on the phone's
-   bench.
-3. **The rivals' cheap pass**: four named drivers in the city, each
-   recognisable by driving alone.
+Done since the plan was written: courtesy gaps, the Web Worker (and its
+stutter, and the page's garbage: 400 cars clean on the phone), the rivals,
+A.U.T.O. speaks (phase 2), destinations and routing, money, the taxi.
 
-**Next playable milestone: "Meet the rivals"** -- after those three.
+1. **Passenger comfort** (9a): smoothness through acceleration and
+   corners, measured from the car model, joining the taxi fare.
+2. **The highway flow pacer** (9b).
+3. **Multi-stop delivery** (9c): courier, food run and mail route as one
+   activity.
+
+**Next playable milestone: 3, "The first fare"** -- its first half (a fare
+offered, driven, paid for how it was driven) is built; it completes with
+those three.
