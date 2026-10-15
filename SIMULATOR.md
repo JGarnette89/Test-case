@@ -4678,6 +4678,38 @@ real protocol through a stand-in worker -- including a world that takes
 bench (no worker) is unchanged: it builds as before, inside the load
 window.
 
+**THE PAGE'S GARBAGE, AND THE LONG FRAMES IT CAUSED (15 October).** The
+first clean bench report held 60 fps to 400 cars, but four frames of 50-108
+ms were our own callback: the shape of a full garbage collection. Measured
+on the desk (`tools/measure/page-alloc.mjs`, `gc-pressure.mjs`,
+`answer-size.mjs`), the page in worker mode was making about 150 MB of
+garbage a second at 400 cars.
+
+- **The draw** (`iso/draw.js`): the horn badge built a table of every road
+  user in the city, parked cars included, every frame, for nobody -- about
+  half the draw's garbage; a sign's dozen boxes, a building's box and a bus
+  stop's were rebuilt every frame though they never change (kept now, per
+  object); every ground cell, building and bus stop in the city had a
+  closure scope built for it each frame before the cull could skip it (the
+  bodies are functions past the cull now, as roads and sidewalks already
+  were); and array destructuring was an iterator per ground cell.
+  `quad`/`seg` project into scratch. Not a pixel moves -- `verify-paint`.
+- **The worker's answer** (`sim/remote.js`): 621 KB at 400 cars, 36% of it
+  `memo`, each driver's memory of somebody a truck hid -- read only by
+  that driver's own step; the page calls `whatStops` for the player
+  alone. Not sent now; and `ratings`, `weakOn`, `stuck` -- who a driver
+  is -- go once, when a driver first appears. 273 KB. `verify-worker` now
+  holds the page's copy to the worker's world FIELD BY FIELD, every actor,
+  all but the memory (it compared a key of a few fields before), and fails
+  if the page drops who a driver is or the answer drops any other field.
+
+Per minute at 400 cars, on the desk, twice each: full collections 7 -> 3,
+minor ones 330 -> ~198, script per frame 4.4 -> 3.3 ms. The longest full
+collection went 30 -> 41-50 ms: fewer, each sweeping more. What decides its
+length is what the page keeps live (the map, the course, 2,600 parked
+cars), which this did not touch. The phone's bench decides whether the
+long frames are gone; if they are not, the next lever is the live heap.
+
 ### THE GREEN, NOTICED, AND THE HORN (the maintainer, 8 October) -- BUILT
 
 Verbatim: *"another idea for driver behavior, people responding

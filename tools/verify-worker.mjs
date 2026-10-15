@@ -29,6 +29,12 @@ let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
 const key = (w) => JSON.stringify(w.actors.map((a) => [a.id, a.k, a.route, a.s, a.v, a.crash ? 1 : 0, a.honkAt ?? null])) + JSON.stringify(w.peds ?? []) + JSON.stringify(w.lights ?? null) + w.t;
 
+/* A value as text with every object's keys in order, leaving out `skip` at the top. */
+const canon = (v, skip = null) => {
+  const top = skip ? Object.fromEntries(Object.entries(v).filter(([q]) => q !== skip)) : v;
+  return JSON.stringify(top, (k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((q) => [q, x[q]])) : x));
+};
+
 console.log("\n1. THE SAME WORLD, A THREAD AWAY");
 {
   const args = [3, 50, 1.1, true, 120, null, null, false];
@@ -39,7 +45,7 @@ console.log("\n1. THE SAME WORLD, A THREAD AWAY");
   let { state, reply } = handle(null, { type: "init", args, seq: 1 });
   mw = merge(mw, structuredClone(reply.dyn));
   const inp = { steer: 0, slider: 1, assist: 0 };   // full throttle, straight on, into whatever is there
-  let same = true, firstDiff = null, hitsS = 0, hitsM = 0, ticks = 0, honked = false;
+  let same = true, firstDiff = null, hitsS = 0, hitsM = 0, ticks = 0, honked = false, fieldsSame = true, fieldDiff = null, fieldChecks = 0;
   for (let n = 0; n < 90 / DT; n++) {
     ticks++;
     /* Half way, the test horn and a new car count, written both ways, before the tick, as the screen sends them. */
@@ -63,7 +69,20 @@ console.log("\n1. THE SAME WORLD, A THREAD AWAY");
       if (reply.hit) { hitsM++; mme = { ...mme, stopped: true }; }
     } else { ({ state, reply } = handle(state, { type: "step", me: mme, seq: n + 2 })); mw = merge(mw, structuredClone(reply.dyn)); }
     if (key(sw) !== key(mw) || key(state.world) !== key(sw)) { same = false; firstDiff = n; break; }
+    /* EVERY FIELD, not the key's few: the answer leaves out a driver's
+       private memory and re-sends who they are only when they first appear
+       (remote.js), so the page's copy must still be the worker's world in
+       every other respect -- held every 15 ticks, keys in any order. */
+    if (n % 15 === 0) {
+      const wk = new Map(state.world.actors.map((a) => [a.id, a]));
+      for (const a of mw.actors) {
+        const b = wk.get(a.id);
+        if (!b || canon(a) !== canon(b, "memo")) { fieldsSame = false; if (!fieldDiff) { const ks = new Set([...Object.keys(a), ...Object.keys(b ?? {})]); ks.delete("memo"); fieldDiff = `tick ${n}, ${a.id}: ${[...ks].filter((q) => JSON.stringify(a[q]) !== JSON.stringify(b?.[q])).map((q) => `${q} ${JSON.stringify(a[q])?.slice(0, 60)} vs ${JSON.stringify(b?.[q])?.slice(0, 60)}`).join("; ")}`; } }
+      }
+      fieldChecks++;
+    }
   }
+  check(fieldsSame && fieldChecks > 50, `and field by field: every actor on the screen's copy is the worker's, all but its private memory, at ${fieldChecks} ticks${fieldDiff ? ` -- first differs at ${fieldDiff}` : ""}`);
   check(same, `${ticks} ticks driven both ways, the screen's copy and the worker's world the in-thread world every tick${firstDiff != null ? ` -- first differs at tick ${firstDiff}` : ""}`);
   check(hitsS === hitsM && hitsS > 0, `the player's contact judged the same: ${hitsS} in-thread, ${hitsM} through the worker (full throttle finds something)`);
   check(honked, "the test horn and the car count reached the worker's world as the screen writes them");

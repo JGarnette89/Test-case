@@ -72,13 +72,17 @@ export function viewOf(k, cam, rot, canvas, { centreY = 0.55 } = {}) {
      made at street zoom (tools/measure/draw-alloc.mjs). Same arithmetic,
      in the same order, so not one pixel or key moves. */
   const cx0 = cam.x, cy0 = cam.y, W = canvas.w, H = canvas.h;
+  const P = (x, y, z) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; return [cx + (u - v) * k, cy + ((u + v) / 2 - z * LIFT) * k]; };
+  const into = (x, y, z, o) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; o[0] = cx + (u - v) * k; o[1] = cy + ((u + v) / 2 - z * LIFT) * k; return o; };
+  /* P carries `into`, so a helper handed only P can write into scratch. */
+  P.into = into;
   return {
     rot: rot ?? 0, k,
-    P: (x, y, z) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; return [cx + (u - v) * k, cy + ((u + v) / 2 - z * LIFT) * k]; },
+    P,
     key: (x, y, z) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; return u + v + z / LIFT; },
     /* P written into `o` rather than a new array, for the hot paths that
        use the point at once (a box's faces). */
-    into: (x, y, z, o) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; o[0] = cx + (u - v) * k; o[1] = cy + ((u + v) / 2 - z * LIFT) * k; return o; },
+    into,
     /* Whether a point lands within `m` pixels of the canvas -- P's test,
        without building P's array. */
     onScreen: (x, y, z, m) => {

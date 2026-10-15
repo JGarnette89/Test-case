@@ -153,17 +153,18 @@ function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t) {
   const spot = (along, across, z) => view.into(at.x + fx * along + rx * across, at.y + fy * along + ry * across, at.z + z, PT);
   const dot = (p, rad, fill) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(p[0], p[1], rad, 0, 2 * Math.PI); ctx.fill(); };
   const back = -L / 2 + 0.35, front = L / 2 - 0.35, side = W / 2 - 0.3;
-  for (const sgn of [-1, 1]) {
+  /* Unrolled: an array literal and its destructuring per lamp, per car, per frame was garbage for nothing. */
+  for (let sgn = -1; sgn <= 1; sgn += 2) {
     const p = spot(back, sgn * side, rearZ);
     if (a.brakeLamp) { dot(p, r * 2.1, "rgba(255,40,30,0.35)"); dot(p, r, "#ff2a1e"); }
     else dot(p, r * 0.8, "#5c1714");
   }
   if (a.blinker && Math.floor((t + ((a.n ?? 0) % 7) * 0.09) * 3) % 2 === 0) {
     const sgn = a.blinker === "right" ? 1 : -1;
-    for (const [along, z] of [[front, frontZ], [back, rearZ]]) {
-      const p = spot(along, sgn * (W / 2 - 0.15), z);
-      dot(p, r * 1.9, "rgba(255,176,32,0.4)"); dot(p, r, "#ffb020");
-    }
+    let p = spot(front, sgn * (W / 2 - 0.15), frontZ);
+    dot(p, r * 1.9, "rgba(255,176,32,0.4)"); dot(p, r, "#ffb020");
+    p = spot(back, sgn * (W / 2 - 0.15), rearZ);
+    dot(p, r * 1.9, "rgba(255,176,32,0.4)"); dot(p, r, "#ffb020");
   }
 }
 
@@ -185,9 +186,13 @@ function paintHorns(ctx, canvas, view, scene, k) {
   const t = scene.t ?? 0;
   const W = canvas.w ?? canvas.width, H = canvas.h ?? canvas.height, m = 22;
   const roof = (a, out) => view.into(a.x, a.y, (a.z ?? 0) + (a.height ?? 1.5) + 1.6, out);
-  const byId = new Map((scene.actors ?? []).map((a) => [a.id, a]));
+  /* WHO IS AIMED AT, looked up only when somebody is honking: a table of
+     every road user in the city, parked cars included, built every frame
+     for nobody was half the draw's garbage (15 October, draw-alloc.mjs). */
+  let byId = null;
   for (const a of scene.actors ?? []) {
     if (a.honkAt == null || t - a.honkAt < 0 || t - a.honkAt >= HONK_FOR) continue;
+    if (!byId) { byId = new Map(); for (const b of scene.actors) byId.set(b.id, b); }
     const u = (t - a.honkAt) / HONK_FOR;
     let [x, y] = roof(a, PT).slice();
     const tgt = byId.get(a.honkTo);
@@ -258,7 +263,7 @@ export function paintRoute(ctx, view, scene, k) {
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     for (const [wd, col] of [[Math.max(7, 0.9 * k), "rgba(10,10,12,0.45)"], [Math.max(4, 0.55 * k), "rgba(127,211,255,0.8)"]]) {
       ctx.lineWidth = wd; ctx.strokeStyle = col; ctx.beginPath();
-      pts.forEach((p, i) => { const q = view.into(p.x, p.y, (p.z ?? 0) + 0.05, [0, 0]); if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); });
+      for (let i = 0; i < pts.length; i++) { const p = pts[i], q = view.into(p.x, p.y, (p.z ?? 0) + 0.05, PT); if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }
       ctx.stroke();
     }
   }
@@ -325,16 +330,20 @@ export function paintCourtesy(ctx, canvas, view, scene, k) {
   }
 }
 
+/* Through the view's `into` where it has one (project.js viewOf hangs it
+   on P): the same point, written into scratch rather than a new array. */
+const QP = [0, 0], QQ = [0, 0];
+const proj = (P, x, y, z, o) => (P.into ? P.into(x, y, z, o) : P(x, y, z));
 function quad(ctx, P, a, b, c, d) {
   ctx.beginPath();
-  let p = P(a.x, a.y, a.z); ctx.moveTo(p[0], p[1]);
-  p = P(b.x, b.y, b.z); ctx.lineTo(p[0], p[1]);
-  p = P(c.x, c.y, c.z); ctx.lineTo(p[0], p[1]);
-  p = P(d.x, d.y, d.z); ctx.lineTo(p[0], p[1]);
+  let p = proj(P, a.x, a.y, a.z, QP); ctx.moveTo(p[0], p[1]);
+  p = proj(P, b.x, b.y, b.z, QP); ctx.lineTo(p[0], p[1]);
+  p = proj(P, c.x, c.y, c.z, QP); ctx.lineTo(p[0], p[1]);
+  p = proj(P, d.x, d.y, d.z, QP); ctx.lineTo(p[0], p[1]);
   ctx.closePath();
 }
 function seg(ctx, P, a, b) {
-  const p = P(a.x, a.y, a.z), q = P(b.x, b.y, b.z);
+  const p = proj(P, a.x, a.y, a.z, QP), q = proj(P, b.x, b.y, b.z, QQ);
   ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
 }
 
@@ -351,6 +360,9 @@ function seg(ctx, P, a, b) {
    arrays and a dozen points for every piece in the city, on screen or
    not. Kept on the sidewalk object itself, so a new map's are new. */
 const piecesOf = new WeakMap();
+/* Geometry that never changes, kept on the object it belongs to: a sign's
+   boxes, a building's, a bus stop's. */
+const SIGN_GEOM = new WeakMap(), PROP_BOX = new WeakMap(), STOP_BOX = new WeakMap();
 function sidewalkPiece(w, i0, i1) {
   let byStart = piecesOf.get(w);
   if (!byStart) piecesOf.set(w, (byStart = new Map()));
@@ -413,10 +425,8 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   /* The ground, culled to the view. Slightly lighter where it faces the
      light so the hill's shape is visible as shape and not only as a road
      that climbs. */
-  for (const cell of terrain) {
-    const [a, b, c, d] = cell;
-    if (flat && Math.abs(a.z) < 0.05 && Math.abs(b.z) < 0.05 && Math.abs(c.z) < 0.05 && Math.abs(d.z) < 0.05) continue;   // flat: the quad under the lot
-    if (!onScreen(a.x, a.y, a.z) && !onScreen(c.x, c.y, c.z)) continue;
+  /* ONE CELL ON SCREEN, past the cull -- a closure in the loop body was a scope built for every cell in the city. */
+  const cellItem = (a, b, c, d) => {
     const n = cross(sub(b, a), sub(d, a));
     /* KEYED BY ITS FARTHEST CORNER. Ground cells are big and the road
        lies on them, so a cell keyed by its centre could land after a
@@ -431,6 +441,11 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     const tone = mix(C.grass, "#9fb86a", Math.min(1, zc / 14));
     counts.cells++;
     items.push({ layer: 0, key, tag: audit && { kind: "cell", poly: [a, b, c, d] }, paint: () => { quad(ctx, P, a, b, c, d); ctx.fillStyle = shade(tone, n, 0.35); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.5; ctx.stroke(); } });
+  };
+  for (const cell of terrain) {
+    const a = cell[0], b = cell[1], c = cell[2], d = cell[3];   // not destructured: that is an iterator per cell in the city, on screen or not
+    if (flat && Math.abs(a.z) < 0.05 && Math.abs(b.z) < 0.05 && Math.abs(c.z) < 0.05 && Math.abs(d.z) < 0.05) continue;   // flat: the quad under the lot
+    if (onScreen(a.x, a.y, a.z) || onScreen(c.x, c.y, c.z)) cellItem(a, b, c, d);
   }
 
   /* THE FLOOR IS ITS OWN LAYER (22 September). The maintainer: "traffic
@@ -626,7 +641,9 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      segment under it. */
   for (const j of junctions) {
     if (!j.surface.length || !onScreen(j.at.x, j.at.y, j.at.z ?? 0)) continue;
-    const key = Math.max(...j.surface.map((p) => depthOf(p.x, p.y, p.z ?? 0))) + 0.05;
+    let key = -Infinity;
+    for (const p of j.surface) { const d = depthOf(p.x, p.y, p.z ?? 0); if (d > key) key = d; }
+    key += 0.05;
     counts.segments++;
     items.push({ layer: 0, key, tag: audit && { kind: "junction", id: j.node, poly: j.surface.map((p) => ({ x: p.x, y: p.y, z: p.z ?? 0 })) }, paint: () => {
       ctx.beginPath();
@@ -705,33 +722,42 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
          green to a driver the rules are holding. A state the engine can
          produce and the screen cannot express is a lie about what
          happened (CLAUDE.md), and a red nobody can see is exactly that. */
-      const isLight = s.kind === "signal";
-      const postH = isLight ? 2.6 : 1.7;
-      const post = boxCorners({ x: s.at.x, y: s.at.y, z: s.at.z ?? 0 }, s.heading, 0, { l: 0.12, w: 0.12, h: postH });
-      const lens = isLight ? ["red", "amber", "green"].map((c, i) => ({
-        c,
-        box: boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 1.5 - i * 0.68 }, s.heading + 90, 0, { l: 0.6, w: 0.14, h: 0.6 }),
-        mid: { x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 1.8 - i * 0.68 },
-      })) : null;
-      /* The head as a map symbol: lenses 0.6 m (life is about 0.3), the housing round them. */
-      const housing = isLight ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 0.06 }, s.heading + 90, 0, { l: 0.8, w: 0.18, h: 2.1 }) : null;
-      /* A PROTECTED LEFT has its own lens beside the stack, toward the
-         road -- lit green or amber by `arrowAt`, the same call the
-         left-turners obey (signal.js). */
-      const hasArrow = isLight && !!j.signal?.arrows?.[s.base];
-      const hr = ((s.heading + 90) * Math.PI) / 180;
-      const arrowLens = hasArrow ? boxCorners({ x: s.at.x - Math.cos(hr) * 0.45, y: s.at.y - Math.sin(hr) * 0.45, z: (s.at.z ?? 0) + postH + 0.06 }, s.heading + 90, 0, { l: 0.34, w: 0.12, h: 0.34 }) : null;
-      const face = isLight ? null : boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
-      /* The ALL-WAY plate: a white tab under the octagon (graph.js). */
-      /* NO LEFT TURN: a white face crossed by a red band -- a map symbol. */
-      /* SPEED LIMIT: a white board, taller than wide, the number drawn on it. */
-      const speedBoard = s.kind === "speed-limit" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.6 }, s.heading + 90, 0, { l: 0.75, w: 0.1, h: 0.9 }) : null;
-      /* ONE WAY: a black board along the road with a white bar (graph.js
-         derives it from the road's `oneWay`); DO NOT ENTER: red, white bar. */
-      const oneWay = s.kind === "one-way" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.9 }, s.heading + 90, 0, { l: 1.3, w: 0.1, h: 0.45 }) : null;
-      const oneWayBar = s.kind === "one-way" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 2.06 }, s.heading + 90, 0, { l: 1.0, w: 0.14, h: 0.12 }) : null;
-      const band = s.kind === "no-left-turn" || s.kind === "do-not-enter" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 2.08 }, s.heading + 90, 0, { l: 0.95, w: 0.14, h: 0.14 }) : null;
-      const plate = s.allWay ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.3 }, s.heading + 90, 0, { l: 0.7, w: 0.1, h: 0.3 }) : null;
+      /* A SIGN'S GEOMETRY NEVER CHANGES: built once per sign and kept (it was
+         a dozen boxes per signal head, every frame, on screen or not
+         visible -- tools/measure/draw-alloc.mjs). */
+      let geom = SIGN_GEOM.get(s);
+      if (!geom) {
+        const isLight = s.kind === "signal";
+        const postH = isLight ? 2.6 : 1.7;
+        const post = boxCorners({ x: s.at.x, y: s.at.y, z: s.at.z ?? 0 }, s.heading, 0, { l: 0.12, w: 0.12, h: postH });
+        const lens = isLight ? ["red", "amber", "green"].map((c, i) => ({
+          c,
+          box: boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 1.5 - i * 0.68 }, s.heading + 90, 0, { l: 0.6, w: 0.14, h: 0.6 }),
+          mid: { x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 1.8 - i * 0.68 },
+        })) : null;
+        /* The head as a map symbol: lenses 0.6 m (life is about 0.3), the housing round them. */
+        const housing = isLight ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + postH + 0.06 }, s.heading + 90, 0, { l: 0.8, w: 0.18, h: 2.1 }) : null;
+        /* A PROTECTED LEFT has its own lens beside the stack, toward the
+           road -- lit green or amber by `arrowAt`, the same call the
+           left-turners obey (signal.js). */
+        const hasArrow = isLight && !!j.signal?.arrows?.[s.base];
+        const hr = ((s.heading + 90) * Math.PI) / 180;
+        const arrowLens = hasArrow ? boxCorners({ x: s.at.x - Math.cos(hr) * 0.45, y: s.at.y - Math.sin(hr) * 0.45, z: (s.at.z ?? 0) + postH + 0.06 }, s.heading + 90, 0, { l: 0.34, w: 0.12, h: 0.34 }) : null;
+        const face = isLight ? null : boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.7 }, s.heading + 90, 0, { l: 0.9, w: 0.12, h: 0.9 });
+        /* The ALL-WAY plate: a white tab under the octagon (graph.js). */
+        /* NO LEFT TURN: a white face crossed by a red band -- a map symbol. */
+        /* SPEED LIMIT: a white board, taller than wide, the number drawn on it. */
+        const speedBoard = s.kind === "speed-limit" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.6 }, s.heading + 90, 0, { l: 0.75, w: 0.1, h: 0.9 }) : null;
+        /* ONE WAY: a black board along the road with a white bar (graph.js
+           derives it from the road's `oneWay`); DO NOT ENTER: red, white bar. */
+        const oneWay = s.kind === "one-way" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.9 }, s.heading + 90, 0, { l: 1.3, w: 0.1, h: 0.45 }) : null;
+        const oneWayBar = s.kind === "one-way" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 2.06 }, s.heading + 90, 0, { l: 1.0, w: 0.14, h: 0.12 }) : null;
+        const band = s.kind === "no-left-turn" || s.kind === "do-not-enter" ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 2.08 }, s.heading + 90, 0, { l: 0.95, w: 0.14, h: 0.14 }) : null;
+        const plate = s.allWay ? boxCorners({ x: s.at.x, y: s.at.y, z: (s.at.z ?? 0) + 1.3 }, s.heading + 90, 0, { l: 0.7, w: 0.1, h: 0.3 }) : null;
+        geom = { isLight, postH, post, lens, housing, hasArrow, arrowLens, face, speedBoard, oneWay, oneWayBar, band, plate };
+        SIGN_GEOM.set(s, geom);
+      }
+      const { isLight, postH, post, lens, housing, arrowLens, face, speedBoard, oneWay, oneWayBar, band, plate } = geom;
       items.push({ layer: 1, key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01, tag: audit && { kind: "sign", at: s.at }, paint: () => {
         paintBox(ctx, view, post, "#9a9da3");
         if (s.kind === "speed-limit") {
@@ -752,7 +778,8 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
         const lit = lightAt(j.signal, s.base, scene.t ?? 0, scene.lights?.[j.k]?.live);
         for (const l of lens) paintBox(ctx, view, l.box, l.c === lit ? LENS[l.c] : DARK[l.c]);
         /* THE LIT LENS GLOWS: a disc in its colour round it, never under a few pixels, so the state reads from across the screen. */
-        const on = lens.find((l) => l.c === lit);
+        let on = null;
+        for (const l of lens) if (l.c === lit) on = l;
         if (on) {
           view.into(on.mid.x, on.mid.y, on.mid.z, PT);
           const r = Math.max(4, 0.55 * k);
@@ -843,8 +870,8 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   };
   for (const a of actors) {
     if (!onScreen(a.x, a.y, a.z ?? 0)) continue;
-    const [px, py] = P(a.x, a.y, a.z ?? 0);
-    actorItem(a, px, py);
+    const q = view.into(a.x, a.y, a.z ?? 0, PT);
+    actorItem(a, q[0], q[1]);
   }
 
   for (const { road, cars = [] } of roads) {
@@ -871,26 +898,32 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
 
   /* BUS STOPS (map/load.js `stops`): a post with a flag at the curb,
      where a bus pulls up. Too small to read far out. */
+  const stopItem = (st, z) => {
+    let sb = STOP_BOX.get(st);
+    if (!sb) { const at0 = { x: st.at.x, y: st.at.y, z }; sb = { at: at0, post: boxCorners(at0, st.heading, 0, { l: 0.12, w: 0.12, h: 2.6 }), flag: boxCorners(at0, st.heading, 0, { l: 0.08, w: 0.6, h: 0.45 }, 2.1) }; STOP_BOX.set(st, sb); }
+    const { at, post, flag } = sb;
+    items.push({ layer: 1, key: depthOf(at.x, at.y, z) + 0.01, tag: audit && { kind: "stop", at }, paint: () => { paintBox(ctx, view, post, "#3b3f47"); paintBox(ctx, view, flag, C.bus); } });
+  };
   if (!far) for (const st of stops) {
     const z = groundAt(st.at.x, st.at.y);
-    if (!onScreen(st.at.x, st.at.y, z)) continue;
-    const at = { x: st.at.x, y: st.at.y, z };
-    const post = boxCorners(at, st.heading, 0, { l: 0.12, w: 0.12, h: 2.6 });
-    const flag = boxCorners(at, st.heading, 0, { l: 0.08, w: 0.6, h: 0.45 }, 2.1);
-    items.push({ layer: 1, key: depthOf(at.x, at.y, z) + 0.01, tag: audit && { kind: "stop", at }, paint: () => { paintBox(ctx, view, post, "#3b3f47"); paintBox(ctx, view, flag, C.bus); } });
+    if (onScreen(st.at.x, st.at.y, z)) stopItem(st, z);
   }
 
   /* Stand-in buildings, for the budget ramp: boxes on the ground, keyed
      like cars. */
-  for (const b of props) {
-    const z = groundAt(b.x, b.y);
-    const [px, py] = P(b.x, b.y, z);
-    if (px < -margin || px > canvas.w + margin || py < -margin || py > canvas.h + margin) continue;
+  /* Past the cull only: a loop body that makes a closure has V8 build
+     its scope on every pass, for every building in the city. */
+  const propItem = (b, z) => {
     counts.props++;
-    const box = boxCorners({ x: b.x, y: b.y, z }, b.heading, 0, { l: b.l, w: b.w, h: b.h });
+    let box = PROP_BOX.get(b);
+    if (!box || box.z !== z) { box = boxCorners({ x: b.x, y: b.y, z }, b.heading, 0, { l: b.l, w: b.w, h: b.h }); box.z = z; PROP_BOX.set(b, box); }
     items.push({ layer: 1, key: depthOf(b.x, b.y, z) + 0.01, tag: audit && { kind: "prop", at: { x: b.x, y: b.y, z } }, paint: far
       ? () => { quad(ctx, P, cornerOf(box, 4), cornerOf(box, 5), cornerOf(box, 6), cornerOf(box, 7)); ctx.fillStyle = "#8a8f9c"; ctx.fill(); }
       : () => paintBox(ctx, view, box, "#7d8290") });
+  };
+  for (const b of props) {
+    const z = groundAt(b.x, b.y);
+    if (onScreen(b.x, b.y, z)) propItem(b, z);   // P's test without P's array
   }
 
   /* The floor first, then everything with height; each by depth. */

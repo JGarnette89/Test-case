@@ -32,18 +32,53 @@ import { benchWorld } from "../iso/benchworld.js";
 /* What never changes once the world is built, so is never sent. */
 const STATIC = new Set(["course", "layout", "road"]);
 
+/* WHAT AN ACTOR CARRIES THAT THE PAGE NEVER NEEDS SENT EVERY TICK
+   (15 October). An answer at 400 cars was 621 KB, and the page
+   deserialized it twenty times a second; each lived until the next, long
+   enough to be promoted, and the old generation filling with them is what
+   the phone's 50-108 ms frames were (tools/measure/answer-size.mjs,
+   gc-pressure.mjs).
+   - `memo`, a driver's memory of somebody a truck has just hidden: 36%
+     of an answer, and read only by that driver's own step -- the page
+     calls `whatStops` for the player alone, whose memory is the page's.
+     Never sent.
+   - `ratings`, `weakOn`, `stuck`: who the driver IS, fixed when they
+     are made. Sent when a driver first appears (absent from the last
+     answer), and the page keeps the copy it already holds. */
+const PRIVATE = new Set(["memo"]);
+const ONCE = ["ratings", "weakOn", "stuck"];
+function slimActors(list, prev) {
+  const known = new Set();
+  if (prev) for (const a of prev) known.add(a.id);
+  return list.map((a) => {
+    const o = {}, seen = known.has(a.id);
+    for (const k in a) if (!PRIVATE.has(k) && !(seen && ONCE.includes(k))) o[k] = a[k];
+    return o;
+  });
+}
+
 /* The parts of `w` whose reference differs from `was` -- what the other side lacks. */
 export function changed(w, was) {
   const out = {};
-  for (const k of Object.keys(w)) if (!STATIC.has(k) && (!was || w[k] !== was[k])) out[k] = w[k];
+  for (const k of Object.keys(w)) if (!STATIC.has(k) && (!was || w[k] !== was[k])) out[k] = k === "actors" ? slimActors(w[k], was?.actors) : w[k];
   if (was) for (const k of Object.keys(was)) if (!(k in w)) out[k] = undefined;
   return out;
 }
 
-/* The screen's copy with the worker's changes laid over it. */
+/* The screen's copy with the worker's changes laid over it. A driver the
+   page already holds keeps who they are (`ONCE`) from the page's copy --
+   written onto the object that arrived, so nothing new is made. */
 export function merge(w, dyn) {
   const out = { ...w };
   for (const [k, v] of Object.entries(dyn)) { if (v === undefined) delete out[k]; else out[k] = v; }
+  if (dyn.actors && w.actors) {
+    const held = new Map();
+    for (const a of w.actors) held.set(a.id, a);
+    for (const a of dyn.actors) {
+      const p = held.get(a.id);
+      if (p) for (const k of ONCE) if (!(k in a) && k in p) a[k] = p[k];
+    }
+  }
   return out;
 }
 
