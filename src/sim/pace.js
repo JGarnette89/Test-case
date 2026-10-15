@@ -53,10 +53,22 @@ export const carryOf = (p) => p.owed;
    jitter shows as spread rather than being averaged away.
    ===================================================================== */
 export const WINDOW = 5;   // s of wall time the clock reports over
-export const newSimClock = () => ({ wall: [], sim: [], stepMs: [], rtMs: [] });
-export function clockTick(c, wallMs, simT, { stepMs = null, rtMs = null } = {}) {
-  c.wall.push(wallMs); c.sim.push(simT); c.stepMs.push(stepMs); c.rtMs.push(rtMs);
-  while (c.wall.length > 2 && wallMs - c.wall[0] > WINDOW * 1000) { c.wall.shift(); c.sim.shift(); c.stepMs.shift(); c.rtMs.shift(); }
+/* Per tick: the step's cost where it ran and the round trip, and -- in a
+   worker -- the round trip's legs: `waitMs` (sent to taken), `diffMs`
+   (building the answer), `backMs` (handed back to the page having it:
+   the copy, the transit, and the page's thread being busy), `replyMs`
+   (the page's own handling of it). Per frame: `oursMs`, the page's own
+   frame callback (`frameTick`). */
+const LEGS = ["stepMs", "rtMs", "waitMs", "diffMs", "backMs", "replyMs"];
+export const newSimClock = () => ({ wall: [], sim: [], ...Object.fromEntries(LEGS.map((k) => [k, []])), ours: [], oursAt: [] });
+export function clockTick(c, wallMs, simT, legs = {}) {
+  c.wall.push(wallMs); c.sim.push(simT);
+  for (const k of LEGS) c[k].push(legs[k] ?? null);
+  while (c.wall.length > 2 && wallMs - c.wall[0] > WINDOW * 1000) { c.wall.shift(); c.sim.shift(); for (const k of LEGS) c[k].shift(); }
+}
+export function frameTick(c, wallMs, oursMs) {
+  c.ours.push(oursMs); c.oursAt.push(wallMs);
+  while (c.oursAt.length > 2 && wallMs - c.oursAt[0] > WINDOW * 1000) { c.ours.shift(); c.oursAt.shift(); }
 }
 const pct = (xs, f) => { const v = xs.filter((x) => x != null).sort((a, b) => a - b); return v.length ? v[Math.min(v.length - 1, Math.floor(f * v.length))] : null; };
 export function clockSummary(c) {
@@ -70,5 +82,10 @@ export function clockSummary(c) {
     tick: { p50: r(pct(gaps, 0.5)), p95: r(pct(gaps, 0.95)), max: r(Math.max(...gaps)) },
     step: { p50: r(pct(c.stepMs, 0.5)), p95: r(pct(c.stepMs, 0.95)), max: r(pct(c.stepMs, 1)) },
     rt: { p50: r(pct(c.rtMs, 0.5)), p95: r(pct(c.rtMs, 0.95)) },
+    wait: { p50: r(pct(c.waitMs, 0.5)), p95: r(pct(c.waitMs, 0.95)) },
+    diff: { p50: r(pct(c.diffMs, 0.5)), p95: r(pct(c.diffMs, 0.95)) },
+    back: { p50: r(pct(c.backMs, 0.5)), p95: r(pct(c.backMs, 0.95)) },
+    reply: { p50: r(pct(c.replyMs, 0.5)), p95: r(pct(c.replyMs, 0.95)) },
+    ours: { p50: r(pct(c.ours, 0.5)), p95: r(pct(c.ours, 0.95)) },
   };
 }

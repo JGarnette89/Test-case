@@ -37,7 +37,7 @@ import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
 import { placesOf, routeTo } from "../sim/route.js";
 import { noticeTick } from "../sim/session.js";
-import { newPace, paceFrame, paceReply, carryOf, newSimClock, clockTick, clockSummary } from "../sim/pace.js";
+import { newPace, paceFrame, paceReply, carryOf, newSimClock, clockTick, clockSummary, frameTick } from "../sim/pace.js";
 import { junctionsOf, postedAt, poseOnGraph } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
@@ -245,6 +245,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     window.addEventListener("keyup", onKey);
 
     const tick = (now) => {
+      const f0 = performance.now();
       const size = fit();
       const dt = last.current ? Math.min(0.25, Math.max(0, (now - last.current) / 1000)) : 0;
       if (last.current) meter.current.record(now - last.current);
@@ -264,17 +265,25 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       if (sc.remote === undefined) {
         const own = sc;
         own.remoteReady = false;
-        own.remote = remoteSim({ args: own.args }, (dyn, hit, seq, fresh, ms) => {
+        own.remote = remoteSim({ args: own.args }, (dyn, hit, seq, fresh, ms, r) => {
           if (scene.current !== own) return;
+          const h0 = performance.now();
           own.world = merge(own.world, dyn);
-          /* THE SIM'S CLOCK (pace.js): every tick as it lands, against the wall. */
-          if (!fresh) { const at = performance.now(); clockTick(own.clock ??= newSimClock(), at, own.world.t, { stepMs: ms, rtMs: own.sentAt != null ? at - own.sentAt : null }); }
           /* The stepped world has arrived: the player stepped for it is now
              the player drawn, and the clock comes down by a tick (sim/pace.js). */
           if (seq !== 1) { if (own.pace) paceReply(own.pace); if (own.sentMe && own.me) { own.me = own.sentMe; own.world = withDriver(own.world, own.me); } }
           if (seq === 1) own.remoteReady = true;
           else if (own.sentPrev) { noticeTick(own, own.sentPrev, { me: own.sentMe, world: own.world, hit }); own.sentPrev = null; }
           own.sentMe = null;
+          /* THE SIM'S CLOCK (pace.js): every tick as it lands, against the wall, the round trip split into its legs on the clock page and worker share. */
+          if (!fresh) {
+            const at = performance.now(), abs = performance.timeOrigin + at;
+            clockTick(own.clock ??= newSimClock(), at, own.world.t, {
+              stepMs: ms, rtMs: own.sentAt != null ? at - own.sentAt : null, diffMs: r?.diffMs ?? null, replyMs: at - h0,
+              waitMs: r?.at && own.sentAt != null ? r.at.in - (performance.timeOrigin + own.sentAt) : null,
+              backMs: r?.at ? abs - (at - h0) - r.at.out : null,
+            });
+          }
           if (hit) { contacts.current++; flash.current = 1; setStopped(true); }
         }, (message) => { console.warn("the sim's worker failed; stepping in the page", message); own.remote = null; });
       }
@@ -375,7 +384,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         const nCrash = sc.world.crashes?.length ?? 0;
         /* The world's own rate beside the frames' (pace.js): a world at half speed with perfect frames read as healthy until 15 October. */
         const ck = sc.clock ? clockSummary(sc.clock) : null;
-        const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step ${ck.step.p50}/${ck.step.p95}${ck.rt.p50 != null ? ` · trip ${ck.rt.p50}/${ck.rt.p95}` : ""} ms ${sc.remote ? "(worker)" : "(page)"}` : "";
+        const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip ${ck.rt.p50}/${ck.rt.p95} = wait ${ck.wait.p50} + step + answer ${ck.diff.p50} + back ${ck.back.p50}/${ck.back.p95} + reply ${ck.reply.p50} ms` : ""}\npage: our frame ${ck.ours.p50}/${ck.ours.p95} ms` : "";
         readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
         fpsAt = now;
       }
@@ -447,6 +456,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       } else {
         drawReadout(ctx, readout.current);
       }
+      /* Our own frame callback's time: a slow page shows here, a slow browser does not. */
+      frameTick(sc.clock ??= newSimClock(), now, performance.now() - f0);
       raf.current = requestAnimationFrame(tick);
     };
     tick(performance.now());

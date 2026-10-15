@@ -114,9 +114,15 @@ export function handle(state, msg) {
     w = step(w);
     let hit = false;
     if (msg.me) ({ world: w, hit } = playerContact(w, msg.me));
-    /* `ms`: what the step cost where it ran -- the page cannot see inside the worker otherwise (pace.js, the sim's clock). */
-    const ms = typeof performance !== "undefined" ? performance.now() - t0 : null;
-    return { state: { ...state, world: w, sent: w }, reply: { type: "world", seq: msg.seq, dyn: changed(w, state.sent), hit, ms } };
+    /* `ms`: what the step cost where it ran -- the page cannot see inside the worker otherwise (pace.js, the sim's clock).
+       `diffMs`: building the answer; `at`: when the worker took the message and handed the answer back, on the clock
+       page and worker share (timeOrigin + now), so the page can split its round trip into waiting, working and coming back. */
+    const has = typeof performance !== "undefined";
+    const t1 = has ? performance.now() : 0;
+    const dyn = changed(w, state.sent);
+    const t2 = has ? performance.now() : 0;
+    const origin = has ? performance.timeOrigin ?? 0 : 0;
+    return { state: { ...state, world: w, sent: w }, reply: { type: "world", seq: msg.seq, dyn, hit, ms: has ? t1 - t0 : null, diffMs: has ? t2 - t1 : null, at: has ? { in: origin + t0, out: origin + t2 } : null } };
   }
   return { state, reply: null };
 }
@@ -134,7 +140,7 @@ export function remoteSim(recipe, onWorld, onError = () => {}) {
     const r = e.data;
     if (r.type === "error") { worker.terminate(); onError(r.message); return; }
     if (r.seq === waiting) waiting = 0;
-    onWorld(r.dyn, r.hit, r.seq, !!r.fresh, r.ms ?? null);
+    onWorld(r.dyn, r.hit, r.seq, !!r.fresh, r.ms ?? null, r);
   };
   worker.onerror = (e) => { worker.terminate(); onError(String(e.message ?? e)); };
   const post = (m) => { worker.postMessage({ ...m, seq: ++seq }); return seq; };
