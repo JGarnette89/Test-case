@@ -137,7 +137,10 @@ export function remoteSim(recipe, onWorld, onError = () => {}) {
   catch { return null; }
   let seq = 0, waiting = 0;
   worker.onmessage = (e) => {
+    /* Reading `data` is where the browser turns the answer back into objects: timed, as part of the trip's way back. */
+    const t0 = typeof performance !== "undefined" ? performance.now() : 0;
     const r = e.data;
+    if (r && typeof performance !== "undefined") r.readMs = performance.now() - t0;
     if (r.type === "error") { worker.terminate(); onError(r.message); return; }
     if (r.seq === waiting) waiting = 0;
     onWorld(r.dyn, r.hit, r.seq, !!r.fresh, r.ms ?? null, r);

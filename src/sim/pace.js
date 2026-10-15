@@ -59,7 +59,7 @@ export const WINDOW = 5;   // s of wall time the clock reports over
    the copy, the transit, and the page's thread being busy), `replyMs`
    (the page's own handling of it). Per frame: `oursMs`, the page's own
    frame callback (`frameTick`). */
-const LEGS = ["stepMs", "rtMs", "waitMs", "diffMs", "backMs", "replyMs"];
+const LEGS = ["stepMs", "rtMs", "waitMs", "diffMs", "backMs", "replyMs", "readMs"];
 export const newSimClock = () => ({ wall: [], sim: [], ...Object.fromEntries(LEGS.map((k) => [k, []])), ours: [], oursAt: [] });
 export function clockTick(c, wallMs, simT, legs = {}) {
   c.wall.push(wallMs); c.sim.push(simT);
@@ -86,6 +86,7 @@ export function clockSummary(c) {
     diff: { p50: r(pct(c.diffMs, 0.5)), p95: r(pct(c.diffMs, 0.95)) },
     back: { p50: r(pct(c.backMs, 0.5)), p95: r(pct(c.backMs, 0.95)) },
     reply: { p50: r(pct(c.replyMs, 0.5)), p95: r(pct(c.replyMs, 0.95)) },
+    read: { p50: r(pct(c.readMs, 0.5)), p95: r(pct(c.readMs, 0.95)) },
     ours: { p50: r(pct(c.ours, 0.5)), p95: r(pct(c.ours, 0.95)) },
   };
 }

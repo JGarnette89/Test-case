@@ -48,7 +48,7 @@ import { offerFare, accept } from "../sim/jobs.js";
 import { loadWallet } from "../sim/money.js";
 import { HONK_FOR } from "../sim/horn.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
-import { perfMeter } from "../iso/perf.js";
+import { perfMeter, taskProbe } from "../iso/perf.js";
 import { loadSettings, setSetting, settings } from "../settings.js";
 import { ASSIST } from "../sim/player.js";
 
@@ -172,6 +172,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const last = useRef(0);
   const raf = useRef(0);
   const meter = useRef(perfMeter());
+  const tasks = useRef(null);   // the browser's own record of the page's thread being blocked (perf.js taskProbe), made in the frame loop, never under SSR
   const readout = useRef("");
   const input = useRef(controls());
   const held = useRef(new Set());
@@ -281,7 +282,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             clockTick(own.clock ??= newSimClock(), at, own.world.t, {
               stepMs: ms, rtMs: own.sentAt != null ? at - own.sentAt : null, diffMs: r?.diffMs ?? null, replyMs: at - h0,
               waitMs: r?.at && own.sentAt != null ? r.at.in - (performance.timeOrigin + own.sentAt) : null,
-              backMs: r?.at ? abs - (at - h0) - r.at.out : null,
+              backMs: r?.at ? abs - (at - h0) - r.at.out : null, readMs: r?.readMs ?? null,
             });
           }
           if (hit) { contacts.current++; flash.current = 1; setStopped(true); }
@@ -384,7 +385,11 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         const nCrash = sc.world.crashes?.length ?? 0;
         /* The world's own rate beside the frames' (pace.js): a world at half speed with perfect frames read as healthy until 15 October. */
         const ck = sc.clock ? clockSummary(sc.clock) : null;
-        const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip ${ck.rt.p50}/${ck.rt.p95} = wait ${ck.wait.p50} + step + answer ${ck.diff.p50} + back ${ck.back.p50}/${ck.back.p95} + reply ${ck.reply.p50} ms` : ""}\npage: our frame ${ck.ours.p50}/${ck.ours.p95} ms` : "";
+        /* What the browser says blocked the page's thread over the last 5 s: long tasks, and the worst long frame -- script (and whose), rendering. */
+        tasks.current ??= taskProbe();
+        const g = tasks.current.during(now - 5000, now), lf = g.frame;
+        const taskLine = `\nbrowser: long tasks ${g.tasks ?? "n/a"} ms in 5 s${lf ? ` · worst frame ${lf.ms} = script ${lf.script}${lf.scripts?.[0] ? ` (${lf.scripts[0].where} ${lf.scripts[0].ms})` : ""} + render ${lf.render}` : ""}`;
+        const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip ${ck.rt.p50}/${ck.rt.p95} = wait ${ck.wait.p50} + step + answer ${ck.diff.p50} + back ${ck.back.p50}/${ck.back.p95} (read ${ck.read.p50}/${ck.read.p95}) + reply ${ck.reply.p50}` : ""}\npage: our frame ${ck.ours.p50}/${ck.ours.p95} ms${taskLine}` : "";
         readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
         fpsAt = now;
       }
