@@ -159,6 +159,135 @@ export function nearNode(world, list, k) {
   return out;
 }
 
+/* =====================================================================
+   WHO CAN MATTER TO A DRIVER, INDEXED ONCE A TICK (15 October). Every car
+   used to read every car at its own intersection and the ones joined to
+   it -- on test map 1's nine, a third of the map -- so the step grew with
+   the square of the fleet: 45 us a car at 100 cars, 160 at 400
+   (tools/measure/step-ramp.mjs). But a car can only be in `whatStops`'s
+   way through one of its own branches: on one of my two lanes across a
+   boundary, on my approach (or changing lane from or into it), the player
+   straddling a lane line, on a route that conflicts with mine, bound for
+   my exit, or passing a bus. So the list a driver reads is bucketed by
+   exactly those keys once per tick, and each driver visits only its own
+   buckets -- in the list's own order, because `consider` keeps the first
+   of two equal pressures, and the world must come out identical
+   (tools/measure/world-hash.mjs, before and after).
+   ===================================================================== */
+const relevanceCache = new WeakMap();
+/* Buckets hold positions in `list`, never objects, so a driver's set is
+   a few small integer arrays, deduplicated with a stamp and put back in
+   the list's order with a numeric sort -- no strings, no Set, no Map
+   lookups per car (the first version, with string keys, cost more than
+   it saved: 13% of a step). */
+function relevanceOf(world, list) {
+  let idx = relevanceCache.get(list);
+  if (idx) return idx;
+  const course = world.course;
+  idx = { k: new Int32Array(list.length), lane: new Map(), at: new Map(), passers: [], players: [], stamp: new Int32Array(list.length), gen: 0 };
+  const bucket = (m, key) => { let xs = m.get(key); if (!xs) m.set(key, (xs = [])); return xs; };
+  for (let n = 0; n < list.length; n++) {
+    const a = list[n], k = a.k ?? 0, p = course.at[k]?.layout?.paths[a.route];
+    idx.k[n] = k;
+    if (a.pass) idx.passers.push(n);
+    if (a.player) idx.players.push(n);
+    if (!p) continue;
+    if (p.laneIn) bucket(idx.lane, p.laneIn.id).push(n);
+    if (p.laneOut && p.laneOut.id !== p.laneIn?.id) bucket(idx.lane, p.laneOut.id).push(n);
+    let node = idx.at.get(k);
+    if (!node) idx.at.set(k, (node = { f: new Map(), c: new Map(), t: new Map(), r: new Map() }));
+    bucket(node.f, p.from).push(n);
+    bucket(node.t, p.to).push(n);
+    bucket(node.r, a.route).push(n);
+    if (a.lc?.fromLeg != null) bucket(node.c, a.lc.fromLeg).push(n);
+  }
+  relevanceCache.set(list, idx);
+  return idx;
+}
+/* The routes that have a conflict entry with each route, per layout:
+   `layout.conflicts` is keyed "a|b" and route ids themselves hold "|", so
+   it is found by asking every pair once rather than by splitting keys. */
+/* A CONFLICT LOOKED UP WITHOUT BUILDING A STRING: `layout.conflicts` is
+   keyed by the two route ids joined with "|", and every pair a step asked
+   about built that string twice -- the hottest line of the step at 300
+   cars (15 October). The same entries, per layout, by route then route. */
+const conflictRows = new WeakMap();
+export function conflictOf(layout, a, b) {
+  let rows = conflictRows.get(layout);
+  if (!rows) conflictRows.set(layout, (rows = new Map()));
+  let row = rows.get(a);
+  if (!row) {
+    row = new Map();
+    for (const r of Object.keys(layout.paths)) { const hit = layout.conflicts[a + "|" + r]; if (hit) row.set(r, hit); }
+    rows.set(a, row);
+  }
+  return row.get(b);
+}
+const partnersCache = new WeakMap();
+function partnersOf(layout, route) {
+  let m = partnersCache.get(layout);
+  if (!m) {
+    m = new Map();
+    const routes = Object.keys(layout.paths);
+    for (const a of routes) m.set(a, routes.filter((b) => conflictOf(layout, a, b)));
+    partnersCache.set(layout, m);
+  }
+  return m.get(route) ?? [];
+}
+/* NEAR A TRUCK: the cars a truck can hide from this driver -- at my own
+   intersection, on another approach -- together with the relevant ones, in
+   `list`'s order. Everybody else would only be kept unchanged and then
+   left out as irrelevant, so they need not be read at all. */
+function hideableAndRelevant(world, list, relevant, mineAt, layout0, myBase0) {
+  const idx = relevanceOf(world, list), node = idx.at.get(mineAt), stamp = idx.stamp, gen = ++idx.gen;
+  const pos = [];
+  for (const n of relevant.pos) { stamp[n] = gen; pos.push(n); }
+  if (node) for (const [leg, xs] of node.f) {
+    if ((layout0.legs[leg]?.base ?? null) === myBase0) continue;
+    for (const n of xs) if (stamp[n] !== gen) { stamp[n] = gen; pos.push(n); }
+  }
+  pos.sort((a, b) => a - b);
+  return pos.map((n) => list[n]);
+}
+
+/* The cars in `list` that can be in this driver's way, in `list`'s order --
+   or null where the index cannot answer (no map graph, no index), and the
+   caller reads everybody as before. */
+function relevantTo(world, list, me, mineAt, mine, layout) {
+  if (world.noIndex || !world.course?.graph || !mine?.laneIn) return null;
+  const idx = relevanceOf(world, list), hood = hoodOf(world.course, mineAt), ks = idx.k, stamp = idx.stamp;
+  const gen = ++idx.gen, out = [];
+  const take = (xs, mode) => {   // mode 0: at my intersection; 1: at a neighbouring one; 2: either
+    if (!xs) return;
+    for (let q = 0; q < xs.length; q++) {
+      const n = xs[q];
+      if (stamp[n] === gen) continue;
+      const k = ks[n];
+      if (mode === 0 ? k !== mineAt : mode === 1 ? k === mineAt || !hood.has(k) : !hood.has(k)) continue;
+      stamp[n] = gen; out.push(n);
+    }
+  };
+  /* Across a boundary, on one of my two lanes. */
+  take(idx.lane.get(mine.laneIn.id), 1);
+  if (mine.laneOut) take(idx.lane.get(mine.laneOut.id), 1);
+  /* At my own intersection: my approach, a lane change from or into it, my exit, a route that conflicts with mine. */
+  const node = idx.at.get(mineAt);
+  if (node) {
+    take(node.f.get(mine.from), 0); take(node.c.get(mine.from), 0);
+    if (me.lc?.fromLeg != null) { take(node.f.get(me.lc.fromLeg), 0); take(node.c.get(me.lc.fromLeg), 0); }
+    take(node.t.get(mine.to), 0);
+    const partners = partnersOf(layout, me.route);
+    for (let q = 0; q < partners.length; q++) take(node.r.get(partners[q]), 0);
+  }
+  /* The player, who can straddle a lane line; anybody passing a bus. */
+  take(idx.players, 2); take(idx.passers, 2);
+  out.sort((a, b) => a - b);
+  const cars = new Array(out.length);
+  for (let q = 0; q < out.length; q++) cars[q] = list[out[q]];
+  cars.pos = out;   // their places in `list`, for merging with another bucket in order
+  return cars;
+}
+
 /* The present, while they are looking; while they are looking away, the
    picture they had when they looked away, carried forward
    (sim/attention.js). */
@@ -404,7 +533,7 @@ export function gapNeeded(me, run, caution = me.caution) {
    how far along THEIR path the region begins, `clearOf` is how far along
    MINE I have to be to be out of it. */
 function hasGap(me, them, layout, caution) {
-  const meet = layout.conflicts[them.route + "|" + me.route];
+  const meet = conflictOf(layout, them.route, me.route);
   if (!meet) return true;
   /* A driver judges a gap on the speed they can SEE, which is the speed
      the other car is doing rather than the speed it might work up to.
@@ -456,8 +585,8 @@ function settle(me, them, mine, theirs, layout) {
      own, whatever the compass says (graph.js onRightOf). */
   if (onRightOf(layout, mine.from, theirs.from)) return true;
   if (onRightOf(layout, theirs.from, mine.from)) return false;
-  const mineIn = layout.conflicts[me.route + "|" + them.route].a - me.s;
-  const theirsIn = layout.conflicts[them.route + "|" + me.route].a - them.s;
+  const mineIn = conflictOf(layout, me.route, them.route).a - me.s;
+  const theirsIn = conflictOf(layout, them.route, me.route).a - them.s;
   if (Math.abs(mineIn - theirsIn) > 0.5) return mineIn > theirsIn;
   return me.id > them.id;
 }
@@ -493,7 +622,7 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0, live = 
      between them; what they may have to do is FOLLOW each other, which is
      `whatStops`'s business and is about the lane rather than the box. */
   if ((me.k ?? 0) !== (them.k ?? 0)) return false;
-  const hit = layout.conflicts[me.route + "|" + them.route];
+  const hit = conflictOf(layout, me.route, them.route);
   if (!hit) return false;
 
   const mine = layout.paths[me.route];
@@ -600,7 +729,7 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0, live = 
        pulling away at its 1 m/s^2 met exactly that left-turner on the
        Pedestrians map, where a car would usually have been clear). */
     if (head === false) {
-      const meet = layout.conflicts[them.route + "|" + me.route];
+      const meet = conflictOf(layout, them.route, me.route);
       const theirIn = meet ? meet.a - them.s : -Infinity;
       if (me.stoppedAt != null && me.v < AT_REST && them.v > AT_REST && theirIn > 0 && stoppingRoom(them.v, vehicleOf(them).brake) > theirIn) return !hasGap(me, them, layout, caution);
       return false;
@@ -633,7 +762,7 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0, live = 
        stream held a car at its line for three minutes. */
     if (!layout.signal && me.stoppedAt != null && me.v < AT_REST) return !hasGap(me, them, layout, caution);
     const mineIn = hit.a - me.s;
-    const theirsIn = layout.conflicts[them.route + "|" + me.route].a - them.s;
+    const theirsIn = conflictOf(layout, them.route, me.route).a - them.s;
     const dm = mineIn / Math.max(me.v, 0.5), dt = theirsIn / Math.max(them.v, 0.5);
     if (dt < dm - SAME_MOMENT) return true;
     if (dm < dt - SAME_MOMENT) return false;
@@ -756,7 +885,14 @@ export function whatStops(me, world) {
 
   /* Everybody else, as THIS driver has them -- the present for a driver
      with no lag, their lag ago otherwise. */
-  let others = nearNode(world, seenBy(world, me), mineAt);
+  const seen = seenBy(world, me);
+  /* The full neighbourhood is built only where it is read: near a truck,
+     or where the relevance index cannot answer (below). */
+  let others = null;
+  /* Only the cars that can be in my way (the relevance index, above) --
+     unless a truck's memory rewrites the list below, where everybody is
+     read as before. */
+  const relevant = relevantTo(world, seen, me, mineAt, mine, layout);
   /* ...AS THEY LAST SAW ANYBODY A TRUCK NOW HIDES (sim/sight.js). Somebody
      a truck hides is in their picture where they last saw them, carried
      forward at the speed they had -- exactly as somebody they looked away
@@ -775,6 +911,7 @@ export function whatStops(me, world) {
   if (tall.length) {
     eye = eyeOf(myPose, me);
     const memo = me.memo ?? {}, kept = [];
+    const tallIds = new Set(tall.map((b) => b.id));
     /* Remembered only by a driver near their line, and only somebody on
        ANOTHER approach to this intersection -- the ones a go is decided
        against. Remembering everybody, for everybody near a truck, was
@@ -782,8 +919,9 @@ export function whatStops(me, world) {
     const nearLine = !me.going && me.s > waitAt(mine0, me) - 40 && me.s < mine0.clearAt;
     const myBase0 = layout0.legs[mine0.from]?.base ?? mine0.from;
     seenNow = nearLine ? [] : null;
+    others = relevant ? hideableAndRelevant(world, seen, relevant, mineAt, layout0, myBase0) : nearNode(world, seen, mineAt);
     for (const o of others) {
-      if (o.id === me.id || tall.some((b) => b.id === o.id)) { kept.push(o); continue; }
+      if (o.id === me.id || tallIds.has(o.id)) { kept.push(o); continue; }
       /* Hiding matters only for the decision at this intersection, against
          somebody on another approach: traffic at the neighbouring ones is
          here for following across the seam, and anybody ahead in my own
@@ -812,7 +950,14 @@ export function whatStops(me, world) {
     }
     others = kept;
   }
-  for (const them of others) {
+  /* Near a truck the list is the one its memory rewrote; a remembered
+     copy keeps the car's route, lanes and lane change, so it is relevant
+     exactly when the car is -- filtered by id, in the rewritten order. */
+  let visit;
+  if (!relevant) visit = others ?? nearNode(world, seen, mineAt);
+  else if (!tall.length) visit = relevant;
+  else { const ids = new Set(relevant.map((a) => a.id)); visit = others.filter((a) => ids.has(a.id)); }
+  for (const them of visit) {
     if (them.id === me.id) continue;
     /* GOING ROUND A STOPPED BUS (passing.js): out in the oncoming lane, the
        bus being passed is not in front of me -- and somebody passing
@@ -899,7 +1044,7 @@ export function whatStops(me, world) {
        ever the one INSIDE the region holds the other, so two cars cannot
        hold each other here. */
     if (theirs.from !== mine.from && !me.player) {
-      const hit = layout.conflicts[me.route + "|" + them.route], back = hit && layout.conflicts[them.route + "|" + me.route];
+      const hit = conflictOf(layout, me.route, them.route), back = hit && conflictOf(layout, them.route, me.route);
       if (back && me.s < hit.a && them.s >= back.a && them.s <= hit.clearOf) consider(Math.max(0, hit.a - me.s - 1), { v: 0, s: hit.a, id: them.id });
       /* ...AND TWO COMMITTED CARS BOUND FOR THE SAME PLACE: the one that
          will get there second gives way, if it still can. Where the lines
@@ -988,7 +1133,7 @@ export function whatStops(me, world) {
      itself -- holding at the line had a car registering somebody and
      driving through them to reach its own stop line. */
   const walkerAtLine = !!walker && walker.s >= waitAt(mine, me);
-  const held = short && (walkerAtLine || others.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0, liveOf(world, me.k)))
+  const held = short && (walkerAtLine || visit.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0, liveOf(world, me.k)))
     /* The margin, only for the driver at the head of the queue: one behind
        somebody is held by them, and what the head can see decides. */
     || (tall.length > 0 && !(leader && leader.id !== "line" && gap < 15) && phantomHolds(world, me, layout, mine, eye, tall)));
@@ -1123,7 +1268,7 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
   const cones = conesFrom(eye, tall);
   for (const [r2, p2] of pathList(layout)) {
     if (r2 === me.route || (layout.legs[p2.from]?.base ?? p2.from) === myBase) continue;
-    const meet = layout.conflicts[r2 + "|" + me.route];
+    const meet = conflictOf(layout, r2, me.route);
     if (!meet) continue;
     const speed = (world.road.posted ? postedAt(world.course, me.k ?? 0, r2) : null) ?? world.road.speed;
     /* Nothing comes THROUGH a truck: in the truck's own lane, the road it
@@ -2504,20 +2649,51 @@ export function contactsIn(world) {
   const out = [];
   const pose = new Map();
   const poseFor = (a) => { if (!pose.has(a.id)) { const p = poseOf(world, a); pose.set(a.id, { p, box: cornersOf(p) }); } return pose.get(a.id); };
-  for (const a of world.actors) {
+  const test = (a, b) => {
+    const A = poseFor(a), B = poseFor(b);
+    const near = Math.max(6, (lenOf(a) + lenOf(b)) / 2 + 1);
+    if (Math.abs(A.p.x - B.p.x) > near || Math.abs(A.p.y - B.p.y) > near) return;
+    if (Math.abs((A.p.z ?? 0) - (B.p.z ?? 0)) > 2.0) return;
+    if (!boxesOverlap(A.box, B.box)) return;
+    const known = a.crash?.with === b.id || b.crash?.with === a.id;
+    out.push({ a: a.id, b: b.id, at: { x: (A.p.x + B.p.x) / 2, y: (A.p.y + B.p.y) / 2, z: A.p.z ?? 0 }, fresh: !known });
+    return true;
+  };
+  /* Without the neighbour index (or a graph): every pair at joined nodes, as it always was. */
+  if (world.noIndex || !world.course?.graph) {
+    for (const a of world.actors) {
+      if (a.player) continue;
+      for (const b of nearNode(world, world.actors, a.k ?? 0)) if (!b.player && a.id < b.id) test(a, b);
+    }
+    return out;
+  }
+  /* WITH IT, THROUGH A GRID (15 October): every pair at joined nodes was
+     a pose and a box for each, tested pair by pair -- a tenth of a step at
+     300 cars, growing with the square of the fleet. Only cars in the same
+     or a neighbouring CELL can be within `near` of each other (a cell is
+     wider than the widest `near`), so only those are tested, by exactly
+     the old test and with the same nodes allowed; the contacts found are
+     put back in the old order: `a` as the fleet lists it, `b` as the
+     neighbourhood does. */
+  const CELL = 16, grid = new Map(), cellOf = (p) => `${Math.floor(p.x / CELL)},${Math.floor(p.y / CELL)}`;
+  const actors = world.actors, at = new Map();
+  actors.forEach((a, i) => { at.set(a, i); if (a.player) return; const key = cellOf(poseFor(a).p); let xs = grid.get(key); if (!xs) grid.set(key, (xs = [])); xs.push(a); });
+  const found = [];
+  for (const a of actors) {
     if (a.player) continue;
-    for (const b of nearNode(world, world.actors, a.k ?? 0)) {
-      if (b.player || !(a.id < b.id)) continue;
-      const A = poseFor(a), B = poseFor(b);
-      const near = Math.max(6, (lenOf(a) + lenOf(b)) / 2 + 1);
-      if (Math.abs(A.p.x - B.p.x) > near || Math.abs(A.p.y - B.p.y) > near) continue;
-      if (Math.abs((A.p.z ?? 0) - (B.p.z ?? 0)) > 2.0) continue;
-      if (!boxesOverlap(A.box, B.box)) continue;
-      const known = a.crash?.with === b.id || b.crash?.with === a.id;
-      out.push({ a: a.id, b: b.id, at: { x: (A.p.x + B.p.x) / 2, y: (A.p.y + B.p.y) / 2, z: A.p.z ?? 0 }, fresh: !known });
+    const p = poseFor(a).p, cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL), hood = hoodOf(world.course, a.k ?? 0);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      for (const b of grid.get(`${cx + dx},${cy + dy}`) ?? []) {
+        if (!(a.id < b.id) || !hood.has(b.k ?? 0)) continue;
+        if (test(a, b)) found.push({ c: out[out.length - 1], a, b });
+      }
     }
   }
-  return out;
+  if (found.length < 2) return out;
+  /* The old order: by `a`'s place in the fleet, then `b`'s in `nearNode(a)` -- node by node in the neighbourhood's order, then the fleet's. */
+  const rank = (a, b) => { const hood = [...hoodOf(world.course, a.k ?? 0)]; return hood.indexOf(b.k ?? 0) * 1e6 + at.get(b); };
+  found.sort((x, y) => at.get(x.a) - at.get(y.a) || rank(x.a, x.b) - rank(y.a, y.b));
+  return found.map((x) => x.c);
 }
 
 /* The car the player hit has crashed too: it stops, and it is logged. */

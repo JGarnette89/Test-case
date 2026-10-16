@@ -2829,6 +2829,50 @@ from a cache (one image per car rather than ninety calls), the ground and
 road cull through a spatial index, and the step's per-car growth profiled
 where the neighbour reads go.
 
+##### 1.2.13 The step made cheaper, the world unchanged -- 16 October
+
+The step's cost per car rose as a map filled -- test map 1, 45 us a car at
+100 cars, 160 at 400 -- and with the sim on the page that is half of a
+frame. Profiled (`node --no-turbo-inlining --cpu-prof`, inlining off so
+time lands on the function that spends it) rather than guessed: the first
+guess, an index of who can matter to a driver, was right in shape and cost
+more than it saved until built on integers, and the hottest line in the
+step turned out to be one nobody would have named -- a conflict lookup that
+built a string from two long route ids for every pair of cars.
+
+1. **`conflictOf(layout, a, b)`**: the conflict table read by route then
+   route, built once per route -- no string per pair. Ten call sites.
+2. **The relevance index** (`relevanceOf`/`relevantTo`): each tick the list a
+   driver reads is bucketed by lane, by approach, by lane change, by exit
+   and by route, as integer positions; a driver visits only the cars that
+   can satisfy one of `whatStops`'s own branches, in the list's order (a
+   tie in `consider` goes to the first). The whole neighbourhood is built
+   only where it is read.
+3. **Near a truck**, only the cars a truck can hide (another approach at my
+   intersection) and the relevant ones are read; the rest would be kept
+   unchanged and dropped as irrelevant.
+4. **`contactsIn` through a 16 m grid**: only neighbouring cars are box-
+   tested, and any contacts are put back in the old order.
+
+**THE WORLD IS IDENTICAL**: `tools/measure/world-hash.mjs` on six runs --
+test map 1, the highway and the city, 150-300 cars, with and without
+trucks -- byte for byte before and after every one of the four changes; and
+the 40 checks that can see `crossing.js` pass. Desk ms, a step, idle:
+
+| | before | after |
+|---|---|---|
+| test map 1, 300 cars | 37.9 | 22.9 (-40%) |
+| test map 1, 400 cars | 64.1 | 39.1 (-39%) |
+| highway, 300 cars | 15.5 | 10.5 (-32%) |
+| city, 299 cars | 8.7 | 7.2 (-17%) |
+
+**What is left**, in the next profile: the truck sight lines (`hiddenFrom`,
+about 10%), the driver's memory rebuilt each tick, and the honest cost of a
+queue -- every car on an approach weighs every car ahead of it on that
+approach, because the leader is the most constraining car rather than the
+nearest, and narrowing that would change who follows whom. Occasional
+spikes to 40-65 ms remain on every map and are the next thing to find.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,
