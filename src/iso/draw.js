@@ -389,6 +389,12 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      declaration -- anything hand-built rather than loaded -- keep the
      height test. */
   const isDeck = (road, i) => (typeof road.pts[i].bridge === "boolean" ? road.pts[i].bridge : road.pts[i].z - groundAt(road.pts[i].x, road.pts[i].y) > 1.0);
+  /* WHERE THE DRAW'S TIME GOES (15 October): building the list of what is
+     on screen (the cull and the items), sorting it, painting it, and the
+     overlays -- and what was drawn against what exists, so a cull that
+     reports right but saves nothing would show. */
+  const clock = typeof performance !== "undefined" ? () => performance.now() : () => 0;
+  const tStart = clock();
   const counts = { cells: 0, segments: 0, cars: 0, props: 0 };
   /* The view: rotated by `scene.rot` degrees about the camera when a
      chase camera asks for it, and the depth key with it. */
@@ -927,11 +933,19 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   }
 
   /* The floor first, then everything with height; each by depth. */
+  const tBuilt = clock();
   items.sort((a, b) => a.layer - b.layer || a.key - b.key);
+  const tSorted = clock();
   for (const it of items) it.paint();
+  const tPainted = clock();
   paintRoute(ctx, view, scene, k);
   paintNames(ctx, view, scene, k);
   paintCourtesy(ctx, canvas, view, scene, k);
   paintHorns(ctx, canvas, view, scene, k);
+  const tEnd = clock();
+  let segAll = 0;
+  for (const { road } of roads) segAll += Math.max(0, road.pts.length - 1);
+  counts.of = { cells: terrain.length, segments: segAll, cars: actors.length, props: props.length };
+  counts.ms = { build: tBuilt - tStart, sort: tSorted - tBuilt, paint: tPainted - tSorted, overlay: tEnd - tPainted };
   return { items: items.length, ...counts, ...(audit ? { order: items.map((it) => ({ ...it.tag, key: it.key })) } : {}) };
 }

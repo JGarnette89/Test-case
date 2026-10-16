@@ -2747,6 +2747,49 @@ the city at 300 (`tools/measure/default-crashes.mjs 5`), and of the
 world-hash maps only the city moved in two minutes -- the rule fires
 rarely, where it matters.
 
+##### 1.2.11 THE WORKER WAS THE WHOLE JITTER STORY -- 15 October
+
+The maintainer: "still seeing jitter. the fps is solid but it's like the
+simulation itself is slowing down." Three readings from his phone, test map
+1, the sim in its worker:
+
+| | A | B | C |
+|---|---|---|---|
+| cars | 164 | 170 | 156 |
+| fps / p95 frame | 39 / 105.6 ms | 33 / 108.4 | 33 / 108.2 |
+| **world, against real time** | **0.36x** | **0.25x** | **0.27x** |
+| tick p50/p95/max | 138/155/161 ms | 205/211/214 | 185/192/198 |
+| worker step p50/p95 | 20.8/27.1 ms | 21.2/25.2 | 17.1/18.8 |
+| round trip | 136/155 ms | 204/210 | 184/192 |
+| = wait | 0.4 | 0.6 | 0.4 |
+| + answer built | 0.7 | 0.7 | 0.7 |
+| + **back** | **110/131** | **179/185** | **165/174** |
+| (of which reading the message) | 65 | -- | 104 |
+| our own frame | 3.6/5.8 ms | 4.4/6.1 | 4.4/6.2 |
+| browser long tasks | 2,485 ms in 5 s | 2,717 | 2,782 |
+
+The step was 17-21 ms and steady; the way back 110-179 ms, five to nine
+times the simulation it carried, most of it the browser turning each
+answer back into objects; our own frame work 4 ms, which is why the frame
+counter looked fine. The way back scales with the cars while the step
+barely does -- transfer volume, not compute. **The worker cost six to nine
+times what it saved.**
+
+**Settled by the maintainer, 15 October, with the worker off ("set to
+page"): it runs much better.** PAGE MODE IS THE DEFAULT (`simWorker`
+setting, `#/map`'s "Sim: page"). The worker returns only if its way back
+is rebuilt (the drawn state packed into two transferred buffers) and the
+way back is then a small fraction of the step; otherwise it is deleted.
+
+**The next shape, the opposite one** (the maintainer, same day): on `#/map`
+and the endless highway it ran well to about 200 cars, then "sim stayed
+steady while fps varied depending on the scene" -- the simulation keeping
+pace, the cost moved to the renderer and scaling with what is on screen.
+The readout now splits the frame by part, mean/p95 each -- sim, poses,
+draw (its list, sort, paint and overlays), HUD -- and says what was drawn
+against what exists (cars, road pieces, ground, buildings), so a scene
+that is expensive says what is in it.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,

@@ -37,7 +37,7 @@ import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
 import { placesOf, routeTo } from "../sim/route.js";
 import { noticeTick } from "../sim/session.js";
-import { newPace, paceFrame, paceReply, carryOf, newSimClock, clockTick, clockSummary, frameTick } from "../sim/pace.js";
+import { newPace, paceFrame, paceReply, carryOf, newSimClock, clockTick, clockSummary, frameTick, frameParts } from "../sim/pace.js";
 import { junctionsOf, postedAt, poseOnGraph } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
@@ -298,6 +298,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           if (hit) { contacts.current++; flash.current = 1; setStopped(true); }
         }, (message) => { console.warn("the sim's worker failed; stepping in the page", message); own.remote = null; });
       }
+      const tSim0 = performance.now();
       if (playing && !stopped && !(mode === "drive" && look) && sc.remote) {
         /* One tick in flight at most; a frame that finds the answer still
            out draws the world it has. Owed time is held to two ticks, so
@@ -346,8 +347,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         }
       }
 
+      const tSim1 = performance.now();
       const carry = playing && !stopped ? (sc.remote ? carryOf(sc.pace ?? newPace()) : owed.current) : 0;
       const actors = actorsOf(sc, carry);
+      const tPoses = performance.now();
 
       /* THE CAMERA. Driving: the chase camera (iso/chase.js), behind
          the player, leading them by seconds of travel, the road ahead
@@ -388,8 +391,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         k = Math.max(1, (size.w / (follow === "car" || follow.startsWith("rival-") ? 60 : 110)) * zoom);
       }
       lastView.current = { x: cam.current.x, y: cam.current.y, z: cam.current.z ?? 0, k, rot };
+      const tDraw0 = performance.now();
       const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + carry, lights: sc.world.lights, route: sc.me ? sc.routePts : null, dest: sc.me && sc.dest ? { x: sc.dest.x, y: sc.dest.y, z: 0 } : null });
 
+      const tDraw1 = performance.now();
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
         const nCrash = sc.world.crashes?.length ?? 0;
@@ -399,7 +404,15 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         tasks.current ??= taskProbe();
         const g = tasks.current.during(now - 5000, now), lf = g.frame;
         const taskLine = `\nbrowser: long tasks ${g.tasks ?? "n/a"} ms in 5 s${lf ? ` · worst frame ${lf.ms} = script ${lf.script}${lf.scripts?.[0] ? ` (${lf.scripts[0].where} ${lf.scripts[0].ms})` : ""} + render ${lf.render}` : ""}`;
-        const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip ${ck.rt.p50}/${ck.rt.p95} = wait ${ck.wait.p50} + step + answer ${ck.diff.p50} + back ${ck.back.p50}/${ck.back.p95} (read ${ck.read.p50}/${ck.read.p95}) + reply ${ck.reply.p50}` : ""}\npage: our frame ${ck.ours.p50}/${ck.ours.p95} ms${taskLine}` : "";
+        /* THE FRAME BY PART, mean/p95 each (15 October): the sim's own pace is honest now, so
+           the frame's cost has to be as legible -- and against what was on screen, so a scene
+           that is expensive says what is in it. "x of y": drawn, of all there are. */
+        const fp = sc.clock ? frameParts(sc.clock) : {};
+        const mp = (k) => (fp[k] ? `${fp[k].mean}/${fp[k].p95}` : "-");
+        const of = sc.drewOf ?? {};
+        const frameLine = ` = sim ${mp("sim")} + poses ${mp("poses")} + draw ${mp("draw")} (list ${mp("list")}, sort ${mp("sort")}, paint ${mp("paint")}, overlay ${mp("overlay")}) + hud ${mp("hud")}`
+          + `\ndrawn: ${mp("items")} things · cars ${fp.cars?.mean ?? "-"} of ${of.cars ?? "-"} · road pieces ${fp.segments?.mean ?? "-"} of ${of.segments ?? "-"} · ground ${fp.cells?.mean ?? "-"} of ${of.cells ?? "-"} · buildings ${fp.props?.mean ?? "-"} of ${of.props ?? "-"}`;
+        const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip ${ck.rt.p50}/${ck.rt.p95} = wait ${ck.wait.p50} + step + answer ${ck.diff.p50} + back ${ck.back.p50}/${ck.back.p95} (read ${ck.read.p50}/${ck.read.p95}) + reply ${ck.reply.p50}` : ""}\nframe ${ck.ours.p50}/${ck.ours.p95} ms${frameLine}${taskLine}` : "";
         readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
         fpsAt = now;
       }
@@ -466,13 +479,21 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         drawNav(ctx, size, sc.jobText, { y: 54, colour: "#ffd34d" });
         drawReceipt(ctx, size, sc.receipt, now / 1000);
         if (sc.wallet) walletRef.current = sc.wallet; else if (walletRef.current) sc.wallet = walletRef.current;
-        drawReadout(ctx, readout.current, 8, size.h - 44, { up: true });
+        drawReadout(ctx, readout.current, 8, size.h - 44, { up: true, maxW: size.w - 80 });
         if (flash.current > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * flash.current})`; ctx.fillRect(0, 0, size.w, size.h); flash.current = Math.max(0, flash.current - dt * 2); }
       } else {
-        drawReadout(ctx, readout.current);
+        drawReadout(ctx, readout.current, 8, 6, { maxW: size.w - 16 });
       }
       /* Our own frame callback's time: a slow page shows here, a slow browser does not. */
-      frameTick(sc.clock ??= newSimClock(), now, performance.now() - f0);
+      /* EVERY PART OF THE FRAME, each with its own p95 (pace.js frameParts): the sim's step when it ran on this
+         frame, the poses, the camera, the draw -- its list, sort, paint and overlays -- and the HUD after it. */
+      const fEnd = performance.now(), dm = drew.ms ?? {};
+      frameTick(sc.clock ??= newSimClock(), now, fEnd - f0, {
+        sim: tSim1 - tSim0, poses: tPoses - tSim1, camera: tDraw0 - tPoses, draw: tDraw1 - tDraw0,
+        list: dm.build ?? 0, sort: dm.sort ?? 0, paint: dm.paint ?? 0, overlay: dm.overlay ?? 0, hud: fEnd - tDraw1,
+        items: drew.items ?? 0, cars: drew.cars ?? 0, segments: drew.segments ?? 0, cells: drew.cells ?? 0, props: drew.props ?? 0,
+      });
+      sc.drewOf = drew.of;
       raf.current = requestAnimationFrame(tick);
     };
     tick(performance.now());

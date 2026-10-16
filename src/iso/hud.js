@@ -148,10 +148,20 @@ export function drawHorn(ctx, size, sounding, { label = true } = {}) {
 }
 
 /* A line of readout at the top left, small and steady. */
-export function drawReadout(ctx, text, x = 8, y = 6, { up = false } = {}) {
+export function drawReadout(ctx, text, x = 8, y = 6, { up = false, maxW = Infinity } = {}) {
   ctx.fillStyle = "rgba(230,232,236,0.85)"; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top";
-  /* One line per newline; `up`: the last line at y, the others above it. */
-  const lines = String(text ?? "").split("\n");
+  /* One line per newline, each wrapped on words to `maxW` (a phone cut the
+     instrument's numbers off at the edge); `up`: the last line at y, the
+     others above it. */
+  const lines = [];
+  for (const para of String(text ?? "").split("\n")) {
+    let cur = "";
+    for (const w of para.split(" ")) {
+      const next = cur ? `${cur} ${w}` : w;
+      if (cur && ctx.measureText && ctx.measureText(next).width > maxW) { lines.push(cur); cur = `  ${w}`; } else cur = next;
+    }
+    lines.push(cur);
+  }
   lines.forEach((l, i) => ctx.fillText(l, x, up ? y - (lines.length - 1 - i) * 15 : y + i * 15));
 }
 

@@ -66,9 +66,23 @@ export function clockTick(c, wallMs, simT, legs = {}) {
   for (const k of LEGS) c[k].push(legs[k] ?? null);
   while (c.wall.length > 2 && wallMs - c.wall[0] > WINDOW * 1000) { c.wall.shift(); c.sim.shift(); for (const k of LEGS) c[k].shift(); }
 }
-export function frameTick(c, wallMs, oursMs) {
+/* `parts`: the frame's own time by part ({ sim, poses, draw, build, sort, paint, hud, ... } in ms) --
+   a mean over the whole frame hid a 110 ms worker once; each part keeps its own p95. */
+export function frameTick(c, wallMs, oursMs, parts = null) {
   c.ours.push(oursMs); c.oursAt.push(wallMs);
-  while (c.oursAt.length > 2 && wallMs - c.oursAt[0] > WINDOW * 1000) { c.ours.shift(); c.oursAt.shift(); }
+  c.parts ??= {};
+  if (parts) for (const k in parts) (c.parts[k] ??= []).push(parts[k]);
+  while (c.oursAt.length > 2 && wallMs - c.oursAt[0] > WINDOW * 1000) { c.ours.shift(); c.oursAt.shift(); for (const k in c.parts) c.parts[k].shift(); }
+}
+/* Mean and p95 of each part of the frame, over the window. */
+export function frameParts(c) {
+  const out = {};
+  for (const [k, xs] of Object.entries(c.parts ?? {})) {
+    if (!xs.length) continue;
+    const mean = xs.reduce((s, x) => s + x, 0) / xs.length;
+    out[k] = { mean: Math.round(mean * 10) / 10, p95: Math.round((pct(xs, 0.95) ?? 0) * 10) / 10 };
+  }
+  return out;
 }
 const pct = (xs, f) => { const v = xs.filter((x) => x != null).sort((a, b) => a - b); return v.length ? v[Math.min(v.length - 1, Math.floor(f * v.length))] : null; };
 export function clockSummary(c) {
