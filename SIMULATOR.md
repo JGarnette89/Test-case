@@ -2790,6 +2790,45 @@ draw (its list, sort, paint and overlays), HUD -- and says what was drawn
 against what exists (cars, road pieces, ground, buildings), so a scene
 that is expensive says what is in it.
 
+##### 1.2.12 Where a frame goes past 200 cars, measured on the desk -- 15 October
+
+Four questions from the "fps varied depending on the scene" report, answered
+by `tools/measure/draw-scenes.mjs` (the chase camera put on every car in
+turn, phone-sized canvas, canvas calls counted) and `step-ramp.mjs`.
+
+1. **The depth sort is not it.** 1-3% of the draw, and it sorts only what
+   survived the cull: 140-260 items, never the world.
+2. **The cull is real.** Ground drawn 64-89 of 5,340 cells (test map 1)
+   and of 33,150 (the highway); road pieces 53-120; canvas calls are made
+   only for what survives. **But the cull itself walks everything**: on the
+   highway the list (cull and items) is 1.07 of a 1.3 ms draw on the desk,
+   flat at every fleet, almost all of it testing 33,150 ground cells to
+   find ~85. Constant, not scene-dependent -- and several ms a frame on
+   the phone for nothing. A spatial index (cells and road pieces bucketed by
+   area) makes it the size of the view.
+3. **What follows the scene is CANVAS CALLS, and they follow the cars in
+   view.** On test map 1 the draw's time correlates 0.77 with calls and
+   calls 0.90 with cars in view: about 90 calls a car (two boxes' faces,
+   their lamps) -- 3,900 at the median at 100 cars, 9,000 at the 95th
+   percentile at 400. Desk script for the whole draw stays ~0.7 ms; the
+   phone pays per call in script and in raster. That is "varies with the
+   scene": a view with forty cars in it costs twice one with twelve.
+4. **No cliff at 200 -- a slope, and a superlinear one, in the SIM STEP.**
+   Test map 1, desk ms: 4.5 at 100 cars, 9.7 at 150, 16.3 at 200, 26.0 at
+   250, 37.9 at 300, 64.1 at 400 -- the cost per car itself rising from
+   45 to 160 us as the map fills (queues: each car has more neighbours to
+   read). On the phone (x1.6) a step is ~26 ms at 200 cars: with the sim on
+   the page a frame that steps then spans two vsyncs and more, which is the
+   fps falling while the sim's own pace holds. The highway: 2.2 ms at 100,
+   7.7 at 200, 15.4 at 300.
+
+So past 200 cars the frame is two costs, neither a fast path falling off:
+the step's superlinear growth, landing every third frame, and the draw's
+calls per car in view. The fixes, in the order they pay: the cars drawn
+from a cache (one image per car rather than ninety calls), the ground and
+road cull through a spatial index, and the step's per-car growth profiled
+where the neighbour reads go.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,
