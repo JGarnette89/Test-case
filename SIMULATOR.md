@@ -2968,10 +2968,48 @@ where the next intersection takes over. Lane changes -- the traffic's
 highway's multi-lane length (12.7 of 25.3 lane-km), 51% of the city's, 51% of
 test map 1's. On those stretches nobody can overtake, and a player who steers
 across a line moves the car but stays in the old lane to everybody else.
-**Next: lane changes on the exit stretch** -- the lane there is the path's
-`to` leg, every path leaving by it shares the stretch, and the honest
-coordinate is distance remaining (as `whatStops` already uses for a shared
-exit).
+**Lane changes on the exit stretch -- BUILT, 20 October** (`lanechange.js`
+`exitStep`; `drive.js` for the player). The lane there is the path's `to`
+leg; a change starts only straightened out and a lane across (within 5
+degrees and 0.6 m of a lane's width -- `besideOn`, the nearest point on the
+target lane, since on a bend equal distance remaining is not side by side),
+never with the seam too near to finish, and for the traffic only into a path
+from the SAME road making the SAME movement -- a route past the box also
+says how the car got there, and the exam reads a candidate's turn from it.
+
+What the first version got wrong, all found by the suite (eleven checks red,
+then five, then none): an approach-only rule re-picked a changed car's
+route and kept its place, so a car 192 m along an 83 m path was handed over
+the seam -- a 226 m jump into a crash; a truck that changed lane was still
+held in its old APPROACH lane (`fromLeg`), braked to a stop for a car waiting
+at a red twenty metres back, and the time-driven blend pivoted its 9 m body
+over the centre line into it; `null === null` made two exit changers on one
+road, going opposite ways, share a lane, which the neighbour index (rightly)
+never offered -- caught as the index and no-index worlds diverging; and a
+right-turner moved into a lane no right lands in became a car that had gone
+straight. Checks restated, each with its reason in the check: verify-lanes
+(an exit change finishes before the seam -- sabotaged, 86 carried over),
+verify-drive (the lane a turn puts you in is judged leaving the box),
+verify-graph (the partition per car, not per road mean -- sabotaged),
+verify-bays, verify-waves (no harm within two standard errors of its own
+sample; a bad wave under actuation is invisible to that claim and is caught
+by the others -- measured by sabotage).
+
+**Measured, main against this build, same seeds** (`highway-swim.mjs`, the
+loop, 3 minutes after 3 of warm-up; `encounters.mjs`, the overtaking good
+driver, one 5-minute drive per row):
+
+| cars | overtaking changes /car-min | passes /car-min | player overtook /min | overtaken /min | met /min | following |
+|---|---|---|---|---|---|---|
+| 120 | 0.33 -> 0.66 | 0.26 -> 0.76 | 2.4 -> 3.6 | 0.8 -> 0.8 | 3.8 -> 3.6 | 44% -> 30% |
+| 200 | 0.43 -> 0.68 | 0.40 -> 0.98 | 3.6 -> 3.6 | 1.6 -> 0.8 | 6.4 -> 5.0 | 45% -> 19% |
+| 300 | 0.35 -> 0.80 | 0.50 -> 1.05 | 4.0 -> 4.2 | 2.2 -> 2.0 | 8.4 -> 7.2 | 42% -> 54% |
+
+The traffic swims two to three times as much. The player's columns are one
+drive each and do not move together (following fell at 120 and 200 and rose
+at 300), so they say only that the player is not worse off; a player-side
+claim needs several drives per row. Being OVERTAKEN did not rise: the
+measuring driver holds the limit, and the traffic's mean is near it.
 
 **THE CONTROLS: ADJUSTABLE WHILE DRIVING** (the maintainer: "refinement to
 the controls (I'm not sure exactly what this means yet)"). Control feel

@@ -147,7 +147,7 @@ function laneChange(layout, me, path) {
     if (!d) return me;
     const toLeg = layout.legAt(outLeg.base, (outLeg.pos ?? outLeg.lane) + d);
     if (!toLeg) return me;
-    const route = exitRouteInto(layout, toLeg, path.intent);
+    const route = exitRouteInto(layout, toLeg, path.intent, layout.legs[path.from]?.base);
     if (!route) return me;
     const target = layout.paths[route], s2 = target.length - (path.length - me.s);
     if (s2 <= target.clearAt) return me;

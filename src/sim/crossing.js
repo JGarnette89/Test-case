@@ -1005,7 +1005,9 @@ export function whatStops(me, world) {
        line is invisible to the car behind it. */
     const shareLane = theirs.from === mine.from
       || (changing(them.lc, world.t) && them.lc.fromLeg === mine.from)
-      || (changing(me.lc, world.t) && (theirs.from === me.lc.fromLeg || (changing(them.lc, world.t) && them.lc.fromLeg === me.lc.fromLeg)));
+      /* An approach change only: one on the exit stretch has no fromLeg (null), and null === null
+         made two exit changers on one road -- going opposite ways -- share a lane (20 October). */
+      || (changing(me.lc, world.t) && me.lc.fromLeg != null && (theirs.from === me.lc.fromLeg || (changing(them.lc, world.t) && them.lc.fromLeg === me.lc.fromLeg)));
     /* EXCEPT THE CAR THEY MISSED. A driver who skipped the blind-spot
        check has not registered the car beside them, and until they do
        (lanechange.js, the abort) they cannot brake for it either. They

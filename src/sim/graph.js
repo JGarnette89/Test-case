@@ -706,7 +706,7 @@ export function postedAt(course, k, route) {
    them carries the car there; the one making the same movement is preferred,
    then a straight one. Per layout, cached. */
 const intoCache = new WeakMap();
-export function exitRouteInto(layout, toLeg, intent = "straight") {
+export function exitRouteInto(layout, toLeg, intent = "straight", fromBase = null, strict = false) {
   let m = intoCache.get(layout);
   if (!m) {
     m = new Map();
@@ -714,7 +714,19 @@ export function exitRouteInto(layout, toLeg, intent = "straight") {
     intoCache.set(layout, m);
   }
   const xs = m.get(toLeg) ?? [];
-  return xs.find((r) => layout.paths[r].intent === intent) ?? xs.find((r) => layout.paths[r].intent === "straight") ?? xs[0] ?? null;
+  /* From the same road the car came in on, where there is one: the route's
+     `from` is still read past the box (which road a car arrived by), and a
+     car must not be re-filed under a road it never drove. */
+  const same = fromBase == null ? xs : xs.filter((r) => layout.legs[layout.paths[r].from]?.base === fromBase);
+  const pick = (ys) => ys.find((r) => layout.paths[r].intent === intent) ?? ys.find((r) => layout.paths[r].intent === "straight") ?? ys[0] ?? null;
+  /* STRICT, for the traffic: the same road and the same movement, or none.
+     A route past the box also says how the car got there -- the exam reads
+     the turn a candidate took from it -- so a right-turner moved to a lane
+     no right lands in must not become a car that went straight
+     (20 October). The player's drift keeps the fallback: where they are
+     matters to everybody else more than how they arrived. */
+  if (strict) return same.find((r) => layout.paths[r].intent === intent) ?? null;
+  return pick(same) ?? pick(xs);
 }
 
 /* THE LIMIT IN FORCE where a car is NOW: the road it came in on, until it is

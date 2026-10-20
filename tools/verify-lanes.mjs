@@ -17,7 +17,8 @@
        miss is followed by an abort; the overshoot grows with the
        steering deficit and never passes half the room;
      the manoeuvre is honest: never out of the lane the turn needs, always
-       finished before the line, never a jump;
+       finished before the line -- or, past the box on the road joined (the
+       exit stretch, 20 October), before the seam -- never a jump;
      nobody drives through anybody, at the default car count and at the
        top of the dial;
      and it costs the sim a few percent, by controlled comparison -- the
@@ -62,7 +63,7 @@ function watch(seed, target, secs) {
      not a new one this window recorded. */
   const carriedMissed = new Set(w.actors.filter((a) => a.lc?.missed && !a.lc.abort).map((a) => a.id));
   const starts = [], drivers = new Map();
-  let overlaps = 0, pastLine = 0, jumps = 0, worstPast = 0, background = 0;
+  let overlaps = 0, pastLine = 0, pastSeam = 0, exitChanges = 0, jumps = 0, worstPast = 0, background = 0;
   const last = new Map();
   for (let i = 0; i < secs * 20; i++) {
     const before = new Map(w.actors.map((a) => [a.id, a]));
@@ -88,9 +89,12 @@ function watch(seed, target, secs) {
       if (a.lc && !a.lc.abort && (!was || !was.lc || was.lc.t0 !== a.lc.t0)) {
         const fromPath = L.paths[a.lc.from];
         starts.push({ id: a.id, run: seed, caution: a.caution, obs: deficitOf(a.ratings, "observation").deficit, steer: deficitOf(a.ratings, "steering").deficit,
-          gap: a.lc.gap, tight: a.lc.tight, missed: a.lc.missed, blind: a.lc.blind, mandatory: a.lc.mandatory, keepRight: a.lc.keepRight, ov: a.lc.ov, keptIntent: fromPath?.intent === p.intent });
+          gap: a.lc.gap, tight: a.lc.tight, missed: a.lc.missed, blind: a.lc.blind, mandatory: a.lc.mandatory, keepRight: a.lc.keepRight, ov: a.lc.ov, exit: !!a.lc.exit, keptIntent: fromPath?.intent === p.intent });
+        if (a.lc.exit) exitChanges++;
       }
-      if (changing(a.lc, w.t) && a.s > p.stopAt) pastLine++;
+      /* An approach change finishes before the line; one on the exit stretch (past the box, on the road joined) before the seam to the next intersection. */
+      if (changing(a.lc, w.t) && !a.lc.exit && a.s > p.stopAt) pastLine++;
+      if (was && was.k !== a.k && changing(was.lc, w.t - DT)) pastSeam++;
       if (a.lc) worstPast = Math.max(worstPast, Math.abs(lateralOf(a.lc, w.t)) - Math.abs(a.lc.L0));
       /* No jump: the drawn pose moves no further than the car drives in a tick, allowing for the sideways blend. */
       const q = poseOf(w, a), pq = last.get(a.id);
@@ -99,7 +103,7 @@ function watch(seed, target, secs) {
     }
   }
   return { starts, drivers: [...drivers.values()].map((d) => ({ ...d, run: seed,
-    aborts: Math.max(0, (d.aborts ?? 0) - (aborts0.get(d.id) ?? 0) - (carriedMissed.has(d.id) ? 1 : 0)) })), overlaps, pastLine, jumps, worstPast, background };
+    aborts: Math.max(0, (d.aborts ?? 0) - (aborts0.get(d.id) ?? 0) - (carriedMissed.has(d.id) ? 1 : 0)) })), overlaps, pastLine, pastSeam, exitChanges, jumps, worstPast, background };
 }
 
 const runs = [3, 5, 9].map((seed) => watch(seed, 200, 150));
@@ -171,8 +175,9 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
 
 /* 4. The manoeuvre is honest. */
 {
-  check(starts.filter((s) => !s.mandatory).every((s) => s.keptIntent), `no driver changed lane BY CHOICE out of the lane their turn needs: all ${starts.filter((s) => !s.mandatory).length} discretionary changes kept the turn the car was making (the ${starts.filter((s) => s.mandatory).length} made FOR a turn are checked below)`);
-  check(runs.every((r) => r.pastLine === 0), `every change finished before the line (${runs.reduce((s, r) => s + r.pastLine, 0)} car-ticks mid-change past it)`);
+  check(starts.filter((s) => !s.mandatory && !s.exit).every((s) => s.keptIntent), `no driver changed lane BY CHOICE out of the lane their turn needs: all ${starts.filter((s) => !s.mandatory && !s.exit).length} discretionary changes on an approach kept the turn the car was making (the ${starts.filter((s) => s.mandatory).length} made FOR a turn are checked below)`);
+  check(runs.every((r) => r.pastLine === 0), `every change on an approach finished before the line (${runs.reduce((s, r) => s + r.pastLine, 0)} car-ticks mid-change past it)`);
+  check(runs.every((r) => r.pastSeam === 0) && runs.reduce((s, r) => s + r.exitChanges, 0) > 0, `and every change on an exit stretch before the seam to the next intersection (${runs.reduce((s, r) => s + r.exitChanges, 0)} exit changes, ${runs.reduce((s, r) => s + r.pastSeam, 0)} carried over a seam)`);
   check(runs.every((r) => r.jumps === 0), `and no car jumped: the drawn position moves no further than the car drives in a tick (${runs.reduce((s, r) => s + r.jumps, 0)} jumps)`);
   check(Math.abs(LC_TIME - Math.sqrt((6 * 3.6) / (0.15 * 9.81))) < 1e-9, `a clean change takes ${LC_TIME.toFixed(1)} s, derived from the road's own sideways comfort limit`);
 }

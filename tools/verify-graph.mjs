@@ -309,12 +309,13 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   const drive = (posted) => {
     let w = seedGraph(3, fastest, l, { every: 1.1, posted, progression: false, actuated: false });
     for (let i = 0; i < 1200; i++) w = step(w);
-    const by = {};
+    const by = {}, cars = new Map();
     for (const a of w.actors) {
-      const L = w.course.at[a.k].layout.legs[w.course.at[a.k].layout.paths[a.route].from];
+      const p = w.course.at[a.k].layout.paths[a.route], L = w.course.at[a.k].layout.legs[p.from];
       (by[L.road] ??= []).push(a.v0 * 3.6);
+      if (a.s <= p.clearAt) cars.set(a.id, { road: L.road, v0: a.v0 * 3.6 });
     }
-    return { w, by };
+    return { w, by, cars };
   };
   const off = drive(false), on = drive(true);
 
@@ -329,9 +330,19 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   const fastRoads = Object.keys(speeds).filter((r) => speeds[r] === fastest);
   const movedDown = slowRoads.filter((r) => on.by[r] && off.by[r] && mean(on.by[r]) < mean(off.by[r]) - 3);
   check(movedDown.length >= 4, `cars on every road posted below ${fastest} want less than they did at one limit: ${movedDown.map((r) => `${r} ${mean(off.by[r]).toFixed(0)}->${mean(on.by[r]).toFixed(0)}`).join(", ")}`);
-  const unmoved = fastRoads.filter((r) => on.by[r] && off.by[r] && Math.abs(mean(on.by[r]) - mean(off.by[r])) < 0.5);
-  check(unmoved.length >= fastRoads.filter((r) => on.by[r] && off.by[r]).length - 1,
-    `and the posted-${fastest} roads are where they were -- ${unmoved.length} of ${fastRoads.filter((r) => on.by[r] && off.by[r]).length} unchanged, which is the partition that says the change is confined to the roads whose sign differs`);
+  /* PER CAR, NOT PER ROAD (20 October). This compared each 60 road's MEAN
+     over whoever was on it, and that mean moves whenever the population
+     does: once cars could overtake past the box, the traffic on the 60
+     roads got round the slower cars turning in from the 40 roads, so
+     WHICH cars stood on A-west and A-B at the end differed (5 vs 6, 7 vs
+     5 cars) and their means moved 4.5 and 1.4 km/h -- a real interaction
+     between roads, like the actuated lights above, not the limit leaking.
+     The partition stated exactly: the same car, on its approach on the
+     same 60 road in both worlds, wants the same speed. */
+  const matched = [...on.cars].filter(([id, c]) => speeds[c.road] === fastest && off.cars.get(id)?.road === c.road);
+  const differ = matched.filter(([id, c]) => Math.abs(c.v0 - off.cars.get(id).v0) > 0.01);
+  check(matched.length >= 10 && differ.length === 0,
+    `and on the posted-${fastest} roads nothing moved: ${matched.length} cars on their approach on the same ${fastest} road in both worlds, ${differ.length} wanting a different speed -- the partition that says the change is confined to the roads whose sign differs`);
 
   /* THE DRIVER IS UNTOUCHED: only the limit moved, so the spread of
      boldness within one road is the same shape. `wantedSpeed` is

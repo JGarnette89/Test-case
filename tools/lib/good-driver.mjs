@@ -89,6 +89,10 @@ export function goodInput(me, world, sc, { pace = 0.95, overtake = false } = {})
     if (slowAhead(here) && clear(besideLeg(-1))) lane = -1;
     else if (!lg.curb && want !== "left" && clear(besideLeg(1)) && !slowAhead(besideLeg(1))) lane = 1;
   } else if (!lane && leg && !leg.curb && want !== "left" && me.s < path.stopAt - 25) lane = 1;
+  /* Past the box, only toward a lane that is there: the lane the directions
+     name can be a turn bay that has not opened yet, and steering for it put
+     the car over the curb (20 October). */
+  if (onExit && lane && !besideLeg(lane)) lane = 0;
   const target = me.s <= path.stopAt - 3 || onExit ? lane * LANE * 0.72 : 0;
   const steer = -(me.off - target) * 0.25 - me.psi * 2.5;
   return { input: { steer, slider, assist: 0 }, signal };
