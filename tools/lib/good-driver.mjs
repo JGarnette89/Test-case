@@ -68,16 +68,32 @@ export function goodInput(me, world, sc, { pace = 0.95, overtake = false } = {})
   /* OVERTAKE (a highway player): a slower car close ahead in my lane, and the
      lane to my left clear beside me -- pull out; and keep right only into a
      lane that is clear and holds nobody slower just ahead. */
-  const pos = leg?.pos ?? leg?.lane ?? 0;
-  const besideLeg = (d) => spot.layout.legAt?.(leg.base, pos + d) ?? null;
-  const carsOn = (legId) => world.actors.filter((a) => !a.player && (a.k ?? 0) === me.k && spot.layout.paths[a.route]?.from === legId);
-  const clear = (legId) => legId && carsOn(legId).every((a) => Math.abs(a.s - me.s) > 20);
-  const slowAhead = (legId) => carsOn(legId).some((a) => a.s > me.s && a.s - me.s < 60 && (a.v ?? 0) < posted * pace - 1.5);
-  if (overtake && !lane && leg && me.s < path.stopAt - 60) {
-    if (slowAhead(path.from) && clear(besideLeg(-1))) lane = -1;
-    else if (!leg.curb && want !== "left" && clear(besideLeg(1)) && !slowAhead(besideLeg(1))) lane = 1;
+  /* The lane is the approach's before the line and the exit's past the box
+     (lanechange.js exitStep), and a car's place in it is measured the same
+     way: along the approach, or as distance remaining on the exit. */
+  const onExit = me.s > path.clearAt + 1;
+  const lg = onExit ? spot.layout.legs[path.to] : leg;
+  const pos = lg?.pos ?? lg?.lane ?? 0;
+  const besideLeg = (d) => (lg ? spot.layout.legAt?.(lg.base, pos + d) ?? null : null);
+  const myAt = onExit ? -(path.length - me.s) : me.s;
+  const carsOn = (legId) => world.actors.filter((a) => {
+    if (a.player || (a.k ?? 0) !== me.k) return false;
+    const p = spot.layout.paths[a.route];
+    return onExit ? p?.to === legId && a.s > p.clearAt : p?.from === legId && a.s <= p.stopAt;
+  }).map((a) => ({ a, at: onExit ? -(spot.layout.paths[a.route].length - a.s) : a.s }));
+  const clear = (legId) => legId && carsOn(legId).every(({ at }) => Math.abs(at - myAt) > 20);
+  const slowAhead = (legId) => carsOn(legId).some(({ a, at }) => at > myAt && at - myAt < 60 && (a.v ?? 0) < posted * pace - 1.5);
+  const room = onExit ? path.length - me.s > 80 : me.s < path.stopAt - 60;
+  const here = onExit ? path.to : path.from;
+  if (overtake && !lane && lg && room) {
+    if (slowAhead(here) && clear(besideLeg(-1))) lane = -1;
+    else if (!lg.curb && want !== "left" && clear(besideLeg(1)) && !slowAhead(besideLeg(1))) lane = 1;
   } else if (!lane && leg && !leg.curb && want !== "left" && me.s < path.stopAt - 25) lane = 1;
-  const target = me.s <= path.stopAt - 3 ? lane * LANE * 0.72 : 0;
+  /* Past the box, only toward a lane that is there: the lane the directions
+     name can be a turn bay that has not opened yet, and steering for it put
+     the car over the curb (20 October). */
+  if (onExit && lane && !besideLeg(lane)) lane = 0;
+  const target = me.s <= path.stopAt - 3 || onExit ? lane * LANE * 0.72 : 0;
   const steer = -(me.off - target) * 0.25 - me.psi * 2.5;
   return { input: { steer, slider, assist: 0 }, signal };
 }

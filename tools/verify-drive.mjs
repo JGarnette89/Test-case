@@ -129,8 +129,14 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
      number nobody derived, until the turn began at the corner rather
      than at a set-back line and the right turn got tighter: 0.39.) */
   check(inBox.length > 10 && worstOff < weaveRoom(3.6), `through a right turn with the wheel straight the car holds the committed arc (${inBox.length} ticks in the box, at most ${worstOff.toFixed(2)} m off its line, against the ${weaveRoom(3.6).toFixed(2)} m weave room)`);
-  const out = r.record[r.record.length - 1];
-  check(w0.course.at[out.k].layout.paths[out.route].to === curbOf("A-west|end") && out.leg === 0, `and comes out on the west road in its curb lane, which runs to the map's edge (${out.atEdge ? "reached" : "not yet reached"})`);
+  /* Judged as the car leaves the box, which is what the turn decides. Past
+     it a wheel held dead straight lets the car drift on the heading the arc
+     left it with, and since a drift across a lane line on the exit stretch
+     re-bases the car in the lane it is now in (20 October) -- as on the
+     approach -- the LAST tick says where the drift went, not where the turn
+     put the car. */
+  const out = r.record.find((m) => { const p = w0.course.at[m.k].layout.paths[m.route]; return m.leg === 0 && m.s > p.clearAt; });
+  check(out && w0.course.at[out.k].layout.paths[out.route].to === curbOf("A-west|end"), `and comes out of the box on the west road in its curb lane (${out ? out.route : "never left the box"})`);
   /* The bend on C-A, wheel straight: the road turns out from under the car. */
   const meC = startAt(w0, "C-A|end");   // arriving at A from C, along the bend
   const rb = drive(w0, { ...meC, v: 12 }, 25, () => ({ steer: 0, slider: 0.4, signal: null }));

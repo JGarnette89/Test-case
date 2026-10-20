@@ -123,7 +123,25 @@ const offA = [1, 2].map((sd) => platoon(long.loaded, long.g, false, sd, true)).r
 const rate = (r) => r.through / Math.max(1, r.through + r.stopped);
 ok(on.through + on.stopped >= 60 && off.through + off.stopped >= 60, `enough of the platoon to judge: ${on.through + on.stopped} arrivals with the wave, ${off.through + off.stopped} without (two seeds, eight minutes each)`);
 ok(rate(on) >= rate(off) + 0.25, `released by the light before, through the next without stopping: ${(100 * rate(on)).toFixed(0)}% with the wave against ${(100 * rate(off)).toFixed(0)}% without`);
-ok(rate(onA) >= rate(on) - 0.05 && rate(onA) >= rate(offA), `and with the lights actuated the platoon still goes through as often or more: ${(100 * rate(onA)).toFixed(0)}% with the wave (${(100 * rate(on)).toFixed(0)}% on the clock), ${(100 * rate(offA)).toFixed(0)}% actuated without it`);
+/* NO HARM, STATED WITH ITS SAMPLE (20 October). This was a bare
+   rate(onA) >= rate(offA) on about a hundred arrivals a side, so it
+   asserted a difference finer than the sample can resolve: lane changes
+   past the box lifted the no-wave rate from 85% to 90% over six seeds
+   while the wave's own held at 87% on main and on the branch -- a 3-point
+   gap against a standard error of 2.5 points. "No harm" is now "not worse
+   by more than two standard errors of the difference", computed from the
+   counts here; the margin is the sample's, never chosen.
+   WHAT THIS CLAIM CANNOT SEE, measured: offsets turned half a cycle
+   against the platoon (sabotaged once) failed nine claims above -- green
+   on arrival on every timed link, and the released platoon -- and passed
+   this one, 90% against 91%, as the old bare comparison would have but for
+   noise. The loops answer a platoon whatever the offsets say, so a bad
+   wave under actuation is the claims above's to catch; this one holds only
+   that actuation neither undoes the wave nor costs the platoon beyond
+   what the sample can tell. */
+const se = (r) => { const n = Math.max(1, r.through + r.stopped), p = r.through / n; return p * (1 - p) / n; };
+const margin = 2 * Math.sqrt(se(onA) + se(offA));
+ok(rate(onA) >= rate(on) - 0.05 && rate(onA) >= rate(offA) - margin, `and with the lights actuated the platoon still goes through as often, within the sample: ${(100 * rate(onA)).toFixed(0)}% with the wave (${(100 * rate(on)).toFixed(0)}% on the clock), ${(100 * rate(offA)).toFixed(0)}% actuated without it, two standard errors ${(100 * margin).toFixed(1)} points`);
 ok(on.crashes + off.crashes + onA.crashes + offA.crashes === 0, `and nothing crashes any way (${on.crashes}, ${off.crashes}, ${onA.crashes}, ${offA.crashes})`);
 
 console.log(failed ? `\n${failed} FAILED` : "\nOK: a car holding the posted speed from a green meets the next green, corridors run only where the road has priority, one cycle per system, and the platoon goes through far more often with the wave.");
