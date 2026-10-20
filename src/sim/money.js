@@ -28,7 +28,7 @@
    Pure but for the wallet's storage, which goes through src/storage.js.
    ===================================================================== */
 import { readJSON, writeJSON } from "../storage.js";
-import { postedAt } from "./graph.js";
+import { postedAt, limitAt } from "./graph.js";
 import { DT } from "./traffic.js";
 
 /* Flagged design constants: the taxi's tariff and what the standard costs. */
@@ -68,7 +68,7 @@ export function meterTick(m, me, course, events) {
     if (e.id === "collision") out.hit = true;
     else if (!e.praise && e.severity) out.faults = [...out.faults, { id: e.id, severity: e.severity, t: e.t }];
   }
-  const posted = postedAt(course, me.k ?? 0, me.route);
+  const posted = limitAt(course, me);
   if (posted && (me.v ?? 0) > posted * OVER_AT) out.overS = m.overS + DT;
   return out;
 }

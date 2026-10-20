@@ -205,7 +205,20 @@ export const widthOf = (a) => vehicleOf(a).width;
 export const clearBetween = (d, back, front) => d - lenOf(back) / 2 - (front?.rear ?? lenOf(front) / 2);
 /* The speed a driver of this vehicle wants on a road: their temperament's,
    no more than the vehicle will do there. */
-export const wantedFor = (a, roadSpeed, caution) => Math.min(wantedSpeed(roadSpeed, caution), roadSpeed * vehicleOf(a).cap);
+/* ON A HIGHWAY THE SPREAD IS THE ROAD'S, NOT THE STREET'S (20 October; the
+   maintainer: "a highway the player can endlessly 'swim' in"). The street
+   formula above gives a spread of about 21 km/h at 100 km/h -- twice real
+   free-flowing motorway traffic (10-12 km/h) -- and a floor of 0.65 of the
+   limit, so the curb lane a lawful driver is kept in ran at 70 km/h on a
+   100 km/h road and a player at the limit had nobody to pass and was
+   passed by everybody (tools/measure/highway-swim.mjs). On a highway the
+   same confidence axis sets the speed about a centre just over the limit,
+   with a real motorway's spread. HIGHWAY_CENTRE and HIGHWAY_SLOPE are
+   flagged design constants, the maintainer's to move: a typical driver at
+   1.05 of the limit, the boldest at 1.22, the most timid at 0.88. */
+export const HIGHWAY_CENTRE = 1.05, HIGHWAY_SLOPE = 0.17;
+export const wantedOnHighway = (roadSpeed, caution) => roadSpeed * (HIGHWAY_CENTRE - HIGHWAY_SLOPE * (caution - 1));
+export const wantedFor = (a, roadSpeed, caution, kind = null) => Math.min(kind === "highway" ? wantedOnHighway(roadSpeed, caution) : wantedSpeed(roadSpeed, caution), roadSpeed * vehicleOf(a).cap);
 
 /* =====================================================================
    Setting up
@@ -291,7 +304,7 @@ export function driver(road, seed, n, ratings = null, town = null, kind = "car")
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
   const vehicle = { kind };
-  const v0 = wantedFor(vehicle, road.speed, caution);
+  const v0 = wantedFor(vehicle, road.speed, caution, road.kind);
 
   /* WHO ROLLS A STOP -- and since the knowledge/compliance split (R2-DESIGN
      17) it is two different drivers doing the same thing for two reasons:

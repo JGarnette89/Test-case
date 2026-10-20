@@ -701,6 +701,32 @@ export function postedAt(course, k, route) {
    box along its exit road to the seam, which on a long road is most of a
    kilometre: the car is on the new road from the box's far edge, and its
    limit with it (crossing.js). */
+/* THE LIMIT IN FORCE where a car is NOW: the road it came in on, until it is
+   past the box's far edge, and the road it has turned onto from there --
+   exactly where the traffic changes its wanted speed (crossing.js). Before
+   this, the fare meter, the voice's speed events and the HUD's limit sign
+   read the approach road's limit for the whole exit stretch, often most of
+   a kilometre: turning from a 40 street onto a 60 road and driving 57, the
+   meter called it speeding and the sign said 40 (20 October). One function,
+   so the player is judged and told by the same number the traffic drives to. */
+export function limitAt(course, me) {
+  const p = course.at?.[me.k ?? 0]?.layout?.paths?.[me.route];
+  if (p && me.s > p.clearAt) { const out = postedOutAt(course, me.k ?? 0, me.route); if (out != null) return out; }
+  return postedAt(course, me.k ?? 0, me.route);
+}
+
+/* The KIND of the road a route is on ("from") or leaves by ("to"): what a
+   driver reads from the road itself -- a highway is driven differently from
+   a street at the same limit (traffic.js wantedOnHighway). */
+const roadKinds = new WeakMap();
+export function kindAt(course, k, route, which = "from") {
+  const layout = course.at?.[k]?.layout, p = layout?.paths?.[route];
+  const id = p && layout.legs?.[p[which]]?.road;
+  if (id == null) return null;
+  let m = roadKinds.get(course);
+  if (!m) roadKinds.set(course, (m = new Map((course.roads ?? []).map((r) => [r.id, r.kind]))));
+  return m.get(id) ?? null;
+}
 export function postedOutAt(course, k, route) {
   const layout = course.at?.[k]?.layout;
   const to = layout?.paths?.[route]?.to;

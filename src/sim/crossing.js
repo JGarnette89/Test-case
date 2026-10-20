@@ -38,7 +38,7 @@ import {
   courseOf, laneSpan, nextFor, joinedTo, poseOn,
   radiusFor,
 } from "./course.js";
-import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt } from "./graph.js";
+import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt, kindAt } from "./graph.js";
 import { stepLights, LOOP } from "./actuated.js";
 import { HONK_AGAIN } from "./horn.js";
 import { askOf, askedOf, offerOf, courtesyAccel } from "./courtesy.js";
@@ -1684,7 +1684,7 @@ export function step(world) {
          52 km/h. The limit is the road's, from the box's far edge. */
       if (me && !me.player && !me.crash && world.road.posted && me.held == null && me.s > pathOf(world, me).clearAt) {
         const out = postedOutAt(world.course, me.k ?? 0, me.route);
-        if (out != null) { const v0 = wantedFor(me, out, me.caution); if (v0 !== me.v0) me = { ...me, v0 }; }
+        if (out != null) { const v0 = wantedFor(me, out, me.caution, kindAt(world.course, me.k ?? 0, me.route, "to")); if (v0 !== me.v0) me = { ...me, v0 }; }
       }
       if (!me || me.player || me.s <= pathOf(world, me).length) return me;
       let wanted = null;
@@ -1725,7 +1725,7 @@ export function step(world) {
         /* The next stop a bus makes on the way through (buses.js). */
         ...(me.kind === "bus" ? { busStop: nextStop(world.course, me, world.course.at[on.k].layout.paths[on.route], 0, Math.max(15, stoppingRoom(me.v))), dwellFrom: null, wantsOut: null, bay: null } : {}),
         pass: null,   // a pass ends before the seam (passing.js `planPass`)
-        ...(posted == null ? {} : { v0: wantedFor(me, posted, me.caution) }),
+        ...(posted == null ? {} : { v0: wantedFor(me, posted, me.caution, kindAt(world.course, on.k, on.route)) }),
         /* How many intersections they have been through, which is what a
            plan is indexed by and what a section of a drive is counted
            in. Everybody carries it, not only a candidate. */
@@ -2090,7 +2090,7 @@ function arriving(world, n) {
      one number and having it corrected a line later -- two
      implementations of one quantity is the recurring bug here. */
   const posted = world.road.posted ? postedAt(world.course, where.k, route) : null;
-  const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6) };
+  const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6), kind: kindAt(world.course, where.k, route) };
   /* THE RIVALS (rivals.js): an absent one is the next car to arrive -- their profile, through the same `driver`. */
   const rival = rivalDue(world, world.actors, kind);
   const who = driver(road, world.seed, n, rival?.ratings ?? null, null, kind);
@@ -2209,7 +2209,7 @@ function pullingOut(world, n, actors) {
   else s = lo + r() * (hi - lo);
   const posted = world.road.posted ? postedAt(world.course, at.k, chosen.route) : null;
   const base = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
-  const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6) };
+  const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6), kind: kindAt(world.course, at.k, chosen.route) };
   /* FROM HERE: a car that pulls out of a district is one of its people,
      drawn from its character. Traffic arriving at the city's edge is from
      elsewhere and is drawn as it always was. */

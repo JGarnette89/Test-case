@@ -28,7 +28,7 @@
    ===================================================================== */
 import { whatStops, AT_REST } from "./crossing.js";
 import { movementLight } from "./signal.js";
-import { postedAt } from "./graph.js";
+import { limitAt } from "./graph.js";
 import { reasonToStayOut, KEEP_RIGHT_FAULT } from "./lanechange.js";
 import { clearBetween, wantedGap, lenOf, DT } from "./traffic.js";
 
@@ -98,7 +98,7 @@ export function detect(prev, now, state0 = newEventState()) {
   const L = layoutOf(w, me), path = pathOf(w, me), leg = legOf(w, me);
   const sameSpot = (pm.k ?? 0) === (me.k ?? 0);
   const pPath = pathOf(pw, pm);
-  const posted = postedAt(w.course, me.k ?? 0, me.route) ?? 13.9;
+  const posted = limitAt(w.course, me) ?? 13.9;
   st.vHist.push(me.v ?? 0);
 
   /* COLLISION: the screen says the player touched something this tick. */

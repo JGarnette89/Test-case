@@ -2918,6 +2918,71 @@ round the player, spawned ahead and retired behind, biased to their route
 this instrument; then simulation level of detail, with the promotion check
 and the determinism ruling written into DECISIONS.md before any code.
 
+##### 1.2.15 A highway to swim in -- 20 October
+
+The maintainer: *"what id like to see from this is a highway the player can
+endlessly 'swim' in with traffic behaving like traffic would."* Swimming is
+differential motion -- passing and being passed -- so the encounter
+instrument now counts it: **overtook** and **overtaken** per minute (a car
+beside the player, a lane's half-width across, going from ahead to behind or
+the reverse) and **merges judged** (into another lane, or onto a highway from
+a slip road, with a car in that lane within 30 m).
+
+**THE DIAGNOSIS** (`tools/measure/highway-swim.mjs`, 120-300 cars). The
+expectation was a narrow speed spread and no overtaking. Measured, neither:
+desired speed 94-96 km/h at a spread of +/- 21 (twice a real motorway's
+10-12), surviving the following model (actual +/- 21-24); overtaking lane
+changes 0.3-0.4 a car-minute; lanes sorted, about 104 / 97 / 70 km/h left to
+curb. The "sandwiched" player numbers were mostly the MEASURING DRIVER, which
+kept right and never overtook. Four harness faults were found on the way and
+fixed in `tools/lib/good-driver.mjs` -- a throttle capped at a slider position
+that held 80 km/h, the approach road's limit read for a kilometre of highway,
+no overtaking, a parked player counted -- each one a reminder that the
+instrument is only as honest as what it is fed.
+
+**WHAT WAS REAL, AND FIXED:**
+1. **On a highway the speed spread is the road's** (`traffic.js`
+   `wantedOnHighway`): limit x (1.05 - 0.17 (caution - 1)) -- a typical
+   driver just over the limit, a real spread, a floor near 0.88 -- where the
+   street formula's 0.65 floor made the curb lane a lawful driver is kept in
+   run at 70 km/h on a 100 road. The road's kind is read where the limit is
+   (`graph.js` `kindAt`), at all four places a car's wanted speed is set.
+   Maps with no highway hash identically to before. After: curb lane 78-82,
+   middle 101-103, left 107-109 km/h. HIGHWAY_CENTRE and HIGHWAY_SLOPE are
+   flagged for the maintainer.
+2. **The limit in force is one function** (`graph.js` `limitAt`): past the
+   box's far edge, the road turned onto. The fare meter, the voice's speed
+   events and the HUD's limit sign all read the APPROACH road's limit for
+   the whole exit stretch -- turning onto a faster road and driving at it,
+   the meter called it speeding and the sign showed the old number.
+
+**THE PLAYER, at the limit on the highway, after:** overtakes 4-6 cars a
+minute (1-2 before), meets 5-10, merges judged 0.2-0.7. But **following
+still 26-53%**, rising with density, and the reason is structural:
+
+**HALF OF EVERY MULTI-LANE ROAD ALLOWS NO LANE CHANGE.** A path runs from an
+intersection's approach, through the box, along the exit road to the seam
+where the next intersection takes over. Lane changes -- the traffic's
+(`lanechange.js`, room before the next line) and the player's (`drive.js`,
+"only before the line") -- exist only on the approach. Measured: 50% of the
+highway's multi-lane length (12.7 of 25.3 lane-km), 51% of the city's, 51% of
+test map 1's. On those stretches nobody can overtake, and a player who steers
+across a line moves the car but stays in the old lane to everybody else.
+**Next: lane changes on the exit stretch** -- the lane there is the path's
+`to` leg, every path leaving by it shares the stretch, and the honest
+coordinate is distance remaining (as `whatStops` already uses for a shared
+exit).
+
+**THE CONTROLS: ADJUSTABLE WHILE DRIVING** (the maintainer: "refinement to
+the controls (I'm not sure exactly what this means yet)"). Control feel
+cannot be specified from a desk or measured headlessly; it is the one thing
+only his hands can judge. So no speculative change: when the swimmable
+highway ships, the build carries a debug panel on #/map, changeable
+mid-drive, for what is most likely to be wrong -- steering rate, how hard the
+lane assist pulls, the throttle and brake response curve, how quickly the car
+settles after a lane change. He drives it at low, medium and high density,
+says which positions felt right, and those positions become the constants.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,

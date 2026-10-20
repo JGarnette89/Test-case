@@ -20,21 +20,27 @@
    drives exactly as well.
    ===================================================================== */
 import { stepDriver, aheadOf } from "../../src/sim/drive.js";
-import { stopBand } from "../../src/sim/player.js";
-import { postedAt } from "../../src/sim/graph.js";
+import { stopBand, sliderFor } from "../../src/sim/player.js";
+import { limitAt } from "../../src/sim/graph.js";
 import { alongTo, ARRIVED_WITHIN } from "../../src/sim/route.js";
 import { DT } from "../../src/sim/traffic.js";
 import { whatStops } from "../../src/sim/crossing.js";
 
 const LANE = 3.6;
 
-export function goodInput(me, world, sc, { pace = 0.95 } = {}) {
+export function goodInput(me, world, sc, { pace = 0.95, overtake = false } = {}) {
   const course = world.course;
   const spot = course.at[me.k], path = spot.layout.paths[me.route], leg = spot.layout.legs[path.from];
-  const posted = postedAt(course, me.k, me.route) ?? 13.9;
+  /* Past the box the limit is the road being driven onto, from its far edge -- as the traffic reads it (crossing.js).
+     Reading the approach's limit, the harness drove a kilometre of highway at a slip road's 76 km/h. */
+  const posted = limitAt(course, me) ?? 13.9;
   const ahead = aheadOf(me, course, world);
   /* Cruise: a gentle P on speed. */
-  let slider = Math.max(-0.3, Math.min(0.6, ((posted * pace - me.v) / Math.max(1, posted)) * 3));
+  /* The acceleration wanted -- proportional to the speed still to gain, gentle --
+     and the slider that gives it, through the car's own inverse (player.js
+     sliderFor). A fixed slider cap held the harness at 80 km/h (the hold point
+     climbs with speed); a guessed offset overshot the limit. */
+  let slider = sliderFor(Math.max(-1.5, Math.min(1.2, (posted * pace - me.v) * 0.6)), me.v, me.grade ?? 0);
   if (ahead.stop) slider = Math.min(slider, ahead.stop.at);
   /* At rest: hold until the stop counts and the rules the traffic obeys
      let them go (crossing.js `whatStops` -- a red, somebody with the
@@ -59,7 +65,18 @@ export function goodInput(me, world, sc, { pace = 0.95 } = {}) {
   const signal = want && want !== "straight" && me.s <= path.stopAt ? want : null;
   /* The lane: the one the screen asks for, else keep right unless a left is coming here. */
   let lane = sc.navLane ?? 0;
-  if (!lane && leg && !leg.curb && want !== "left" && me.s < path.stopAt - 25) lane = 1;
+  /* OVERTAKE (a highway player): a slower car close ahead in my lane, and the
+     lane to my left clear beside me -- pull out; and keep right only into a
+     lane that is clear and holds nobody slower just ahead. */
+  const pos = leg?.pos ?? leg?.lane ?? 0;
+  const besideLeg = (d) => spot.layout.legAt?.(leg.base, pos + d) ?? null;
+  const carsOn = (legId) => world.actors.filter((a) => !a.player && (a.k ?? 0) === me.k && spot.layout.paths[a.route]?.from === legId);
+  const clear = (legId) => legId && carsOn(legId).every((a) => Math.abs(a.s - me.s) > 20);
+  const slowAhead = (legId) => carsOn(legId).some((a) => a.s > me.s && a.s - me.s < 60 && (a.v ?? 0) < posted * pace - 1.5);
+  if (overtake && !lane && leg && me.s < path.stopAt - 60) {
+    if (slowAhead(path.from) && clear(besideLeg(-1))) lane = -1;
+    else if (!leg.curb && want !== "left" && clear(besideLeg(1)) && !slowAhead(besideLeg(1))) lane = 1;
+  } else if (!lane && leg && !leg.curb && want !== "left" && me.s < path.stopAt - 25) lane = 1;
   const target = me.s <= path.stopAt - 3 ? lane * LANE * 0.72 : 0;
   const steer = -(me.off - target) * 0.25 - me.psi * 2.5;
   return { input: { steer, slider, assist: 0 }, signal };

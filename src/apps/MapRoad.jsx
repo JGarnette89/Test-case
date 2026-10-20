@@ -38,7 +38,7 @@ import { RIVALS } from "../sim/rivals.js";
 import { placesOf, routeTo } from "../sim/route.js";
 import { noticeTick } from "../sim/session.js";
 import { newPace, paceFrame, paceReply, carryOf, newSimClock, clockTick, clockSummary, frameTick, frameParts } from "../sim/pace.js";
-import { junctionsOf, postedAt, poseOnGraph } from "../sim/graph.js";
+import { junctionsOf, postedAt, poseOnGraph, limitAt } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
@@ -440,7 +440,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
            white face, black figure, red when you are over it by more
            than a speedometer's error. It is the road's, from the same
            posted speed the traffic drives to (graph.js postedAt). */
-        const posted = postedAt(sc.world.course, me.k, me.route);
+        const posted = limitAt(sc.world.course, me);   // the limit in force where the car is now (graph.js)
         if (posted) {
           const lim = Math.round((posted * 3.6) / 10) * 10, over = me.v * 3.6 > lim + 3;
           const sx = size.w / 2 + 46, sy = 8, sw = 30, sh = 38;
