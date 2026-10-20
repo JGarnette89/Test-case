@@ -14,6 +14,7 @@ import { LINES, SPEAKERS } from "../content/dialogue.js";
 import { routeTo, nextTurn, alongTo, ARRIVED_WITHIN } from "./route.js";
 import { poseOnGraph } from "./graph.js";
 import { jobTick, jobText } from "./jobs.js";
+import { newEncounters, encounterTick } from "./encounters.js";
 import { credit, newWallet, saveWallet } from "./money.js";
 
 /* WHAT THE GAME NOTICED THIS TICK, AND WHAT IS SAID (sim/events.js, sim/voice.js):
@@ -27,6 +28,8 @@ export function noticeTick(sc, prev, now) {
   const atPlace = (along != null && along > -PULL_IN && along <= ARRIVED_WITHIN) || sc.job?.state === "boarding" || sc.job?.state === "alighting";
   const r = detect(prev, { ...now, atPlace }, sc.ev ?? newEventState());
   sc.ev = r.state;
+  /* WHAT THE PLAYER MEETS (encounters.js): traffic from the player's seat, not the world's workload. */
+  sc.enc = encounterTick(sc.enc ?? newEncounters(), now.me, now.world);
   const events = r.events;
   const arrived = navigate(sc, now.me, now.world.course);
   /* A JOB (sim/jobs.js) owns what arriving means while it runs; a plain trip says "arrived". */

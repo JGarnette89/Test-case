@@ -49,6 +49,7 @@ import { loadWallet } from "../sim/money.js";
 import { HONK_FOR } from "../sim/horn.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter, taskProbe } from "../iso/perf.js";
+import { encounterSummary } from "../sim/encounters.js";
 import { loadSettings, setSetting, settings } from "../settings.js";
 import { ASSIST } from "../sim/player.js";
 
@@ -403,7 +404,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         /* What the browser says blocked the page's thread over the last 5 s: long tasks, and the worst long frame -- script (and whose), rendering. */
         tasks.current ??= taskProbe();
         const g = tasks.current.during(now - 5000, now), lf = g.frame;
-        const taskLine = `\nbrowser: long tasks ${g.tasks ?? "n/a"} ms in 5 s${lf ? ` · worst frame ${lf.ms} = script ${lf.script}${lf.scripts?.[0] ? ` (${lf.scripts[0].where} ${lf.scripts[0].ms})` : ""} + render ${lf.render}` : ""}`;
+        /* WHAT THE PLAYER MEETS (sim/encounters.js), since this drive began: the number the game lives on. */
+        const es = sc.enc ? encounterSummary(sc.enc) : null;
+        const meetLine = es ? `\nyou met ${es.metPerMin} cars/min within 30 m · following ${es.followingShare}% · followed ${es.followedShare}% · ${es.gapsPerMin} gaps judged/min (${es.minutes} min)` : "";
+        const taskLine = meetLine + `\nbrowser: long tasks ${g.tasks ?? "n/a"} ms in 5 s${lf ? ` · worst frame ${lf.ms} = script ${lf.script}${lf.scripts?.[0] ? ` (${lf.scripts[0].where} ${lf.scripts[0].ms})` : ""} + render ${lf.render}` : ""}`;
         /* THE FRAME BY PART, mean/p95 each (15 October): the sim's own pace is honest now, so
            the frame's cost has to be as legible -- and against what was on screen, so a scene
            that is expensive says what is in it. "x of y": drawn, of all there are. */

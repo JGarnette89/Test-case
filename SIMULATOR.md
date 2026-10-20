@@ -2873,6 +2873,51 @@ approach, because the leader is the most constraining car rather than the
 nearest, and narrowing that would change who follows whom. Occasional
 spikes to 40-65 ms remain on every map and are the next thing to find.
 
+##### 1.2.14 What the player meets -- 20 October
+
+The maintainer: *"performance is getting better but my issue is how we are
+measuring performance compared to what the player will actually encounter
+gameplay-wise. we spend a lot to simulate traffic the user will never
+encounter, can we simulate the simulation and bring more traffic closer to
+the user."* Every number kept so far -- cars, step ms, sim against real
+time -- is the simulation's WORKLOAD. A world of 200 cars where the player
+meets one a minute passed every check we own: section 10's pattern at the
+largest scale yet.
+
+**The instrument** (`src/sim/encounters.js`; on `#/map`'s readout as "you
+met ... cars/min"; headless in `tools/measure/encounters.mjs` with the good
+driver on trips): distinct cars within 30 m per minute; share of time
+following a car (the player's own leader from `whatStops`, within 2.5 s);
+share of time followed (a moving car behind in the player's lane, within
+its 2.5 s); gaps judged per minute (standing at a line while a car on a
+conflicting route comes on, once per approach).
+
+**The current build, from the player's seat** (5 minutes driven each):
+
+| map | cars | lane-km | met /min | following | followed | gaps /min |
+|---|---|---|---|---|---|---|
+| test map 1 | 120 | 29 | 18 | 10% | 36% | 0.6 |
+| test map 1 | 200 | 29 | 26 | 4% | 56% | 0.8 |
+| city | 200 | 71 | 6.6 | 5% | 10% | 0.4 |
+| city | 300 | 71 | 9.6 | 8% | 12% | 0.6 |
+| highway | 120 | 30 | 3.8 | 29% | 66% | -- |
+| highway | 200 | 30 | 5.2 | 26% | 87% | -- |
+| highway | 300 | 30 | 8.4 | 28% | 66% | -- |
+
+Read with care: (1) the highway has no lines, so its decisions are merges,
+which "gaps judged" does not count yet; (2) "followed" is inflated by the
+measuring driver, who cruises at 0.95 of the limit while the traffic drives
+at it; (3) the harness first measured a player parked at the map's edge
+(nowhere reachable from a road leading off the map) and read 0 gaps -- it
+now starts a new trip from a dead end. The finding stands either way: on
+the city a player meets under ten cars a minute among three hundred.
+
+**Next** (agreed order): density shaping -- the same budget in a ring
+round the player, spawned ahead and retired behind, biased to their route
+(on the loop, never stripping the road they will re-enter) -- measured by
+this instrument; then simulation level of detail, with the promotion check
+and the determinism ruling written into DECISIONS.md before any code.
+
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
 Section 4. Draw, set kinds and elevation, snap to nodes, set controls,
