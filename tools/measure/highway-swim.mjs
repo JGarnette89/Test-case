@@ -46,9 +46,11 @@ for (const cars of carsArg.split(",").map(Number)) {
       const order = new Map();
       for (const a of w.actors) {
         const L = w.course.at[a.k ?? 0].layout, p = L.paths[a.route], leg = L.legs[p.from];
-        if (!leg || (leg.across ?? leg.lanes ?? 1) < 2 || a.s > p.stopAt) continue;
-        const span = laneSpan(w.course, a.k ?? 0, a.route, a.s)[0];
-        order.set(a.id, { group: `${a.k}|${leg.base}`, lane: leg.pos ?? leg.lane, along: span.along });
+        /* The lane the car is on: the approach's before the line, the exit's after the box (skipped inside it). */
+        const onExit = a.s > p.clearAt, lg = onExit ? L.legs[p.to] : leg;
+        if (!lg || (lg.across ?? lg.lanes ?? 1) < 2 || (a.s > p.stopAt && !onExit)) continue;
+        const span = laneSpan(w.course, a.k ?? 0, a.route, a.s)[onExit ? 1 : 0];
+        order.set(a.id, { group: span.lane.split("#")[0], lane: lg.pos ?? lg.lane, along: span.along });
       }
       if (prevOrder) {
         const groups = new Map();

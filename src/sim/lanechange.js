@@ -51,6 +51,7 @@ import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, clearBetwe
 import { changeTime } from "../core/motion.js";
 import { poseAt } from "./intersection.js";
 import { atNode } from "./crossing.js";
+import { exitRouteInto } from "./graph.js";
 import { fits } from "./corner.js";
 
 /* THE LANE BESIDE, by place across the approach (graph.js `legAt`):
@@ -256,6 +257,8 @@ export function laneStep(world, me, out, view) {
     if (met && met !== out.route) return { ...out, route: met, s: out.s * (layout.paths[met].stopAt / path.stopAt), want: null, turnsMet: (out.turnsMet ?? 0) + 1 };
     if (met) return { ...out, want: null, turnsMet: (out.turnsMet ?? 0) + 1 };
   }
+  /* PAST THE BOX, ON THE ROAD JOINED: the exit stretch (exitStep, below). */
+  if (out.s > path.clearAt + EXIT_FROM && out.v >= 3 && world.course.graph) return exitStep(world, quiet(out), layout, path, view);
   if (out.going || out.stoppedAt != null || out.v < 3) return quiet(out);
   if (!leg || (leg.across ?? leg.lanes ?? 1) < 2) return quiet(out);
   /* At this vehicle's own sideways comfort: changeTime scales with 1/sqrt(lateral). */
@@ -408,6 +411,95 @@ function gapFor(out, nb, kappa) {
 
 /* THE GAP, THE LOOK AND THE GO -- the same for a change a driver wants
    and one they need. */
+/* =====================================================================
+   THE EXIT STRETCH (20 October). A path runs from an intersection's
+   approach, through the box, along the road it leaves by to the seam where
+   the next intersection takes over -- and lane changes lived only on the
+   approach, so on HALF of every multi-lane road nobody could overtake or
+   keep right: 50% of the highway, 51% of the city (SIMULATOR.md 1.2.15).
+   Here the lane is the path's `to` leg, every path leaving by it shares the
+   stretch, and the coordinate is DISTANCE REMAINING to the seam -- the
+   measure `whatStops` already uses for a shared exit. The motive, the gain,
+   the gap and the blend are the approach's own (`attempt`); a change is not
+   begun with the seam too near to finish it, and the next approach takes
+   over from there.
+   ===================================================================== */
+export const EXIT_FROM = 10;   // m past the box before the exit stretch counts as road to change lane on
+/* The cars in an exit lane, ahead and behind, by distance remaining -- and,
+   ahead, those already past the seam on the next intersection's approach. */
+function exitNeighbours(world, me, layout, toLeg, rem) {
+  let ahead = null, behind = null, da = Infinity, db = Infinity;
+  for (const a of atNode(world, world.actors, me.k ?? 0)) {
+    if (a.id === me.id) continue;
+    const p = layout.paths[a.route];
+    if (!p || a.s < p.stopAt) continue;
+    if (!(p.to === toLeg || (changing(a.lc, world.t) && a.lc.fromTo === toLeg))) continue;
+    const d = rem - (p.length - a.s);
+    if (d >= 0 && d < da) { da = d; ahead = a; }
+    if (d < 0 && -d < db) { db = -d; behind = a; }
+  }
+  const j = world.course.joins[(me.k ?? 0) + "|" + toLeg];
+  if (j) {
+    const there = world.course.at[j.k].layout;
+    for (const a of atNode(world, world.actors, j.k)) {
+      if (a.id === me.id || there.paths[a.route]?.from !== j.side) continue;
+      const d = rem + a.s;
+      if (d < da) { da = d; ahead = a; }
+    }
+  }
+  return { ahead, behind, da, db };
+}
+function exitStep(world, out, layout, path, view) {
+  const t = world.t;
+  const outLeg = layout.legs[path.to];
+  if (!outLeg || (outLeg.across ?? outLeg.lanes ?? 1) < 2 || !layout.legAt || out.kind === "bus") return out;
+  const T0 = LC_TIME / Math.sqrt(vehicleOf(out).lateral ?? 1);
+  const ownT = T0 * (1 + 0.5 * (deficitOf(out.ratings ?? {}, "steering").deficit ?? 0));
+  const rem = path.length - out.s;
+  /* The seam too near to finish a change: the next approach takes over. */
+  if (rem < Math.max(out.v, out.v0 ?? out.v) * ownT * 1.2 + 15) return out;
+  if (out.lcDone != null && t - out.lcDone < SETTLE) return out;
+  const want = out.v0 ?? out.v, look = Math.max(30, want * LOOK);
+  const pos = outLeg.pos ?? outLeg.lane;
+  const option = (dir) => {
+    const toLeg = layout.legAt(outLeg.base, pos + dir);
+    if (!toLeg || !layout.legs[toLeg] || layout.legs[toLeg].bay) return null;
+    const route = exitRouteInto(layout, toLeg, path.intent);
+    if (!route) return null;
+    const target = layout.paths[route], s2 = target.length - rem;
+    if (s2 <= target.clearAt + 1) return null;
+    return { dir, to: pos + dir, toLeg, route, s2, nb: exitNeighbours(world, out, layout, toLeg, rem) };
+  };
+  /* THE MOTIVE, as on the approach: held back by a slower car in this lane. */
+  const leader = view?.leader;
+  const held = leader && leader.id !== "line" && view.gap <= look && Math.min(want, leader.v ?? 0) <= want - 1;
+  if (held) {
+    const closing = Math.max(0, out.v - (leader.v ?? 0));
+    if (view.gap < closing * LC_TIME * 0.5 + 2) return out;
+    const here = Math.min(want, leader.v ?? 0);
+    let best = null;
+    for (const dir of [-1, 1]) {
+      const o = option(dir);
+      if (!o) continue;
+      const there = o.nb.ahead && clearBetween(o.nb.da, out, o.nb.ahead) < look ? Math.min(want, o.nb.ahead.v ?? 0) : want;
+      const gain = there - here;
+      if (gain < LC_GAIN * Math.max(0.2, out.caution ?? 1)) continue;
+      if (!best || gain > best.gain) best = { ...o, gain };
+    }
+    return best ? attempt(world, out, path, best, T0) : out;
+  }
+  /* KEEP RIGHT, here too: a driver who knows the rule, settled, back toward
+     the curb into a lane with nobody slower just ahead. */
+  if (!outLeg.curb && knows(out, "keep-right") && (out.lcDone == null || t - out.lcDone >= RETURN_AFTER)) {
+    const o = option(1);
+    if (o && !(o.nb.ahead && clearBetween(o.nb.da, out, o.nb.ahead) < look && (o.nb.ahead.v ?? 0) < want - 1)) {
+      const moved = attempt(world, out, path, { ...o, keepRight: true }, T0);
+      if (moved.route !== out.route) return { ...moved, keptRight: (out.keptRight ?? 0) + 1 };
+    }
+  }
+  return out;
+}
+
 function attempt(world, out, path, best, T0) {
   const t = world.t;
   const caution = out.caution ?? 1;
@@ -463,7 +555,7 @@ function attempt(world, out, path, best, T0) {
     lcCount: (out.lcCount ?? 0) + 1,
     ...(best.mandatory ? { turnChanges: (out.turnChanges ?? 0) + 1 } : {}),
     lc: {
-      from: out.route, fromLeg: path.from, t0: t,
+      from: out.route, fromLeg: path.from, fromTo: path.to, t0: t,
       T: T0 * (1 + 0.5 * steer),
       L0, ov: weaveRoom(LANE) * steer,
       missed, blind: !!inBlind, noticeAfter: REACTION_FLOOR + obs * REGISTER_SPAN,

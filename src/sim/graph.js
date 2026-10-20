@@ -701,6 +701,22 @@ export function postedAt(course, k, route) {
    box along its exit road to the seam, which on a long road is most of a
    kilometre: the car is on the new road from the box's far edge, and its
    limit with it (crossing.js). */
+/* THE ROUTE INTO AN EXIT LANE, for a lane change on the exit stretch: every
+   path that leaves by a leg shares that leg's whole final stretch, so any of
+   them carries the car there; the one making the same movement is preferred,
+   then a straight one. Per layout, cached. */
+const intoCache = new WeakMap();
+export function exitRouteInto(layout, toLeg, intent = "straight") {
+  let m = intoCache.get(layout);
+  if (!m) {
+    m = new Map();
+    for (const [r, p] of Object.entries(layout.paths)) { let xs = m.get(p.to); if (!xs) m.set(p.to, (xs = [])); xs.push(r); }
+    intoCache.set(layout, m);
+  }
+  const xs = m.get(toLeg) ?? [];
+  return xs.find((r) => layout.paths[r].intent === intent) ?? xs.find((r) => layout.paths[r].intent === "straight") ?? xs[0] ?? null;
+}
+
 /* THE LIMIT IN FORCE where a car is NOW: the road it came in on, until it is
    past the box's far edge, and the road it has turned onto from there --
    exactly where the traffic changes its wanted speed (crossing.js). Before

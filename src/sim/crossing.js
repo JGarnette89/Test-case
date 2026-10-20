@@ -195,11 +195,12 @@ function relevanceOf(world, list) {
     if (p.laneIn) bucket(idx.lane, p.laneIn.id).push(n);
     if (p.laneOut && p.laneOut.id !== p.laneIn?.id) bucket(idx.lane, p.laneOut.id).push(n);
     let node = idx.at.get(k);
-    if (!node) idx.at.set(k, (node = { f: new Map(), c: new Map(), t: new Map(), r: new Map() }));
+    if (!node) idx.at.set(k, (node = { f: new Map(), c: new Map(), t: new Map(), r: new Map(), o: new Map() }));
     bucket(node.f, p.from).push(n);
     bucket(node.t, p.to).push(n);
     bucket(node.r, a.route).push(n);
     if (a.lc?.fromLeg != null) bucket(node.c, a.lc.fromLeg).push(n);
+    if (a.lc?.fromTo != null) bucket(node.o, a.lc.fromTo).push(n);
   }
   relevanceCache.set(list, idx);
   return idx;
@@ -275,7 +276,8 @@ function relevantTo(world, list, me, mineAt, mine, layout) {
   if (node) {
     take(node.f.get(mine.from), 0); take(node.c.get(mine.from), 0);
     if (me.lc?.fromLeg != null) { take(node.f.get(me.lc.fromLeg), 0); take(node.c.get(me.lc.fromLeg), 0); }
-    take(node.t.get(mine.to), 0);
+    take(node.t.get(mine.to), 0); take(node.o.get(mine.to), 0);
+    if (me.lc?.fromTo != null) take(node.t.get(me.lc.fromTo), 0);
     const partners = partnersOf(layout, me.route);
     for (let q = 0; q < partners.length; q++) take(node.r.get(partners[q]), 0);
   }
@@ -1081,6 +1083,15 @@ export function whatStops(me, world) {
        On a shared exit the honest measure is DISTANCE REMAINING, because
        the tail of both paths is the same piece of road. Whoever has less
        left is in front. */
+    /* ...AND A CAR CHANGING LANE ON THE EXIT STRETCH (lanechange.js
+       exitStep) is in both exit lanes until its blend is done, as one
+       changing on the approach is in both approach lanes: measured by
+       distance remaining, the shared exit's own measure. */
+    if (theirs.to !== mine.to && me.s > mine.clearAt - lenOf(me) && them.s > theirs.clearAt
+      && ((changing(them.lc, world.t) && them.lc.fromTo === mine.to) || (changing(me.lc, world.t) && me.lc.fromTo === theirs.to))) {
+      const myLeft = mine.length - me.s, theirLeft = theirs.length - them.s;
+      if (theirLeft < myLeft) consider(clearBetween(myLeft - theirLeft, me, them), them);
+    }
     if (theirs.to === mine.to && theirs.from !== mine.from) {
       const myLeft = mine.length - me.s;
       const theirLeft = theirs.length - them.s;

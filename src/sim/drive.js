@@ -24,7 +24,7 @@ import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand } from "./p
 import { whatStops, poseOf, AT_LINE } from "./crossing.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
-import { poseOnGraph, intentOf, normDeg, curbLegOf } from "./graph.js";
+import { poseOnGraph, intentOf, normDeg, curbLegOf, exitRouteInto } from "./graph.js";
 import { poseAt } from "./intersection.js";
 import { CAR, DT } from "./traffic.js";
 
@@ -135,6 +135,24 @@ function zAlong(path, s) {
    car does not move. Only before the line: past it the turn is
    committed, and on the way out the lane is the turn's. */
 function laneChange(layout, me, path) {
+  /* ON THE EXIT STRETCH (lanechange.js exitStep): the lane is the path's `to`
+     leg, and the route becomes one into the next exit lane at the same
+     distance remaining -- before, a player who steered across a line here
+     moved the car but stayed in the old lane to everybody else. */
+  if (me.s > path.clearAt + 1) {
+    const outLeg = layout.legs[path.to];
+    if (!outLeg || !layout.legAt) return me;
+    const lane = LANE;
+    const d = me.off > lane / 2 ? 1 : me.off < -lane / 2 ? -1 : 0;
+    if (!d) return me;
+    const toLeg = layout.legAt(outLeg.base, (outLeg.pos ?? outLeg.lane) + d);
+    if (!toLeg) return me;
+    const route = exitRouteInto(layout, toLeg, path.intent);
+    if (!route) return me;
+    const target = layout.paths[route], s2 = target.length - (path.length - me.s);
+    if (s2 <= target.clearAt) return me;
+    return { ...me, route, s: s2, off: me.off - d * lane };
+  }
   const leg = layout.legs[path.from];
   if (!leg || me.s > path.stopAt) return me;
   const lane = LANE;
