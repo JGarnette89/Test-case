@@ -3089,6 +3089,48 @@ case where something draws it and it is a few pixels.
   section 7 checks it is DRAWN and in the right colour, not that it can
   be read. The maintainer judges that.
 
+## 10.9 LEVEL OF DETAIL KEEPS THE WORLD DETERMINISTIC -- the ruling, before any code (20 October)
+
+Simulation level of detail (full / coarse / dormant tiers by distance from
+the player; SIMULATOR.md 1.2.14 and the maintainer's "simulate the
+simulation") makes what happens to a car depend on where the player is. The
+golden runs and `tools/measure/world-hash.mjs` assume one fixed step over
+every car. Two ways to keep them meaning something; **this project takes
+the second.**
+
+1. ~~Hash only the full-tier cars.~~ Rejected. The bugs LOD will produce live
+   exactly where this looks away: a dormant car advanced wrongly, a coarse
+   car demoted with a stale lane change, a promotion that puts somebody
+   inside another car's headway. A hash that skips those tiers would pass
+   while the world it does not cover rots, and every car would still reach
+   the player through promotion. It is a check with a boundary chosen to
+   exclude the failure (CLAUDE.md item 4).
+2. **The tier is part of the seeded, deterministic state.** Which tier a car
+   is in, and when it changes, is a PURE FUNCTION of the world before the
+   tick and the player's pose -- no clock, no frame rate, no device. The
+   player's pose is the one input, and a run that fixes it (no player; or a
+   scripted one, as `tools/lib/good-driver.mjs` drives) is exactly
+   reproducible. **The hash covers EVERY car in EVERY tier, with its tier,**
+   so a promotion or demotion that changes is a hash that changes.
+
+What this obliges, before LOD lands:
+- **Tier changes happen on the tick, inside `step`, never on a frame**: a
+  frame-driven boundary would make the world depend on the device's frame
+  rate -- the worker's lesson (SIMULATOR.md 1.2.11) in another form.
+- **Hysteresis is part of the rule** (a car promoted at R1 is demoted only past
+  R2 > R1), so a car on the boundary does not flicker tier tick to tick.
+- **A dormant car's advance is analytic and seeded** (its position from its
+  speed and the time since it went dormant, never a random draw at
+  promotion), so the same history promotes to the same place.
+- **The promotion check is written before the feature**, as `verify-start`
+  was for spawning into traffic, which bit twice: every promoted car arrives
+  on a lane, at a speed the traffic it joins could have produced, clear of
+  every headway -- enumerated over the tier boundary, not sampled.
+- **The full-tier world, alone, is not required to be identical with LOD on
+  and off** -- the point of LOD is that far traffic is approximated -- but a
+  run with every car held in full tier must hash exactly as today's step
+  does, so turning LOD off is a provable return to the current behaviour.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

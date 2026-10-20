@@ -120,3 +120,56 @@ CLAUDE.md, cold-start item 8. In short: iterate with `node tools/check.mjs
 before a milestone ships or when something unexplained happens; legacy
 only when `src/engine/` changes. Every check has a timeout and a recorded
 time, every run a line in the history.
+
+## The audit, 20 October: which checks have earned their place
+
+Sources, all three read for this: the run log (`tools/check-history.jsonl`,
+every run through `check.mjs` since 14 October -- 26 runs, two failures);
+every commit message in the history, searched for a check named beside
+"caught", "found", "fail" or "sabotage"; and the documents. A run made by
+hand (`node tools/verify-x.mjs`) is not in the log, so the log alone
+under-counts; the commits are the longer memory. **The suite is 11,523
+lines across 45 checks.**
+
+**1. CAUGHT A REAL BUG -- in code, not in the check (16):**
+`verify-screens` (blank screens twice; a broken string in `hud.js` on 15
+October), `verify-signs` (yield-road cars slowing early), `verify-drive` (a
+through-road deadlock), `verify-signal` (cars braking hard while standing),
+`verify-course` (`marking.js` crash), `verify-courtesy` (courteous drivers
+refusing to offer -- once redesigned), `verify-trucks`, `verify-paint` (a
+walker inside an embankment), `verify-generate` (sections' starts facing
+the wrong end), `verify-crashes` (an attentive car driving into somebody it
+could see), `verify-briefs` (two before shipping), `verify-graph` (a path
+through a waiting car), `verify-telling` (a finding about lag), `verify-money`
+(standing for a fare read as dawdling; a route through a turn no signal
+can make, with `verify-places`), `verify-places` (with money, above),
+`verify-worker` (the old pacing's stutter, as its control).
+
+**2. PROVEN ABLE TO FAIL -- broken on purpose and caught it -- but no real
+regression recorded (17):** `verify-actuated`, `verify-bays`, `verify-bench`,
+`verify-buses`, `verify-compliance`, `verify-core`, `verify-editor`,
+`verify-exam`, `verify-greens`, `verify-map`, `verify-observation`,
+`verify-peds`, `verify-perf`, `verify-rivals`, `verify-voice`,
+`verify-walkers`, `verify-start`. These are guarding something and have
+shown they can see a break; that they have not caught a regression yet is
+what a guard on stable code looks like.
+
+**3. NEITHER -- no recorded failure and never broken on purpose (12):**
+`verify-sim`, `verify-crossing`, `verify-chase`, `verify-connect`,
+`verify-wheel`, `verify-waves`, `verify-loop`, `verify-lanes`,
+`verify-keepright`, `verify-lanecost`, `verify-passing`, `verify-busbays`.
+(`verify-lanes` and `verify-lanecost` have failed only on timing lines under
+load -- the check's own fault, fixed.) **These are the ones that might be
+guarding nothing.** Several guard code that has been stable for weeks
+(`sim`, `crossing`, `chase`, `connect`, `wheel`), which would explain the
+silence; the only way to tell is to break the module each is written against
+and watch it fail. That sabotage pass -- twelve checks, each against its own
+module, minutes each with `--direct` -- is the outstanding piece of this
+audit, and it is owed before anything in group 3 is trusted further.
+
+**The before and after for a single change** (from the table above): before
+14 October every commit ran the whole suite, 75 minutes; now a change runs
+the checks whose imports reach it -- 2 checks in seconds for a screen, 4-5 in
+under ten seconds for the money and route modules, 6-10 in about six
+minutes for the renderer or the worker, 40 in about 21 minutes for
+`crossing.js` (the hub nearly every sim check imports).

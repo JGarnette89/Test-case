@@ -1642,6 +1642,7 @@ src/sim/events.js        what the game notices about the player's driving: one d
 src/sim/route.js         going somewhere: a place is the curb in front of a building on its own side, a route the shortest path over the joins, and the lane a movement needs
 src/sim/money.js         what a job pays: the task's base, the drive's faults at their own severity, the limit, lateness, a tip for a clean drive; the wallet through storage.js
 src/sim/jobs.js          the job machinery and the taxi: an offer, the pickup, the meter, the drop-off, the fare
+src/sim/encounters.js    what the player meets, per minute of driving: cars within 30 m, following and followed, gaps judged -- the player's seat, not the world's workload
 src/sim/session.js       the screen's per-tick logic, where a check can run it: what was noticed, what is said, and the route
 src/sim/voice.js         the rate limiter: a line per 12 s (4 for the severe), the most severe pending, nothing stale, nothing twice
 src/content/dialogue.js  the lines, A.U.T.O., Jay and the rivals, keyed by trigger and speaker -- data
@@ -2057,6 +2058,7 @@ node tools/verify-busbays.mjs      bus bays (split from verify-buses): out of th
 node tools/verify-passing.mjs      going round a bus at a curb stop (split from verify-buses): on a broken line or none, never a solid one, the gap the passer's to misjudge, less time stood behind the bus
 node tools/verify-places.mjs       going somewhere: places on the right curb, routes that replay along the joins and are the shortest an independent search finds, and a player doing only what the screen says arrives and is noticed
 node tools/verify-money.mjs        money and the taxi: the fare pays for skill not time (every fault costs its severity, praise nothing, contact voids, the limit and lateness cost, longer never pays more), the wallet through storage, and a fare driven end to end by a good driver -- tipped -- and the same fare speeding paid less
+node tools/verify-encounters.mjs   what the player meets: cars within 30 m counted once each, following and followed only in the player's lane and the right way round, a gap judged once per stand at the line, and on real traffic none of them zero -- the expectations stated in the check, not read from the module
 node tools/verify-voice.mjs        the voice: the limiter's budget held as properties over random events and stated in the check, the lines to their spec, and every detector on its situation and its opposite (stopping for somebody on foot not yet)
 node tools/verify-waves.mjs        green waves: a car holding the posted speed from a green meets the next green on every timed link of every map; a corridor runs only where the road has priority (never through an uncontrolled crossroads); one cycle per system and no green shortened; a map with fewer than two linked signals keeps its plans; and in the sim the platoon goes through far more often with the wave than without, nothing crashing
 ```

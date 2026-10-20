@@ -23,6 +23,7 @@
  "verify-directions": 2,
  "verify-drive": 92,
  "verify-editor": 15,
+ "verify-encounters": 25,
  "verify-equivalence": 1,
  "verify-events": 70,
  "verify-exam": 49,
