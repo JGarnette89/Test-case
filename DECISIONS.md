@@ -2978,6 +2978,58 @@ drivers against bold ones. One seed, five minutes.
   slack.
 - And the cost of not doing this: the check had been green for weeks.
 
+### 10.4 TWO WORKED EXAMPLES FROM ONE DAY: an axis's first fault, and a proxy that measured the workload (22 October)
+
+**Observation reached the sheet, and the obvious version did not.** For the
+whole life of the project observation was the axis with no markable fault
+of its own (CLAUDE.md, "OBSERVATION is exempt from the trait floor"). It has
+one now: `lateOffGreen` (10.16) -- the car at the head of the queue still
+sitting after a green, past the worst a competent observer could take,
+derived from the axis's own numbers. Poor observer 11 of 11 greens, the same
+driver sharp 0 of 11, timid 0 of 12, and two sabotages fail it.
+
+The fault the maintainer actually ruled on (10.12.3, braking hard without
+having registered the car behind) was built the same day and NOT shipped:
+over twelve dense drives it marked a sound driver 4 times and a poor
+observer 6. The worked part is what was not done. A threshold, a gap
+multiple or a registration window could each have been nudged until the
+split looked like a split; every one of those would have been tuning a
+number to make a fault appear (CLAUDE.md, "never tune a number to make a
+check pass"). The finding was that the course offers the event to
+everybody, and the supply that discriminates is the merge, on the map,
+where the sheet does not run. A fault that cannot discriminate is noise on
+the sheet, however principled its definition.
+
+**Standing time was a proxy, and it measured the simulation's workload.**
+The 150-car "regression" (10.15) was the acceleration lane standing more
+car-seconds than a yield sign: 1101, then 821, against 730. Three traces
+went into closing it. The question that ended it was the maintainer's
+reviewer's: does the yield sign admit the same number of cars, and what
+does a DRIVER meet? Measured per car (tools/measure/entry-experience.mjs,
+six seeds, four minutes):
+
+| | admitted /min | entry to joined, median / p90 | joiners who stood | car-s standing |
+|---|---|---|---|---|
+| yield sign | 30.9 | 32.5 / 54.9 s | **51%** | 1036 |
+| acceleration lane | 30.0 | 31.3 / 41.6 s | **6%** | 710 |
+
+The two admit the same -- both admit what the slip roads are fed -- and on
+six seeds the lane stands LESS in total; the three-seed comparison was seed
+noise around a measure that did not ask the question. What a driver meets is
+the reverse of what the proxy said: at a yield sign half of everybody stops
+(a few seconds to a minute); in the lane almost nobody does. The lesson is
+the one the maintainer made this week about encounters: count what the
+person in the seat experiences, not what the world spends.
+
+**And the experience measure found what the proxy hid.** The 6% who do stand
+in the lane stand for a long time: 15 of 42 over a minute, the worst 154 s.
+Each is stopped at the head of the lane, about 5 m short of the taper,
+beside through traffic at 90-100 km/h, with the queue behind it. A car at
+rest cannot join a stream at that speed through any gap the stream offers,
+and an offer from a car moving at 27 m/s cannot make one. That is not a
+constant -- admissions are level, so the entry rate is not the bottleneck --
+it is the standing merge into a fast stream: open, 10.15.
+
 ## 10.5 Where a check protects a decision, its failure says so
 
 Four failure messages are written as explanations rather than symptoms,
@@ -3425,6 +3477,15 @@ sign's 16365; no crash. What remains is about 29 joiners over three seeds
 standing about 56 s each. Per the maintainer's instruction ("if a third
 trace does not land it, tell me"), this is now a CONSTANTS QUESTION and not
 tuned: the lane's length (350 m), the taper's behaviour, or the entry rate.
+
+**CLOSED, 22 October: the comparison was wrong, not a constant** (10.4).
+Measured per car over six seeds, the lane admits what the yield sign admits
+(30.0 against 30.9 a minute), gets cars on as fast or faster (p90 41.6 s
+against 54.9), stops 6% of joiners against 51%, and stands less in total
+(710 against 1036 car-s). **Opened in its place: the long standers.** The
+few who do stop wait at the head of the lane beside 90-100 km/h traffic for
+up to 154 s -- a standing merge into a fast stream, which no gap and no
+moving offerer resolves. Not built.
 
 **Not yet built from 10.12**: observation's markable fault (braking hard
 with a follower inside the room it costs, having not looked) on the
