@@ -393,8 +393,9 @@ console.log("\n11. THE NEIGHBOUR INDEX CHANGES NOTHING BUT THE COST");
      and without, from the same state, must stay identical, tick for tick,
      on the city and on the test map (signals, bays, a five-way, an
      overpass). */
-  const same = (loaded, cars, ticks) => {
-    const w0 = seedGraph(3, 60, loaded, { target: cars, posted: true });
+  const same = (loaded, cars, ticks, warm = 0) => {
+    let w0 = seedGraph(3, 60, loaded, { target: cars, posted: true });
+    for (let i = 0; i < warm; i++) w0 = step(w0);
     let a = w0, b = { ...w0, noIndex: true };
     for (let i = 0; i < ticks; i++) {
       a = step(a); b = step(b);
@@ -404,6 +405,10 @@ console.log("\n11. THE NEIGHBOUR INDEX CHANGES NOTHING BUT THE COST");
   };
   const c = same(L, 250, 1200), t = same(loadMap(testMap1()), 150, 1200);
   check(c.ok && t.ok, `a minute of the city at ${c.cars} cars and of the test map at ${t.cars}: identical with the index and without${c.ok && t.ok ? "" : ` -- diverged at tick ${c.ok ? t.at : c.at}`}`);
+  /* AND THE ENDLESS HIGHWAY (22 October): eight long nodes, where a plain driver reads its own lane through the sorted index -- the walks ahead, the press floor, the exact cut (crossing.js takePlain). */
+  /* Warmed two minutes first: the loop fills only by its ramps, and from empty a minute held 111 cars -- not the long, full nodes this is for. */
+  const hw = same(loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build()), 300, 1200, 2400);
+  check(hw.ok, `and a minute of the endless highway at ${hw.cars} cars, where each driver reads only the cars of its own lane that could be the one it brakes for: identical${hw.ok ? "" : ` -- diverged at tick ${hw.at}`}`);
   const time = (loaded, cars, noIndex) => { let w = { ...seedGraph(3, 60, loaded, { target: cars, posted: true }), noIndex }; const t0 = performance.now(); for (let i = 0; i < 200; i++) w = step(w); return (performance.now() - t0) / 200; };
   const slow = time(L, 300, true), fast = time(L, 300, false);
   check(fast < slow / 3, `and it is what makes a city affordable: ${fast.toFixed(2)} ms a step at 300 cars against ${slow.toFixed(2)} ms scanning everybody`);

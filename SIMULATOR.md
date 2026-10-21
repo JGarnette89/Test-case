@@ -39,7 +39,7 @@ says which.
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
 7. suite cost: 12 at once instead of 8 (1700 -> 1382 s); verify-compliance's 145 runs in worker threads, identical counts (950 -> 448 s under load); the derived suite 1588 -> 1356 s. The pole is now eight checks at 870-1020 s, most of them several independent worlds -- the same treatment would apply (TESTING.md)
 10. THE 57 MS (its own item, the maintainer 22 October): about 57 ms of each phone frame at 259 cars lies outside every part the readout names (195.6 against 138.6). Resolve it from Jay's next readout with one step a frame; if it does not resolve, it is its own item, never absorbed into LOD
-9. the 259-car highway (the maintainer's readout, 22 October; SIMULATOR 1.2.17): (1) the step is superlinear in cars PER NODE, linear on the city -- the fix is the one sorted neighbour index; (2) the page was spiralling -- step budget shipped; (3) LOD next, with the neighbour index and gap predicate first (placement's first half pulled forward). Crashes: traffic alone 0 in 40 min; the readout now says which were with the player
+9. the 259-car highway (the maintainer's readout, 22 October; SIMULATOR 1.2.17): (1) the step is superlinear in cars PER NODE, linear on the city -- the fix is the one sorted neighbour index; (2) the page was spiralling -- step budget shipped; (3) LOD next, with the neighbour index and gap predicate first (placement's first half pulled forward) -- the index's FIRST STEP shipped (whatStops' own lane, exact, -22% at 260 cars on the loop, SIMULATOR 1.2.17); next the lane change's and courtesy's scans onto it, then the gap predicate. Crashes: traffic alone 0 in 40 min; the readout now says which were with the player
 8. ~~the step slowdown~~ -- found: two closures made per pair of cars in whatStops (+11% of its own time); hoisted, world hash identical on three maps, test map 1 10.92 -> 10.66 ms against 10.52 at 9c5c947
 
 **Approved, parked until the above is done (not to be started):**
@@ -3226,6 +3226,45 @@ before the feature (10.9); (c) LOD, coarse and dormant tiers on the tick;
 (d) placement for the player and density shaping -- which is out-of-sight
 spawning, the dormant tier's other face. Placement's FIRST half moves ahead
 of LOD; its second half lands with or after it.
+
+**THE NEIGHBOUR INDEX, FIRST STEP -- BUILT the same day** (crossing.js
+`takePlain`, `relevanceOf`). A PLAIN driver -- not the player, not passing,
+not changing lane, not a bus -- reads its own lane through position-sorted
+arrays of the plain cars: its approach by distance along it, its exit by
+distance left, its two lanes across the seam by distance along the lane.
+It walks ahead, computes each reachable car's exact press (wantedGap / gap,
+arithmetic only), stops where nobody further can press harder than the
+hardest so far (wantedGap behind a STANDING car over the least gap at that
+distance), and hands whatStops only the hardest -- ties too, since it keeps
+the first of equals in list order. Everything else is read through buckets
+as before. Exact: world hashes identical on all seven test maps, with
+perception on and off, trucks and buses (a gate that a deliberately wrong
+cut changes on all seven); verify-generate section 11 now holds the endless
+highway at 300 cars, warmed, identical with and without the index.
+
+| endless highway, desk, p50 | 60 | 150 | 260 | 400 cars |
+|---|---|---|---|---|
+| before | 1.0 | 3.7 | 9.4 | 19.5 ms |
+| index | 1.0 | 3.2 | 7.3 | 13.6 ms |
+
+-22% at 260, -30% at 400; the city unchanged (near linear already). Visits
+per car at 300: 37 -> 12.8. Two costs found and paid on the way: sorting
+every bucket of every carried-forward picture (perception on: dozens of
+lists a tick) made the city 23% dearer, so the index is built for the
+present world only and a picture is read through the buckets -- leaving
++5% on the city with perception on (off by default in the game). What is
+left of the superlinearity: cars mid-change still read their lanes in full
+(8% of askers at 300, ~45 cars each), and denser traffic genuinely puts
+more cars within reach. Next steps of 10.10's one search: the lane change's
+own scans (exitNeighbours, gapFor) and courtesy's onto the same arrays.
+
+**THE OPEN HIGHWAY WOULD NOT HELP THE STEP.** Asked whether its shorter
+segments would cut the neighbour work: it has none -- a node is where roads
+meet, so its 7 nodes have a median stretch of 2,250 m against the loop's
+1,760, and traffic entering at one end and up the ramps puts 141 cars on
+one node at 300 (the loop's worst: 57). Step at 300 cars, both warmed, same
+code: open highway 11.5 ms, loop 9.7. Its case is the experience (the
+NASCAR problem), not the cost; LOD is what serves both.
 
 **The crashes**: the traffic alone on that map at 259 cars ran 40 minutes
 over four seeds without one, so both involved the player or traffic

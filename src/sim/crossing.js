@@ -184,26 +184,70 @@ function relevanceOf(world, list) {
   let idx = relevanceCache.get(list);
   if (idx) return idx;
   const course = world.course;
-  idx = { k: new Int32Array(list.length), lane: new Map(), at: new Map(), passers: [], players: [], stamp: new Int32Array(list.length), gen: 0 };
+  const N = list.length;
+  /* THE PRESENT ONLY (22 October): with drivers looking away a tick has
+     dozens of carried-forward pictures (sim/attention.js), each read by the
+     few drivers looking away at that moment, and building the sorted index
+     for every one made the step 23% dearer on the city with perception on.
+     A picture is read through the buckets, as before. */
+  const present = list === world.actors;
+  idx = { k: new Int32Array(N), lane: new Map(), at: new Map(), passers: [], players: [], stamp: new Int32Array(N), gen: 0,
+    /* THE SORTED INDEX (22 October): the plain cars by position, and the rest in buckets of their own. */
+    ...(present ? { plain: new Uint8Array(N), s: new Float64Array(N), rem: new Float64Array(N), alIn: new Float64Array(N), alOut: new Float64Array(N),
+      laneIn: new Array(N), laneOut: new Array(N), sl: new Map(), npLane: new Map() } : {}), maxRear: 0 };
   const bucket = (m, key) => { let xs = m.get(key); if (!xs) m.set(key, (xs = [])); return xs; };
   for (let n = 0; n < list.length; n++) {
     const a = list[n], k = a.k ?? 0, p = course.at[k]?.layout?.paths[a.route];
     idx.k[n] = k;
     if (a.pass) idx.passers.push(n);
     if (a.player) idx.players.push(n);
+    idx.maxRear = Math.max(idx.maxRear, a.rear ?? lenOf(a) / 2);
     if (!p) continue;
+    const plain = present && isPlain(a);
+    if (present) {
+      idx.plain[n] = plain ? 1 : 0;
+      idx.s[n] = a.s; idx.rem[n] = p.length - a.s;
+      if (p.laneIn) { idx.laneIn[n] = p.laneIn.id; idx.alIn[n] = p.laneIn.at0 + Math.min(a.s, p.stopAt); }
+      if (p.laneOut && p.laneOut.id !== p.laneIn?.id) { idx.laneOut[n] = p.laneOut.id; idx.alOut[n] = p.laneOut.at0 + Math.max(0, a.s - p.clearAt); }
+      if (plain) {
+        if (idx.laneIn[n] != null) bucket(idx.sl, idx.laneIn[n]).push(n);
+        if (idx.laneOut[n] != null) bucket(idx.sl, idx.laneOut[n]).push(n);
+      } else {
+        if (idx.laneIn[n] != null) bucket(idx.npLane, idx.laneIn[n]).push(n);
+        if (idx.laneOut[n] != null) bucket(idx.npLane, idx.laneOut[n]).push(n);
+      }
+    }
     if (p.laneIn) bucket(idx.lane, p.laneIn.id).push(n);
     if (p.laneOut && p.laneOut.id !== p.laneIn?.id) bucket(idx.lane, p.laneOut.id).push(n);
     let node = idx.at.get(k);
-    if (!node) idx.at.set(k, (node = { f: new Map(), c: new Map(), t: new Map(), r: new Map(), o: new Map() }));
+    if (!node) idx.at.set(k, (node = { f: new Map(), c: new Map(), t: new Map(), r: new Map(), o: new Map(), sf: new Map(), st: new Map(), nf: new Map(), nt: new Map() }));
     bucket(node.f, p.from).push(n);
     bucket(node.t, p.to).push(n);
+    if (plain) { bucket(node.sf, p.from).push(n); bucket(node.st, p.to).push(n); }
+    else if (present) { bucket(node.nf, p.from).push(n); bucket(node.nt, p.to).push(n); }
     bucket(node.r, a.route).push(n);
     if (a.lc?.fromLeg != null) bucket(node.c, a.lc.fromLeg).push(n);
     if (a.lc?.fromTo != null) bucket(node.o, a.lc.fromTo).push(n);
   }
+  idx.sorted = new Set();
   relevanceCache.set(list, idx);
   return idx;
+}
+/* A PLAIN CAR: one that reaches whatStops's rules about a car in my own
+   lane by following alone -- not the player (who can straddle a line), not
+   passing a bus, not changing lane (in two lanes at once), not a bus (which
+   a bay can take out of every lane). */
+const isPlain = (a) => !a.player && !a.pass && !a.lc && a.kind !== "bus";
+/* The first place in `xs` (sorted by `key`) whose key is above `v`. */
+/* A bucket sorted by its key, the first time anybody walks it. */
+function sortedBy(idx, xs, key) {
+  if (xs && !idx.sorted.has(xs)) { xs.sort((x, y) => key(x) - key(y)); idx.sorted.add(xs); }
+  return xs;
+}
+function firstAbove(xs, key, v) {
+  let lo = 0, hi = xs.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (key(xs[m]) > v) hi = m; else lo = m + 1; }
+  return lo;
 }
 /* The routes that have a conflict entry with each route, per layout:
    `layout.conflicts` is keyed "a|b" and route ids themselves hold "|", so
@@ -268,6 +312,39 @@ function relevantTo(world, list, me, mineAt, mine, layout) {
       stamp[n] = gen; out.push(n);
     }
   };
+  /* A PLAIN DRIVER READS ITS OWN LANE THROUGH THE SORTED INDEX (22 October;
+     DECISIONS 10.10's one neighbour search). On the endless highway a
+     node's stretch is long and the buckets held every car on it, so the cars
+     a driver read grew with the fleet -- 11 at 60 cars, 37 at 300 -- and
+     whatStops was 57% of a step at 300 (DECISIONS 10.4: filtering the
+     buckets cost what it saved). A plain car in my lane reaches whatStops by
+     following alone, and following keeps the car that presses hardest,
+     wantedGap / gap. So, walking each of my lanes ahead of me in order:
+     the first car whatStops will certainly consider gives a floor under
+     the answer, and a car that cannot press harder than
+     wantedGap(me, a car standing) / its least possible gap is under the
+     floor and never the answer -- and neither is anybody further on. The
+     rest of the list (the others, conflicting routes, the player, passers)
+     is read as before. The world is identical tick for tick
+     (tools/measure/world-hash.mjs, every test map). */
+  if (list === world.actors && isPlain(me) && !(mine.laneOut && mine.laneOut.id === mine.laneIn.id)) {
+    const node = idx.at.get(mineAt);
+    takePlain(world, list, idx, me, mine, mineAt, hood, node, gen, out);
+    take(idx.npLane.get(mine.laneIn.id), 1);
+    if (mine.laneOut) take(idx.npLane.get(mine.laneOut.id), 1);
+    if (node) {
+      take(node.nf.get(mine.from), 0); take(node.c.get(mine.from), 0);
+      take(node.nt.get(mine.to), 0); take(node.o.get(mine.to), 0);
+      const partners = partnersOf(layout, me.route);
+      for (let q = 0; q < partners.length; q++) take(node.r.get(partners[q]), 0);
+    }
+    take(idx.players, 2); take(idx.passers, 2);
+    out.sort((a, b) => a - b);
+    const cars = new Array(out.length);
+    for (let q = 0; q < out.length; q++) cars[q] = list[out[q]];
+    cars.pos = out;
+    return cars;
+  }
   /* Across a boundary, on one of my two lanes. */
   take(idx.lane.get(mine.laneIn.id), 1);
   if (mine.laneOut) take(idx.lane.get(mine.laneOut.id), 1);
@@ -288,6 +365,61 @@ function relevantTo(world, list, me, mineAt, mine, layout) {
   for (let q = 0; q < out.length; q++) cars[q] = list[out[q]];
   cars.pos = out;   // their places in `list`, for merging with another bucket in order
   return cars;
+}
+
+/* The plain cars of my own lanes that can be the one I brake for, into `out`
+   (stamped with `gen`): see relevantTo. Three walks, each in the order of
+   the road -- my approach (whatStops's shareLane: ahead by distance along
+   it), my exit from other approaches (the shared exit: ahead by distance
+   left, once both are past where it counts), and my two lanes across the
+   seam at the joined intersections (ahead along the lane, clear >= 0). */
+function takePlain(world, list, idx, me, mine, mineAt, hood, node, gen, out) {
+  const ks = idx.k, stamp = idx.stamp, halfMe = lenOf(me) / 2, most = wantedGap(me, { v: 0 });
+  const press = (d, n) => wantedGap(me, list[n]) / Math.max(d, 0.01);
+  /* The least gap a car can have at a distance: the longest rear there is. */
+  const least = (delta) => delta - halfMe - idx.maxRear;
+  const along = (n, lane) => (idx.laneIn[n] === lane ? idx.alIn[n] : idx.alOut[n]);
+  const walks = [];
+  /* My approach. */
+  const A = sortedBy(idx, node?.sf.get(mine.from), (n) => idx.s[n]);
+  if (A) walks.push({ xs: A, from: firstAbove(A, (n) => idx.s[n], me.s), dir: 1,
+    delta: (n) => idx.s[n] - me.s, gap: (n) => clearBetween(idx.s[n] - me.s, me, list[n]), counts: (n) => list[n].id !== me.id });
+  /* My exit, from another approach. */
+  const myLeft = mine.length - me.s;
+  const B = me.s > mine.clearAt - lenOf(me) ? sortedBy(idx, node?.st.get(mine.to), (n) => idx.rem[n]) : null;
+  if (B) walks.push({ xs: B, from: firstAbove(B, (n) => idx.rem[n], myLeft - 1e-12) - 1, dir: -1,
+    delta: (n) => myLeft - idx.rem[n], gap: (n) => clearBetween(myLeft - idx.rem[n], me, list[n]),
+    counts: (n) => { const t = list[n], p = world.course.at[ks[n]].layout.paths[t.route]; return t.id !== me.id && idx.rem[n] < myLeft && p.from !== mine.from && t.s > p.stopAt; } });
+  /* My two lanes, across the seam. */
+  const sIn = Math.min(me.s, mine.stopAt), sOut = Math.max(0, me.s - mine.clearAt);
+  for (const [lane, myAl] of mine.laneOut ? [[mine.laneIn.id, mine.laneIn.at0 + sIn], [mine.laneOut.id, mine.laneOut.at0 + sOut]] : [[mine.laneIn.id, mine.laneIn.at0 + sIn]]) {
+    const C = sortedBy(idx, idx.sl.get(lane), (n) => along(n, lane));
+    if (!C) continue;
+    walks.push({ xs: C, from: firstAbove(C, (n) => along(n, lane), myAl), dir: 1,
+      delta: (n) => along(n, lane) - myAl, gap: (n) => clearBetween(along(n, lane) - myAl, me, list[n]),
+      counts: (n) => ks[n] !== mineAt && hood.has(ks[n]) && clearBetween(along(n, lane) - myAl, me, list[n]) >= 0 });
+  }
+  /* Every car whatStops will consider, with the press it will read, walked
+     while anybody further on could still press harder than the hardest so
+     far; then only the hardest go in -- ties too, since whatStops keeps the
+     first of equals in the list's own order. Exact: a car left out presses
+     less than one that is in. */
+  let floor = 0;
+  const seen = [];
+  for (const w of walks) {
+    for (let i = w.from; i >= 0 && i < w.xs.length; i += w.dir) {
+      const n = w.xs[i];
+      if (most / Math.max(least(w.delta(n)), 0.01) < floor) break;
+      if (!w.counts(n)) continue;
+      const p = press(w.gap(n), n);
+      seen.push(n, p);
+      if (p > floor) floor = p;
+    }
+  }
+  for (let q = 0; q < seen.length; q += 2) {
+    const n = seen[q];
+    if (seen[q + 1] >= floor && stamp[n] !== gen) { stamp[n] = gen; out.push(n); }
+  }
 }
 
 /* The present, while they are looking; while they are looking away, the

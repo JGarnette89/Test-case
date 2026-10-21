@@ -3325,7 +3325,9 @@ merge is a mechanic worth having.
 **Order**: the four suite failures of the acceleration-lane build first
 (the lane-change code they sit in is what the predicate replaces); then
 the one neighbour search and gap predicate under the existing callers,
-guarded by the existing checks; then placement for the player and density
+guarded by the existing checks (BEGUN 22 October: whatStops' own lane reads
+position-sorted arrays, exactly -- world hashes identical on every test
+map -- crossing.js `takePlain`; the lane change and courtesy next); then placement for the player and density
 shaping, with one check; LOD's validator when LOD comes.
 
 ## 10.11 A CHANGER LEAVES ITS OLD LANE WHEN THE BODIES CANNOT MEET -- EXCEPT BESIDE A TAPER (21 October)
