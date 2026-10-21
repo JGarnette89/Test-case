@@ -14,8 +14,8 @@ by reading, not by reconstructing it from reports. Three columns of
 unfinished; an item leaves this list when it is shipped or dropped, and
 says which.
 
-**Live build: see the last commit on main** (the courtesy ruling and gap
-seeking, DECISIONS 10.15, on top of `30f9ce2`).
+**Live build: `fd1127e`** (the courtesy ruling and gap seeking, DECISIONS
+10.15).
 
 **Committed, not shipped:** nothing.
 
@@ -32,7 +32,8 @@ seeking, DECISIONS 10.15, on top of `30f9ce2`).
    every density, but at 150 the lane still stands more than the yield sign
    (1101 against 730): a joiner and the car letting it in slow together.
    Named in 10.15; not built.
-6. the deliberate-breakage pass on the twelve unproven checks (TESTING.md)
+6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
+7. suite cost: measured sample cuts on the slowest checks -- next
 
 **Approved, parked until the above is done (not to be started):**
 gradient (two commits: the grade term with level-map hashes as the gate,

@@ -154,18 +154,29 @@ regression recorded (17):** `verify-actuated`, `verify-bays`, `verify-bench`,
 shown they can see a break; that they have not caught a regression yet is
 what a guard on stable code looks like.
 
-**3. NEITHER -- no recorded failure and never broken on purpose (12):**
-`verify-sim`, `verify-crossing`, `verify-chase`, `verify-connect`,
-`verify-wheel`, `verify-waves`, `verify-loop`, `verify-lanes`,
-`verify-keepright`, `verify-lanecost`, `verify-passing`, `verify-busbays`.
-(`verify-lanes` and `verify-lanecost` have failed only on timing lines under
-load -- the check's own fault, fixed.) **These are the ones that might be
-guarding nothing.** Several guard code that has been stable for weeks
-(`sim`, `crossing`, `chase`, `connect`, `wheel`), which would explain the
-silence; the only way to tell is to break the module each is written against
-and watch it fail. That sabotage pass -- twelve checks, each against its own
-module, minutes each with `--direct` -- is the outstanding piece of this
-audit, and it is owed before anything in group 3 is trusted further.
+**3. NEITHER -- the sabotage pass, done 22 October: the group is empty.**
+Each of the twelve broken against its own module, in a clean worktree so no
+two breaks could share a run, and each failed:
+
+| check | the break | what failed |
+|---|---|---|
+| verify-sim | following ignores the car ahead | overlaps at every speed (4 lines) |
+| verify-crossing | nobody ever gives way | arrival order, the right-hand rule, ... (11) |
+| verify-chase | the camera stops leading with speed | the lead at every heading (7) |
+| verify-wheel | steering not limited by grip | the grip-limited turn (4) |
+| verify-connect | a lane with nowhere to go not refused | three into two, named refusals (7) |
+| verify-keepright | nobody knows the rule | who is marked, the return (5) |
+| verify-passing | passing over a solid line allowed | nobody passes on a solid line (2) |
+| verify-busbays | nobody yields to a bus pulling out | 7 of 15 let it out (1) |
+| verify-lanes | every gap accepted | how tight, overlaps (5) |
+| verify-lanecost | lane changing made ~10x dearer | its share of a step (2) |
+| verify-waves | offsets turned against the platoon (21 October) | green on arrival, the platoon (9) |
+| verify-loop | -- | caught a REAL regression on 21 October: the closed loop's standstill |
+
+**verify-lanecost's bound is loose**: a break making lane changing about
+twice as dear (7.2% of a step at 120 cars) PASSED; only about ten times
+(51.6%) failed. It guards against gross regressions only -- recorded, not
+tightened. verify-loop moves to group 1.
 
 **The before and after for a single change** (from the table above): before
 14 October every commit ran the whole suite, 75 minutes; now a change runs
