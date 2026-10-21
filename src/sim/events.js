@@ -170,8 +170,13 @@ export function detect(prev, now, state0 = newEventState()) {
       if (gap > 0 && gap < d) { d = gap; behind = a; }
     }
     if (behind && clearBetween(d, behind, me) < 0.5 * wantedGap(behind, me)) say("tightGap", { behind: behind.id });
-    /* LET IN: a courtesy offered for this lane, and the player took it. */
-    if (w.actors.some((a) => a.courtesy && a.courtesy.leg === path.from)) say("letIn");
+    /* LET IN: a courtesy offered for this lane, and the player took it --
+       read in the world BEFORE the move. On the tick the player crosses into
+       the lane their signal points at the next one over and the offer they
+       just took is withdrawn, so read after the move it was never there:
+       measured 21 October, four offers taken in the running sim, the event
+       said none of the four times -- it had never fired in a real drive. */
+    if (pw.actors.some((a) => a.courtesy && a.courtesy.forPlayer && !a.courtesy.done && a.courtesy.leg === path.from)) say("letIn");
   }
 
   /* LETTING SOMEBODY IN: a car of the traffic begins a change into the
@@ -180,7 +185,7 @@ export function detect(prev, now, state0 = newEventState()) {
   if (path && me.s <= path.stopAt) {
     const eased = st.vHist.length > 1 && st.vHist[0] - (me.v ?? 0) >= 1;
     for (const a of w.actors) {
-      if (a.player || (a.k ?? 0) !== (me.k ?? 0) || !a.lc || a.lc.t0 !== pw.t) continue;
+      if (a.player || (a.k ?? 0) !== (me.k ?? 0) || !a.lc || (a.lc.at ?? a.lc.t0) !== pw.t) continue;
       const p = L.paths[a.route];
       if (!p || p.from !== path.from) continue;
       const ahead = a.s * (path.stopAt / p.stopAt) - me.s;

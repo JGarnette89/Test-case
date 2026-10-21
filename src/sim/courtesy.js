@@ -42,9 +42,23 @@
    ONE DRIVER IS ASKED: the nearest car in the lane being signalled into
    whose centre is behind the player's. They are the one whose space the
    player needs; a driver behind them is not being asked anything yet.
+
+   AND NOT ONLY THE PLAYER, AND NOT ONLY BEFORE THE LINE (21 October). A
+   car in an ACCELERATION LANE (map/accel.js) is asking the same thing of
+   the curb lane, and a motorway merge is where courtesy is most visible
+   and most felt: a considerate driver lifts off and lets the joiner in,
+   and in slow traffic that is the zipper. Without it, a driver stopped at
+   the end of the lane needed eighty metres clear behind to go from rest
+   into 60 km/h traffic, and the entrances backed up. So an ASK is
+   anybody's: the player's, on an approach or past the box, and each
+   joining car's, from the moment it is on the lane. Past the box the
+   coordinate is DISTANCE REMAINING, as everywhere on an exit stretch. The
+   offer is the same offer, by the same people, under the same limits.
    ===================================================================== */
 import { soundnessOf, cautionOf, COMPETENT_AT } from "../core/driver.js";
 import { decide, clearBetween, vehicleOf, wantedGap } from "./traffic.js";
+import { mergePlan } from "./lanechange.js";
+import { exitAlong } from "./graph.js";
 
 export const COURTESY_FOR = 4.0;   // s: the undue-delay standard (crossing.js UNDUE_AT) -- a gap not taken in that long is withdrawn
 
@@ -61,15 +75,34 @@ export function askOf(world, pl) {
   if (!pl || !pl.signal || pl.crash) return null;
   const k = pl.k ?? 0, layout = world.course.at[k]?.layout;
   const path = layout?.paths[pl.route];
-  if (!path || pl.s > path.stopAt) return null;
+  if (!path) return null;
+  const since = world.signalOn?.dir === pl.signal ? world.signalOn.since : world.t;
+  if (pl.s > path.clearAt) {
+    /* Past the box: the lanes are the exit's. */
+    const out = layout.legs[path.to];
+    if (!out || !layout.legAt) return null;
+    const toLeg = layout.legAt(out.base, (out.pos ?? out.lane) + (pl.signal === "left" ? -1 : 1));
+    if (!toLeg || !layout.legs[toLeg] || layout.legs[toLeg].bay || layout.legs[toLeg].accel) return null;
+    return { k, toLeg, exit: true, rem: path.length - pl.s, along: exitAlong(world.course, k, pl.route, pl.s), v: pl.v ?? 0, since, id: pl.id, forPlayer: true };
+  }
+  if (pl.s > path.stopAt) return null;
   const leg = layout.legs[path.from];
   if (!leg || (leg.across ?? leg.lanes ?? 1) < 2) return null;
   const d = pl.signal === "left" ? -1 : 1;
   const here = leg.pos ?? leg.lane;
   const toLeg = layout.legAt ? layout.legAt(leg.base, here + d) : `${leg.base}#${leg.lane + d}`;
   if (!toLeg || !layout.legs[toLeg] || layout.legs[toLeg].bay) return null;
-  const since = world.signalOn?.dir === pl.signal ? world.signalOn.since : world.t;
-  return { k, toLeg, s: pl.s, stopAt: path.stopAt, v: pl.v ?? 0, since, id: pl.id };
+  return { k, toLeg, s: pl.s, stopAt: path.stopAt, v: pl.v ?? 0, since, id: pl.id, forPlayer: true };
+}
+
+/* A JOINING CAR'S ASK: on an acceleration lane, toward the lane beside
+   it, while it is trying to move over (lanechange.js mergePlan). Asking
+   since about when it came onto the lane. */
+export function mergeAskOf(world, a, layout, path, leg) {
+  if (!layout.legAt || !mergePlan(world, a, layout, path, leg)) return null;
+  const toLeg = layout.legAt(leg.base, leg.pos - 1);
+  if (!toLeg || !layout.legs[toLeg]) return null;
+  return { k: a.k ?? 0, toLeg, exit: true, rem: path.length - a.s, along: exitAlong(world.course, a.k ?? 0, a.route, a.s), v: a.v ?? 0, since: world.t - (a.s - path.clearAt) / Math.max(1, a.v ?? 0), id: a.id };
 }
 
 /* The player's position along a follower's own path (paths from one
@@ -77,6 +110,10 @@ export function askOf(world, pl) {
    change), and the clear road between them. */
 export function gapTo(world, me, ask, pl) {
   const fp = world.course.at[me.k ?? 0].layout.paths[me.route];
+  if (ask.exit) {
+    const mine = ask.along != null ? exitAlong(world.course, me.k ?? 0, me.route, me.s) : null;
+    return { d: clearBetween(mine != null ? ask.along - mine : fp.length - me.s - ask.rem, me, pl) };
+  }
   const s2 = ask.s * (fp.stopAt / ask.stopAt);
   return { s2, d: clearBetween(s2 - me.s, me, pl) };
 }
@@ -86,8 +123,16 @@ export function askedOf(world, ask, cars) {
   const layout = world.course.at[ask.k].layout;
   let best = null, bs = -Infinity;
   for (const a of cars) {
-    if (a.player || a.crash || a.parked || (a.k ?? 0) !== ask.k) continue;
+    if (a.player || a.crash || a.parked || (a.k ?? 0) !== ask.k || a.id === ask.id) continue;
     const p = layout.paths[a.route];
+    if (ask.exit) {
+      /* Past the box: bound for that lane, behind the asker by distance remaining. */
+      if (!p || p.to !== ask.toLeg) continue;
+      const al = ask.along != null && a.s > p.clearAt ? exitAlong(world.course, a.k ?? 0, a.route, a.s) : null;
+      const behind = al != null ? al - ask.along : ask.rem - (p.length - a.s);   // negative: behind
+      if (behind < 0 && behind > bs) { bs = behind; best = a; }
+      continue;
+    }
     if (!p || p.from !== ask.toLeg || a.s > p.stopAt) continue;
     const s2 = ask.s * (p.stopAt / ask.stopAt);
     if (a.s < s2 && a.s > bs) { bs = a.s; best = a; }
@@ -100,7 +145,7 @@ export function askedOf(world, ask, cars) {
    not left it untaken COURTESY_FOR after it opened. Returns the offer
    (`open` once the gap is there, `done` once withdrawn) or null. */
 export function offerOf(world, me, ask, pl, noticed) {
-  const was = me.courtesy && me.courtesy.leg === ask.toLeg ? me.courtesy : null;
+  const was = me.courtesy && me.courtesy.leg === ask.toLeg && me.courtesy.for === ask.id ? me.courtesy : null;
   /* Withdrawn, it stays withdrawn for as long as this ask stands: a driver who gave up does not offer again. */
   if (was?.done) return was;
   if (was) {
@@ -126,7 +171,7 @@ export function offerOf(world, me, ask, pl, noticed) {
      courtesy is for -- was refused for a fraction of a metre a second
      (verify-courtesy, 14 October: 2 offers from 8 courteous drivers). */
   if (closing > 0 && d > 0 && d < (closing * closing) / (2 * b)) return null;
-  return { since: world.t, leg: ask.toLeg };
+  return { since: world.t, leg: ask.toLeg, for: ask.id, forPlayer: !!ask.forPlayer };
 }
 
 /* What the offer asks of their pedal: follow the player as if already in

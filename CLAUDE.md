@@ -1669,6 +1669,7 @@ src/sim/drive.js         the player on the map: the turn signal as the turn comm
 src/sim/player.js        the car under the player's two controls: pedal, wheel, grip, contact
 src/map/format.js        the map format: roads as strokes in metres, KINDS with lanes per direction, chunks
 src/map/bays.js          turn bays: a lane that begins before an intersection, its taper derived from the lane change's own numbers
+src/map/accel.js         acceleration lanes: a lane that begins at an entrance and ends along the road, fed by the slip road the map names -- the entry is the map's to say, this or a yield sign
 src/map/load.js          loading a map: normalise, warn, never throw; the surface and lane lines; the graph
 src/map/samples.js       hand-written maps as data -- stage 0, and the test map #/map drives
 src/map/brief.js         a map built to test something: a brief (size, arterials, signals, every type, downtown, buses, drivers) in, a map out with a section per thing asked for and a report measured from the loaded map
@@ -2060,6 +2061,7 @@ node tools/verify-places.mjs       going somewhere: places on the right curb, ro
 node tools/verify-money.mjs        money and the taxi: the fare pays for skill not time (every fault costs its severity, praise nothing, contact voids, the limit and lateness cost, longer never pays more), the wallet through storage, and a fare driven end to end by a good driver -- tipped -- and the same fare speeding paid less
 node tools/verify-encounters.mjs   what the player meets: cars within 30 m counted once each, following and followed only in the player's lane and the right way round, a gap judged once per stand at the line, and on real traffic none of them zero -- the expectations stated in the check, not read from the module
 node tools/verify-voice.mjs        the voice: the limiter's budget held as properties over random events and stated in the check, the lines to their spec, and every detector on its situation and its opposite (stopping for somebody on foot not yet)
+node tools/verify-merge.mjs        acceleration lanes and the merge: the map says which entry (a lane or a yield sign, both drivable); at 60, 150 and 300 cars nobody merges into occupied space, nothing crashes, nobody runs past the lane's taper or reaches a seam in it; merges happen, a driver who knows what the lane is for joins at least 10 km/h faster, the bold merge earlier than the timid, and courtesy reaches the merge
 node tools/verify-waves.mjs        green waves: a car holding the posted speed from a green meets the next green on every timed link of every map; a corridor runs only where the road has priority (never through an uncontrolled crossroads); one cycle per system and no green shortened; a map with fewer than two linked signals keeps its plans; and in the sim the platoon goes through far more often with the wave than without, nothing crashing
 ```
 

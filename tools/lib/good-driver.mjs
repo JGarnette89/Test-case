@@ -85,7 +85,13 @@ export function goodInput(me, world, sc, { pace = 0.95, overtake = false } = {})
   const slowAhead = (legId) => carsOn(legId).some(({ a, at }) => at > myAt && at - myAt < 60 && (a.v ?? 0) < posted * pace - 1.5);
   const room = onExit ? path.length - me.s > 80 : me.s < path.stopAt - 60;
   const here = onExit ? path.to : path.from;
-  if (overtake && !lane && lg && room) {
+  /* AN ACCELERATION LANE (map/accel.js): up to speed, then over into a
+     clear gap -- by half-way along it whatever the speed, so it is never
+     run out of. Whichever driver this is: joining is not optional. */
+  if (onExit && lg?.accel) {
+    const along = me.s - path.clearAt, open = path.length - lg.accelClose - path.clearAt;
+    if (!lane && (me.v >= 0.85 * posted * pace || along > open / 2) && clear(besideLeg(-1))) lane = -1;
+  } else if (overtake && !lane && lg && room) {
     if (slowAhead(here) && clear(besideLeg(-1))) lane = -1;
     else if (!lg.curb && want !== "left" && clear(besideLeg(1)) && !slowAhead(besideLeg(1))) lane = 1;
   } else if (!lane && leg && !leg.curb && want !== "left" && me.s < path.stopAt - 25) lane = 1;
@@ -93,6 +99,7 @@ export function goodInput(me, world, sc, { pace = 0.95, overtake = false } = {})
      name can be a turn bay that has not opened yet, and steering for it put
      the car over the curb (20 October). */
   if (onExit && lane && !besideLeg(lane)) lane = 0;
+  if (onExit && lane > 0 && lg?.accel) lane = 0;
   const target = me.s <= path.stopAt - 3 || onExit ? lane * LANE * 0.72 : 0;
   const steer = -(me.off - target) * 0.25 - me.psi * 2.5;
   return { input: { steer, slider, assist: 0 }, signal };

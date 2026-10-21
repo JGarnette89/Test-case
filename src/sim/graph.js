@@ -50,6 +50,7 @@ import { defaultTurns, receive, checkTurns } from "./lanes.js";
 import { ribbonOf } from "../iso/road.js";
 import { rng } from "../core/rng.js";
 import { hasBays, offsetsOf, offsetLine } from "../map/bays.js";
+import { hasAccel, accelAt, accelLane } from "../map/accel.js";
 
 /* HOW FAR FROM OPPOSITE STILL COUNTS AS ONCOMING. A left turn yields
    to the oncoming approach; at a skewed crossing "oncoming" is the leg
@@ -123,6 +124,15 @@ export function intentOf(layout, from, to) {
    following is per lane already, and a car that moves to the next lane
    is a car on the next polyline. The player does it now (drive.js);
    the traffic will. */
+/* THE ROAD'S OWN DISTANCE AT EACH SAMPLE OF A LANE, in its direction of
+   travel: the one coordinate that agrees ACROSS lanes. A lane's own arc
+   length does not -- on a bend the inner lane is shorter, so two lanes'
+   midpoints (their seams) are not level, and "distance remaining to the
+   seam" compared across lanes was out by half the difference: 5.7 m on the
+   endless highway's bend, enough for a car changing lane to believe it had
+   room behind a car it was touching (21 October). Every lane is built from
+   its road's samples, so the road's distance is carried sample for sample. */
+export const alongFor = (road, dir) => (dir > 0 ? road.at.slice() : road.at.map((x) => road.length - x).reverse());
 export function laneAlong(road, dir, lane, index = 0, oneWayOf = 0) {
   const pts = dir > 0 ? road.pts : road.pts.slice().reverse();
   /* ribbonOf offsets by width/2 each side. A two-way road's lane i is
@@ -132,7 +142,7 @@ export function laneAlong(road, dir, lane, index = 0, oneWayOf = 0) {
   const { right } = ribbonOf(pts, lane * (2 * index + 1 - oneWayOf));
   const at = [0];
   for (let i = 1; i < right.length; i++) at.push(at[i - 1] + dist(right[i], right[i - 1]));
-  return { id: `${road.id}:${dir > 0 ? "fwd" : "rev"}#${index}`, road: road.id, dir, index, pts: right, at, length: at[at.length - 1] };
+  return { id: `${road.id}:${dir > 0 ? "fwd" : "rev"}#${index}`, road: road.id, dir, index, pts: right, at, length: at[at.length - 1], along: alongFor(road, dir) };
 }
 
 /* THE LANES OF A ROAD WITH TURN BAYS (map/bays.js): the through lanes,
@@ -150,7 +160,7 @@ function lanesWithBays(road) {
     const pts = offsetLine(fwd ? road.pts : road.pts.slice().reverse(), fwd ? offs : offs.slice().reverse());
     const at = [0];
     for (let i = 1; i < pts.length; i++) at.push(at[i - 1] + dist(pts[i], pts[i - 1]));
-    return { id: `${road.id}:${dir}#${key}`, road: road.id, dir: fwd ? 1 : -1, index: key, pts, at, length: at[at.length - 1] };
+    return { id: `${road.id}:${dir}#${key}`, road: road.id, dir: fwd ? 1 : -1, index: key, pts, at, length: at[at.length - 1], along: alongFor(road, fwd ? 1 : -1) };
   };
   for (const dir of ["fwd", "rev"]) {
     o[dir].through.forEach((offs, i) => { out[`${road.id}:${dir}#${i}`] = mk(dir, i, offs); });
@@ -274,6 +284,13 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
       lanes[`${r.id}:rev#${i}`] = laneAlong(r, -1, lane, i);
     }
   }
+  /* ACCELERATION LANES (map/accel.js): a lane of its own at a road's start,
+     beside the curb lane, for the traffic joining from the road that feeds it. */
+  for (const r of roads) {
+    if (!hasAccel(r)) continue;
+    const acc = accelAt(r, (id) => roadOf[id]?.speed);
+    if (acc) lanes[`${r.id}:fwd#A0`] = { ...accelLane(r, acc, lane), along: alongFor(r, 1) };
+  }
   /* Which node each road end belongs to, if any. */
   const endNode = {};
   loaded.nodes.forEach((n, k) => { for (const l of n.legs) endNode[`${l.road}|${l.end}`] = { k, leg: l }; });
@@ -299,7 +316,9 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
     /* Bays count: the box has to clear the widest approach AT THE LINE.
        A node with no bays gets exactly what it always did. */
     const baysHere = (l) => Object.keys(lanes).filter((id) => id.startsWith(`${l.road}:${l.end === "end" ? "fwd" : "rev"}#`) && /#[LR]\d+$/.test(id)).length;
-    const widest = Math.max(1, ...n.legs.map((l) => (roadOf[l.road] ? lanesOf(roadOf[l.road]) + baysHere(l) : 1)));
+    /* ...and an acceleration lane, open at the start it begins from. */
+    const accelHere = (l) => (l.end === "start" && lanes[`${l.road}:fwd#A0`] ? 1 : 0);
+    const widest = Math.max(1, ...n.legs.map((l) => (roadOf[l.road] ? lanesOf(roadOf[l.road]) + baysHere(l) + accelHere(l) : 1)));
     const boxHalf = lane * widest;
     const lineAt = boxHalf + LINE_SETBACK;      // the stop line beyond the box, as intersection.js has it
     const legs = {};
@@ -359,6 +378,22 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
              ends (the lane's midpoint, or the road's end). */
           inFrom: seam && inLane ? inLane.length / 2 : 0,
           outTo: outLane ? (seam ? outLane.length / 2 : outLane.length) : 0,
+        };
+      }
+      /* THE ACCELERATION LANE LEAVING THIS START (map/accel.js): outbound
+         only, beside the curb lane, landed in only by the road that feeds
+         it. `accelClose` and `accelEnd` are distances back from the path's
+         end (its seam): where its taper begins, and where it lies on the
+         curb lane -- nobody may be in it past there. */
+      const accLane = l.end === "start" ? lanes[`${r.id}:fwd#A0`] : null;
+      if (accLane) {
+        const outTo = seam ? accLane.length / 2 : accLane.length;
+        const id = `${base}#A0`;
+        legs[id] = {
+          id, base, lane: null, lanes: count, pos: leftBays + count, across: across + 1, bay: null, accel: true, accelFrom: r.accel.start.from,
+          inner: false, curb: false, road: r.id, end: l.end, bearing: l.bearing, control: ctl, arrow: false, sign: null, zone: zoneOf(r),
+          speed: (r.speed ?? 50) / 3.6, inLane: null, outLane: accLane, oneWay: !!r.oneWay, inFrom: 0, outTo,
+          accelClose: Math.max(0, outTo - accLane.closesAt), accelEnd: Math.max(0, outTo - accLane.endsAt),
         };
       }
     }
@@ -449,7 +484,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
        was: the first version moved both, the player's committed right
        turn came off its arc by 0.77 m against a 0.45 m bound, and nothing
        about the turns was wrong. The waiting position was. */
-    const halfOf = (leg) => lane * (roadOf[leg.road] ? lanesOf(roadOf[leg.road]) + baysHere(leg) : 1);
+    const halfOf = (leg) => lane * (roadOf[leg.road] ? lanesOf(roadOf[leg.road]) + baysHere(leg) + accelHere(leg) : 1);
     for (const id of ids) {
       const A = legs[id];
       let sinMin = 1, need = 0;
@@ -486,7 +521,13 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
         /* The one lane this lane lands in for this movement, from the
            permissions and pairing above -- or none, which is a lane that
            may not make this movement, or one with nowhere to land. */
-        if (B.bay || recv[`${A.base}>${B.base}`]?.[A.pos] !== B.lane) continue;
+        if (B.accel) {
+          /* The feeding road lands in the acceleration lane, and only there. */
+          if (A.road !== B.accelFrom || recv[`${A.base}>${B.base}`]?.[A.pos] == null) continue;
+        } else {
+          if (B.bay || recv[`${A.base}>${B.base}`]?.[A.pos] !== B.lane) continue;
+          if (ids.some((id) => legs[id].base === B.base && legs[id].accel && legs[id].accelFrom === A.road)) continue;
+        }
         paths[`${from}/${to}`] = pathBetween(place, A, B, { from, to, intent: kind });
       }
     }
@@ -607,7 +648,7 @@ function pathBetween(place, A, B, meta) {
   const outDir = unit(exit0[0], exit0[exit0.length - 1]);
   const turn = norm((Math.atan2(outDir.y, outDir.x) - Math.atan2(inDir.y, inDir.x)) * 180 / Math.PI);
 
-  let pts, iStop, iClear, exitFrom;
+  let pts, iStop, iClear, exitFrom, laneAt0 = null;
   if (Math.abs(turn) < ARC_FROM) {
     /* Straight on: line to box edge to the way out. */
     pts = [...approach, exit0[0]];
@@ -653,6 +694,17 @@ function pathBetween(place, A, B, meta) {
        found by the seam-following check. `clearAt` is the arc's end
        either way; only the lane mapping moves. */
     exitFrom = nearestAlong(outL, pts[pts.length - 1]).s;
+    /* ...AND WHERE IT LANDS BEFORE THE LANE EVEN BEGINS -- a slip road
+       coming in from behind the node, whose arc ends 6.4 m short of the
+       acceleration lane's first point -- that shortfall is part of the
+       way out: the lane's arc there is NEGATIVE, or every position on
+       the exit read 6.4 m against its own lane (21 October: a car behind
+       a merging one read it as behind, and drove into it). */
+    if (exitFrom <= 1e-9) {
+      const e = pts[pts.length - 1], p0 = outL.pts[0], d0 = unit(p0, outL.pts[1]);
+      const back = (p0.x - e.x) * d0.x + (p0.y - e.y) * d0.y;
+      if (back > 0.01) laneAt0 = -back;
+    }
   }
   const away = cut(outL, exitFrom, B.outTo);
   pts.push(...away.slice(1));
@@ -663,7 +715,7 @@ function pathBetween(place, A, B, meta) {
        inbound lane; the exit portion starts at `exitFrom` along the
        outbound one. */
     laneIn: { id: inL.id, at0: A.inFrom },
-    laneOut: { id: outL.id, at0: exitFrom },
+    laneOut: { id: outL.id, at0: laneAt0 ?? exitFrom },
   };
 }
 
@@ -737,6 +789,40 @@ export function exitRouteInto(layout, toLeg, intent = "straight", fromBase = nul
    a kilometre: turning from a 40 street onto a 60 road and driving 57, the
    meter called it speeding and the sign said 40 (20 October). One function,
    so the player is judged and told by the same number the traffic drives to. */
+/* WHERE A CAR PAST THE BOX IS, along its exit road's centreline
+   (`alongFor`): comparable between the road's lanes, where distance
+   remaining is not. Null on the approach or the box. */
+const interp = (xs, ys, x) => {
+  let lo = 0, hi = xs.length - 1;
+  if (x <= xs[0]) return ys[0];
+  if (x >= xs[hi]) return ys[hi];
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xs[m] <= x) lo = m; else hi = m; }
+  const f = (x - xs[lo]) / ((xs[hi] - xs[lo]) || 1);
+  return ys[lo] + f * (ys[hi] - ys[lo]);
+};
+export function exitAlong(course, k, route, s) {
+  const layout = course.at?.[k]?.layout, p = layout?.paths?.[route];
+  if (!p || s <= p.clearAt) return null;
+  const lane = layout.legs[p.to]?.outLane;
+  if (!lane?.along) return null;
+  return interp(lane.at, lane.along, p.laneOut.at0 + (s - p.clearAt));
+}
+/* ...and on an approach, before the line: the second half of the same road's lane. */
+export function approachAlong(course, k, route, s) {
+  const layout = course.at?.[k]?.layout, p = layout?.paths?.[route];
+  if (!p || s > p.stopAt) return null;
+  const lane = layout.legs[p.from]?.inLane;
+  if (!lane?.along) return null;
+  return interp(lane.at, lane.along, p.laneIn.at0 + s);
+}
+/* And back: the s on `route`'s exit stretch at a centreline distance. */
+export function exitSAt(course, k, route, along) {
+  const layout = course.at?.[k]?.layout, p = layout?.paths?.[route];
+  const lane = p && layout.legs[p.to]?.outLane;
+  if (!lane?.along) return null;
+  return p.clearAt + interp(lane.along, lane.at, along) - p.laneOut.at0;
+}
+
 export function limitAt(course, me) {
   const p = course.at?.[me.k ?? 0]?.layout?.paths?.[me.route];
   if (p && me.s > p.clearAt) { const out = postedOutAt(course, me.k ?? 0, me.route); if (out != null) return out; }

@@ -80,6 +80,11 @@ export const AXES = [...SKILLS, "compliance"];
                      October: "it's just one of those things people know
                      or dont" -- known or not, once per driver, as every
                      kind is.
+     accel-lane      no sign: an acceleration lane is for getting up to the
+                     traffic's speed before moving over (map/accel.js) --
+                     misread, they move over as soon as a gap lets them, at
+                     whatever speed they came off the ramp. 0.20, placed
+                     without a ruling: the maintainer's to set.
                      LAST, because the draws are taken in this order: a kind
                      added at the end moves no driver's reading of another. */
 export const DIFFICULTY = {
@@ -90,6 +95,7 @@ export const DIFFICULTY = {
   "keep-right": 0.30,
   "right-on-red": 0.35,
   "yield-to-bus": 0.15,
+  "accel-lane": 0.20,
 };
 /* HOW WELL A KIND OF SIGN HAS STUCK WITH THIS DRIVER: one draw per driver
    per KIND, never per encounter -- knowledge is consistent (a driver who

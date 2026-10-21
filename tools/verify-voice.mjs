@@ -15,6 +15,7 @@
       highway): a detector that fires on its opposite is noise, one that
       never fires is ceremony.
    ===================================================================== */
+import { exitAlong, exitSAt } from "../src/sim/graph.js";
 import { loadMap } from "../src/map/load.js";
 import { testMap1, testLoop } from "../src/map/samples.js";
 import { seedGraph, step } from "../src/sim/crossing.js";
@@ -183,7 +184,8 @@ console.log("\n3. THE DETECTORS, ON THEIR SITUATIONS AND THEIR OPPOSITES");
     const r1 = ev({ me: curb, world: { ...w0, actors: [close] } }, { me: moved, world: tick({ ...w0, actors: [close] }) });
     const r2 = ev({ me: curb, world: { ...w0, actors: [far] } }, { me: moved, world: tick({ ...w0, actors: [far] }) });
     check(fires(r1, "tightGap") && !fires(r2, "tightGap"), "changing lane five metres in front of a car at speed is a tight gap; fifty is not");
-    const offered = { ...far, courtesy: { leg: Lw.paths[laneRoute(1)].from, since: 0 } };
+    /* An offer to the player is marked as theirs (courtesy.js, 21 October: the traffic offers joining cars gaps too). */
+    const offered = { ...far, courtesy: { leg: Lw.paths[laneRoute(1)].from, since: 0, for: curb.id, forPlayer: true } };
     check(fires(ev({ me: curb, world: { ...w0, actors: [offered] } }, { me: moved, world: tick({ ...w0, actors: [offered] }) }), "letIn") && !fires(r2, "letIn"), "taking a gap somebody offered is noticed as being let in");
     const truck = (s) => ({ id: "truck-1", kind: "truck", k: west.k, route: laneRoute(1), s, v: 8 });
     let s3 = ev({ me: curb, world: { ...w0, actors: [truck(95)] } }, { me: curb, world: tick({ ...w0, actors: [truck(95)] }) }).state;
@@ -208,19 +210,23 @@ console.log("\n3. THE DETECTORS, ON THEIR SITUATIONS AND THEIR OPPOSITES");
     check(reset.state.streakM === 0 && reset.state.streakS === 0, "and any fault starts the streak again");
   }
 
-  /* Onto the highway at its pace, from the slip road. */
+  /* Onto the highway at its pace, from the slip road -- which since 21
+     October lands in an acceleration lane (map/accel.js): the merge is the
+     move out of it into the curb lane, at the same place on the road. */
   {
     const H = loadMap(testLoop());
     let wh = { ...seedGraph(1, 50, H, { target: 0, posted: true }), actors: [], every: 1e9, nextAt: 1e9 };
     const ramp = playerOn(wh.course, "on-1", "end");
     const Lr = wh.course.at[ramp.k].layout, out = Object.keys(Lr.paths).find((r) => Lr.paths[r].from === Lr.paths[ramp.route].from);
-    const onto = { ...ramp, route: out, s: Lr.paths[out].length - 0.2 };
-    const j = wh.course.joins[`${ramp.k}|${Lr.paths[out].to}`];
-    const nextRoute = j && Object.keys(wh.course.at[j.k].layout.paths).find((r) => wh.course.at[j.k].layout.paths[r].from === j.side);
-    if (j && nextRoute) {
-      const merged = (v) => ev({ me: { ...onto, v }, world: wh }, { me: { ...onto, k: j.k, route: nextRoute, s: 0.5, v }, world: tick(wh) });
-      check(fires(merged(25), "highwayMerge") && !fires(merged(10), "highwayMerge"), "onto the highway from the slip road at its pace is a good merge; at 36 km/h it is not");
-    } else check(false, "could not find the slip road's join onto the loop");
+    const acc = Lr.legs[Lr.paths[out].to];
+    const curbLeg = acc?.accel ? Lr.legAt(acc.base, acc.pos - 1) : null;
+    const into = curbLeg && Object.keys(Lr.paths).find((r) => Lr.paths[r].to === curbLeg && Lr.paths[r].intent === "straight");
+    if (into) {
+      const s = Lr.paths[out].clearAt + 120, at = { ...ramp, route: out, s };
+      const s2 = exitSAt(wh.course, ramp.k, into, exitAlong(wh.course, ramp.k, out, s));
+      const merged = (v) => ev({ me: { ...at, v }, world: wh }, { me: { ...at, route: into, s: s2 + v * DT, v }, world: tick(wh) });
+      check(fires(merged(25), "highwayMerge") && !fires(merged(10), "highwayMerge"), "out of the acceleration lane onto the highway at its pace is a good merge; at 36 km/h it is not");
+    } else check(false, "could not find the acceleration lane beside the loop's curb lane");
   }
   console.log("  note: stopping for somebody on foot is NOT tested here -- it asks the sim's own whatStops for a person in the way, which needs a crossing scene");
 }

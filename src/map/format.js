@@ -120,9 +120,11 @@ export function prop({ id, kind = "house", at, heading = 0, l, w, h }) {
    back by its width, so a waiting car stands clear of it; a map without
    one is exactly the map it was. */
 export const CROSSWALK_W = 3.0;
-export function road({ id, kind = "collector", points, lanes, oneWay = false, speed, parking, control = { start: "none", end: "none" }, turns, bays, leftArrow, crosswalk }) {
+/* `accel`, optional: { start: { from, length } } -- an acceleration lane
+   for the traffic leaving the road's start, fed by road `from` (map/accel.js). */
+export function road({ id, kind = "collector", points, lanes, oneWay = false, speed, parking, control = { start: "none", end: "none" }, turns, bays, accel, leftArrow, crosswalk }) {
   const k = KINDS[kind] ?? KINDS.collector;
-  return { id, kind, points, lanes: lanes ?? k.lanes, oneWay, speed: speed ?? k.speed, parking: parking ?? k.parking, control, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}), ...(crosswalk ? { crosswalk } : {}) };
+  return { id, kind, points, lanes: lanes ?? k.lanes, oneWay, speed: speed ?? k.speed, parking: parking ?? k.parking, control, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(accel ? { accel } : {}), ...(leftArrow ? { leftArrow } : {}), ...(crosswalk ? { crosswalk } : {}) };
 }
 
 /* STAGE 0 AS THE FIRST MAP. The valley road and the bridge road from

@@ -26,7 +26,10 @@ import { playerOn, withDriver } from "../src/sim/drive.js";
 import { DT, decide, wantedGap, clearBetween } from "../src/sim/traffic.js";
 import { courteous, COURTESY_FOR } from "../src/sim/courtesy.js";
 import { paintCourtesy } from "../src/iso/draw.js";
-import { trial } from "./measure/courtesy-trial.mjs";
+import { trial, gapBeside } from "./measure/courtesy-trial.mjs";
+import { stepDriver } from "../src/sim/drive.js";
+import { sliderFor } from "../src/sim/player.js";
+import { detect, newEventState } from "../src/sim/events.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -70,10 +73,15 @@ console.log("\n2-4. A PLAYER SIGNALLING LEFT AT 90 ON THE HIGHWAY");
     const only = (a) => courteous(a) === (kind === "yes");
     const ever = new Map();
     const r = trial(base, i, true, (was, w, pl, sigAt) => {
-      const active = w.actors.filter((c) => c.courtesy && !c.courtesy.done);
+      /* OFFERS TO THE PLAYER. Since 21 October the traffic offers joining
+         cars gaps too (courtesy.js, map/accel.js) -- and on this loop every
+         entrance has an acceleration lane -- so the player's are the ones
+         marked theirs; the traffic's are verify-merge's. */
+      const mine = (c) => c.courtesy && c.courtesy.forPlayer;
+      const active = w.actors.filter((c) => mine(c) && !c.courtesy.done);
       if (active.length > 1) many++;
       for (const c of w.actors) {
-        if (!c.courtesy) continue;
+        if (!mine(c)) continue;
         const prior = was.actors.find((x) => x.id === c.id)?.courtesy;
         if (!prior) {
           if (ever.has(c.id)) reoffer++;
@@ -105,15 +113,21 @@ console.log("\n2-4. A PLAYER SIGNALLING LEFT AT 90 ON THE HIGHWAY");
   check(early === 0, `no offer before the offerer could notice the signal (${early} early)`);
 }
 
-console.log("\n5. WITH NO PLAYER SIGNALLING, NOTHING MOVES");
+console.log("\n5. WITH NOBODY ASKING, NOTHING MOVES");
 {
-  let a = seedGraph(2, 50, loop, { target: 120, posted: true }), b = { ...a, courtesy: false };
+  /* Nobody asking: no player signalling, and -- since joining cars ask too
+     (21 October) -- no acceleration lanes, so the loop with its slip roads
+     on yield signs. With them, courtesy is supposed to move the world:
+     verify-merge counts the offers. */
+  const raw = testLoop();
+  for (const r of raw.roads) { delete r.accel; if (r.id.startsWith("on-")) r.control = { start: "none", end: "yield" }; }
+  let a = seedGraph(2, 50, loadMap(raw), { target: 120, posted: true }), b = { ...a, courtesy: false };
   let same = true;
   for (let i = 0; i < 60 / DT && same; i++) {
     a = step(a); b = step(b);
     same = a.actors.length === b.actors.length && a.actors.every((x, j) => x.id === b.actors[j].id && x.s === b.actors[j].s && x.v === b.actors[j].v);
   }
-  check(same, "a minute of the highway with courtesy on and off: identical, tick for tick");
+  check(same, "a minute of the highway with nobody asking, courtesy on and off: identical, tick for tick");
 }
 
 console.log("\n6. THE MARK");
@@ -130,6 +144,60 @@ console.log("\n6. THE MARK");
   check(!!disc || calls.some((c) => c[0] === "fill" && c[2] === "#22be54"), "an offering car carries the green badge");
   check(Math.min(...radius.slice(1, 2)) >= 11, `at a far zoom (2 px per metre) the badge is ${radius[1]?.toFixed(1)} px across its radius -- never under the horn's 11`);
   check(calls.some((c) => c[0] === "fill" && String(c[2]).startsWith("rgba(34,190,84")), "and the gap is painted on the road in front of it");
+}
+
+console.log("\n7. TAKEN, IT IS NOTICED -- IN THE RUNNING SIM");
+{
+  /* "LET IN", END TO END (21 October). The voice check handed the detector
+     a made offer and it fired; in the running sim it never had: on the tick
+     the player crossed, their signal pointed at the next lane and the offer
+     was already withdrawn. So: a player level with a courteous car,
+     signalling; when the gap is there they steer into it through the real
+     player model; the game's own detector must say so -- and with courtesy
+     off, moving into a gap that came on its own, it must not. */
+  const LANE = 3.6;
+  const run = (base, i, on) => {
+    let w = { ...base, courtesy: on };
+    const at0 = playerOn(w.course, `loop-${(i % 4) * 2}`, "end");
+    const layout = w.course.at[at0.k].layout;
+    const base0 = layout.legs[layout.paths[at0.route].from].base;
+    const curb = layout.legAt(base0, 2), mid = layout.legAt(base0, 1);
+    const route = Object.keys(layout.paths).find((r) => layout.paths[r].from === curb);
+    const cp = layout.paths[route];
+    const level = w.actors.filter((a) => (a.k ?? 0) === at0.k && layout.paths[a.route]?.from === mid && a.s > 60 && a.s < layout.paths[a.route].stopAt - 200 && !a.lc && a.kind !== "truck" && a.kind !== "bus" && courteous(a));
+    if (!level.length) return null;
+    const c = level[0], sc = (a) => a.s * (cp.stopAt / layout.paths[a.route].stopAt);
+    let pl = { ...at0, route, s: sc(c) + 0.5, v: c.v, off: 0, psi: 0 };
+    w = { ...w, actors: w.actors.filter((a) => a.id === c.id || (a.k ?? 0) !== pl.k || Math.abs(sc(a) - pl.s) > 60 || ![curb, mid].includes(layout.paths[a.route]?.from)) };
+    let st = newEventState(), offered = false, moving = false, said = false, moved = false;
+    /* Without courtesy a gap comes only when the traffic happens to leave one: longer to wait for it. */
+    for (let n = 0; n < (on ? 30 : 90) / DT; n++) {
+      const signal = n * DT >= 1 ? "left" : null;
+      if (w.actors.some((a) => a.courtesy?.forPlayer && !a.courtesy.done)) offered = true;
+      if (signal && gapBeside(w, pl)) moving = true;
+      /* With courtesy, holding level is what asks for the gap; without, a player drops back a little to find one behind. */
+      const want = on ? c.v : c.v - 2;
+      const input = { steer: -(pl.off - (moving ? -LANE : 0)) * 0.25 - pl.psi * 2.5, slider: sliderFor((want - pl.v) * 0.6, pl.v, 0), assist: 0 };
+      const prev = { me: pl, world: w };
+      pl = stepDriver({ ...pl, signal }, input, w, DT);
+      w = step(withDriver(w, pl));
+      const r = detect(prev, { me: pl, world: w }, st);
+      st = r.state;
+      if (r.events.some((e) => e.id === "letIn")) said = true;
+      if (w.course.at[pl.k].layout.paths[pl.route].from === mid) moved = true;
+      if (moved && n * DT > 8) break;
+    }
+    return { offered, moved, said };
+  };
+  const on = [], off = [];
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    let base = seedGraph(seed, 50, loop, { target: 200, posted: true });
+    while (base.t < 180) base = step(base);
+    for (let i = 0; i < 4; i++) { const a = run(base, i, true); if (a) on.push(a); const b = run(base, i, false); if (b) off.push(b); }
+  }
+  const taken = on.filter((r) => r.offered && r.moved), alone = off.filter((r) => r.moved);
+  check(taken.length >= 3 && taken.every((r) => r.said), `a gap offered and taken is noticed as being let in: ${taken.filter((r) => r.said).length} of ${taken.length}`);
+  check(alone.length >= 3 && alone.every((r) => !r.said), `and a gap that came on its own, with courtesy off, is not: ${alone.filter((r) => r.said).length} of ${alone.length}`);
 }
 
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nall passed");

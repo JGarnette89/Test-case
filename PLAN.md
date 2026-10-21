@@ -345,3 +345,16 @@ A.U.T.O. speaks (phase 2), destinations and routing, money, the taxi.
 **Next playable milestone: 3, "The first fare"** -- its first half (a fare
 offered, driven, paid for how it was driven) is built; it completes with
 those three.
+**Added 21 October, NOT STARTED -- recorded so it is not lost:**
+- **Signalling in the driver model.** NPC turn signals are drawn but are
+  not the driver's: a turn signal comes on a fixed 3 s / 25 m out, a lane
+  change signals only while the car is moving across. The maintainer: most
+  drivers "signal poorly, closer to their steering action than to show
+  their intent". When a driver signals is knowledge (knowing to) and
+  observation (having planned the move in time) -- a natural home for both,
+  and the most visible piece of driver character there is. Costed with the
+  road-infrastructure scoping (21 October report).
+- **Courtesy that has looked behind; the onset of braking as the braking
+  axis's observable; observation's markable fault; lead-car obligation** --
+  DECISIONS.md 10.12 and 10.13.
+

@@ -3131,6 +3131,196 @@ What this obliges, before LOD lands:
   run with every car held in full tier must hash exactly as today's step
   does, so turning LOD off is a provable return to the current behaviour.
 
+## 10.10 PUTTING A VEHICLE INTO A MOVING STREAM IS ONE QUESTION, ASKED BY CALLERS WITH DIFFERENT FREEDOMS (21 October)
+
+The maintainer: *"the slip lane was originally the way we were having the
+user enter the highway, because before we were having issues spawning the
+user in flowing traffic. this might not be a problem in a more connected
+city, or maybe more importantly, once we adjust traffic density around the
+user specifically."* The slip road was a workaround: a stationary start
+behind a yield sign because a car could not be put safely into a flow, and
+the endless highway's entrances are where they are because of it.
+
+**The shared question**: at this place in this lane, at this speed, is there
+room ahead and behind? It has been answered four times, each separately,
+and got wrong three times -- the wheel screen's spawn on top of traffic,
+the slip road's player on a stopped car (4828823), and the merge into a
+follower nobody could see (21 October, a neighbour search that skipped
+cars short of their line). Today: `joinAt` (the car ahead only),
+`placePlayer` (a radius, then deletes whoever could reach a stopped car),
+`gapFor` (both sides, closing speed), over three neighbour searches. That
+is section 10's pattern at the scale of architecture. So: ONE neighbour
+search -- who is ahead and behind at a place in a lane, along the road's
+centreline (graph.js `exitAlong`, which agrees across lanes where distance
+remaining does not) -- and ONE gap predicate with the standard as a
+parameter, read by everything that asks.
+
+**What does NOT unify, and must not be forced to**: the callers differ in
+what they may choose and in what a "no" means.
+- PLACEMENT -- the player's start, and density shaping ahead of and
+  behind the player -- may choose place, speed and timing, holds to the
+  competent standard (never bold, never missing anybody), and may never
+  fail visibly. Density shaping happens out of sight. One operation, one
+  check, both callers.
+- THE PLAYER IS PLACED AGAINST THEIR WORST REASONABLE INPUT, not the speed
+  given them: the traffic will hold its speed, the player may let off or
+  brake, so the room behind must let the follower stop behind a player who
+  does. Today's start is safe only because it is standing. Deleting cars to
+  make room is allowed only before the first frame.
+- A MERGE IS NOT A PLACEMENT. It is behaviour, and its failures are meant
+  to be seen -- the bold taking less than comfortable, the poor observer
+  missing somebody. It reads the same predicate at the driver's own
+  confidence; it never calls placement, or placement could fail or merges
+  could not.
+- LOD PROMOTION CHOOSES NOTHING: the car exists, with a place and a speed.
+  The predicate is a VALIDATOR there; a promoted car that fails it says the
+  coarse model was wrong, and the fix belongs in the coarse model.
+
+**What follows for maps**: once placement is solid the slip road is one
+way onto the highway, not the only one, and entrances stop being
+load-bearing. Slip roads stay -- they are correct road design, and the
+merge is a mechanic worth having.
+
+**Order**: the four suite failures of the acceleration-lane build first
+(the lane-change code they sit in is what the predicate replaces); then
+the one neighbour search and gap predicate under the existing callers,
+guarded by the existing checks; then placement for the player and density
+shaping, with one check; LOD's validator when LOD comes.
+
+## 10.11 A CHANGER LEAVES ITS OLD LANE WHEN THE BODIES CANNOT MEET -- EXCEPT BESIDE A TAPER (21 October)
+
+**The rule.** A car changing lane is in BOTH lanes while it moves across:
+the car it was behind in the old lane still constrains it, and the cars
+behind it in the old lane still see it. Until 21 October that lasted until
+the blend was over. It now ends when the sideways distance still to go is
+under a lane less the two vehicles' half-widths and both cars' weave room
+(crossing.js `protrudes`) -- the point after which the two bodies cannot
+touch -- and an abort back to the old lane is allowed only BEFORE that
+point (lanechange.js `committed`), measured against the narrowest vehicle
+that could be following there.
+
+**Why.** The blend now moves only as the car moves (a stopped car does not
+slide sideways), so "until the blend is over" could be for ever: a changer
+92% across waited behind a stopped car it could no longer reach, the old
+lane waited for it, and the endless highway's closed loop came to a
+complete standstill in fifteen minutes (verify-loop). The abort limit is
+the same boundary seen from the other side: once the old lane has let go,
+the car behind in it moves up into the space, and swinging back lands on
+it (measured the day the release went in: 180 overlapping car-ticks).
+
+**THE EXCEPTION, AND WHY IT IS THERE -- read this when it bites.** Beside a
+TURN BAY or an ACCELERATION LANE the release does not apply: the changer is
+held to the old lane until the blend is over, as before (`tapered`). The
+release assumes the two lanes are a full lane apart. A bay lies ON its
+neighbour until its taper opens, and an acceleration lane slides onto the
+curb lane as it closes, so in a taper the lanes are closer than a lane and
+"the bodies cannot meet" is false at the release point: the first version
+without the exception had a car in a half-open left bay struck from behind
+by the through lane. So whether a changer is held now depends on what KIND
+of lane is beside it -- a condition nobody will remember. If a deadlock
+like the loop's appears next to a bay or an acceleration lane, this is the
+first place to look; the general fix is to measure the real separation of
+the two lanes at the car (both are polylines from the same road samples)
+instead of assuming a lane, which would remove the exception.
+
+## 10.12 BRAKING HARD WITHOUT HAVING LOOKED BEHIND IS THE FAULT -- NOT THE BRAKING (21 October; the maintainer's ruling)
+
+The question: a driver letting a joining car in braked at 4.71 m/s^2 -- 87%
+of the harsh line. Courtesy, or a markable fault? The maintainer:
+
+*"it depends on the driver and the situation. in my real experience the
+majority of drivers (tested or other road users) signal poorly, closer to
+their steering action than to show their intent in general. being 'kind'
+(abandoning right of way) but negligent of traffic behind them is common in
+new drivers, not so much in skilled ones who understand that danger behind
+can be more pressing than ahead. adding to this, the absolute best drivers
+understand their position as the leading car in traffic is different than
+trailing cars and their obligation to lead to get out of the way affects the
+whole flow of traffic behind them. worse drivers consider the brakes their
+get out of trouble button thoughtless of what is happening behind them. as
+always, the best drivers are scanning and anticipating rather than
+reacting, getting out of the way or taking decisive action while it's
+possible."*
+
+**The ruling.** The deceleration is not the fault; braking hard WITHOUT
+having scanned behind is. No threshold on the magnitude: the same 4.71 is
+courtesy from a driver who knew the road behind was clear and negligence
+from one who did not look.
+
+**What follows -- direction, recorded before any of it is built:**
+1. **Courtesy is conditional on observation as well as temperament.** A
+   courteous temperament stays necessary; the offer also needs the driver
+   to have checked behind (attention.js: not looking away, and having
+   registered who follows). A good observer offers when it is cheap; a poor
+   one offers by standing on the brakes.
+2. **The discriminator is WHEN the deceleration starts, not how hard it
+   peaks.** Scanning and anticipating lifts off early and opens the gap
+   gently over a long distance; reacting brakes late and sharp. Measure the
+   PROFILE (onset distance, ramp), not the peak. This may be the BRAKING
+   axis's missing observable -- the cold review's complaint is that it
+   produces "eases off at 77 m instead of 86 m", measurable and not felt;
+   here the lateness lands on a third party as a jolt. Whether it
+   generalises beyond merges is to be measured before assumed.
+3. **OBSERVATION GETS A MARKABLE FAULT.** Observation has been the dead
+   axis: built, measured, and on no sheet. Braking hard -- for a courtesy,
+   or for anything -- with a follower inside the room that braking costs,
+   having not checked behind, is a specific, examinable fault, and it comes
+   from observation rather than confidence. This resolves the long-standing
+   hole recorded at CLAUDE.md "OBSERVATION is exempt from the trait floor".
+
+## 10.13 THE LEAD CAR OWES THE QUEUE -- a named concept, scoped, not built (21 October)
+
+From the same ruling: the best drivers understand that leading traffic is a
+different job, and that their actions propagate to the whole flow behind.
+Nothing in the model knows it is leading a queue or owes it anything; a
+driver's choices touch their own car and, incidentally, whoever follows.
+
+**The cheap version** reads what the model already computes -- who is
+behind, how close, how fast (the lane-change neighbour search) -- and lets
+it shape decisions that already exist: (a) easing off early rather than
+braking late when followed closely (the profile in 10.12); (b) keeping
+right sooner when a faster car is behind (keep-right's motive today is the
+rule, not the follower); (c) not stopping where stopping is optional (a
+courtesy offer, a yield with a gap) when the follower is inside its own
+stopping room. Each is a modifier on an existing decision, gated by
+observation (you must have looked to know you lead).
+
+**The expensive version** -- a driver that plans for the flow behind it
+(choosing a gap or an amber for the platoon rather than for itself) -- is a
+new kind of consideration: a decision with the followers in its objective.
+Not proposed.
+
+## 10.14 STREAMED ROAD AND PLACEMENT ARE TWO OPERATIONS THAT SHARE A HORIZON (21 October)
+
+Asked whether generating road ahead of the player and retiring it behind is
+the same operation as placement (10.10) applied to road: it is not, and the
+two must not be collapsed.
+
+- **Streaming changes the STATIC network**: nodes, roads, lanes and joins
+  appear ahead and go behind. It reaches the structure of the simulation
+  core -- `course.at` is an array indexed by node, joins are keyed by that
+  index, every car stores it, the neighbour index buckets by it, draw.js
+  caches static geometry per road, and the worker protocol rests on the
+  course never crossing (remote.js). The chunk index in map/load.js is an
+  index over a whole loaded map, not a loader: it does none of this.
+- **Placement puts CARS onto a network that exists.** It chooses a place,
+  a speed and a moment against the gap predicate (10.10); it never changes
+  a road.
+
+**What they share is the HORIZON**: the region ahead of and behind the
+player that the player cannot see, where road may be generated or retired
+and cars inserted or removed without anything appearing or vanishing in
+view. One horizon function, read by both. Streaming is placement's
+prerequisite on a streamed map (a car is placed onto road that must exist
+first), never a caller of it.
+
+**Decided 21 October: true streaming is OUT FOR NOW.** A generated, open
+(not looped) highway of 30-40 km, varied along its length, gets the
+maintainer's experience for about a fifth of the cost, and its congestion
+drains out of the far end by construction -- the closed loop's standstill
+was partly its topology. Streaming is revisited only if the long highway
+proves not enough, and that is the maintainer's judgement from driving it.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

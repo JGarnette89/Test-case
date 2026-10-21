@@ -332,8 +332,8 @@ console.log("\n8. A TRUCK HIDES WHAT IS BEHIND IT -- AND A DRIVER KNOWS WHAT IT 
   }
 
   /* (d) In traffic: the city at 15% trucks, opaque against see-through. */
-  const city15 = (opaque) => {
-    let w = { ...seedGraph(3, 50, city, { target: 200, posted: true, trucks: 0.15 }), seeThrough: !opaque };
+  const city15 = (opaque, seed = 3) => {
+    let w = { ...seedGraph(seed, 50, city, { target: 200, posted: true, trucks: 0.15 }), seeThrough: !opaque };
     let crossings = 0, longest = 0, still = new Map(), phantom = { bold: 0, timid: 0, boldN: 0, timidN: 0 };
     const perMin = [];
     for (let i = 0; i < 300 / DT; i++) {
@@ -346,19 +346,35 @@ console.log("\n8. A TRUCK HIDES WHAT IS BEHIND IT -- AND A DRIVER KNOWS WHAT IT 
       }
       if (opaque && i % 20 === 0) for (const a of w.actors) {
         if (a.player || a.crash || !w.tall) continue;
-        const band = a.caution < 0.6 ? "bold" : a.caution > 1.3 ? "timid" : null;
-        if (!band) continue;
-        /* Among drivers at their line, the only ones the margin can hold. */
+        /* Among drivers at their line, the only ones the margin can hold --
+           and THE SAME DRIVER at the same moment asked twice, as the timid
+           tail and as the bold one (22 October). Comparing the timid drivers
+           with the bold ones compared two populations: timid drivers stand at
+           their lines longer, in denser moments, with more trucks about, and
+           with confidence taken out of the margin altogether (sabotaged)
+           they were still held 2.4 times as often. Same car, same moment,
+           one thing changed -- and held BY THE MARGIN (whatStops `byHidden`),
+           not merely held with trucks opaque and free without: that also
+           counts cars a truck hides and the driver remembers, and with the
+           margin's confidence taken out it still read 192 against 168. */
         const pa = pathOf(w, a);
         if (a.going || a.s < pa.stopAt - lenOf(a) / 2 - 8 || a.s > pa.stopAt) continue;
-        phantom[band + "N"]++;
-        if (whatStops(a, w).held && !whatStops(a, { ...w, tall: undefined }).held) phantom[band]++;
+        for (const [band, caution] of [["timid", 1.7], ["bold", 0]]) {
+          const as = { ...a, caution };
+          phantom[band + "N"]++;
+          if (whatStops(as, w).byHidden) phantom[band]++;
+        }
       }
     }
     return { crossings, perMin, longest, crashes: (w.crashes ?? []).filter((c) => !String(c.a).startsWith("ped-")).length, phantom };
   };
   const see = city15(false), opq = city15(true);
-  const rate = (b) => opq.phantom[b] / Math.max(1, opq.phantom[b + "N"]);
+  /* THE SAMPLE, STATED (22 October). This read one seed's five minutes:
+     about 6 events against 8, and on 21 October seed 3 came out the wrong
+     way round. Seeds 3 to 5 pooled, the reversing seed included, and at
+     least 25 events in the two askings together, or the claim is not made. */
+  const pool = [opq.phantom, city15(true, 4).phantom, city15(true, 5).phantom].reduce((a, b) => ({ bold: a.bold + b.bold, timid: a.timid + b.timid, boldN: a.boldN + b.boldN, timidN: a.timidN + b.timidN }));
+  const rate = (b) => pool[b] / Math.max(1, pool[b + "N"]);
   /* A LOCK SHOWS AS THROUGHPUT DECAYING minute on minute (a driver with the
      right of way and a truck that waited for them stood each other off for
      five minutes: 670 crossings a minute falling to 500) -- so every minute
@@ -369,8 +385,13 @@ console.log("\n8. A TRUCK HIDES WHAT IS BEHIND IT -- AND A DRIVER KNOWS WHAT IT 
   const worst = Math.min(...opq.perMin.map((n, i) => n / Math.max(1, see.perMin[i] ?? n)));
   check(opq.crossings > 0.9 * see.crossings && worst > 0.85 && opq.crashes <= see.crashes + 1,
     `five minutes of the city at 15% trucks: ${opq.crossings} crossings with trucks opaque against ${see.crossings} see-through, no minute below ${(100 * worst).toFixed(0)}% of its see-through twin (a minute by minute: ${opq.perMin.join(" ")} against ${see.perMin.join(" ")}), crashes ${opq.crashes} (${see.crashes}); longest standstill ${opq.longest.toFixed(0)} s (${see.longest.toFixed(0)} s)`);
-  check(rate("timid") > rate("bold") && opq.phantom.timidN > 50 && opq.phantom.boldN > 50,
-    `and what a truck might hide holds the timid more than the bold: ${(100 * rate("timid")).toFixed(1)}% of timid drivers' sampled ticks at their line against ${(100 * rate("bold")).toFixed(1)}% of bold ones' (${opq.phantom.timidN} and ${opq.phantom.boldN} sampled) -- the margin for what you cannot see is confidence (at its ends, (c): a sound driver waits and a maximally bold one does not)`);
+  /* Stated as the design states it, exactly: asked as the timid tail, the
+     margin holds them; asked as the maximally bold one -- who assumes
+     nothing is hidden -- it NEVER does. A ratio between two moderate
+     confidences was tried first and is not a property: with confidence
+     taken out of the margin it still read 1.2 to 1. */
+  check(pool.bold === 0 && pool.timid >= 25 && pool.timidN > 150 && pool.timidN > 150 && pool.boldN > 150,
+    `and what a truck might hide holds the timid more than the bold, the same driver at the same moment, over seeds 3-5: held by the margin ${pool.timid} times in ${pool.timidN} asked as the timid tail, ${pool.bold} asked as the maximally bold -- the margin for what you cannot see is confidence (at its ends, (c): a sound driver waits and a maximally bold one does not)`);
 }
 
 console.log(`\n${"=".repeat(70)}`);

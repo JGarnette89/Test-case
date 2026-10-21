@@ -123,7 +123,7 @@ export function routeTo(course, me, place) {
   /* Past the line the movement is committed: the search starts from where it leads. */
   const startStates = [];
   if (me.s > p0.stopAt) {
-    const j = course.joins[`${me.k ?? 0}|${p0.to}`];
+    const j = course.joins[`${me.k ?? 0}|${joinLeg(L0, p0.to)}`];
     if (place.part === "out" && place.k === (me.k ?? 0) && baseOf(L0, p0.to) === place.base) return { steps: [], length: Math.max(0, place.s - me.s) };
     if (j) startStates.push({ k: j.k, base: baseOf(course.at[j.k].layout, j.side), d: p0.length - me.s });
   } else startStates.push({ k: me.k ?? 0, base: baseOf(L0, p0.from), d: Math.max(0, p0.stopAt - me.s) });
@@ -146,7 +146,7 @@ export function routeTo(course, me, place) {
         if (!goal || d < goal.d) goal = { ck: `${ck}>${route}`, d, last: { from: ck, k: cur.k, route } };
         continue;
       }
-      const j = course.joins[`${cur.k}|${p.to}`];
+      const j = course.joins[`${cur.k}|${joinLeg(L, p.to)}`];
       if (!j) continue;
       const nb = baseOf(course.at[j.k].layout, j.side), nk = key(j.k, nb);
       const d = cur.d + (p.length - p.stopAt) + (course.at[j.k].layout.paths[Object.keys(course.at[j.k].layout.paths).find((r) => course.at[j.k].layout.paths[r].from === j.side)]?.stopAt ?? 0);
@@ -160,6 +160,13 @@ export function routeTo(course, me, place) {
   while (prev.has(at)) { const s = prev.get(at); steps.unshift({ k: s.k, route: s.route }); at = s.from; }
   return { steps, length: goal.d };
 }
+
+/* WHERE A LANE CARRIES ON PAST THE NEXT SEAM. An acceleration lane
+   (map/accel.js) has no join -- it ends -- and whoever is in it merges into
+   the lane beside it before then, so for going somewhere it carries on as
+   that lane. Without this, a player starting on a slip road could reach
+   one place on the endless highway in sixteen. */
+export const joinLeg = (layout, leg) => (layout.legs[leg]?.accel && layout.legAt ? layout.legAt(layout.legs[leg].base, layout.legs[leg].pos - 1) ?? leg : leg);
 
 /* What to do next: the movement at the coming intersection and how far to its line -- for the screen to say, and for the player to signal. */
 export function nextTurn(course, me, route) {
@@ -175,7 +182,7 @@ export function nextTurn(course, me, route) {
   if (sameNode) lane = laneFor(L, L.paths[me.route], p);
   else {
     const mine = course.at[me.k ?? 0].layout.paths[me.route];
-    const j = mine && course.joins[`${me.k ?? 0}|${mine.to}`];
+    const j = mine && course.joins[`${me.k ?? 0}|${joinLeg(course.at[me.k ?? 0].layout, mine.to)}`];
     if (j && j.k === step.k) lane = laneFor(L, { from: j.side }, p);
   }
   return { intent: p.intent, k: step.k, toLine, lane };

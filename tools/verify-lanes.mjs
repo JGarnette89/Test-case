@@ -86,7 +86,7 @@ function watch(seed, target, secs) {
     for (const a of w.actors) {
       drivers.set(a.id, a);
       const was = before.get(a.id), L = w.course.at[a.k].layout, p = L.paths[a.route];
-      if (a.lc && !a.lc.abort && (!was || !was.lc || was.lc.t0 !== a.lc.t0)) {
+      if (a.lc && !a.lc.abort && (!was || !was.lc || was.lc.at !== a.lc.at)) {
         const fromPath = L.paths[a.lc.from];
         starts.push({ id: a.id, run: seed, caution: a.caution, obs: deficitOf(a.ratings, "observation").deficit, steer: deficitOf(a.ratings, "steering").deficit,
           gap: a.lc.gap, tight: a.lc.tight, missed: a.lc.missed, blind: a.lc.blind, mandatory: a.lc.mandatory, keepRight: a.lc.keepRight, ov: a.lc.ov, exit: !!a.lc.exit, keptIntent: fromPath?.intent === p.intent });

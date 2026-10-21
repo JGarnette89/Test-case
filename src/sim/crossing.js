@@ -27,7 +27,7 @@
    ===================================================================== */
 import {
   decide, wantedGap, driver, timeToCover, weaveAt, wantedSpeed, stoppingRoom, underLoad, MOST_BRAKE,
-  CAR, DT, PX_PER_M, M, vehicleOf, lenOf, widthOf, clearBetween, wantedFor,
+  CAR, DT, PX_PER_M, M, vehicleOf, lenOf, widthOf, clearBetween, wantedFor, weaveRoom,
 } from "./traffic.js";
 import {
   layoutFor, intersectionFor, poseAt, SIDES, INTENTS,
@@ -38,13 +38,13 @@ import {
   courseOf, laneSpan, nextFor, joinedTo, poseOn,
   radiusFor,
 } from "./course.js";
-import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt, kindAt } from "./graph.js";
+import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt, kindAt , exitAlong } from "./graph.js";
 import { stepLights, LOOP } from "./actuated.js";
 import { HONK_AGAIN } from "./horn.js";
-import { askOf, askedOf, offerOf, courtesyAccel } from "./courtesy.js";
+import { askOf, askedOf, offerOf, courtesyAccel, mergeAskOf } from "./courtesy.js";
 import { rivalDue, asRival } from "./rivals.js";
 import { controlUnder, movementLight } from "./signal.js";
-import { laneStep, lateralOf, lateralRate, changing } from "./lanechange.js";
+import { laneStep, lateralOf, lateralRate, changing, LC_SPEED } from "./lanechange.js";
 import { cornerAccel, speedBy, fits } from "./corner.js";
 export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
@@ -1003,11 +1003,24 @@ export function whatStops(me, world) {
        seeing it until it has gone -- and so does the changer, of the car
        it was behind. Without the second half a car half across the lane
        line is invisible to the car behind it. */
+    /* A CHANGER IS IN ITS OLD LANE ONLY WHILE IT CAN STILL TOUCH IT (21
+       October): until the sideways way still to go is under a lane less the
+       two half-widths and both cars' weave room, after which the bodies
+       cannot meet. Held to the old lane until the blend was over, a changer
+       92% across waited behind a stopped car it could no longer reach --
+       and, since a stopped car's blend stands still, waited for good. */
+    /* Between ORDINARY lanes, a lane apart. A turn bay lies on its
+       neighbour until it opens and an acceleration lane slides onto it as
+       it ends, so there the lanes are closer than that: held to the old
+       lane until the blend is over, as before (a car in a half-open bay was
+       struck from behind the day this was first written without it). */
+    const tapered = (x) => { const Lx = layoutOf(world, x), px = Lx.paths[x.route]; return !!(Lx.legs[px?.from]?.bay || Lx.legs[px?.to]?.accel || Lx.legs[x.lc?.fromLeg]?.bay || Lx.legs[x.lc?.fromTo]?.accel); };
+    const protrudes = (x, other) => tapered(x) || Math.abs(lateralOf(x.lc, world.t)) > (world.road?.lane ?? 3.6) - (widthOf(x) + widthOf(other)) / 2 - 2 * weaveRoom(world.road?.lane ?? 3.6);
     const shareLane = theirs.from === mine.from
-      || (changing(them.lc, world.t) && them.lc.fromLeg === mine.from)
+      || (changing(them.lc, world.t) && them.lc.fromLeg === mine.from && protrudes(them, me))
       /* An approach change only: one on the exit stretch has no fromLeg (null), and null === null
          made two exit changers on one road -- going opposite ways -- share a lane (20 October). */
-      || (changing(me.lc, world.t) && me.lc.fromLeg != null && (theirs.from === me.lc.fromLeg || (changing(them.lc, world.t) && them.lc.fromLeg === me.lc.fromLeg)));
+      || (changing(me.lc, world.t) && me.lc.fromLeg != null && protrudes(me, them) && (theirs.from === me.lc.fromLeg || (changing(them.lc, world.t) && them.lc.fromLeg === me.lc.fromLeg)));
     /* EXCEPT THE CAR THEY MISSED. A driver who skipped the blind-spot
        check has not registered the car beside them, and until they do
        (lanechange.js, the abort) they cannot brake for it either. They
@@ -1016,7 +1029,7 @@ export function whatStops(me, world) {
        at MOST_BRAKE, fell back while the time-driven blend carried on
        across, and was nearly sideways and into it 1.2 s later, before the
        notice that would have swung them back. */
-    const unseen = me.lc?.missed && !me.lc.abort && them.id === me.lc.unseen && world.t < me.lc.t0 + me.lc.noticeAfter;
+    const unseen = me.lc?.missed && !me.lc.abort && them.id === me.lc.unseen && world.t < (me.lc.at ?? me.lc.t0) + me.lc.noticeAfter;
     /* THE PLAYER ACROSS TWO LANES is in both (the maintainer, 8 October: "if
        I stop across two lanes ... both drivers approaching should be
        honking at me"). Their lane is the one their route is in; their body
@@ -1090,9 +1103,11 @@ export function whatStops(me, world) {
        changing on the approach is in both approach lanes: measured by
        distance remaining, the shared exit's own measure. */
     if (theirs.to !== mine.to && me.s > mine.clearAt - lenOf(me) && them.s > theirs.clearAt
-      && ((changing(them.lc, world.t) && them.lc.fromTo === mine.to) || (changing(me.lc, world.t) && me.lc.fromTo === theirs.to))) {
-      const myLeft = mine.length - me.s, theirLeft = theirs.length - them.s;
-      if (theirLeft < myLeft) consider(clearBetween(myLeft - theirLeft, me, them), them);
+      && ((changing(them.lc, world.t) && them.lc.fromTo === mine.to && protrudes(them, me)) || (changing(me.lc, world.t) && me.lc.fromTo === theirs.to && protrudes(me, them)))) {
+      /* Two lanes of one road: compared along its centreline (graph.js exitAlong), not by distance remaining, which disagrees across lanes on a bend. */
+      const mA = exitAlong(world.course, me.k ?? 0, me.route, me.s), tA = exitAlong(world.course, them.k ?? 0, them.route, them.s);
+      const ahead = mA != null && tA != null ? tA - mA : (mine.length - me.s) - (theirs.length - them.s);
+      if (ahead > 0) consider(clearBetween(ahead, me, them), them);
     }
     if (theirs.to === mine.to && theirs.from !== mine.from) {
       const myLeft = mine.length - me.s;
@@ -1113,6 +1128,24 @@ export function whatStops(me, world) {
      place at the curb, braked for by exactly the rule that brakes for a
      stopped car -- no second braking law. */
   if (me.leaveAt != null && me.leaveAt > me.s - 1) consider(Math.max(0, me.leaveAt - me.s), { v: 0, s: me.leaveAt, id: "curb" });
+  /* THE END OF AN ACCELERATION LANE (map/accel.js): a driver who has not
+     merged by then stops short of where it ends -- a stopped place, braked
+     for by the same rule. Not while their merge is under way: they are
+     already leaving it. */
+  {
+    /* Where the TAPER begins: past it the lane is sliding onto the curb lane
+       and a car in it is partly in the through traffic -- the first version
+       stopped cars at the lane's very end, inside the taper, and they were
+       struck there. And only once a comfortable stop needs starting: read
+       from hundreds of metres back, the end made every joiner brake gently
+       all the way along the lane, never reaching the traffic's speed --
+       which a moving gap needs. Until then, they accelerate. */
+    const accLeg = layoutOf(world, me).legs[mine.to];
+    if (accLeg?.accel && !me.player) {
+      const d = Math.max(0, mine.length - accLeg.accelClose - me.s - lenOf(me) / 2 - 1);
+      if (d <= stoppingRoom(me.v) + lenOf(me) + 10) consider(d, { v: 0, s: mine.length - accLeg.accelClose, id: "lane-end" });
+    }
+  }
   /* A BUS'S STOP (buses.js): the same stopped place, by the same rule. */
   if (me.busStop) consider(Math.max(0, me.busStop.at - me.s), { v: 0, s: me.busStop.at, id: "stop" });
 
@@ -1146,10 +1179,14 @@ export function whatStops(me, world) {
      itself -- holding at the line had a car registering somebody and
      driving through them to reach its own stop line. */
   const walkerAtLine = !!walker && walker.s >= waitAt(mine, me);
+  /* `byHidden`: held by the margin and nothing else (verify-trucks asks it
+     of one driver at two confidences); reached only when nothing visible
+     holds them, so computing it costs nothing extra. */
+  let byHidden = false;
   const held = short && (walkerAtLine || visit.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0, liveOf(world, me.k)))
     /* The margin, only for the driver at the head of the queue: one behind
        somebody is held by them, and what the head can see decides. */
-    || (tall.length > 0 && !(leader && leader.id !== "line" && gap < 15) && phantomHolds(world, me, layout, mine, eye, tall)));
+    || (byHidden = tall.length > 0 && !(leader && leader.id !== "line" && gap < 15) && phantomHolds(world, me, layout, mine, eye, tall)));
   if (walker && (!short || !walkerAtLine)) consider(walker.s - me.s - lenOf(me) / 2 - 0.5, { id: "ped", v: 0, headway: me.headway });
   /* THE THREE CONTROLS, AND THE ONLY PLACE THAT KNOWS A SIGNAL EXISTS.
      A red or an unmakeable amber HOLDS -- gap or no gap; a sign or a
@@ -1212,7 +1249,7 @@ export function whatStops(me, world) {
       if (u === "hold" || u === "stop") consider(toEnd + restAt(p2, me), { id: "line", v: 0, headway: me.headway });
     }
   }
-  return { leader, gap, held, queued, hold: short && (under === "hold" || dawdling), red: short && under === "hold", ...(seenNow ? { seen: seenNow } : {}) };
+  return { leader, gap, held, ...(byHidden ? { byHidden } : {}), queued, hold: short && (under === "hold" || dawdling), red: short && under === "hold", ...(seenNow ? { seen: seenNow } : {}) };
 }
 
 /* THE MARGIN FOR WHAT YOU CANNOT SEE IS CONFIDENCE (CLAUDE.md: occlusion
@@ -1416,7 +1453,21 @@ export function step(world) {
      and the one driver it asks. Nothing when there is no player signalling. */
   const signalOn = pl?.signal ? (world.signalOn?.dir === pl.signal ? world.signalOn : { dir: pl.signal, since: world.t }) : null;
   const ask = pl && world.courtesy !== false ? askOf({ ...world, signalOn }, pl) : null;   // off only for the controlled comparison (verify-courtesy)
-  const asked = ask ? askedOf(world, ask, world.actors) : null;
+  /* Every ask -- the player's, and each joining car's on an acceleration
+     lane -- goes to the one driver whose space it needs; a driver asked
+     twice answers the first. */
+  const asks = ask ? [{ ask, who: pl }] : [];
+  if (world.courtesy !== false && world.course.graph) {
+    for (const a of world.actors) {
+      if (a.player || a.crash || a.lc) continue;
+      const L = world.course.at[a.k ?? 0].layout, p = L.paths[a.route], leg = p && L.legs[p.to];
+      if (!leg?.accel || a.s <= p.clearAt) continue;
+      const m = mergeAskOf(world, a, L, p, leg);
+      if (m) asks.push({ ask: m, who: a });
+    }
+  }
+  const askedFor = new Map();
+  for (const x of asks) { const d = askedOf(world, x.ask, atNode(world, world.actors, x.ask.k)); if (d && !askedFor.has(d.id)) askedFor.set(d.id, x); }
   const isFreeStop = (c) => {
     if (!c.player) return !!c.freeStop;
     return playerFree;
@@ -1453,13 +1504,14 @@ export function step(world) {
          the traffic's. `dual` is the instructor's brake, which is not
          theirs at all. Read from `raw`, never written back. */
       const own = decide(me, view);
-      /* Letting the player in (courtesy.js): the one driver asked, if they offer. */
-      const offer = asked && raw.id === asked.id ? offerOf(world, raw, ask, pl, noticeAfter(raw, ask.since)) : null;
+      /* Letting somebody in (courtesy.js): the one driver asked, if they offer. */
+      const mineAsk = askedFor.get(raw.id);
+      const offer = mineAsk ? offerOf(world, raw, mineAsk.ask, mineAsk.who, noticeAfter(raw, mineAsk.ask.since)) : null;
       const told = raw.ease ? Math.min(own, Math.max(decide({ ...me, v0: me.v0 * (1 - raw.ease) }, view), -(me.brake ?? 2.7))) : own;
       /* THE CORNER (corner.js): on a map, a turning path slows the car to
          the speed this driver takes it at, through the same following
          model. The real `view` still decides right of way below. */
-      const a = Math.min(told, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world), offer && !offer.done ? courtesyAccel(world, me, ask, pl) : Infinity);
+      const a = Math.min(told, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world), offer && !offer.done ? courtesyAccel(world, me, mineAsk.ask, mineAsk.who) : Infinity);
       const v = Math.max(0, me.v + a * DT);
       const s = me.s + v * DT;
       const mine = pathOf(world, me);
@@ -1558,7 +1610,14 @@ export function step(world) {
         ? (me.openFor || 0) + DT : 0;
       const openedAt = me.openedAt ?? (openFor >= REACTION_FLOOR ? world.t : null);
       const waited = sitting && openedAt != null ? world.t - openedAt : (me.waited || 0);
-      const out = { ...at, a, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
+      /* `a` IS WHAT THE CAR DID, not what it was asked for (21 October). A
+         car standing a few centimetres inside its standstill gap is asked
+         for the hardest braking every tick and slows nothing -- and the
+         marking sheet reads `a` as harsh braking (marking.js), so a
+         candidate waiting at a red would have been marked for braking
+         while stationary. The change of speed over the tick is the
+         quantity every reader meant. */
+      const out = { ...at, a: (v - me.v) / DT, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
       if (offer || raw.courtesy) out.courtesy = offer;
       /* THE GREEN, NOTICED (the maintainer, 8 October: "some people get
          distracted or are on their phones and don't start right away").
@@ -2470,7 +2529,7 @@ function warmed(w0, acrossIt) {
     actors: w.actors.map((a) => ({
       ...a, stoppedAt: back(a.stoppedAt), openedAt: back(a.openedAt),
       lcDone: back(a.lcDone ?? null),
-      ...(a.lc ? { lc: { ...a.lc, t0: a.lc.t0 - shift } } : {}),
+      ...(a.lc ? { lc: { ...a.lc, t0: a.lc.t0 - shift, ...(a.lc.at != null ? { at: a.lc.at - shift } : {}) } } : {}),
     })),
   };
 }
@@ -2587,7 +2646,8 @@ export function poseOf(world, actor) {
   const { length, width, height } = vehicleOf(actor);
   if (!off) return { ...p, length, width, height };
   const a = (p.rot * Math.PI) / 180;
-  const turn = (lat ? (Math.atan2(lateralRate(actor.lc, world.t), Math.max(1, actor.v ?? 0)) * 180) / Math.PI : 0) + (sideOf ? (Math.atan2(front - back, 2 * halfL) * 180) / Math.PI : 0);
+  /* Over the speed it moves at, floored where the blend slows with it (lanechange.js LC_SPEED). */
+  const turn = (lat ? (Math.atan2(lateralRate(actor.lc, world.t) * Math.min(1, (actor.v ?? 0) / LC_SPEED), Math.max(LC_SPEED, actor.v ?? 0)) * 180) / Math.PI : 0) + (sideOf ? (Math.atan2(front - back, 2 * halfL) * 180) / Math.PI : 0);
   return { ...p, length, width, height, rot: p.rot + turn, x: p.x - Math.sin(a) * off, y: p.y + Math.cos(a) * off };
 }
 

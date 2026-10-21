@@ -47,11 +47,11 @@
 import { deficitOf, knows } from "../core/driver.js";
 import { rng } from "../core/rng.js";
 import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
-import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, clearBetween } from "./traffic.js";
+import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, widthOf, clearBetween, stoppingRoom } from "./traffic.js";
 import { changeTime } from "../core/motion.js";
 import { poseAt } from "./intersection.js";
 import { atNode } from "./crossing.js";
-import { exitRouteInto } from "./graph.js";
+import { exitRouteInto, exitAlong, approachAlong } from "./graph.js";
 import { fits } from "./corner.js";
 
 /* THE LANE BESIDE, by place across the approach (graph.js `legAt`):
@@ -184,6 +184,7 @@ export function lateralRate(lc, t) {
   return (lateralOf(lc, t + h) - lateralOf(lc, t - h)) / (2 * h);
 }
 export const changing = (lc, t) => !!lc && t < lc.t0 + lc.T;
+export const LC_SPEED = 3;   // m/s: nobody begins a change slower than this (laneStep), and below it the blend runs at the car's share
 
 /* The car in the lane `legId` of this node nearest ahead of s, and
    nearest behind, from the actors at this node. A changer counts in
@@ -220,17 +221,40 @@ export function laneStep(world, me, out, view) {
   if (out.lc) {
     out = quiet(out);
     if (!changing(out.lc, t)) return { ...out, lc: null, lcDone: t };
+    /* A CAR MOVES SIDEWAYS ONLY AS IT MOVES ON (21 October). The blend ran
+       on the clock, so a car that stopped part-way across slid sideways on
+       the spot and its heading -- the sideways rate over the speed -- swung
+       round: a truck pivoted its 9 m over the centre line (20 October) and
+       a car merging from a standstill swung into the next lane and was
+       struck. Below LC_SPEED, the speed under which nobody begins a change,
+       the blend's clock runs at the car's share of it. */
+    if (out.v < LC_SPEED) out = { ...out, lc: { ...out.lc, t0: out.lc.t0 + DT * (1 - out.v / LC_SPEED) } };
     /* THE ABORT. A driver who skipped the check registers the car they
        missed after their registration delay; if it is still in the
        blind spot, they swing back to the lane they left, from wherever
        they are -- continuous, no jump. */
-    if (out.lc.missed && !out.lc.abort && t >= out.lc.t0 + out.lc.noticeAfter) {
+    if (out.lc.missed && !out.lc.abort && t >= (out.lc.at ?? out.lc.t0) + out.lc.noticeAfter) {
       const path = layout.paths[out.route];
       /* On the exit stretch the lanes are the `to` legs and the coordinate is distance remaining. */
       const exit = !!out.lc.exit, rem = path.length - out.s;
       const nb = exit ? exitNeighbours(world, out, layout, path.to, rem) : neighbours(world, out, path.from, out.s);
       const beside = (nb.behind && nb.db < BLIND_BEHIND) || (nb.ahead && nb.da < BLIND_AHEAD);
-      if (beside) {
+      /* NO SWINGING BACK INTO A LANE THAT IS ENDING (21 October): an abort
+         out of a merge put the car back in its acceleration lane at the very
+         end, across the curb lane, held by the end and unable to finish going
+         back -- and the curb lane stood behind it for good. Without room to
+         get back before the taper, the merge goes on; the car they missed
+         sees them and brakes. */
+      const backLeg = exit ? layout.legs[layout.paths[out.lc.from].to] : null;
+      const noRoomBack = backLeg?.accel && layout.paths[out.lc.from].length - backLeg.accelClose - besideOn(path, out.s, layout.paths[out.lc.from], layout.paths[out.lc.from].length - rem).s2 < out.v * (out.lc.T / 2) + lenOf(out);
+      /* ...AND NOT ONCE COMMITTED: past the point where the old lane stops
+         seeing them (crossing.js `protrudes`, against the narrowest car that
+         could be following there), the car behind in it has moved up into
+         the space, and swinging back lands on it -- measured, 21 October,
+         the day the old lane began letting go. */
+      const tapered = !!(layout.legs[path.from]?.bay || layout.legs[path.to]?.accel || layout.legs[out.lc.fromLeg]?.bay || layout.legs[out.lc.fromTo]?.accel);
+      const committed = !tapered && Math.abs(lateralOf(out.lc, t)) <= LANE - (widthOf(out) + CAR.width) / 2 - 2 * weaveRoom(LANE);
+      if (beside && !noRoomBack && !committed) {
         const back = layout.paths[out.lc.from];
         const here = lateralOf(out.lc, t);
         return {
@@ -238,7 +262,7 @@ export function laneStep(world, me, out, view) {
           route: out.lc.from,
           s: exit ? besideOn(path, out.s, back, back.length - rem).s2 : out.s * (back.stopAt / path.stopAt),
           aborts: (out.aborts ?? 0) + 1,
-          lc: { ...out.lc, from: out.route, fromLeg: exit ? null : path.from, fromTo: path.to, t0: t, T: out.lc.T / 2, L0: here - out.lc.L0, ov: 0, abort: true },
+          lc: { ...out.lc, from: out.route, fromLeg: exit ? null : path.from, fromTo: path.to, t0: t, at: t, T: out.lc.T / 2, L0: here - out.lc.L0, ov: 0, abort: true },
         };
       }
     }
@@ -260,8 +284,8 @@ export function laneStep(world, me, out, view) {
     if (met) return { ...out, want: null, turnsMet: (out.turnsMet ?? 0) + 1 };
   }
   /* PAST THE BOX, ON THE ROAD JOINED: the exit stretch (exitStep, below). */
-  if (out.s > path.clearAt + EXIT_FROM && out.v >= 3 && world.course.graph) return exitStep(world, quiet(out), layout, path, view);
-  if (out.going || out.stoppedAt != null || out.v < 3) return quiet(out);
+  if (out.s > path.clearAt + EXIT_FROM && (out.v >= LC_SPEED || layout.legs[path.to]?.accel) && world.course.graph) return exitStep(world, quiet(out), layout, path, view);
+  if (out.going || out.stoppedAt != null || out.v < LC_SPEED) return quiet(out);
   if (!leg || (leg.across ?? leg.lanes ?? 1) < 2) return quiet(out);
   /* At this vehicle's own sideways comfort: changeTime scales with 1/sqrt(lateral). */
   const T0 = LC_TIME / Math.sqrt(vehicleOf(out).lateral ?? 1);
@@ -404,8 +428,28 @@ function gapFor(out, nb, kappa) {
   const stopIn = (v, vl, who) => Math.max(0, (v * v - vl * vl) / (2 * vehicleOf(who).most));
   const leadGap = nb.ahead ? clearBetween(nb.da, out, nb.ahead) : Infinity;
   const lagGap = nb.behind ? clearBetween(nb.db, nb.behind, out) : Infinity;
-  const needLead = Math.max(1.5 + stopIn(out.v, nb.ahead?.v ?? out.v, out), kappa * wantedGap(out, nb.ahead ?? { v: out.v }));
-  const needLag = Math.max(1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind), kappa * wantedGap(nb.behind ?? { v: 0 }, out));
+  /* THE COMFORTABLE GAP INCLUDES THE CLOSING SPEED (21 October). It was
+     the following distance at equal speeds, with the closing speed only in
+     the floor (the hardest braking): so a driver joining a 100 km/h stream
+     at 50 called a gap 45 m ahead of a car doing 100 comfortable -- a gap
+     in which that car has to brake at about 6 m/s^2. A merge is judged on
+     whether the car behind will have to brake HARD, so the comfortable
+     gap is the following distance plus the room the closing speed takes to
+     shed: ahead, by this driver's own comfortable braking (the car in front
+     may not speed up); behind, by the follower's comfortable braking AND
+     this driver's own acceleration, since a joiner keeps accelerating and
+     the two close from both ends. Behind by braking alone, it throttled
+     every entrance: measured over three seeds, joiners stood at the end of
+     the lane for minutes on a near-empty highway, and the entrances did
+     worse than the yield signs they replaced. The
+     driver's confidence scales all of it, as before: a bold driver still
+     takes less than comfortable, and makes somebody brake; the floor holds
+     for everybody. */
+  const shed = (dv, rate) => (dv > 0 ? (dv * dv) / (2 * rate) : 0);
+  /* This driver's acceleration still available at this speed (the following model's own shape). */
+  const v0 = Math.max(out.v0 ?? out.v, 0.1), mineAccel = vehicleOf(out).accel * Math.max(0, 1 - (out.v / v0) ** 4);
+  const needLead = Math.max(1.5 + stopIn(out.v, nb.ahead?.v ?? out.v, out), kappa * (wantedGap(out, nb.ahead ?? { v: out.v }) + shed(out.v - (nb.ahead?.v ?? out.v), vehicleOf(out).brake)));
+  const needLag = Math.max(1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind), kappa * (wantedGap(nb.behind ?? { v: 0 }, out) + shed((nb.behind?.v ?? 0) - out.v, vehicleOf(nb.behind).brake + mineAccel)));
   /* The floor alone, for the car behind: whether it can stop behind this one at all. */
   const lagSurvivable = lagGap >= 1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind);
   return { leadGap, lagGap, leadOk: leadGap >= needLead, lagOk: lagGap >= needLag, lagSurvivable };
@@ -433,12 +477,25 @@ const BESIDE_SEP = 0.6;    // m off a lane's width across: in its own lane, not 
    ahead, those already past the seam on the next intersection's approach. */
 function exitNeighbours(world, me, layout, toLeg, rem) {
   let ahead = null, behind = null, da = Infinity, db = Infinity;
+  /* Past the box, places are compared along the road's centreline
+     (graph.js exitAlong), which agrees across lanes; distance remaining
+     only where a car is not yet on this road. */
+  const course = world.course, myAlong = exitAlong(course, me.k ?? 0, me.route, me.s);
   for (const a of atNode(world, world.actors, me.k ?? 0)) {
     if (a.id === me.id) continue;
     const p = layout.paths[a.route];
-    if (!p || a.s < p.stopAt) continue;
+    /* EVERYBODY bound for this lane, measured by distance remaining -- the
+       ones still short of their line too. Excluding them (until 21 October)
+       made the traffic coming up behind through the intersection invisible:
+       on a highway node the line is far back, and merging cars cut in front
+       of followers sixty metres behind -- fifteen crashes in three minutes
+       at 300 cars. A car still waiting at another approach's line counts
+       as behind, at its own speed, which costs a changer nothing it should
+       not. */
+    if (!p) continue;
     if (!(p.to === toLeg || (changing(a.lc, world.t) && a.lc.fromTo === toLeg))) continue;
-    const d = rem - (p.length - a.s);
+    const theirs = myAlong != null && a.s > p.clearAt ? exitAlong(course, a.k ?? 0, a.route, a.s) : null;
+    const d = theirs != null ? theirs - myAlong : rem - (p.length - a.s);
     if (d >= 0 && d < da) { da = d; ahead = a; }
     if (d < 0 && -d < db) { db = -d; behind = a; }
   }
@@ -447,7 +504,8 @@ function exitNeighbours(world, me, layout, toLeg, rem) {
     const there = world.course.at[j.k].layout;
     for (const a of atNode(world, world.actors, j.k)) {
       if (a.id === me.id || there.paths[a.route]?.from !== j.side) continue;
-      const d = rem + a.s;
+      const theirs = myAlong != null ? approachAlong(course, j.k, a.route, a.s) : null;
+      const d = theirs != null ? theirs - myAlong : rem + a.s;
       if (d < da) { da = d; ahead = a; }
     }
   }
@@ -467,9 +525,71 @@ function besideOn(path, s, target, guess) {
   const turn = Math.abs(((((poseAt(target, s2).rot ?? 0) - (here.rot ?? 0)) % 360) + 540) % 360 - 180);
   return { s2, sep, turn };
 }
+/* =====================================================================
+   THE MERGE, out of an acceleration lane (map/accel.js; 21 October). A
+   change the driver NEEDS -- the lane ends -- made while MOVING, into a gap
+   alongside: the gap is `gapFor`'s, which already is a moving judgement
+   (the space ahead at this driver's speed against the car in front, the
+   space behind at the follower's speed against this one -- a joiner slower
+   than the traffic needs a longer gap behind, which is the physics of a
+   merge). It is NOT the stop-line gap acceptance: that judges crossing
+   traffic from standstill, and nothing here crosses.
+
+   Nothing is authored about how it goes. The driver's confidence sets the
+   gap they take (the same kappa as any change), so a bold driver goes
+   early into a tight gap and a timid one waits for a long one; the
+   floor -- the car behind able to stop -- holds for everybody. A change
+   is only begun if it can be finished before the lane ends; a driver who
+   has not found one by then is stopped short of the end (crossing.js
+   whatStops), and from a standstill needs a gap a stream doing the limit
+   rarely leaves. A hard shoulder is not modelled, so running on is not
+   one of the outcomes.
+   ===================================================================== */
+const MATCH = 0.9;   // "up to the traffic's speed": within a tenth of it -- a flagged design constant
+/* WHETHER A JOINING CAR IS TRYING TO MOVE OVER NOW, and how: null while it
+   is not (still accelerating, not yet beside, too late to begin), else the
+   change it would make. The one test, read by the merge itself and by the
+   courtesy it asks for (courtesy.js) -- a joiner asks with its signal when
+   it is ready to go, not while it is still getting up to speed, or the car
+   that lets it in follows it at 50 km/h and the curb lane with it
+   (measured: 19 km/h in the curb lane at 150 cars). */
+export function mergePlan(world, out, layout, path, outLeg) {
+  const T0 = LC_TIME / Math.sqrt(vehicleOf(out).lateral ?? 1);
+  const ownT = T0 * (1 + 0.5 * (deficitOf(out.ratings ?? {}, "steering").deficit ?? 0));
+  const toEnd = path.length - outLeg.accelClose - out.s;   // to where the taper begins: finished by then
+  const standing = out.v < 0.5;
+  if (!standing && toEnd < out.v * ownT + lenOf(out)) return null;
+  if (!layout.legAt) return null;
+  const toLeg = layout.legAt(outLeg.base, outLeg.pos - 1);
+  if (!toLeg || !layout.legs[toLeg] || layout.legs[toLeg].bay || layout.legs[toLeg].accel) return null;
+  const route = exitRouteInto(layout, toLeg, "straight");
+  if (!route) return null;
+  const target = layout.paths[route], rem = path.length - out.s;
+  const { s2, sep, turn } = besideOn(path, out.s, target, target.length - rem);
+  if (turn > BESIDE_TURN || Math.abs(sep - LANE) > BESIDE_SEP || s2 <= target.clearAt + 1) return null;
+  const nb = exitNeighbours(world, out, layout, toLeg, target.length - s2);
+  /* UP TO SPEED FIRST -- for a driver who knows what the lane is for
+     (core/driver.js "accel-lane"): moving over below the traffic's speed
+     hands the car behind the difference. The traffic's speed is the car
+     alongside's, ahead or behind within LOOK, else the road's limit. Not
+     once the lane is running out: from the point a comfortable stop for
+     its end would have to begin, matching gives way to finding a gap. */
+  if (!standing && knows(out, "accel-lane")) {
+    const near = [nb.ahead && nb.da < 100 ? nb.ahead : null, nb.behind && nb.db < 100 ? nb.behind : null].filter(Boolean);
+    const flow = near.length ? Math.min(...near.map((c) => c.v ?? 0)) : (layout.legs[toLeg].speed ?? out.v);
+    const late = toEnd < stoppingRoom(out.v) + lenOf(out) + 10 + out.v * ownT;
+    if (!late && out.v < MATCH * Math.min(flow, out.v0 ?? flow)) return null;
+  }
+  return { T0, best: { dir: -1, to: outLeg.pos - 1, toLeg, route, s2, sep, nb, mandatory: true, exit: true, merge: true } };
+}
+function mergeStep(world, out, layout, path, outLeg) {
+  const plan = mergePlan(world, out, layout, path, outLeg);
+  return plan ? attempt(world, out, path, plan.best, plan.T0) : out;
+}
 function exitStep(world, out, layout, path, view) {
   const t = world.t;
   const outLeg = layout.legs[path.to];
+  if (outLeg?.accel) return mergeStep(world, out, layout, path, outLeg);
   if (!outLeg || (outLeg.across ?? outLeg.lanes ?? 1) < 2 || !layout.legAt || out.kind === "bus") return out;
   const T0 = LC_TIME / Math.sqrt(vehicleOf(out).lateral ?? 1);
   const ownT = T0 * (1 + 0.5 * (deficitOf(out.ratings ?? {}, "steering").deficit ?? 0));
@@ -481,7 +601,7 @@ function exitStep(world, out, layout, path, view) {
   const pos = outLeg.pos ?? outLeg.lane;
   const option = (dir) => {
     const toLeg = layout.legAt(outLeg.base, pos + dir);
-    if (!toLeg || !layout.legs[toLeg] || layout.legs[toLeg].bay) return null;
+    if (!toLeg || !layout.legs[toLeg] || layout.legs[toLeg].bay || layout.legs[toLeg].accel) return null;
     const route = exitRouteInto(layout, toLeg, path.intent, layout.legs[path.from]?.base, true);
     if (!route) return null;
     /* BESIDE, NOT THE SAME DISTANCE OUT: on a bend the inner lane is the
@@ -534,6 +654,24 @@ function attempt(world, out, path, best, T0) {
   /* The gap, at this driver's confidence (gapFor). */
   const kappa = Math.max(0.3, Math.min(1.7, caution));
   const { nb } = best;
+  /* ROOM TO GET ACROSS (21 October). A car moves sideways only as it moves
+     on (the blend above), so a change begun with the car ahead in its OWN
+     lane too close to get past half-way before reaching it leaves it
+     stopped across the line -- still behind that car, and in the way of
+     the lane it was moving into. Measured: at the end of an acceleration
+     lane, a car half out sat behind the car stopped at the end, which
+     waited for a gap the first one's body was filling -- both for good,
+     and the through lanes jammed behind. So the car ahead in this lane
+     must be a car's length off, or as far as this car closes on it in half
+     the change -- the CLOSING speed, since a car ahead moving at this one's
+     speed moves away as fast as this one moves over (by distance alone,
+     every car behind another in an acceleration lane was held until it was
+     too late, and stopped at the end). */
+  {
+    const here = world.course.at[out.k ?? 0].layout;
+    const own = best.exit ? exitNeighbours(world, out, here, path.to, path.length - out.s) : neighbours(world, out, path.from, out.s);
+    if (own.ahead && clearBetween(own.da, out, own.ahead) < Math.max(lenOf(out), Math.max(0, out.v - (own.ahead.v ?? 0)) * T0 * 0.5)) return out;
+  }
   const { leadGap, lagGap, leadOk, lagOk, lagSurvivable } = gapFor(out, nb, kappa);
 
   /* THE BLIND-SPOT CHECK, AT THIS DRIVER'S OBSERVATION. Drawn once per
@@ -584,10 +722,12 @@ function attempt(world, out, path, best, T0) {
     ...(best.mandatory ? { turnChanges: (out.turnChanges ?? 0) + 1 } : {}),
     lc: {
       /* fromLeg is the APPROACH lane left, which holds the car in both approach lanes (crossing.js); an exit change is in both exit lanes by fromTo alone. */
-      from: out.route, fromLeg: best.exit ? null : path.from, fromTo: path.to, t0: t,
+      /* t0 is the blend's clock, which stands still with the car (above);
+         `at` is when the change began, and does not move. */
+      from: out.route, fromLeg: best.exit ? null : path.from, fromTo: path.to, t0: t, at: t,
       T: T0 * (1 + 0.5 * steer),
       L0, ov: weaveRoom(LANE) * steer,
-      missed, blind: !!inBlind, exit: !!best.exit, noticeAfter: REACTION_FLOOR + obs * REGISTER_SPAN,
+      missed, blind: !!inBlind, exit: !!best.exit, merge: !!best.merge, noticeAfter: REACTION_FLOOR + obs * REGISTER_SPAN,
       /* Who they missed: until they notice, they do not brake for that car
          either (crossing.js, following). */
       unseen: missed ? nb.behind.id : null,

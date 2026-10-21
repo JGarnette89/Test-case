@@ -7,6 +7,58 @@ foundation it stands on and DECISIONS.md for the rulings it keeps.*
 
 ---
 
+## IN FLIGHT -- what is half built (kept current; read this first)
+
+The maintainer, 21 October: it should be possible to answer "where are we"
+by reading, not by reconstructing it from reports. Three columns of
+unfinished; an item leaves this list when it is shipped or dropped, and
+says which.
+
+**Live build: `9c5c947`** (lane changes on the exit stretch).
+
+**Committed, not shipped:** nothing.
+
+**Measured / built, not committed** (working tree, one commit when the
+suite is green -- the verdicts per failing check go in its message):
+- acceleration lanes and the merge (map/accel.js, lanechange.js
+  mergePlan, courtesy for joining cars, verify-merge) -- 1.2.16
+- the fixes the suite forced: the closed-loop standstill (aborts into an
+  ending lane, the commit point, the old lane letting go), the cross-lane
+  coordinate (exitAlong), the arc that lands before its lane, routing from
+  an acceleration lane, the blend that moves only as the car moves, room
+  to get across, `a` as the acceleration the car actually had
+- "let in" fixed (it had never fired in a real drive) and checked end to
+  end (verify-courtesy 7)
+- checks restated with reasons: verify-signal, verify-courtesy,
+  verify-voice, verify-lanes, verify-drive, verify-graph, verify-bays,
+  verify-waves
+- DECISIONS 10.10-10.14
+
+**Started, not finished, in order:**
+1. where an offerer's 4.7-5 m/s^2 braking comes from (investigation)
+2. the suite on the above; commit and ship if green
+3. re-measure entry (tools/measure/entry.mjs) and encounters on the
+   shipped build -- the numbers in 1.2.16 predate the loop fixes and
+   the 5.7 m cross-lane error; do not quote them
+4. the courtesy ruling (DECISIONS 10.12): offers gated on observation,
+   onset rather than peak
+5. the 150-car regression: joiners with no gap standing at the taper --
+   the acceleration lane worse than the yield sign at that density
+6. the deliberate-breakage pass on the twelve unproven checks (TESTING.md)
+
+**Approved, parked until the above is done (not to be started):**
+gradient (two commits: the grade term with level-map hashes as the gate,
+then realistic truck and bus power, with grade in the junction clearing
+prediction alongside it); the open highway (src/map/highway.js is
+written and loads clean, 15 km, no conflict points -- not registered as a
+test map, not driven); body motion and roadside density; placement;
+signalling in the driver model; lead-car obligation (DECISIONS 10.13).
+
+**Known, flagged, not scheduled:** harsh braking by cars mid-change rose
+from 33 to 90 car-ticks on the signal map with the loop fixes (0.035% of
+car-ticks overall, under the check's line); the lane-change exception
+beside tapers (DECISIONS 10.11).
+
 ## 0. The reframe, and why
 
 **The product is a traffic simulator first. The examiner game becomes a
@@ -3010,6 +3062,94 @@ drive each and do not move together (following fell at 120 and 200 and rose
 at 300), so they say only that the player is not worse off; a player-side
 claim needs several drives per row. Being OVERTAKEN did not rise: the
 measuring driver holds the limit, and the traffic's mean is near it.
+
+##### 1.2.16 Acceleration lanes -- 21 October
+
+The maintainer, driving 9c5c947: *"the slip road makes it hard to judge,
+most traffic seems to be queued to enter the highway. can we add an
+acceleration lane rather than just a yield sign?"*
+
+**BUILT** (`src/map/accel.js`; `graph.js`, `lanechange.js` `mergePlan`,
+`courtesy.js`; `tools/verify-merge.mjs`). A road end may carry `accel: {
+start: { from, length } }`: a lane beside the curb lane for the traffic
+leaving that start, fed only by road `from`, open for `length`, closing
+over the bays' taper, then lying on the curb lane. The other half of
+1.1.15 (a lane count that changes along a road). **Both entries exist and
+the map says which**: the loop's four entrances have lanes; a slip road
+without one is a yield sign as before, which is still right on smaller
+roads.
+
+**The merge is the moving gap judgement, not the stop-line one.**
+`gapFor` already judged a gap alongside at speed; what it lacked was the
+closing speed in the COMFORTABLE gap (it was only in the survival floor),
+so a joiner at 50 called a gap 45 m ahead of a car doing 100 comfortable.
+It now adds the room the closing speed takes to shed: ahead by the
+driver's own braking, behind by the follower's braking PLUS the joiner's
+remaining acceleration (they close from both ends -- by braking alone it
+throttled every entrance, worse than the yield signs). One rule, for every
+lane change. **Speed matching is knowledge**: a driver who knows what the
+lane is for (`accel-lane`, difficulty 0.20, flagged) waits until within a
+tenth of the traffic's speed (`MATCH`, flagged) unless the lane is running
+out; one who does not moves over at whatever speed. **The lane's end**:
+nobody begins a change they cannot finish before the taper; a driver with
+no gap by the point a comfortable stop must begin stops short of it and
+goes from rest when a gap comes. Forcing in is the bold tail taking less
+than comfortable (the floor holds); a hard shoulder is not modelled.
+**Courtesy reaches the merge**: an ask is anybody's now -- the player's,
+on an approach or past the box, and each joining car's while it is trying
+to move over -- and goes to the one driver whose space it needs.
+
+**Found and fixed on the way, each a real bug beyond the merge:**
+- a blend that ran on the clock slid a stopped car sideways and swung its
+  heading (yesterday's pivoting truck, and a merger struck from the side):
+  below 3 m/s the blend runs at the car's share;
+- a change begun with the car ahead in its own lane too close left it
+  stopped across the line -- two cars waiting on each other for good;
+- `exitNeighbours` ignored traffic short of its line, invisible behind a
+  merger on a highway node (fifteen crashes at 300 cars);
+- distance remaining disagrees ACROSS lanes on a bend (5.7 m on the loop),
+  so cross-lane comparisons past the box now use the road's centreline
+  (`exitAlong`);
+- a path whose arc lands before its exit lane begins read every exit
+  position 6.4 m out against its own lane;
+- routing from an acceleration lane reached one destination in sixteen (it
+  has no join; it carries on as the lane beside).
+And from the full suite on this build (four checks red, then green):
+- a merge aborted near the lane's end put the car back in its ending
+  lane, across the curb lane and unable to finish going back -- the
+  closed loop came to a standstill; no swinging back into a lane that is
+  ending, and none once committed;
+- a changer was held to its old lane until the blend was over, so one 92%
+  across waited for good behind a stopped car it could no longer touch:
+  between ordinary lanes it now leaves the old lane when the bodies cannot
+  meet (a lane, less the half-widths and both cars' weave room); next to a
+  turn bay or an acceleration lane, whose tapers bring lanes closer than
+  a lane apart, it stays held as before;
+- verify-signal counted the braking a STANDING car is asked for (one
+  left-turner, 0.2 m inside its standstill gap, 518 of 626 "harsh"
+  car-ticks; the moving count 108 against 110 before) and no longer caught
+  the non-sticky amber it was written for; it counts moving cars and asks
+  the property directly;
+- verify-courtesy and verify-voice read the player's courtesy only, since
+  the traffic now offers joining cars gaps too.
+The test map: straights 3.3 km (10.4 km a lap), entrances on the
+straights (two on the curves conflicted with the through lane), lanes
+350 m (flagged; the derived default assumes the ramp's 80 km/h, but cars
+leave its curve at about 50).
+
+**Measured** (`tools/measure/entry.mjs`, same map, code and seeds, mean of
+three seeds, four minutes):
+
+| cars | entry | on the highway | standing to enter | crashes |
+|---|---|---|---|---|
+| 60 | yield / lane | 54 / 53 | 104 / 42 car-s | 0 / 0 |
+| 150 | yield / lane | 129 / 124 | 1013 / 1816 car-s | 0 / 0 |
+| 300 | yield / lane | 184 / 225 | 15154 / 10666 car-s | 0 / 0 |
+
+The lane helps where the queue was -- 22% more of the world on the
+highway at 300 -- and costs at 150, where joiners who find no gap by the
+end stand there. Player (`encounters.mjs`, one drive per row, so
+indicative): met 1.2 / 10 / 9.8 per minute at 120 / 200 / 300 cars.
 
 **THE CONTROLS: ADJUSTABLE WHILE DRIVING** (the maintainer: "refinement to
 the controls (I'm not sure exactly what this means yet)"). Control feel

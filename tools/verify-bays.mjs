@@ -140,8 +140,8 @@ console.log("\n3. IN TRAFFIC, AT 300 CARS");
       /* In a bay before it opens -- a changer counts from the tick it begins. */
       if (leg?.bay && a.s < (leg.opensAt ?? 0) - 0.5) { early++; earlyEg ??= `${a.id} on ${p.from} at ${a.s.toFixed(1)} m, opens at ${leg.opensAt.toFixed(1)}`; }
       /* An exit-stretch change (lanechange.js exitStep) is past the box, not into the bay its route came from. */
-      if (a.lc && !a.lc.exit && leg?.bay && !seenLc.has(`${a.id}@${a.lc.t0}`)) {
-        seenLc.add(`${a.id}@${a.lc.t0}`);
+      if (a.lc && !a.lc.exit && leg?.bay && !seenLc.has(`${a.id}@${a.lc.at}`)) {
+        seenLc.add(`${a.id}@${a.lc.at}`);
         if (!lay.legs[a.lc.fromLeg]?.bay) { bayEntries++; if (!a.lc.mandatory) overtakeIn++; }
       }
       if ((a.k ?? 0) === kE && p.intent === "left" && a.s >= p.stopAt && !counted.has(`${a.id}@${a.route}`)) {

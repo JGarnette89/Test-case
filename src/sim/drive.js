@@ -24,7 +24,7 @@ import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand } from "./p
 import { whatStops, poseOf, AT_LINE } from "./crossing.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
-import { poseOnGraph, intentOf, normDeg, curbLegOf, exitRouteInto } from "./graph.js";
+import { poseOnGraph, intentOf, normDeg, curbLegOf, exitRouteInto, exitAlong, exitSAt } from "./graph.js";
 import { poseAt } from "./intersection.js";
 import { CAR, DT } from "./traffic.js";
 
@@ -134,7 +134,7 @@ function zAlong(path, s) {
    else straight on. `off` is re-based to the new lane's centre so the
    car does not move. Only before the line: past it the turn is
    committed, and on the way out the lane is the turn's. */
-function laneChange(layout, me, path) {
+function laneChange(layout, me, path, course) {
   /* ON THE EXIT STRETCH (lanechange.js exitStep): the lane is the path's `to`
      leg, and the route becomes one into the next exit lane at the same
      distance remaining -- before, a player who steered across a line here
@@ -143,15 +143,21 @@ function laneChange(layout, me, path) {
     const outLeg = layout.legs[path.to];
     if (!outLeg || !layout.legAt) return me;
     const lane = LANE;
-    const d = me.off > lane / 2 ? 1 : me.off < -lane / 2 ? -1 : 0;
+    /* RUN OUT OF ACCELERATION LANE (map/accel.js): past where it closes the
+       lane is sliding onto the curb lane, and a player still in it is in the
+       curb lane by the time it ends -- forced in, to everybody else too. */
+    const forced = outLeg.accel && me.s > path.length - outLeg.accelEnd - 1;
+    const d = forced ? -1 : me.off > lane / 2 ? 1 : me.off < -lane / 2 ? -1 : 0;
     if (!d) return me;
     const toLeg = layout.legAt(outLeg.base, (outLeg.pos ?? outLeg.lane) + d);
     if (!toLeg) return me;
     const route = exitRouteInto(layout, toLeg, path.intent, layout.legs[path.from]?.base);
     if (!route) return me;
-    const target = layout.paths[route], s2 = target.length - (path.length - me.s);
+    /* Level with the car along the road's centreline (graph.js exitAlong): on a bend, distance remaining is not level across lanes. */
+    const al = exitAlong(course, me.k ?? 0, me.route, me.s);
+    const target = layout.paths[route], s2 = al != null ? exitSAt(course, me.k ?? 0, route, al) : target.length - (path.length - me.s);
     if (s2 <= target.clearAt) return me;
-    return { ...me, route, s: s2, off: me.off - d * lane };
+    return { ...me, route, s: s2, off: forced ? me.off : me.off - d * lane, ...(forced ? { forcedIn: (me.forcedIn ?? 0) + 1 } : {}) };
   }
   const leg = layout.legs[path.from];
   if (!leg || me.s > path.stopAt) return me;
@@ -192,7 +198,7 @@ export function stepDriver(me, input, world, dt = DT) {
   let next = stepPlayerOn(me, input, geomOf(path, layout.legs[path.from], world.road?.lane ?? LANE), dt);
   next = { ...next, k, route };
   /* Across into the next lane: the route becomes that lane's. */
-  next = laneChange(layout, next, path);
+  next = laneChange(layout, next, path, course);
   route = next.route; path = layout.paths[route];
 
   /* Off the end of the path onto the next one, choosing by the signal;

@@ -25,13 +25,20 @@
      to behind (the player passed it) or behind to ahead (it passed them).
    - MERGES JUDGED: the player moving into another lane, or joining a
      highway from a slip road, with a car in that lane within MERGE metres.
+     And THE MERGE ITSELF (21 October): out of an acceleration lane into the
+     lane beside it (map/accel.js) -- counted whether or not anybody was
+     near, with the GAP TAKEN: the clear road to the nearest car ahead and
+     behind in the lane joined, along the road's centreline (graph.js
+     exitAlong), the smaller of the two. That gap is the decision; a
+     median of it per drive says how tight this player merges.
    Flagged design constants, chosen as "an interaction" a driver would feel.
 
    Pure. `encounterTick(state, me, world)`; `encounterSummary(state)`.
    ===================================================================== */
 import { whatStops, poseOf, conflictOf } from "./crossing.js";
 import { laneSpan } from "./course.js";
-import { DT } from "./traffic.js";
+import { DT, clearBetween } from "./traffic.js";
+import { exitAlong } from "./graph.js";
 
 export const NEAR = 30;        // m: within this, a car is traffic you are sharing road with
 export const FOLLOW_S = 2.5;   // s of headway: closer than this, somebody is following somebody
@@ -44,7 +51,7 @@ export const MERGE = 30;       // m along the lane joined: a car this near makes
 /* A road's kind by its id (the course keeps its roads as a list): indexed once per course. */
 const kinds = new WeakMap();
 const kindOf = (course, id) => { let m = kinds.get(course); if (!m) { m = new Map((course.roads ?? []).map((r) => [r.id, r.kind])); kinds.set(course, m); } return m.get(id) ?? null; };
-export const newEncounters = () => ({ t: 0, met: new Set(), following: 0, followed: 0, gaps: 0, judging: null, overtook: 0, overtaken: 0, merges: 0, rel: new Map(), was: null });
+export const newEncounters = () => ({ t: 0, met: new Set(), following: 0, followed: 0, gaps: 0, judging: null, overtook: 0, overtaken: 0, merges: 0, accelMerges: 0, mergeGaps: [], rel: new Map(), was: null });
 
 export function encounterTick(st, me, world) {
   if (!me || !world?.course) return st;
@@ -73,9 +80,24 @@ export function encounterTick(st, me, world) {
   }
   st.rel = rel;
   /* MERGES JUDGED: into another lane of the same road, or onto a highway from another kind of road, with a car in that lane near. */
-  const leg = layout.legs[path.from], here = { k, from: path.from, base: leg?.base, s: me.s };
+  const leg = layout.legs[path.from], here = { k, from: path.from, to: path.to, base: leg?.base, s: me.s, accel: !!layout.legs[path.to]?.accel };
   const was = st.was;
   const kind = kindOf(course, leg?.road);
+  if (was && was.k === k && was.accel && !here.accel && was.to !== here.to) {
+    st.accelMerges++;
+    const mine = exitAlong(course, k, me.route, me.s);
+    let ahead = Infinity, behind = Infinity;
+    if (mine != null) for (const a of world.actors) {
+      if (a.player || (a.k ?? 0) !== k || layout.paths[a.route]?.to !== path.to) continue;
+      const al = exitAlong(course, k, a.route, a.s);
+      if (al == null) continue;
+      if (al >= mine) ahead = Math.min(ahead, clearBetween(al - mine, me, a));
+      else behind = Math.min(behind, clearBetween(mine - al, a, me));
+    }
+    const gap = Math.min(ahead, behind);
+    if (Number.isFinite(gap)) st.mergeGaps.push(gap);
+    if (gap < MERGE) st.merges++;
+  }
   if (was && was.from !== here.from && ((was.k === k && was.base === here.base) || (was.k !== k && kind === "highway" && was.kind !== "highway"))) {
     const near = world.actors.some((a) => !a.player && (a.k ?? 0) === k && layout.paths[a.route]?.from === path.from && Math.abs(a.s - me.s) < MERGE);
     if (near) st.merges++;
@@ -114,5 +136,5 @@ export function encounterTick(st, me, world) {
 export function encounterSummary(st) {
   const min = Math.max(st.t, 1e-9) / 60;
   const r = (x) => Math.round(x * 10) / 10;
-  return { minutes: r(min), metPerMin: r(st.met.size / min), followingShare: r((100 * st.following) / Math.max(st.t, 1e-9)), followedShare: r((100 * st.followed) / Math.max(st.t, 1e-9)), gapsPerMin: r(st.gaps / min), overtookPerMin: r(st.overtook / min), overtakenPerMin: r(st.overtaken / min), mergesPerMin: r(st.merges / min) };
+  return { minutes: r(min), metPerMin: r(st.met.size / min), followingShare: r((100 * st.following) / Math.max(st.t, 1e-9)), followedShare: r((100 * st.followed) / Math.max(st.t, 1e-9)), gapsPerMin: r(st.gaps / min), overtookPerMin: r(st.overtook / min), overtakenPerMin: r(st.overtaken / min), mergesPerMin: r(st.merges / min), accelMergesPerMin: r(st.accelMerges / min), mergeGap: st.mergeGaps.length ? r(st.mergeGaps.slice().sort((a, b) => a - b)[Math.floor(st.mergeGaps.length / 2)]) : null };
 }

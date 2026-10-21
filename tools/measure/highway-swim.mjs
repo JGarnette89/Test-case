@@ -36,7 +36,7 @@ for (const cars of carsArg.split(",").map(Number)) {
       if (!leg || (leg.across ?? leg.lanes ?? 1) < 2) continue;
       carSeconds += 0.05;
       if (i % 20 === 0) { v0s.push(kmh(a.v0)); if (a.v > 3) { vs.push(kmh(a.v)); const pos = leg.pos ?? leg.lane ?? 0; (byLane.get(pos) ?? byLane.set(pos, []).get(pos)).push(kmh(a.v)); } }
-      if (a.lc && a.lc.t0 === before.t && !a.lc.abort) {
+      if (a.lc && a.lc.at === before.t && !a.lc.abort) {
         const was = before.actors.find((b) => b.id === a.id);
         if (a.keptRight !== was?.keptRight) lcs.keepRight++; else if (was?.want && was.want.k === was.k) lcs.turn++; else lcs.discretionary++;
       }

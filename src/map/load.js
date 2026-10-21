@@ -21,6 +21,7 @@
 import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS, ZONES, CHARACTERS, PARK_W, SIGN_KINDS, SIGN_BACK_MAX, STOP_KINDS, BAY, bayShape } from "./format.js";
 import { ribbonOf } from "../iso/road.js";
 import { hasBays, baySurfaceOf, baysAt } from "./bays.js";
+import { hasAccel, accelAt, accelSurface } from "./accel.js";
 
 /* A road's ribbon and, for more than one lane each way, the lines
    between lanes: the centreline offset a whole lane, two lanes, each
@@ -45,7 +46,9 @@ function surfaceOf(pts, width, lanes, oneWay = false) {
 /* A road's surface from the road itself: the plain ribbon, or -- where an
    end carries turn bays -- the widening one (map/bays.js). A road with no
    bays goes the old way, byte for byte. */
-const surfaceFor = (r) => (hasBays(r) ? baySurfaceOf(r) : surfaceOf(r.pts, r.outer ?? r.width, r.lanes, !!r.oneWay));
+const plainSurface = (r) => (hasBays(r) ? baySurfaceOf(r) : surfaceOf(r.pts, r.outer ?? r.width, r.lanes, !!r.oneWay));
+/* ...and an acceleration lane (map/accel.js) widens the right edge where it is open. */
+const surfaceFor = (r) => (hasAccel(r) ? accelSurface(r, accelAt(r), plainSurface(r)) : plainSurface(r));
 import { radiusFor, LATERAL } from "../sim/course.js";
 
 export const THIN = 0.5;                 // m: points closer than this are one point
@@ -165,7 +168,7 @@ function clampGrade(pts, at) {
    keeping buildings off it. */
 export function standsOn(b, r) {
   const a = (b.heading * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
-  const reach = (r.outer ?? r.width) / 2 + (hasBays(r) ? 2 * LANE : 0);
+  const reach = (r.outer ?? r.width) / 2 + (hasBays(r) ? 2 * LANE : 0) + (hasAccel(r) ? LANE : 0);
   const R = Math.hypot(b.l, b.w) / 2 + reach;
   for (let i = 0; i + 1 < r.pts.length; i++) {
     const p = r.pts[i], q = r.pts[i + 1];
@@ -267,6 +270,8 @@ export function loadMap(map) {
     let bays = r.bays && typeof r.bays === "object" ? { start: r.bays.start ?? null, end: r.bays.end ?? null } : null;
     if (bays && oneWay) { warn("bays-one-way", `road ${id}: turn bays on a one-way road are not supported; dropped`); bays = null; }
     const leftArrow = r.leftArrow && typeof r.leftArrow === "object" ? { start: !!r.leftArrow.start, end: !!r.leftArrow.end } : null;
+    /* An acceleration lane at the road's start (map/accel.js), fed by the road named in `from`. */
+    const accel = r.accel?.start && typeof r.accel.start === "object" ? { start: { from: r.accel.start.from ?? null, ...(Number(r.accel.start.length) > 0 ? { length: Number(r.accel.start.length) } : {}) } } : null;
     const crosswalk = r.crosswalk && typeof r.crosswalk === "object" && (r.crosswalk.start || r.crosswalk.end) ? { start: !!r.crosswalk.start, end: !!r.crosswalk.end } : null;
     const parking = r.parking ?? KINDS[kind].parking;
     /* THE SURFACE OUTSIDE THE LANES: a parallel-parking strip each side of
@@ -275,7 +280,8 @@ export function loadMap(map) {
        traffic drives by are unchanged; `outer` is what is drawn and what
        a building has to keep off. */
     const outer = parking === "parallel" && !oneWay && !bays ? width + 2 * PARK_W : width;
-    const built = { id, kind, lanes, oneWay, width, outer, speed, parking, control, signAt, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(leftArrow ? { leftArrow } : {}), ...(crosswalk ? { crosswalk } : {}), ...(noLeft.start || noLeft.end ? { noLeft } : {}), ...raw };
+    const built = { id, kind, lanes, oneWay, width, outer, speed, parking, control, signAt, ...(turns ? { turns } : {}), ...(bays ? { bays } : {}), ...(accel ? { accel } : {}), ...(leftArrow ? { leftArrow } : {}), ...(crosswalk ? { crosswalk } : {}), ...(noLeft.start || noLeft.end ? { noLeft } : {}), ...raw };
+    { const a = accelAt(built); if (a && a.length + a.taper > raw.length / 2) warn("accel-too-long", `road ${id}: its acceleration lane needs ${(a.length + a.taper).toFixed(0)} m (length and taper) within the first half of a ${raw.length.toFixed(0)} m road, where the intersection it starts at reaches`); }
     /* A bay longer than its road cannot open: it and its taper must fit. */
     for (const end of ["start", "end"]) {
       const b = baysAt(built, end);
@@ -337,7 +343,7 @@ export function loadMap(map) {
         const mk = (suffix, pts, controlStart, controlEnd, turnsStart, turnsEnd, which) => {
           const rs = resample(pts);
           const keep = (f) => (o[f] ? { [f]: { start: which === "a" ? o[f].start : null, end: which === "b" ? o[f].end : null } } : {});
-          const half = { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, signAt: { start: which === "a" ? o.signAt?.start ?? null : null, end: which === "b" ? o.signAt?.end ?? null : null }, ...keep("bays"), ...keep("leftArrow"), ...keep("noLeft"), ...keep("crosswalk"), ...rs };
+          const half = { ...o, id: `${o.id}${suffix}`, control: { start: controlStart, end: controlEnd }, turns: { start: turnsStart, end: turnsEnd }, signAt: { start: which === "a" ? o.signAt?.start ?? null : null, end: which === "b" ? o.signAt?.end ?? null : null }, ...keep("bays"), ...keep("accel"), ...keep("leftArrow"), ...keep("noLeft"), ...keep("crosswalk"), ...rs };
           return { ...half, ...surfaceFor(half) };
         };
         const a = mk("#a", aPts, o.control.start, "none", o.turns?.start ?? null, null, "a"), b = mk("#b", bPts, "none", o.control.end, null, o.turns?.end ?? null, "b");
@@ -380,6 +386,7 @@ export function loadMap(map) {
     r.edge = { start: !joinedEnds.has(`${r.id}|start`), end: !joinedEnds.has(`${r.id}|end`) };
     /* A bay opens for an intersection; at an edge there is none, so the
        road would widen toward nothing. Dropped, with a warning. */
+    if (r.accel?.start && r.edge.start) { warn("accel-at-edge", `road ${r.id}: an acceleration lane at its start, which meets no intersection; dropped`); r.accel = null; Object.assign(r, { centre: undefined }, surfaceFor(r)); }
     if (r.bays) {
       let changed = false;
       for (const end of ["start", "end"]) if (r.bays[end] && r.edge[end]) { warn("bay-at-edge", `road ${r.id}: turn bays at its ${end}, which meets no intersection; dropped`); r.bays = { ...r.bays, [end]: null }; changed = true; }

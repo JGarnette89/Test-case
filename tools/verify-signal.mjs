@@ -154,7 +154,7 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
      brakers braking late for a turn, which is the braking axis. */
   let w = seedGraph(4, 50, loaded, { every: 1.6 });
   const launches = [], delayedAtRed = new Set();
-  let harsh = 0, ticks = 0, rightsOnRed = 0, stoppedFirst = 0;
+  let harsh = 0, ticks = 0, rightsOnRed = 0, stoppedFirst = 0, wentThenBraked = 0;
   for (let i = 0; i < 20 * 300; i++) {
     const before = new Map(w.actors.map((a) => [a.id, a]));
     w = step(w); ticks += w.actors.length;
@@ -173,7 +173,12 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
          runs on that gap as at a stop sign (actuated lights, resting on light traffic, put rights on red
          in front of open gaps far more often than the clock did: 8 October). */
       if ((a.openFor ?? 0) > 0 && light === "red" && p.intent !== "right" && !a.going) delayedAtRed.add(a.id);
-      if (-(a.a ?? 0) > HARSH_AT) harsh++;
+      /* Braking is a moving car slowing: a car already standing is
+         asked for the hardest braking whenever it sits inside its
+         standstill gap (one left-turner 0.2 m in, for 25 s, was 518 of 626
+         "harsh" car-ticks here on 21 October, with the moving count the
+         same as the build before) and slows nothing. */
+      if (-(a.a ?? 0) > HARSH_AT && (was?.v ?? 0) >= 0.5) { harsh++; if (was?.amberGo) wentThenBraked++; }
     }
   }
   const onRed = launches.filter((l) => l.light === "red");
@@ -200,6 +205,11 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
     `right on red happens and costs a stop: ${lightR + rightsOnRed} rights taken on a red (${rightsOnRed} at this demand, ${lightR} on lighter traffic over two seeds), every one after coming to a full stop, and nothing else launched on a red there (${lightWrong})`);
   check(delayedAtRed.size === 0, `the undue-delay clock never runs on a driver held at a red (${delayedAtRed.size} drivers) -- the trap, because a red road with nothing crossing it looks open to every test but the light`);
   check(harsh / Math.max(1, ticks) < 0.001, `and the amber does not make people stand on the brakes: ${harsh} harsh car-ticks in ${ticks} (${((100 * harsh) / Math.max(1, ticks)).toFixed(3)}%)`);
+  /* THE DECISION STICKS, asked directly (21 October): the share above no longer
+     catches a non-sticky amber -- with the decision ignored it rose from 108 to
+     191 car-ticks, under the line -- so the property itself: a driver who chose
+     to carry on at an amber is never then braking hard for it. */
+  check(wentThenBraked === 0, `and a driver who decided at the amber to carry on is never then braking hard for the line (${wentThenBraked} car-ticks)`);
   /* EVERY CONTACT IN THE FOUR MINUTES, not whatever overlaps on the last
      tick. This read only the final tick, and three crashes in four minutes
      at the five-way went unseen until contact became a crash that stays
