@@ -178,6 +178,29 @@ twice as dear (7.2% of a step at 120 cars) PASSED; only about ten times
 (51.6%) failed. It guards against gross regressions only -- recorded, not
 tightened. verify-loop moves to group 1.
 
+**THE COST OF A CORE CHANGE, measured 22 October** -- the question asked
+twice. Subsetting (14 October) pays for leaf changes only: a screen, money
+or routing runs 1-5 checks in seconds, the renderer or the worker 6-11 in
+about six minutes. A change to `crossing.js` or `lanechange.js` reaches
+40-47 checks, and every commit of the week touched one: about 12,500
+CPU-seconds and 26-28 minutes at 8 at once. Profiled, 98% of a slow check's
+time is the simulation stepping, none of it the check's own measuring, so
+the cost is simulated minutes times world size. The slow checks were
+already cut to their floors on 14 October (busbays' hard run sits exactly
+on its floor of 3; passing at about twice its floors), so a further cut
+buys little and risks the floors.
+
+What did buy time: **12 at once instead of 8** -- the whole suite on an
+unchanged tree went from 1700 s to 1382 s (each check about 28% slower
+beside its neighbours, the whole 19% sooner; check.mjs's default since,
+capped by free memory). The wall is now set by the longest check,
+verify-compliance (about 1180 s under that load: 144 five-minute runs of
+the lit map plus five minutes of the city), so the next cut is to split it
+in two the way verify-buses was split, which shortens the pole without
+touching a floor. After that the lever is a cheaper step -- which the
+phone would feel too: the week's changes made a step about 6-7% dearer
+(test map 1 10.18 -> 10.86 ms, the city 6.28 -> 6.68 at 250 cars).
+
 **The before and after for a single change** (from the table above): before
 14 October every commit ran the whole suite, 75 minutes; now a change runs
 the checks whose imports reach it -- 2 checks in seconds for a screen, 4-5 in

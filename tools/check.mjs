@@ -7,7 +7,8 @@
      node tools/check.mjs --direct        while iterating: only the checks that import a changed file themselves, and screens and core
      node tools/check.mjs --all           every check
      node tools/check.mjs verify-x ...    these
-     --jobs N        how many at once (default: half the cores)
+     --jobs N        how many at once (default: three quarters of the hardware
+                     threads, capped by free memory at 0.75 GB a check)
      --timeout S     the same timeout for every check, overriding the recorded ones
 
    A HANG FAILS, LOUDLY, BY NAME. Each check gets three times its last
@@ -27,7 +28,7 @@
    ===================================================================== */
 import { spawn, execSync } from "node:child_process";
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, createWriteStream } from "node:fs";
-import { cpus } from "node:os";
+import { cpus, freemem } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checks as allChecks, affected, changedFiles } from "./affected.mjs";
@@ -39,7 +40,14 @@ mkdirSync(LOGS, { recursive: true });
 
 const args = process.argv.slice(2);
 const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
-const jobs = Number(opt("--jobs")) || Math.max(2, Math.floor(cpus().length / 2));
+/* THREE QUARTERS OF THE THREADS, NOT HALF (22 October). Measured on the
+   maintainer's machine (8 cores, 16 threads, 16 GB): the whole suite on an
+   unchanged tree took 1700 s at 8 at once and 1382 s at 12 -- each check
+   about 28% slower beside its neighbours, the whole 19% sooner. Memory is
+   the limit: at 12 the checks held 7.9 GB and the machine had 0.4 GB free.
+   So capped by free memory at 0.75 GB a check (the measured mean was 0.66),
+   and never under 2. */
+const jobs = Number(opt("--jobs")) || Math.max(2, Math.min(Math.floor((cpus().length * 3) / 4), Math.floor(freemem() / 0.75e9)));
 const fixedTimeout = opt("--timeout") ? Number(opt("--timeout")) : null;
 const named = args.filter((a, i) => !a.startsWith("--") && !["--jobs", "--timeout"].includes(args[i - 1]));
 

@@ -14,7 +14,7 @@ by reading, not by reconstructing it from reports. Three columns of
 unfinished; an item leaves this list when it is shipped or dropped, and
 says which.
 
-**Live build: `fd1127e`** (the courtesy ruling and gap seeking, DECISIONS
+**Live build: `fd1127e`** (no sim change since) (the courtesy ruling and gap seeking, DECISIONS
 10.15).
 
 **Committed, not shipped:** nothing.
@@ -33,7 +33,7 @@ says which.
    (1101 against 730): a joiner and the car letting it in slow together.
    Named in 10.15; not built.
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
-7. suite cost: measured sample cuts on the slowest checks -- next
+7. suite cost: 12 at once instead of 8 (1700 -> 1382 s, measured on an unchanged tree; check.mjs's default, capped by free memory) -- DONE; next, split verify-compliance (the long pole, ~1180 s), then a cheaper step (TESTING.md)
 
 **Approved, parked until the above is done (not to be started):**
 gradient (two commits: the grade term with level-map hashes as the gate,
