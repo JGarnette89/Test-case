@@ -14,7 +14,7 @@ import { newEncounters, encounterTick, encounterSummary } from "../../src/sim/en
 import { goodStep } from "../lib/good-driver.mjs";
 import { DT } from "../../src/sim/traffic.js";
 
-const [mapId = "test-1", carsArg = "default,200", minArg = "5", driverArg = "keep-right"] = process.argv.slice(2);
+const [mapId = "test-1", carsArg = "default,200", minArg = "5", driverArg = "keep-right", seedArg = "1"] = process.argv.slice(2);
 const opts = { overtake: driverArg === "overtake" || driverArg.startsWith("cruise"), pace: driverArg === "cruise-limit" ? 1.0 : 0.95 };
 /* "cruise": no destination at all -- round and round the road it is on, as a player swimming the highway does. */
 const cruise = driverArg.startsWith("cruise");
@@ -22,7 +22,8 @@ const def = TEST_MAPS.find((m) => m.id === mapId);
 for (const c of carsArg.split(",")) {
   const cars = c === "default" ? null : Number(c);
   const raw = mapId === "test-1" ? null : def.build();
-  let { loaded, world: w, me } = worldFor(1, 50, 2.0, true, cars, raw, raw?.sections?.[0]?.start ?? null, false);
+  for (const seed of seedArg.split(",").map(Number)) {
+  let { loaded, world: w, me } = worldFor(seed, 50, 2.0, true, cars, raw, raw?.sections?.[0]?.start ?? null, false);
   const me0 = me;
   let restarts = 0;
   const places = placesOf(w.course, loaded);
@@ -44,5 +45,6 @@ for (const c of carsArg.split(",")) {
     { const L = w.course.at[me.k ?? 0].layout, lg = L.legs[L.paths[me.route].from]; ticks++; if ((lg?.across ?? lg?.lanes ?? 1) >= 2) multi++; }
   }
   const s = encounterSummary(enc);
-  console.log(`${mapId}, ${w.actors.length} cars on ${loaded.laneKm.toFixed(0)} lane-km, ${s.minutes} min driven: met ${s.metPerMin} cars/min within 30 m, following ${s.followingShare}% of the time, followed ${s.followedShare}%, ${s.gapsPerMin} gaps judged/min; overtook ${s.overtookPerMin}/min, overtaken ${s.overtakenPerMin}/min, ${s.mergesPerMin} merges judged/min, ${s.accelMergesPerMin} out of an acceleration lane/min (median gap taken ${s.mergeGap ?? "-"} m) (${driverArg} driver, ${restarts} restarts, ${Math.round((100 * multi) / ticks)}% of the time on a multi-lane road)`);
+  console.log(`seed ${seed} ${mapId}, ${w.actors.length} cars on ${loaded.laneKm.toFixed(0)} lane-km, ${s.minutes} min driven: met ${s.metPerMin} cars/min within 30 m, following ${s.followingShare}% of the time, followed ${s.followedShare}%, ${s.gapsPerMin} gaps judged/min; overtook ${s.overtookPerMin}/min, overtaken ${s.overtakenPerMin}/min, ${s.mergesPerMin} merges judged/min, ${s.accelMergesPerMin} out of an acceleration lane/min (median gap taken ${s.mergeGap ?? "-"} m) (${driverArg} driver, ${restarts} restarts, ${Math.round((100 * multi) / ticks)}% of the time on a multi-lane road)`);
+  }
 }

@@ -1511,7 +1511,9 @@ export function step(world) {
       /* THE CORNER (corner.js): on a map, a turning path slows the car to
          the speed this driver takes it at, through the same following
          model. The real `view` still decides right of way below. */
-      const a = Math.min(told, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world), offer && !offer.done ? courtesyAccel(world, me, mineAsk.ask, mineAsk.who) : Infinity);
+      /* MEETING A GAP (lanechange.js gapTarget): a joiner holding the speed that brings it level with the gap it picked -- through the same following model, its wanted speed set to that one. Only on its acceleration lane. */
+      const meeting = raw.mergeV != null && layoutOf(world, raw).legs[pathOf(world, raw).to]?.accel ? decide({ ...me, v0: Math.max(0.1, raw.mergeV) }, view) : Infinity;
+      const a = Math.min(told, meeting, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world), offer && !offer.done ? courtesyAccel(world, me, mineAsk.ask, mineAsk.who) : Infinity);
       const v = Math.max(0, me.v + a * DT);
       const s = me.s + v * DT;
       const mine = pathOf(world, me);

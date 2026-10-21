@@ -58,8 +58,11 @@
 import { soundnessOf, cautionOf, COMPETENT_AT } from "../core/driver.js";
 import { decide, clearBetween, vehicleOf, wantedGap } from "./traffic.js";
 import { mergePlan } from "./lanechange.js";
+import { changeTime } from "../core/motion.js";
+import { LANE } from "../map/format.js";
 import { exitAlong } from "./graph.js";
 
+export const GENTLE = 0.5;     // of a vehicle's comfortable braking: easing off for somebody with no deadline -- a flagged design constant
 export const COURTESY_FOR = 4.0;   // s: the undue-delay standard (crossing.js UNDUE_AT) -- a gap not taken in that long is withdrawn
 
 /* Would this driver let somebody in at all -- their temperament, nothing else. */
@@ -92,7 +95,12 @@ export function askOf(world, pl) {
   const here = leg.pos ?? leg.lane;
   const toLeg = layout.legAt ? layout.legAt(leg.base, here + d) : `${leg.base}#${leg.lane + d}`;
   if (!toLeg || !layout.legs[toLeg] || layout.legs[toLeg].bay) return null;
-  return { k, toLeg, s: pl.s, stopAt: path.stopAt, v: pl.v ?? 0, since, id: pl.id, forPlayer: true };
+  /* ON AN APPROACH THERE IS A DEADLINE: across before the line, with a lane
+     change's own length to spare (the rule the traffic's changes live by,
+     lanechange.js). Declaring none here eased off so gently that the road
+     ran out first (verify-courtesy, 22 October: 3 of 8 never opened). */
+  const v = Math.max(1, pl.v ?? 0), room = path.stopAt - pl.s - v * changeTime(LANE);
+  return { k, toLeg, s: pl.s, stopAt: path.stopAt, v: pl.v ?? 0, since, by: world.t + Math.max(0.5, room / v), id: pl.id, forPlayer: true };
 }
 
 /* A JOINING CAR'S ASK: on an acceleration lane, toward the lane beside
@@ -102,7 +110,8 @@ export function mergeAskOf(world, a, layout, path, leg) {
   if (!layout.legAt || !mergePlan(world, a, layout, path, leg)) return null;
   const toLeg = layout.legAt(leg.base, leg.pos - 1);
   if (!toLeg || !layout.legs[toLeg]) return null;
-  return { k: a.k ?? 0, toLeg, exit: true, rem: path.length - a.s, along: exitAlong(world.course, a.k ?? 0, a.route, a.s), v: a.v ?? 0, since: world.t - (a.s - path.clearAt) / Math.max(1, a.v ?? 0), id: a.id };
+  /* Needed by the time its lane begins to close. */
+  return { k: a.k ?? 0, toLeg, exit: true, rem: path.length - a.s, along: exitAlong(world.course, a.k ?? 0, a.route, a.s), v: a.v ?? 0, since: world.t - (a.s - path.clearAt) / Math.max(1, a.v ?? 0), by: world.t + Math.max(0, path.length - leg.accelClose - a.s) / Math.max(1, a.v ?? 0), id: a.id };
 }
 
 /* The player's position along a follower's own path (paths from one
@@ -116,6 +125,24 @@ export function gapTo(world, me, ask, pl) {
   }
   const s2 = ask.s * (fp.stopAt / ask.stopAt);
   return { s2, d: clearBetween(s2 - me.s, me, pl) };
+}
+
+/* The car behind this one in its own lane, and the clear road between: by
+   the centreline past the box, along the approach before it. */
+export function followerOf(world, me) {
+  const k = me.k ?? 0, layout = world.course.at[k].layout, mine = layout.paths[me.route];
+  const myAl = me.s > mine.clearAt ? exitAlong(world.course, k, me.route, me.s) : null;
+  let best = null, bd = Infinity;
+  for (const a of world.actors) {
+    if (a.id === me.id || (a.k ?? 0) !== k || a.crash) continue;
+    const p = layout.paths[a.route];
+    if (!p) continue;
+    let d = null;
+    if (myAl != null && p.to === mine.to && a.s > p.clearAt) { const al = exitAlong(world.course, k, a.route, a.s); if (al != null) d = myAl - al; }
+    else if (myAl == null && p.from === mine.from && me.s <= mine.stopAt) d = me.s - a.s;
+    if (d != null && d > 0 && d < bd) { bd = d; best = a; }
+  }
+  return best && { ...best, gap: clearBetween(bd, best, me) };
 }
 
 /* The nearest car in the lane asked for whose centre is behind the player. */
@@ -154,8 +181,14 @@ export function offerOf(world, me, ask, pl, noticed) {
        takes about four and a half seconds at highway speed (measured,
        tools/measure/courtesy.mjs), longer than the wait itself. */
     const open = was.open ?? (gapTo(world, me, ask, pl).d >= wantedGap(me, { v: ask.v }) ? world.t : null);
-    /* ...and a gap that has not opened in twice that standard is not going to be taken. */
-    const done = open != null ? world.t - open >= COURTESY_FOR : world.t - was.since >= 2 * COURTESY_FOR;
+    /* ...and a gap that has not opened in the time the offerer's own plan
+       needs to open it, and the standard on top, is not going to be taken.
+       It was twice the standard, fixed -- written when courtesy dropped
+       back at the offerer's hardest; eased off gently (10.15) a full gap at
+       highway speed takes about eight seconds, and offers withdrew
+       themselves a moment before they opened (22 October, verify-courtesy:
+       3 of 8 never opened). */
+    const done = open != null ? world.t - open >= COURTESY_FOR : world.t - was.since >= (was.needs ?? COURTESY_FOR) + COURTESY_FOR;
     return done ? { ...was, open, done: true } : open !== was.open ? { ...was, open } : was;
   }
   if (!courteous(me) || world.t - ask.since < noticed) return null;
@@ -171,13 +204,55 @@ export function offerOf(world, me, ask, pl, noticed) {
      courtesy is for -- was refused for a fraction of a metre a second
      (verify-courtesy, 14 October: 2 offers from 8 courteous drivers). */
   if (closing > 0 && d > 0 && d < (closing * closing) / (2 * b)) return null;
-  return { since: world.t, leg: ask.toLeg, for: ask.id, forPlayer: !!ask.forPlayer };
+  /* AND A DRIVER WHO LOOKS BEHIND (the maintainer: "danger behind can be
+     more pressing than ahead"): one who checks -- competent on the
+     observation axis -- does not offer a gap that would make the car behind
+     them brake harder than that car's own comfortable rate. One who does
+     not check offers anyway, and the braking lands on whoever follows: the
+     fault (DECISIONS 10.12). */
+  if (soundnessOf(me.ratings ?? {}, "observation") >= COMPETENT_AT) {
+    const need = courtesyPlan(world, me, ask, pl).need ?? 0;
+    const f = followerOf(world, me);
+    if (f && need > (f.brake ?? vehicleOf(f).brake) && f.gap < 2 * wantedGap(f, me)) return null;
+  }
+  /* How long the plan takes to open the gap: `want - d` dropped back at its rate. */
+  const p0 = courtesyPlan(world, me, ask, pl);
+  const needs = p0.open || !(p0.need > 0) ? 0 : Math.sqrt((2 * Math.max(0, wantedGap(me, { v: ask.v }) - p0.d)) / Math.min(p0.need, me.brake ?? vehicleOf(me).brake));
+  return { since: world.t, leg: ask.toLeg, for: ask.id, forPlayer: !!ask.forPlayer, needs };
 }
 
-/* What the offer asks of their pedal: follow the player as if already in
-   the lane, no harder than their own comfortable braking. */
-export function courtesyAccel(world, me, ask, pl) {
+/* WHAT THE OFFER ASKS OF THEIR PEDAL -- planned, not reacted (22 October;
+   the maintainer's ruling, DECISIONS 10.12 and 10.15). It was: follow the
+   asker as though already in the lane, no harder than their own braking --
+   which wants the whole gap at once, so every offerer braked at exactly its
+   own rate, the good brakers and the poor alike (measured, 7 of 7). Now:
+   open the gap by the time it is needed (`ask.by`), at the steady
+   deceleration that does that from here -- so a driver who noticed early
+   has time and eases off gently, and one who noticed late has to brake
+   hard. Never harder than their own braking; once the gap is there, it is
+   held as a following gap. The onset is the observation axis
+   (`noticeAfter`); the rate is what is left of the time. */
+export function courtesyPlan(world, me, ask, pl) {
   const { d } = gapTo(world, me, ask, pl);
-  const a = decide(me, { leader: { v: ask.v, id: pl.id }, gap: d });
-  return Math.max(a, -(me.brake ?? vehicleOf(me).brake));
+  const want = wantedGap(me, { v: ask.v });
+  if (d >= want) return { open: true, d };
+  /* NO DEADLINE -- the player signalling past the box, mid-road -- and nothing presses:
+     they ease off gently from the moment they notice, at GENTLE of their
+     vehicle's comfortable braking. A made-up deadline (four seconds from the
+     signal, the first version) asked for 10 m/s^2 at highway speed and put
+     every offerer back on its own cap. */
+  if (ask.by == null) return { open: false, d, need: GENTLE * vehicleOf(me).brake };
+  const T = Math.max(0.5, ask.by - world.t);
+  const closing = (me.v ?? 0) - ask.v;
+  /* Dropping back `want - d` more over T, closing now at `closing`, the asker holding speed. */
+  return { open: false, d, need: (2 * (want - d + closing * T)) / (T * T) };
+}
+export function courtesyAccel(world, me, ask, pl) {
+  const own = me.brake ?? vehicleOf(me).brake;
+  const plan = courtesyPlan(world, me, ask, pl);
+  if (plan.open) return Math.max(decide(me, { leader: { v: ask.v, id: pl.id }, gap: plan.d }), -own);
+  /* Already dropping back fast enough: hold the speed, do not take the space
+     back -- "no braking needed" read as "no constraint" let the offerer
+     accelerate straight back into the gap it was opening (22 October). */
+  return plan.need > 0 ? -Math.min(plan.need, own) : 0;
 }

@@ -14,36 +14,24 @@ by reading, not by reconstructing it from reports. Three columns of
 unfinished; an item leaves this list when it is shipped or dropped, and
 says which.
 
-**Live build: `9c5c947`** (lane changes on the exit stretch).
+**Live build: see the last commit on main** (the courtesy ruling and gap
+seeking, DECISIONS 10.15, on top of `30f9ce2`).
 
 **Committed, not shipped:** nothing.
 
-**Measured / built, not committed** (working tree, one commit when the
-suite is green -- the verdicts per failing check go in its message):
-- acceleration lanes and the merge (map/accel.js, lanechange.js
-  mergePlan, courtesy for joining cars, verify-merge) -- 1.2.16
-- the fixes the suite forced: the closed-loop standstill (aborts into an
-  ending lane, the commit point, the old lane letting go), the cross-lane
-  coordinate (exitAlong), the arc that lands before its lane, routing from
-  an acceleration lane, the blend that moves only as the car moves, room
-  to get across, `a` as the acceleration the car actually had
-- "let in" fixed (it had never fired in a real drive) and checked end to
-  end (verify-courtesy 7)
-- checks restated with reasons: verify-signal, verify-courtesy,
-  verify-voice, verify-lanes, verify-drive, verify-graph, verify-bays,
-  verify-waves
-- DECISIONS 10.10-10.14
+**Measured / built, not committed:** nothing.
 
 **Started, not finished, in order:**
-1. where an offerer's 4.7-5 m/s^2 braking comes from (investigation)
-2. the suite on the above; commit and ship if green
-3. re-measure entry (tools/measure/entry.mjs) and encounters on the
-   shipped build -- the numbers in 1.2.16 predate the loop fixes and
-   the 5.7 m cross-lane error; do not quote them
-4. the courtesy ruling (DECISIONS 10.12): offers gated on observation,
-   onset rather than peak
-5. the 150-car regression: joiners with no gap standing at the taper --
-   the acceleration lane worse than the yield sign at that density
+1. ~~where an offerer's braking comes from~~ -- found: every offerer
+   brakes at exactly its own braking-axis rate (DECISIONS 10.12 work)
+2. ~~suite, commit, ship~~ -- 30f9ce2
+3. ~~re-measure on the shipped build~~ -- done, SIMULATOR 1.2.16
+4. ~~the courtesy ruling~~ -- shipped (10.15); the observation fault on
+   the marking sheet is NOT built
+5. the 150-car regression -- gap seeking built (10.15) and better at
+   every density, but at 150 the lane still stands more than the yield sign
+   (1101 against 730): a joiner and the car letting it in slow together.
+   Named in 10.15; not built.
 6. the deliberate-breakage pass on the twelve unproven checks (TESTING.md)
 
 **Approved, parked until the above is done (not to be started):**
@@ -3137,19 +3125,25 @@ straights (two on the curves conflicted with the through lane), lanes
 350 m (flagged; the derived default assumes the ramp's 80 km/h, but cars
 leave its curve at about 50).
 
-**Measured** (`tools/measure/entry.mjs`, same map, code and seeds, mean of
-three seeds, four minutes):
+**Measured on the shipped build 30f9ce2** (22 October; the figures first
+written here predated the loop fixes and the 5.7 m cross-lane error and are
+withdrawn). Entry (`tools/measure/entry.mjs`, same map, code and seeds,
+mean of three seeds, four minutes):
 
 | cars | entry | on the highway | standing to enter | crashes |
 |---|---|---|---|---|
-| 60 | yield / lane | 54 / 53 | 104 / 42 car-s | 0 / 0 |
-| 150 | yield / lane | 129 / 124 | 1013 / 1816 car-s | 0 / 0 |
-| 300 | yield / lane | 184 / 225 | 15154 / 10666 car-s | 0 / 0 |
+| 60 | yield / lane | 54 / 52 | 108 / 129 car-s | 0 / 0 |
+| 150 | yield / lane | 131 / 126 | 730 / 1367 car-s | 0 / 0 |
+| 300 | yield / lane | 180 / 224 | 16365 / 10111 car-s | 0 / 0 |
 
-The lane helps where the queue was -- 22% more of the world on the
-highway at 300 -- and costs at 150, where joiners who find no gap by the
-end stand there. Player (`encounters.mjs`, one drive per row, so
-indicative): met 1.2 / 10 / 9.8 per minute at 120 / 200 / 300 cars.
+The lane helps where the queue was -- 24% more of the world on the highway
+at 300 -- and costs at 150, where joiners who find no gap by the taper stand
+there: they never adjust their speed to meet a gap (IN FLIGHT item 5).
+The player (`encounters.mjs`, overtaking driver at the limit, mean of
+three seeds, five minutes each; at 120 and 200 the seeds spread by a factor
+of two, at 300 within 10%): met 1.7 / 4.9 / 12.1 cars a minute,
+overtook 1.3 / 4.1 / 10.3, overtaken 0.2 / 0.8 / 1.6, at 120 / 200 / 300
+cars.
 
 **THE CONTROLS: ADJUSTABLE WHILE DRIVING** (the maintainer: "refinement to
 the controls (I'm not sure exactly what this means yet)"). Control feel

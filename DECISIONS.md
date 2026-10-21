@@ -3321,6 +3321,50 @@ drains out of the far end by construction -- the closed loop's standstill
 was partly its topology. Streaming is revisited only if the long highway
 proves not enough, and that is the maintainer's judgement from driving it.
 
+## 10.15 ANTICIPATION IS WHEN, NOT HOW HARD -- a general property, named (22 October)
+
+Two fixes on 22 October turned out to be one property. The maintainer's
+courtesy ruling (10.12): a scanning, anticipating driver lifts off early and
+the gap opens gently; a reacting one brakes late and sharp. And the merge:
+a scanning joiner picks a gap early and adjusts its speed to meet it; one
+who is not accelerates to the traffic's speed and takes whatever hole is
+beside it when it looks.
+
+**The property: what a driver does about something is set by WHEN they
+start, and the observation axis already says when.** `noticeAfter`
+(registration lag, longer mid-glance) is the onset. Act on a PLAN against
+the time actually left -- a gap needed by the time the joiner's lane
+closes; a gap a joiner must reach before its taper -- and gentle-or-sharp
+follows from the onset with nothing authored. A deficit then shows as a
+consequence that lands on somebody (a follower's jolt, a joiner standing at
+the taper), which is what makes it legible.
+
+**Where it is built** (courtesy.js `courtesyPlan`; lanechange.js
+`gapTarget`):
+- courtesy with a deadline (a joining car) opens the gap by then at the
+  rate the time left needs, never past the offerer's own braking; with no
+  deadline (the player signalling mid-road) it eases off at GENTLE (half
+  the vehicle's comfortable rate) from the moment the offerer notices.
+  Measured: every offer used to brake at exactly the offerer's own rate
+  (7 of 7, r = 1.00 with the braking deficit); the player's offers now
+  peak at 1.35 m/s^2 whoever makes them, and differ in onset.
+- a driver who checks behind (competent observation) does not offer a gap
+  that would make its follower brake past the follower's comfortable rate.
+- a scanning joiner holds the speed that brings it level with the gap it
+  can reach with the least change of speed (GAP_LOOK 150 m, flagged).
+
+**Open, measured**: at 150 cars a joiner beside the car letting it in can
+slow WITH it -- the joiner braking for its lane's end, the offerer braking
+to make room -- and the gap never opens; the acceleration lane still
+stands more cars than the yield sign there (1101 against 730 car-s). The
+likely fix is the same property again: an offer that cannot open before
+the joiner's deadline is not waited for. Not built.
+
+**Not yet built from 10.12**: observation's markable fault (braking hard
+with a follower inside the room it costs, having not looked) on the
+marking sheet. Whether onset generalises into the BRAKING axis's missing
+observable beyond merges is to be measured, not assumed.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

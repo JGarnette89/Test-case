@@ -44,7 +44,7 @@
    stays in the old one too, for following, until the blend is over
    (crossing.js `whatStops`).
    ===================================================================== */
-import { deficitOf, knows } from "../core/driver.js";
+import { deficitOf, knows, soundnessOf, COMPETENT_AT } from "../core/driver.js";
 import { rng } from "../core/rng.js";
 import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
 import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, widthOf, clearBetween, stoppingRoom } from "./traffic.js";
@@ -578,13 +578,72 @@ export function mergePlan(world, out, layout, path, outLeg) {
     const near = [nb.ahead && nb.da < 100 ? nb.ahead : null, nb.behind && nb.db < 100 ? nb.behind : null].filter(Boolean);
     const flow = near.length ? Math.min(...near.map((c) => c.v ?? 0)) : (layout.legs[toLeg].speed ?? out.v);
     const late = toEnd < stoppingRoom(out.v) + lenOf(out) + 10 + out.v * ownT;
-    if (!late && out.v < MATCH * Math.min(flow, out.v0 ?? flow)) return null;
+    /* Matched to the gap they are making for, where they picked one (gapTarget): hanging back to drop in behind a car is not arriving slow. */
+    if (!late && out.v < MATCH * Math.min(flow, out.v0 ?? flow, out.mergeV ?? Infinity)) return null;
   }
   return { T0, best: { dir: -1, to: outLeg.pos - 1, toLeg, route, s2, sep, nb, mandatory: true, exit: true, merge: true } };
 }
 function mergeStep(world, out, layout, path, outLeg) {
   const plan = mergePlan(world, out, layout, path, outLeg);
-  return plan ? attempt(world, out, path, plan.best, plan.T0) : out;
+  const moved = plan ? attempt(world, out, path, plan.best, plan.T0) : out;
+  if (moved.lc) return moved.mergeV != null ? { ...moved, mergeV: null } : moved;
+  const mergeV = gapTarget(world, out, layout, path, outLeg);
+  return mergeV === (moved.mergeV ?? null) ? moved : { ...moved, mergeV };
+}
+
+/* =====================================================================
+   PICKING A GAP AND MEETING IT (22 October; DECISIONS 10.15). A joiner who
+   is SCANNING -- competent on the observation axis -- looks along the lane
+   it is joining, picks the gap it can reach with the least change of speed,
+   and adjusts to arrive level with it by the time its lane begins to close:
+   hanging back to drop in behind a car, or pressing on to get ahead of one.
+   One who is not, accelerates to the traffic's speed and takes whatever hole
+   is beside it when it looks -- and at 150 cars, measured, often none, and
+   stood at the taper. Nothing about the gap is authored: which one, and the
+   speed, come from where the traffic is.
+
+   Returns the speed to hold, or null (not scanning, or nobody near).
+   ===================================================================== */
+const GAP_LOOK = 150;   // m along the lane joined, either way: what a scanning driver weighs -- a flagged design constant
+function gapTarget(world, out, layout, path, outLeg) {
+  if (soundnessOf(out.ratings ?? {}, "observation") < COMPETENT_AT) return null;
+  /* SOMEBODY IS LETTING THEM IN: take it -- do not hang back as well. Both
+     dropping back together kept a joiner level with the car making room
+     for it until its lane ran out (measured, 22 October). */
+  if (world.actors.some((a) => a.courtesy && !a.courtesy.done && a.courtesy.for === out.id)) return null;
+  const toLeg = layout.legAt?.(outLeg.base, outLeg.pos - 1);
+  const mine = exitAlong(world.course, out.k ?? 0, out.route, out.s);
+  if (!toLeg || mine == null) return null;
+  const cars = [];
+  for (const a of atNode(world, world.actors, out.k ?? 0)) {
+    if (a.id === out.id || a.crash) continue;
+    const p = layout.paths[a.route];
+    if (!p || a.s <= p.clearAt || !(p.to === toLeg || (changing(a.lc, world.t) && a.lc.fromTo === toLeg))) continue;
+    const al = exitAlong(world.course, a.k ?? 0, a.route, a.s);
+    if (al != null && Math.abs(al - mine) < GAP_LOOK) cars.push({ al, v: a.v ?? 0, half: lenOf(a) / 2 });
+  }
+  if (!cars.length) return null;
+  cars.sort((x, y) => x.al - y.al);
+  const toEnd = path.length - outLeg.accelClose - out.s;
+  const T = Math.max(1, toEnd / Math.max(out.v ?? 0, 5));
+  const v0 = out.v0 ?? out.v, me = lenOf(out) / 2;
+  /* A gap is room for this car with a competent following gap either side, at the speed of the car that would follow. */
+  const room = (v) => 2 * wantedGap({ ...out, v }, { v }) + 2 * me;
+  const gaps = [];
+  gaps.push({ c: cars[0].al - cars[0].half - room(cars[0].v) / 2, v: cars[0].v });                                   // behind the last of them
+  for (let i = 0; i + 1 < cars.length; i++) {
+    const B = cars[i], A = cars[i + 1], clear = A.al - A.half - (B.al + B.half);
+    if (clear >= room(B.v)) gaps.push({ c: (A.al - A.half + B.al + B.half) / 2, v: B.v });
+  }
+  const last = cars[cars.length - 1];
+  gaps.push({ c: last.al + last.half + room(last.v) / 2, v: last.v });                                                // ahead of the first
+  let best = null;
+  for (const g of gaps) {
+    /* Level with the gap's centre in T: hold the gap's speed plus the distance to it over the time. */
+    const want = Math.max(0.5 * g.v, Math.min(v0, g.v + (g.c - mine) / T));
+    if (!best || Math.abs(want - out.v) < Math.abs(best - out.v)) best = want;
+  }
+  return best;
 }
 function exitStep(world, out, layout, path, view) {
   const t = world.t;
