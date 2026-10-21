@@ -3656,6 +3656,103 @@ the brakes (10.12.1, 10.15) -- on the map, where the sheet does not run.
 So it waits on **the sheet on the map** (or a modelled mirror check),
 not on more tuning here.
 
+## 10.17 DENSITY SHAPING: SPEND THE CARS WHERE THE PLAYER IS -- the design, before code (22 October)
+
+**Why it is first.** At the cars the phone affords (smooth to about 260-280,
+keeping real time to about 340 -- SIMULATOR 1.2.17) the endless highway
+gives the player 5.5 cars a minute within 30 m and no gaps to judge, three
+reports running; 160 cars over ~31 lane-km is a car every ~190 m of lane.
+The same cars in a window a few kilometres around the player are traffic,
+for the same step. Measured against the encounter instrument
+(sim/encounters.js) -- met, followed/following, gaps judged a minute --
+never against the car count. Jay's 5.5 met/min and 0 gaps judged are the
+baseline; met/min up with gaps judged still 0 is a PARTIAL success and is
+reported as one. following 51.7% / followed 13.5% should move toward
+balance as density rises; if it does not, the speed spread is the cause,
+not density.
+
+**It does not need LOD.** Retiring a car is removing it out of sight --
+what the sim already does when a car leaves at an edge, and everything that
+names a car by id already tolerates it vanishing. Inserting one ahead is
+placement (10.10): a lane, a place on it, a speed, and room. LOD makes more
+cars affordable; shaping spends the ones we have.
+
+**The rules:**
+1. **A window around the player, by NETWORK distance**: AHEAD metres ahead
+   of them along every lane reachable from theirs, BEHIND metres behind
+   along every lane that reaches theirs. Euclidean distance would be wrong
+   on the loop, whose far side curves back toward the player.
+2. **Retire**: a car outside the window AND out of sight -- beyond the
+   farthest the chase camera can show -- AND not the player, not crashed,
+   not parked. On the loop the road behind is met again only after a lap,
+   by when insertion ahead has filled it.
+3. **Insert**: while the map is under its target, at a place in the window
+   ahead and out of sight, on a lane the player could reach, at the
+   traffic's speed there (the leader's, else the driver's own), only where
+   ONE GAP PREDICATE at the COMPETENT standard (caution 1) holds both ways
+   -- the lane change's own `gapFor`, read through ONE neighbour query.
+   Never a crash, never a car appearing in view. The driver is drawn as an
+   arrival is (`driver`, the same streams), so who drives is unchanged.
+4. **On the tick, inside `step`, a pure function of the world and the
+   player's pose** (10.9). With no player -- watching -- nothing is shaped
+   and the world is the world it was, tick for tick.
+
+**Constants, flagged until the encounter numbers say otherwise**: AHEAD,
+BEHIND, the out-of-sight radius (derived from the chase camera's widest
+view, not chosen). Checked before shipping, enumerated rather than sampled
+where it can be: no insertion or retirement within sight, every inserted
+car passes the competent gap predicate, nothing crashes, a world with no
+player is unchanged, and at the same target met/min and gaps judged rise
+against shaping off.
+
+**STATUS, 22 October: BUILT, NOT ON.** `src/sim/placement.js` (one lane
+index by centreline, the lane change's own leadNeed/lagNeed at caution 1),
+`src/sim/shaping.js` (the window by network distance over ROADS -- every
+lane of one road and direction together -- retire one a tick only at the
+target, insert one a tick out of sight, a map's own `traffic.shape`),
+wired into `step` and `worldFor`; with no map asking, the world is
+identical on every test map (the hash gate). The endless highway's flag is
+OFF until tools/scratch/verify-shaping.wip.mjs passes.
+
+What was learned, in order, each found by a check or a trace:
+- the window walked LANES through nodes, so the lane beside the player was
+  outside it and, from the slip road, the window was the slip road: 121 cars
+  retired in the first tick. Now roads.
+- a car placed in an acceleration lane's taper overlapped the through lane
+  and was struck: no placement in acceleration lanes or bays.
+- an approach changer records fromLeg AND fromTo; the index read fromTo and
+  missed it in the lane it was leaving: three crashes a run. Now by where
+  the car is. No placement crash since.
+- the first encounter figures (12-14 met a minute) were partly the crashes'
+  queues; corrected, AHEAD 2500 gave 4.4. AHEAD 1500 / BEHIND 600: 17-20 met
+  a minute against 2.2-2.6 unshaped, 0 crashes in nine 5-minute runs.
+- on test map 1 (a dense grid) shaping HALVED what the player met (21 to
+  7-12) and once drained it to 31 cars: on a grid encounters come from every
+  direction, and a forward window retires them. Retiring is now a swap (one
+  only at the target); a "half the map" rule picked the wrong maps (it
+  switched the city off, where shaping had taken met 4.6 to 8.8, and left
+  test map 1 on) and was removed. Shaping is per map, as data.
+- a placed car short of a bend braked ~5 m/s^2 on arrival: a placement now
+  stands only if the car's first decision (whatStops + corner) is within its
+  comfortable braking.
+- an off-ramp runs beside the lane it leaves for ~100 m on another road: a
+  car placed 64 m past the split sat on a highway changer. Now nobody of any
+  road within CLEAR_AROUND (10 m).
+
+**OPEN (why it is not on):** verify-shaping still finds followers braking
+past their comfortable rate for a just-placed car -- some 21 m behind one
+7 m/s slower, a gap the competent lag need should refuse, so the index or
+the room test still misses some followers; and with the space check in, met
+a minute fell to 3.5 with large run-to-run spread -- the encounter figure is
+not yet a stable instrument at 3-minute runs. Both before it is switched on.
+
+**ALSO FOUND, NOT SHAPING'S:** at shaped density a highway lane change took
+a gap judged 2.84x competent and the next tick had its leader at -0.7 m --
+moving onto a car -- then struck a car standing in a slowing curb-lane
+queue (seed 2, t 282 s). World wrong, in the lane change; its own item. And
+the loop's off-ramps end at the map edge 230-400 m from the loop, inside
+the drive camera's sight: cars vanish in view there, as they always have.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

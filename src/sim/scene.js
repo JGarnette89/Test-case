@@ -37,6 +37,8 @@ export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, st
      which stay where they happened for the player to see. */
   /* THE RIVALS (sim/rivals.js) drive every map the screen opens. */
   let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true, perceive: !!lookAway, walkers: true, rivals: true });
+  /* DENSITY SHAPING (sim/shaping.js), where the map asks for it and somebody is driving. */
+  if (drive && loaded.traffic?.shape) world = { ...world, shape: true };
   let me = null;
   if (drive) {
     me = playerOn(world.course, start.road, start.end, { through: !!start.through });   // the curb lane, driving down to the crossroads

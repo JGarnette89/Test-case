@@ -52,6 +52,7 @@ import { seedWalkers, stepWalkers } from "./walkers.js";
 import { BUS_SHARE, stopsOf, nextStop, atStop, ridersFor, pullOf, inBay, mayPullOut, laneAt } from "./buses.js";
 import { planPass, passOffset, passerAhead } from "./passing.js";
 import { rng } from "../core/rng.js";
+import { shape, windowOf, admits } from "./shaping.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
 import { reads } from "../core/driver.js";
@@ -1608,7 +1609,7 @@ export function step(world) {
     if (!c.player) return !!c.freeStop;
     return playerFree;
   };
-  const next = world.actors
+  let next = world.actors
     .map((raw) => {
       /* A PLAYER AT THE WHEEL is an actor everybody else perceives,
          yields to and follows, but nobody decides for: the screen
@@ -1977,6 +1978,10 @@ export function step(world) {
       const at = poseOf({ ...world, actors: next }, joining);
       if ((world.peds ?? []).some((q) => { const pp = pedPose(world, q); return Math.hypot(pp.x - at.x, pp.y - at.y) < 8; })) joining = null;
     }
+    /* DENSITY SHAPING (shaping.js): with a player on the map, an arrival
+       at an edge outside their window is not admitted -- its car would only
+       be retired again out of sight. */
+    if (joining && world.shape && !admits(world, windowOf(world, next), joining)) joining = null;
     lastJoin = joining;
     if (joining) {
       next.push(joining);
@@ -2005,6 +2010,23 @@ export function step(world) {
       turnedAway += 1;
       nextAt = t + (car?.arriveIn ?? world.every);
     }
+  }
+  /* DENSITY SHAPING (shaping.js; DECISIONS 10.17): the cars outside the
+     player's window and out of sight retired, and one placed ahead of them
+     where there is room -- built as an arrival is, from the same streams. */
+  if (world.shape) {
+    const sh = shape(world, next, {
+      n: spawned,
+      make: (n, k, route, want, kind) => carFor(world, n, k, route, want, kind),
+      wantAt: (n, kind, k, side) => wantFor(world, { n, kind }, k, side),
+      poseOf,
+      /* What the placed car would ask of its pedal on its first tick: the leader and the bend. */
+      wantsAccel: (w2, car) => Math.min(decide(car, whatStops(car, w2)), w2.course.graph && w2.corners !== false ? cornerAccel(car, pathOf(w2, car)) : Infinity),
+      brakeOf: (car) => car.brake ?? vehicleOf(car).brake,
+      kindOf: (n) => ((world.trucks ?? 0) > 0 && rng(world.seed * 7717 + n + 5)() < world.trucks ? "truck" : "car"),
+    });
+    next = sh.next;
+    if (sh.placed) spawned += 1;
   }
   /* What the world remembers of itself, for drivers who perceive it
      late. Only with perception on: a world without it keeps nothing. */
@@ -2299,17 +2321,27 @@ function arriving(world, n) {
      `driver` derives `v0` from it once, rather than deriving it from
      one number and having it corrected a line later -- two
      implementations of one quantity is the recurring bug here. */
-  const posted = world.road.posted ? postedAt(world.course, where.k, route) : null;
-  const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6), kind: kindAt(world.course, where.k, route) };
+  const arriveIn = world.every * (0.6 + r() * 0.8);
+  return carFor(world, n, where.k, route, chosen.want, kind, base, arriveIn);
+}
+
+/* A CAR, BUILT ONCE (22 October): who drives, at the limit of the road
+   they are on, at node k on `route` -- for an arrival at an edge and for a
+   car placed into the stream around the player (shaping.js) alike, so the
+   two can never draw different people. `base` is the road as traffic
+   perceives it; `arriveIn` the arrival's own next interval. */
+export function carFor(world, n, k, route, want, kind, base = (world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null }), arriveIn = world.every) {
+  const posted = world.road.posted ? postedAt(world.course, k, route) : null;
+  const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6), kind: kindAt(world.course, k, route) };
   /* THE RIVALS (rivals.js): an absent one is the next car to arrive -- their profile, through the same `driver`. */
   const rival = rivalDue(world, world.actors, kind);
   const who = driver(road, world.seed, n, rival?.ratings ?? null, null, kind);
   const car = {
     ...who,
     n,
-    k: where.k,
+    k,
     route,
-    ...(chosen.want ? { want: chosen.want } : {}),
+    ...(want ? { want } : {}),
     leg: 0,
     s: 0,
     stoppedAt: null,
@@ -2324,10 +2356,10 @@ function arriving(world, n) {
        "cars that just keep coming, so we can prove our right of way
        ordering stays consistent" -- and a rate tuned for one road is not
        a rate that saturates four approaches. */
-    arriveIn: world.every * (0.6 + r() * 0.8),
+    arriveIn,
     /* A bus runs its route; it does not end a trip at a parking slot. */
     tripLen: kind === "bus" ? null : tripLenFor(world, n),
-    ...(kind === "bus" ? { busStop: nextStop(world.course, { kind }, world.course.at[where.k].layout.paths[route], 0, 15), riders: ridersFor(n) } : {}),
+    ...(kind === "bus" ? { busStop: nextStop(world.course, { kind }, world.course.at[k].layout.paths[route], 0, 15), riders: ridersFor(n) } : {}),
   };
   return rival ? asRival(car, rival) : car;
 }

@@ -580,7 +580,12 @@ export function loadMap(map) {
   /* THE TRAFFIC MIX a map asks for: today the share of trucks, for a road
      where trucks are the point (the highway). Absent, the sim's own share. */
   const tr = Number(map.traffic?.trucks);
-  const traffic = Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : null;
+  /* ...and whether its traffic is SHAPED around a player (sim/shaping.js):
+     a map's own choice, because where it helps is measured per map -- the
+     endless highway's corridor, not a dense grid (DECISIONS 10.17). */
+  const traffic = Number.isFinite(tr) || map.traffic?.shape === true
+    ? { ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}) }
+    : null;
   return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, stops, laneKm, warnings, ...(traffic ? { traffic } : {}) };
 }
 

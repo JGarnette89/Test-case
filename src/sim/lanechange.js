@@ -433,6 +433,12 @@ export { reasonToStayOut };
    (22 October). */
 export const kappaOf = (out) => Math.max(0.3, Math.min(1.7, out.caution ?? 1));
 const shedOf = (dv, rate) => (dv > 0 ? (dv * dv) / (2 * rate) : 0);
+/* ...and ahead of them, before the car they would follow: the following distance plus the closing speed shed at their own comfortable braking (the car in front may not speed up), never under the floor of stopping behind it at their hardest. */
+export function leadNeed(out, ahead, kappa = kappaOf(out)) {
+  const va = ahead?.v ?? out.v;
+  const stop = Math.max(0, (out.v * out.v - va * va) / (2 * vehicleOf(out).most));
+  return Math.max(1.5 + stop, kappa * (wantedGap(out, ahead ?? { v: out.v }) + shedOf(out.v - va, vehicleOf(out).brake)));
+}
 export function lagNeed(out, behind, kappa = kappaOf(out)) {
   const v0 = Math.max(out.v0 ?? out.v, 0.1), mineAccel = vehicleOf(out).accel * Math.max(0, 1 - (out.v / v0) ** 4);
   const stop = Math.max(0, ((behind?.v ?? 0) ** 2 - out.v * out.v) / (2 * vehicleOf(behind).most));
@@ -463,7 +469,7 @@ function gapFor(out, nb, kappa) {
   const shed = (dv, rate) => (dv > 0 ? (dv * dv) / (2 * rate) : 0);
   /* This driver's acceleration still available at this speed (the following model's own shape). */
   const v0 = Math.max(out.v0 ?? out.v, 0.1), mineAccel = vehicleOf(out).accel * Math.max(0, 1 - (out.v / v0) ** 4);
-  const needLead = Math.max(1.5 + stopIn(out.v, nb.ahead?.v ?? out.v, out), kappa * (wantedGap(out, nb.ahead ?? { v: out.v }) + shed(out.v - (nb.ahead?.v ?? out.v), vehicleOf(out).brake)));
+  const needLead = leadNeed(out, nb.ahead, kappa);
   const needLag = lagNeed(out, nb.behind, kappa);
   /* The floor alone, for the car behind: whether it can stop behind this one at all. */
   const lagSurvivable = lagGap >= 1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind);
