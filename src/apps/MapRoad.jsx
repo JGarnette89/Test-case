@@ -223,7 +223,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
          before counts were per map. */
       const saved = s.carsByMap?.[mapId] ?? (mapId === "test-1" ? s.cars : undefined);
       const n = Number.isFinite(saved) ? Math.max(CARS.min, Math.min(carsMax, saved)) : cars;
-      const look = s.lookAway === true;
+      /* lookAwayOn, not lookAway (22 October): the old key is left unread, so a "look away: on" saved before the maintainer's crossroads gridlock -- every car blind for its whole glance, 5 crashes in 90 s at 260 cars -- comes back off. */
+      const look = s.lookAwayOn === true;
       if (s.simWorker === true && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look); return; }
       if (kmh !== limit || m !== mode || n !== cars || look !== lookAway) restart(seed, kmh, m, n, look);
       if (s.slider === "spring") input.current.state.spring = true;
@@ -723,7 +724,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           </label>
           {/* A restart: a world keeps its drivers' recent past only when they can look away. */}
           <button className="btn" style={{ ...S.chip, borderColor: lookAway ? C.amber : "rgba(255,255,255,0.12)", color: lookAway ? C.white : DIM }}
-            onClick={() => { setSetting("lookAway", !lookAway); restart(seed, limit, mode, cars, !lookAway); }}>
+            onClick={() => { setSetting("lookAwayOn", !lookAway); restart(seed, limit, mode, cars, !lookAway); }}>
             {lookAway ? "Drivers look away: on" : "Drivers look away: off"}</button>
           <span style={S.label}>keys: arrows or WASD, space brakes, q and e signal</span>
         </div>
