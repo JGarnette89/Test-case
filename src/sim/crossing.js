@@ -44,7 +44,7 @@ import { HONK_AGAIN } from "./horn.js";
 import { askOf, askedOf, offerOf, courtesyAccel, mergeAskOf } from "./courtesy.js";
 import { rivalDue, asRival } from "./rivals.js";
 import { controlUnder, movementLight } from "./signal.js";
-import { laneStep, lateralOf, lateralRate, changing, LC_SPEED } from "./lanechange.js";
+import { laneStep, lateralOf, lateralRate, changing, LC_SPEED, laneEndRoom } from "./lanechange.js";
 import { cornerAccel, speedBy, fits } from "./corner.js";
 export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
@@ -1147,7 +1147,7 @@ export function whatStops(me, world) {
     const accLeg = layoutOf(world, me).legs[mine.to];
     if (accLeg?.accel && !me.player) {
       const d = Math.max(0, mine.length - accLeg.accelClose - me.s - lenOf(me) / 2 - 1);
-      if (d <= stoppingRoom(me.v) + lenOf(me) + 10) consider(d, { v: 0, s: mine.length - accLeg.accelClose, id: "lane-end" });
+      if (d <= laneEndRoom(me)) consider(d, { v: 0, s: mine.length - accLeg.accelClose, id: "lane-end" });
     }
   }
   /* A BUS'S STOP (buses.js): the same stopped place, by the same rule. */

@@ -423,6 +423,21 @@ export { reasonToStayOut };
    three metres behind a car STANDING in a queue, at 14 km/h, and could
    not stop in time -- 187 overlapping car-ticks at 300 cars. Boldness
    is a tight gap, never one that cannot be survived. */
+/* HOW MUCH ROOM BEHIND A DRIVER MOVING OVER NEEDS before the car that
+   would follow -- the half of `gapFor` a car letting them in has to open
+   (courtesy.js). ONE definition: courtesy used to call a gap open at the
+   offerer's own following gap behind a car at the joiner's speed, while
+   the joiner, standing at the end of its lane, needed the closing speed
+   shed as well, scaled by its caution -- traced, an offer "open" at 90 m
+   behind a timid joiner who needed 170, withdrawn four seconds later
+   (22 October). */
+export const kappaOf = (out) => Math.max(0.3, Math.min(1.7, out.caution ?? 1));
+const shedOf = (dv, rate) => (dv > 0 ? (dv * dv) / (2 * rate) : 0);
+export function lagNeed(out, behind, kappa = kappaOf(out)) {
+  const v0 = Math.max(out.v0 ?? out.v, 0.1), mineAccel = vehicleOf(out).accel * Math.max(0, 1 - (out.v / v0) ** 4);
+  const stop = Math.max(0, ((behind?.v ?? 0) ** 2 - out.v * out.v) / (2 * vehicleOf(behind).most));
+  return Math.max(1.5 + stop, kappa * (wantedGap(behind ?? { v: 0 }, out) + shedOf((behind?.v ?? 0) - out.v, vehicleOf(behind).brake + mineAccel)));
+}
 function gapFor(out, nb, kappa) {
   /* At the FOLLOWER's hardest braking: a truck behind stops longer. */
   const stopIn = (v, vl, who) => Math.max(0, (v * v - vl * vl) / (2 * vehicleOf(who).most));
@@ -449,7 +464,7 @@ function gapFor(out, nb, kappa) {
   /* This driver's acceleration still available at this speed (the following model's own shape). */
   const v0 = Math.max(out.v0 ?? out.v, 0.1), mineAccel = vehicleOf(out).accel * Math.max(0, 1 - (out.v / v0) ** 4);
   const needLead = Math.max(1.5 + stopIn(out.v, nb.ahead?.v ?? out.v, out), kappa * (wantedGap(out, nb.ahead ?? { v: out.v }) + shed(out.v - (nb.ahead?.v ?? out.v), vehicleOf(out).brake)));
-  const needLag = Math.max(1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind), kappa * (wantedGap(nb.behind ?? { v: 0 }, out) + shed((nb.behind?.v ?? 0) - out.v, vehicleOf(nb.behind).brake + mineAccel)));
+  const needLag = lagNeed(out, nb.behind, kappa);
   /* The floor alone, for the car behind: whether it can stop behind this one at all. */
   const lagSurvivable = lagGap >= 1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind);
   return { leadGap, lagGap, leadOk: leadGap >= needLead, lagOk: lagGap >= needLag, lagSurvivable };
@@ -545,6 +560,13 @@ function besideOn(path, s, target, guess) {
    rarely leaves. A hard shoulder is not modelled, so running on is not
    one of the outcomes.
    ===================================================================== */
+/* WHERE A JOINER MUST BEGIN TO STOP FOR ITS LANE'S END: a comfortable
+   stop from its speed, its length and ten metres short of the taper. ONE
+   definition -- crossing.js brakes the joiner from here, and a car letting
+   it in (courtesy.js) has to have the gap open by the time it is reached,
+   not by the taper: past this point the joiner is slowing, and an offerer
+   planning against the taper slows with it (DECISIONS 10.15). */
+export const laneEndRoom = (me, v = me.v) => stoppingRoom(v) + lenOf(me) + 10;
 const MATCH = 0.9;   // "up to the traffic's speed": within a tenth of it -- a flagged design constant
 /* WHETHER A JOINING CAR IS TRYING TO MOVE OVER NOW, and how: null while it
    is not (still accelerating, not yet beside, too late to begin), else the
@@ -719,7 +741,7 @@ function attempt(world, out, path, best, T0) {
   const t = world.t;
   const caution = out.caution ?? 1;
   /* The gap, at this driver's confidence (gapFor). */
-  const kappa = Math.max(0.3, Math.min(1.7, caution));
+  const kappa = kappaOf(out);
   const { nb } = best;
   /* ROOM TO GET ACROSS (21 October). A car moves sideways only as it moves
      on (the blend above), so a change begun with the car ahead in its OWN

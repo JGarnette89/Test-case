@@ -3487,6 +3487,53 @@ few who do stop wait at the head of the lane beside 90-100 km/h traffic for
 up to 154 s -- a standing merge into a fast stream, which no gap and no
 moving offerer resolves. Not built.
 
+**BUILT, 22 October -- the maintainer overruled the ordering ("a player
+would be one of those 6%"): the player can never be stranded, and a joiner
+that stops recovers.** Traced first, and the answer to "did gaps exist that
+were not sought, or was there never one" was: gaps existed, and two
+definitions of the same gap kept anybody from using them.
+
+1. **The ask's deadline was the taper, and the joiner starts braking ~80 m
+   before it.** An offerer planning against the taper slowed alongside a
+   joiner that was itself slowing for its lane's end, paced it 15 m back,
+   and finally drove past. The deadline is now where the joiner must begin
+   its stop (`laneEndRoom`, lanechange.js, ONE definition read by
+   crossing.js's lane-end stop and courtesy.js's ask). Standers 42 -> 27.
+2. **An offer was "open" at the offerer's own following gap; the joiner
+   accepts a gap only at `gapFor`'s lag need**, closing speed shed and scaled
+   by its caution -- for a timid joiner at rest beside 100 km/h traffic,
+   about 330 m. Offers opened at 90 m, were never taken, and withdrew. Two
+   implementations of one quantity (CLAUDE.md item 2): now `lagNeed` is the
+   one, and an offer to a joiner is open when the joiner would take it.
+3. **The player's ask on an acceleration lane had no deadline**, so an
+   offerer eased off at GENTLE -- which against a car at rest needs ~270 m
+   from 100 km/h; every offerer arrived alongside still doing 60 km/h. On an
+   acceleration lane the player now has a joiner's deadline, and their gap
+   is a competent driver's (`lagNeed` at caution 1).
+
+Measured (entry-experience.mjs, 150 cars, six seeds): standing 710 -> **38**
+car-s, joiners who stopped 6% -> **2%**, longest stand 154 -> **27 s**,
+admitted 30.0 -> 32.0 a minute, no crash; at 300 cars standing 7907 -> 426
+car-s, longest 45 s. The player stopped at the taper (stranded.mjs, 48
+trials): at 150 cars a takeable gap in a median 5.2 s, worst 29.7 (was 16.5
+and never, once, in 120 s); at 300, median 9.2 s, worst 55 s, never stranded
+(without courtesy, 2 of 48 never). verify-merge section 4 holds both, each
+sabotaged.
+
+**Direction 2 -- the through driver moving over a lane -- was not needed and
+is not built.** Once the offer and the joiner agreed on what a gap is, the
+lift-off came early enough. Moving over remains the right real behaviour on
+a road with a free lane beside; it is not a fix this needed.
+
+**THE PROPERTY, A THIRD TIME.** Courtesy's onset (10.12), the joiner's gap
+seeking (above), and now the deadline an offer is planned against: in each
+the fix was not a harder brake or a longer lane but an earlier START,
+measured against the moment the other driver actually needs it. Named once
+here as a general rule rather than three local ones: **a driver acting for
+another plans against when that driver needs it, not against where the road
+ends** -- and when the two disagree about what "it" is, that is the
+two-implementations bug, not a tuning problem.
+
 **Not yet built from 10.12**: observation's markable fault (braking hard
 with a follower inside the room it costs, having not looked) on the
 marking sheet -- built, measured and NOT shipped, 10.16. Whether onset

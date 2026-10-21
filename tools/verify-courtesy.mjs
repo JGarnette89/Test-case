@@ -192,8 +192,14 @@ console.log("\n7. TAKEN, IT IS NOTICED -- IN THE RUNNING SIM");
   const on = [], off = [];
   for (const seed of [1, 2, 3, 4, 5, 6]) {
     let base = seedGraph(seed, 50, loop, { target: 200, posted: true });
-    while (base.t < 180) base = step(base);
-    for (let i = 0; i < 4; i++) { const a = run(base, i, true); if (a) on.push(a); const b = run(base, i, false); if (b) off.push(b); }
+    /* TWO MOMENTS PER SEED (22 October): at one, 2 trials a side qualified
+       once the merge fix changed the traffic the moments are drawn from --
+       under the floor of 3, with the property holding in every one. The
+       sample, not the floor, was what moved. */
+    for (const at of [180, 240]) {
+      while (base.t < at) base = step(base);
+      for (let i = 0; i < 4; i++) { const a = run(base, i, true); if (a) on.push(a); const b = run(base, i, false); if (b) off.push(b); }
+    }
   }
   const taken = on.filter((r) => r.offered && r.moved), alone = off.filter((r) => r.moved);
   check(taken.length >= 3 && taken.every((r) => r.said), `a gap offered and taken is noticed as being let in: ${taken.filter((r) => r.said).length} of ${taken.length}`);
