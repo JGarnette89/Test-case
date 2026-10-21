@@ -3266,9 +3266,22 @@ one node at 300 (the loop's worst: 57). Step at 300 cars, both warmed, same
 code: open highway 11.5 ms, loop 9.7. Its case is the experience (the
 NASCAR problem), not the cost; LOD is what serves both.
 
-**The crashes**: the traffic alone on that map at 259 cars ran 40 minutes
-over four seeds without one, so both involved the player or traffic
-reacting to them. The readout now says how many were with the player
+**The crashes -- CORRECTED.** This read "both involved the player", from
+40 minutes of traffic alone without one. Wrong: the maintainer says they
+were off screen and "the first one was almost immediate" -- traffic into
+traffic, at the START. Forty minutes of steady state measured the wrong
+window, as standing time did (DECISIONS 10.4). Cold starts, measured
+(`tools/measure/cold-start.mjs`, the world as #/map builds it, the player
+placed at the section start and stepped as the screen steps them): 0
+crashes in the first minute over ten seeds at 259 cars, player standing or
+absent; 0 in the first 30 s over forty more; 0 with the dial turned from
+the map's 140 to 260 five seconds in; with drivers looking away, 1 in ten
+minutes, at 52 s. NOT REPRODUCED. So the readout now logs each crash as it
+is noticed: seconds into the drive, whether it was the player's, how far
+from them, whether drivers look away, and the seed -- "2 crashes (0 with
+you; at 4 s 230 m off, 37 s 610 m off; look-away off; seed 1)". Treated as
+the fourth recurrence of placing a car into traffic until it is shown to
+be something else. The readout now says how many were with the player
 ("2 crashes (0 with you)" would be traffic colliding near him -- a bug to
 hunt).
 

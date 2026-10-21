@@ -91,6 +91,8 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
   const b = loaded.bounds;
   const ground = groundFor(loaded, { cell: 20 });
   return {
+    /* When this drive began and how it was set (the crash log, below). */
+    t0: world.t, lookAway, seed,
     loaded,
     ground,
     centre: { x: b.x + b.w / 2, y: b.y + b.h / 2 },
@@ -403,8 +405,21 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
         const nCrash = sc.world.crashes?.length ?? 0;
-        /* Whose (22 October): the maintainer's readout said "2 crashes" and nothing about whether either was his -- the traffic alone on that map ran 40 minutes without one. */
-        const myCrash = (sc.world.crashes ?? []).filter((c) => c.a === "player" || c.b === "player").length;
+        /* EACH CRASH AS IT IS NOTICED (22 October): when in the drive, whether
+           it was the player's, and how far from them. "2 crashes" told us
+           nothing; the maintainer's were off screen, traffic alone, the first
+           "almost immediate" -- and a cold start reproduced none (tools/
+           measure/cold-start.mjs), so the next readout has to say. */
+        const log = (sc.crashLog ??= []), known = (sc.crashKeys ??= new Set());
+        const mePose = sc.me ? driverPose(sc.me, sc.world.course) : null;
+        for (const c of sc.world.crashes ?? []) {
+          const key = `${c.t}|${c.a}|${c.b}`;
+          if (known.has(key)) continue;
+          known.add(key);
+          log.push({ t: c.t - (sc.t0 ?? 0), mine: c.a === "player" || c.b === "player", d: mePose && c.at ? Math.hypot(c.at.x - mePose.x, c.at.y - mePose.y) : null });
+        }
+        const myCrash = log.filter((c) => c.mine).length;
+        const crashLine = log.length ? ` (${myCrash} with you; at ${log.slice(0, 4).map((c) => `${Math.round(c.t)} s${c.mine ? "" : c.d != null ? ` ${Math.round(c.d)} m off` : ""}`).join(", ")}${log.length > 4 ? ", ..." : ""}; look-away ${sc.lookAway ? "on" : "off"}; seed ${sc.seed})` : "";
         /* The world's own rate beside the frames' (pace.js): a world at half speed with perfect frames read as healthy until 15 October. */
         const ck = sc.clock ? clockSummary(sc.clock) : null;
         /* What the browser says blocked the page's thread over the last 5 s: long tasks, and the worst long frame -- script (and whose), rendering. */
@@ -423,7 +438,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         const frameLine = ` = sim ${mp("sim")} + poses ${mp("poses")} + draw ${mp("draw")} (list ${mp("list")}, sort ${mp("sort")}, paint ${mp("paint")}, overlay ${mp("overlay")}) + hud ${mp("hud")}`
           + `\ndrawn: ${mp("items")} things · cars ${fp.cars?.mean ?? "-"} of ${of.cars ?? "-"} · road pieces ${fp.segments?.mean ?? "-"} of ${of.segments ?? "-"} · ground ${fp.cells?.mean ?? "-"} of ${of.cells ?? "-"} · buildings ${fp.props?.mean ?? "-"} of ${of.props ?? "-"}`;
         const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip ${ck.rt.p50}/${ck.rt.p95} = wait ${ck.wait.p50} + step + answer ${ck.diff.p50} + back ${ck.back.p50}/${ck.back.p95} (read ${ck.read.p50}/${ck.read.p95}) + reply ${ck.reply.p50}` : ""}\nframe ${ck.ours.p50}/${ck.ours.p95} ms${frameLine}${taskLine}` : "";
-        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"} (${myCrash} with you) · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
+        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"}${crashLine} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
         fpsAt = now;
       }
       /* A CRASH ANYWHERE IS SAID, for eight seconds, with where it is from
