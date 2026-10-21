@@ -3065,6 +3065,40 @@ sorted by position, each car reading its neighbours by index
 (DECISIONS 10.10's one neighbour search), not a smarter filter over an
 unsorted bucket. Reverted; the code is in this session's history only.
 
+**THE FOURTH, AND THE CLEANEST: A READOUT THAT MIXED STATISTICS (22
+October).** The phone's frame line read "frame 195.6 = sim 132 + poses 1.9
++ draw 3.6 + hud 0.8" -- and 57 ms of every frame sat on the in-flight list
+for most of a day as time nobody could account for, the precondition of
+every performance bug this month. There was no such time. The frame was a
+MEDIAN and the parts were MEANS: in the spiral the median frame sat on four
+steps while the mean held about three. Reproduced with no hidden overhead
+(page-loop.mjs: 7.0 fps, 2-5 steps a frame, 0.98x, against the phone's 6
+fps, 0.99x). No bug in the world at all: purely an instrument.
+
+**THE RULE: A READOUT THAT MIXES STATISTICS IS AN INSTRUMENT THAT LIES.**
+Every number printed says which statistic it is. Medians and percentiles
+do not add, so wherever a total is set beside its parts, both are MEANS --
+and a before beside an after is the same statistic over the same window.
+
+**The sweep, the same day** -- the frame line was not alone:
+- the worker's trip line, "trip p50 = wait p50 + step + answer p50 + back
+  p50 + reply p50": a median total equal to a sum of medians. Now means,
+  every leg, and says so.
+- "worst frame 452 = script 276 + render 276": a DOUBLE COUNT. The Long
+  Animation Frame's `renderStart` opens the rendering phase, which includes
+  the requestAnimationFrame callbacks -- our whole frame, sim included,
+  already counted as script. Two equal numbers summing past their total
+  were the tell. Now "of which script X and style/layout/paint Y", the
+  latter from `styleAndLayoutStart`, after the callbacks.
+- "drawn: cars 3.3 of 172": a five-second mean beside a count of now.
+  Labelled.
+- tick, step, frame and its parts unlabelled; the encounter line a whole
+  drive's rate beside five-second windows. Labelled.
+- tools/measure/draw-scenes.mjs: "draw p50 = list p50 + sort p50 + paint
+  p50". Now means.
+The bench report (src/iso/bench.js) and the other measures label their
+statistics and claim no sums.
+
 ## 10.5 Where a check protects a decision, its failure says so
 
 Four failure messages are written as explanations rather than symptoms,

@@ -116,16 +116,21 @@ export function clockSummary(c) {
   const gaps = [];
   for (let i = 1; i < n; i++) gaps.push(c.wall[i] - c.wall[i - 1]);
   const r = (x) => (x == null ? null : Math.round(x * 10) / 10);
+  /* EVERY NUMBER SAYS WHICH STATISTIC IT IS (22 October; DECISIONS 10.4):
+     medians do not add, so wherever a total is set beside its parts the
+     readout uses MEANS, and a median or a percentile is labelled as one. */
+  const mean = (xs) => { const v = (xs ?? []).filter((x) => x != null); return v.length ? r(v.reduce((s, x) => s + x, 0) / v.length) : null; };
   return {
     rate: (c.sim[n - 1] - c.sim[0]) / ((c.wall[n - 1] - c.wall[0]) / 1000),
     tick: { p50: r(pct(gaps, 0.5)), p95: r(pct(gaps, 0.95)), max: r(Math.max(...gaps)) },
     step: { p50: r(pct(c.stepMs, 0.5)), p95: r(pct(c.stepMs, 0.95)), max: r(pct(c.stepMs, 1)) },
-    rt: { p50: r(pct(c.rtMs, 0.5)), p95: r(pct(c.rtMs, 0.95)) },
-    wait: { p50: r(pct(c.waitMs, 0.5)), p95: r(pct(c.waitMs, 0.95)) },
-    diff: { p50: r(pct(c.diffMs, 0.5)), p95: r(pct(c.diffMs, 0.95)) },
-    back: { p50: r(pct(c.backMs, 0.5)), p95: r(pct(c.backMs, 0.95)) },
-    reply: { p50: r(pct(c.replyMs, 0.5)), p95: r(pct(c.replyMs, 0.95)) },
-    read: { p50: r(pct(c.readMs, 0.5)), p95: r(pct(c.readMs, 0.95)) },
+    rt: { mean: mean(c.rtMs), p50: r(pct(c.rtMs, 0.5)), p95: r(pct(c.rtMs, 0.95)) },
+    wait: { mean: mean(c.waitMs), p50: r(pct(c.waitMs, 0.5)), p95: r(pct(c.waitMs, 0.95)) },
+    diff: { mean: mean(c.diffMs), p50: r(pct(c.diffMs, 0.5)), p95: r(pct(c.diffMs, 0.95)) },
+    back: { mean: mean(c.backMs), p50: r(pct(c.backMs, 0.5)), p95: r(pct(c.backMs, 0.95)) },
+    reply: { mean: mean(c.replyMs), p50: r(pct(c.replyMs, 0.5)), p95: r(pct(c.replyMs, 0.95)) },
+    read: { mean: mean(c.readMs), p50: r(pct(c.readMs, 0.5)), p95: r(pct(c.readMs, 0.95)) },
+    stepMean: mean(c.stepMs),
     /* The MEAN as well as the median (22 October): the frame line sets the frame beside its parts, and the parts are means -- a median frame of 195.6 ms against parts summing to 138 read as 57 ms nobody could account for, when it was the spiral's extra steps in the frames the median sat on. */
     ours: { mean: r(c.ours.length ? c.ours.reduce((s, x) => s + x, 0) / c.ours.length : null), p50: r(pct(c.ours, 0.5)), p95: r(pct(c.ours, 0.95)) },
   };

@@ -55,7 +55,7 @@
  "verify-signal": 222,
  "verify-signs": 235,
  "verify-sim": 1,
- "verify-start": 287,
+ "verify-start": 288,
  "verify-task": 0,
  "verify-telling": 160,
  "verify-tiles": 1,
@@ -63,10 +63,10 @@
  "verify-turns": 0,
  "verify-voice": 1,
  "verify-walkers": 628,
- "verify-waves": 278,
+ "verify-waves": 280,
  "verify-wheel": 0,
  "verify-windows": 1,
  "verify-wontstop": 4,
- "verify-worker": 59,
+ "verify-worker": 60,
  "verify-world": 360
 }

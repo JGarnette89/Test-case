@@ -427,17 +427,17 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         const g = tasks.current.during(now - 5000, now), lf = g.frame;
         /* WHAT THE PLAYER MEETS (sim/encounters.js), since this drive began: the number the game lives on. */
         const es = sc.enc ? encounterSummary(sc.enc) : null;
-        const meetLine = es ? `\nyou met ${es.metPerMin} cars/min within 30 m · following ${es.followingShare}% · followed ${es.followedShare}% · ${es.gapsPerMin} gaps judged/min (${es.minutes} min)` : "";
-        const taskLine = meetLine + `\nbrowser: long tasks ${g.tasks ?? "n/a"} ms in 5 s${lf ? ` · worst frame ${lf.ms} = script ${lf.script}${lf.scripts?.[0] ? ` (${lf.scripts[0].where} ${lf.scripts[0].ms})` : ""} + render ${lf.render}` : ""}`;
+        const meetLine = es ? `\nsince the drive began: you met ${es.metPerMin} cars/min within 30 m · following ${es.followingShare}% · followed ${es.followedShare}% · ${es.gapsPerMin} gaps judged/min (${es.minutes} min)` : "";
+        const taskLine = meetLine + `\nbrowser: long tasks ${g.tasks ?? "n/a"} ms in 5 s${lf ? ` · worst frame ${lf.ms} ms, of which script ${lf.script}${lf.scripts?.[0] ? ` (${lf.scripts[0].where} ${lf.scripts[0].ms})` : ""} and style/layout/paint ${lf.styleLayout}` : ""}`;
         /* THE FRAME BY PART, mean/p95 each (15 October): the sim's own pace is honest now, so
            the frame's cost has to be as legible -- and against what was on screen, so a scene
            that is expensive says what is in it. "x of y": drawn, of all there are. */
         const fp = sc.clock ? frameParts(sc.clock) : {};
         const mp = (k) => (fp[k] ? `${fp[k].mean}/${fp[k].p95}` : "-");
         const of = sc.drewOf ?? {};
-        const frameLine = ` = sim ${mp("sim")} + poses ${mp("poses")} + draw ${mp("draw")} (list ${mp("list")}, sort ${mp("sort")}, paint ${mp("paint")}, overlay ${mp("overlay")}) + hud ${mp("hud")}`
-          + `\ndrawn: ${mp("items")} things · cars ${fp.cars?.mean ?? "-"} of ${of.cars ?? "-"} · road pieces ${fp.segments?.mean ?? "-"} of ${of.segments ?? "-"} · ground ${fp.cells?.mean ?? "-"} of ${of.cells ?? "-"} · buildings ${fp.props?.mean ?? "-"} of ${of.props ?? "-"}`;
-        const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip ${ck.rt.p50}/${ck.rt.p95} = wait ${ck.wait.p50} + step + answer ${ck.diff.p50} + back ${ck.back.p50}/${ck.back.p95} (read ${ck.read.p50}/${ck.read.p95}) + reply ${ck.reply.p50}` : ""}\nframe ${ck.ours.mean}/${ck.ours.p95} ms (median ${ck.ours.p50})${frameLine}${taskLine}` : "";
+        const frameLine = ` = means/p95: sim ${mp("sim")} + poses ${mp("poses")} + draw ${mp("draw")} (list ${mp("list")}, sort ${mp("sort")}, paint ${mp("paint")}, overlay ${mp("overlay")}) + hud ${mp("hud")}`
+          + `\ndrawn (5 s mean, of all there are now): ${fp.items?.mean ?? "-"} things · cars ${fp.cars?.mean ?? "-"} of ${of.cars ?? "-"} · road pieces ${fp.segments?.mean ?? "-"} of ${of.segments ?? "-"} · ground ${fp.cells?.mean ?? "-"} of ${of.cells ?? "-"} · buildings ${fp.props?.mean ?? "-"} of ${of.props ?? "-"}`;
+        const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick p50/p95/max ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step p50/p95 ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip mean ${ck.rt.mean} (p95 ${ck.rt.p95}) = wait ${ck.wait.mean} + step ${ck.stepMean} + answer ${ck.diff.mean} + back ${ck.back.mean} (read ${ck.read.mean}) + reply ${ck.reply.mean}, all means` : ""}\nframe mean/p95 ${ck.ours.mean}/${ck.ours.p95} ms (median ${ck.ours.p50})${frameLine}${taskLine}` : "";
         readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"}${crashLine} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
         fpsAt = now;
       }

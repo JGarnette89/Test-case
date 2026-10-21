@@ -37,6 +37,7 @@ const actorsOf = (w) => {
   return out;
 };
 const q = (xs, f) => [...xs].sort((a, c) => a - c)[Math.floor(f * (xs.length - 1))];
+const avg = (xs) => xs.reduce((s, x) => s + x, 0) / Math.max(1, xs.length);
 const corr = (xs, ys) => { const n = xs.length, mx = xs.reduce((s, x) => s + x, 0) / n, my = ys.reduce((s, y) => s + y, 0) / n; let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; } return sxy / Math.sqrt(sxx * syy || 1); };
 console.log(`${mapId}: ${loaded.roads.length} roads, ${statics.terrain.length} ground cells, ${statics.props.length} buildings; canvas ${size.w}x${size.h}, the chase camera on each car`);
 const all = [];
@@ -56,7 +57,7 @@ for (const cars of carsArg.split(",").map(Number)) {
     if (r > 0) rows.push({ ms, list: d.ms.build, sort: d.ms.sort, paint: d.ms.paint, calls, items: d.items, cars: d.cars, segs: d.segments, cells: d.cells, props: d.props });
   }
   const col = (k) => rows.map((x) => x[k]);
-  const line = `  ${String(w.actors.length).padStart(4)} cars: draw p50 ${q(col("ms"), 0.5).toFixed(2)} p95 ${q(col("ms"), 0.95).toFixed(2)} max ${Math.max(...col("ms")).toFixed(2)} ms = list ${q(col("list"), 0.5).toFixed(2)} + sort ${q(col("sort"), 0.5).toFixed(3)} + paint ${q(col("paint"), 0.5).toFixed(2)}; calls p50 ${q(col("calls"), 0.5)} p95 ${q(col("calls"), 0.95)}; in view p50/p95: items ${q(col("items"), 0.5)}/${q(col("items"), 0.95)}, cars ${q(col("cars"), 0.5)}/${q(col("cars"), 0.95)}, road ${q(col("segs"), 0.5)}/${q(col("segs"), 0.95)}, ground ${q(col("cells"), 0.5)}, buildings ${q(col("props"), 0.5)}`;
+  const line = `  ${String(w.actors.length).padStart(4)} cars: draw p50 ${q(col("ms"), 0.5).toFixed(2)} p95 ${q(col("ms"), 0.95).toFixed(2)} max ${Math.max(...col("ms")).toFixed(2)} ms; mean ${avg(col("ms")).toFixed(2)} = list ${avg(col("list")).toFixed(2)} + sort ${avg(col("sort")).toFixed(3)} + paint ${avg(col("paint")).toFixed(2)} (means: medians do not add); calls p50 ${q(col("calls"), 0.5)} p95 ${q(col("calls"), 0.95)}; in view p50/p95: items ${q(col("items"), 0.5)}/${q(col("items"), 0.95)}, cars ${q(col("cars"), 0.5)}/${q(col("cars"), 0.95)}, road ${q(col("segs"), 0.5)}/${q(col("segs"), 0.95)}, ground ${q(col("cells"), 0.5)}, buildings ${q(col("props"), 0.5)}`;
   console.log(line);
   all.push(...rows);
 }
