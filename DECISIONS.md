@@ -3892,6 +3892,28 @@ at a natural break and with numbers: whether `sectionSheet` and `detect.js`
 can express marks keyed by section and location, or whether that is a
 rewrite of the sheet.
 
+**SCOPED, 22 October -- numbers, no code:**
+- **`detect.js` (281 lines): an EXTENSION, not a rewrite.** Pairing already
+  keys on an opaque place (`intersection`, compared only for equality), a
+  category (`m.what` against `fault.trait`) and time (promptness). A sectional
+  mark changes the place to a location key and compares the category with a
+  (heading, item) id: the two pairing conditions, about 10-20 lines.
+  Precision, recall, promptness and FALSE_COST carry over unchanged.
+- **`sectionSheet`: a name clash to resolve.** Its "section" is a stretch of
+  the ROUTE (three intersections, sized to free recall), not a marking-guide
+  HEADING; the two need separate names. Its directions half (calls, blame) is
+  route-leg based and unaffected.
+- **`marking.js` (333 lines) is where the cost is.** 36 references to the old
+  compass course's route, trip and candidate machinery, and it runs only in
+  those worlds; the live exam (`exam.js`, on the map) deliberately has no
+  marking. Sectional marking = porting the fault producer to the map AND
+  giving every fault (heading, item, place, attribution) -- 6 kinds today.
+- **No standalone grading check survives**: verify-detect went with the old
+  engine; detect.js is checked only through verify-course's sheet. A
+  sectional sheet needs its properties back (marking everything loses,
+  marking nothing loses, catching more never scores worse).
+- **Signalling** remains a separate prerequisite for the attribution half.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
