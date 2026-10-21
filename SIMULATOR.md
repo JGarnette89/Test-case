@@ -19,19 +19,21 @@ says which.
 
 **Committed, not shipped:** nothing.
 
-**Measured / built, not committed:** nothing.
+**Measured / built, not committed:** the ruled braking-unchecked fault, built and measured non-discriminating on the course (sound 4, poor observer 6 in 12 drives), not shipped (DECISIONS 10.16).
 
 **Started, not finished, in order:**
 1. ~~where an offerer's braking comes from~~ -- found: every offerer
    brakes at exactly its own braking-axis rate (DECISIONS 10.12 work)
 2. ~~suite, commit, ship~~ -- 30f9ce2
 3. ~~re-measure on the shipped build~~ -- done, SIMULATOR 1.2.16
-4. ~~the courtesy ruling~~ -- shipped (10.15); the observation fault on
-   the marking sheet is NOT built
+4. ~~the courtesy ruling~~ -- shipped (10.15); observation on the marking
+   sheet: `lateOffGreen` (10.16); the ruled braking fault waits on the
+   sheet running on the map
 5. the 150-car regression -- gap seeking built (10.15) and better at
    every density, but at 150 the lane still stands more than the yield sign
    (1101 against 730): a joiner and the car letting it in slow together.
-   Named in 10.15; not built.
+   Third trace (merging across the taper) 821 against 730 -- now a
+   constants question for the maintainer (lane length, taper, entry rate).
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
 7. suite cost: 12 at once instead of 8 (1700 -> 1382 s); verify-compliance's 145 runs in worker threads, identical counts (950 -> 448 s under load); the derived suite 1588 -> 1356 s. The pole is now eight checks at 870-1020 s, most of them several independent worlds -- the same treatment would apply (TESTING.md)
 8. ~~the step slowdown~~ -- found: two closures made per pair of cars in whatStops (+11% of its own time); hoisted, world hash identical on three maps, test map 1 10.92 -> 10.66 ms against 10.52 at 9c5c947

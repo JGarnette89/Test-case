@@ -20,6 +20,7 @@
    ===================================================================== */
 import { turnPoints } from "../core/turn.js";
 import { CAR, weaveRoom } from "./traffic.js";
+import { signalFor } from "./signal.js";
 
 export const SIDES = ["N", "E", "S", "W"];
 export const INTENTS = ["straight", "right", "left"];
@@ -561,7 +562,12 @@ export function layoutFor(opts = {}) {
   for (const from of SIDES) {
     for (const intent of INTENTS) paths[`${from}/${intent}`] = pathFor(place, from, intent);
   }
-  const legs = Object.fromEntries(SIDES.map((s) => [s, { id: s, bearing: BEARING[s], control: place.control[s] }]));
+  const legs = Object.fromEntries(SIDES.map((s) => [s, { id: s, base: s, bearing: BEARING[s], control: place.control[s] }]));
+  /* A SIGNAL, from the same derivation a map's node gets (signal.js):
+     phases from these legs' bearings, the amber from the road's speed.
+     Null unless a leg is signalised, which is every course before 22
+     October -- so those layouts are unchanged. */
+  const signal = signalFor(legs, SIDES, place.boxHalf);
   /* The routes out of a leg, in INTENTS order -- the same order the
      random draw has always indexed, so a course seeded before the map
      existed is the same course to the byte. */
@@ -579,5 +585,5 @@ export function layoutFor(opts = {}) {
       if (hit) conflicts[`${ka}|${kb}`] = hit;
     }
   }
-  return { place, paths, conflicts, legs, routesFrom };
+  return { place, paths, conflicts, legs, routesFrom, ...(signal ? { signal } : {}) };
 }

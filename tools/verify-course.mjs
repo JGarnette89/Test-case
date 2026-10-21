@@ -25,7 +25,7 @@ import { exitFor, tightestOf, intersectionFor } from "../src/sim/intersection.js
 import {
   withCandidates, keepDriving, toTell, tell, stillTellable, PROFILES,
 } from "../src/sim/candidate.js";
-import { noticing, mark, sheetFor, sectionDone, SECTION, POS_VISIBLE } from "../src/sim/marking.js";
+import { noticing, mark, sheetFor, sectionDone, SECTION, POS_VISIBLE, LATE_OFF_GREEN } from "../src/sim/marking.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
 import fs from "node:fs";
 import {
@@ -678,9 +678,12 @@ console.log("\n9. DEFERRED MARKING, AND THE SECTION SHEET");
      curb lane with no reason, read from the `hogSince` the driver's own
      decision writes -- a quantity the sim holds for its own reasons, as
      the other four are, and the exceptions restated and checked in
-     verify-lanes section 7. A sixth name here is a decision, not a drift. */
-  JSON.stringify(named) === JSON.stringify(["harshBraking", "keepRight", "rollingStop", "undueDelay", "wideLine"])
-    ? ok("the sheet derives exactly the five faults the sim holds as physical quantities, and nothing it would have to author")
+     verify-lanes section 7. A sixth name here is a decision, not a drift.
+     lateOffGreen joined on 22 October: the observation axis's first fault
+     of its own, read from the `wake` the driver's noticing writes -- see
+     below, where it is driven. */
+  JSON.stringify(named) === JSON.stringify(["harshBraking", "keepRight", "lateOffGreen", "rollingStop", "undueDelay", "wideLine"])
+    ? ok("the sheet derives exactly the six faults the sim holds as physical quantities, and nothing it would have to author")
     : fail(`the sheet derives ${named.join(", ")}, which is not the list this stage can honestly stand behind`);
   /* The wide line is judged against the old engine's visibility floor,
      IMPORTED. A second 0.45 written here would be the two-implementations
@@ -688,6 +691,53 @@ console.log("\n9. DEFERRED MARKING, AND THE SECTION SHEET");
   /POS_VISIBLE \/ PX_PER_M/.test(src) && (src.replace(/\/\/.*$/gm, "").match(/0\.45/g) ?? []).length === 1 && /POS_VISIBLE = 0\.45 \* PX_PER_M/.test(src)
     ? ok("lane-keeping is judged against POS_VISIBLE, defined once in marking.js at the old engine's 0.45 m, not a second copy of the number")
     : fail("marking.js restates the visibility floor, or lowered it");
+
+  /* --- observation, on the sheet (22 October) ---
+     LATE OFF THE GREEN, on a course whose every intersection is lit. The
+     expectations are stated here, not read from marking.js: the line is
+     about two seconds -- longer than a sharp driver's reaction, shorter
+     than the maintainer's 4 s undue delay, which is a different fault for
+     a different person; a candidate weak on OBSERVATION and nothing else
+     is marked for it at most greens; the same candidate with observation
+     restored is never marked (the controlled comparison: strip the cause
+     and the fault must vanish); and no other weakness produces it -- a
+     timid driver sits for gaps, never at an open green. */
+  {
+    const LIT = { N: "signal", E: "signal", S: "signal", W: "signal" };
+    const sound = PROFILES.find((p) => p.id === "sound").ratings;
+    const lit = (ratings, seed) => {
+      let w = withCandidates(seedCourse(seed, LIMIT, { every: 4.0, control: LIT, cols: 3, rows: 2 }), [{ id: "X", profile: "sound", ratings }]);
+      let greens = 0, prev = null;
+      for (let i = 0; i < Math.round(300 / DT); i++) {
+        w = noticing(keepDriving(step(w)));
+        const a = w.actors.find((x) => x.candidate === "X");
+        if (a?.wake != null && prev == null) greens++;
+        prev = a?.wake ?? null;
+      }
+      const late = (w.faults ?? []).filter((x) => x.who === "X" && x.trait === "lateOffGreen");
+      return { greens, late: late.length, closed: late.every((x) => x.to != null && x.to >= x.from), crashes: w.actors.filter((a) => a.crash).length };
+    };
+    const pool = (ratings) => [1, 2, 3].map((seed) => lit(ratings, seed)).reduce((t, r) => ({ greens: t.greens + r.greens, late: t.late + r.late, closed: t.closed && r.closed, crashes: t.crashes + r.crashes }), { greens: 0, late: 0, closed: true, crashes: 0 });
+    const blind = pool({ ...sound, observation: 0.15 });
+    const sharp = pool(sound);
+    const shy = pool({ ...sound, confidence: PROFILES.find((p) => p.id === "timid").ratings.confidence });
+    console.log(`   lit course, 3 seeds x 5 min: poor observer late off ${blind.late} of ${blind.greens} greens; the same driver sharp ${sharp.late} of ${sharp.greens}; timid ${shy.late} of ${shy.greens}; line ${LATE_OFF_GREEN.toFixed(2)} s`);
+    LATE_OFF_GREEN > 1.5 && LATE_OFF_GREEN < 2.5
+      ? ok("the line is about two seconds -- past a sharp driver's reaction, short of an undue delay")
+      : fail(`late off the green is judged at ${LATE_OFF_GREEN.toFixed(2)} s, which is not what a competent observer's worst looks like`);
+    blind.greens >= 6 && blind.late * 2 > blind.greens && blind.closed
+      ? ok(`a candidate weak on observation alone is late off ${blind.late} of ${blind.greens} greens, each a closed interval on the sheet`)
+      : fail(`a poor observer was late off ${blind.late} of ${blind.greens} greens -- the observation axis has no fault on the sheet`);
+    sharp.greens >= 6 && sharp.late === 0
+      ? ok("the same candidate with observation restored is never late off a green: strip the cause and the fault vanishes")
+      : fail(`a sound observer was marked late off ${sharp.late} of ${sharp.greens} greens`);
+    shy.greens >= 6 && shy.late === 0
+      ? ok("a timid driver is never marked for it: hesitating at a gap is confidence, sitting at an open green is not seeing it")
+      : fail(`a timid but observant driver was marked late off ${shy.late} greens -- the fault is not observation's`);
+    blind.crashes + sharp.crashes + shy.crashes === 0
+      ? ok("and a lit course runs without a crash")
+      : fail(`${blind.crashes + sharp.crashes + shy.crashes} crashes on the lit course`);
+  }
 
   /* --- and it replays --- */
   const twice = () => JSON.stringify(drive("scofflaw", perfect, 200).sheets.map((s) => [s.result.score, s.result.hits.length, s.directionsOnYou]));

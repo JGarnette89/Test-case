@@ -3414,10 +3414,68 @@ stands more cars than the yield sign there (1101 against 730 car-s). The
 likely fix is the same property again: an offer that cannot open before
 the joiner's deadline is not waited for. Not built.
 
+**Third trace, 22 October -- it narrowed the gap and did not close it.**
+The merge had to be FINISHED by where the taper begins, so the last ~90 m
+of the lane at 72 km/h were no use for merging and every joiner without a
+gap by then stood at the taper. Now a merge may begin up to the taper and
+finish by its end (lanechange.js `mergePlan`; standing in the taper is
+still refused). 150 cars, three seeds: 1101 -> **821** car-s standing,
+against the yield sign's 730; 60 cars 33; 300 cars 7907 against the yield
+sign's 16365; no crash. What remains is about 29 joiners over three seeds
+standing about 56 s each. Per the maintainer's instruction ("if a third
+trace does not land it, tell me"), this is now a CONSTANTS QUESTION and not
+tuned: the lane's length (350 m), the taper's behaviour, or the entry rate.
+
 **Not yet built from 10.12**: observation's markable fault (braking hard
 with a follower inside the room it costs, having not looked) on the
-marking sheet. Whether onset generalises into the BRAKING axis's missing
-observable beyond merges is to be measured, not assumed.
+marking sheet -- built, measured and NOT shipped, 10.16. Whether onset
+generalises into the BRAKING axis's missing observable beyond merges is to
+be measured, not assumed.
+
+## 10.16 OBSERVATION ON THE SHEET: LATE OFF THE GREEN, AND WHY NOT THE RULED FAULT YET (22 October)
+
+**Shipped: `lateOffGreen`** (marking.js). At the head of the queue, still
+sitting when the light has been green longer than a competent observer
+could take to notice it. The delay is `noticeAfter` (crossing.js): the
+registration delay, doubled when the change lands at the start of a glance
+away. Nothing else in the model holds a car at an open green, so it is the
+first fault the observation axis owns outright -- what SIMULATOR.md 1.2's
+greens work called "the best content observation has ever been offered",
+now on the sheet. The line is DERIVED, not chosen: the worst a competent
+observer can take, `2 x (REGISTER_FLOOR + (1 - COMPETENT_AT) x REGISTER_SPAN x
+(1 + JITTER))` = **1.98 s** -- the competence line every axis is judged
+at, the jitter at its top, the glance at its worst. It needed a course
+with lights: the compass layout now carries a signal from the same
+`signalFor` a map node gets (intersection.js), null unless a leg is lit,
+so every existing course is unchanged.
+
+Measured (verify-course section 9, three seeds, five minutes each, every
+intersection lit): a candidate weak on observation alone is late off **11
+of 11** greens; the same candidate with observation restored, **0 of 11**;
+a timid candidate, **0 of 12**; no crash. With the detector switched off,
+the check fails; with the line set to a sharp driver's reaction (0.70 s), a
+sound and a timid driver are marked and it fails. **A domain call for the
+maintainer**: whether about two seconds is where an examiner marks
+"slow to proceed on a green".
+
+**Built, measured, NOT shipped: the ruled fault (10.12.3)** -- braking
+harder than the car behind can comfortably follow, with it inside twice
+its chosen gap (the courteous driver's own test), without having
+registered it. "Registered" was made a STATE rather than a rating: the car
+has been within GAP_LOOK while the driver was looking, for their own
+registration delay. (Tracked first by the leg's follower, every fast car
+crossing a seam read as brand new; tracked by car, that went away.)
+
+It does not discriminate on the course. Twelve dense drives, every
+intersection lit: **sound 4, heavy-footed 6, bold 4, poor observer 6**.
+On the course the event -- a stop for a light with a fast car closing
+behind -- happens to everybody, and registration is seldom what differs.
+A fault that marks a sound driver two thirds as often as a poor observer
+would be noise on the sheet, so it was not shipped. Where its supply
+actually is: the merge, where a poor observer offers a gap by standing on
+the brakes (10.12.1, 10.15) -- on the map, where the sheet does not run.
+So it waits on **the sheet on the map** (or a modelled mirror check),
+not on more tuning here.
 
 ## 11. Verification
 

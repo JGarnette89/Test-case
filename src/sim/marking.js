@@ -32,6 +32,13 @@
                    of law adherence". Read from the same `hogSince` the
                    driver's own decision writes, so the sheet and the car
                    cannot disagree about whether there was a reason.
+     lateOffGreen  at the head of the queue, still sitting when the light
+                   has been green for longer than a competent observer
+                   could take to notice it (LATE_OFF_GREEN). OBSERVATION,
+                   and the first fault that axis owns outright: the delay
+                   is `noticeAfter` (crossing.js), the registration delay
+                   and the glance it may land in -- nothing else in the
+                   model can hold a car at a green line with its way open.
 
    THE FOURTH IS THE STEERING AXIS, AND IT COULD NOT BE ON THE SHEET
    UNTIL THE ROAD BENT. On a straight the weave is bounded at half the
@@ -61,6 +68,17 @@ import { HARSH_AT, PX_PER_M } from "./traffic.js";
 export const POS_VISIBLE = 0.45 * PX_PER_M;
 import { AT_REST, AT_LINE, waitAt, pathOf, layoutOf, strayOf, wideAt } from "./crossing.js";
 import { KEEP_RIGHT_FAULT } from "./lanechange.js";
+import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
+import { COMPETENT_AT } from "../core/driver.js";
+
+/* LATE OFF THE GREEN: the longest a COMPETENT observer can take to notice
+   a light has changed -- observation deficit at COMPETENT_AT, the jitter
+   at its top, and the change landing at the start of a glance away, which
+   doubles it (crossing.js `noticeAfter`). 1.98 s. Derived from the axis's
+   own numbers and the competence line every other axis is judged at, not
+   chosen: anybody past it is, on that occasion, below competent at the one
+   thing that can hold a car at an open green. */
+export const LATE_OFF_GREEN = 2 * (REGISTER_FLOOR + (1 - COMPETENT_AT) * REGISTER_SPAN * (1 + JITTER));
 
 /* The old engine's visibility floor is in pixels; the sim is in metres. */
 const OFF_LINE = POS_VISIBLE / PX_PER_M;
@@ -195,6 +213,20 @@ export function noticing(world) {
       close(showing); changed = true;
     }
 
+    /* --- late off the green: the light changed, and they have not seen it yet --- */
+    /* `wake` is set the tick the light goes green under a car held at the
+       head of the queue, and cleared when they notice (or are honked at),
+       so the stretch it is set IS the time spent not having noticed. */
+    if (a.wake != null && next.greenAt == null) next.greenAt = world.t;
+    else if (a.wake == null) next.greenAt = null;
+    const late = a.wake != null && world.t - next.greenAt > LATE_OFF_GREEN;
+    if (late && !open("lateOffGreen")) {
+      faults = [...faults, { ...at, trait: "lateOffGreen", from: world.t, to: null }];
+      changed = true;
+    } else if (!late && open("lateOffGreen")) {
+      close(open("lateOffGreen")); changed = true;
+    }
+
     /* --- keeping right: compliance on the link, or knowledge for a driver who does not know the rule --- */
     const hogging = a.hogSince != null && world.t - a.hogSince > KEEP_RIGHT_FAULT;
     const outOfLane = open("keepRight");
@@ -207,7 +239,7 @@ export function noticing(world) {
       close(outOfLane); changed = true;
     }
 
-    if (next.trip !== me.trip || next.leg !== me.leg || next.rested !== me.rested || next.lined !== me.lined) {
+    if (next.trip !== me.trip || next.leg !== me.leg || next.rested !== me.rested || next.lined !== me.lined || next.greenAt !== me.greenAt) {
       seen[w.id] = next; changed = true;
     }
   }

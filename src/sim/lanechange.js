@@ -556,9 +556,17 @@ const MATCH = 0.9;   // "up to the traffic's speed": within a tenth of it -- a f
 export function mergePlan(world, out, layout, path, outLeg) {
   const T0 = LC_TIME / Math.sqrt(vehicleOf(out).lateral ?? 1);
   const ownT = T0 * (1 + 0.5 * (deficitOf(out.ratings ?? {}, "steering").deficit ?? 0));
-  const toEnd = path.length - outLeg.accelClose - out.s;   // to where the taper begins: finished by then
+  const toEnd = path.length - outLeg.accelClose - out.s;   // to where the taper begins
+  /* BEGUN BEFORE THE TAPER, FINISHED BY ITS END (22 October). Finished by
+     where the taper BEGINS, the last ~90 m of the lane at 72 km/h were no
+     use for merging at all, and every joiner without a gap by then stood at
+     the taper -- 1101 car-s at 150 cars, against the yield sign's 730. A
+     taper is where a lane slides into the next: moving across it is what
+     it is for. Standing in it is still never allowed (crossing.js stops a
+     car short of where it begins). */
+  const toGone = path.length - outLeg.accelEnd - out.s;
   const standing = out.v < 0.5;
-  if (!standing && toEnd < out.v * ownT + lenOf(out)) return null;
+  if (!standing && (toEnd <= 0 || toGone < out.v * ownT + lenOf(out))) return null;
   if (!layout.legAt) return null;
   const toLeg = layout.legAt(outLeg.base, outLeg.pos - 1);
   if (!toLeg || !layout.legs[toLeg] || layout.legs[toLeg].bay || layout.legs[toLeg].accel) return null;
