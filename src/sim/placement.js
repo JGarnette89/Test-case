@@ -70,7 +70,15 @@ export function neighboursAt(world, lane, c, me) {
   let lo = 0, hi = xs.length;
   while (lo < hi) { const m = (lo + hi) >> 1; if (xs[m].c > c) hi = m; else lo = m + 1; }
   const half = lenOf(me) / 2;
-  const ahead = lo < xs.length ? xs[lo] : null, behind = lo > 0 ? xs[lo - 1] : null;
+  /* NEVER ITS OWN NEIGHBOUR (22 October): asked about a car already in the
+     world -- LOD promoting one, or a check re-asking about a placed car --
+     the index holds the car itself at its own place, and it read as its own
+     follower at a negative gap (verify-promotion, 120 of 120). */
+  const self = (e) => e.a === me || (me.id != null && e.a.id === me.id);
+  let i = lo, j = lo - 1;
+  while (i < xs.length && self(xs[i])) i++;
+  while (j >= 0 && self(xs[j])) j--;
+  const ahead = i < xs.length ? xs[i] : null, behind = j >= 0 ? xs[j] : null;
   return {
     ahead: ahead && { car: ahead.a, clear: ahead.c - c - half - lenOf(ahead.a) / 2 },
     behind: behind && { car: behind.a, clear: c - behind.c - half - lenOf(behind.a) / 2 },
@@ -103,6 +111,48 @@ export function approachNeighbours(world, me, actors = world.actors) {
     ahead: ahead && { car: ahead, clear: da - half - lenOf(ahead) / 2 },
     behind: behind && { car: behind, clear: db - half - lenOf(behind) / 2 },
   };
+}
+
+/* =====================================================================
+   ADMISSIBLE: THE ONE TEST A CAR PASSES TO APPEAR IN THE STREAM
+   (22 October; DECISIONS 10.9's promotion check, written before LOD).
+
+   Whoever puts a car into the full simulation -- density shaping placing
+   one ahead of the player, LOD promoting one out of a cheaper tier -- asks
+   this, and only this. 10.9: "every promoted car arrives on a lane, at a
+   speed the traffic it joins could have produced, clear of every
+   headway". Each refusal is named, so a check can see which rule bit:
+     lane       not on any lane's stretch (inside a box, or off the network)
+     speed      faster than its own road lets it drive
+     ahead      inside the headway of the car it would follow, in its lane
+     behind     inside the headway of the car that would follow it
+     queue      either, in its queue by the rule (approachNeighbours)
+     space      a body of any road within CLEAR_AROUND (an off-ramp beside
+                the road it has just split from)
+     arrival    its first decision would brake harder than its own
+                comfortable rate (a bend, a slower car) -- the following
+                and cornering model it will drive by, passed in as
+                `wantsAccel(world, car)` and `brakeOf(car)`, with
+                `poseOf`, since this module may not reach into the step.
+   ===================================================================== */
+/* No car of any road nearer than this, centre to centre: two car lengths. A flagged design constant. */
+export const CLEAR_AROUND = 10;
+export function admissible(world, car, { poseOf, wantsAccel, brakeOf, actors = world.actors, kappa = 1 } = {}) {
+  const why = [];
+  const at = placeOf(world.course, car.k ?? 0, car.route, car.s);
+  if (!at) return { ok: false, why: ["lane"] };
+  if ((car.v ?? 0) > (car.v0 ?? car.v ?? 0) + 0.5) why.push("speed");
+  const w = actors === world.actors ? world : { ...world, actors };
+  const nb = neighboursAt(w, at.lane, at.c, car), ap = approachNeighbours(w, car, actors);
+  if (nb.ahead && nb.ahead.clear < leadNeed(car, nb.ahead.car, kappa)) why.push("ahead");
+  if (nb.behind && nb.behind.clear < lagNeed(car, nb.behind.car, kappa)) why.push("behind");
+  if ((ap.ahead && ap.ahead.clear < leadNeed(car, ap.ahead.car, kappa)) || (ap.behind && ap.behind.clear < lagNeed(car, ap.behind.car, kappa))) why.push("queue");
+  if (poseOf) {
+    const p0 = poseOf(w, car);
+    if (actors.some((b) => b !== car && b.id !== car.id && !b.parked && (() => { const q = poseOf(w, b); return Math.hypot(q.x - p0.x, q.y - p0.y) < CLEAR_AROUND; })())) why.push("space");
+  }
+  if (wantsAccel && brakeOf && wantsAccel({ ...w, actors: [...actors.filter((b) => b.id !== car.id), car] }, car) < -brakeOf(car)) why.push("arrival");
+  return { ok: why.length === 0, why, at, ahead: nb.ahead, behind: nb.behind, queue: ap };
 }
 
 /* ROOM FOR `me` (its kind, ratings and speed v) at centreline place c in

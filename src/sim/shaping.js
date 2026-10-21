@@ -24,7 +24,7 @@
    pose (10.9). With no player nothing is shaped and the world is the
    world it was.
    ===================================================================== */
-import { placeOf, laneIndexOf, roomAt } from "./placement.js";
+import { placeOf, laneIndexOf, roomAt, admissible } from "./placement.js";
 import { exitSAt } from "./graph.js";
 import { rng } from "../core/rng.js";
 
@@ -39,11 +39,6 @@ export const BEHIND = 600;     // m of road behind -- with AHEAD
    verify-shaping. */
 export const SIGHT = 400;     // m
 const NEAR_BOX = 40;          // m: nothing is placed nearer an intersection than this
-/* No car of any road nearer a placed car than this, centre to centre: two
-   car lengths -- room for two bodies and a lane apart on a ramp that has
-   only just split from the road beside it. A flagged design constant, the
-   lane room (placement.js) still deciding the gap in the lane itself. */
-const CLEAR_AROUND = 10;
 
 /* THE ROAD GRAPH, once per course. A ROAD here is one road in one direction
    -- every lane of it, which share its centreline coordinate (lane ids
@@ -210,18 +205,14 @@ export function shape(world, next, { n: n0, make, wantAt, poseOf, kindOf, wantsA
     const lead = room.ahead;
     const v = lead && lead.clear < 3 * (car.v0 * 2 + 10) ? Math.min(car.v0, lead.car.v ?? 0) : car.v0;
     car = { ...car, v, placed: world.t };   // when shaping put them here: a car that arrived at an edge carries none
-    room = roomAt(wn, car, lane, at.c);
-    if (!room.ok || !far(poseOf, wn, car, me)) continue;
-    /* AND CLEAR IN SPACE, NOT ONLY IN ITS LANE (22 October): an off-ramp runs beside the lane it leaves for a hundred metres after the split, on another road, and a car placed on it 64 m past the split sat on a car changing lane in the highway beside it. Nobody of any road within CLEAR_AROUND of the place. */
-    const p0 = poseOf(wn, car);
-    if (next.some((b) => !b.parked && (() => { const q = poseOf(wn, b); return Math.hypot(q.x - p0.x, q.y - p0.y) < CLEAR_AROUND; })())) continue;
-    /* AND A SPEED IT CAN HOLD THERE (22 October). Placed at its own cruising
-       speed short of a bend, or closing on a slower car, a placed car braked
-       at about 5 m/s^2 the tick it arrived and the car behind it with it
-       (verify-shaping). Its first decision, by the following and cornering
-       model it will drive by, is no harder than its own comfortable braking --
-       or it is not placed there. */
-    if (wantsAccel({ ...wn, actors: [...next, car] }, car) < -brakeOf(car)) continue;
+    /* Out of sight, and ADMISSIBLE (placement.js): on a lane, at a speed its
+       road allows, clear of every headway in its lane and its queue, clear in
+       space (an off-ramp beside the road it has just split from: a car placed
+       64 m past the split sat on a highway changer), and not braking hard the
+       tick it arrives (placed short of a bend at its own cruising speed, one
+       braked at about 5 m/s^2 and the car behind with it). The one test LOD's
+       promotion will ask too. */
+    if (!far(poseOf, wn, car, me) || !admissible(wn, car, { poseOf, wantsAccel, brakeOf, actors: next }).ok) continue;
     return { next: [...next, car], win, retired, placed: car };
   }
   return { next, win, retired, placed: null };

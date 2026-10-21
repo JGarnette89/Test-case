@@ -3099,6 +3099,22 @@ and a before beside an after is the same statistic over the same window.
 The bench report (src/iso/bench.js) and the other measures label their
 statistics and claim no sums.
 
+**THE FIFTH, AND THE RULE IT MAKES (22 October).** The neighbour index was
+aimed by desk profiling -- `whatStops` at 57% of a step at 300 cars -- and
+on the desk it delivered: the step 22% cheaper, allocation 23% less. On the
+maintainer's phone at 280 cars the step (51.9 ms) sat where the pre-index
+curve extrapolated. The phone's cost was elsewhere: the desk had been a
+confident proxy for the wrong machine, as the desk-times-a-factor ceiling
+table was the same day (SIMULATOR 1.2.17). Five instrument failures in a
+week -- verify-trucks, standing time, the inlined profiler, the median
+against means, and this -- and the last is general enough to be a rule:
+
+**WE HAVE NO RELIABLE PROXY FOR THE MAINTAINER'S PHONE. ANY PERFORMANCE
+WORK IS VALIDATED ON IT BEFORE IT IS BELIEVED.** Desk measurements choose
+what to try and rule things out; they never establish that something will
+help the phone. A performance change is not "done" until a phone reading
+says so -- expensive and slow, and cheaper than five wrong turns.
+
 ## 10.5 Where a check protects a decision, its failure says so
 
 Four failure messages are written as explanations rather than symptoms,
@@ -3301,6 +3317,18 @@ What this obliges, before LOD lands:
   was for spawning into traffic, which bit twice: every promoted car arrives
   on a lane, at a speed the traffic it joins could have produced, clear of
   every headway -- enumerated over the tier boundary, not sampled.
+- **WRITTEN, 22 October, before the feature**: placement.js `admissible` is
+  the one test anything that puts a car into the full simulation asks --
+  density shaping now, LOD's promotion later -- naming the rule that refused
+  it: lane, speed, ahead, behind, queue (the approach's queue by whatStops's
+  own rule, which the lane index cannot see), space, arrival.
+  verify-promotion builds a case for each on the endless highway and holds
+  that the rule bites -- the queue and space cases where the lane index alone
+  would admit -- and that every car shaping places is admissible re-asked on
+  the world it joined. Sabotaged four ways (no behind rule, no queue rule, no
+  space rule, a car its own neighbour): each fails it. Writing it found a
+  real bug: asked about a car already in the world -- the promotion case --
+  the index read the car as its own follower; now never.
 - **The full-tier world, alone, is not required to be identical with LOD on
   and off** -- the point of LOD is that far traffic is approximated -- but a
   run with every car held in full tier must hash exactly as today's step
