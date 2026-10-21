@@ -38,6 +38,7 @@ says which.
    longest 27 s, the player never stranded (verify-merge 4).
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
 7. suite cost: 12 at once instead of 8 (1700 -> 1382 s); verify-compliance's 145 runs in worker threads, identical counts (950 -> 448 s under load); the derived suite 1588 -> 1356 s. The pole is now eight checks at 870-1020 s, most of them several independent worlds -- the same treatment would apply (TESTING.md)
+10. THE 57 MS (its own item, the maintainer 22 October): about 57 ms of each phone frame at 259 cars lies outside every part the readout names (195.6 against 138.6). Resolve it from Jay's next readout with one step a frame; if it does not resolve, it is its own item, never absorbed into LOD
 9. the 259-car highway (the maintainer's readout, 22 October; SIMULATOR 1.2.17): (1) the step is superlinear in cars PER NODE, linear on the city -- the fix is the one sorted neighbour index; (2) the page was spiralling -- step budget shipped; (3) LOD next, with the neighbour index and gap predicate first (placement's first half pulled forward). Crashes: traffic alone 0 in 40 min; the readout now says which were with the player
 8. ~~the step slowdown~~ -- found: two closures made per pair of cars in whatStops (+11% of its own time); hoisted, world hash identical on three maps, test map 1 10.92 -> 10.66 ms against 10.52 at 9c5c947
 

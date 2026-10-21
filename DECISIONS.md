@@ -3030,6 +3030,41 @@ and an offer from a car moving at 27 m/s cannot make one. That is not a
 constant -- admissions are level, so the entry rate is not the bottleneck --
 it is the standing merge into a fast stream: open, 10.15.
 
+**A third in a week: the profiler pointed at the wrong functions (22
+October).** Asked why the step on the endless highway grew faster than the
+fleet, a sampling profile (`tools/measure/step-profile-map.mjs`, V8 with
+inlining on) put the growth in `relevantTo` and in `step`'s per-car closure.
+Two fixes aimed by it -- the lane buckets split by node, and a prune of
+`whatStops`' visits -- left the step exactly where it was: 9.5 ms at 260
+cars before, 9.4-9.5 after. Re-profiled with `--no-turbo-inlining`, the
+time was under `whatStops` (46% of a step at 100 cars, 57% at 300), with
+the inlined callers' work no longer billed to whoever inlined them. Same
+shape as the check that passes with its mechanism removed and the
+standing-time proxy: **an instrument that reports confidently and measures
+the wrong thing. The instrument was wrong, not the world.** Three in a week
+(verify-trucks, standing time, this). For performance: profile with
+inlining off before aiming a fix, and believe a fix only when the step
+time moves -- a profile is a pointer, the step-ramp is the measurement.
+
+**A NEGATIVE RESULT, KEPT SO IT IS NOT RE-ATTEMPTED (22 October).** Two
+EXACT prunes of the cars `whatStops` reads (world hashes identical on four
+maps, with and without trucks):
+- cars at or behind me on every lane we share are never considered
+  (`clearBetween` of a distance <= 0 is negative for any lengths);
+- a car ahead in my lane can press at most wantedGap(me, a stopped car) /
+  its gap, and the nearest is always considered, so a car whose most is
+  under the nearest's press is never the leader.
+Visits per car fell **37 -> 15 at 300 cars** on the endless highway. The
+step did not move (12.46 / 12.55 / 12.58 ms against 12.38 / 12.32 / 12.49 in
+alternating runs): `consider`, `pathOf` and `clearBetween` fell by ~1.5 ms,
+and `relevantTo` grew by ~2.3 ms, because deciding what to skip meant
+walking the lane buckets, which hold every car on the lane -- the very
+O(cars on the lane) per car the visits were. Pruning a list costs what
+walking it costs. The fix is a structure in which the walk is short: lanes
+sorted by position, each car reading its neighbours by index
+(DECISIONS 10.10's one neighbour search), not a smarter filter over an
+unsorted bucket. Reverted; the code is in this session's history only.
+
 ## 10.5 Where a check protects a decision, its failure says so
 
 Four failure messages are written as explanations rather than symptoms,
