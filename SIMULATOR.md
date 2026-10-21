@@ -38,7 +38,7 @@ says which.
    longest 27 s, the player never stranded (verify-merge 4).
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
 7. suite cost: 12 at once instead of 8 (1700 -> 1382 s); verify-compliance's 145 runs in worker threads, identical counts (950 -> 448 s under load); the derived suite 1588 -> 1356 s. The pole is now eight checks at 870-1020 s, most of them several independent worlds -- the same treatment would apply (TESTING.md)
-10. THE 57 MS (its own item, the maintainer 22 October): about 57 ms of each phone frame at 259 cars lies outside every part the readout names (195.6 against 138.6). Resolve it from Jay's next readout with one step a frame; if it does not resolve, it is its own item, never absorbed into LOD
+10. ~~THE 57 MS~~ -- CLOSED: a median frame beside mean parts, during the spiral; reproduced with no hidden overhead (SIMULATOR 1.2.17); the readout now prints the frame's mean
 9. the 259-car highway (the maintainer's readout, 22 October; SIMULATOR 1.2.17): (1) the step is superlinear in cars PER NODE, linear on the city -- the fix is the one sorted neighbour index; (2) the page was spiralling -- step budget shipped; (3) LOD next, with the neighbour index and gap predicate first (placement's first half pulled forward) -- the index's FIRST STEP shipped (whatStops' own lane, exact, -22% at 260 cars on the loop, SIMULATOR 1.2.17); next the lane change's and courtesy's scans onto it, then the gap predicate. Crashes: traffic alone 0 in 40 min; the readout now says which were with the player
 8. ~~the step slowdown~~ -- found: two closures made per pair of cars in whatStops (+11% of its own time); hoisted, world hash identical on three maps, test map 1 10.92 -> 10.66 ms against 10.52 at 9c5c947
 
@@ -3215,6 +3215,48 @@ sabotaged.
 **The 60 ms outside the sim is not explained.** 195.6 ms of frame against
 138 of named parts. With one step a frame the next readout separates it:
 if it stays, it is not the steps (GC from them would shrink with them).
+
+**RESOLVED ON THE PHONE (the maintainer, c4cd824, 160 cars, page mode):**
+55 fps with the world at 1.00x real time -- both budgets met at once, a
+first; long tasks 0 ms in 5 s, against 4,485 on the build before; step 16.6
+ms p50.
+
+**THE 57 MS, CLOSED -- it was the spiral, read through a mismatched
+readout.** The frame line printed the frame's MEDIAN (195.6) beside the
+MEANS of its parts (sim 132 + poses + draw + hud = 138): two different
+statistics, so the 57 ms was never time anybody spent outside the parts. In
+the spiral the median frame sat on four steps while the mean held about
+three. Reproduced with no hidden overhead at all -- page-loop.mjs, the
+frame's own work at the phone's ~6 ms and the step scaled to the phone's
+~50 ms: the old pacing gives 7.0 fps, 2-5 steps a frame, the world 0.98x
+(the phone read 6 fps, 0.99x); the step budget at the same cost, 17.5 fps,
+one step a frame. The readout now prints the frame's mean, p95 and median,
+so the frame and its parts are the same statistic. (Jay's second reading,
+"frame 5.6 = sim 6.4 + ...", was the same mismatch the other way: a median
+frame without a step beside a mean that includes them.)
+
+**THE CEILING, with the step budget (the maintainer's question: where does
+the world fall below 0.95x real time?).** page-loop.mjs on the endless
+highway, today's code (the neighbour index in), the phone's ~5 ms of frame
+work, the step at the phone's factor -- 4.2 from his own 16.6 ms at 160
+cars against the desk's ~4 ms on the same code, and 4.6 as the bracket:
+
+| cars | 160 | 200 | 260 | 320 | 340 | 360 | 380 | 400 |
+|---|---|---|---|---|---|---|---|---|
+| world x real (4.2 / 4.6) | 1.00 | 1.00 | 1.00 | 0.99 / 0.97 | 0.98 / 0.95 | 0.94 / 0.90 | 0.89 / 0.80 | 0.80 / 0.73 |
+| fps (4.2 / 4.6) | 44 / 40 | 39 | 37 / 33 | 20 | 20 / 19 | 19 / 18 | 18 / 16 | 16 / 15 |
+
+**The world keeps pace to about 340 cars.** But there is a second, earlier
+edge for SMOOTHNESS: once a step and the frame's own work pass two vsyncs
+(about 28 ms of step), every frame with a step takes three, and the rate
+halves -- about 35 fps at 260, about 20 at 320. So 160 was never the
+ceiling; it was the spiral. Around 260-280 is smooth today, ~340 keeps real
+time, and the phone at 250-260 is the arbiter (asked for).
+
+**And the world is empty at any of these counts.** 4 in view of 160, 5.5
+met a minute, 0 gaps judged in 90 s for the third report running;
+following 51.7% / followed 13.5% -- he catches people, nobody catches him:
+a density signature. Performance has stopped being the constraint.
 
 **3. LOD, and placement with it.** Required, not an optimisation: 259
 simulated in full while 11 are in view. DECISIONS 10.9 is the ruling; 10.10
