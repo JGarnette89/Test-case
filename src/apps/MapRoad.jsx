@@ -37,7 +37,7 @@ import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
 import { placesOf, routeTo } from "../sim/route.js";
 import { noticeTick } from "../sim/session.js";
-import { newPace, paceFrame, paceReply, carryOf, newSimClock, clockTick, clockSummary, frameTick, frameParts } from "../sim/pace.js";
+import { newPace, paceFrame, paceReply, carryOf, pageMore, pageLeft, newSimClock, clockTick, clockSummary, frameTick, frameParts } from "../sim/pace.js";
 import { junctionsOf, postedAt, poseOnGraph, limitAt } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
@@ -322,7 +322,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         }
       } else if (playing && !stopped && !(mode === "drive" && look)) {
         owed.current += dt;
-        while (owed.current >= DT) {
+        /* A STEP BUDGET PER FRAME (sim/pace.js): stepping until caught up
+           spiralled -- three 44 ms steps a frame at 259 cars on the phone. */
+        const sp0 = performance.now();
+        for (let steps = 0; pageMore(owed.current, steps, performance.now() - sp0); steps++) {
           owed.current -= DT;
           let w = sc.world;
           const prevTick = { me: sc.me, world: w };
@@ -346,6 +349,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             if (c.hit) { contacts.current++; flash.current = 1; setStopped(true); break; }
           }
         }
+        owed.current = pageLeft(owed.current);
       }
 
       const tSim1 = performance.now();
@@ -399,6 +403,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
         const nCrash = sc.world.crashes?.length ?? 0;
+        /* Whose (22 October): the maintainer's readout said "2 crashes" and nothing about whether either was his -- the traffic alone on that map ran 40 minutes without one. */
+        const myCrash = (sc.world.crashes ?? []).filter((c) => c.a === "player" || c.b === "player").length;
         /* The world's own rate beside the frames' (pace.js): a world at half speed with perfect frames read as healthy until 15 October. */
         const ck = sc.clock ? clockSummary(sc.clock) : null;
         /* What the browser says blocked the page's thread over the last 5 s: long tasks, and the worst long frame -- script (and whose), rendering. */
@@ -417,7 +423,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         const frameLine = ` = sim ${mp("sim")} + poses ${mp("poses")} + draw ${mp("draw")} (list ${mp("list")}, sort ${mp("sort")}, paint ${mp("paint")}, overlay ${mp("overlay")}) + hud ${mp("hud")}`
           + `\ndrawn: ${mp("items")} things · cars ${fp.cars?.mean ?? "-"} of ${of.cars ?? "-"} · road pieces ${fp.segments?.mean ?? "-"} of ${of.segments ?? "-"} · ground ${fp.cells?.mean ?? "-"} of ${of.cells ?? "-"} · buildings ${fp.props?.mean ?? "-"} of ${of.props ?? "-"}`;
         const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip ${ck.rt.p50}/${ck.rt.p95} = wait ${ck.wait.p50} + step + answer ${ck.diff.p50} + back ${ck.back.p50}/${ck.back.p95} (read ${ck.read.p50}/${ck.read.p95}) + reply ${ck.reply.p50}` : ""}\nframe ${ck.ours.p50}/${ck.ours.p95} ms${frameLine}${taskLine}` : "";
-        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
+        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"} (${myCrash} with you) · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
         fpsAt = now;
       }
       /* A CRASH ANYWHERE IS SAID, for eight seconds, with where it is from

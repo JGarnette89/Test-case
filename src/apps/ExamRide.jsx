@@ -22,6 +22,7 @@ import { Play, Pause, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { sceneFor, actorsOf, START, CARS } from "./MapRoad.jsx";
 import { step, poseOf, DT } from "../sim/crossing.js";
+import { pageMore, pageLeft } from "../sim/pace.js";
 import { aheadOf } from "../sim/drive.js";
 import { postedAt } from "../sim/graph.js";
 import { candidateOn, candidateOf, direct, interventionOf, withIntervention, pickProfile, DUAL_AT } from "../sim/exam.js";
@@ -123,11 +124,14 @@ export default function ExamRide() {
 
       if (playing && !endedRef.current) {
         owed.current += dt;
-        while (owed.current >= DT) {
+        /* A step budget per frame (sim/pace.js), as #/map. */
+        const sp0 = performance.now();
+        for (let steps = 0; pageMore(owed.current, steps, performance.now() - sp0); steps++) {
           owed.current -= DT;
           sc.world = step(withIntervention(sc.world, hand));
           if (!candidateOf(sc.world) || candidateOf(sc.world).crash) { endedRef.current = true; setEnded(true); break; }
         }
+        owed.current = pageLeft(owed.current);
       }
 
       const me = candidateOf(sc.world);

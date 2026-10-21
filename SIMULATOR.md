@@ -38,6 +38,7 @@ says which.
    longest 27 s, the player never stranded (verify-merge 4).
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
 7. suite cost: 12 at once instead of 8 (1700 -> 1382 s); verify-compliance's 145 runs in worker threads, identical counts (950 -> 448 s under load); the derived suite 1588 -> 1356 s. The pole is now eight checks at 870-1020 s, most of them several independent worlds -- the same treatment would apply (TESTING.md)
+9. the 259-car highway (the maintainer's readout, 22 October; SIMULATOR 1.2.17): (1) the step is superlinear in cars PER NODE, linear on the city -- the fix is the one sorted neighbour index; (2) the page was spiralling -- step budget shipped; (3) LOD next, with the neighbour index and gap predicate first (placement's first half pulled forward). Crashes: traffic alone 0 in 40 min; the readout now says which were with the player
 8. ~~the step slowdown~~ -- found: two closures made per pair of cars in whatStops (+11% of its own time); hoisted, world hash identical on three maps, test map 1 10.92 -> 10.66 ms against 10.52 at 9c5c947
 
 **Approved, parked until the above is done (not to be started):**
@@ -3160,6 +3161,81 @@ mid-drive, for what is most likely to be wrong -- steering rate, how hard the
 lane assist pulls, the throttle and brake response curve, how quickly the car
 settles after a lane change. He drives it at low, medium and high density,
 says which positions felt right, and those positions become the constants.
+
+##### 1.2.17 Six frames a second at 259 cars: the step, the spiral, and LOD -- 22 October
+
+The maintainer's readout from the endless highway on 86b7cb9, page mode:
+259 cars, 11 in view, 6 fps, frame 195.6 ms = sim 132 + poses 1.9 + draw
+3.6 + hud 0.8, step 43.6 ms (page), "sim 0.99x real time", long tasks 4485
+ms in 5 s, 2 crashes, 0 gaps judged in 2.5 minutes. The draw is 3.6 ms and
+culling is excellent; the step is the bill.
+
+**1. Is the step linear in the cars? Not on this map, and not because of
+one term.** `tools/measure/step-ramp.mjs`, desk:
+
+| | 60 | 150 | 260 | 400 cars |
+|---|---|---|---|---|
+| endless highway, us a car | 17 | 24 | 36 | 49 |
+| the city (200 and 397 cars) | | | 24 | 29 |
+
+The city is close to linear; the loop is not, and the loop is not
+congested at 300 (1% of cars under 3 m/s, 84 km/h mean). The term is
+LOCAL DENSITY: the loop has eight long nodes, so the cars per node grow
+with the fleet and so does each car's neighbour work -- `whatStops` 46% of
+a step at 100 cars, 57% at 300 (profiled without inlining,
+`tools/measure/step-profile-map.mjs`; with inlining the sampler put the
+time in the wrong functions, and two fixes aimed by it moved nothing).
+Two exact prunes were built and measured -- cars behind me in my lane, and
+cars ahead that cannot out-press the nearest (wantedGap of a stopped car
+over their gap, against the nearest's press) -- with world hashes
+identical on four maps; visits per car fell from 37 to 15 at 300 cars and
+the step did not move, because walking the lane buckets to prune them cost
+what the visits saved. Reverted. What makes it linear is ONE sorted
+neighbour index per lane -- DECISIONS 10.10's "one neighbour search" -- and
+even linear, 259 cars at the city's rate is ~6 ms on the desk and ~29 ms
+on the phone (its factor here is ~4.6: 43.6 against 9.5). It does not
+rescue this screen alone.
+
+**2. Was the loop stepping to catch up? Yes: a spiral.** The page stepped
+WHILE a tick was owed, with the frame's delta capped at 0.25 s: a slow step
+made a slow frame, which owed more ticks. `tools/measure/page-loop.mjs`,
+replaying the loop with the phone's step (x4.6) and its ~60 ms of frame
+besides the sim, reproduces the readout: **4.9 fps, four steps a frame,
+the world 0.99x** (the phone: 6 fps, 0.99x). Now a frame steps once, a
+second time only if the first cost under 8 ms (PAGE_BUDGET, flagged), at
+most three, and drops what is still owed to a tick (`sim/pace.js`
+`pageMore`/`pageLeft`; #/map and #/exam). Same replay: **9.8 fps, one step
+a frame, the world 0.49x** -- the screen keeps its frames and the world
+slows, which the readout says. That is the honest trade at this cost: 44
+ms of step per 50 ms tick and 60 ms of frame besides cannot all fit in
+real time. verify-worker section 6, with the old pacing as the control and
+sabotaged.
+
+**The 60 ms outside the sim is not explained.** 195.6 ms of frame against
+138 of named parts. With one step a frame the next readout separates it:
+if it stays, it is not the steps (GC from them would shrink with them).
+
+**3. LOD, and placement with it.** Required, not an optimisation: 259
+simulated in full while 11 are in view. DECISIONS 10.9 is the ruling; 10.10
+says LOD promotion CHOOSES NOTHING and reads the gap predicate as a
+VALIDATOR. So the order is: (a) the one neighbour search and gap predicate
+-- 10.10's second step, pulled forward: it is both the linear step on long
+nodes (above) and LOD's validator; (b) LOD's promotion check, written
+before the feature (10.9); (c) LOD, coarse and dormant tiers on the tick;
+(d) placement for the player and density shaping -- which is out-of-sight
+spawning, the dormant tier's other face. Placement's FIRST half moves ahead
+of LOD; its second half lands with or after it.
+
+**The crashes**: the traffic alone on that map at 259 cars ran 40 minutes
+over four seeds without one, so both involved the player or traffic
+reacting to them. The readout now says how many were with the player
+("2 crashes (0 with you)" would be traffic colliding near him -- a bug to
+hunt).
+
+**Noted, not acted on**: 0 gaps judged in 2.5 minutes while meeting 9.9
+cars a minute -- the highway gives the player no decisions even at this
+density; and following 42% / followed 37% at 9.9 met a minute is the
+lattice signature again (SIMULATOR 1.2.15).
 
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 

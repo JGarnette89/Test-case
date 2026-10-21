@@ -42,6 +42,31 @@ export function paceReply(p) {
 export const carryOf = (p) => p.owed;
 
 /* =====================================================================
+   PACING THE PAGE: how many ticks one frame steps (22 October).
+
+   The in-page loop stepped WHILE a tick was owed, and a frame's delta is
+   capped at a quarter second: a slow step made a slow frame, a slow frame
+   owed more ticks, and more ticks made it slower. On the phone at 259 cars
+   on the endless highway it settled at about three 44 ms steps a frame --
+   "sim 0.99x real time" and 6 fps, the world keeping pace by starving the
+   screen (the maintainer's readout). The opposite of the worker's failure,
+   on the same budget.
+
+   Now: a frame steps once when a tick is owed; again only while the steps
+   so far cost under PAGE_BUDGET and at most PAGE_STEPS in all, so a hiccup
+   is still caught up when steps are cheap; and what is still owed after
+   that is dropped down to one tick. A step dearer than a frame slows the
+   world instead of the frame -- which the "sim x real time" readout then
+   says out loud. Drawing leads the stepped world by what is owed (MapRoad
+   `actorsOf`), so capping it at a tick caps how far ahead anything is
+   drawn.
+   ===================================================================== */
+export const PAGE_BUDGET = 8;   // ms of steps after which a frame takes no more -- half a 60 Hz frame; a flagged design constant
+export const PAGE_STEPS = 3;    // most ticks one frame steps, however cheap
+export const pageMore = (owed, steps, spentMs) => owed >= DT && (steps === 0 || (steps < PAGE_STEPS && spentMs < PAGE_BUDGET));
+export const pageLeft = (owed) => Math.min(owed, DT);
+
+/* =====================================================================
    THE SIM'S CLOCK AGAINST THE WALL'S (15 October; the maintainer: "the
    fps is solid but it's like the simulation itself is slowing down").
    Every frame meter here measured FRAMES; a world running at half speed

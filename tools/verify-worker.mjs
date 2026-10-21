@@ -14,6 +14,8 @@
       city, reported.
    5. The motion drawn is smooth: the page's pacing driven headlessly
       against a worker's latency, and the pacing it replaced as the control.
+   6. The page steps within a budget: one dear step a frame, never more than
+      a tick carried -- with the old pacing as the control, which spirals.
    4. The bench's worker (Bench.jsx, "Sim in a worker") builds and steps
       the bench's own world, with sight and the traffic switched as it is.
    ===================================================================== */
@@ -23,7 +25,7 @@ import { step, DT } from "../src/sim/crossing.js";
 import { stepDriver, withDriver } from "../src/sim/drive.js";
 import { testCityReady } from "../src/map/samples.js";
 import { benchScene, withOff } from "../src/iso/bench.js";
-import { newPace, paceFrame, paceReply, carryOf, OWED_CAP } from "../src/sim/pace.js";
+import { newPace, paceFrame, paceReply, carryOf, OWED_CAP, pageMore, pageLeft } from "../src/sim/pace.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -174,6 +176,37 @@ console.log("\n5. THE MOTION DRAWN IS SMOOTH (sim/pace.js) -- what a frame-time 
   check(rows.every((x) => x.a.back === 0), "with the pacing as shipped no frame draws a car behind where the last frame drew it, at any worker latency up to beyond a tick");
   check(rows.filter((x) => x.L < 50).every((x) => x.a.worst < 0.5), "and while the worker keeps up, no frame's advance is off a steady car's by half a tick's travel -- the bench's frame times would never show the difference");
   check(rows.filter((x) => x.L < 50).every((x) => x.b.back > 100), "THE CONTROL: the pacing it replaced (DT off at send) draws cars backwards on hundreds of frames whenever the worker keeps up -- the stutter seen on the phone (slower than a tick it only slowed)");
+}
+
+console.log("\n6. THE PAGE STEPS WITHIN A BUDGET (sim/pace.js pageMore, pageLeft)");
+{
+  /* #/map's in-page loop with synthetic costs, so it runs in milliseconds:
+     every frame the page's own work, every tick a step, vsync at 60 Hz. The
+     costs are the maintainer's phone on the endless highway at 259 cars
+     (22 October): a 44 ms step, about 60 ms of frame besides. Stated here:
+     a frame takes ONE step when a step costs more than the budget, never
+     carries more than a tick afterwards, and so gets at least twice the
+     frames the old pacing did; and the old pacing -- step while a tick is
+     owed, the control -- spirals to several steps a frame, as the phone read. */
+  const run = (pacing, stepMs, otherMs, secs = 30) => {
+    const VS = 1000 / 60;
+    let wall = 0, owed = 0, last = VS, maxSteps = 0, maxOwed = 0, frames = 0, simT = 0;
+    while (wall < secs * 1000) {
+      owed += Math.min(0.25, last / 1000);
+      let steps = 0, spent = 0;
+      while (pacing === "until" ? owed >= DT : pageMore(owed, steps, spent)) { owed -= DT; steps++; spent += stepMs; simT += DT; }
+      if (pacing === "budget") owed = pageLeft(owed);
+      maxSteps = Math.max(maxSteps, steps); maxOwed = Math.max(maxOwed, owed);
+      last = Math.ceil((otherMs + spent) / VS) * VS; wall += last; frames++;
+    }
+    return { fps: frames / secs, maxSteps, maxOwed, rate: simT / secs };
+  };
+  const heavyNew = run("budget", 44, 60), heavyOld = run("until", 44, 60), light = run("budget", 2, 5);
+  console.log(`   44 ms steps + 60 ms a frame: budget ${heavyNew.fps.toFixed(1)} fps, ${heavyNew.maxSteps} step(s) a frame, world ${heavyNew.rate.toFixed(2)}x; old ${heavyOld.fps.toFixed(1)} fps, up to ${heavyOld.maxSteps} a frame, world ${heavyOld.rate.toFixed(2)}x. 2 ms steps: ${light.fps.toFixed(0)} fps, world ${light.rate.toFixed(2)}x`);
+  check(heavyNew.maxSteps === 1 && heavyNew.maxOwed <= DT + 1e-9, `a step dearer than the budget is one a frame, and never more than a tick is carried (${heavyNew.maxSteps}, ${heavyNew.maxOwed.toFixed(3)} s)`);
+  check(heavyNew.fps >= 2 * heavyOld.fps, `so the screen keeps its frames: ${heavyNew.fps.toFixed(1)} fps against ${heavyOld.fps.toFixed(1)} -- the world slows instead, and says so (${heavyNew.rate.toFixed(2)}x)`);
+  check(heavyOld.maxSteps >= 3, `THE CONTROL: stepping while a tick is owed spirals to ${heavyOld.maxSteps} steps a frame at these costs -- the phone's 6 fps`);
+  check(light.rate > 0.99, `and with cheap steps the world keeps real time (${light.rate.toFixed(3)}x)`);
 }
 
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nall passed");
