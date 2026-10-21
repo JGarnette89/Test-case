@@ -14,7 +14,7 @@ by reading, not by reconstructing it from reports. Three columns of
 unfinished; an item leaves this list when it is shipped or dropped, and
 says which.
 
-**Live build: `d97b47a`** (lateOffGreen on the sheet, lit courses, merging across the taper -- DECISIONS 10.15-10.16; before it `fd1127e`, the courtesy ruling and gap seeking, DECISIONS
+**Live build: `86b7cb9`** (nobody stranded at an acceleration lane, the player above all -- DECISIONS 10.15; before it `d97b47a`, lateOffGreen on the sheet, lit courses, merging across the taper -- DECISIONS 10.15-10.16; before it `fd1127e`, the courtesy ruling and gap seeking, DECISIONS
 10.15).
 
 **Committed, not shipped:** nothing.
