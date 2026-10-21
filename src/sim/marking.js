@@ -33,8 +33,9 @@
                    driver's own decision writes, so the sheet and the car
                    cannot disagree about whether there was a reason.
      lateOffGreen  at the head of the queue, still sitting when the light
-                   has been green for longer than a competent observer
-                   could take to notice it (LATE_OFF_GREEN). OBSERVATION,
+                   has been green for the undue-delay standard, 4 s
+                   (LATE_OFF_GREEN = UNDUE_AT; the horn behind them comes
+                   first, at 2 s). OBSERVATION,
                    and the first fault that axis owns outright: the delay
                    is `noticeAfter` (crossing.js), the registration delay
                    and the glance it may land in -- nothing else in the
@@ -68,17 +69,28 @@ import { HARSH_AT, PX_PER_M } from "./traffic.js";
 export const POS_VISIBLE = 0.45 * PX_PER_M;
 import { AT_REST, AT_LINE, waitAt, pathOf, layoutOf, strayOf, wideAt } from "./crossing.js";
 import { KEEP_RIGHT_FAULT } from "./lanechange.js";
-import { REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
-import { COMPETENT_AT } from "../core/driver.js";
+import { UNDUE_AT } from "./crossing.js";
 
-/* LATE OFF THE GREEN: the longest a COMPETENT observer can take to notice
-   a light has changed -- observation deficit at COMPETENT_AT, the jitter
-   at its top, and the change landing at the start of a glance away, which
-   doubles it (crossing.js `noticeAfter`). 1.98 s. Derived from the axis's
-   own numbers and the competence line every other axis is judged at, not
-   chosen: anybody past it is, on that occasion, below competent at the one
-   thing that can hold a car at an open green. */
-export const LATE_OFF_GREEN = 2 * (REGISTER_FLOOR + (1 - COMPETENT_AT) * REGISTER_SPAN * (1 + JITTER));
+/* LATE OFF THE GREEN IS MARKED AT THE UNDUE-DELAY STANDARD -- the same
+   constant, not a second one with the same value (22 October; the
+   maintainer approved the split: "the examiner scored error and the
+   impatience of a random driver aren't going to be identical"). Sitting at
+   an open green and sitting at an available gap are one failing -- not
+   proceeding when you should -- so one threshold, two triggers, and the
+   sheet still says which ("slow to proceed on a green" reads better than a
+   generic undue delay). The real marking guide: 4-5 s.
+
+   THE WORLD WAKES FIRST: the horn behind a dawdler comes at HONK_AFTER,
+   2.0 s (crossing.js, a gameplay constant the maintainer ruled), a warning
+   the candidate can still act on; the mark at UNDUE_AT is the consequence
+   if they do not.
+
+   HISTORY, so a later derivation is not mistaken for confirmation: this
+   was first DERIVED as the worst a competent observer could take to notice
+   a light (2 x (REGISTER_FLOOR + 0.25 x REGISTER_SPAN x 1.6) = 1.98 s), and
+   the maintainer's gameplay ruling of 2 s for the world's reaction landed
+   beside it by coincidence. Neither number is the mark now. */
+export const LATE_OFF_GREEN = UNDUE_AT;
 
 /* The old engine's visibility floor is in pixels; the sim is in metres. */
 const OFF_LINE = POS_VISIBLE / PX_PER_M;

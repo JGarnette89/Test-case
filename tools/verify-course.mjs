@@ -692,51 +692,72 @@ console.log("\n9. DEFERRED MARKING, AND THE SECTION SHEET");
     ? ok("lane-keeping is judged against POS_VISIBLE, defined once in marking.js at the old engine's 0.45 m, not a second copy of the number")
     : fail("marking.js restates the visibility floor, or lowered it");
 
-  /* --- observation, on the sheet (22 October) ---
-     LATE OFF THE GREEN, on a course whose every intersection is lit. The
-     expectations are stated here, not read from marking.js: the line is
-     about two seconds -- longer than a sharp driver's reaction, shorter
-     than the maintainer's 4 s undue delay, which is a different fault for
-     a different person; a candidate weak on OBSERVATION and nothing else
-     is marked for it at most greens; the same candidate with observation
-     restored is never marked (the controlled comparison: strip the cause
-     and the fault must vanish); and no other weakness produces it -- a
-     timid driver sits for gaps, never at an open green. */
+  /* --- the green: the world warns, then the examiner judges (22 October) ---
+     The maintainer's split: "the examiner scored error and the impatience of
+     a random driver aren't going to be identical." The world reacts to a
+     dawdler at a green at 2.0 s (the horn behind, crossing.js HONK_AFTER,
+     verify-greens), a warning the candidate can still act on; the sheet
+     marks lateOffGreen at the real marking guide's 4-5 s -- the UNDUE-DELAY
+     standard itself, one constant with undue delay, since sitting at an open
+     green and sitting at an open gap are one failing. Stated here: the mark
+     is 4.0 s and is undue delay's; nobody is marked who sat less; a dawdler
+     honked at first goes and is NOT marked; one nobody warns IS marked; and
+     a sound or a timid candidate is never marked.
+
+     The dawdler is FORCED -- a candidate who will not notice a green for ten
+     seconds (somebody on their phone). Measured (tools/measure/green-
+     escalation.mjs), no modelled candidate reaches 4 s on their own: the
+     poorest observer sits a median 2.4 s and at most 2.7 s, the registration
+     delay being calibrated on noticing traffic, not on a phone. Whether the
+     driver model should have that dawdler is an open question; the
+     escalation is checked on one. */
   {
     const LIT = { N: "signal", E: "signal", S: "signal", W: "signal" };
     const sound = PROFILES.find((p) => p.id === "sound").ratings;
-    const lit = (ratings, seed) => {
-      let w = withCandidates(seedCourse(seed, LIMIT, { every: 4.0, control: LIT, cols: 3, rows: 2 }), [{ id: "X", profile: "sound", ratings }]);
-      let greens = 0, prev = null;
+    const lit = (ratings, seed, every, dawdle) => {
+      let w = withCandidates(seedCourse(seed, LIMIT, { every, control: LIT, cols: 3, rows: 2 }), [{ id: "X", profile: "sound", ratings }]);
+      const greens = [];
+      let g = null;
       for (let i = 0; i < Math.round(300 / DT); i++) {
         w = noticing(keepDriving(step(w)));
+        if (dawdle) w = { ...w, actors: w.actors.map((x) => (x.candidate === "X" && x.notices !== 10 ? { ...x, notices: 10 } : x)) };
         const a = w.actors.find((x) => x.candidate === "X");
-        if (a?.wake != null && prev == null) greens++;
-        prev = a?.wake ?? null;
+        if (!a) { g = null; continue; }
+        if (a.wake != null && !g) greens.push((g = { from: w.t, horn: null, to: null }));
+        if (g && g.horn == null && w.actors.some((c) => c.honkTo === a.id && c.honkAt != null && c.honkAt >= g.from)) g.horn = w.t - g.from;
+        if (g && a.wake == null) { g.to = w.t - g.from; g = null; }
       }
-      const late = (w.faults ?? []).filter((x) => x.who === "X" && x.trait === "lateOffGreen");
-      return { greens, late: late.length, closed: late.every((x) => x.to != null && x.to >= x.from), crashes: w.actors.filter((a) => a.crash).length };
+      const marks = (w.faults ?? []).filter((x) => x.who === "X" && x.trait === "lateOffGreen");
+      for (const m of marks) { const gr = greens.find((q) => m.from >= q.from - 1e-9 && (q.to == null || m.from <= q.from + q.to + 1e-9)); if (gr) gr.marked = m.from - gr.from; }
+      return { greens, marks, crashes: w.actors.filter((c) => c.crash).length };
     };
-    const pool = (ratings) => [1, 2, 3].map((seed) => lit(ratings, seed)).reduce((t, r) => ({ greens: t.greens + r.greens, late: t.late + r.late, closed: t.closed && r.closed, crashes: t.crashes + r.crashes }), { greens: 0, late: 0, closed: true, crashes: 0 });
-    const blind = pool({ ...sound, observation: 0.15 });
-    const sharp = pool(sound);
-    const shy = pool({ ...sound, confidence: PROFILES.find((p) => p.id === "timid").ratings.confidence });
-    console.log(`   lit course, 3 seeds x 5 min: poor observer late off ${blind.late} of ${blind.greens} greens; the same driver sharp ${sharp.late} of ${sharp.greens}; timid ${shy.late} of ${shy.greens}; line ${LATE_OFF_GREEN.toFixed(2)} s`);
-    LATE_OFF_GREEN > 1.5 && LATE_OFF_GREEN < 2.5
-      ? ok("the line is about two seconds -- past a sharp driver's reaction, short of an undue delay")
-      : fail(`late off the green is judged at ${LATE_OFF_GREEN.toFixed(2)} s, which is not what a competent observer's worst looks like`);
-    blind.greens >= 6 && blind.late * 2 > blind.greens && blind.closed
-      ? ok(`a candidate weak on observation alone is late off ${blind.late} of ${blind.greens} greens, each a closed interval on the sheet`)
-      : fail(`a poor observer was late off ${blind.late} of ${blind.greens} greens -- the observation axis has no fault on the sheet`);
-    sharp.greens >= 6 && sharp.late === 0
-      ? ok("the same candidate with observation restored is never late off a green: strip the cause and the fault vanishes")
-      : fail(`a sound observer was marked late off ${sharp.late} of ${sharp.greens} greens`);
-    shy.greens >= 6 && shy.late === 0
-      ? ok("a timid driver is never marked for it: hesitating at a gap is confidence, sitting at an open green is not seeing it")
-      : fail(`a timid but observant driver was marked late off ${shy.late} greens -- the fault is not observation's`);
-    blind.crashes + sharp.crashes + shy.crashes === 0
-      ? ok("and a lit course runs without a crash")
-      : fail(`${blind.crashes + sharp.crashes + shy.crashes} crashes on the lit course`);
+    const runs = (ratings, every, dawdle) => [1, 2, 3].map((seed) => lit(ratings, seed, every, dawdle));
+    const all = (xs) => xs.flatMap((r) => r.greens);
+    const busy = all(runs(sound, 2.0, true)), quiet = all(runs(sound, 30, true));
+    const sharp = runs(sound, 4.0, false), shy = runs({ ...sound, confidence: PROFILES.find((p) => p.id === "timid").ratings.confidence }, 4.0, false);
+    const warned = [...busy, ...quiet].filter((q) => q.horn != null && q.horn < LATE_OFF_GREEN);
+    const unwarned = [...busy, ...quiet].filter((q) => (q.horn == null || q.horn >= LATE_OFF_GREEN) && (q.to == null || q.to >= LATE_OFF_GREEN));
+    const marked = [...busy, ...quiet].filter((q) => q.marked != null);
+    console.log(`   a dawdler at greens, lit courses, 3 seeds each: ${busy.length + quiet.length} greens; honked at before 4 s ${warned.length} (horn at ${warned.slice(0, 6).map((q) => q.horn.toFixed(1)).join(", ")} s), marked ${marked.length} (at ${marked.slice(0, 6).map((q) => q.marked.toFixed(1)).join(", ")} s)`);
+    const src = fs.readFileSync(new URL("../src/sim/marking.js", import.meta.url), "utf8");
+    LATE_OFF_GREEN === 4.0 && /export const LATE_OFF_GREEN = UNDUE_AT;/.test(src)
+      ? ok("the mark is the real marking guide's standard, 4 s, and it is undue delay's own constant -- one judgement, two triggers")
+      : fail(`late off the green is marked at ${LATE_OFF_GREEN} s, or not from UNDUE_AT -- two constants for one failing drift apart`);
+    marked.every((q) => q.marked >= 4.0 - DT - 1e-9)
+      ? ok(`nobody is marked who sat less than 4 s (${marked.length} marks)`)
+      : fail(`a candidate was marked after ${Math.min(...marked.map((q) => q.marked)).toFixed(2)} s at a green`);
+    warned.length >= 3 && warned.every((q) => q.marked == null)
+      ? ok(`the world warns first: ${warned.length} times a horn came before 4 s, and the candidate went -- and was not marked`)
+      : fail(`${warned.length} greens were honked at before 4 s, ${warned.filter((q) => q.marked != null).length} of them marked anyway`);
+    unwarned.length >= 2 && unwarned.every((q) => q.marked != null)
+      ? ok(`and when nobody warns them, the examiner does: ${unwarned.length} greens sat past 4 s unhonked, every one marked`)
+      : fail(`${unwarned.length} greens sat past 4 s with no horn, ${unwarned.filter((q) => q.marked == null).length} of them unmarked`);
+    sharp.every((r) => r.marks.length === 0) && shy.every((r) => r.marks.length === 0)
+      ? ok("a sound candidate is never marked late off a green, nor a timid one -- hesitating at a gap is not sitting at an open green")
+      : fail("a sound or a timid candidate was marked late off a green");
+    [...runs(sound, 2.0, true), ...sharp, ...shy].every((r) => r.crashes === 0)
+      ? ok("and the lit courses run without a crash")
+      : fail("a crash on the lit course");
   }
 
   /* --- and it replays --- */

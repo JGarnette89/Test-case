@@ -3637,6 +3637,42 @@ sound and a timid driver are marked and it fails. **A domain call for the
 maintainer**: whether about two seconds is where an examiner marks
 "slow to proceed on a green".
 
+**SUPERSEDED THE SAME DAY BY THE MAINTAINER'S RULING -- THE WORLD WARNS,
+THEN THE EXAMINER JUDGES.** On the 1.98 s line: "the real marking guide
+says score an error after 4-5 seconds waiting but for gameplay purposes we
+want the world to wake up to a dawdling driver quickly to keep the user
+engaged. let's use 2 seconds for now." Then, on splitting the two: "the
+examiner scored error and the impatience of a random driver aren't going
+to be identical." So:
+- **The world: 2.0 s** -- `HONK_AFTER` (crossing.js), the sound driver's
+  patience behind a car that sits when it could go, was 2.5. A GAMEPLAY
+  constant, ruled. The horn already covered the green ("anytime a driver is
+  blocked when they otherwise shouldn't be", 8 October): that half was
+  built.
+- **The sheet: 4 s** -- `LATE_OFF_GREEN = UNDUE_AT`, the undue-delay
+  standard ITSELF, not a second constant with its value: sitting at an open
+  green and sitting at an open gap are one failing, one threshold, two
+  triggers; the sheet keeps its own label for why. The real marking guide
+  says 4-5 s.
+- **The 1.98 s derivation is history.** The maintainer's 2.0 for the world
+  landing beside it was coincidence; a later re-derivation matching either
+  number is not confirmation of anything.
+- **The escalation is the point**: a horn the candidate can still act on,
+  then the mark if they do not -- the first place the world warns before it
+  judges. verify-course section 9 holds it on a forced dawdler: honked
+  before 4 s, they go and are not marked (5 of 29 greens); unwarned, marked
+  at 4.0 s (24 of 24); nobody marked under 4 s; a sound or timid candidate
+  never. Sabotaged both ways.
+
+**OPEN, for the maintainer -- the mark is now out of reach.** No modelled
+candidate reaches 4 s at a green on their own: the poorest observer sits a
+median 2.4 s, at most 2.7 s (tools/measure/green-escalation.mjs), because
+the registration delay was calibrated on noticing traffic, not on somebody
+on their phone. So `lateOffGreen` fires only for a dawdler the driver model
+does not yet have, and the observation axis is again without a fault on the
+sheet in practice. Whether a distracted driver belongs in the model is a
+design question; the escalation is ready for one.
+
 **Built, measured, NOT shipped: the ruled fault (10.12.3)** -- braking
 harder than the car behind can comfortably follow, with it inside twice
 its chosen gap (the courteous driver's own test), without having

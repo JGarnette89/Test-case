@@ -1525,8 +1525,16 @@ export function noticeAfter(me, t) {
    since a horn here corrects somebody's driving -- and never past
    HONK_TOPS (3 s). A timid driver (caution above the optimum) never
    honks. (It was the undue-delay standard, 4 s, counted only after the
-   other car's time to notice: 6 s at the first test.) */
-export const HONK_AFTER = 2.5, HONK_TOPS = 3;
+   other car's time to notice: 6 s at the first test.)
+
+   2.0 s SINCE 22 OCTOBER -- the maintainer, on a dawdler at a green: "for
+   gameplay purposes we want the world to wake up to a dawdling driver
+   quickly to keep the user engaged. let's use 2 seconds for now." A
+   GAMEPLAY constant, ruled: the WORLD's reaction, and the warning the
+   player can still act on. The EXAMINER's mark for the same failing is
+   the real marking guide's 4-5 s, UNDUE_AT (marking.js lateOffGreen): the
+   world warns before the examiner judges. */
+export const HONK_AFTER = 2.0, HONK_TOPS = 3;
 export function patienceOf(me) {
   const c = me.caution ?? 1;
   if (c > 1) return Infinity;

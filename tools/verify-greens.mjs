@@ -56,8 +56,9 @@ console.log("\n2. WHO HONKS, AND HOW SOON: confidence and compliance");
 {
   const p = (caution, compliance) => patienceOf({ caution, ratings: { compliance } });
   check(p(1.4, 1) === Infinity && p(1.01, 0.5) === Infinity, "a timid driver (caution above the optimum) never honks");
-  check(p(0.15, 1) < p(0.15, 0.3) && p(0.15, 0.3) < p(1, 1) && p(1, 1) < p(1, 0.3), `bold and rule-minded first (${p(0.15, 1).toFixed(1)} s), bold and careless next (${p(0.15, 0.3).toFixed(1)}), a sound driver at the maintainer's 2.5 s (${p(1, 1).toFixed(1)}), a careless sound one later (${p(1, 0.3).toFixed(1)})`);
-  check(Math.abs(p(1, 1) - HONK_AFTER) < 1e-9 && [0.05, 0.3, 0.6, 1].every((c) => [0, 0.5, 1].every((k) => p(c, k) <= HONK_TOPS)), `a sound, compliant driver honks at the maintainer's ${HONK_AFTER} s, and nobody who honks waits past ${HONK_TOPS} s ("2-3 seconds tops")`);
+  check(p(0.15, 1) < p(0.15, 0.3) && p(0.15, 0.3) < p(1, 1) && p(1, 1) < p(1, 0.3), `bold and rule-minded first (${p(0.15, 1).toFixed(1)} s), bold and careless next (${p(0.15, 0.3).toFixed(1)}), a sound driver at the maintainer's 2.0 s (${p(1, 1).toFixed(1)}), a careless sound one later (${p(1, 0.3).toFixed(1)})`);
+  /* STATED HERE, not read back from HONK_AFTER (CLAUDE.md item 3): the maintainer's 2.0 s of 22 October ("let's use 2 seconds for now"), and his "2-3 seconds tops" of 8 October. */
+  check(Math.abs(p(1, 1) - 2.0) < 1e-9 && [0.05, 0.3, 0.6, 1].every((c) => [0, 0.5, 1].every((k) => p(c, k) <= 3)), `a sound, compliant driver honks at the maintainer's 2.0 s (${p(1, 1)}), and nobody who honks waits past 3 s ("2-3 seconds tops")`);
 }
 
 console.log("\n3. IN THE SIM: test map 1, two seeds, five minutes at 120 cars");
