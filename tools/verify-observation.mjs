@@ -80,7 +80,8 @@ console.log("\n3. LOOKING AWAY, BLIND AND WITH THE EDGE OF THE EYE: EVERY CRASH 
      looming still registers (attention.js LOOMING) -- and with that the
      glances' crashes went (0 and 0 here, against 0 attentive). So three
      runs per map, same seed and count: nobody looking away; looking away
-     blind (noPeriphery, the old glance, a controlled comparison); and
+     blind and at any moment (noPeriphery and glanceAnyTime, the old
+     glance, a controlled comparison); and
      looking away as drivers do. Blind glances crash and are most of those
      crashes -- the instrument still sees glance crashes when there are
      any -- and the edge of the eye takes them back to within the attentive
@@ -96,7 +97,8 @@ console.log("\n3. LOOKING AWAY, BLIND AND WITH THE EDGE OF THE EYE: EVERY CRASH 
     const n = {};
     for (const mode of ["off", "blind", "on"]) {
       let w = seedGraph(3, 50, loaded, { target: cars, posted: true, perceive: mode !== "off" });
-      if (mode === "blind") w = { ...w, noPeriphery: true };
+      /* The old glance: blind and taken at any moment (DECISIONS 10.19, its first two parts both off). */
+      if (mode === "blind") w = { ...w, noPeriphery: true, glanceAnyTime: true };
       for (let i = 0; i < secs / DT; i++) {
         w = step(w);
         if (i % 5) continue;

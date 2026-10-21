@@ -46,12 +46,29 @@ export const LOOMING = 0.005;
 export const loomingRate = (width, closing, gap) => (closing > 0 ? (width * closing) / Math.max(gap, 0.5) ** 2 : 0);
 const GOLDEN = 0.6180339887;
 
+/* WHEN A GLANCE IS TAKEN IS A DECISION (22 October, the maintainer's
+   ruling: "a look away of that time would be coasting on a highway or at
+   least a straight stretch of road that doesn't anticipate steering
+   actions or braking ... looking away as it is now is ... being
+   implemented randomly rather than when a driver might actually look away
+   completely"). A glance falls DUE every LOOK_EVERY seconds, at the
+   driver's own phase; it is TAKEN when the road gives them at least its
+   length before they must act (crossing.js `timeFree`), and until then it
+   waits. So a glance is short or absent following into a turn and
+   ordinary on a clear straight, and a driver with a long glance looks away
+   only where a long glance fits. `glanceAt` is when the last one was
+   taken, set by the step; a car never stepped -- a probe -- reads the
+   schedule as it falls (`lastDue`), which is what a stepped car does on a
+   road that never asks anything of it. */
+export function lastDue(t, me) {
+  const phase = (((me.n ?? 0) * GOLDEN) % 1) * LOOK_EVERY;
+  return t - ((((t + phase) % LOOK_EVERY) + LOOK_EVERY) % LOOK_EVERY);
+}
 /* Seconds since this driver looked away, at time t; 0 while they are
    looking. */
 export function lookingAway(t, me) {
   const g = me.lag ?? 0;
   if (!(g > 0) || me.player) return 0;
-  const phase = (((me.n ?? 0) * GOLDEN) % 1) * LOOK_EVERY;
-  const into = (((t + phase) % LOOK_EVERY) + LOOK_EVERY) % LOOK_EVERY;
-  return into < g ? into : 0;
+  const into = t - (me.glanceAt !== undefined ? me.glanceAt : lastDue(t, me));
+  return into >= 0 && into < g ? into : 0;
 }

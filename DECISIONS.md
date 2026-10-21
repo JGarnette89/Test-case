@@ -3986,6 +3986,32 @@ part did the work, and held by `verify-lookaway`:
    perception machinery itself (a carried picture and its neighbour index
    per glance start), no longer gridlock.
 
+2. **Demand gating.** A glance falls DUE on the old schedule and is TAKEN
+   only when the road leaves at least its length before the driver must act
+   (`timeFree`, from signals the step already held): none while braking
+   firmly for anything (the brake lamp's threshold), mid lane change, inside
+   a box, or stopped at a line judging a gap; all the time there is stopped
+   at a red or queued behind a stopped car; moving, the time headway to the
+   car ahead and the time to the next line (past the box, to the end of the
+   stretch -- short of the next line, so never more than the truth). It
+   waits until it fits. One field of memory per car (`glanceAt`), set in
+   the step, so the world still replays exactly; a never-stepped probe reads
+   the schedule as it falls, which is what a stepped car does on a road that
+   asks nothing. **Alone, with the glance still blind: 12 crashes to 0**
+   (two seeds, ten minutes). Where the long glances (1.5 s or more) fall,
+   any time against gated: box 6% -> 1%, near a line 7% -> 4%, following
+   under 2 s 29% -> 12%, clear road 57% -> 83%. Short glances still happen
+   behind a car -- "short glances or none" is that, by construction, since a
+   glance is taken where its own length fits. So each part ALONE removes the
+   repro's crashes; both are kept because each is the ruling.
+   `glanceAnyTime` joins `noPeriphery` as a check's controlled comparison,
+   never a setting. Two "check wrong" verdicts: verify-observation's blind
+   control must be the old glance (blind AND any time) or it measures the
+   gating instead; and verify-lookaway's six 120-s runs timed out under the
+   suite's load -- cut by measurement (the old glance crashes at 19, 26, 54,
+   54, 95 s on seed 1), and a first cut that put a share ON its floor (75% at
+   60 s against 83% at 120) was undone rather than the floor moved.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

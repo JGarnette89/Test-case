@@ -57,7 +57,7 @@ import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
 import { reads } from "../core/driver.js";
 import { BAY } from "../map/format.js";
-import { lookingAway, loomingRate, LOOMING } from "./attention.js";
+import { lookingAway, loomingRate, LOOMING, lastDue, LOOK_EVERY } from "./attention.js";
 import { placeOf, neighboursAt, approachNeighbours } from "./placement.js";
 import { parkingOf, initialParked } from "./parking.js";
 import { tallerThanEye, boxOf, eyeOf, hiddenFrom, blocked, segHitsBox, conesFrom, blockedFrom } from "./sight.js";
@@ -461,6 +461,31 @@ function loomed(world, me) {
   }
   byId.set(me.id, out);
   return out;
+}
+
+/* HOW LONG THE ROAD LEAVES A DRIVER BEFORE THEY MUST ACT, as they see it
+   while looking (attention.js: a due glance is taken only if it fits).
+   Nothing new is measured; each is a signal the step already holds:
+     braking firmly for anything -- a corner, a slower car, a line, the
+     yielding of a merge (the brake lamp's own threshold)   none
+     mid lane change, or inside an intersection's box        none
+     stopped at a line judging a gap                         none
+     stopped at a red, or queued behind somebody stopped     all the time there is
+     moving: the time headway to the car ahead, and the time to the next
+     line (or, past the box, to the end of this stretch -- short of the
+     next line, so never more than the truth). */
+function timeFree(me, view, mine, a, t) {
+  if (a < -BRAKE_LAMP_ON) return 0;
+  if (me.lc && !me.lc.abort && t < me.lc.t0 + me.lc.T) return 0;
+  const v = me.v ?? 0;
+  if (v < AT_REST) {
+    if (view.red || view.queued || (view.leader && (view.leader.v ?? 0) < AT_REST)) return Infinity;
+    return me.stoppedAt != null ? 0 : Infinity;
+  }
+  if (me.s > mine.stopAt && me.s < mine.clearAt) return 0;
+  let free = (me.s <= mine.stopAt ? mine.stopAt - me.s : mine.length - me.s) / v;
+  if (view.leader && Number.isFinite(view.gap)) free = Math.min(free, Math.max(0, view.gap) / v);
+  return free;
 }
 
 /* WHAT A DRIVER WHO LOOKED AWAY STILL BELIEVES about another car: where it
@@ -1796,6 +1821,11 @@ export function step(world) {
          quantity every reader meant. */
       const out = { ...at, a: (v - me.v) / DT, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
       if (offer || raw.courtesy) out.courtesy = offer;
+      /* A DUE GLANCE, TAKEN WHEN IT FITS (attention.js, `timeFree` above). `glanceAnyTime`: a check's controlled comparison, never a setting. */
+      if ((raw.lag ?? 0) > 0 && !raw.player) {
+        const last = raw.glanceAt !== undefined ? raw.glanceAt : lastDue(world.t, raw);
+        out.glanceAt = world.t >= last + LOOK_EVERY && (world.glanceAnyTime || timeFree(me, view, mine, a, world.t) >= raw.lag) ? world.t : last;
+      }
       /* THE GREEN, NOTICED (the maintainer, 8 October: "some people get
          distracted or are on their phones and don't start right away").
          At the head of the queue under a red; when it goes green, a wake
