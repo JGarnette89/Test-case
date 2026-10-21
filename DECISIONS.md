@@ -3942,6 +3942,50 @@ rewrite of the sheet.
   marking nothing loses, catching more never scores worse).
 - **Signalling** remains a separate prerequisite for the attribution half.
 
+## 10.19 A GLANCE IS NEVER BLINDNESS, AND IT IS TAKEN WHEN IT FITS (22 October)
+
+The maintainer, on the crossroads crashes at 260 cars (SIMULATOR item 15):
+*"it's unlikely a driver would ever look away for 2 full seconds while
+following another car into a turn, only an extremely negligent driver would
+look towards their info screen or phone here. a look away of that time
+would be coasting on a highway or at least a straight stretch of road that
+doesn't anticipate steering actions or braking. my instinct tells me that
+looking away as it is now is too exaggerated or being implemented randomly
+rather than when a driver might actually look away completely. you are spot
+on about the peripheral vision doing work in the animal brain
+automatically."*
+
+**What it was, diagnosed before any change.** A glance was TOTAL blindness
+-- the picture from its start, every car carried forward at its old speed
+(crossing.js `seenBy`) -- and it fell on a fixed phase every LOOK_EVERY
+(6 s) whatever the driver was doing. Two separate wrongs, and the ruling
+names both. Repro: test map 1 at 260 cars, look-away on, 12 crashes in ten
+minutes over two seeds, every one a rear-end with the follower looking away.
+
+Built in the ruled order, the repro measured after each so it is known which
+part did the work, and held by `verify-lookaway`:
+
+1. **Peripheral vision.** The car ahead -- in the lane, or in the queue by
+   the rule `whatStops` follows -- LOOMING past a threshold brings the eyes
+   back a reaction time later: the question is asked of the world
+   REACTION_FLOOR ago, so it needs no state and the world replays exactly.
+   Looming is the rate the image widens, width x closing / gap^2;
+   `LOOMING` = 0.005 rad/s is a FLAGGED design constant from the perception
+   literature's detection threshold (order 0.003-0.01), never tuned to the
+   crash rate (4.4). Result: **12 crashes to 0**, on four seeds and on the
+   loop (280 cars, the seed-1 crash earlier); 0 too at 0.01, the top of the
+   band, so the result does not hang on the pick. Not a disguised off
+   switch: a moving driver looking away is still away **85%** of the time.
+   Sabotaged twice -- the threshold at infinity (crashes return: 8) and a
+   cue that always fires (the "still away" line fails). verify-observation
+   section 3 held that the glances are most of the crashes, true only of a
+   blind glance: verdict "check wrong", restated as blind / edge of the eye /
+   nobody looking away, and its sample cut by measurement to fit its time.
+   **Cost, on desk only** (10.4: not believed until a phone says so): with
+   no crashes the step with look-away on is still about 1.6x off -- the
+   perception machinery itself (a carried picture and its neighbour index
+   per glance start), no longer gridlock.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

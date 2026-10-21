@@ -57,7 +57,8 @@ import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
 import { reads } from "../core/driver.js";
 import { BAY } from "../map/format.js";
-import { lookingAway } from "./attention.js";
+import { lookingAway, loomingRate, LOOMING } from "./attention.js";
+import { placeOf, neighboursAt, approachNeighbours } from "./placement.js";
 import { parkingOf, initialParked } from "./parking.js";
 import { tallerThanEye, boxOf, eyeOf, hiddenFrom, blocked, segHitsBox, conesFrom, blockedFrom } from "./sight.js";
 import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
@@ -429,8 +430,37 @@ function takePlain(world, list, idx, me, mine, mineAt, hood, node, gen, out) {
 export function seenBy(world, me) {
   const back = Math.round(lookingAway(world.t, me) / DT);
   if (!back || !world.past?.length) return world.actors;
+  /* `noPeriphery`: a check's controlled comparison, never a setting. */
+  if (!world.noPeriphery && loomed(world, me)) return world.actors;
   const i = Math.min(back, world.past.length);
   return carriedForward(world, world.past[i - 1], i * DT);
+}
+
+/* PERIPHERAL VISION (attention.js LOOMING): the eyes come back a reaction
+   time after the car ahead -- in the lane, or in the queue by the rule
+   whatStops follows -- loomed past the threshold. So the question is asked
+   of the world REACTION_FLOOR ago, as it truly was: no state, and a world
+   that replays exactly. Cached per tick per driver. */
+const REACT_TICKS = Math.max(1, Math.round(REACTION_FLOOR / DT));
+const loomCache = new WeakMap();
+function loomed(world, me) {
+  let byId = loomCache.get(world.actors);
+  if (!byId) { byId = new Map(); loomCache.set(world.actors, byId); }
+  let out = byId.get(me.id);
+  if (out != null) return out;
+  out = false;
+  const snap = world.past[Math.min(REACT_TICKS, world.past.length) - 1];
+  const then = snap.find((a) => a.id === me.id);
+  if (then && then.v > 0) {
+    const w = { ...world, actors: snap };
+    const at = placeOf(world.course, then.k ?? 0, then.route, then.s);
+    const ahead = [at && neighboursAt(w, at.lane, at.c, then).ahead, approachNeighbours(w, then, snap).ahead];
+    for (const n of ahead) {
+      if (n && loomingRate(widthOf(n.car), then.v - (n.car.v ?? 0), n.clear) > LOOMING) { out = true; break; }
+    }
+  }
+  byId.set(me.id, out);
+  return out;
 }
 
 /* WHAT A DRIVER WHO LOOKED AWAY STILL BELIEVES about another car: where it

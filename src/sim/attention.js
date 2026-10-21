@@ -30,6 +30,20 @@
    default -- never looks away, and the sim is exactly what it was.
    ===================================================================== */
 export const LOOK_EVERY = 6.0;
+
+/* PERIPHERAL VISION (22 October, the maintainer's ruling: "you are spot on
+   about the peripheral vision doing work in the animal brain
+   automatically"). A glance away is never total blindness. Something
+   LOOMING -- an image growing fast in the edge of the eye -- still
+   registers, and pulls the eyes back a reaction time later (REACTION_FLOOR,
+   crossing.js `seenBy`): a late reaction, never none.
+   Looming is the rate the image of the car ahead widens, in radians per
+   second: its width times the closing speed over the gap squared. LOOMING
+   is the threshold, a FLAGGED design constant taken from the perception
+   literature's detection threshold for looming (of the order 0.003-0.01
+   rad/s), never tuned to a crash rate (DECISIONS 4.4). */
+export const LOOMING = 0.005;
+export const loomingRate = (width, closing, gap) => (closing > 0 ? (width * closing) / Math.max(gap, 0.5) ** 2 : 0);
 const GOLDEN = 0.6180339887;
 
 /* Seconds since this driver looked away, at time t; 0 while they are
