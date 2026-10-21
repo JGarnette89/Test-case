@@ -195,9 +195,14 @@ unchanged tree went from 1700 s to 1382 s (each check about 28% slower
 beside its neighbours, the whole 19% sooner; check.mjs's default since,
 capped by free memory). The wall is now set by the longest check,
 verify-compliance (about 1180 s under that load: 144 five-minute runs of
-the lit map plus five minutes of the city), so the next cut is to split it
-in two the way verify-buses was split, which shortens the pole without
-touching a floor. After that the lever is a cheaper step -- which the
+the lit map plus five minutes of the city), so the next cut was to shorten it. DONE 22 October, not by splitting (one
+assertion needs both of its large runs, and the right-on-red counts are too
+near their floors to halve) but by running its 145 independent runs in
+worker threads and adding them up (tools/lib/compliance-runs.mjs):
+identical output with one worker and four, 950 -> 448 s under the suite's
+load, both sabotages caught through the parallel path. The pole is now
+eight checks at 870-1020 s; most simulate several independent worlds and
+could take the same treatment. After that the lever is a cheaper step -- which the
 phone would feel too: the week's changes made a step about 6-7% dearer
 (test map 1 10.18 -> 10.86 ms, the city 6.28 -> 6.68 at 250 cars).
 

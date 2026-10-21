@@ -46,6 +46,8 @@ import { CAR, driver, STANDSTILL } from "../src/sim/traffic.js";
 const WATCH = STANDSTILL + 2;
 import { composeDriver, AXES, SKILLS, COMPLY_WEAK, DIFFICULTY, reads, deficitOf, soundnessOf, LACKING_AT } from "../src/core/driver.js";
 import { townOf } from "../src/sim/towns.js";
+import { runAll } from "./lib/compliance-runs.mjs";
+import { cpus } from "node:os";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -94,93 +96,40 @@ console.log("\n3. COMPLIANCE IS SITUATIONAL, KNOWLEDGE IS CONSISTENT: THE READAB
 {
   /* THE COST OF AN OCCASION, measured here and nowhere else: anybody in
      the true world within WITNESS seconds of this intersection's box, in
-     it, or on foot at one of its crossings. Not the sim's rule. */
-  const WITNESS = 4;
-  const city = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
-  const witnessed = (w, a) => {
-    const k = a.k ?? 0, L = layoutOf(w, a), mine = pathOf(w, a), base = L.legs[mine.from]?.base ?? mine.from;
-    for (const b of w.actors) {
-      if (b.id === a.id || (b.k ?? 0) !== k) continue;
-      const p = L.paths[b.route];
-      if (!p) continue;
-      if ((L.legs[p.from]?.base ?? p.from) === base && b.s <= a.s) continue;
-      const toBox = p.stopAt - b.s;
-      if (toBox < 0 ? -toBox < 12 + CAR.length : toBox / Math.max(b.v, 0.5) < WITNESS) return true;
-    }
-    const cws = crosswalksOf(w.course);
-    return (w.peds ?? []).some((q) => q.state !== "struck" && cws[q.cw]?.k === k);
-  };
-  const tally = {}, byDriver = new Map();
-  const bump = (g, key) => { tally[g] = tally[g] ?? {}; tally[g][key] = (tally[g][key] ?? 0) + 1; };
-  /* Stop signs on the city; a RIGHT ON RED on a signalled crossroads of
-     its own, light and busy, twelve seeds -- the city's signals gave 35
-     such occasions in fifteen minutes, too few to read a rate from. A car
-     that went on the amber and crosses as it turns red is not one. */
-  const P = (x, y) => ({ x, y, z: 0 });
-  const lit = emptyMap("lit-x");
-  lit.bounds = { x: 0, y: 0, w: 600, h: 600 };
-  for (const [id, a] of [["w", P(0, 300)], ["e", P(600, 300)], ["n", P(300, 0)], ["s", P(300, 600)]]) lit.roads.push(road({ id, points: [a, P(300, 300)], control: { start: "none", end: "signal" } }));
-  const litMap = loadMap(lit);
-  /* SEVENTY-TWO SEEDS, not twenty-four (7 October). A quiet red is rare, so
+     it, or on foot at one of its crossings. Not the sim's rule
+     (tools/lib/compliance-runs.mjs `witnessed`). Stop signs on the city;
+     a RIGHT ON RED on a signalled crossroads of its own, light and busy --
+     the city's signals gave 35 such occasions in fifteen minutes, too few
+     to read a rate from. A car that went on the amber and crosses as it
+     turns red is not one.
+
+     SEVENTY-TWO SEEDS, not twenty-four (7 October). A quiet red is rare, so
      the right-on-red rows rest on a few DOZEN occasions, and the bound on
      alone against in company (25 points) is read off them: the lane-change
      floor moved every world, the sample moved with it, and 100% of 10
      against 73% of 15 failed it by two points -- inside the noise of ten.
-     More road time, not a looser bound. */
+     More road time, not a looser bound.
+
+     AND THE CROSSROADS ON ITS CLOCK (8 October). An actuated light comes to
+     a car alone at it almost at once (actuated.js), which takes away the
+     occasion this section samples, a red stood at with nobody about. What a
+     driver does at a red is the subject here, not what brings the green.
+
+     The city's stop signs gave 376 scofflaw occasions alone and 103 drivers
+     seen both ways over three seeds, against floors of 30 and 10: one seed
+     holds them with room (14 October). The right on red keeps every seed
+     it has -- its counts sit near their floors.
+
+     IN PARALLEL, NOT FEWER (22 October). These 145 runs were the suite's
+     long pole -- about 950 s of a 1400 s suite -- and the right-on-red
+     counts are too near their floors to sample fewer. The runs are
+     independent, so they go to worker threads and are added up: the same
+     runs, the same counts (checked against one worker, run in order), the
+     same claims. */
   const MANY = Array.from({ length: 72 }, (_, i) => 3 + i);
-  /* AND THE CROSSROADS ON ITS CLOCK (8 October). An actuated light comes
-     to a car alone at it almost at once (actuated.js), which is the point
-     of it -- and which takes away the occasion this section samples, a
-     red stood at with nobody about: the count fell under its floor. What a
-     driver does at a red is the subject here, not what brings the green. */
-  const onClock = (map) => map === litMap;
-  /* The city's stop signs gave 376 scofflaw occasions alone and 103 drivers seen both ways over three seeds, against floors of 30 and 10: one seed holds them with room (14 October, the cost of a check). The right on red keeps every seed it has -- its counts sit near their floors. */
-  const RUNS = [[city, 200, [3]], [litMap, 4, MANY], [litMap, 40, MANY]];
-  for (const [map, cars, seeds] of RUNS) for (const seed of seeds) {
-    let w = seedGraph(seed, 50, map, { target: cars, posted: true, trucks: 0, actuated: !onClock(map) });
-    const open = new Map();
-    for (let i = 0; i < 300 / DT; i++) {
-      w = step(w);
-      for (const a of w.actors) {
-        if (a.player || a.crash) continue;
-        const path = pathOf(w, a), L = layoutOf(w, a);
-        /* The two occasions: a stop sign, and a right on red. */
-        const kind = L.signal ? (path.intent === "right" && movementLight(L.signal, L.legs[path.from]?.base, "right", w.t, w.lights?.[a.k ?? 0]?.live) === "red" ? "right-on-red" : null)
-          : L.place.control[path.from] === "stop" ? "stop" : null;
-        const key = `${a.id}@${a.k}@${a.route}`;
-        let o = open.get(key);
-        /* From where THIS driver comes to rest (crossing.js `restAt`): a driver who stops short rests further back, and watched only from the line they were never seen to rest. */
-        const toLine = restAt(path, a) - a.s;
-        /* An occasion is watched from its start: a car that stopped during
-           the world's warm-up, before t = 0, was never seen to stop. (Not
-           any earlier stop mark: a roller marks its crawl at the line.) */
-        if (!o && kind && toLine < WATCH && toLine > -1) open.set(key, o = { kind, seen: witnessed(w, a), rested: false, before: a.stoppedAt != null && a.stoppedAt < 0 });
-        if (!o) continue;
-        /* A REST THE TRAFFIC FORCED is not a reading of the rule: held by
-           somebody crossing, a driver who does not know the right on red stops
-           like everybody else (CLAUDE.md: held by traffic, they stop like
-           everybody else, which is correct). Such an occasion is set aside --
-           it says nothing either way. */
-        if (a.v < 0.3 && !o.rested) { o.rested = true; if (whatStops(a, w).held) o.forced = true; }
-        if (a.s >= path.stopAt && !o.done) {
-          o.done = true;
-          if (o.before || o.forced) continue;
-          /* A right on red is one only if it is still red at the line --
-             a light gone green on the way in asks for no stop. */
-          if (o.kind === "right-on-red" && (movementLight(L.signal, L.legs[path.from]?.base, "right", w.t, w.lights?.[a.k ?? 0]?.live) !== "red" || a.amberGo)) continue;
-          const g = !reads(a, o.kind) ? "unread" : a.rollsStops === "unwatched" ? "scofflaw" : deficitOf(a.ratings, "compliance").deficit < 0.2 ? "sound" : null;
-          if (!g) continue;
-          bump(`${o.kind}:${g}`, `${o.seen ? "seen" : "alone"}.${o.rested ? "rest" : "roll"}`);
-          if (g === "scofflaw") {
-            const d = byDriver.get(`${seed}:${a.id}`) ?? { rolledAlone: 0, restedSeen: 0, seen: 0 };
-            if (!o.seen && !o.rested) d.rolledAlone++;
-            if (o.seen) { d.seen++; if (o.rested) d.restedSeen++; }
-            byDriver.set(`${seed}:${a.id}`, d);
-          }
-        }
-      }
-    }
-  }
+  const RUNS = [["city", 200, 3], ...MANY.map((seed) => ["lit", 4, seed]), ...MANY.map((seed) => ["lit", 40, seed])];
+  const WORKERS = Number(process.env.COMPLIANCE_WORKERS) || Math.max(2, Math.min(6, Math.floor(cpus().length / 4)));
+  const { tally, byDriver } = await runAll(RUNS, WORKERS);
   const rate = (g, where) => { const t = tally[g] ?? {}; const r = t[`${where}.roll`] ?? 0, s = t[`${where}.rest`] ?? 0; return { r: r / Math.max(1, r + s), n: r + s }; };
   const row = (g) => `alone ${(100 * rate(g, "alone").r).toFixed(0)}% of ${rate(g, "alone").n}, in company ${(100 * rate(g, "seen").r).toFixed(0)}% of ${rate(g, "seen").n}`;
   for (const g of ["right-on-red:unread", "right-on-red:scofflaw", "right-on-red:sound", "stop:unread", "stop:scofflaw", "stop:sound"]) console.log(`   ${g.padEnd(24)} rolled: ${row(g)}`);

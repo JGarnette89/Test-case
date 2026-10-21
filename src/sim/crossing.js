@@ -959,6 +959,12 @@ export function whatStops(me, world) {
   if (!relevant) visit = others ?? nearNode(world, seen, mineAt);
   else if (!tall.length) visit = relevant;
   else { const ids = new Set(relevant.map((a) => a.id)); visit = others.filter((a) => ids.has(a.id)); }
+  /* Made once per call, not per car visited: two closures for every pair of
+     cars every tick cost whatStops about 11% of its own time (profiled, 22
+     October) and are needed only for a car mid-change. */
+  const tapered = (x) => { const Lx = layoutOf(world, x), px = Lx.paths[x.route]; return !!(Lx.legs[px?.from]?.bay || Lx.legs[px?.to]?.accel || Lx.legs[x.lc?.fromLeg]?.bay || Lx.legs[x.lc?.fromTo]?.accel); };
+  const laneW = world.road?.lane ?? 3.6, room0 = laneW - 2 * weaveRoom(laneW);
+  const protrudes = (x, other) => tapered(x) || Math.abs(lateralOf(x.lc, world.t)) > room0 - (widthOf(x) + widthOf(other)) / 2;
   for (const them of visit) {
     if (them.id === me.id) continue;
     /* GOING ROUND A STOPPED BUS (passing.js): out in the oncoming lane, the
@@ -1014,8 +1020,6 @@ export function whatStops(me, world) {
        it ends, so there the lanes are closer than that: held to the old
        lane until the blend is over, as before (a car in a half-open bay was
        struck from behind the day this was first written without it). */
-    const tapered = (x) => { const Lx = layoutOf(world, x), px = Lx.paths[x.route]; return !!(Lx.legs[px?.from]?.bay || Lx.legs[px?.to]?.accel || Lx.legs[x.lc?.fromLeg]?.bay || Lx.legs[x.lc?.fromTo]?.accel); };
-    const protrudes = (x, other) => tapered(x) || Math.abs(lateralOf(x.lc, world.t)) > (world.road?.lane ?? 3.6) - (widthOf(x) + widthOf(other)) / 2 - 2 * weaveRoom(world.road?.lane ?? 3.6);
     const shareLane = theirs.from === mine.from
       || (changing(them.lc, world.t) && them.lc.fromLeg === mine.from && protrudes(them, me))
       /* An approach change only: one on the exit stretch has no fromLeg (null), and null === null

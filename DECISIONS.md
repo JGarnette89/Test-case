@@ -2924,6 +2924,60 @@ component deleted, because its own doc comment mentioned the name.
 
 ---
 
+### 10.3 A WORKED EXAMPLE: the check that passed with its own mechanism removed (verify-trucks, 22 October)
+
+The abstract rule -- sabotage a check before believing it (CLAUDE.md item 3)
+-- is easier to nod at than to apply. This is what applying it found.
+
+**The claim**: "what a truck might hide holds the timid more than the
+bold" -- the margin a driver leaves for what they cannot see is
+confidence (crossing.js `phantomHolds`: the timid assume a hidden car at
+full speed, the maximally bold assume nothing).
+
+**How it was measured**: among drivers at their line with trucks about,
+the share held with trucks opaque and free with them see-through, timid
+drivers against bold ones. One seed, five minutes.
+
+**What went wrong, in the order it was found:**
+1. It failed on 21 October, 0.4% against 0.5% -- about 6 events against 8.
+   One seed at those counts is a coin toss. Six seeds pooled said timid
+   1.18%, bold 0.37%: the world looked right. The tempting fix was to
+   state the sample and move on.
+2. Sabotaged before trusting the restated check: confidence taken out of
+   how fast the hidden car is assumed to go. It STILL PASSED.
+3. Confidence taken out of every place it enters the margin -- the speed
+   assumed, the gap acceptance against the hidden car, the patience. It
+   STILL PASSED: timid 1.26%, bold 0.53%, 2.4 times.
+4. So the check had never measured the mechanism. It compared two
+   POPULATIONS: timid drivers stand at their lines longer, in denser
+   moments, with more trucks about, so they are "held while trucks are
+   opaque" more whatever the margin does. And "held with trucks opaque, free
+   without" also counted cars a truck hid that the driver remembered.
+5. A same-driver comparison -- each driver at their line asked twice, as
+   timid and as bold -- still did not separate cleanly (185 against 146,
+   and 192 against 168 sabotaged), because it still measured "held while
+   opaque", not "held by the margin".
+6. What isolated it: `whatStops` reports `byHidden` -- held by the margin
+   and by nothing else (a field only; the world hash byte-identical) -- and
+   the claim is stated as the design states it, exactly: asked as the
+   maximally bold, who assumes nothing is hidden, the margin NEVER holds;
+   asked as the timid tail, it does. 161 against 0. Sabotaged, the bold
+   are held 127 times and it fails.
+
+**The lessons, each more general than trucks:**
+- A check that compares two groups of drivers measures everything that
+  differs between the groups. Ask the SAME driver at the SAME moment with
+  one thing changed (the project's controlled comparison, applied to a
+  check).
+- Measure the mechanism's own output, not a downstream state it shares
+  with other causes ("held by the margin", not "held").
+- A ratio between two moderate settings is not a property: any threshold
+  set between the intact and the sabotaged reading is tuned to the
+  sabotage. State what the design says EXACTLY at an end of the range
+  (zero at the maximally bold) where a correct implementation has no
+  slack.
+- And the cost of not doing this: the check had been green for weeks.
+
 ## 10.5 Where a check protects a decision, its failure says so
 
 Four failure messages are written as explanations rather than symptoms,

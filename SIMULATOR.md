@@ -33,7 +33,8 @@ says which.
    (1101 against 730): a joiner and the car letting it in slow together.
    Named in 10.15; not built.
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
-7. suite cost: 12 at once instead of 8 (1700 -> 1382 s, measured on an unchanged tree; check.mjs's default, capped by free memory) -- DONE; next, split verify-compliance (the long pole, ~1180 s), then a cheaper step (TESTING.md)
+7. suite cost: 12 at once instead of 8 (1700 -> 1382 s); verify-compliance's 145 runs in worker threads, identical counts (950 -> 448 s under load); the derived suite 1588 -> 1356 s. The pole is now eight checks at 870-1020 s, most of them several independent worlds -- the same treatment would apply (TESTING.md)
+8. ~~the step slowdown~~ -- found: two closures made per pair of cars in whatStops (+11% of its own time); hoisted, world hash identical on three maps, test map 1 10.92 -> 10.66 ms against 10.52 at 9c5c947
 
 **Approved, parked until the above is done (not to be started):**
 gradient (two commits: the grade term with level-map hashes as the gate,
