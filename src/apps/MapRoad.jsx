@@ -48,7 +48,7 @@ import { offerFare, accept } from "../sim/jobs.js";
 import { loadWallet } from "../sim/money.js";
 import { HONK_FOR } from "../sim/horn.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
-import { perfMeter, taskProbe } from "../iso/perf.js";
+import { perfMeter, taskProbe, heapProbe } from "../iso/perf.js";
 import { encounterSummary } from "../sim/encounters.js";
 import { loadSettings, setSetting, settings } from "../settings.js";
 import { ASSIST } from "../sim/player.js";
@@ -184,6 +184,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const raf = useRef(0);
   const meter = useRef(perfMeter());
   const tasks = useRef(null);   // the browser's own record of the page's thread being blocked (perf.js taskProbe), made in the frame loop, never under SSR
+  const heap = useRef(null);    // garbage made and collections run, as the page sees its heap (perf.js heapProbe) -- likewise
   const readout = useRef("");
   const input = useRef(controls());
   const held = useRef(new Set());
@@ -262,6 +263,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const size = fit();
       const dt = last.current ? Math.min(0.25, Math.max(0, (now - last.current) / 1000)) : 0;
       if (last.current) meter.current.record(now - last.current);
+      (heap.current ??= heapProbe()).tick(now);
       last.current = now;
       if (held.current.size) input.current.keys(held.current, dt);
       const inp = { steer: input.current.state.steer, slider: input.current.state.slider, assist: ASSIST[assistRef.current] ?? 0 };
@@ -425,10 +427,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         /* What the browser says blocked the page's thread over the last 5 s: long tasks, and the worst long frame -- script (and whose), rendering. */
         tasks.current ??= taskProbe();
         const g = tasks.current.during(now - 5000, now), lf = g.frame;
+        const hp = heap.current?.summary();
+        const heapLine = hp ? ` · garbage at least ${hp.mbPerS.toFixed(0)} MB/s (the heap's rises; a collection inside a frame hides some), ${hp.full} full collections in 5 s, heap ${hp.heapMb.toFixed(0)} MB` : " · heap not exposed";
         /* WHAT THE PLAYER MEETS (sim/encounters.js), since this drive began: the number the game lives on. */
         const es = sc.enc ? encounterSummary(sc.enc) : null;
         const meetLine = es ? `\nsince the drive began: you met ${es.metPerMin} cars/min within 30 m · following ${es.followingShare}% · followed ${es.followedShare}% · ${es.gapsPerMin} gaps judged/min (${es.minutes} min)` : "";
-        const taskLine = meetLine + `\nbrowser: long tasks ${g.tasks ?? "n/a"} ms in 5 s${lf ? ` · worst frame ${lf.ms} ms, of which script ${lf.script}${lf.scripts?.[0] ? ` (${lf.scripts[0].where} ${lf.scripts[0].ms})` : ""} and style/layout/paint ${lf.styleLayout}` : ""}`;
+        const taskLine = meetLine + `\nbrowser: long tasks ${g.tasks ?? "n/a"} ms in 5 s${lf ? ` · worst frame ${lf.ms} ms, of which script ${lf.script}${lf.scripts?.[0] ? ` (${lf.scripts[0].where} ${lf.scripts[0].ms})` : ""} and style/layout/paint ${lf.styleLayout}` : ""}${heapLine}`;
         /* THE FRAME BY PART, mean/p95 each (15 October): the sim's own pace is honest now, so
            the frame's cost has to be as legible -- and against what was on screen, so a scene
            that is expensive says what is in it. "x of y": drawn, of all there are. */

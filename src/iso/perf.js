@@ -148,6 +148,35 @@ export function gcProbe() {
   };
 }
 
+/* GARBAGE, AS THE PAGE SEES IT (22 October). On the desk a sim step at 280
+   cars allocates about 8 MB (tools/measure/step-alloc.mjs), some 170 MB a
+   second at 20 Hz -- absorbed there, and the leading suspect for a phone
+   whose step ran 6.5x the desk's at 280 cars where it ran 4.2x at 160. The
+   heap in use (Chrome's performance.memory, there on Android over plain
+   HTTP) rises as the page allocates and drops when the collector runs: the
+   sum of the rises over a window is the garbage made, and the full
+   collections are the ones gcProbe sees. Null where the heap is not exposed. */
+export function heapProbe() {
+  const mem = () => (typeof performance !== "undefined" && performance.memory ? performance.memory.usedJSHeapSize : null);
+  const log = [];
+  let last = mem(), full = gcProbe();
+  return {
+    tick(now) {
+      const m = mem(), collected = full.tick();
+      if (m == null) return;
+      log.push({ t: now, grew: last != null && m > last ? m - last : 0, full: collected });
+      last = m;
+      while (log.length && now - log[0].t > 5000) log.shift();
+    },
+    /* Over the last five seconds: MB a second made, full collections, and the heap now. */
+    summary() {
+      if (mem() == null || log.length < 2) return null;
+      const span = (log[log.length - 1].t - log[0].t) / 1000 || 1;
+      return { mbPerS: log.reduce((s, x) => s + x.grew, 0) / span / 1048576, full: log.filter((x) => x.full).length, heapMb: mem() / 1048576 };
+    },
+  };
+}
+
 /* WHAT THE BROWSER SAYS THE MAIN THREAD WAS DOING. Long tasks are the
    browser's own record of the main thread being blocked for over 50 ms
    by anything -- script, style, layout, paint, its own work. A stall

@@ -17,6 +17,15 @@ says which.
 **Live build: `f55c371`** (the green split: horns at 2.0 s, the mark at undue delay -- DECISIONS 10.16; before it `c1760aa`, density shaping built, NOT on -- DECISIONS 10.17; nothing new to drive; before it `d93a5ab`, every readout number says its statistic; trip and worst-frame lines corrected -- DECISIONS 10.4; before it `adc1f8e`, the crash log; the frame line adds up; before it `2702c79`, the neighbour index, first step: a driver reads its own lane in order, -22% step at 260 cars on the loop -- SIMULATOR 1.2.17; before it `c4cd824`, a step budget per frame; crashes say which were with the player -- SIMULATOR 1.2.17; before it `86b7cb9`, nobody stranded at an acceleration lane, the player above all -- DECISIONS 10.15; before it `d97b47a`, lateOffGreen on the sheet, lit courses, merging across the taper -- DECISIONS 10.15-10.16; before it `fd1127e`, the courtesy ruling and gap seeking, DECISIONS
 10.15).
 
+**MORE CARS DO NOT MAKE A BUSIER WORLD (the maintainer's phone, 22 October).
+160 -> 280 cars on the endless highway, +75%, bought 5.5 -> 6.0 cars met a
+minute, +9% -- and took the phone from 55 fps at 1.00x real time to 17 fps
+at 0.82x. More cars buy a slower phone, not more traffic around the player.
+Quote this whenever "raise the density" comes back; it is closed. What moves
+the number is WHERE the cars are (density shaping) and what they cost when
+nobody can see them (LOD) -- one piece of work, measured as cars met a
+minute at a frame rate the maintainer can play at (DECISIONS 10.17).**
+
 **Committed, not shipped:** nothing.
 
 **Measured / built, not committed:** the ruled braking-unchecked fault, built and measured non-discriminating on the course (sound 4, poor observer 6 in 12 drives), not shipped (DECISIONS 10.16).
@@ -3259,6 +3268,31 @@ time, and the phone at 250-260 is the arbiter (asked for).
 met a minute, 0 gaps judged in 90 s for the third report running;
 following 51.7% / followed 13.5% -- he catches people, nobody catches him:
 a density signature. Performance has stopped being the constraint.
+
+**THE CEILING TABLE ABOVE IS DISCARDED, not adjusted (the maintainer's 280-car
+drive, adc1f8e): it predicted 260 at ~35 fps and real time; at 280 the phone
+ran 17 fps at 0.82x, its step 51.9 ms against a 50 ms tick. WHY THE METHOD
+FAILED: desk step x a phone factor assumed the factor constant, and it is
+not -- 4.2x at 160 cars, 4.6x at 259, ~6.5x at 280. A step at 280 cars
+ALLOCATES about 8 MB on the desk (tools/measure/step-alloc.mjs; 10.9 MB
+before the neighbour index), some 170 MB a second at 20 Hz: the world is
+immutable, each car carries ~50 fields, and a tick copies each of them
+several times. The desk's collector absorbs that; the phone's long tasks
+(4.3 s of every 5) say its does not. Compute scales with the cars; garbage
+collection scales with what is allocated and how much is alive, worse than
+linearly on a phone -- so desk-times-a-factor is structurally wrong for this
+question, not merely imprecise. The readout now shows the heap (at least the
+garbage made a second, full collections, heap size) so the next drive says
+so on the phone itself rather than by desk inference.
+
+**AND THE NEIGHBOUR INDEX, on the phone:** the desk step fell 22% and the
+allocation 23% with it, but the phone at 280 (51.9 ms) is about where the
+pre-index phone curve extrapolates (~49 ms from 43.6 at 259). Most of the
+phone's step is not the lookups the index removed; on the desk's evidence
+it is the per-car allocation in the step's own closure (2.8 MB a step,
+untouched by the index). The rest of the index -- lane changing's and
+courtesy's lookups -- is therefore not the lever; stepping fewer cars in
+full is.
 
 **3. LOD, and placement with it.** Required, not an optimisation: 259
 simulated in full while 11 are in view. DECISIONS 10.9 is the ruling; 10.10

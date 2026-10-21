@@ -3741,6 +3741,16 @@ car passes the competent gap predicate, nothing crashes, a world with no
 player is unchanged, and at the same target met/min and gaps judged rise
 against shaping off.
 
+**REFRAMED, 22 October (the maintainer, after 280 cars at 17 fps and 6 met a
+minute): LOD AND DENSITY SHAPING ARE ONE PIECE OF WORK** -- the same
+mechanism from two ends: simulate cheaply what the player cannot see, spend
+the savings on traffic near them. Split, each is measured against the wrong
+thing. The one measurement is CARS MET A MINUTE AT A FRAME RATE THE
+MAINTAINER CAN PLAY AT, and neither half is done until it moves. The
+promotion check and 10.9's determinism stay as gates; insertion is
+placement's, as before. (LOD had been downgraded on a desk ceiling that the
+phone did not reproduce -- SIMULATOR 1.2.17.)
+
 **STATUS, 22 October: BUILT, NOT ON.** `src/sim/placement.js` (one lane
 index by centreline, the lane change's own leadNeed/lagNeed at caution 1),
 `src/sim/shaping.js` (the window by network distance over ROADS -- every
@@ -3822,6 +3832,65 @@ moving onto a car -- then struck a car standing in a slowing curb-lane
 queue (seed 2, t 282 s). World wrong, in the lane change; its own item. And
 the loop's off-ramps end at the map edge 230-400 m from the loop, inside
 the drive camera's sight: cars vanish in view there, as they always have.
+
+## 10.18 A MARK IS WHAT HAPPENED, WHERE, UNDER WHICH SECTION -- the maintainer's examination model, recorded before any code (22 October)
+
+The maintainer, verbatim, because the reasoning is the content:
+
+*"when delivering an exam, the examiner is only marking errors within a
+certain section. for example our undue delay at green would be under a
+heading 'Intersections' and various errors that could occur there are listed
+(stopping or slowing too soon/late, failure to observe, stopping position (ie
+on a crosswalk or beyond a stop line)). so the markable error at the green
+light is not the same error as hesitation merging onto a highway for example.
+the interesting part of mastering the delivery of the exam is knowing what to
+mark and when. in our example from previous days, hard braking for a late
+merge, we saw how the exact same event could occur but the reasoning can be
+completely flipped (high compliance driver expects a low compliance driver to
+signal, they don't until late and then braking is required as a defensive
+measure versus a low skilled driver not noticing a merge signal until late or
+not leaving room). so the marking should extend beyond 'did something wrong
+happen' into 'specifically what happened and where, according to your marking
+guide' (note: we should flesh out exactly what every mark means and present it
+to the user through an official in game marking guide that they can pull up at
+any time. the balance to this would be the test still continues in the
+background, meaning you could miss a mark or intervention if you are searching
+too long)"*
+
+**1. A mark is (what happened, where, which section applies) -- not a fault
+kind.** The sheet today treats faults as properties of the world
+(`lateOffGreen`, `wideLine`, `rollingStop`). The marking guide is SECTIONAL:
+the same observable is a different mark by location -- slow off a green sits
+under Intersections, hesitating on a merge is another entry entirely. A
+structural change to the sheet, with a retrofit cost that grows with every
+fault kind added: the reason to scope it now though it is not built.
+
+**2. Attribution is part of the mark, and it can invert.** The hard brake at
+a late merge: one physical event, opposite correct marks -- a compliant
+driver braking defensively because somebody else signalled late, or a poor
+observer who did not leave room. The model already knows which (it holds both
+drivers' axes); the question is whether the marking layer can see it, and
+whether the player can.
+
+**3. Signalling is now a PREREQUISITE, not a plan item.** Point 2 is a fair
+test only if the player can observe what tells the two cases apart: did the
+other car signal, and when. The driver model has no signalling. Without it,
+attributing that hard brake is a coin flip, not skill. Moved from PLAN to a
+named dependency of the sectional marking work.
+
+**4. THE IN-GAME MARKING GUIDE IS THE INTERLOCK.** The cold review in
+September found the four jobs never actually compete; 5.7 called that
+interlock the thing the whole design rests on, and it was never built because
+marking has no attention cost. A guide the player can open at any time, while
+the drive goes on underneath, IS that cost: searching it means possibly
+missing the next event. The missing mechanic arriving as a side effect of a
+feature wanted for its own reasons -- recorded as resolving a known hole, not
+filed as a UI idea.
+
+**Not started.** Order holds: LOD and density shaping first. One item scoped,
+at a natural break and with numbers: whether `sectionSheet` and `detect.js`
+can express marks keyed by section and location, or whether that is a
+rewrite of the sheet.
 
 ## 11. Verification
 
