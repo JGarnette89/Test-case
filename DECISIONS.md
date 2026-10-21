@@ -3782,6 +3782,40 @@ the room test still misses some followers; and with the space check in, met
 a minute fell to 3.5 with large run-to-run spread -- the encounter figure is
 not yet a stable instrument at 3-minute runs. Both before it is switched on.
 
+**LATER THE SAME DAY (work in progress, tools/wip-shaping.mjs):**
+- **The queue by the rule.** Every follower the check caught braking hard
+  behind a placed car on the loop was on a route from the SAME APPROACH as
+  the placed car: `whatStops` has cars from one approach follow by distance
+  along their own paths for the whole path (`shareLane`, from === from),
+  past the box and past where an off-ramp splits from the road -- so a car
+  placed on the off-ramp 70-180 m past the split was, by the rule, the car in
+  front of a car in the curb lane, while the lane index filed them under
+  different roads. Placement now checks that queue too
+  (placement.js `approachNeighbours`): six cases to one. Whether the sim
+  should keep two cars that have taken different exits in one queue past the
+  split is a question about whatStops, noted, not changed.
+- **The encounter figure depends on the player's pace, and the check's
+  driver was wrong.** At 95% of the limit the scripted player sat in a
+  platoon at its own speed and met almost nobody, shaped or not. At the
+  maintainer's own 119% (he was seen at 119 in a 100) the unshaped loop
+  gives 3.6-5.6 met a minute -- his phone read 5.5 -- and shaped gives
+  19.2-24.2, overtaking 14.6-17.4 a minute against 3-4.6, 0 crashes. The
+  check now drives at 119%.
+- **"Who was behind it" is the rules' own question.** A follower now counts
+  only if `whatStops` named the placed car its leader at the placement tick
+  and it has not changed lanes since: most of the hard braking left was
+  drivers who changed lanes in behind a placed car afterwards, their own
+  gap choice.
+- **A negative result**: placing a car at the speed of whatever it would
+  follow within 150 m cut encounters from 19 a minute to 5 and did not stop
+  the hard braking -- the placed car still slowed with a slowing leader.
+  Reverted.
+- **Still failing**: a placed car slows with its leader within a second and
+  the driver it was placed in front of is asked for up to 3.6 m/s^2 against
+  a comfortable 2.8 (61 car-ticks over two 3-minute drives); and the
+  encounter figure swings 5-23 between seeds at 3 minutes -- the instrument
+  needs longer runs before it can gate anything.
+
 **ALSO FOUND, NOT SHAPING'S:** at shaped density a highway lane change took
 a gap judged 2.84x competent and the next tick had its leader at -0.7 m --
 moving onto a car -- then struck a car standing in a slowing curb-lane

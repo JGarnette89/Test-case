@@ -202,6 +202,11 @@ export function shape(world, next, { n: n0, make, wantAt, poseOf, kindOf, wantsA
     const at = placeOf(world.course, car.k, car.route, car.s);
     if (!at || at.lane !== lane) continue;
     let room = roomAt(wn, { ...car, v: car.v0 }, lane, at.c);
+    /* At the car ahead's speed when it is near enough to follow, else its own.
+       (Tried 22 October: the speed of any car it would follow within 150 m.
+       Encounters fell from 19 a minute to 5 and the hard braking behind
+       placed cars did not go -- the placed car slowed with a slowing leader
+       anyway. Reverted; DECISIONS 10.17.) */
     const lead = room.ahead;
     const v = lead && lead.clear < 3 * (car.v0 * 2 + 10) ? Math.min(car.v0, lead.car.v ?? 0) : car.v0;
     car = { ...car, v, placed: world.t };   // when shaping put them here: a car that arrived at an edge carries none

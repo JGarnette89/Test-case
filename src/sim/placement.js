@@ -77,11 +77,40 @@ export function neighboursAt(world, lane, c, me) {
   };
 }
 
+/* THE QUEUE A CAR IS IN BY THE RULE IT DRIVES BY: whatStops has every car
+   from the same approach at the same node follow by distance along its own
+   path (`shareLane`, theirs.from === mine.from) -- for the WHOLE path, past
+   the box and past where an off-ramp splits from the road. So a car placed
+   on the off-ramp 70-180 m past the split was the car in front of a car in
+   the curb lane, by the rule, while the lane index filed the two under
+   different roads (22 October: every follower verify-shaping caught braking
+   hard behind a placed car was this). Nearest ahead and behind among them,
+   with the clear road between. */
+export function approachNeighbours(world, me, actors = world.actors) {
+  const L = world.course.at[me.k ?? 0]?.layout, mine = L?.paths?.[me.route];
+  if (!mine) return { ahead: null, behind: null };
+  let ahead = null, behind = null, da = Infinity, db = Infinity;
+  for (const b of actors) {
+    if (b === me || b.id === me.id || b.parked || (b.k ?? 0) !== (me.k ?? 0)) continue;
+    const p = L.paths[b.route];
+    if (!p || p.from !== mine.from) continue;
+    const d = b.s - me.s;
+    if (d > 0 && d < da) { da = d; ahead = b; }
+    if (d <= 0 && -d < db) { db = -d; behind = b; }
+  }
+  const half = lenOf(me) / 2;
+  return {
+    ahead: ahead && { car: ahead, clear: da - half - lenOf(ahead) / 2 },
+    behind: behind && { car: behind, clear: db - half - lenOf(behind) / 2 },
+  };
+}
+
 /* ROOM FOR `me` (its kind, ratings and speed v) at centreline place c in
    `lane`: the competent standard both ways, by the lane change's own needs. */
 export function roomAt(world, me, lane, c, kappa = 1) {
   const nb = neighboursAt(world, lane, c, me);
-  const leadOk = !nb.ahead || nb.ahead.clear >= leadNeed(me, nb.ahead.car, kappa);
-  const lagOk = !nb.behind || nb.behind.clear >= lagNeed(me, nb.behind.car, kappa);
-  return { ok: leadOk && lagOk, ...nb };
+  const ap = approachNeighbours(world, me);
+  const ok = (n) => (!n.ahead || n.ahead.clear >= leadNeed(me, n.ahead.car, kappa)) && (!n.behind || n.behind.clear >= lagNeed(me, n.behind.car, kappa));
+  /* Both: the lane (the road beside, the seams) and the queue by the rule (above). */
+  return { ok: ok(nb) && ok(ap), ...nb, queue: ap };
 }

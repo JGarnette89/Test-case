@@ -16,7 +16,8 @@ import { goodStep } from "../lib/good-driver.mjs";
 import { DT } from "../../src/sim/traffic.js";
 
 const [mapId = "test-1", carsArg = "default,200", minArg = "5", driverArg = "keep-right", seedArg = "1"] = process.argv.slice(2);
-const opts = { overtake: driverArg === "overtake" || driverArg.startsWith("cruise"), pace: driverArg === "cruise-limit" ? 1.0 : 0.95 };
+/* PACE=1.19: the share of the limit the driver holds -- the maintainer was seen at 119 in a 100. */
+const opts = { overtake: driverArg === "overtake" || driverArg.startsWith("cruise"), pace: process.env.PACE ? Number(process.env.PACE) : driverArg === "cruise-limit" ? 1.0 : 0.95 };
 /* "cruise": no destination at all -- round and round the road it is on, as a player swimming the highway does. */
 const cruise = driverArg.startsWith("cruise");
 const def = TEST_MAPS.find((m) => m.id === mapId);
@@ -26,6 +27,7 @@ for (const c of carsArg.split(",")) {
   for (const seed of seedArg.split(",").map(Number)) {
   let { loaded, world: w, me } = worldFor(seed, 50, 2.0, true, cars, raw, raw?.sections?.[0]?.start ?? null, false);
   /* SHAPE=1: density shaping on (sim/shaping.js), as the drive screen runs it. */
+  if (process.env.SHAPE === "0") w = { ...w, shape: false };
   if (process.env.SHAPE === "1") w = { ...w, shape: true, ...(process.env.AHEAD ? { shapeAhead: Number(process.env.AHEAD) } : {}), ...(process.env.BEHIND ? { shapeBehind: Number(process.env.BEHIND) } : {}) };
   const me0 = me;
   let restarts = 0;
