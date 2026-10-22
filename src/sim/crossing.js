@@ -2662,11 +2662,12 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent" } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
-  const course = graphOf(loaded, { lane: 3.6, control, progression });
+  /* `turn`: how a corner tighter than a car's lock is driven (graph.js TURN_LOCK, SIMULATOR IN FLIGHT 22) -- "tangent", today's, unless a measurement asks. */
+  const course = graphOf(loaded, { lane: 3.6, control, progression, turn });
   const layout = course.at[0].layout;
   /* POSTED SPEEDS, OR ONE LIMIT FOR THE WHOLE MAP. The loader has
      carried a speed per road since the format existed and the sim drove

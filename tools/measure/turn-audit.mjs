@@ -8,7 +8,10 @@
    different lanes, that the conflict table says meet -- which two lanes of
    one approach never should. Per pair: the two movements, each one's angle
    and radius.
-   Usage: node tools/measure/turn-audit.mjs [maps=all] */
+   And, per turn POLICY (graph.js: tangent -- today's -- wide, early), how far
+   the finished arc lands from its exit lane's centre and how far before the
+   stop line an arc begins.
+   Usage: node tools/measure/turn-audit.mjs [maps=all] [policy=tangent] */
 import { loadMap } from "../../src/map/load.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
 import { graphOf } from "../../src/sim/graph.js";
@@ -16,6 +19,7 @@ import { conflictOf } from "../../src/sim/crossing.js";
 
 const LOCK = 5.5;
 const want = (process.argv[2] ?? "all").split(",");
+const policy = process.argv[3] ?? "tangent";
 const maps = TEST_MAPS.filter((m) => want.includes("all") || want.includes(m.id));
 /* The arc's radius, read from the path itself: three points on the arc. */
 function radiusOf(p) {
@@ -32,15 +36,26 @@ function angleOf(p) {
   const h0 = Math.atan2(b.y - a.y, b.x - a.x), h1 = Math.atan2(d.y - c.y, d.x - c.x);
   return Math.abs(((((h1 - h0) * 180) / Math.PI + 540) % 360) - 180);
 }
-let totalTurns = 0, tight = 0, pairsAll = 0;
+let totalTurns = 0, tight = 0, pairsAll = 0, worstOff = 0, worstEarly = 0, earlyN = 0;
 for (const m of maps) {
-  const g = graphOf(loadMap(m.build()));
+  const g = graphOf(loadMap(m.build()), { turn: policy });
   let turns = 0, under = 0;
   const pairs = [];
   for (const [k, spot] of g.at.entries()) {
     const L = spot.layout;
     for (const [r, p] of Object.entries(L.paths)) {
-      if (p.intent === "left" || p.intent === "right") { turns++; if (radiusOf(p) < LOCK) under++; }
+      if (p.intent === "left" || p.intent === "right") {
+        turns++; if (radiusOf(p) < LOCK - 0.05) under++;
+        /* Where the arc ends, against the exit lane's centre (the path's own run-out is on the lane). */
+        const i1 = p.at.findIndex((s) => s >= p.clearAt), e = p.pts[i1], lane = L.legs[p.to]?.outLane;
+        if (e && lane) { let best = Infinity; for (let j = 1; j < lane.pts.length; j++) { const a = lane.pts[j - 1], b = lane.pts[j], dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((e.x - a.x) * dx + (e.y - a.y) * dy) / (dx * dx + dy * dy || 1))); best = Math.min(best, Math.hypot(a.x + t * dx - e.x, a.y + t * dy - e.y)); } worstOff = Math.max(worstOff, best); }
+        /* How far before the stop line the bending begins: the stop line along the path against where the path first leaves its approach lane's line. */
+        const head = (j) => Math.atan2(p.pts[j].y - p.pts[j - 1].y, p.pts[j].x - p.pts[j - 1].x);
+        const off = (j) => Math.abs(((((head(j) - head(1)) * 180) / Math.PI + 540) % 360) - 180);
+        let iA = -1;
+        for (let j = 2; j < p.pts.length; j++) if (off(j) > 2) { iA = j; break; }
+        if (iA > 0 && p.at[iA - 1] < p.stopAt - 0.1) { earlyN++; worstEarly = Math.max(worstEarly, p.stopAt - p.at[iA - 1]); }
+      }
     }
     const routes = Object.keys(L.paths);
     for (let i = 0; i < routes.length; i++) for (let j = i + 1; j < routes.length; j++) {
@@ -56,4 +71,4 @@ for (const m of maps) {
   for (const s of pairs.slice(0, 8)) console.log("   " + s);
   if (pairs.length > 8) console.log(`   ... and ${pairs.length - 8} more`);
 }
-console.log(`ALL: ${totalTurns} turn paths, ${tight} under lock; ${pairsAll} conflicting same-approach pairs`);
+console.log(`ALL (policy ${policy}): ${totalTurns} turn paths, ${tight} under lock; ${pairsAll} conflicting same-approach pairs; worst arc end off its exit lane ${worstOff.toFixed(2)} m; arcs begun before the line ${earlyN}, by up to ${worstEarly.toFixed(1)} m`);

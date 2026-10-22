@@ -253,7 +253,7 @@ const unit = (a, b) => { const L = dist(a, b) || 1; return { x: (b.x - a.x) / L,
 /* The sharpest turn offered at a node, in degrees off straight ahead. */
 export const HAIRPIN = 120;
 
-export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withConflicts = true, progression = true } = {}) {
+export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withConflicts = true, progression = true, turn: turnPolicy = "tangent" } = {}) {
   const roads = loaded.roads;
   /* AUTHORING ERRORS: lanes whose permitted movement has nowhere to land,
      named by lane and intersection (lanes.js). The graph is still built
@@ -504,7 +504,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
          back, so a car waiting at it is clear of the people crossing. */
       if (roadOf[A.road]?.crosswalk?.[A.end]) { A.lineAt += CROSSWALK_W; A.crosswalk = true; }
     }
-    const place = { lane, boxHalf, lineAt, control: Object.fromEntries(ids.map((id) => [id, legs[id].control])), at: n.at, reach: 0 };
+    const place = { lane, boxHalf, lineAt, control: Object.fromEntries(ids.map((id) => [id, legs[id].control])), at: n.at, reach: 0, turnPolicy };
     /* A SIGNAL IS A CONTROL THAT CHANGES WITH TIME (signal.js). The
        phases are derived from these legs' own bearings, so a node that
        gains a leg gets the phase it needs and nobody writes a timing
@@ -616,6 +616,10 @@ export function curbLegOf(course, roadId, end, { through = false } = {}) {
   return null;
 }
 
+/* A PASSENGER CAR AT FULL LOCK: the old engine's TURN_R_MIN, the radius
+   nothing tighter than which a car can follow. Read only by the turn
+   policies below that are not the default (SIMULATOR IN FLIGHT 22). */
+export const TURN_LOCK = 5.5;
 /* ---- a path between two legs of one node ---------------------------- */
 /* Approach along the inbound lane to the stop line, an arc where a
    driver turns the wheel, out along the outbound lane to the seam. The
@@ -672,16 +676,46 @@ function pathBetween(place, A, B, meta) {
        5.15.12. The compass path does not floor, and the question of
        what a driver actually does at that corner is the maintainer's
        and still open. */
-    const radius = d / Math.tan((Math.abs(turn) * Math.PI) / 360);
+    const tangentR = d / Math.tan((Math.abs(turn) * Math.PI) / 360);
+    /* A CORNER TIGHTER THAN A CAR CAN STEER (SIMULATOR IN FLIGHT 22,
+       DECISIONS 5.15.12, the maintainer's ruling still open). No arc is
+       tangent to both lanes, starts at the stop point and is at least
+       TURN_LOCK at once; the policy says which gives, and the default is
+       today's path exactly:
+         tangent  the radius the corner gives, under lock if need be
+         wide     TURN_LOCK from the stop point, finishing off the exit
+                  lane, the run out bringing it back (the old engine's)
+         early    TURN_LOCK and tangent to both, begun before the line --
+                  the line then lies on the arc. NOT READY (22 October,
+                  tools/measure/turn-policy.mjs): at test map 1's node 2 it
+                  lands a right on its exit lane 7.4 m further along, past
+                  where another right joins the same lane, and the conflict
+                  table loses the pair -- three crashes in ten minutes.
+                  Choosing it means fixing how two paths into one lane are
+                  matched first. And no lock-radius arc serves a 169 deg
+                  corner (tangent length 57 m): that is map design. */
+    const policy = place.turnPolicy ?? "tangent";
+    const radius = policy === "tangent" || !(tangentR < TURN_LOCK) || !corner ? tangentR : TURN_LOCK;
+    let early = 0;
+    if (policy === "early" && radius > tangentR) {
+      const T = radius * Math.tan((Math.abs(turn) * Math.PI) / 360);
+      early = Math.min(T - d, Math.max(0, turnS - A.inFrom - 1));
+    }
     /* No corner is a turn whose two lane lines never cross: the same
        fallback `d` above and `turnPoints` below already take, which this
        line alone did not -- it threw, on two junctions 10 m apart. */
     const c0 = corner ?? exit0[0];
     const far = { x: c0.x + outDir.x * 30, y: c0.y + outDir.y * 30 };
-    const arc = turnPoints(stop, corner ?? exit0[0], far, radius).map((p) => ({ ...p, z: stop.z ?? 0 }));
+    let lead = approach, from = stop;
+    if (early > 0) {
+      /* Begun before the line: the approach stops where the arc begins. */
+      lead = cut(inL, A.inFrom, turnS - early);
+      from = lead[lead.length - 1];
+    }
+    const arc = turnPoints(from, corner ?? exit0[0], far, radius).map((p) => ({ ...p, z: stop.z ?? 0 }));
     arc.pop();
-    pts = [...approach.slice(0, -1), ...arc];
-    iStop = toLine.length - 1;
+    pts = [...lead.slice(0, -1), ...arc];
+    iStop = early > 0 ? -1 : toLine.length - 1;
     iClear = pts.length - 1;
     /* The way out begins where the arc lands on the outbound lane --
        WHEREVER that is. It used to be floored at the box edge, and where
@@ -709,8 +743,20 @@ function pathBetween(place, A, B, meta) {
   const away = cut(outL, exitFrom, B.outTo);
   pts.push(...away.slice(1));
   const at = cumulative(pts);
+  let stopAtS = iStop >= 0 ? at[iStop] : null;
+  if (stopAtS == null) {
+    /* The line lies on the arc: the first place the path is level with it along the inbound lane. */
+    const line = toLine[toLine.length - 1];
+    const dir = unit(toLine[toLine.length - 2] ?? inL.pts[inL.pts.length - 2], line);
+    const past = (p) => (p.x - line.x) * dir.x + (p.y - line.y) * dir.y;
+    stopAtS = at[0];
+    for (let i = 1; i < pts.length; i++) {
+      const a0 = past(pts[i - 1]), a1 = past(pts[i]);
+      if (a0 < 0 && a1 >= 0) { stopAtS = at[i - 1] + ((at[i] - at[i - 1]) * -a0) / (a1 - a0); break; }
+    }
+  }
   return {
-    ...meta, pts, at, length: at[at.length - 1], stopAt: at[iStop], clearAt: at[iClear],
+    ...meta, pts, at, length: at[at.length - 1], stopAt: stopAtS, clearAt: at[iClear],
     /* Where this path is on its two lanes: s=0 is `inFrom` along the
        inbound lane; the exit portion starts at `exitFrom` along the
        outbound one. */
