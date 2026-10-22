@@ -28,7 +28,8 @@ for (const cars of carsArg.split(",").map(Number)) {
     const done = [], open = [];
     let standing = 0, crashes = 0;
     for (const seed of seeds) {
-      let w = seedGraph(seed, 50, maps[name], { every: 2.0, target: cars, posted: true });
+      /* PERCEIVE=1: drivers who look away, as #/map builds the world with the setting on (scene.js). */
+      let w = seedGraph(seed, 50, maps[name], { every: 2.0, target: cars, posted: true, perceive: process.env.PERCEIVE === "1" });
       for (let i = 0; i < 1200; i++) w = step(w);
       const c0 = (w.crashes ?? []).length, t0 = w.t;
       const track = new Map();   // id -> { from, stood }
