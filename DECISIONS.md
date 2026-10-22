@@ -4194,6 +4194,32 @@ consumer at a time, or one consumer's consequence passes for another's.
   the new -- the driver asked is too close to brake from 25 m/s to the gap a
   car at rest needs; it passes and withdraws, and the next is asked.
 
+## 10.21 A TIDY CAUSAL STORY, TESTED AND DISCONFIRMED -- the junction is not one lock (22 October)
+
+**A negative result, recorded as one.** On the maintainer's report that no
+car crossed a stop line until a late car had cleared the whole crossroads,
+the hypothesis given was specific and plausible: a car in the box at an
+unexpected time or path defeats the conflict test, which falls back to
+blocking every approach -- a safe default per decision and a throughput
+disaster in aggregate. It was tested before anything was built
+(tools/measure/box-hold.mjs, green-holds.mjs, test map 1's signal, 260 cars,
+look-away off, five minutes): of 7,259 head-car-ticks standing at a line
+the light let go, **0.1%** were held by a car in the box whose path did not
+cross theirs. Every hold is a real path conflict. **The rule is right, and
+right-of-way logic was not rewritten.**
+
+What the test found instead was better than the bug it was looking for: a
+skewed approach whose right turn drifts a full lane left before it turns,
+so the conflict logic was correctly reporting a collision the GEOMETRY
+should never have made possible (SIMULATOR IN FLIGHT 21, 22). And on the way
+the instrument itself was wrong once -- reading the actuated light without
+its live state put perpendicular approaches on green together -- which is
+why it was checked before its table was believed.
+
+The lesson is the method, not the junction: a confident causal chain from
+one observation is a hypothesis with a cheap test, and the test comes
+before the build.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
