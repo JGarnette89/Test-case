@@ -37,6 +37,7 @@ import { placeOf } from "../src/sim/placement.js";
 import { zoomFor, LEAD_MAX } from "../src/iso/chase.js";
 import { groundAt, CENTRE_Y } from "../src/iso/freecam.js";
 import { goodStep } from "./lib/good-driver.mjs";
+import { drive as shapeDrive } from "./lib/shape-drive.mjs";
 import { newEncounters, encounterTick, encounterSummary } from "../src/sim/encounters.js";
 
 let failed = 0;
@@ -61,74 +62,8 @@ console.log("\n1. OUT OF SIGHT MEANS OUT OF SIGHT");
   check(SIGHT > widest, `SIGHT ${SIGHT} m is beyond the widest the drive camera shows: ${widest.toFixed(0)} m (${where}, zoomed out, at the longest lead)`);
 }
 
-/* A drive on the endless highway: the good driver cruising, every tick, with what shaping did. */
-const drive = (seed, secs, shape) => {
-  let { world: w, me } = worldFor(seed, 50, 2.0, true, 160, loop, loop.sections[0].start, false);
-  /* Shaped because the MAP asks (map/samples.js, traffic.shape); the unshaped control switches it off. */
-  if (!shape) w = { ...w, shape: false };
-  const sc = { me, args: [1], saveWallet: false }, enc = newEncounters();
-  const followersAt = new Map(), born = new Map(), out = { placed: 0, retired: 0, nearEvents: [], placedCrash: 0, jolted: 0, crashes: 0, shaped: !!w.shape };
-  for (let n = 0; n < secs / DT; n++) {
-    /* At the maintainer's own pace: he was seen at 119 in a 100, and the encounter rate depends on closing on traffic -- at 95% of the limit the player sat in a platoon at its own speed and met almost nobody, shaped or not. */
-    me = goodStep(me, w, sc, { overtake: true, pace: 1.19 });
-    sc.me = me;
-    const prev = w, c0 = (w.crashes ?? []).length;
-    w = step(withDriver(w, me));
-    encounterTick(enc, me, w);
-    const at = poseOf(w, me);
-    const before = new Map(prev.actors.map((a) => [a.id, a]));
-    const now = new Set(w.actors.map((a) => a.id));
-    for (const a of w.actors) {
-      /* Placed by shaping -- not a car arriving at the map's edge, which the player can start beside (the slip road begins at one). */
-      if (before.has(a.id) || a.player || a.placed == null) continue;
-      out.placed++; born.set(a.id, w.t);
-      /* Who it was placed in front of, by the rules themselves: every driver whose whatStops leader it is now -- and on what lane change, if any. */
-      const behind = new Map();
-      for (const b of w.actors) { if (b.player || b.crash || b.id === a.id) continue; if (whatStops(b, w).leader?.id === a.id) behind.set(b.id, b.lc?.at ?? null); }
-      followersAt.set(a.id, behind);
-      const p = poseOf(w, a), d = Math.hypot(p.x - at.x, p.y - at.y);
-      if (d <= SIGHT) out.nearEvents.push(`placed ${a.id} ${d.toFixed(0)} m away`);
-    }
-    for (const [id, a] of before) {
-      if (now.has(id) || a.player) continue;
-      /* Gone: retired, or left at an edge (an off-ramp, which ends at the map's edge, far from the loop). Either way, not in view. */
-      out.retired++;
-      const p = poseOf(prev, a), q = poseOf(prev, me), d = Math.hypot(p.x - q.x, p.y - q.y);
-      /* A car that left at the end of its road (an off-ramp at the map's edge) is how cars have always left; shaping's are the ones gone mid-road. */
-      const pEnd = prev.course.at[a.k].layout.paths[a.route];
-      if (pEnd && a.s >= pEnd.length - (a.v ?? 0) * DT - 0.5) continue;
-      if (d <= SIGHT) { const L = prev.course.at[a.k].layout, p = L.paths[a.route]; out.nearEvents.push(`gone ${id} ${d.toFixed(0)} m away (${a.route} s${a.s.toFixed(0)} of ${p.length.toFixed(0)}${a.rival ? " rival" : ""}${a.leaveAt != null ? " pulling in" : ""})`); }
-    }
-    for (const c of (w.crashes ?? []).slice(c0)) {
-      out.crashes++;
-      if ([c.a, c.b].some((id) => born.has(id) && w.t - born.get(id) < 10)) out.placedCrash++;
-    }
-    /* THE DRIVER BEHIND A CAR PLACED IN THE LAST THREE SECONDS, asked of the
-       rules themselves (whatStops): is the placed car what holds them, and does
-       the following model ask more of their brakes for it than their own
-       comfortable rate? (By `leadId` alone the check counted drivers braking
-       for a bend, or for their own lane change, while the placed car pulled
-       away.) */
-    for (const a of w.actors) {
-      if (a.player || a.crash) continue;
-      const view = whatStops(a, w), L0 = view.leader;
-      const t0 = L0 ? born.get(L0.id) : null;
-      if (t0 == null || w.t - t0 >= 3) continue;
-      /* Only somebody it was placed in front of, still on the lane change they had then (or none): one who changed lanes in behind it afterwards chose that gap themselves. */
-      const was = followersAt.get(L0.id);
-      if (!was || !was.has(a.id) || (was.get(a.id) ?? null) !== (a.lc?.at ?? null)) continue;
-      const asked = decide(a, view);
-      /* What the placed car adds: the demand with it, against the same driver on an empty road -- one above its own road's limit slows for that whoever is in front (22 October: a follower slower than the car placed ahead of it, braking toward its own off-ramp's speed). */
-      const alone = decide(a, { ...view, leader: null, gap: Infinity });
-      if (asked < -(a.brake ?? vehicleOf(a).brake) - 1e-6 && alone >= -(a.brake ?? vehicleOf(a).brake)) {
-        out.jolted++;
-        if (process.env.SHOWJOLT && out.jolted < 8) console.log(`   jolt: ${a.id} v${a.v.toFixed(1)} asked ${asked.toFixed(1)} (comfortable ${(a.brake ?? 0).toFixed(1)}) by placed ${L0.id} v${(L0.v ?? 0).toFixed(1)} at ${view.gap.toFixed(1)} m, placed ${(w.t - t0).toFixed(2)} s ago${a.lc ? " (changing lane)" : ""}`);
-      }
-    }
-  }
-  out.enc = encounterSummary(enc);
-  return out;
-};
+/* A drive on the endless highway: the good driver cruising, every tick, with what shaping did -- the one drive the city's measurement runs too (tools/lib/shape-drive.mjs). */
+const drive = (seed, secs, shape) => shapeDrive({ raw: loop, cars: 160, seed, secs, shape });
 
 console.log("\n2. NOBODY APPEARS OR VANISHES IN VIEW, NOBODY IS PLACED INTO SOMEBODY");
 const on = [1, 2].map((s) => drive(s, 180, true)), off = [1, 2].map((s) => drive(s, 180, false));

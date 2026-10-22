@@ -3937,6 +3937,40 @@ merges judged ~1.8x; frame unchanged within noise (desk step 9.1 against
 8.9 ms, same cars). If met moves and merges do not reach 2x on the phone,
 that is the partial result named above, not a surprise.
 
+**THE CITY, ITS OWN RESULT (22 October), never averaged with the
+highway (10.23).** Through the same gates as the highway -- one drive,
+tools/lib/shape-drive.mjs, which verify-shaping now runs too -- every gate
+passes on the city (nothing placed or retired in sight, no placed car in a
+crash, no follower jolted). Measured, desk, default cars, trips across the
+grid, two seeds of 5 minutes (tools/measure/shape-city.mjs):
+
+| driver | met a minute, off -> on | gaps judged a minute, off -> on |
+|---|---|---|
+| keep-right, 95% of the limit | 6.6 -> 10.6, 5.4 -> 14.2 (x1.6-2.6) | 0.4 -> 1.2, 0.2 -> 1.8 (x3-9) |
+| the maintainer's style, 119%, overtaking | 7.6 -> 9.0, 7.2 -> 8.4 (x1.18) | 1.2 -> 1.2, 0.8 -> 0.8 (x1.0) |
+
+So shaping makes DECISIONS on the city for a measured driver and not for
+the maintainer's own fast, overtaking style -- whose unshaped gaps judged
+is already higher, arriving at lines more often. Against the targets
+written before building ("at his own pace": met >= 1.3x, gaps judged >=
+2x), THE CITY DOES NOT PASS, and it stays off. Not tuned toward them: a
+shorter window was tried for his style (800/300 and 600/200 against the
+highway's 1500/600) and made both numbers worse (met 7.4-8.2, gaps 0.6-1.0)
+with twice the churn and the gates failing at the sight boundary.
+**The shape of the whole result**: on the highway shaping puts cars near
+the player (met x2.4, overtakes x2.3); on the city it creates decisions for
+a driver who drives the way the game asks and not for one who outruns it.
+What would move the city for his style is a question, not yet a design:
+placement along the player's own route rather than every road ahead.
+
+**AN INSTRUMENT, CAUGHT BEFORE IT WAS BELIEVED (the seventh, 10.23):** the
+shared drive's first version never noticed an arrival (no noticeTick), so a
+driver on trips reached its first place and stood at the curb for the rest
+of the drive "meeting" the traffic going past -- 16 met a minute against the
+6.6 the same driver meets moving. Every city number from it was discarded;
+the keep-right control reproducing encounters.mjs (6.6, 5.4) is what showed
+the corrected drive sound.
+
 ## 10.18 A MARK IS WHAT HAPPENED, WHERE, UNDER WHICH SECTION -- the maintainer's examination model, recorded before any code (22 October)
 
 The maintainer, verbatim, because the reasoning is the content:
