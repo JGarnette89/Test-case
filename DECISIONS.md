@@ -3906,6 +3906,20 @@ the loop the road ahead of where the player will re-enter is never left
 emptier than unshaped (retiring behind must not strip a lap's worth of
 road the player is about to meet).
 
+**A CHECK RESTATED WHEN AN UNRELATED FIX MOVED IT (22 October).**
+verify-anticipation's courtesy line compared everybody anticipating with
+everybody reacting -- two mechanisms against each other (a reacting
+offerer waits for the pressing moment; an anticipating one checks behind
+first and may hold off for its follower). The lane-change fix (SIMULATOR
+26), which touches no line of courtesy, took it from 11.6 against 12.9 s to
+13.3 against 12.9 and failed it: which mechanism won depended on how the
+traffic happened to fall. Verdict "check wrong". It now holds what the
+design claims, the PRESSING RULE alone: the same reacting offerers with and
+without it (world.noPressing, a controlled comparison) -- 12.9 against 10.8
+s, peak 3.14 against 3.04 m/s^2; the rule deleted, both runs identical and
+both lines fail. The general shape, for 10.23's list: a check comparing two
+mechanisms reads whichever traffic favoured; vary one thing.
+
 **ON, 22 OCTOBER: THE ENDLESS HIGHWAY IS SHAPED** (map/samples.js
 `traffic.shape`), tools/verify-shaping.mjs in the suite. What closed the
 gates:

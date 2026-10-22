@@ -230,7 +230,8 @@ export function offerOf(world, me, ask, pl, noticed) {
      "a reacting one brakes late and sharp", derived. An ask with no deadline
      has no pressing moment, so both act on noticing it. */
   const ahead = anticipates(me, `ask:${ask.id}:${ask.k}:${ask.toLeg}`, world);
-  if (!ahead && ask.by != null) {
+  /* `noPressing`: a check's controlled comparison -- the same reacting drivers without the pressing rule -- never a setting. */
+  if (!ahead && ask.by != null && !world.noPressing) {
     const gapLeft = Math.max(0, wantOf(me, ask, pl) - d), cv = (me.v ?? 0) - ask.v;
     /* Time over which braking at b drops back gapLeft more, closing at cv now: b T^2 / 2 = gapLeft + cv T. */
     const T = (cv + Math.sqrt(cv * cv + 2 * b * gapLeft)) / b;

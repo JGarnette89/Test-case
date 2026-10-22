@@ -15,10 +15,10 @@
         soundness; fully sound always, fully deficient never; the same
         occasion asked twice the same answer; a player always; the check's
         controlled comparison (world.anticipate) overrides it.
-     2. Courtesy onset (courtesy.js offerOf): with everybody reacting,
-        offers begin later after the joiner came onto its lane and brake
-        harder than with everybody anticipating -- "a reacting one brakes
-        late and sharp" (10.12), derived.
+     2. Courtesy onset (courtesy.js offerOf): the same reacting offerers,
+        with the pressing rule and without it, begin later and brake
+        harder with it -- "a reacting one brakes late and sharp" (10.12),
+        derived.
      3. Gap-seeking (lanechange.js gapTarget), in the world as drawn: a sound
         observer plans its join most times and a poor one seldom -- the law
         read at the site, from what the joiners did.
@@ -75,9 +75,9 @@ console.log("\n1. THE LAW: THE CHANCE OF ANTICIPATING IS THE OBSERVATION SOUNDNE
 /* Sections 2 and 3 run the endless highway, where joiners and offerers meet. */
 const map = loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build());
 const SECS = 180;
-function run(seed, anticipate) {
+function run(seed, anticipate, extra = {}) {
   let w = seedGraph(seed, 50, map, { every: 2.0, target: 150, posted: true });
-  if (anticipate) w = { ...w, anticipate };
+  if (anticipate) w = { ...w, anticipate, ...extra };
   for (let i = 0; i < 60 / DT; i++) w = step(w);
   const entered = new Map(), offers = new Map(), planned = new Set();
   for (let i = 0; i < SECS / DT; i++) {
@@ -104,19 +104,28 @@ function run(seed, anticipate) {
   return { entered, offers: [...offers.values()], planned };
 }
 
-/* THE SAMPLE, MEASURED: one seed gave 19 and 13 offers and peaks 2.97 against 3.04 -- a coin; four seeds give 99 and 87, onset 8.7 against 14.1 s, peaks 2.97 against 3.16. */
+/* RESTATED 22 OCTOBER, verdict "check wrong". It compared every offerer
+   anticipating with every offerer reacting -- two mechanisms against each
+   other: a reacting offerer waits for the pressing moment, an anticipating
+   one checks behind first and may hold off for its follower. Which won
+   moved with whatever reshuffled the traffic: the lane-change fix (IN
+   FLIGHT 26) took it from 11.6 against 12.9 s to 13.3 against 12.9 with no
+   change to courtesy at all, and the null had already swung it by 1.7 s.
+   The claim the design makes is about the PRESSING RULE: the same reacting
+   offerers, with it and without it (world.noPressing, a controlled
+   comparison) -- measured onset 12.9 against 10.8 s (+2.1), peak 3.14
+   against 3.04. Stated here: later by at least a second, and harder. */
 const SEEDS2 = [1, 2, 3, 4];
-console.log(`\n2. COURTESY ONSET: EVERY OFFERER ANTICIPATING AGAINST EVERY OFFERER REACTING, THE REST AS DRAWN (endless highway, 150 cars, seeds ${SEEDS2.join(",")}, ${SECS} s)`);
+console.log(`\n2. THE PRESSING RULE: THE SAME REACTING OFFERERS WITH IT AND WITHOUT IT, THE REST AS DRAWN (endless highway, 150 cars, seeds ${SEEDS2.join(",")}, ${SECS} s)`);
 {
   const merge = (rs) => ({ offers: rs.flatMap((r) => r.offers) });
-  const all = merge(SEEDS2.map((sd) => run(sd, { ask: "all" }))), none = merge(SEEDS2.map((sd) => run(sd, { ask: "none" })));
+  const rule = merge(SEEDS2.map((sd) => run(sd, { ask: "none" }))), without = merge(SEEDS2.map((sd) => run(sd, { ask: "none" }, { noPressing: true })));
   const on = (r) => r.offers.map((o) => o.onset).filter((x) => x != null), pk = (r) => r.offers.map((o) => o.peak);
-  const [oa, on_, pa, pn] = [q(on(all), 0.5), q(on(none), 0.5), q(pk(all), 0.5), q(pk(none), 0.5)];
-  console.log(`       offers ${all.offers.length} / ${none.offers.length}; onset after the joiner came onto its lane, median ${oa.toFixed(1)} s / ${on_.toFixed(1)} s; the offerer's peak braking, median ${pa.toFixed(2)} / ${pn.toFixed(2)} m/s^2`);
-  /* Measured with courtesy varied ALONE: onset 11.6 s anticipating against 12.9 reacting, peak 3.02 against 3.14. And the null -- the reacting branch deleted, the same comparison: 11.6 against 9.9 (reacting EARLIER: they skip the look behind that holds an anticipator back) and peaks 3.02 against 3.02. Stated here: later by at least half a second, which the real effect (+1.3) clears and the null (-1.7) does not; and harder, which the null (equal) does not meet -- by a thin margin (+0.12), said so. */
-  check(all.offers.length >= 20 && none.offers.length >= 20, `enough offers to read (${all.offers.length}, ${none.offers.length})`);
-  check(on_ >= oa + 0.5, `a reacting offerer starts later: ${on_.toFixed(1)} s against ${oa.toFixed(1)}`);
-  check(pn > pa, `and brakes harder: ${pn.toFixed(2)} against ${pa.toFixed(2)} m/s^2`);
+  const [ow, or, pw, pr] = [q(on(without), 0.5), q(on(rule), 0.5), q(pk(without), 0.5), q(pk(rule), 0.5)];
+  console.log(`       offers ${rule.offers.length} with the rule / ${without.offers.length} without; onset after the joiner came onto its lane, median ${or.toFixed(1)} s / ${ow.toFixed(1)} s; the offerer's peak braking, median ${pr.toFixed(2)} / ${pw.toFixed(2)} m/s^2`);
+  check(rule.offers.length >= 20 && without.offers.length >= 20, `enough offers to read (${rule.offers.length}, ${without.offers.length})`);
+  check(or >= ow + 1, `a reacting offerer waits for the pressing moment: ${or.toFixed(1)} s against ${ow.toFixed(1)} without the rule`);
+  check(pr > pw, `and then brakes harder: ${pr.toFixed(2)} against ${pw.toFixed(2)} m/s^2`);
 }
 
 console.log(`\n3. GAP-SEEKING IN THE WORLD AS DRAWN: WHO PLANS THEIR JOIN (seed 1, ${SECS} s)`);

@@ -189,8 +189,17 @@ export const LC_SPEED = 3;   // m/s: nobody begins a change slower than this (la
 /* The car in the lane `legId` of this node nearest ahead of s, and
    nearest behind, from the actors at this node. A changer counts in
    both of its lanes while the blend lasts. */
+/* EVERY CAR AHEAD THAT CAN DEMAND A GAP, not only the nearest (SIMULATOR
+   IN FLIGHT 26, 22 October). A change was judged against the nearest car
+   ahead in the lane joined, and a faster one there -- the player
+   overtaking -- hid a car 16 m beyond it doing 13 m/s less: rear-ended 1.8 s
+   later. The farthest any car can demand room is the lead need against one
+   standing still (the slower, the more), so that and a car's length is how
+   far each search collects. */
+const reachAhead = (me) => leadNeed(me, { v: 0 }, kappaOf(me)) + 10;
 function neighbours(world, me, legId, s) {
   let ahead = null, behind = null, da = Infinity, db = Infinity;
+  const reach = reachAhead(me), aheads = [];
   const layout = world.course.at[me.k ?? 0].layout;
   for (const a of atNode(world, world.actors, me.k ?? 0)) {
     if (a.id === me.id || (a.k ?? 0) !== (me.k ?? 0)) continue;
@@ -199,9 +208,10 @@ function neighbours(world, me, legId, s) {
     if (!inLane) continue;
     const d = a.s - s;
     if (d >= 0 && d < da) { da = d; ahead = a; }
+    if (d >= 0 && d <= reach) aheads.push({ car: a, d });
     if (d < 0 && -d < db) { db = -d; behind = a; }
   }
-  return { ahead, behind, da, db };
+  return { ahead, behind, da, db, aheads };
 }
 
 /* ONE DRIVER, ONE TICK: start a change, carry one on, abort one that
@@ -498,6 +508,7 @@ const BESIDE_SEP = 0.6;    // m off a lane's width across: in its own lane, not 
    ahead, those already past the seam on the next intersection's approach. */
 function exitNeighbours(world, me, layout, toLeg, rem) {
   let ahead = null, behind = null, da = Infinity, db = Infinity;
+  const reach = reachAhead(me), aheads = [];
   /* Past the box, places are compared along the road's centreline
      (graph.js exitAlong), which agrees across lanes; distance remaining
      only where a car is not yet on this road. */
@@ -518,6 +529,7 @@ function exitNeighbours(world, me, layout, toLeg, rem) {
     const theirs = myAlong != null && a.s > p.clearAt ? exitAlong(course, a.k ?? 0, a.route, a.s) : null;
     const d = theirs != null ? theirs - myAlong : rem - (p.length - a.s);
     if (d >= 0 && d < da) { da = d; ahead = a; }
+    if (d >= 0 && d <= reach) aheads.push({ car: a, d });
     if (d < 0 && -d < db) { db = -d; behind = a; }
   }
   const j = world.course.joins[(me.k ?? 0) + "|" + toLeg];
@@ -528,9 +540,10 @@ function exitNeighbours(world, me, layout, toLeg, rem) {
       const theirs = myAlong != null ? approachAlong(course, j.k, a.route, a.s) : null;
       const d = theirs != null ? theirs - myAlong : rem + a.s;
       if (d < da) { da = d; ahead = a; }
+      if (d >= 0 && d <= reach) aheads.push({ car: a, d });
     }
   }
-  return { ahead, behind, da, db };
+  return { ahead, behind, da, db, aheads };
 }
 /* The place on `target` nearest the car at `s` on `path`, searched about `guess`, and how far across it is. */
 function besideOn(path, s, target, guess) {
@@ -795,6 +808,8 @@ function attempt(world, out, path, best, T0) {
   const inBlind = nb.behind && nb.db < BLIND_BEHIND;
   const missed = !!inBlind && r() < obs * 0.6;
   if (!leadOk) return out;
+  /* ...and every car beyond it that can demand room, each at its own lead need (above). */
+  for (const { car, d } of nb.aheads ?? []) if (car !== nb.ahead && clearBetween(d, out, car) < leadNeed(out, car, kappa)) return out;
   /* Every time a driver got this far with somebody in the blind spot is
      an occasion to look or not -- counted whether they went or not, so
      a miss RATE can be read (verify-lanes.mjs), not only the misses. */
