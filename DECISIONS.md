@@ -4045,6 +4045,85 @@ cue returns (14%, between 5% and half), where long glances fall, which
 glances fit -- and crashes only where far from a floor: the old glance 5 on
 the repro's windows against the world as built's 0.
 
+## 10.20 ANTICIPATION IS ONE PROPERTY, AND FIVE SITES READ IT -- the design, before code (22 October)
+
+10.15 named it: what a driver does about something is set by WHEN they
+start, and the observation axis says when. The maintainer's look-away
+ruling asked for it again ("make anticipation-versus-reaction a general
+property of the driver model") and the review after 10.19: "build it as one
+property the four derive from, not a fifth rule that agrees with them".
+
+**What the sites read today -- five statements of one thing:**
+
+| site | today |
+|---|---|
+| a joiner seeking a gap (lanechange.js `gapTarget`) | observation >= COMPETENT_AT, yes or no, per DRIVER |
+| an offerer checking behind first (courtesy.js `offerOf`) | the same gate |
+| when an offerer starts (`offerOf`, `courtesyPlan`) | the registration lag after the ask, the same plan for everybody |
+| a glance's timing (crossing.js `heedsRoad`, 10.19) | a draw per glance, the deficit its odds |
+| (not in scope) getting over for a turn | everybody from the node |
+
+Two of them are driver-level yes/no gates, so a driver at 0.74 never scans
+and one at 0.76 always does; one is a per-occasion draw; one is the same
+for everybody. Four rules that roughly agree.
+
+**THE PROPERTY.** On any OCCASION that will need them, a driver either
+ANTICIPATES -- acts from the moment the need became KNOWABLE -- or REACTS --
+acts from the moment it became PRESSING; either way after their
+registration lag (`notices`), which the axis already holds. The chance of
+anticipating is their observation soundness, drawn ONCE PER OCCASION from
+their number and the occasion's key, so a world replays exactly and nothing
+new is chosen: the chance IS the soundness. One function in core/driver.js
+(`anticipates`); each site says only what its occasion, its knowable moment
+and its pressing moment are.
+
+Per occasion rather than per driver, deliberately: attention fluctuates, and
+the glance (10.19) already works this way and is measured. A weak observer
+then anticipates SOMETIMES -- less often the weaker they are -- which is a
+rate a player reads over a drive, as knowledge's misreads are.
+
+**The sites, derived:**
+
+1. **Glance timing** -- occasion: the due glance. Knowable: the road's
+   demand (`timeFree`): anticipating, they wait until the glance fits.
+   Nothing makes a glance pressing, so reacting is taking it on the
+   schedule (the periphery catches what it can). This IS `heedsRoad`,
+   restated through the one function -- no change in behaviour expected.
+2. **Gap-seeking** -- occasion: this join (the node and path). Anticipating:
+   the joiner picks a gap and adjusts speed to meet it (`gapTarget`).
+   Reacting: it accelerates to the traffic and takes the hole beside it.
+   Replaces the driver gate. EXPECTED to move: sound drivers now fail to
+   scan their (1 - soundness) of joins and weak ones sometimes scan.
+3. **Courtesy onset** -- occasion: this ask. Anticipating: from when the ask
+   is knowable (`ask.since`) plus their lag, planned against `ask.by` --
+   today's behaviour. Reacting: from when it is PRESSING -- the last moment
+   a lift at their own comfortable braking still opens the gap by
+   `ask.by` -- plus their lag; past that moment comfortable is no longer
+   enough, so a reacting offerer brakes harder than it, which is 10.12's
+   "a reacting one brakes late and sharp", derived rather than authored.
+   NEW behaviour; measured on the merge and verify-courtesy.
+4. **Checking behind** -- the same occasion and the same draw as 3: an
+   offerer who anticipates the joiner anticipates their own follower too,
+   and does not offer a gap that brakes the follower past its comfortable
+   rate; one who reacts offers anyway. Replaces the driver gate.
+
+**What stays elsewhere, and why.** Coming up to speed before moving over is
+KNOWLEDGE (knowing what the lane is for), not anticipation. The blind-spot
+check (`missed`, lanechange.js) is whether a look happened, not when a plan
+starts. Getting over for a turn has an onset and is a candidate fifth site:
+not in the ruling's list, left for a measurement to argue for.
+
+**How it is checked.** One function, so its law is checked once: the share
+of occasions anticipated tracks soundness (properties over many drivers and
+occasions), a fully sound driver always anticipates, a fully deficient one
+never, and the same occasion asked twice gives the same answer. Each site:
+a controlled comparison -- everybody anticipating against everybody
+reacting, on the same world -- must show its own consequence (gaps met, a
+gentle lift against a sharp one, a follower spared, glances that fit), and
+sabotage of the one function must fail every site. The merge
+(entry-experience, stranded) and courtesy numbers are re-measured and
+reported, not tuned.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
