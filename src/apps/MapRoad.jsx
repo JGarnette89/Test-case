@@ -224,7 +224,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const saved = s.carsByMap?.[mapId] ?? (mapId === "test-1" ? s.cars : undefined);
       const n = Number.isFinite(saved) ? Math.max(CARS.min, Math.min(carsMax, saved)) : cars;
       /* lookAwayOn, not lookAway (22 October): the old key is left unread, so a "look away: on" saved before the maintainer's crossroads gridlock -- every car blind for its whole glance, 5 crashes in 90 s at 260 cars -- comes back off. */
-      /* On by default again (settings.js, DECISIONS 10.19); a saved choice under this key stands. */
+      /* Off by default again (settings.js: the crossroads gridlock without crashes, SIMULATOR item 21); a saved choice under this key stands. */
       const look = s.lookAwayOn === true;
       if (s.simWorker === true && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look); return; }
       if (kmh !== limit || m !== mode || n !== cars || look !== lookAway) restart(seed, kmh, m, n, look);
