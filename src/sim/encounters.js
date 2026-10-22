@@ -39,6 +39,7 @@ import { whatStops, poseOf, conflictOf } from "./crossing.js";
 import { laneSpan } from "./course.js";
 import { DT, clearBetween } from "./traffic.js";
 import { exitAlong } from "./graph.js";
+import { placeOf, neighboursAt } from "./placement.js";
 
 export const NEAR = 30;        // m: within this, a car is traffic you are sharing road with
 export const FOLLOW_S = 2.5;   // s of headway: closer than this, somebody is following somebody
@@ -51,7 +52,7 @@ export const MERGE = 30;       // m along the lane joined: a car this near makes
 /* A road's kind by its id (the course keeps its roads as a list): indexed once per course. */
 const kinds = new WeakMap();
 const kindOf = (course, id) => { let m = kinds.get(course); if (!m) { m = new Map((course.roads ?? []).map((r) => [r.id, r.kind])); kinds.set(course, m); } return m.get(id) ?? null; };
-export const newEncounters = () => ({ t: 0, met: new Set(), following: 0, followed: 0, gaps: 0, judging: null, overtook: 0, overtaken: 0, merges: 0, accelMerges: 0, mergeGaps: [], rel: new Map(), was: null });
+export const newEncounters = () => ({ t: 0, met: new Set(), following: 0, followed: 0, gaps: 0, judging: null, overtook: 0, overtaken: 0, merges: 0, accelMerges: 0, mergeGaps: [], rel: new Map(), was: null, lane: null });
 
 export function encounterTick(st, me, world) {
   if (!me || !world?.course) return st;
@@ -83,7 +84,9 @@ export function encounterTick(st, me, world) {
   const leg = layout.legs[path.from], here = { k, from: path.from, to: path.to, base: leg?.base, s: me.s, accel: !!layout.legs[path.to]?.accel };
   const was = st.was;
   const kind = kindOf(course, leg?.road);
+  let joined = false;
   if (was && was.k === k && was.accel && !here.accel && was.to !== here.to) {
+    joined = true;
     st.accelMerges++;
     const mine = exitAlong(course, k, me.route, me.s);
     let ahead = Infinity, behind = Infinity;
@@ -98,7 +101,22 @@ export function encounterTick(st, me, world) {
     if (Number.isFinite(gap)) st.mergeGaps.push(gap);
     if (gap < MERGE) st.merges++;
   }
-  if (was && was.from !== here.from && ((was.k === k && was.base === here.base) || (was.k !== k && kind === "highway" && was.kind !== "highway"))) {
+  /* A LANE CHANGE IS THE LANE UNDER THE PLAYER CHANGING ON ONE ROAD, by
+     the road's centreline (placement.js) -- not the route's `from` lane
+     changing, which caught a change on an approach and missed most on an
+     exit stretch, where most highway driving is (22 October: the counter
+     5 against 7 measured, tools/measure/merge-counter.mjs). Near: a car
+     within MERGE in the lane joined, ahead or behind, by the same index. The
+     join out of an acceleration lane is counted above, not again. Inside a
+     box there is no lane, so a turn is never a change. */
+  const at = placeOf(course, k, me.route, me.s);
+  if (!joined && st.lane && at && at.lane !== st.lane && at.lane.split("#")[0] === st.lane.split("#")[0]) {
+    const nb = neighboursAt(world, at.lane, at.c, me);
+    if ((nb.ahead && nb.ahead.clear < MERGE) || (nb.behind && nb.behind.clear < MERGE)) st.merges++;
+  }
+  st.lane = at?.lane ?? null;
+  /* ...AND ONTO A HIGHWAY FROM ANOTHER KIND OF ROAD (a slip road with a yield sign, no acceleration lane), with a car near in the lane joined. */
+  if (was && was.from !== here.from && was.k !== k && kind === "highway" && was.kind !== "highway") {
     const near = world.actors.some((a) => !a.player && (a.k ?? 0) === k && layout.paths[a.route]?.from === path.from && Math.abs(a.s - me.s) < MERGE);
     if (near) st.merges++;
   }
