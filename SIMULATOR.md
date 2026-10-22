@@ -3429,6 +3429,15 @@ and stalls jammed the world and multiplied cars per neighbourhood.
   collections per simulated second ~8 against 5) rather than the whole of
   it.
 
+**DESK AND PHONE DIFFER BY MAP, NOT BY ONE DEVICE FACTOR** (22 October,
+the third way the desk-to-phone extrapolation has misled us, after the
+constant factor and the gridlock-era readings). Look-away on against off:
+the desk 1.7x at the crossroads and 3.1x on the endless highway; the phone
+3.45x at the crossroads (gridlock-confounded) and 2.4x on the highway. A
+desk ratio from one map compared with a phone ratio from another said the
+phone punished look-away harder; on the same map it punished it less. Any
+desk-to-phone comparison is made on ONE map, both sides, or not at all.
+
 **STANDS:**
 - **The renderer has never been the problem.** Draw 4.1 ms of an 18.9 ms
   frame here, as in every reading this week; culling draws 3 of 292 cars.
