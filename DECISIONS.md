@@ -3861,6 +3861,51 @@ queue (seed 2, t 282 s). World wrong, in the lane change; its own item. And
 the loop's off-ramps end at the map edge 230-400 m from the loop, inside
 the drive camera's sight: cars vanish in view there, as they always have.
 
+**THE TARGETS, WRITTEN BEFORE THE REST IS BUILT (22 October).** The
+brief: cars met, overtakes and decisions a minute, on the maintainer's
+phone, at a frame rate he would choose. Two findings first, both measured:
+
+- **GAPS JUDGED IS ZERO ON THE ENDLESS HIGHWAY BY DEFINITION.** The
+  instrument (sim/encounters.js) counts the player STANDING at a stop line
+  (under 0.5 m/s, within 4 m) while a car on a conflicting route comes on.
+  The highway has no stop line -- slip roads and acceleration lanes, every
+  node free-flowing -- so six reports of 0 measured the venue, not the
+  density. The highway's decisions are MERGES JUDGED (joining or changing
+  lanes with a car within 30 m of the lane joined), which the instrument
+  counted all along and the phone's readout never showed: it shows them,
+  and overtakes, from this build. Gaps judged is a junction number, and the
+  city is its venue: desk, shaping off 0.2-0.4 a minute, on 0.8-1.0.
+- **CONCENTRATION IS NOT EXPENSIVE.** Desk, endless highway, 280 cars, the
+  maintainer's 119% pace: step mean 9.1-9.3 ms shaping off, 8.9-9.1 on --
+  the same cars doing the same work nearer the player. (The gridlock-era
+  "clustering is expensive" was collision debris, SIMULATOR 1.2.18.)
+
+Desk now (today's code, look-away off, 119%, four seeds of 5 minutes,
+tools/measure/encounters.mjs cruise): met 7.8 a minute off (6.2-10.0 --
+the phone read 9.3-10.2) and 20.9 on (18.2-24.8), x2.7; overtook 6.2 off,
+16.0 on, x2.6; merges judged 1.3 off, 2.8 on, x2.2; one crash in four
+shaped runs, none unshaped.
+
+**SUCCESS, ON THE PHONE, BEFORE IT IS SEEN** (look-away off, his own
+pace, three minutes or more, each map read shaped AND unshaped on the same
+build -- a desk-to-phone comparison is made on one map or not at all):
+
+| | endless highway, 280 cars | the city, default cars |
+|---|---|---|
+| met a minute | >= 2x unshaped (his 9.3-10.2 -> >= 19); desk predicts x2.7, ~25 | >= 1.3x unshaped; desk x1.4 |
+| overtakes a minute (overtook + overtaken) | >= 2x unshaped; desk x2.4 | not a target (city lanes) |
+| decisions a minute | merges judged >= 2x unshaped; desk x2.2 | GAPS JUDGED >= 2x unshaped; desk x3 |
+| frame | fps within 10% of unshaped and sim 1.00x; desk: no cost | the same |
+
+**Partial, said as partial**: met and overtakes up with decisions not up.
+**Gates before the flag goes on** (desk, enumerated where it can be): no
+car placed or retired within sight; nothing shaping places causes a crash,
+over enough runs to see one (the one shaped crash above is diagnosed
+first); no follower braked past its comfortable rate by a placement; on
+the loop the road ahead of where the player will re-enter is never left
+emptier than unshaped (retiring behind must not strip a lap's worth of
+road the player is about to meet).
+
 ## 10.18 A MARK IS WHAT HAPPENED, WHERE, UNDER WHICH SECTION -- the maintainer's examination model, recorded before any code (22 October)
 
 The maintainer, verbatim, because the reasoning is the content:

@@ -433,7 +433,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         const heapLine = hp ? ` · garbage at least ${hp.mbPerS.toFixed(0)} MB/s (the heap's rises; a collection inside a frame hides some), ${hp.full} full collections in 5 s, heap ${hp.heapMb.toFixed(0)} MB` : " · heap not exposed";
         /* WHAT THE PLAYER MEETS (sim/encounters.js), since this drive began: the number the game lives on. */
         const es = sc.enc ? encounterSummary(sc.enc) : null;
-        const meetLine = es ? `\nsince the drive began: you met ${es.metPerMin} cars/min within 30 m · following ${es.followingShare}% · followed ${es.followedShare}% · ${es.gapsPerMin} gaps judged/min (${es.minutes} min)` : "";
+        /* Overtakes and merges judged on the line too (22 October): density shaping is judged by met, overtakes and decisions a minute, and the highway's decisions are merges -- it has no stop line, so gaps judged (standing at a line) is zero there by definition. */
+        const meetLine = es ? `\nsince the drive began: you met ${es.metPerMin} cars/min within 30 m · following ${es.followingShare}% · followed ${es.followedShare}% · ${es.gapsPerMin} gaps judged/min (${es.minutes} min)\novertook ${es.overtookPerMin}/min · overtaken ${es.overtakenPerMin}/min · merges judged ${es.mergesPerMin}/min${es.mergeGap != null ? ` (median gap taken ${es.mergeGap} m)` : ""}` : "";
         const taskLine = meetLine + `\nbrowser: long tasks ${g.tasks ?? "n/a"} ms in 5 s${lf ? ` · worst frame ${lf.ms} ms, of which script ${lf.script}${lf.scripts?.[0] ? ` (${lf.scripts[0].where} ${lf.scripts[0].ms})` : ""} and style/layout/paint ${lf.styleLayout}` : ""}${heapLine}`;
         /* THE FRAME BY PART, mean/p95 each (15 October): the sim's own pace is honest now, so
            the frame's cost has to be as legible -- and against what was on screen, so a scene
