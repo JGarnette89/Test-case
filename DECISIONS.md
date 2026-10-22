@@ -4296,6 +4296,52 @@ The lesson is the method, not the junction: a confident causal chain from
 one observation is a hypothesis with a cheap test, and the test comes
 before the build.
 
+## 10.22 RIGHT OF WAY IS A MOBILE PRODUCT -- a constraint, not a preference (the maintainer, 22 October)
+
+**The maintainer's phone is the target device and the only one that
+matters. A PC/console version is a SEQUEL, not a parallel build** (his
+framing: Helldivers 1 against Helldivers 2). Two products were laid out
+with the numbers and rejected. This decides arguments before they start.
+
+**The reasoning, because it is the part that will be re-litigated:**
+- **The phone is about 3x slower than the desktop at the same work, not
+  an order of magnitude**: 24.6 ms a step at 280 cars on the endless
+  highway against ~8.8 on the desk. Single-threaded JavaScript in the same
+  browser engine; neither uses more than one core.
+- **3x buys almost nothing the player feels.** 160 -> 280 cars (+75%) moved
+  met a minute from 5.5 to 6.0 (+9%); tripling the budget might reach ~13.
+  What the maintainer wants has never been compute-limited in anything
+  measured; it is limited by WHERE the cars are (density shaping, 10.17).
+- **Two codebases would make the desk/phone divergence permanent.** Days
+  this week went to desk numbers not matching the phone -- the ceiling
+  table, the neighbour index, jam-is-cheap, the cross-map look-away ratio.
+  That would stop being a nuisance and become the project's structure.
+
+**THE SCOPE RULE: a feature that only makes sense at car counts a phone
+cannot reach belongs to the sequel.** Apply it when scoping anything.
+
+**The agreed order** (performance focus continues on this basis):
+1. **Density shaping** -- in flight: costs nothing, changes what he feels.
+2. **LOD** -- 280 simulated, 4 in view: the budget multiplier, worth more
+   than the hardware gap.
+3. **Engine cleanup** -- a legitimate work item, not opportunistic tidying.
+4. **Scalable fidelity settings** -- last, once costs are known rather than
+   guessed. Look-away becomes one of these dials.
+Not 3 or 4 until shaping and LOD are done.
+
+**A CORRECTION TO THE FIGURE GIVEN FOR 3, before anybody acts on it.** "~88
+us per car per tick against an achievable 5-10" is 24.6 ms / 280 cars --
+the arithmetic is right and the premise is not: the step is NOT per-car
+work at a fixed cost a car. Measured on the desk, endless highway, look-away
+off (SIMULATOR 1.2.17's ramp, not gridlock-confounded): 17 us a car at 60
+cars, 21 at 150, 28 at 260, 34 at 400 -- the cost a car doubles as the fleet
+grows, the neighbour reads on long nodes growing with how many cars share a
+node. So the average mixes a fixed part with a superlinear one: it
+overstates what tidying per-car code alone can win and understates what the
+neighbourhood term is worth. Before 3 starts, the step is SPLIT and measured
+-- fixed per-car work, the neighbour term, per-tick overhead -- and the
+3-5x is predicted from that split, in writing, before any of it is built.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
