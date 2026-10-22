@@ -48,7 +48,7 @@ minute at a frame rate the maintainer can play at (DECISIONS 10.17).**
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
 7. suite cost: 12 at once instead of 8 (1700 -> 1382 s); verify-compliance's 145 runs in worker threads, identical counts (950 -> 448 s under load); the derived suite 1588 -> 1356 s. The pole is now eight checks at 870-1020 s, most of them several independent worlds -- the same treatment would apply (TESTING.md)
 10. ~~THE 57 MS~~ -- CLOSED: a median frame beside mean parts, during the spiral; reproduced with no hidden overhead (SIMULATOR 1.2.17); the readout now prints the frame's mean
-21. THE CROSSROADS GRIDLOCKS WITH NO CRASH (the maintainer on 3e77206, test map 1, 260 cars, look-away on, 22 October): 13 fps, sim 0.56x, step 72.5 ms against 21 off, every approach queued and the box empty, zero crashes. His mechanism, watched: drivers lethargic off the line, AND a car through late on a red held every approach until it had cleared the WHOLE intersection -- a junction behaving as one exclusive lock. Look-away DEFAULTED OFF AGAIN meanwhile. Under investigation: (1) whether a late or red-running car in the box makes every approach wait for full clearance, with look-away off -- if so a throughput bug older than today; (2) glances at a red delaying queue discharge, and the car ahead pulling away as a peripheral cue
+21. THE CROSSROADS GRIDLOCKS WITH NO CRASH (the maintainer on 3e77206, test map 1, 260 cars, look-away on, 22 October): 13 fps, sim 0.56x, step 72.5 ms against 21 off, every approach queued and the box empty, zero crashes. His mechanism, watched: drivers lethargic off the line, AND a car through late on a red held every approach until it had cleared the WHOLE intersection -- a junction behaving as one exclusive lock. Look-away DEFAULTED OFF AGAIN meanwhile. INVESTIGATED (desk, look-away off unless said; tools/measure/box-hold.mjs, green-holds.mjs, discharge.mjs): (1) THE JUNCTION IS NOT ONE LOCK -- of 7,259 head-car-ticks standing at a line the light lets go, 0.1% were held by a box car whose path does not cross theirs; every hold is a real path conflict (blockedBy is per path). The fallback-to-conservative theory is not what happens. (2) A REAL CAPACITY DRAIN, GEOMETRY NOT RIGHT OF WAY: on the skewed approach (C-A, 64.8 deg) the right turn is a sharp 115 deg arc that drifts a full lane left -- from the curb lane through the inner lane's ground -- so it genuinely conflicts with the left-turner beside it, and yields to it while that left-turner stands waiting for an oncoming gap: the curb lane, straights and all, held behind a waiting left. 16% of green holds at that signal. The fix is the path (a right from the curb lane must stay out of the inner lane), not the rule. (3) THE DESK DOES NOT REPRODUCE A LOOK-AWAY GRIDLOCK: ten minutes, two seeds, throughput 36-37 cars a minute look-away off and on alike; standing cars climb ~95 -> ~140 in BOTH; nobody across on a red but 2-6 in ten minutes. The junction is low-capacity and degrades either way. (4) The phone's 3.5x with look-away on against the desk's 1.7x may be allocation (a carried picture copies every car per distinct glance start) -- a hypothesis, unmeasured. Queue discharge headway: the first instrument was too thin to read (12 events) and is not evidence either way. Open: the car-ahead-pulls-away cue (Jay's mechanism 1) awaits a discharge instrument that can see it
 20. CLEAN DESK BASELINES (22 October, 18ca3c8 -- after the glanceAt rebase fix; desk only, the phone decides, 10.4). Median step at 2-3 minutes, tools/measure/step-drift.mjs, one run at a time on an idle machine: ENDLESS HIGHWAY 280 cars, player cruising -- look-away off 7.9-8.7 ms, on 29.1-29.3 ms (~3.4x); TEST MAP 1 crossroads 260 cars -- off 15.5-17.0 ms, on 24.8-29.0 ms (~1.7x). These replace the defect measurements (item 15). The look-away cost is HELD until the maintainer's phone reading says it matters. Separately: the highway's step still DRIFTS with look-away off, 7.1 -> 8.7 ms over three minutes at a constant 280 cars -- not look-away's; open
 19. COURTESY FOR A PLAYER STANDING AT THE TAPER (found tracing 10.20): fails in a third to a half of the long waits, old code and new -- the driver asked is too close to brake from 25 m/s to the gap a car at rest needs, passes, withdraws, the next is asked (stranded.mjs, tools/scratch/nohelp traces). Recorded, not built; the player is never stranded past a minute (verify-merge)
 18. ANTICIPATION AS ONE PROPERTY (DECISIONS 10.15, 10.20): BUILT -- anticipate (act from when the need is knowable) or react (from when it is pressing), the chance the observation soundness, one draw per occasion (core/driver.js anticipates); the glance, gap-seeking, courtesy onset and checking behind read it, the two COMPETENT_AT gates and the glance's own draw gone. verify-anticipation. The merge within chance of before (8 seeds). Found on the way: a standing-merge deadlock (fixed) and two verify-merge trial faults (restated). Getting over for a turn is a candidate fifth site, not built. Today five sites read five different statements of "how far ahead this driver plans" -- gap-seeking and checking behind a yes/no COMPETENT_AT gate, courtesy onset the registration lag, merging out of an ending lane a fixed stopping distance for everybody, glance timing a dice roll on the deficit -- four rules that roughly agree and one written today. One quantity per driver, the four derived from it
@@ -56,10 +56,10 @@ minute at a frame rate the maintainer can play at (DECISIONS 10.17).**
 16. LOOK-AWAY, AS RULED (the maintainer, 22 October; DECISIONS 10.19): a glance is never blindness, is taken when it fits, and is the observation axis. 1 PERIPHERAL VISION -- built: the car ahead looming brings the eyes back a reaction later; the repro 12 crashes -> 0. 2 DEMAND GATING -- built: a due glance waits until the road leaves its length; long glances on clear road 57% -> 83%. 3 SKILL -- built: a poor observer skips the wait their deficit of the time; unfit glances sound 1%, poor 17%. Rates over 20 min: old glance 18 crashes, periphery alone 1, gating alone 3, all three 0 (verify-lookaway holds the mechanisms). DEFAULT ON AGAIN, the toggle kept (a saved choice under lookAwayOn stands). At 280 cars, look-away on: endless highway 0, city 0 by a glance, test highway 1 rear-end with nobody looking away. THE COST, HELD: desk only, the step with it on costs 1.6x off at 260 cars (median 29-30 ms against 17-19) -- the perception machinery, not gridlock. DO NOT OPTIMISE until the maintainer's phone reading says it matters (10.4: the index, the ceiling table and the jam hypothesis all misled); if it does, the first question is whether a glancing driver's carried picture needs to persist at all or can be derived. NEXT: anticipation as one property (item 18) (10.15) feeding gap-seeking, courtesy onset, lane-end merging and look-away timing
 15. LOOK-AWAY WAS THE GRIDLOCK (the maintainer, 22 October, the same crossroads at 260 cars with it OFF): zero crashes, step 21 ms against 57.5, 58 fps against 14, sim 1.00x against 0.74x, long tasks 0 against 4946 ms. The chain: glance rear-ends in queues -> wrecks block approaches -> gridlock -> every car with far more neighbours -> the step triples. EVERY 260-280-CAR NUMBER TAKEN TODAY WITH LOOK-AWAY ON IS GRIDLOCK-CONFOUNDED -- MEASUREMENTS OF A DEFECT, NOT OF THE ENGINE; compare nothing new against them, re-measure (look-away off, then as rebuilt, item 16) -- the 280-car highway readings (36-50 ms, the drift, the jam at the merge, the GC line), the crossroads: evidence for this finding, NOT baselines. Re-measure with it off. Look-away was already off by default; the setting is renamed (lookAwayOn) so a saved on resets. What it does (crossing.js seenBy): TOTAL blindness to change for the whole glance -- every car carried forward at the speed it had -- with glances up to 2.4 s every 6 s (blind a median 9-10% of the time, the poorest tenth 26-28%, the worst ~40%); 12 crashes in 10 minutes, all rear-ends in queues, the follower looking away in every one, none a turner against oncoming (tools/measure/lookaway-crashes.mjs). Cost tracks CARS PER NEIGHBOURHOOD -- a warning for density shaping, which concentrates them
 14. THE CROSSROADS CRASHES (the maintainer, test map 1, 260 cars, watching, look-away on): reproduced (tools/measure/crash-replay.mjs, seed 1) -- 4 in 120 s with look-away on, 0 with it off; all four REAR-ENDS in queues at the signalled node, each follower a poor observer (glance 1.7-2.4 s) looking away for ~2 s while closing on a stopping queue: the look-away design firing, not right of way. Open for the maintainer: is that rate wanted at 260 cars. AND A PATTERN: verify-crashes and verify-observation validate test map 1 at 150 cars, the merge was signed off at 150 -- the maintainer drives at 260-280; a density sweep of the checks is due
-13. LOD AND SHAPING, ONE PIECE (DECISIONS 10.17): HELD for the maintainer's 280-car GC reading on 1dfa18c -- then first answer what share of the phone's step is collection, not compute; if most, allocation reduction leads (what immutability buys, where the 8 MB goes, a ping-pong of car arrays), LOD second. Meanwhile the promotion check is written (placement.js admissible, verify-promotion, 10.9). Rule: no performance work is believed until a phone reading says so (DECISIONS 10.4)
+13. LOD AND SHAPING, ONE PIECE (DECISIONS 10.17): UNHELD (1.2.18) -- the clean 280-car reading has the world at 1.00x real time and 37 fps with 3 cars in view and 10.2 met a minute; the budget is confirmed and the allocation-first question is unmotivated at these counts. DENSITY SHAPING IS NOW THE PROJECT. Concentration's effect on the step is still to be MEASURED, not designed around (the clustering cost seen was collision gridlock). Was: held for the GC reading -- first answer what share of the phone's step is collection, not compute; if most, allocation reduction leads (what immutability buys, where the 8 MB goes, a ping-pong of car arrays), LOD second. Meanwhile the promotion check is written (placement.js admissible, verify-promotion, 10.9). Rule: no performance work is believed until a phone reading says so (DECISIONS 10.4)
 12. THE GREEN, SPLIT (the maintainer, 22 October; DECISIONS 10.16): the horn at 2.0 s (HONK_AFTER, was 2.5), the mark at 4 s as undue delay's own constant; the escalation checked on a forced dawdler. OPEN for the maintainer: no modelled candidate reaches 4 s alone (poorest 2.7 s), so the observation fault is out of reach until the model has a distracted driver
 11. DENSITY SHAPING (DECISIONS 10.17): built, NOT ON (later the same day: the queue-by-the-rule fix, the check at the maintainer's 119% pace -- 19-24 met a minute against his own 5.5 -- and tools/wip-shaping.mjs, outside the suite; still failing on placed cars slowing with their leaders, and an encounter figure that swings 5-23 between seeds at 3 minutes) -- placement.js and shaping.js committed inert (hash gate identical); on the loop, measured 17-20 met a minute against 2.2-2.6 with 0 crashes, but verify-shaping (tools/scratch/verify-shaping.wip.mjs) still fails on followers braking hard behind placed cars, and the encounter figure is unstable with the space check in. Hurts a dense grid (test map 1): per map, as data. Also found: a lane change onto a car at shaped density (world, own item); the loop's off-ramp ends are in sight
-9. the 259-car highway (the maintainer's readout, 22 October; SIMULATOR 1.2.17): (1) the step is superlinear in cars PER NODE, linear on the city -- the fix is the one sorted neighbour index; (2) the page was spiralling -- step budget shipped; (3) LOD next, with the neighbour index and gap predicate first (placement's first half pulled forward) -- the index's FIRST STEP shipped (whatStops' own lane, exact, -22% at 260 cars on the loop, SIMULATOR 1.2.17); next the lane change's and courtesy's scans onto it, then the gap predicate. Crashes: traffic alone 0 in 40 min; the readout now says which were with the player
+9. the 259-car highway (the maintainer's readout, 22 October; SIMULATOR 1.2.17) [PHONE CONCLUSIONS VOID, 1.2.18 -- the desk ramp stands]: (1) the step is superlinear in cars PER NODE, linear on the city -- the fix is the one sorted neighbour index; (2) the page was spiralling -- step budget shipped; (3) LOD next, with the neighbour index and gap predicate first (placement's first half pulled forward) -- the index's FIRST STEP shipped (whatStops' own lane, exact, -22% at 260 cars on the loop, SIMULATOR 1.2.17); next the lane change's and courtesy's scans onto it, then the gap predicate. Crashes: traffic alone 0 in 40 min; the readout now says which were with the player
 8. ~~the step slowdown~~ -- found: two closures made per pair of cars in whatStops (+11% of its own time); hoisted, world hash identical on three maps, test map 1 10.92 -> 10.66 ms against 10.52 at 9c5c947
 
 **Approved, parked until the above is done (not to be started):**
@@ -3257,7 +3257,7 @@ so the frame and its parts are the same statistic. (Jay's second reading,
 "frame 5.6 = sim 6.4 + ...", was the same mismatch the other way: a median
 frame without a step beside a mean that includes them.)
 
-**THE CEILING, with the step budget (the maintainer's question: where does
+**[VOID -- 1.2.18: built on phone readings taken with the blind glance in play.]** **THE CEILING, with the step budget (the maintainer's question: where does
 the world fall below 0.95x real time?).** page-loop.mjs on the endless
 highway, today's code (the neighbour index in), the phone's ~5 ms of frame
 work, the step at the phone's factor -- 4.2 from his own 16.6 ms at 160
@@ -3280,7 +3280,7 @@ met a minute, 0 gaps judged in 90 s for the third report running;
 following 51.7% / followed 13.5% -- he catches people, nobody catches him:
 a density signature. Performance has stopped being the constraint.
 
-**THE CEILING TABLE ABOVE IS DISCARDED, not adjusted (the maintainer's 280-car
+**[VOID -- 1.2.18: the 280-car reading this rests on, and the phone factor and allocation conclusions drawn from it, were the blind glance's gridlock.]** **THE CEILING TABLE ABOVE IS DISCARDED, not adjusted (the maintainer's 280-car
 drive, adc1f8e): it predicted 260 at ~35 fps and real time; at 280 the phone
 ran 17 fps at 0.82x, its step 51.9 ms against a 50 ms tick. WHY THE METHOD
 FAILED: desk step x a phone factor assumed the factor constant, and it is
@@ -3296,7 +3296,7 @@ question, not merely imprecise. The readout now shows the heap (at least the
 garbage made a second, full collections, heap size) so the next drive says
 so on the phone itself rather than by desk inference.
 
-**AND THE NEIGHBOUR INDEX, on the phone:** the desk step fell 22% and the
+**[VOID -- 1.2.18: the phone figure compared here was the gridlock.]** **AND THE NEIGHBOUR INDEX, on the phone:** the desk step fell 22% and the
 allocation 23% with it, but the phone at 280 (51.9 ms) is about where the
 pre-index phone curve extrapolates (~49 ms from 43.6 at 259). Most of the
 phone's step is not the lookups the index removed; on the desk's evidence
@@ -3378,6 +3378,71 @@ hunt).
 cars a minute -- the highway gives the player no decisions even at this
 density; and following 42% / followed 37% at 9.9 met a minute is the
 lattice signature again (SIMULATOR 1.2.15).
+
+
+##### 1.2.18 The clean baseline, and what it voids -- 22 October
+
+**THE MAINTAINER'S PHONE, THE ENDLESS HIGHWAY AT 280 CARS, LOOK-AWAY OFF**
+(the build before 3e77206, on which look-away was off by default) -- THE
+BASELINE every performance number is measured against from now on:
+
+    280 cars on the map · 3 in view · 37 fps · p95 41.7ms
+    sim 1.00x real time · tick p50/p95/max 50/57.5/69.2 · step p50/p95 24.6/30 ms (page)
+    frame mean/p95 18.9/39.3 (median 8.8) = sim 11.4/31.1 + poses 2.2/2.7 + draw 4.1/4.8
+      (list 2.6/3, sort 0/0.1, paint 1.3/1.6, overlay 0.1/0.2) + hud 1/1.3
+    drawn: 170.1 things · cars 3.2 of 292 · road pieces 60 of 2722 · ground 106.9 of 38350
+    since the drive began: you met 10.2 cars/min · following 32.7% · followed 46.8% ·
+      0 gaps judged/min (5.1 min)
+    long tasks 77 ms in 5 s · worst frame 79 ms · 25 full collections in 5 s, heap 82 MB
+
+Against his earlier 280-car reading on the same map with the blind glance:
+16 fps -> 37, sim 0.78x -> 1.00, step 50 ms -> 24.6, long tasks 4,908 ms ->
+77. **Every performance problem chased on 22 October was downstream of one
+defect** -- the blind, clock-driven glance (DECISIONS 10.19), whose rear-ends
+and stalls jammed the world and multiplied cars per neighbourhood.
+
+**VOID -- do not rediscover these as fact:**
+- **The ceiling table and its revisions** (1.2.17): the ceiling is not 160,
+  not 200; at 280 the world keeps real time at 37 fps. The method's inputs
+  were phone readings of the gridlock.
+- **The step drifting over five minutes** (36 -> 49 -> 50 ms at a constant
+  280): the jam forming. (On the desk the highway's step still creeps with
+  look-away off, 7.1 -> 8.7 ms in three minutes -- IN FLIGHT 20 -- small,
+  separate, and not this.)
+- **"A jam is cheap because the cars are following"**, and its correction
+  **"gridlock is expensive"**: both were measurements of collision debris.
+  (Neither was written here; recorded so neither comes back.)
+- **"The phone factor is not constant"** (4.2x at 160, 4.6x at 259, ~6.5x at
+  280): may still be true, but this data cannot establish it -- the 259 and
+  280 points were the gridlock.
+- **"Allocation dominates the phone's step"**: unconfirmed, and at these
+  counts unmotivated -- 77 ms of long tasks in 5 s with 25 full collections
+  is a phone keeping up.
+
+**STANDS:**
+- **The renderer has never been the problem.** Draw 4.1 ms of an 18.9 ms
+  frame here, as in every reading this week; culling draws 3 of 292 cars.
+- The desk step ramp in 1.2.17 (look-away off, so not confounded) stands as
+  a DESK measurement; what it predicts on the phone is not established.
+- The page's step budget and the readout's matched statistics (1.2.17).
+
+**THE PROJECT NOW.** 3 cars in view, 10.2 met a minute, 0 gaps judged in 5.1
+minutes: the engine runs 280 cars at real time and the player is alone.
+Density shaping (DECISIONS 10.17, IN FLIGHT 11) has a confirmed budget.
+Whether concentrating cars makes the step disproportionately dearer is to be
+MEASURED as it is built, not designed around -- the clustering cost seen was
+collision gridlock, not density.
+
+**STILL OPEN, and real rather than an artefact: what look-away on costs on
+the phone.** The maintainer on 3e77206 at the crossroads, 260 cars,
+look-away on: step 72.5 ms against 21 off, 13 fps, sim 0.56x, 27 full
+collections in 5 s -- 3.5x, where the desk measures 1.7x (IN FLIGHT 20, 21).
+The desk does NOT reproduce a look-away-specific gridlock there: over ten
+minutes and two seeds throughput is the same on and off (36-37 cars a
+minute), and standing cars climb from ~95 to ~140 in both. The phone's extra
+cost may be allocation: a glancing driver's carried picture copies every car
+for each distinct moment glances began, dozens of whole-world copies a tick
+-- a hypothesis, unmeasured. Look-away is off by default until it is settled.
 
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
@@ -4086,6 +4151,7 @@ In priority order:
 
 The pedestrian persistence fix and the knowledge/compliance split came
 first: both are prerequisites for any of this being worth anything.
+
 
 #### 1. Large vehicles -- built (30 September)
 
