@@ -4012,6 +4012,39 @@ part did the work, and held by `verify-lookaway`:
    54, 95 s on seed 1), and a first cut that put a share ON its floor (75% at
    60 s against 83% at 120) was undone rather than the floor moved.
 
+3. **Skill.** Each due glance, a driver either waits for the road or does
+   not, and the chance of NOT waiting is their observation deficit -- one
+   draw per glance from their number and when it fell due (`heedsRoad`),
+   so nothing new is chosen and the world replays exactly. The instrument
+   that shows it is not "glance time under demand" -- by that a sound
+   observer looked worse than a poor one (41% against 21%), because a
+   0.35 s glance fits behind a car at ordinary headway, which is the
+   ruling's "short glances" -- but whether the glance FIT when it was taken
+   (began in a box, or outlasted the headway or the time to the line),
+   stated in the measure (`glance-fit.mjs`), not read from `timeFree`.
+   Unfit glances, sound / poor: any time 8% / 28%; everybody waiting 0% /
+   1%; as built 1% / 17%. With the glance blind the skill puts crashes back
+   (4 in 300 s, seed 1); with the edge of the eye, none -- which is the
+   split the ruling describes: a poor observer looks away at the wrong
+   moment and is saved, late, by the periphery. `heedAll` joins the
+   controlled comparisons.
+
+**Each part alone, measured as a RATE** (four seeds of 300 s, twenty
+minutes each, `lookaway-crashes.mjs` with its NOPERIPH / ANYTIME / HEEDALL
+switches): the old glance 18 crashes; peripheral vision alone 1; gating
+alone 3; all three 0. Each part does most of the work and neither alone
+reaches zero. verify-lookaway first asserted ZERO for each part alone on one
+short run each, and the skill broke it: `worldFor` warms the world before a
+check's flags apply, so a change to how anybody glances changes the warm-up,
+and at 260 cars traffic is chaotic -- one crash against none in 120 s is a
+different sample, not a different mechanism (the sim is deterministic: the
+same configuration twice gave the same count). CLAUDE.md item 3's implied
+sample size. Verdict "check wrong": the parts are now held by their
+MECHANISMS over thousands of glances -- the share of glance time the looming
+cue returns (14%, between 5% and half), where long glances fall, which
+glances fit -- and crashes only where far from a floor: the old glance 5 on
+the repro's windows against the world as built's 0.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

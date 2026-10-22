@@ -10,10 +10,13 @@ import { TEST_MAPS } from "../../src/map/samples.js";
 import { step, pathOf, whatStops } from "../../src/sim/crossing.js";
 import { lookingAway } from "../../src/sim/attention.js";
 import { DT } from "../../src/sim/traffic.js";
+import { deficitOf } from "../../src/core/driver.js";
 const [carsArg = "260", secsArg = "120", seedArg = "1", mapId = "test-1"] = process.argv.slice(2);
 const raw = mapId === "test-1" ? null : TEST_MAPS.find((m) => m.id === mapId).build();
 let { world: w } = worldFor(Number(seedArg), 50, 2.0, false, Number(carsArg), raw, null, true);
 const tally = { box: [0, 0], line: [0, 0], following: [0, 0], clear: [0, 0] };
+/* By observation: sound (deficit under 0.2) and poor (0.5 or more) -- glance time under demand (box, line, following) over all glance time. */
+const by = { sound: [0, 0], poor: [0, 0] };
 let moving = 0;
 for (let i = 0; i < Number(secsArg) / DT; i++) {
   w = step(w);
@@ -25,9 +28,12 @@ for (let i = 0; i < Number(secsArg) / DT; i++) {
     const p = pathOf(w, a), v = whatStops(a, { ...w, noPeriphery: true });
     const where = a.s > p.stopAt && a.s < p.clearAt ? "box" : a.s <= p.stopAt && (p.stopAt - a.s) / a.v < 3 ? "line" : v.leader && v.gap / a.v < 2 ? "following" : "clear";
     tally[where][0]++;
+    const d = deficitOf(a.ratings ?? {}, "observation").deficit ?? 0, grp = d < 0.2 ? "sound" : d >= 0.5 ? "poor" : null;
+    if (grp) { by[grp][1]++; if (where !== "clear") by[grp][0]++; }
     if (a.lag >= 1.5) tally[where][1]++;
   }
 }
 const all = Object.values(tally).reduce((s, x) => s + x[0], 0), long = Object.values(tally).reduce((s, x) => s + x[1], 0);
 console.log(`moving driver-ticks ${moving}; looking away ${(100 * all / moving).toFixed(1)}% of them (${all}); by situation (all glances | glances of 1.5 s or more):`);
 for (const [k, [n, l]] of Object.entries(tally)) console.log(`   ${k.padEnd(10)} ${(100 * n / Math.max(all, 1)).toFixed(0).padStart(3)}% | ${(100 * l / Math.max(long, 1)).toFixed(0).padStart(3)}%`);
+for (const [k, [u, n]] of Object.entries(by)) console.log(`   ${k} observers: ${(100 * u / Math.max(n, 1)).toFixed(0)}% of their glance time under demand (${n} ticks looking away)`);

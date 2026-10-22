@@ -6,29 +6,41 @@
    looking away, because a glance was TOTAL blindness (the picture from
    its start, carried forward) and fell on a fixed phase whatever the
    driver was doing. His ruling: a glance is never total blindness, it is
-   not random, and it is the observation axis. Built in that order, and
-   each part measured ALONE against the old glance, so it is known which
-   part does the work:
+   not random, and it is the observation axis. Built in three parts:
 
-     0. The control: the old glance -- blind, any time -- still crashes on
-        the repro. Without it every zero below could be the instrument.
+     0. THE REPRO. The old glance -- blind, taken any time -- crashes; the
+        world as built does not, on the same windows.
      1. Peripheral vision (attention.js LOOMING): the car ahead looming
-        brings the eyes back a reaction time later. Alone, the glances'
-        crashes go. Not a disguised off switch: most of the time a moving
-        driver spends looking away is still away.
+        brings the eyes back a reaction time later -- for part of the time
+        a driver spends looking away, never most of it (a cue, not an off
+        switch).
      2. Demand gating (crossing.js timeFree): a due glance is taken when
-        the road leaves at least its length before the driver must act.
-        Alone, the crashes go; and the long glances move off the box, the
-        line and the car in front onto clear road.
-     Both together -- the world as built -- crash nowhere.
+        the road leaves at least its length before the driver must act, so
+        the long glances move off the box, the line and the car in front
+        onto clear road.
+     3. Skill (crossing.js heedsRoad): a poor observer takes a due glance
+        on the schedule, whatever the road asks, their deficit of the time;
+        their glances fail to fit several times as often as a sound
+        observer's, and it is the skill -- with everybody waiting for the
+        road, theirs fit.
 
-   THE SAMPLE, MEASURED (22 October; six runs of 120 s took it past its
-   20-minute ceiling under the suite's load): the old glance's crashes on
-   seed 1 come at 19, 26, 54, 54 and 95 s, so peripheral vision alone runs
-   seed 1 for 60 s (against four); the control and gating alone keep 120 s,
-   because at 60 s the long glances' clear-road share fell to 75% -- on its
-   floor -- against 83% at 120; the world as built runs both seeds for 60 s,
-   a window in which the old glance crashes four times on seed 1.
+   WHY THE PARTS ARE HELD BY THEIR MECHANISM AND NOT BY CRASHES (22
+   October). Measured over twenty minutes each (tools/measure/
+   lookaway-crashes.mjs, four seeds of 300 s): the old glance 18 crashes,
+   peripheral vision alone 1, gating alone 3, all three 0. Each part does
+   most of the work and neither alone reaches zero -- and at 260 cars the
+   traffic is chaotic, so a change anywhere that perturbs a trajectory
+   moves a count of one or two in a short window. A first version asserted
+   zero for each part alone on one short run apiece and broke the moment
+   the skill changed the warm-up (worldFor warms the world before these
+   flags apply): CLAUDE.md item 3, an implied sample size nobody stated.
+   The mechanisms are read over thousands of glances instead; crashes only
+   where they are far from any floor.
+
+   THE SAMPLE: the old glance crashes 4 times in seed 1's first 60 s and
+   once in seed 2's -- five on the floor of three; the world as built is
+   read on the same two windows; gating's shares need 120 s (at 60 s the
+   clear-road share fell to its floor, 75% against 83%).
 
    Usage: node tools/verify-lookaway.mjs
    ===================================================================== */
@@ -36,25 +48,44 @@ import { worldFor } from "../src/sim/scene.js";
 import { step, seenBy, pathOf, whatStops } from "../src/sim/crossing.js";
 import { lookingAway } from "../src/sim/attention.js";
 import { DT } from "../src/sim/traffic.js";
+import { deficitOf } from "../src/core/driver.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
+const pct = (x) => `${(100 * x).toFixed(0)}%`;
 
 const CARS = 260, SHORT = 60, LONG = 120;
-/* The world #/map builds for watching test map 1, look-away on, with the
-   parts switched off by the checks' own controlled-comparison flags. */
-function run(seed, { blind = false, anyTime = false, secs = SHORT } = {}) {
+/* The world #/map builds for watching test map 1, look-away on, with parts
+   switched off by the checks' own controlled-comparison flags. */
+function run(seed, { blind = false, anyTime = false, heedAll = false, secs = SHORT } = {}) {
   let { world: w } = worldFor(seed, 50, 2.0, false, CARS, null, null, true);
-  w = { ...w, ...(blind ? { noPeriphery: true } : {}), ...(anyTime ? { glanceAnyTime: true } : {}) };
-  let away = 0, still = 0;
+  w = { ...w, ...(blind ? { noPeriphery: true } : {}), ...(anyTime ? { glanceAnyTime: true } : {}), ...(heedAll ? { heedAll: true } : {}) };
+  let away = 0, back = 0;
   const where = { box: 0, line: 0, following: 0, clear: 0 };
+  /* DID A GLANCE FIT WHEN IT WAS TAKEN -- stated here, not read from
+     crossing.js: it did not if it began inside a box, or lasted longer
+     than the time headway to the car ahead or the time to the next stop
+     line. By observation: sound (deficit under 0.2), poor (0.5 or more). */
+  const fit = { sound: [0, 0], poor: [0, 0] };
   for (let i = 0; i < secs / DT; i++) {
+    const prev = w;
     w = step(w);
-    if (i < 200 || i % 4) continue;
+    if (i < 200) continue;
+    const was = new Map(prev.actors.map((a) => [a.id, a]));
+    for (const a of w.actors) {
+      const b = was.get(a.id);
+      if (!b || a.player || !(a.lag > 0) || a.glanceAt !== prev.t || !(b.v > 1)) continue;
+      const d = deficitOf(a.ratings ?? {}, "observation").deficit ?? 0, k = d < 0.2 ? "sound" : d >= 0.5 ? "poor" : null;
+      if (!k) continue;
+      const p = pathOf(prev, b), v = whatStops(b, { ...prev, noPeriphery: true });
+      const unfit = (b.s > p.stopAt && b.s < p.clearAt) || (b.s <= p.stopAt && (p.stopAt - b.s) / b.v < a.lag) || (v.leader && v.gap / b.v < a.lag);
+      fit[k][1]++; if (unfit) fit[k][0]++;
+    }
+    if (i % 4) continue;
     for (const a of w.actors) {
       if (a.player || !(a.v > 1) || !(lookingAway(w.t, a) >= DT)) continue;
       away++;
-      if (seenBy(w, a) !== w.actors) still++;
+      if (seenBy(w, a) === w.actors) back++;
       /* Where the long glances fall: inside a box, within 3 s of a line,
          under 2 s behind the car ahead, or clear road. */
       if (!(a.lag >= 1.5)) continue;
@@ -62,32 +93,41 @@ function run(seed, { blind = false, anyTime = false, secs = SHORT } = {}) {
       where[a.s > p.stopAt && a.s < p.clearAt ? "box" : a.s <= p.stopAt && (p.stopAt - a.s) / a.v < 3 ? "line" : v.leader && v.gap / a.v < 2 ? "following" : "clear"]++;
     }
   }
+  return { crashes: (w.crashes ?? []).length, away, back, where, fit };
+}
+const pool = (rs) => {
+  const where = { box: 0, line: 0, following: 0, clear: 0 }, fit = { sound: [0, 0], poor: [0, 0] };
+  let away = 0, back = 0, crashes = 0;
+  for (const r of rs) {
+    for (const k in where) where[k] += r.where[k];
+    for (const k in fit) { fit[k][0] += r.fit[k][0]; fit[k][1] += r.fit[k][1]; }
+    away += r.away; back += r.back; crashes += r.crashes;
+  }
   const long = Object.values(where).reduce((s, x) => s + x, 0);
-  const share = Object.fromEntries(Object.entries(where).map(([k, n]) => [k, n / Math.max(long, 1)]));
-  return { crashes: (w.crashes ?? []).length, away, still, share };
-}
-const pct = (x) => `${(100 * x).toFixed(0)}%`;
+  return { crashes, away, back, fit, share: Object.fromEntries(Object.entries(where).map(([k, n]) => [k, n / Math.max(long, 1)])) };
+};
 
-console.log(`\n0. THE CONTROL: THE OLD GLANCE -- BLIND, ANY TIME -- ON THE REPRO (test map 1, ${CARS} cars, seed 1, ${LONG} s)`);
-const old = [run(1, { blind: true, anyTime: true, secs: LONG })];
-console.log(`       crashes: ${old[0].crashes}`);
-check(old[0].crashes >= 3, `the old glance crashes on the repro (${old[0].crashes}): the instrument sees glance crashes when there are any`);
+const old = pool([1, 2].map((seed) => run(seed, { blind: true, anyTime: true })));
+const built = pool([1, 2].map((seed) => run(seed)));
+const heeding = pool([run(1, { heedAll: true, secs: LONG })]);
 
-console.log(`\n1. PERIPHERAL VISION, ALONE (the glance taken any time; seed 1, ${SHORT} s)`);
+console.log(`\n0. THE REPRO (test map 1, ${CARS} cars, seeds 1 and 2, ${SHORT} s each)`);
+console.log(`       crashes: the old glance (blind, any time) ${old.crashes}, the world as built ${built.crashes}`);
+check(old.crashes >= 3, `the old glance crashes on the repro (${old.crashes}): the instrument sees glance crashes when there are any`);
+check(built.crashes === 0, `looking away as drivers do: ${built.crashes} crashes on the same windows`);
+
+console.log("\n1. PERIPHERAL VISION: A CUE, NOT AN OFF SWITCH");
 {
-  const r = run(1, { anyTime: true });
-  console.log(`       seed 1: ${r.crashes} crashes, against ${old[0].crashes} blind`);
-  check(r.crashes === 0, `the car ahead looming brings the eyes back: ${r.crashes} crashes`);
-  check(r.still >= 0.5 * r.away, `a moving driver looking away is still away ${pct(r.still / Math.max(r.away, 1))} of the time: the cue is a cue, not an off switch`);
+  const f = built.back / Math.max(built.away, 1);
+  console.log(`       of ${built.away} driver-ticks spent looking away while moving, the car ahead looming had the eyes back for ${pct(f)}`);
+  check(f >= 0.05, `the looming car ahead brings the eyes back: ${pct(f)} of glance time`);
+  check(f <= 0.5, `and most of the time looking away is still away: ${pct(1 - f)}`);
 }
 
-console.log(`\n2. DEMAND GATING, ALONE (the glance blind; seed 1, ${LONG} s)`);
+console.log(`\n2. DEMAND GATING: WHERE THE LONG GLANCES (1.5 s OR MORE) FALL (every driver waiting for the road, seed 1, ${LONG} s, against the old glance)`);
 {
-  const r = run(1, { blind: true, secs: LONG });
-  const s = r.share, o = old[0].share;
-  console.log(`       seed 1: ${r.crashes} crashes, against ${old[0].crashes} taken any time`);
-  console.log(`       long glances (1.5 s or more) by where they fall, gated against any time: box ${pct(s.box)} / ${pct(o.box)}, near a line ${pct(s.line)} / ${pct(o.line)}, following under 2 s ${pct(s.following)} / ${pct(o.following)}, clear road ${pct(s.clear)} / ${pct(o.clear)}`);
-  check(r.crashes === 0, `a glance taken when it fits: ${r.crashes} crashes`);
+  const s = heeding.share, o = old.share;
+  console.log(`       box ${pct(s.box)} / ${pct(o.box)}, near a line ${pct(s.line)} / ${pct(o.line)}, following under 2 s ${pct(s.following)} / ${pct(o.following)}, clear road ${pct(s.clear)} / ${pct(o.clear)}`);
   /* The ruling's words: a long glance belongs on "a straight stretch of
      road that doesn't anticipate steering actions or braking". Stated
      here, not read from the module: three quarters of long glance time on
@@ -96,14 +136,23 @@ console.log(`\n2. DEMAND GATING, ALONE (the glance blind; seed 1, ${LONG} s)`);
   check(s.box <= 0.02 && s.following < o.following, `and off the box (${pct(s.box)}) and the car in front (${pct(s.following)}, against ${pct(o.following)})`);
 }
 
-console.log("\n3. BOTH, THE WORLD AS BUILT");
+console.log("\n3. SKILL: WHO TAKES A GLANCE THAT DOES NOT FIT (the world as built, against every driver waiting for the road)");
 {
-  const rs = [1, 2].map((seed) => run(seed));
-  const n = rs[0].crashes + rs[1].crashes;
-  console.log(`       crashes: seed 1 ${rs[0].crashes}, seed 2 ${rs[1].crashes}, over ${SHORT} s each`);
-  check(n === 0, `looking away as drivers do: ${n} crashes on the repro`);
+  /* The ruling's third part: "good drivers look away when it is safe; poor
+     observers look away when it isn't". Measured first (glance-fit.mjs,
+     180 s): unfit glances, sound / poor -- any time 8% / 28%, every driver
+     waiting 0% / 1%, as built 1% / 17%. Stated here: a sound observer's
+     glances almost always fit; a poor observer's do not, several times as
+     often, and that is the skill and not the road -- with every driver
+     waiting for it, the poor observer's glances fit too. */
+  const ratio = ([u, n]) => u / Math.max(n, 1);
+  const S = ratio(built.fit.sound), P = ratio(built.fit.poor), H = ratio(heeding.fit.poor);
+  console.log(`       glances that did not fit: sound ${pct(S)} of ${built.fit.sound[1]}, poor ${pct(P)} of ${built.fit.poor[1]}; poor observers with everybody waiting for the road ${pct(H)} of ${heeding.fit.poor[1]}`);
+  check(S <= 0.03, `a sound observer's glance almost always fits: ${pct(S)} do not`);
+  check(P >= 0.08 && P >= 3 * S, `a poor observer's often does not: ${pct(P)}`);
+  check(H * 3 <= P, `and it is the skill, not the road: waiting for the road like everybody, ${pct(H)}`);
 }
 
 console.log(`\n${"=".repeat(70)}`);
-console.log(failed ? `${failed} FAILURE(S)` : "OK: on the maintainer's repro the old glance crashes; a glance with the edge of the eye, or taken only when it fits, does not; the long glances fall on clear road; and the world as built crashes nowhere.");
+console.log(failed ? `${failed} FAILURE(S)` : "OK: on the maintainer's repro the old glance crashes and the world as built does not; the looming car ahead brings the eyes back for part of a glance; the long glances fall on clear road; and poor observers take the glances that do not fit.");
 process.exit(failed ? 1 : 0);

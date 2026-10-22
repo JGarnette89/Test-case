@@ -17,6 +17,10 @@ const raw = mapId === "test-1" ? null : TEST_MAPS.find((m) => m.id === mapId).bu
 let { world: w } = worldFor(Number(seedArg), 50, 2.0, false, Number(carsArg), raw, null, true);
 /* NOPERIPH=1: the glance blind (crossing.js noPeriphery), to measure the other parts alone. */
 if (process.env.NOPERIPH === "1") w = { ...w, noPeriphery: true };
+/* HEEDALL=1: every driver waits for the road (crossing.js heedAll), to measure the gating without the skill. */
+if (process.env.HEEDALL === "1") w = { ...w, heedAll: true };
+/* ANYTIME=1: glances taken on the schedule whatever the road (crossing.js glanceAnyTime). */
+if (process.env.ANYTIME === "1") w = { ...w, glanceAnyTime: true };
 const lags = w.actors.filter((a) => !a.player).map((a) => a.lag ?? 0);
 const shares = lags.map((g) => g / LOOK_EVERY);
 const q = (xs, f) => [...xs].sort((a, b) => a - b)[Math.floor(f * (xs.length - 1))];
