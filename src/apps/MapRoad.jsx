@@ -83,16 +83,16 @@ import { CARS, carsFor, carsMaxFor } from "../map/cars.js";
    map, the player starts at the first edge `loadMap` finds
    (`map/edges.js` -- a plain module, not this one, so a headless check
    can ask the same question without Node trying to parse JSX). */
-export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false) {
+export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false) {
   /* The world is built in sim/scene.js, where the sim's worker builds the
      same one from the same arguments (sim/remote.js). */
-  const args = [seed, kmh, every, drive, cars, rawMap, startAt, lookAway];
+  const args = [seed, kmh, every, drive, cars, rawMap, startAt, lookAway, unshaped];
   const { loaded, world, me } = worldFor(...args);
   const b = loaded.bounds;
   const ground = groundFor(loaded, { cell: 20 });
   return {
     /* When this drive began and how it was set (the crash log, below). */
-    t0: world.t, lookAway, seed,
+    t0: world.t, lookAway, seed, shaped: !!world.shape,
     loaded,
     ground,
     centre: { x: b.x + b.w / 2, y: b.y + b.h / 2 },
@@ -149,6 +149,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [limit, setLimit] = useState(50);
   const [playing, setPlaying] = useState(true);
   const [lookAway, setLookAway] = useState(false);
+  const [shapeOn, setShapeOn] = useState(true);
   const [assist, setAssist] = useState("gentle");   // lane assist (settings.js); the frame loop reads assistRef
   const assistRef = useRef("gentle");
   /* THE SIM IN A WORKER: off by default (15 October). On the phone the
@@ -197,10 +198,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const mapId = scene.current.loaded.id;
   const carsMax = carsMaxFor(scene.current.loaded);
 
-  const restart = (s = seed, kmh = limit, m = mode, n = cars, look = lookAway) => {
-    setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n); setLookAway(look);
+  const restart = (s = seed, kmh = limit, m = mode, n = cars, look = lookAway, sh = shapeOn) => {
+    setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n); setLookAway(look); setShapeOn(sh);
     scene.current?.remote?.stop();
-    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look);
+    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look, !sh);
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
     cam.current = { ...newChase(), id: null };
     owed.current = 0; contacts.current = 0; flash.current = 0; free.current = null; setLook(false);
@@ -226,8 +227,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       /* lookAwayOn, not lookAway (22 October): the old key is left unread, so a "look away: on" saved before the maintainer's crossroads gridlock -- every car blind for its whole glance, 5 crashes in 90 s at 260 cars -- comes back off. */
       /* Off by default again (settings.js: the crossroads gridlock without crashes, SIMULATOR item 21); a saved choice under this key stands. */
       const look = s.lookAwayOn === true;
-      if (s.simWorker === true && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look); return; }
-      if (kmh !== limit || m !== mode || n !== cars || look !== lookAway) restart(seed, kmh, m, n, look);
+      const sh = s.shapeOn !== false;
+      if (s.simWorker === true && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look, sh); return; }
+      if (kmh !== limit || m !== mode || n !== cars || look !== lookAway || sh !== shapeOn) restart(seed, kmh, m, n, look, sh);
       if (s.slider === "spring") input.current.state.spring = true;
       if (s.assist in ASSIST) { assistRef.current = s.assist; setAssist(s.assist); }
     });
@@ -434,7 +436,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         /* WHAT THE PLAYER MEETS (sim/encounters.js), since this drive began: the number the game lives on. */
         const es = sc.enc ? encounterSummary(sc.enc) : null;
         /* Overtakes and merges judged on the line too (22 October): density shaping is judged by met, overtakes and decisions a minute, and the highway's decisions are merges -- it has no stop line, so gaps judged (standing at a line) is zero there by definition. */
-        const meetLine = es ? `\nsince the drive began: you met ${es.metPerMin} cars/min within 30 m · following ${es.followingShare}% · followed ${es.followedShare}% · ${es.gapsPerMin} gaps judged/min (${es.minutes} min)\novertook ${es.overtookPerMin}/min · overtaken ${es.overtakenPerMin}/min · merges judged ${es.mergesPerMin}/min${es.mergeGap != null ? ` (median gap taken ${es.mergeGap} m)` : ""}` : "";
+        const meetLine = es ? `\nsince the drive began: you met ${es.metPerMin} cars/min within 30 m · following ${es.followingShare}% · followed ${es.followedShare}% · ${es.gapsPerMin} gaps judged/min (${es.minutes} min, shaping ${sc.shaped ? "on" : "off"})\novertook ${es.overtookPerMin}/min · overtaken ${es.overtakenPerMin}/min · merges judged ${es.mergesPerMin}/min${es.mergeGap != null ? ` (median gap taken ${es.mergeGap} m)` : ""}` : "";
         const taskLine = meetLine + `\nbrowser: long tasks ${g.tasks ?? "n/a"} ms in 5 s${lf ? ` · worst frame ${lf.ms} ms, of which script ${lf.script}${lf.scripts?.[0] ? ` (${lf.scripts[0].where} ${lf.scripts[0].ms})` : ""} and style/layout/paint ${lf.styleLayout}` : ""}${heapLine}`;
         /* THE FRAME BY PART, mean/p95 each (15 October): the sim's own pace is honest now, so
            the frame's cost has to be as legible -- and against what was on screen, so a scene
@@ -728,6 +730,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           <button className="btn" style={{ ...S.chip, borderColor: lookAway ? C.amber : "rgba(255,255,255,0.12)", color: lookAway ? C.white : DIM }}
             onClick={() => { setSetting("lookAwayOn", !lookAway); restart(seed, limit, mode, cars, !lookAway); }}>
             {lookAway ? "Drivers look away: on" : "Drivers look away: off"}</button>
+          {/* Only where the map asks to be shaped: off to read the same build unshaped (DECISIONS 10.17's comparison). A restart, as look-away is. */}
+          {scene.current?.loaded?.traffic?.shape && (
+            <button className="btn" style={{ ...S.chip, borderColor: shapeOn ? C.amber : "rgba(255,255,255,0.12)", color: shapeOn ? C.white : DIM }}
+              onClick={() => { setSetting("shapeOn", !shapeOn); restart(seed, limit, mode, cars, lookAway, !shapeOn); }}>
+              {shapeOn ? "Traffic gathers round you: on" : "Traffic gathers round you: off"}</button>
+          )}
           <span style={S.label}>keys: arrows or WASD, space brakes, q and e signal</span>
         </div>
         {warnings.length > 0 && (
