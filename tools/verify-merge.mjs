@@ -125,7 +125,7 @@ console.log("\n4. NOBODY IS STRANDED");
 check(ran.every((r) => r.longest <= 60), `no joiner stands at the end of its lane over a minute: longest ${ran.map((r) => `${r.longest.toFixed(0)} s at ${r.cars} cars`).join(", ")}`);
 {
   const on = [], off = [];
-  for (const seed of [1, 2]) {
+  for (const seed of [1, 2, 3, 4]) {
     let base = seedGraph(seed, 50, loaded, { target: 150, posted: true });
     for (const at of [120, 165]) {
       while (base.t < at) base = step(base);
@@ -140,9 +140,11 @@ check(ran.every((r) => r.longest <= 60), `no joiner stands at the end of its lan
   }
   console.log(`   the player stopped at the taper, signalling, 150 cars, ${on.length} trials: a takeable gap after ${on.map((t) => t.toFixed(0)).join(", ")} s; without courtesy ${off.map((t) => (isFinite(t) ? t.toFixed(0) : "never")).join(", ")}`);
   check(on.length >= 12 && on.every((t) => t <= 60), `the player is never stranded: a gap a competent driver would take within a minute in every one of ${on.length} trials (worst ${Math.max(...on).toFixed(1)} s)`);
-  /* PAIRED, NOT BY THE MEDIAN (22 October): half the moments have a gap there already, the same with courtesy or without, so a median of 2x failed on 6.2 s against 10.5 while the waits courtesy is for went 50 -> 11, 40 -> 6, 39 -> 9. Courtesy cannot make an existing gap sooner; it is for the tail. And not "no moment worse" either: an offerer slowing can put back a gap that was coming behind it anyway (24.2 s against 24.1, the same day). THE MINUTE ALONE DOES NOT GUARD THE MECHANISM on this sample: with the player's deadline removed it still held (worst 38 s; without courtesy at all, 50) -- this halving is what failed. */
-  const worstOff = Math.max(...off.map((t) => (isFinite(t) ? t : 120)));
-  check(Math.max(...on) <= worstOff / 2, `and courtesy is what gives it: the longest wait ${Math.max(...on).toFixed(1)} s against ${isFinite(Math.max(...off)) ? worstOff.toFixed(1) + " s" : "never"} without`);
+  /* PAIRED, NOT BY THE MEDIAN (22 October): half the moments have a gap there already, the same with courtesy or without, so a median of 2x failed on 6.2 s against 10.5 while the waits courtesy is for went 50 -> 11, 40 -> 6, 39 -> 9. Courtesy cannot make an existing gap sooner; it is for the tail. And not "no moment worse" either: an offerer slowing can put back a gap that was coming behind it anyway (24.2 s against 24.1, the same day). THE MINUTE ALONE DOES NOT GUARD THE MECHANISM on this sample: with the player's deadline removed it still held (worst 38 s; without courtesy at all, 50).
+     RESTATED 22 OCTOBER, verdict "check wrong": it was the worst wait with courtesy against half the worst without -- one extreme trial against another out of sixteen. Anticipation (DECISIONS 10.20) changed how the AI traffic drives, so the warmed worlds and with them the sixteen situations were new ones, and it failed at 33 s against 53. The courtesy code was not the cause: the old courtesy run on the same situations gave the same waits trial for trial. Over 128 trials (stranded.mjs, seeds 1-8): the old code halves 33 of 51 tail waits, the new 20 of 38 (within chance of each other); and the old code's own seeds 5-8 halve only 11 of 25 -- the old pass was the sample. Now: THE TAIL'S TOTAL WAIT with courtesy over its total without, on four seeds -- measured 0.35 (old code), 0.49 (new; 0.51 and 0.48 on each half), 0.94 with the player's deadline removed; the line is 0.7, between them. And a weakness the tracing found, in old and new alike, recorded not fixed: for a player standing at the taper, courtesy fails in a third to a half of the long waits -- the driver asked is too close to brake from 25 m/s to the gap a car at rest needs, passes, and withdraws (SIMULATOR IN FLIGHT). */
+  const tail = off.map((o, i) => [isFinite(o) ? o : 120, isFinite(on[i]) ? on[i] : 120]).filter(([o]) => o >= 20);
+  const ratio = tail.reduce((t, [, w]) => t + w, 0) / Math.max(1, tail.reduce((t, [o]) => t + o, 0));
+  check(tail.length >= 4 && ratio <= 0.7, `and courtesy is what gives it: over the ${tail.length} waits of 20 s or more without it, the total with courtesy is ${ratio.toFixed(2)} of the total without (${tail.map(([o, w]) => `${o.toFixed(0)}->${w.toFixed(0)}`).join(", ")})`);
 }
 
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");

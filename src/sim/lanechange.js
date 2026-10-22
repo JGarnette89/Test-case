@@ -44,7 +44,7 @@
    stays in the old one too, for following, until the blend is over
    (crossing.js `whatStops`).
    ===================================================================== */
-import { deficitOf, knows, soundnessOf, COMPETENT_AT } from "../core/driver.js";
+import { deficitOf, knows, soundnessOf, COMPETENT_AT, anticipates } from "../core/driver.js";
 import { rng } from "../core/rng.js";
 import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
 import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, widthOf, clearBetween, stoppingRoom } from "./traffic.js";
@@ -595,6 +595,18 @@ export function mergePlan(world, out, layout, path, outLeg) {
   const toGone = path.length - outLeg.accelEnd - out.s;
   const standing = out.v < 0.5;
   if (!standing && (toEnd <= 0 || toGone < out.v * ownT + lenOf(out))) return null;
+  /* FROM REST, ONLY FROM THE HEAD OF THE QUEUE (22 October). A joiner
+     standing behind another standing joiner began its merge from two metres
+     back: mid-change it is in both lanes, so it followed the car in front in
+     the lane it was leaving and could not move, while its body held the
+     lane it was entering -- and the head joiner could not merge with it
+     standing there. Each waited on the other for over a minute, the through
+     lane queued behind (verify-merge, seed 4, traced). A driver second in a
+     standing queue at a ramp's end waits for the one in front to go. */
+  if (standing) {
+    const own = exitNeighbours(world, out, layout, path.to, path.length - out.s);
+    if (own.ahead && (own.ahead.v ?? 0) < 0.5 && own.da < toEnd) return null;
+  }
   if (!layout.legAt) return null;
   const toLeg = layout.legAt(outLeg.base, outLeg.pos - 1);
   if (!toLeg || !layout.legs[toLeg] || layout.legs[toLeg].bay || layout.legs[toLeg].accel) return null;
@@ -642,7 +654,14 @@ function mergeStep(world, out, layout, path, outLeg) {
    ===================================================================== */
 const GAP_LOOK = 150;   // m along the lane joined, either way: what a scanning driver weighs -- a flagged design constant
 function gapTarget(world, out, layout, path, outLeg) {
-  if (soundnessOf(out.ratings ?? {}, "observation") < COMPETENT_AT) return null;
+  /* ANTICIPATION (core/driver.js `anticipates`, DECISIONS 10.20): the
+     occasion is this join. Anticipating, the joiner plans from when the
+     lane it joins is knowable -- on the lane, after its registration lag;
+     reacting, it plans nothing and takes the hole beside it when it looks.
+     Was a gate on the DRIVER at COMPETENT_AT: 0.74 never scanned, 0.76
+     always did. */
+  if (!anticipates(out, `join:${out.k ?? 0}:${out.route}`, world)) return null;
+  if (out.s - path.clearAt < (out.notices ?? 0) * Math.max(out.v ?? 0, 1)) return null;
   /* SOMEBODY IS LETTING THEM IN: take it -- do not hang back as well. Both
      dropping back together kept a joiner level with the car making room
      for it until its lane ran out (measured, 22 October). */

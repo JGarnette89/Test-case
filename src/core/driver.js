@@ -196,6 +196,42 @@ export const LACKING_AT = 0.5;
 /* How sound this driver is on an axis, 0..1, with confidence's deviation
    folded in so the five are comparable. */
 export const soundnessOf = (ratings, axis) => 1 - deficitOf(ratings, axis).deficit;
+/* =====================================================================
+   ANTICIPATES THIS OCCASION (DECISIONS 10.15, 10.20). On any occasion that
+   will need them -- a glance falling due, a lane to join, a driver asking
+   to be let in -- a driver either ANTICIPATES, acting from when the need
+   became knowable, or REACTS, acting from when it became pressing; either
+   way after their registration lag (`notices`). Each site says what its
+   occasion, its knowable moment and its pressing moment are; whether this
+   driver anticipates THIS one is decided here and nowhere else.
+   The chance is their observation soundness, and nothing new is chosen.
+   One draw per occasion, from the driver's number and the occasion's key,
+   so the same occasion asked twice gives the same answer and a world
+   replays exactly -- per occasion, not per driver, because attention
+   comes and goes: a weak observer anticipates sometimes, the weaker the
+   less often, which is a rate a player reads over a drive.
+   ===================================================================== */
+const keyHash = (key) => {
+  const s = String(key);
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+};
+/* `world.anticipate`: a check's controlled comparison -- anticipation varied
+   and nothing else about anybody -- never a setting. "all" or "none" for
+   every site, or by site, keyed by the occasion's prefix ({ ask: "none" }):
+   varying every site at once let one site's consequence pass for another's
+   (verify-anticipation, 22 October -- gap-seeking moved the offers' onset). */
+export function anticipates(d, key, world) {
+  const a = world?.anticipate, rule = a && typeof a === "object" ? a[String(key).split(":")[0]] : a;
+  if (rule === "all") return true;
+  if (rule === "none") return false;
+  if (d?.player) return true;
+  const s = soundnessOf(d?.ratings ?? {}, "observation");
+  if (s >= 1) return true;
+  if (s <= 0) return false;
+  return rng((keyHash(key) ^ Math.imul((d?.n ?? 0) + 1, 2654435761)) >>> 0)() < s;
+}
 export const strengthsOf = (d) => AXES.filter((a) => soundnessOf(d?.ratings, a) >= COMPETENT_AT);
 export const lackingIn = (d) => AXES.filter((a) => soundnessOf(d?.ratings, a) <= LACKING_AT);
 /* How far from the optimum confidence sits, as a share of the distance to

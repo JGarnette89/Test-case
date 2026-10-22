@@ -55,7 +55,7 @@ import { rng } from "../core/rng.js";
 import { shape, windowOf, admits } from "./shaping.js";
 import { townOf } from "./towns.js";
 import { knownControl, theirControl } from "./reading.js";
-import { reads, deficitOf } from "../core/driver.js";
+import { reads, anticipates } from "../core/driver.js";
 import { BAY } from "../map/format.js";
 import { lookingAway, loomingRate, LOOMING, lastDue, LOOK_EVERY } from "./attention.js";
 import { placeOf, neighboursAt, approachNeighbours } from "./placement.js";
@@ -488,19 +488,14 @@ function timeFree(me, view, mine, a, t) {
   return free;
 }
 
-/* WHETHER THIS DRIVER WAITS FOR THE ROAD BEFORE THIS GLANCE: the
-   observation axis (DECISIONS 10.19, the ruling's third part: "good drivers
-   look away when it is safe; poor observers look away when it isn't"). A
-   sound observer always does; one with observation deficit d takes a due
-   glance on the schedule, whatever the road is asking, d of the time. One
-   draw per glance, from the driver's number and when the glance fell due,
-   so a world replays exactly and nothing new is chosen: the chance IS the
-   deficit. */
-function heedsRoad(me, last) {
-  const d = deficitOf(me.ratings ?? {}, "observation").deficit ?? 0;
-  if (!(d > 0)) return true;
-  return rng((((me.n ?? 0) * 7919) ^ Math.round(last / DT)) >>> 0)() >= d;
-}
+/* WHETHER THIS DRIVER WAITS FOR THE ROAD BEFORE THIS GLANCE (DECISIONS
+   10.19's third part, "good drivers look away when it is safe; poor
+   observers look away when it isn't"): ANTICIPATION, the one property
+   (core/driver.js `anticipates`, 10.20). The occasion is the due glance;
+   what is knowable is the road's demand, so anticipating they wait until
+   the glance fits; nothing makes a glance pressing, so reacting they take
+   it on the schedule and the periphery catches what it can. */
+const heedsRoad = (world, me, last) => anticipates(me, `glance:${Math.round(last / DT)}`, world);
 
 /* WHAT A DRIVER WHO LOOKED AWAY STILL BELIEVES about another car: where it
    was when they looked away, CARRIED FORWARD at the speed it had then --
@@ -1835,10 +1830,10 @@ export function step(world) {
          quantity every reader meant. */
       const out = { ...at, a: (v - me.v) / DT, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
       if (offer || raw.courtesy) out.courtesy = offer;
-      /* A DUE GLANCE, TAKEN WHEN IT FITS (attention.js, `timeFree` above). `glanceAnyTime` and `heedAll` (every driver waits for the road, whatever their observation): a check's controlled comparisons, never settings. */
+      /* A DUE GLANCE, TAKEN WHEN IT FITS (attention.js, `timeFree` above). `glanceAnyTime`: a check's controlled comparison, never a setting (and `anticipate`, core/driver.js). */
       if ((raw.lag ?? 0) > 0 && !raw.player) {
         const last = raw.glanceAt !== undefined ? raw.glanceAt : lastDue(world.t, raw);
-        out.glanceAt = world.t >= last + LOOK_EVERY && (world.glanceAnyTime || !(world.heedAll || heedsRoad(raw, last)) || timeFree(me, view, mine, a, world.t) >= raw.lag) ? world.t : last;
+        out.glanceAt = world.t >= last + LOOK_EVERY && (world.glanceAnyTime || !heedsRoad(world, raw, last) || timeFree(me, view, mine, a, world.t) >= raw.lag) ? world.t : last;
       }
       /* THE GREEN, NOTICED (the maintainer, 8 October: "some people get
          distracted or are on their phones and don't start right away").

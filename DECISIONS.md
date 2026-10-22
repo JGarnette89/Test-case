@@ -4124,6 +4124,63 @@ sabotage of the one function must fail every site. The merge
 (entry-experience, stranded) and courtesy numbers are re-measured and
 reported, not tuned.
 
+**BUILT, 22 October.** `anticipates(d, key, world)` in core/driver.js;
+the glance (`heedsRoad`), gap-seeking (`gapTarget`), courtesy onset and
+checking behind (`offerOf`, one draw per ask) all read it, and the two
+COMPETENT_AT gates and the glance's own draw are gone. Measured
+(anticipation.mjs, endless highway, 150 cars):
+
+- **The law**: share anticipated against soundness within 0.007 over 4000
+  occasions at each of five levels.
+- **Courtesy onset, varied alone**: a reacting offerer starts 1.3 s later
+  (11.6 -> 12.9 s after the joiner came onto its lane) and brakes a little
+  harder (3.02 -> 3.14 m/s^2); with the reacting branch deleted the same
+  comparison reads -1.7 s and equal peaks. The pressing moment binds: 291 of
+  348 evaluations held a reacting offerer back.
+- **Gap-seeking, as drawn**: sound observers (0.9+) planned 32 of 36 joins,
+  poor ones (under 0.5) 7 of 32.
+- **Checking behind**: offers that braked a follower past its comfortable
+  rate, 6 of 137 anticipating against 11 of 108 reacting (four seeds) --
+  measured, not held: too few per seed.
+- **The merge, as drawn, against the old gate**, eight seeds: joiners who
+  stood 37 (3%) gate against 42 (4%), longest 42 s against 48 -- within
+  chance. Nothing to tune.
+
+**A CHECK PASSED WITH ITS MECHANISM REMOVED, AGAIN (item 3).** Section 2
+first varied every site at once, and with courtesy's reacting branch DELETED
+it still passed: reacting joiners stop planning, and that moved the offers'
+onset by itself. The controlled comparison now varies one site at a time
+(`world.anticipate` by the occasion key's prefix -- `{ ask: "none" }`),
+and the floors are set between the real effect and that null. The general
+lesson: a controlled comparison of a shared property has to vary one
+consumer at a time, or one consumer's consequence passes for another's.
+
+**What it surfaced, in other code, both traced to a cause:**
+- **World wrong: a standing merge deadlock** (lanechange.js `mergePlan`). A
+  joiner at rest second in the queue began its merge two metres behind the
+  standing head joiner; mid-change it followed the car ahead in the lane it
+  was leaving and could not move, while holding the lane it was entering --
+  and the head joiner could not merge with it there. Over 100 s, the through
+  lane queued behind (seed 4). A joiner at rest now merges only from the
+  head of its queue. Present in the old code too; reached by new
+  trajectories.
+- **Check wrong, twice, in verify-merge section 4.** (1) The stranding
+  trial placed the player inside a joiner still mid-merge out of that spot
+  (its route already the road's, so not cleared) -- both waited for two
+  minutes. Now a car still leaving the lane is cleared too. (2) "The worst
+  wait with courtesy at most half the worst without" compared one extreme
+  trial with another out of sixteen; new trajectories drew a new sixteen and
+  it failed 33 against 53. The OLD courtesy code on the same situations gave
+  the same waits trial for trial, and the old code's own seeds 5-8 halve only
+  11 of 25 tail waits -- its pass was the sample. Restated over four seeds:
+  the tail's total wait with courtesy over without, measured 0.35 old, 0.49
+  new, 0.94 with the player's deadline removed; the line is 0.7. Sabotaged
+  (no deadline 0.99, no courtesy 1.00).
+- **Open, recorded not fixed**: for a player standing at the taper,
+  courtesy fails in a third to a half of the long waits, in the old code and
+  the new -- the driver asked is too close to brake from 25 m/s to the gap a
+  car at rest needs; it passes and withdraws, and the next is asked.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

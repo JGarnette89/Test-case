@@ -55,7 +55,7 @@
    coordinate is DISTANCE REMAINING, as everywhere on an exit stretch. The
    offer is the same offer, by the same people, under the same limits.
    ===================================================================== */
-import { soundnessOf, cautionOf, COMPETENT_AT } from "../core/driver.js";
+import { soundnessOf, cautionOf, COMPETENT_AT, anticipates } from "../core/driver.js";
 import { decide, clearBetween, vehicleOf, wantedGap } from "./traffic.js";
 import { mergePlan, laneEndRoom, lagNeed } from "./lanechange.js";
 import { changeTime } from "../core/motion.js";
@@ -220,6 +220,22 @@ export function offerOf(world, me, ask, pl, noticed) {
   /* Only a driver actually in the way: already a following gap back, there is nothing to give. */
   if (d >= wantOf(me, ask, pl)) return null;
   const closing = Math.max(0, (me.v ?? 0) - ask.v), b = me.brake ?? vehicleOf(me).brake;
+  /* ANTICIPATION (core/driver.js `anticipates`, DECISIONS 10.20): the
+     occasion is this ask. Anticipating, the offerer acts from when the ask
+     was knowable (`ask.since`) and its lag -- the plan above. Reacting, from
+     when it is PRESSING: the last moment a lift at their own comfortable
+     braking still opens the gap by the joiner's deadline (`ask.by`), and
+     their lag after that -- by when comfortable is no longer enough, so a
+     reacting offerer brakes at their limit and the gap may open late: 10.12's
+     "a reacting one brakes late and sharp", derived. An ask with no deadline
+     has no pressing moment, so both act on noticing it. */
+  const ahead = anticipates(me, `ask:${ask.id}:${ask.k}:${ask.toLeg}`, world);
+  if (!ahead && ask.by != null) {
+    const gapLeft = Math.max(0, wantOf(me, ask, pl) - d), cv = (me.v ?? 0) - ask.v;
+    /* Time over which braking at b drops back gapLeft more, closing at cv now: b T^2 / 2 = gapLeft + cv T. */
+    const T = (cv + Math.sqrt(cv * cv + 2 * b * gapLeft)) / b;
+    if (ask.by - world.t > T - noticed) return null;
+  }
   /* Coming up from BEHIND faster than the player, they need the room to shed
      it at their own rate before they are alongside; level with the player
      or slower, they fall back at leisure (the easing never brakes harder
@@ -234,7 +250,8 @@ export function offerOf(world, me, ask, pl, noticed) {
      them brake harder than that car's own comfortable rate. One who does
      not check offers anyway, and the braking lands on whoever follows: the
      fault (DECISIONS 10.12). */
-  if (soundnessOf(me.ratings ?? {}, "observation") >= COMPETENT_AT) {
+  /* The same occasion and the same draw (10.20): an offerer who anticipates the joiner anticipates their own follower. Was a gate on the driver at COMPETENT_AT. */
+  if (ahead) {
     const need = courtesyPlan(world, me, ask, pl).need ?? 0;
     const f = followerOf(world, me);
     if (f && need > (f.brake ?? vehicleOf(f).brake) && f.gap < 2 * wantedGap(f, me)) return null;

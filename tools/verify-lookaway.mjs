@@ -18,7 +18,8 @@
         the road leaves at least its length before the driver must act, so
         the long glances move off the box, the line and the car in front
         onto clear road.
-     3. Skill (crossing.js heedsRoad): a poor observer takes a due glance
+     3. Skill (crossing.js heedsRoad, which is anticipation -- core/driver.js
+        anticipates, DECISIONS 10.20): a poor observer takes a due glance
         on the schedule, whatever the road asks, their deficit of the time;
         their glances fail to fit several times as often as a sound
         observer's, and it is the skill -- with everybody waiting for the
@@ -59,7 +60,7 @@ const CARS = 260, SHORT = 60, LONG = 120;
    switched off by the checks' own controlled-comparison flags. */
 function run(seed, { blind = false, anyTime = false, heedAll = false, secs = SHORT } = {}) {
   let { world: w } = worldFor(seed, 50, 2.0, false, CARS, null, null, true);
-  w = { ...w, ...(blind ? { noPeriphery: true } : {}), ...(anyTime ? { glanceAnyTime: true } : {}), ...(heedAll ? { heedAll: true } : {}) };
+  w = { ...w, ...(blind ? { noPeriphery: true } : {}), ...(anyTime ? { glanceAnyTime: true } : {}), ...(heedAll ? { anticipate: { glance: "all" } } : {}) };
   let away = 0, back = 0;
   const where = { box: 0, line: 0, following: 0, clear: 0 };
   /* DID A GLANCE FIT WHEN IT WAS TAKEN -- stated here, not read from
