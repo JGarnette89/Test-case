@@ -21,7 +21,7 @@ export const DEFAULTS = {
   assist: "gentle",     // lane-keeping assist (sim/player.js): "off" | "gentle" | "firm" -- the maintainer asked for it, so it starts on, lightly
   keepAwake: false,
   simWorker: false,     // the sim in a Web Worker: OFF by default since 15 October -- on the phone its answers cost 6-9x the step they carried (SIMULATOR.md); on, to measure the fix against    // keep the phone's screen on while testing (src/wake.js) -- the maintainer, 14 October
-  lookAwayOn: false,    // drivers who look away now and then (sim/attention.js) -- off by default: it makes crashes. Renamed from lookAway on 22 October so a saved "on" resets        // the same, PER MAP: a count chosen for one map is not a count for another (the city has 2.5x test map 1's road)
+  lookAwayOn: true,     // drivers who look away now and then (sim/attention.js) -- ON again since 22 October, as the maintainer ruled once it behaved: a glance is never blindness, is taken when it fits, and is the observation axis (DECISIONS 10.19). Off from earlier the same day, when it was blind and random and gridlocked the crossroads; renamed from lookAway then so a saved "on" reset        // the same, PER MAP: a count chosen for one map is not a count for another (the city has 2.5x test map 1's road)
 };
 
 let current = { ...DEFAULTS };
