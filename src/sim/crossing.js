@@ -433,7 +433,7 @@ export function seenBy(world, me) {
   /* `noPeriphery`: a check's controlled comparison, never a setting. */
   if (!world.noPeriphery && loomed(world, me)) return world.actors;
   const i = Math.min(back, world.past.length);
-  return carriedForward(world, world.past[i - 1], i * DT);
+  return carriedForward(world, world.past[i - 1], i * DT, me.k ?? 0);
 }
 
 /* PERIPHERAL VISION (attention.js LOOMING): the eyes come back a reaction
@@ -442,7 +442,7 @@ export function seenBy(world, me) {
    of the world REACTION_FLOOR ago, as it truly was: no state, and a world
    that replays exactly. Cached per tick per driver. */
 const REACT_TICKS = Math.max(1, Math.round(REACTION_FLOOR / DT));
-const loomCache = new WeakMap();
+const loomCache = new WeakMap(), snapIds = new WeakMap();
 function loomed(world, me) {
   let byId = loomCache.get(world.actors);
   if (!byId) { byId = new Map(); loomCache.set(world.actors, byId); }
@@ -450,11 +450,16 @@ function loomed(world, me) {
   if (out != null) return out;
   out = false;
   const snap = world.past[Math.min(REACT_TICKS, world.past.length) - 1];
-  const then = snap.find((a) => a.id === me.id);
+  /* Indexed once per snapshot, and the queue read at the driver's own node
+     alone (approachNeighbours keeps only that node's cars anyway): a scan of
+     the whole snapshot per glancing driver was a tenth of a 280-car step. */
+  let ids = snapIds.get(snap);
+  if (!ids) { ids = new Map(snap.map((a) => [a.id, a])); snapIds.set(snap, ids); }
+  const then = ids.get(me.id);
   if (then && then.v > 0) {
     const w = { ...world, actors: snap };
     const at = placeOf(world.course, then.k ?? 0, then.route, then.s);
-    const ahead = [at && neighboursAt(w, at.lane, at.c, then).ahead, approachNeighbours(w, then, snap).ahead];
+    const ahead = [at && neighboursAt(w, at.lane, at.c, then).ahead, approachNeighbours(w, then, atNode(world, snap, then.k ?? 0)).ahead];
     for (const n of ahead) {
       if (n && loomingRate(widthOf(n.car), then.v - (n.car.v ?? 0), n.clear) > LOOMING) { out = true; break; }
     }
@@ -506,14 +511,42 @@ const heedsRoad = (world, me, last) => anticipates(me, `glance:${Math.round(last
    perceiver cannot know. Cached per remembered tick and interval, so every
    driver who looked away at the same instant shares one list (and the
    neighbour index its buckets). */
+/* ONLY THE NEIGHBOURHOOD IS CARRIED (22 October; SIMULATOR IN FLIGHT 25).
+   Every reader of a glancing driver's picture goes through its own node
+   and the nodes joined to it -- atNode, nearNode, and relevantTo's index,
+   whose every bucket is filtered to that neighbourhood -- so carrying the
+   whole world copied every car for each moment glances began: ~17
+   pictures and ~5,000 car copies a tick at 280 cars, 57% of what
+   look-away added to a desk step, and on the maintainer's phone the step
+   went 24.6 -> 58.5 ms. Now the snapshot's cars at the reader's
+   neighbourhood, in the snapshot's own order (whatStops keeps the first
+   of equals, so order is behaviour), shared by every glancer at that node
+   and moment. Exact: no reader looks further. Where the index cannot
+   answer -- no map graph, or a check's noIndex -- everybody, as before. */
 const carriedCache = new WeakMap();
-function carriedForward(world, snap, ago) {
+/* ...and ONE COPY OF A CAR per moment and age, shared by every picture
+   it is in: neighbourhoods overlap (a node and its two neighbours on the
+   endless highway), and copying a car once per picture made it up to
+   three times. */
+function carriedForward(world, snap, ago, k) {
+  const whole = world.noIndex || !world.course?.graph;
   let byAgo = carriedCache.get(snap);
   if (!byAgo) { byAgo = new Map(); carriedCache.set(snap, byAgo); }
-  let out = byAgo.get(ago);
+  let at = byAgo.get(ago);
+  if (!at) { at = { pics: new Map(), cars: new Map() }; byAgo.set(ago, at); }
+  const key = whole ? -1 : k;
+  let out = at.pics.get(key);
   if (!out) {
-    out = snap.map((a) => (a.player || a.crash || !(a.v > 0) ? a : { ...a, s: Math.min(a.s + a.v * ago, pathOf(world, a).length) }));
-    byAgo.set(ago, out);
+    const hood = whole ? null : hoodOf(world.course, k);
+    out = [];
+    for (const a of snap) {
+      if (hood && !hood.has(a.k ?? 0)) continue;
+      if (a.player || a.crash || !(a.v > 0)) { out.push(a); continue; }
+      let c = at.cars.get(a);
+      if (!c) { c = { ...a, s: Math.min(a.s + a.v * ago, pathOf(world, a).length) }; at.cars.set(a, c); }
+      out.push(c);
+    }
+    at.pics.set(key, out);
   }
   return out;
 }

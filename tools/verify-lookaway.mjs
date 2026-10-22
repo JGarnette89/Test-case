@@ -173,6 +173,31 @@ console.log("\n4. GLANCES FROM THE FIRST SECOND, ON A WORLD AS #/map BUILDS IT (
   check(share >= 0.03, `and in the first ten seconds drivers are looking away ${pct(share)} of the time, as everywhere after (a glance of median 0.6 s every 6 s is about 10%)`);
 }
 
+console.log("\n5. A GLANCING DRIVER'S PICTURE IS ITS NEIGHBOURHOOD, AND THAT CHANGES NOTHING (test map 1, 260 cars, look-away on, 40 s)");
+{
+  /* WRITTEN 22 OCTOBER with the fix (crossing.js carriedForward; SIMULATOR
+     IN FLIGHT 25): a glancing driver's picture used to copy the whole world
+     for each moment glances began -- ~5,000 car copies a tick at 280 cars,
+     and on the maintainer's phone the highway's step went 24.6 -> 58.5 ms
+     with look-away on. Every reader goes through its own node and the
+     nodes joined to it, so only those are carried now. The second
+     statement of the same answer is a world with no index (world.noIndex),
+     where every reader reads everybody through whole-world pictures: the
+     two must be the same world, tick for tick. */
+  const fingerprint = (w) => w.actors.map((a) => `${a.id}:${a.k}:${a.route}:${a.s.toFixed(6)}:${a.v.toFixed(6)}`).join("|");
+  const runOf = (noIndex) => {
+    let { world: w } = worldFor(3, 50, 2.0, false, CARS, null, null, true);
+    if (noIndex) w = { ...w, noIndex: true };
+    const prints = [];
+    for (let i = 0; i < 40 / DT; i++) { w = step(w); if (i % 20 === 19) prints.push(fingerprint(w)); }
+    return { prints, away: w.actors.filter((a) => lookingAway(w.t, a) > 0).length };
+  };
+  const hood = runOf(false), whole = runOf(true);
+  const first = hood.prints.findIndex((p, i) => p !== whole.prints[i]);
+  check(hood.away > 0, `drivers are looking away in it (${hood.away} at the end)`);
+  check(first === -1, first === -1 ? `the world with neighbourhood pictures is the world with whole-world pictures, every second of 40` : `the two worlds part at ${first + 1} s`);
+}
+
 console.log(`\n${"=".repeat(70)}`);
 console.log(failed ? `${failed} FAILURE(S)` : "OK: on the maintainer's repro the old glance crashes and the world as built does not; the looming car ahead brings the eyes back for part of a glance; the long glances fall on clear road; and poor observers take the glances that do not fit.");
 process.exit(failed ? 1 : 0);
