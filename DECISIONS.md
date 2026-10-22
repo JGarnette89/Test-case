@@ -3906,6 +3906,37 @@ the loop the road ahead of where the player will re-enter is never left
 emptier than unshaped (retiring behind must not strip a lap's worth of
 road the player is about to meet).
 
+**ON, 22 OCTOBER: THE ENDLESS HIGHWAY IS SHAPED** (map/samples.js
+`traffic.shape`), tools/verify-shaping.mjs in the suite. What closed the
+gates:
+- **The jolts were two implementations of the speed a car wants.** A car
+  placed past the box -- an off-ramp -- was built at the speed of the road
+  it came from; the step gave it the exit road's limit the next tick and it
+  braked at its hardest (8 m/s^2), the driver behind with it: every jolt
+  traced was this. The step's exit-limit block is now ONE function
+  (crossing.js `exitLimit`) that placement calls too. 52 hard-braking
+  car-ticks to 0, and the encounter figure rose with it (13.7 to 21.6 met a
+  minute at 160 cars): placements no longer start braking waves.
+- **The loop is never stripped** (section 5): the shaped window's leanest
+  tenth 106-107 cars against an unshaped median of 32-33; sabotaged
+  (retiring, never placing), it starves to 0-4.
+
+**Against the targets, desk, 280 cars, the maintainer's 119%, four seeds
+of 5 minutes** (look-away off): met 7.8 a minute unshaped, 18.5 shaped
+(12.4-23.4), x2.4 -- target x2, MET; overtakes 7.3 against 16.7, x2.3 --
+MET; merges judged 1.3 against 2.35, x1.8 -- target x2, SHORT. So on the
+desk the highway is a PARTIAL result: more traffic and more passing, not
+yet twice the decisions. One crash in four shaped runs, a lane change
+(SIMULATOR IN FLIGHT 26, not a placement). The city -- the gaps-judged
+venue -- is not switched on: its gates are not run there yet.
+
+**PREDICTED FOR THE MAINTAINER'S PHONE, before he reads it** (endless
+highway, 280 cars, his pace, look-away off, shaped against unshaped on one
+build): met ~2.4x his unshaped (his 9.3-10.2 -> ~22-24); overtakes ~2.3x;
+merges judged ~1.8x; frame unchanged within noise (desk step 9.1 against
+8.9 ms, same cars). If met moves and merges do not reach 2x on the phone,
+that is the partial result named above, not a surprise.
+
 ## 10.18 A MARK IS WHAT HAPPENED, WHERE, UNDER WHICH SECTION -- the maintainer's examination model, recorded before any code (22 October)
 
 The maintainer, verbatim, because the reasoning is the content:

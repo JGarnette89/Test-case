@@ -143,7 +143,7 @@ const far = (poseOf, w, a, from) => { const p = poseOf(w, a); return Math.hypot(
    retire gone, and at most one car placed. `make(n, k, route, want, kind)`
    is the arrival's construction (crossing.js carFor); `want(n, kind, k,
    side)` the arrival's choice of route; `poseOf` where an actor is. */
-export function shape(world, next, { n: n0, make, wantAt, poseOf, kindOf, wantsAccel, brakeOf }) {
+export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, poseOf, kindOf, wantsAccel, brakeOf }) {
   const win = windowOf(world, next);
   if (!win) return { next, win: null, retired: 0, placed: null };
   const w = { ...world, actors: next };
@@ -192,7 +192,8 @@ export function shape(world, next, { n: n0, make, wantAt, poseOf, kindOf, wantsA
     const kind = kindOf(n);
     const choice = spot.route ? { route: spot.route, want: null } : wantAt(n, kind, spot.k, spot.side);
     if (!choice?.route) continue;
-    let car = { ...make(n, spot.k, choice.route, choice.want, kind), s: spot.s };
+    /* Settled where it is put -- past the box, the exit road's limit (crossing.js exitLimit) -- before its speed is chosen. */
+    let car = settle({ ...make(n, spot.k, choice.route, choice.want, kind), s: spot.s });
     /* At the traffic's speed: the car ahead's if it is near enough to follow, else their own. */
     const at = placeOf(world.course, car.k, car.route, car.s);
     if (!at || at.lane !== lane) continue;

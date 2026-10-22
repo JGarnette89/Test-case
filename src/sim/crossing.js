@@ -436,6 +436,20 @@ export function seenBy(world, me) {
   return carriedForward(world, world.past[i - 1], i * DT, me.k ?? 0);
 }
 
+/* PAST THE BOX, THE NEW ROAD'S LIMIT: the speed a driver wants on the
+   exit stretch of their path (the step's, below; and density shaping's, for
+   a car it places there -- 22 October: placed past the box at the speed of
+   the road it came from, a car on an off-ramp braked at its hardest the
+   tick after, and the driver behind with it). ONE definition, so a placed
+   car arrives wanting what the step will have it want. */
+export function exitLimit(world, me) {
+  if (!world.road?.posted || me.held != null || !(me.s > pathOf(world, me).clearAt)) return me;
+  const out = postedOutAt(world.course, me.k ?? 0, me.route);
+  if (out == null) return me;
+  const v0 = wantedFor(me, out, me.caution, kindAt(world.course, me.k ?? 0, me.route, "to"));
+  return v0 !== me.v0 ? { ...me, v0 } : me;
+}
+
 /* PERIPHERAL VISION (attention.js LOOMING): the eyes come back a reaction
    time after the car ahead -- in the lane, or in the queue by the rule
    whatStops follows -- loomed past the threshold. So the question is asked
@@ -2003,10 +2017,7 @@ export function step(world) {
          along the road just joined: measured on the highway, a car that
          turned onto it from a 50 km/h side road drove the next 940 m at
          52 km/h. The limit is the road's, from the box's far edge. */
-      if (me && !me.player && !me.crash && world.road.posted && me.held == null && me.s > pathOf(world, me).clearAt) {
-        const out = postedOutAt(world.course, me.k ?? 0, me.route);
-        if (out != null) { const v0 = wantedFor(me, out, me.caution, kindAt(world.course, me.k ?? 0, me.route, "to")); if (v0 !== me.v0) me = { ...me, v0 }; }
-      }
+      if (me && !me.player && !me.crash) me = exitLimit(world, me);
       if (!me || me.player || me.s <= pathOf(world, me).length) return me;
       let wanted = null;
       const on = nextFor(world.course, me.k ?? 0, me.route, (k, side) => { const w = wantFor(world, me, k, side); wanted = w.want; return w.route; });
@@ -2128,6 +2139,8 @@ export function step(world) {
     const sh = shape(world, next, {
       n: spawned,
       make: (n, k, route, want, kind) => carFor(world, n, k, route, want, kind),
+      /* Where it is put: the limit the step would give it there (exitLimit). */
+      settle: (car) => exitLimit(world, car),
       wantAt: (n, kind, k, side) => wantFor(world, { n, kind }, k, side),
       poseOf,
       /* What the placed car would ask of its pedal on its first tick: the leader and the bend. */

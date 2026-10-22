@@ -365,8 +365,8 @@ export function testLoop() {
   /* 3.3 km straights (2.5 until 21 October): two interchanges each, every entrance ON the straight with room after it for its acceleration lane (on a curve the slip road crossed the through curb lane, and the two queued for each other). */
   const L = 3300, R = 600, P = 2 * L + 2 * Math.PI * R;
   m.bounds = { x: -L / 2 - R - 700, y: -R - 700, w: L + 2 * R + 1400, h: 2 * R + 1400 };
-  /* Not yet shaped around the player (sim/shaping.js; DECISIONS 10.17): `shape: true` here turns it on, once verify-shaping passes. */
-  m.traffic = { trucks: 0.12 };
+  /* SHAPED AROUND THE PLAYER (sim/shaping.js; DECISIONS 10.17), since 22 October: verify-shaping passes -- nobody placed or retired in sight, no crash from a placement, no follower braked past comfortable by one, the window never starved on the closed loop. */
+  m.traffic = { trucks: 0.12, shape: true };
   /* Where the loop is, u metres round: the straight along y = -R heading +x, the far bend, back along y = +R, the near bend. */
   const at = (u) => {
     u = ((u % P) + P) % P;
