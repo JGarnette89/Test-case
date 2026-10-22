@@ -4342,6 +4342,54 @@ neighbourhood term is worth. Before 3 starts, the step is SPLIT and measured
 -- fixed per-car work, the neighbour term, per-tick overhead -- and the
 3-5x is predicted from that split, in writing, before any of it is built.
 
+## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October)
+
+**The general finding about how this project fails.** Six times in a week a
+confident conclusion was wrong, and every time the simulation was fine and
+the thing measuring it was not. Scattered across 10.3, 10.4 and the
+SIMULATOR log they read as bad luck; together they are the pattern:
+
+1. **verify-trucks** passed with its own mechanism removed (10.3).
+2. **Standing time** counted what the sim did, not what a driver met.
+3. **The inlined profiler** measured its own overhead into the step.
+4. **The frame line** printed a MEDIAN frame beside the MEANS of its parts,
+   and a 57 ms gap that nobody spent was chased (SIMULATOR 1.2.17).
+5. **The ceiling table** multiplied desk steps by one phone factor, which is
+   not constant and differs by map (SIMULATOR 1.2.18).
+6. **The merge counter**, the most consequential: it read a lane change as
+   the route's `from` lane changing, so it caught 11 of 20 real lane
+   changes near a car and 3 of 9 on the open road -- and its zeros were
+   quoted for a week as evidence about the world (SIMULATOR 27).
+
+**What follows, as practice:**
+- **An unexplained number is an instrument question first.** Before a
+  surprising reading is a finding about the world, the instrument is
+  checked against an INDEPENDENT statement of the same quantity.
+- **TOTALS HIDE EXACTLY THE ERRORS THAT MATTER.** The merge check's first
+  version compared the counter's total with an independent total and PASSED
+  WITH THE BROKEN COUNTER (8 against 10): a counter that misses one kind of
+  event and over-counts another can land near any total. Matched event by
+  event it failed at once (11 of 20). An instrument is checked per event,
+  or per case, wherever it can be.
+- **Every counter has a VENUE, and a number read outside its venue is not a
+  finding.** Seven reports of 0 gaps judged on the endless highway were
+  chased as a fact about traffic; the highway has no stop line, and the
+  number can only exist at one. Which numbers belong where:
+
+| number (sim/encounters.js) | what it is | where it can be nonzero |
+|---|---|---|
+| met a minute | cars within 30 m | anywhere |
+| overtook / overtaken | a car beside, same heading, ahead to behind | multi-lane roads: the highway, arterials |
+| merges judged | a lane change or a join with a car within 30 m in the lane joined | multi-lane roads and entrances: the highway above all |
+| gaps judged | the player STANDING at a stop line while a conflicting car comes on | junctions with a stop line or a light: the city, test map 1 -- NEVER the endless highway |
+| following / followed | headway within 2.5 s | anywhere with a lane to share |
+
+  So density shaping is read as two results, never averaged: the HIGHWAY
+  tests whether cars are near the player (met, overtakes, merges); the CITY
+  tests whether they create decisions (gaps judged). Met rising on both and
+  gaps judged rising only on the city is a real, useful shape of result,
+  not a partial failure.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
