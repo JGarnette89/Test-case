@@ -2776,6 +2776,11 @@ function warmed(w0, acrossIt) {
     actors: w.actors.map((a) => ({
       ...a, stoppedAt: back(a.stoppedAt), openedAt: back(a.openedAt),
       lcDone: back(a.lcDone ?? null),
+      /* ...and when they last looked away (attention.js, 22 October): left on
+         the warm-up's clock it lay in the future, and nobody glanced until the
+         clock caught up -- 20 s on test map 1, 95 s on the endless highway,
+         every world #/map built. */
+      ...(a.glanceAt !== undefined ? { glanceAt: a.glanceAt - shift } : {}),
       ...(a.lc ? { lc: { ...a.lc, t0: a.lc.t0 - shift, ...(a.lc.at != null ? { at: a.lc.at - shift } : {}) } } : {}),
     })),
   };

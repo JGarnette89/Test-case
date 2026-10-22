@@ -4176,6 +4176,19 @@ consumer at a time, or one consumer's consequence passes for another's.
   the tail's total wait with courtesy over without, measured 0.35 old, 0.49
   new, 0.94 with the player's deadline removed; the line is 0.7. Sabotaged
   (no deadline 0.99, no courtesy 1.00).
+- **World wrong, mine, found reading the baselines: the warm-up never moved
+  `glanceAt`.** The rebase after warming moves every instant a driver carries
+  back to the new zero, and `glanceAt` (10.19 step 2) was not among them, so
+  it lay in the future and nobody glanced until the clock caught up -- 20 s
+  on test map 1, 95 s on the endless highway, in every world #/map built
+  since bf667fb. It showed as the highway's step "climbing" from 8 to 30 ms
+  with look-away on: the glances switching on late. On the repro it cost
+  about a tenth of each verify-lookaway window and about 7% of the 300 s
+  rates, equally in every configuration; re-run on the fix the repro holds
+  (the old glance 6, as built 0). verify-lookaway section 4 now holds
+  glances from the first second on the map with the longest warm-up --
+  every section before it skipped its first ten seconds on the map with the
+  shortest, the boundary that hid it (CLAUDE.md item 4). Sabotaged.
 - **Open, recorded not fixed**: for a player standing at the taper,
   courtesy fails in a third to a half of the long waits, in the old code and
   the new -- the driver asked is too close to brake from 25 m/s to the gap a

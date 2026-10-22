@@ -50,6 +50,7 @@ import { step, seenBy, pathOf, whatStops } from "../src/sim/crossing.js";
 import { lookingAway } from "../src/sim/attention.js";
 import { DT } from "../src/sim/traffic.js";
 import { deficitOf } from "../src/core/driver.js";
+import { TEST_MAPS } from "../src/map/samples.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -152,6 +153,24 @@ console.log("\n3. SKILL: WHO TAKES A GLANCE THAT DOES NOT FIT (the world as buil
   check(S <= 0.03, `a sound observer's glance almost always fits: ${pct(S)} do not`);
   check(P >= 0.08 && P >= 3 * S, `a poor observer's often does not: ${pct(P)}`);
   check(H * 3 <= P, `and it is the skill, not the road: waiting for the road like everybody, ${pct(H)}`);
+}
+
+console.log("\n4. GLANCES FROM THE FIRST SECOND, ON A WORLD AS #/map BUILDS IT (the endless highway, 280 cars)");
+{
+  /* WRITTEN 22 OCTOBER, after the bug: the warm-up's rebase moved every
+     instant a driver carries but \`glanceAt\`, so it lay in the future and
+     nobody glanced until the clock caught up -- 20 s on test map 1, 95 s on
+     the endless highway -- in every world #/map built. Every section above
+     skips its first ten seconds, on the map with the shortest warm-up: the
+     boundary that hid it (CLAUDE.md item 4). */
+  const raw = TEST_MAPS.find((m) => m.id === "test-loop").build();
+  let { world: w } = worldFor(1, 50, 2.0, false, 280, raw, null, true);
+  const future = w.actors.filter((a) => a.glanceAt != null && a.glanceAt > w.t).length;
+  let away = 0;
+  for (let i = 0; i < 10 / DT; i++) { w = step(w); away += w.actors.filter((a) => lookingAway(w.t, a) > 0).length; }
+  const share = away / (200 * w.actors.length);
+  check(future === 0, `after the warm-up nobody's last glance lies in the future (${future})`);
+  check(share >= 0.03, `and in the first ten seconds drivers are looking away ${pct(share)} of the time, as everywhere after (a glance of median 0.6 s every 6 s is about 10%)`);
 }
 
 console.log(`\n${"=".repeat(70)}`);
