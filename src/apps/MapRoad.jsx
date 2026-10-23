@@ -150,6 +150,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [playing, setPlaying] = useState(true);
   const [lookAway, setLookAway] = useState(false);
   const [shapeOn, setShapeOn] = useState(true);
+  /* CLEAN MODE (settings.js): for showing the game -- no readout, the debug controls behind More. The frame loop reads cleanRef. */
+  const [clean, setClean] = useState(false);
+  const cleanRef = useRef(false);
+  const [more, setMore] = useState(false);
   const [assist, setAssist] = useState("gentle");   // lane assist (settings.js); the frame loop reads assistRef
   const assistRef = useRef("gentle");
   /* THE SIM IN A WORKER: off by default (15 October). On the phone the
@@ -207,6 +211,18 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     owed.current = 0; contacts.current = 0; flash.current = 0; free.current = null; setLook(false);
   };
 
+  /* Clean mode's defaults, measured best on the maintainer's phone (22 October): 180 cars, shaping on, look-away off. */
+  const cleanCars = () => Math.max(CARS.min, Math.min(carsMax, 180));
+  const toggleClean = () => {
+    const on = !clean;
+    cleanRef.current = on; setClean(on); setMore(false); setSetting("clean", on);
+    if (on) {
+      const n = cleanCars();
+      setSetting("carsByMap", { ...(settings().carsByMap ?? {}), [mapId]: n }); setSetting("lookAwayOn", false); setSetting("shapeOn", true);
+      restart(seed, limit, mode, n, false, true);
+    }
+  };
+
   useEffect(() => { setWarnings(scene.current.loaded.warnings); }, []);
   useEffect(() => { loadWallet().then((w) => { walletRef.current = w; if (scene.current && !scene.current.wallet) scene.current.wallet = w; }); }, []);
   /* The sim's worker goes when the screen does. */
@@ -223,11 +239,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       /* This map's own saved count; test map 1 also honours the one saved
          before counts were per map. */
       const saved = s.carsByMap?.[mapId] ?? (mapId === "test-1" ? s.cars : undefined);
-      const n = Number.isFinite(saved) ? Math.max(CARS.min, Math.min(carsMax, saved)) : cars;
+      if (s.clean === true) { cleanRef.current = true; setClean(true); }
+      const n = s.clean === true ? cleanCars() : Number.isFinite(saved) ? Math.max(CARS.min, Math.min(carsMax, saved)) : cars;
       /* lookAwayOn, not lookAway (22 October): the old key is left unread, so a "look away: on" saved before the maintainer's crossroads gridlock -- every car blind for its whole glance, 5 crashes in 90 s at 260 cars -- comes back off. */
       /* Off by default again (settings.js: the crossroads gridlock without crashes, SIMULATOR item 21); a saved choice under this key stands. */
-      const look = s.lookAwayOn === true;
-      const sh = s.shapeOn !== false;
+      const look = s.clean === true ? false : s.lookAwayOn === true;
+      const sh = s.clean === true ? true : s.shapeOn !== false;
       if (s.simWorker === true && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look, sh); return; }
       if (kmh !== limit || m !== mode || n !== cars || look !== lookAway || sh !== shapeOn) restart(seed, kmh, m, n, look, sh);
       if (s.slider === "spring") input.current.state.spring = true;
@@ -513,10 +530,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         drawNav(ctx, size, sc.jobText, { y: 54, colour: "#ffd34d" });
         drawReceipt(ctx, size, sc.receipt, now / 1000);
         if (sc.wallet) walletRef.current = sc.wallet; else if (walletRef.current) sc.wallet = walletRef.current;
-        drawReadout(ctx, readout.current, 8, size.h - 44, { up: true, maxW: size.w - 80 });
+        if (!cleanRef.current) drawReadout(ctx, readout.current, 8, size.h - 44, { up: true, maxW: size.w - 80 });
         if (flash.current > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * flash.current})`; ctx.fillRect(0, 0, size.w, size.h); flash.current = Math.max(0, flash.current - dt * 2); }
       } else {
-        drawReadout(ctx, readout.current, 8, 6, { maxW: size.w - 16 });
+        if (!cleanRef.current) drawReadout(ctx, readout.current, 8, 6, { maxW: size.w - 16 });
       }
       /* Our own frame callback's time: a slow page shows here, a slow browser does not. */
       /* EVERY PART OF THE FRAME, each with its own p95 (pace.js frameParts): the sim's step when it ran on this
@@ -642,9 +659,14 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             <button key={id} className="btn" style={{ ...S.chip, borderColor: follow === id ? C.amber : "rgba(255,255,255,0.12)", color: follow === id ? C.white : DIM }}
               onClick={() => { if (id === "free") { if (!free.current && lastView.current) free.current = { ...lastView.current }; } else { free.current = null; cam.current = { x: 0, y: 0, z: 0, id: null }; } setFollow(id); }}>{label}</button>
           ))}
+          <button className="btn" style={{ ...S.chip, borderColor: clean ? C.green : "rgba(255,255,255,0.12)", color: clean ? C.white : DIM }}
+            onClick={toggleClean}>{clean ? "Clean mode: on" : "Clean mode: off"}</button>
+          {clean && (
+            <button className="btn" style={S.chip} onClick={() => setMore((v) => !v)}>{more ? "Less" : "More"}</button>
+          )}
           {/* LANE ASSIST (sim/player.js assistSteer): off, gentle, firm. Read by the
               frame loop from a ref, never from React state. */}
-          {mode === "drive" && (
+          {(!clean || more) && mode === "drive" && (
             <button className="btn" style={{ ...S.chip, borderColor: assist !== "off" ? C.green : "rgba(255,255,255,0.12)", color: assist !== "off" ? C.white : DIM }}
               onClick={() => { const next = { off: "gentle", gentle: "firm", firm: "off" }[assist] ?? "gentle"; assistRef.current = next; setAssist(next); setSetting("assist", next); }}>
               Lane assist: {assist}</button>
@@ -655,7 +677,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               8 October, whether the horn never fired or was missed). A
               real horn by the sim's own rule: the world is not otherwise
               touched. */}
-          {mode === "drive" && (
+          {(!clean || more) && mode === "drive" && (
             <button className="btn" style={S.chip} onClick={() => {
               const sc = scene.current;
               if (!sc?.me) return;
@@ -665,9 +687,11 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               if (best) { sc.world = { ...sc.world, actors: sc.world.actors.map((a) => (a.id === best.id ? { ...a, honkAt: sc.world.t, honkTo: "player" } : a)) }; sc.remote?.honk(best.id, "player"); }
             }}>Test horn</button>
           )}
+          {(!clean || more) && (
           <button className="btn" style={{ ...S.chip, borderColor: simWorker ? C.amber : "rgba(255,255,255,0.12)", color: simWorker ? C.white : DIM }}
             title="where the simulation runs: on the page (the default) or in a Web Worker (being fixed; for measuring)"
             onClick={() => { const on = !simWorker && typeof Worker !== "undefined"; workerRef.current = on; setSimWorker(on); setSetting("simWorker", on); restart(); }}>{simWorker ? "Sim: worker" : "Sim: page"}</button>
+          )}
           {/* GO SOMEWHERE (sim/route.js): a place on the map, the route there drawn and said, and the voice when you arrive. */}
           {mode === "drive" && (
             <button className="btn" style={S.chip} onClick={() => {
@@ -727,6 +751,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               onChange={(e) => { const n = Number(e.target.value); setCars(n); setSetting("carsByMap", { ...(settings().carsByMap ?? {}), [mapId]: n }); if (scene.current) { scene.current.world = { ...scene.current.world, target: n }; scene.current.remote?.set("target", n); } }} />
           </label>
           {/* A restart: a world keeps its drivers' recent past only when they can look away. */}
+          {(!clean || more) && (<>
           <button className="btn" style={{ ...S.chip, borderColor: lookAway ? C.amber : "rgba(255,255,255,0.12)", color: lookAway ? C.white : DIM }}
             onClick={() => { setSetting("lookAwayOn", !lookAway); restart(seed, limit, mode, cars, !lookAway); }}>
             {lookAway ? "Drivers look away: on" : "Drivers look away: off"}</button>
@@ -737,6 +762,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               {shapeOn ? "Traffic gathers round you: on" : "Traffic gathers round you: off"}</button>
           )}
           <span style={S.label}>keys: arrows or WASD, space brakes, q and e signal</span>
+          </>)}
         </div>
         {warnings.length > 0 && (
           <div style={S.note}>
