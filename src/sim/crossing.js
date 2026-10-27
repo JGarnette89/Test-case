@@ -44,7 +44,7 @@ import { HONK_AGAIN } from "./horn.js";
 import { askOf, askedOf, offerOf, courtesyAccel, mergeAskOf } from "./courtesy.js";
 import { rivalDue, asRival } from "./rivals.js";
 import { controlUnder, movementLight } from "./signal.js";
-import { laneStep, lateralOf, lateralRate, changing, LC_SPEED, laneEndRoom } from "./lanechange.js";
+import { laneStep, lateralOf, lateralRate, changing, LC_SPEED, laneEndRoom, changeRoom, CHANGE_FROM } from "./lanechange.js";
 import { cornerAccel, speedBy, fits } from "./corner.js";
 export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
@@ -2489,8 +2489,25 @@ export function wantFor(world, me, k, side, told = null) {
     const intent = told ?? me.plan[(me.leg ?? 0) + 1] ?? "straight";
     target = exitOf(all.find((r) => layout.paths[r].intent === intent) ?? all.find((r) => layout.paths[r].intent === "straight") ?? all[0]);
   } else {
+    /* ONLY WHERE THIS DRIVER CAN GET TO (27 October). The exit is drawn as
+       the car reaches this approach -- it knows where it is going one
+       intersection ahead -- and on the city's short blocks that was often a
+       turn needing another lane with no road left to change in: 97% of city
+       drivers in the wrong lane missed the turn they drew, every one on an
+       approach too short to change on (median 50 m; tools/measure/missed-
+       turns.mjs). A driver who knows their route several blocks ahead would
+       have been in the lane already -- destinations, DECISIONS 10.30, not
+       built -- so until then the draw is among the exits this lane makes, and
+       those another lane makes only where there is road to get over
+       (lanechange.js changeRoom, the give-up rule's own). */
+    const path0 = layout.paths[routes[0]];
+    const v = me.v ?? layout.legs[side]?.speed ?? 0;
+    const roomy = path0 && changeRoom(me, path0, CHANGE_FROM, v) >= 0;
+    const mineExits = new Set(routes.map(exitOf));
+    const reachable = roomy ? exits : exits.filter((e) => mineExits.has(e));
+    const pool = reachable.length ? reachable : exits;
     const r = rng(world.seed * 96181 + (me.n ?? 0) * 7919 + k + 1);
-    target = exits[Math.floor(r() * exits.length) % exits.length];
+    target = pool[Math.floor(r() * pool.length) % pool.length];
   }
   /* This lane's way to it only if this vehicle can make it; a truck in a
      curb lane whose right is too tight for it wants the next lane's. */

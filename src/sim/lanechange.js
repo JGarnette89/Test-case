@@ -88,6 +88,21 @@ const BLIND_BEHIND = 10, BLIND_AHEAD = CAR.length;
    20 Hz decision, and asking it twice a second rather than twenty times
    is most of what keeps its cost small (SIMULATOR.md 1.1.13). */
 export const LC_EVERY = 10;
+/* THE ROAD LEFT TO MAKE A CHANGE FOR A TURN BEFORE GIVING IT UP (m), from
+   `s` along the approach: to the stop line, less what the change covers at
+   this driver's own change time, 1.2 times over, and 10 m -- at the speed the
+   car is HEADING FOR, not the speed it has: one begun at 5 m/s 43 m short,
+   pulling away from a line, finished past it at 12.6 (verify-lanes with
+   checks on, 27 October). ONE definition, read by the give-up rule and by
+   the draw of where a driver is going (crossing.js wantFor), so a driver is
+   never handed a turn it has no road to make. */
+export function changeRoom(me, path, s = me.s, v = me.v) {
+  const T0 = LC_TIME / Math.sqrt(vehicleOf(me).lateral ?? 1);
+  const mine = T0 * (1 + 0.5 * (deficitOf(me.ratings ?? {}, "steering").deficit ?? 0));
+  return path.stopAt - s - (Math.max(v ?? 0, me.v0 ?? v ?? 0) * mine * 1.2 + 10);
+}
+/* Where on an approach a change can first begin (laneStep): this far in. */
+export const CHANGE_FROM = 40;
 /* After the looks, how long the decision waits to be taken up: the next
    time the driver considers a change (every LC_EVERY ticks), and a tick. */
 /* ...and while the driver keeps their eyes on the lane they mean to join,
@@ -309,7 +324,7 @@ export function laneStep(world, me, out, view) {
   if (!leg || (leg.across ?? leg.lanes ?? 1) < 2) return quiet(out);
   /* At this vehicle's own sideways comfort: changeTime scales with 1/sqrt(lateral). */
   const T0 = LC_TIME / Math.sqrt(vehicleOf(out).lateral ?? 1);
-  if (out.s < BLIND_BEHIND + 30) return quiet(out);
+  if (out.s < CHANGE_FROM) return quiet(out);
 
   /* THE LANE THE TURN NEEDS -- a MANDATORY change. The driver chose where
      they are going at the last node (crossing.js `routeFor`), and the
@@ -325,7 +340,7 @@ export function laneStep(world, me, out, view) {
        and one begun with only a clean driver's distance left finished
        past the line (verify-lanes). */
     const mine = T0 * (1 + 0.5 * (deficitOf(out.ratings ?? {}, "steering").deficit ?? 0));
-    if (path.stopAt - out.s < out.v * mine * 1.2 + 10) return { ...out, want: null, missedTurns: (out.missedTurns ?? 0) + 1 };
+    if (changeRoom(out, path) < 0) return { ...out, want: null, missedTurns: (out.missedTurns ?? 0) + 1 };
     const here = leg.pos ?? leg.lane;
     const okLanes = Object.values(layout.legs).filter((l) => l.base === leg.base && layout.routesFrom(l.id).some((r) => layout.legs[layout.paths[r].to]?.base === out.want.to && fits(out, layout.paths[r], world.road?.lane))).map((l) => l.pos ?? l.lane);
     if (!okLanes.length) return { ...out, want: null };
