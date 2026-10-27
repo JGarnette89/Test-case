@@ -1,5 +1,7 @@
 # DAY AND NIGHT — the player's two lives (recorded 9 October 2026, NOT BUILT)
 
+**PREREQUISITE NOBODY HAD NOTICED (27 October, DECISIONS 10.30): the sim has no clock.** `world.t` is seconds since the world began; nothing has an hour, a day or a night, and dialogue's `when` tag (day, night, race) is supplied by nothing. Everything below assumes a time of day that does not exist yet.
+
 The maintainer's design direction, verbatim:
 
 > "there is a dual personality to the player. day time (driving tasks,

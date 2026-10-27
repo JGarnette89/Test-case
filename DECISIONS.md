@@ -4201,6 +4201,8 @@ the repro's windows against the world as built's 0.
 
 ## 10.20 ANTICIPATION IS ONE PROPERTY, AND FIVE SITES READ IT -- the design, before code (22 October)
 
+**[A GAP IN THIS PROPERTY, found 27 October (10.30 point 4): ANTICIPATION HAS NO SAY IN LANE CHOICE FOR A TURN. Every driver starts moving toward the lane their next exit needs at the same moment -- the seam onto that intersection's approach -- so a good driver and a poor one are identical in the one place the property should most obviously apply. The property was generalised across these sites and declared general; this site was missed. A gap in the property, not a feature request.]**
+
 10.15 named it: what a driver does about something is set by WHEN they
 start, and the observation axis says when. The maintainer's look-away
 ruling asked for it again ("make anticipation-versus-reaction a general
@@ -5131,6 +5133,19 @@ cars shaped, the city 200 cars; seed 1):
   With destinations, a car retired behind the player never arrives -- out
   of sight, so harmless to what is seen, but it would bias which trips
   survive near the player.
+
+**THREE FINDINGS, RECORDED WITH EMPHASIS (the project lead, 27 October) --
+they shape later work:**
+1. **ANTICIPATION HAS NO SAY IN LANE CHOICE.** A gap in a property declared
+   general (10.20, banner there), not a feature request.
+2. **NO CLOCK EXISTS -- A PREREQUISITE NOBODY HAD NOTICED.** The whole
+   day/night design (DAY-NIGHT.md) and the directional-trip version of trip
+   generation rest on a time of day the sim does not have; `world.t` is
+   seconds since the world began, and dialogue's `when` tag (day, night,
+   race) is supplied by nothing.
+3. **SHAPING AND DESTINATIONS WILL INTERACT.** Nothing conflicts today;
+   once cars have places to reach, retiring them behind the player biases
+   which trips survive near him. Noted now so it is not discovered later.
 
 **5. WHAT EXITS ON THE LOOP WOULD REQUIRE.** Adding exits is a MAP CHANGE
 and the behaviour comes free, at today's level: each new off-ramp is one
