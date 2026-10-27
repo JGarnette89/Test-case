@@ -4433,7 +4433,7 @@ neighbourhood term is worth. Before 3 starts, the step is SPLIT and measured
 -- fixed per-car work, the neighbour term, per-tick overhead -- and the
 3-5x is predicted from that split, in writing, before any of it is built.
 
-## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-9 added 27 October)
+## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-10 added 27 October)
 
 **The general finding about how this project fails.** Six times in a week a
 confident conclusion was wrong, and every time the simulation was fine and
@@ -4472,6 +4472,19 @@ SIMULATOR log they read as bad luck; together they are the pattern:
    detection is compared on worlds with contacts made on purpose
    (contacts-dump.mjs). A gate is checked for whether the code under it
    RUNS in the gate's run, before its "identical" is believed.
+10. **A plausible cause accepted without testing that the cause was
+    present (27 October) -- a different shape from the nine above: not a
+    bad instrument, an untested explanation.** verify-walkers struck a
+    careful pedestrian once the candidate's checks were on, and the
+    explanation reached for -- and agreed by the maintainer and the project
+    lead -- was the feature working: a driver at their mirror is not watching
+    the crossing. verify-walkers runs with PERCEPTION OFF, where a check
+    cannot change what any driver sees; the striker was a sound observer
+    with no look in the three seconds before; and with the checks off,
+    another seed strikes one too (tools/measure/ped-strikers.mjs). Two
+    people agreeing is worth nothing against one measurement. **Before an
+    explanation is accepted, check that its mechanism was active in the run
+    it explains.**
 
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
