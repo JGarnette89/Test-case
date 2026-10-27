@@ -156,10 +156,21 @@ export function gcProbe() {
    HTTP) rises as the page allocates and drops when the collector runs: the
    sum of the rises over a window is the garbage made, and the full
    collections are the ones gcProbe sees. Null where the heap is not exposed. */
+/* BYTES A FRAME AND A STEP (27 October): a desk audit put the frame at
+   ~1.47 MB, and whether the phone agrees is the question. A frame's is the
+   rises over the window over its frames. A step's is read across the step
+   alone -- `step(before)` and `step(after)` around the call -- and is only
+   as good as the heap reading's grain: where the browser updates
+   usedJSHeapSize coarsely the two readings agree and the step "made
+   nothing". So every step is counted as READ (the heap rose), UNCHANGED
+   (it did not move: the instrument's grain, not a free step) or COLLECTED
+   (it fell: a collection inside, its garbage unknowable), and the figure is
+   the mean over the read ones with the counts beside it -- a per-step
+   number from mostly unchanged steps is the grain talking (DECISIONS 10.23). */
 export function heapProbe() {
   const mem = () => (typeof performance !== "undefined" && performance.memory ? performance.memory.usedJSHeapSize : null);
-  const log = [];
-  let last = mem(), full = gcProbe();
+  const log = [], steps = [];
+  let last = mem(), full = gcProbe(), at0 = null;
   return {
     tick(now) {
       const m = mem(), collected = full.tick();
@@ -167,12 +178,29 @@ export function heapProbe() {
       log.push({ t: now, grew: last != null && m > last ? m - last : 0, full: collected });
       last = m;
       while (log.length && now - log[0].t > 5000) log.shift();
+      while (steps.length && now - steps[0].t > 5000) steps.shift();
     },
-    /* Over the last five seconds: MB a second made, full collections, and the heap now. */
+    /* Around one sim step: "before" just ahead of the call, "after" just behind it. */
+    step(when, now) {
+      const m = mem();
+      if (m == null) return;
+      if (when === "before") { at0 = m; return; }
+      if (at0 != null) steps.push({ t: now, d: m - at0 });
+      at0 = null;
+    },
+    /* Over the last five seconds: MB a second made, full collections, the heap
+       now; bytes a frame; and bytes a step over the steps the heap could read. */
     summary() {
       if (mem() == null || log.length < 2) return null;
       const span = (log[log.length - 1].t - log[0].t) / 1000 || 1;
-      return { mbPerS: log.reduce((s, x) => s + x.grew, 0) / span / 1048576, full: log.filter((x) => x.full).length, heapMb: mem() / 1048576 };
+      const made = log.reduce((s, x) => s + x.grew, 0);
+      const read = steps.filter((x) => x.d > 0);
+      return {
+        mbPerS: made / span / 1048576, full: log.filter((x) => x.full).length, heapMb: mem() / 1048576,
+        mbPerFrame: made / log.length / 1048576,
+        mbPerStep: read.length ? read.reduce((s, x) => s + x.d, 0) / read.length / 1048576 : null,
+        steps: { all: steps.length, read: read.length, unchanged: steps.filter((x) => x.d === 0).length, collected: steps.filter((x) => x.d < 0).length },
+      };
     },
   };
 }

@@ -361,8 +361,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             input.current.state.signal = sc.me.signal;   // spent by the turn it caused
             w = withDriver(w, sc.me);
           }
+          heap.current?.step("before");
           const t0 = performance.now();
           w = step(w);
+          heap.current?.step("after", performance.now());
           sc.world = w;
           clockTick(sc.clock ??= newSimClock(), performance.now(), w.t, { stepMs: performance.now() - t0 });
           /* Contact stops the car where it is (sim/scene.js `playerContact`):
@@ -449,7 +451,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         tasks.current ??= taskProbe();
         const g = tasks.current.during(now - 5000, now), lf = g.frame;
         const hp = heap.current?.summary();
-        const heapLine = hp ? ` · garbage at least ${hp.mbPerS.toFixed(0)} MB/s (the heap's rises; a collection inside a frame hides some), ${hp.full} full collections in 5 s, heap ${hp.heapMb.toFixed(0)} MB` : " · heap not exposed";
+        const heapLine = hp ? ` · garbage at least ${hp.mbPerS.toFixed(0)} MB/s (the heap's rises; a collection inside a frame hides some), ${hp.full} full collections in 5 s, heap ${hp.heapMb.toFixed(0)} MB`
+          /* Bytes a frame and a step (perf.js heapProbe): the step's figure with how many steps the heap could read at all -- page mode only. */
+          + `\nallocated: ${hp.mbPerFrame.toFixed(2)} MB a frame (at least) · ${hp.mbPerStep != null ? `${hp.mbPerStep.toFixed(2)} MB a step` : "a step: -"} (of ${hp.steps.all} steps in 5 s: ${hp.steps.read} read, ${hp.steps.unchanged} heap unchanged, ${hp.steps.collected} collected inside${sc.remote ? "; worker mode, steps not read" : ""})` : " · heap not exposed";
         /* WHAT THE PLAYER MEETS (sim/encounters.js), since this drive began: the number the game lives on. */
         const es = sc.enc ? encounterSummary(sc.enc) : null;
         /* Overtakes and merges judged on the line too (22 October): density shaping is judged by met, overtakes and decisions a minute, and the highway's decisions are merges -- it has no stop line, so gaps judged (standing at a line) is zero there by definition. */
