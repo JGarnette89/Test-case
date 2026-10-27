@@ -131,7 +131,8 @@ console.log("\n5. pulling away from a line, test map 1, 260 cars, three minutes"
         if (!b || !(b.stoppedAt != null && !b.going && a.going) || a.k !== b.k) continue;
         launches++;
         const sc = b.scan && first.get(`${a.id}|${b.scan.key}`);
-        if (!sc || !sc.steps?.length || !sc.key?.startsWith(`${b.k ?? 0}:`)) continue;
+        /* Only a look a control asked for (a stop, a yield, a red) holds the start; one made while waiting with no control -- a left turn off a through road -- goes when the gap comes (crossing.js, scan.must). */
+        if (!sc || !sc.must || !sc.steps?.length || !sc.key?.startsWith(`${b.k ?? 0}:`)) continue;
         scanned++;
         if (w.t < sc.until - 1e-9) early.push(`${a.id} moved off at ${w.t.toFixed(2)}, scan until ${sc.until.toFixed(2)}`);
         const drawn = (rec.looks.get(a.id) ?? []).filter(([k, t0]) => (k === "left" || k === "right") && t0 >= sc.steps[0][1] - 1e-9 && t0 <= sc.until).map(([k]) => k).join(",");
@@ -141,7 +142,7 @@ console.log("\n5. pulling away from a line, test map 1, 260 cars, three minutes"
     },
   });
   crashes = (w.crashes ?? []).length;
-  check(scanned >= 30 && order.length === 0, `${scanned} first looks along the cross road before ${launches} launches: left-right-left for a driver who knows it, right-left for one who does not (${order.length} otherwise)${order.length ? ": " + order.slice(0, 3).join("; ") : ""}`);
+  check(scanned >= 30 && order.length === 0, `${scanned} first looks along the cross road a control asked for, before ${launches} launches: left-right-left for a driver who knows it, right-left for one who does not (${order.length} otherwise)${order.length ? ": " + order.slice(0, 3).join("; ") : ""}`);
   check(early.length === 0, `nobody moves off before that look is done (${early.length} did)${early.length ? ": " + early.slice(0, 3).join("; ") : ""}`);
   check(crashes === 0, `and the traffic crashes nothing: ${crashes}`);
 }

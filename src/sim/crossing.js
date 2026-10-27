@@ -1507,7 +1507,7 @@ export function whatStops(me, world) {
      with the way clear is not made to stop to finish looking, and one
      committed at an amber is never held (verify-signs, verify-signal: both
      were, 27 October). */
-  const scanning = world.checks === true && !!me.scan && !me.scan.round && me.stoppedAt != null && (world.t ?? 0) < me.scan.until;
+  const scanning = world.checks === true && !!me.scan && me.scan.must && !me.scan.round && me.stoppedAt != null && (world.t ?? 0) < me.scan.until;
   const held = short && (scanning || walkerAtLine || visit.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0, liveOf(world, me.k)))
     /* The margin, only for the driver at the head of the queue: one behind
        somebody is held by them, and what the head can see decides. */
@@ -1969,10 +1969,18 @@ export function step(world) {
            drivers marked for undue delay on test map 1 (27 October). */
         const lineKey = `${raw.k ?? 0}:${raw.leg ?? 0}`;
         const again = raw.scan?.key === lineKey && stoppedAt != null && world.t >= raw.scan.until + SCAN_AGAIN;
-        if ((raw.scan?.key !== lineKey || again) && !going && s <= mine.stopAt && waitAt(mine, me) - s < SCAN_FROM && v < SCAN_V
-          && (stoppedAt != null || controlOf(me, layoutOf(world, me), mine, world.t, me, liveOf(world, me.k)) !== "none")) {
+        const ctl = (raw.scan?.key !== lineKey || again) && !going && s <= mine.stopAt && waitAt(mine, me) - s < SCAN_FROM && v < SCAN_V
+          ? controlOf(me, layoutOf(world, me), mine, world.t, me, liveOf(world, me.k)) : null;
+        if (ctl != null && (stoppedAt != null || ctl !== "none")) {
           const round = again ? (raw.scan.round ?? 0) + 1 : 0;
-          out.scan = { key: lineKey, round, ...scanChecks(raw, world.t, rng((world.seed ?? 1) * 92821 + (raw.n ?? 0) * 6151 + (raw.leg ?? 0) * 31 + (raw.k ?? 0) + round * 7919)()) };
+          /* `must`: a control asked for it -- a stop, a yield, a red. Only then
+             does the look hold the start (whatStops): a car turning left off a
+             through road with no control at its line looks along the traffic
+             it waits for, and goes when the gap comes. Held to finish a
+             left-right-left there, through-road left turners missed their gaps,
+             queued, and starved a two-way stop's minor legs for good
+             (verify-drive with checks on, 27 October). */
+          out.scan = { key: lineKey, round, must: ctl !== "none", ...scanChecks(raw, world.t, rng((world.seed ?? 1) * 92821 + (raw.n ?? 0) * 6151 + (raw.leg ?? 0) * 31 + (raw.k ?? 0) + round * 7919)()) };
         }
       }
       /* A DUE GLANCE, TAKEN WHEN IT FITS (attention.js, `timeFree` above). `glanceAnyTime`: a check's controlled comparison, never a setting (and `anticipate`, core/driver.js). */

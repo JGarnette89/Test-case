@@ -829,9 +829,22 @@ function attempt(world, out, path, best, T0) {
   else {
     if (out.lcPrep && t < out.lcPrep.ready) return out;   // still looking
     const p = out.lcPrep;
-    const prepared = p && p.dir === best.dir && t <= p.ready + PREP_GRACE;
+    /* A change the driver MUST make -- a merge, a lane for their turn -- is
+       looked for while they seek the gap, not once they have found one: they
+       watch the lane they must join, and go the moment a gap comes. Begun
+       only once a gap was acceptable, the looks outlasted it in dense
+       traffic: at 300 cars on the endless highway joiners stood 3,389 s in
+       all over three seeds against 1,372 without the checks, eleven over a
+       minute on one seed (verify-merge, 27 October). So for those the looks
+       begin when the change is wanted, and the driver stays prepared for as
+       long as they keep wanting it (`seen`); a change of choice is still
+       looked for when its gap is there. */
+    const must = !!(best.mandatory || best.merge);
+    const prepared = p && p.dir === best.dir && t <= (must ? (p.seen ?? p.ready) : p.ready) + PREP_GRACE;
     plan = prepared ? p : lcChecks(out, best.dir, t, r());
     missed = !!inBlind && !plan.shoulder;
+    if (!prepared && plan.steps.length && must) return { ...out, lcPrep: { dir: best.dir, at: t, steps: plan.steps, ready: plan.ready, shoulder: plan.shoulder, late: plan.late, wrong: plan.wrong ?? null, seen: t } };
+    if (prepared && must) out = { ...out, lcPrep: { ...p, seen: t } };
     if (!prepared && plan.steps.length) plan = { ...plan, begin: true };
   }
   if (!leadOk) return out;

@@ -145,7 +145,7 @@ export const sideOf = (kind) => (kind === "left" || kind === "right" ? kind : nu
 export function rebaseLooks(a, shift) {
   const steps = (xs) => (xs ? xs.map(([k, from, to]) => [k, from - shift, to - shift]) : xs);
   const out = { ...a };
-  if (a.lcPrep) out.lcPrep = { ...a.lcPrep, at: a.lcPrep.at - shift, ready: a.lcPrep.ready - shift, steps: steps(a.lcPrep.steps), late: steps(a.lcPrep.late) };
+  if (a.lcPrep) out.lcPrep = { ...a.lcPrep, at: a.lcPrep.at - shift, ready: a.lcPrep.ready - shift, ...(a.lcPrep.seen != null ? { seen: a.lcPrep.seen - shift } : {}), steps: steps(a.lcPrep.steps), late: steps(a.lcPrep.late) };
   if (a.lc?.late) out.lc = { ...a.lc, late: steps(a.lc.late) };
   if (a.scan) out.scan = { ...a.scan, until: a.scan.until - shift, steps: steps(a.scan.steps) };
   if (a.looked) out.looked = Object.fromEntries(Object.entries(a.looked).map(([k, v]) => [k, v - shift]));
