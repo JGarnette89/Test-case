@@ -20,7 +20,7 @@
    and line come from the slider and the wheel (sim/player.js), and
    their route from the signal. Pure: the screen owns the state.
    ===================================================================== */
-import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand } from "./player.js";
+import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand, holdBand, sliderFor, accelFor } from "./player.js";
 import { whatStops, poseOf, AT_LINE } from "./crossing.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
@@ -384,9 +384,10 @@ function cornerFor(me, course, stop) {
 
    FOR SWIMMING TRAFFIC FIRST (the maintainer, 27 October: "to help with
    following the car ahead, when waiting for gaps in traffic to appear when
-   swimming traffic on the highway"): a continuous gauge read at a glance,
-   with the gap in car lengths and whether it is closing. The fault's
-   threshold is a mark on it.
+   swimming traffic on the highway"): the follow target on the throttle bar
+   (followTarget, below) and the time to the car ahead. A gauge of the gap
+   was built first and replaced the same day -- he wanted a control aid,
+   not a readout. `lengths` and `inside` stay for the fault (10.24-10.25).
 
    FOLLOWS TOO CLOSELY, RULED (DECISIONS 10.24): inside 0.75 car lengths --
    CAR.length 4.5 m, so 3.375 m of clear road -- FOR 2-3 SECONDS. The 2-3 s
@@ -432,7 +433,46 @@ export function headwayOf(me, world) {
   const secs = ahead.clear / me.v;
   if (secs >= SHOWN_UNDER) return null;
   /* Closing: how much faster than the car ahead, m/s (negative: dropping back). */
-  return { secs, clear: ahead.clear, id: ahead.car.id, lengths: ahead.clear / CAR.length, closing: me.v - (ahead.car.v ?? 0), inside: ahead.clear < FOLLOWS_CLOSE && me.v >= FOLLOW_FLOOR };
+  return { secs, clear: ahead.clear, id: ahead.car.id, lengths: ahead.clear / CAR.length, closing: me.v - (ahead.car.v ?? 0), vAhead: ahead.car.v ?? 0, inside: ahead.clear < FOLLOWS_CLOSE && me.v >= FOLLOW_FLOOR };
+}
+
+/* THE FOLLOW TARGET ON THE THROTTLE BAR (the maintainer, 27 October,
+   replacing the gauge: "something similar to where it shows you to hold
+   your throttle to maintain speed, the follow indicator would eventually
+   settle within this holding zone once you have matched speed with the car
+   ahead"). A control aid, read by where the thumb is, not a number.
+
+   THE SPEED TO HOLD is the car ahead's while there is room behind them,
+   and less once the player is inside a sound driver's following gap at
+   their speed (traffic.js wantedGap, caution 1), so the gap opens again
+   over T_BACK. The target is the pressure that reaches that speed over
+   MATCH_T -- never later than the brake's one mechanic allows (player.js
+   stopBand): closing on them, at least the constant deceleration that
+   brings the closing speed to zero by the time the room is used up,
+   dv^2 / 2d. Within MATCHED of that speed the target IS the hold band: the
+   settling he described.
+
+   WHAT DID NOT WORK, so neither comes back (verify-headway, both before
+   shipping): (1) the hold band asked at the car ahead's speed -- the band
+   is a dead zone, anywhere in it the car keeps whatever speed it has, so a
+   thumb held there stopped converging up to 6.4 m/s short; (2) dv^2 / 2d
+   alone -- it only approaches their speed, so the player crept in at a
+   hundredth of a metre a second inside the gap, and reached a standstill
+   gap behind a slow car. Not drawn when there is a stop to make (the stop
+   marker takes the band's place), nor when nobody is ahead. */
+const MATCH_T = 3;      // s: how quickly the target asks for the speed to hold -- a flagged design constant
+const T_BACK = 4;       // s: inside the gap, how quickly the target asks for it back -- flagged
+const MATCHED = 0.3;    // m/s: within this of the speed to hold, the target is the hold band
+export function followTarget(me, hw) {
+  if (!hw || !me) return null;
+  const v = me.v ?? 0, vA = Math.max(0, hw.vAhead), g = me.grade ?? 0, dv = v - vA;
+  const room = hw.clear - wantedGap({ v: vA }, { v: vA });
+  const vHold = Math.max(0, room >= 0 ? vA : vA + room / T_BACK);
+  if (Math.abs(v - vHold) < MATCHED) return { ...holdBand(v, g), matched: true, can: true };
+  let a = (vHold - v) / MATCH_T;
+  if (dv > 0) a = Math.min(a, -(dv * dv) / (2 * Math.max(0.5, room)));
+  const at = sliderFor(a, v, g);
+  return { at, lo: at, hi: at, matched: false, can: accelFor(-1, v, g) <= a + 1e-9 };
 }
 
 export function aheadOf(me, course, world = null) {

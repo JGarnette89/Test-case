@@ -24,7 +24,8 @@
 import { worldFor } from "../src/sim/scene.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { step, poseOf } from "../src/sim/crossing.js";
-import { withDriver, headwayOf, FOLLOWS_CLOSE, FOLLOW_FLOOR } from "../src/sim/drive.js";
+import { withDriver, headwayOf, followTarget, FOLLOWS_CLOSE, FOLLOW_FLOOR } from "../src/sim/drive.js";
+import { accelFor, holdBand } from "../src/sim/player.js";
 import { wantedGap } from "../src/sim/traffic.js";
 import { placeOf } from "../src/sim/placement.js";
 import { goodStep } from "./lib/good-driver.mjs";
@@ -82,6 +83,38 @@ for (const [id, label] of [["test-loop", "the endless highway, shaped"], ["city"
   check(r.alongside === 0 && r.otherExit === 0, `never a car beside the player (${r.alongside}) or on another exit (${r.otherExit})`);
   check(r.shown >= r.samples / 10, `it is shown: ${r.shown} of ${r.samples} samples`);
   check(r.flagWrong === 0 && r.closeWrong === 0, `"inside" exactly when under 3.375 m above the floor, and the chevron the right way, every sample shown (${r.flagWrong} and ${r.closeWrong} wrong)`);
+}
+
+/* 5. THE FOLLOW TARGET (drive.js followTarget, the maintainer's "would
+   eventually settle within this holding zone once you have matched
+   speed"). Two cars, the one ahead at a steady speed, the player's thumb
+   kept on the target every tick and the car moved by its own acceleration
+   (player.js accelFor) -- not by the target's arithmetic: the player
+   settles at their speed, inside the hold band, and never gets closer than
+   a standstill gap. The first version (the hold band asked at their speed)
+   failed this: the band is a dead zone, and it stopped 6.4 m/s short. */
+console.log("\nthe follow target on the throttle bar");
+{
+  let cases = 0, unsettled = 0, outside = 0, tooClose = 0, worst = 0, minGap = Infinity;
+  for (const grade of [0, 0.03, -0.03]) for (const vA of [5, 10, 15, 22, 28]) for (const v0 of [3, 8, 14, 20, 30]) {
+    cases++;
+    let v = v0, clear = 2.0 + 0.7 * v0 + 2 * Math.max(0, v0 - vA) * 1.5 + 5, t = null, slider = 0;
+    for (let i = 0; i < 20 * 120; i++) {
+      t = followTarget({ v, grade }, { vAhead: vA, clear });
+      slider = t.at;
+      v = Math.max(0, v + accelFor(slider, v, grade) * 0.05);
+      clear += (vA - v) * 0.05;
+      minGap = Math.min(minGap, clear);
+      if (clear < 2.0) { tooClose++; break; }
+    }
+    const h = holdBand(v, grade);
+    if (Math.abs(v - vA) > 0.3) { unsettled++; worst = Math.max(worst, Math.abs(v - vA)); }
+    if (!t?.matched || slider < h.lo - 1e-9 || slider > h.hi + 1e-9) outside++;
+  }
+  check(unsettled === 0, `thumb on the target, the player settles at the car ahead's speed: ${cases - unsettled} of ${cases} within 0.3 m/s in two minutes (flat, up and down 3%)${unsettled ? `, worst ${worst.toFixed(2)} off` : ""}`);
+  check(outside === 0, `and there the target is the hold band and the thumb in it: ${cases - outside} of ${cases}`);
+  check(tooClose === 0, `never closer than a standstill gap on the way: closest ${minGap.toFixed(1)} m`);
+  check(followTarget({ v: 10 }, null) === null, "nobody ahead, no target");
 }
 
 console.log("\nthe ruled threshold and the speed floor");

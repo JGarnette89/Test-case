@@ -4013,6 +4013,8 @@ the corrected drive sound.
 
 ## 10.18 A MARK IS WHAT HAPPENED, WHERE, UNDER WHICH SECTION -- the maintainer's examination model, recorded before any code (22 October)
 
+**[CORRECTED 27 October by 10.26, from the real score sheet: the principle stands, the axis does not -- headings are MANOEUVRES on a declared route (heading -> phase -> item -> variant), not kinds of place.]**
+
 The maintainer, verbatim, because the reasoning is the content:
 
 *"when delivering an exam, the examiner is only marking errors within a
@@ -4582,6 +4584,8 @@ whether the AI is marked: 2 s and 3 s gave nearly the same counts.
 
 ## 10.25 THE MARKING GUIDE'S HEADINGS, IN THE MAINTAINER'S WORDS -- and follows too closely as the first sectional fault (27 October)
 
+**[PARTLY SUPERSEDED the same day by 10.26, the real sheet: the heading table below is his spoken names, not the sheet's; follows too closely is seven or more entries (Spacing, Gap), not three; the road-classification gap is DROPPED -- headings come from the route. "Only while moving" and the open question of what moving means STAND.]**
+
 The maintainer, verbatim:
 
 *"you can only be following too closely if you are moving, we already have
@@ -4657,6 +4661,84 @@ distance covers, is the maintainer's.
 - **What carries over** (10.18's scoping): detect.js pairs a mark with a
   fault by place, category and time -- an extension to (heading, item,
   place), about 10-20 lines.
+
+## 10.26 THE REAL ONTARIO SCORE SHEET -- and what it corrects in 10.18 and 10.25 (27 October)
+
+The maintainer supplied photographs of the real Ontario road-test score
+sheet. **Recorded from the project lead's reading of them; the photographs
+themselves are not in the repository or on the build machine.** Anything
+below that a later change depends on in detail -- the full item list under
+a phase, the letters of a variant -- is checked against the photographs
+first, not against this summary.
+
+**THE SHEET IS ORGANISED BY MANOEUVRE, NOT BY PLACE.**
+
+    heading -> phase -> item -> variant
+
+- **Headings are manoeuvres**, each with NUMBERED INSTANCES and a
+  COMPLETED box per instance: Turns (Left 1, Left 2, Right 1, Right 2),
+  Business/Residential, Lane Changes (Business L/R, Expressway L/R, two
+  each), Expressway, Curve, Stop Intersection, Through Intersection.
+- **Phases** divide a heading in time. Turns: Approach / If Stop / Turning
+  / Complete Turn. Expressway: Entering / Driving Along / Exiting. Stop
+  Intersection: Approach / Stopping / Starting.
+- **Items** are what is assessed in a phase: Traffic Check, Speed,
+  Spacing, Signal, Lane, Position, Hands/Gears, among others.
+- **Variants** are lettered under an item -- e.g. "Spacing: A_Not 2-3 sec
+  front / B_back / C_out of acc. lane".
+
+**THE HEADING COMES FROM THE ROUTE, NOT FROM THE ROAD.** The maintainer:
+the examiner marks by route, and the route is hand-designed so the same
+manoeuvres happen at the same places, for consistency. A test is a route
+that DECLARES its legs and the manoeuvres it requires (the numbered
+instances), and a mark's heading is the declared manoeuvre the candidate
+is performing when it happens. This is the same object his
+difficulty-progression idea would use.
+
+**CORRECTIONS TO WHAT WAS RECORDED EARLIER -- read before building marking:**
+1. **10.18's model was right in its principle and wrong in its axis.** "A
+   mark is what happened, where, under which heading" stands; but the
+   heading is a MANOEUVRE on a declared route, not a kind of place.
+   10.18's "Intersections" is, on the real sheet, at least two headings
+   (Stop Intersection, Through Intersection) plus the Turns heading's
+   phases.
+2. **10.25's heading table is SUPERSEDED.** "business road", "residential"
+   and "highway driving" are the maintainer's spoken names; the sheet's are
+   Business/Residential (one heading) and Expressway. The verbatim words
+   in 10.25 stand as what he said; the table is not the sheet.
+3. **THE ROAD-CLASSIFICATION WORK IS DROPPED** (10.25's "no road has a
+   heading", the map-data question to scope). Not needed: headings come
+   from the route. What is needed instead is routes that declare their
+   legs and required manoeuvres -- smaller and better defined.
+4. **"Follows too closely" is seven or more entries, not three, and is not
+   called that on the sheet.** SPACING under Business/Residential,
+   Expressway Entering, Expressway Driving Along and Lane Changes; GAP
+   under Turns Approach, Stop Intersection Approach and Through
+   Intersection Approach. 10.24's threshold (0.75 car lengths, held 2-3 s,
+   only while moving) is the maintainer's game translation of the
+   observable; which entry a showing lands in is the route's manoeuvre and
+   phase at that moment. Note the sheet's own variant "A_Not 2-3 sec
+   front": the real standard is the 2-3 s GAP, and the game's distance
+   threshold is the deliberate translation 10.24 records.
+5. **Stopping distance** (10.25) is an existing entry on the sheet; where
+   it sits (which heading and phase) is to be read from the photographs.
+
+**THE LARGEST GAP BETWEEN WHAT IS BUILT AND WHAT AN EXAMINER MARKS:
+TRAFFIC CHECK.** It is the most frequent item on the whole sheet --
+mirrors, blind spot, left-right-left at an intersection, none while
+waiting, not by traffic speed -- and it appears under almost every phase
+of every heading. **The game cannot observe any of it.** The player's car
+has no mirrors, no shoulder check and no head; the AI drivers' looking is
+modelled (attention.js, the observation axis) but never shown as a head
+or a glance an examiner could see. So the item the real examiner marks
+most is the one the game has no observable for at all. This is the same
+gap CLAUDE.md names as "the candidate's observations are not modelled at
+all ... the biggest gap in the whole design", now measured against the
+real sheet: it is not one gap among several, it is most of the sheet.
+
+**NOT STARTED, by instruction.** The record is corrected first; the
+maintainer has not asked for marking work to begin. Nothing marking-
+related is built from this until he does.
 
 ## 11. Verification
 

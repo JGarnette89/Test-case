@@ -1269,6 +1269,11 @@ three-layer reframing, the five axes and R2's build order:
   the candidate *looked*. This is the biggest gap in the whole design and it
   is new modelling, not reuse.
 
+  **Measured against the real Ontario score sheet (DECISIONS 10.26, 27
+  October): TRAFFIC CHECK -- mirrors, blind spot, left-right-left -- is the
+  most frequent item on the whole sheet, under almost every phase of every
+  heading, and the game has no observable for any of it.**
+
   **In the rebuild the first piece is built and measured**: a candidate
   can perceive the world a lag behind (`seenBy` in `src/sim/crossing.js`,
   the old engine's registration delay as a live input). It is OFF by

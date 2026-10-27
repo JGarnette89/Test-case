@@ -31,7 +31,7 @@ import { Play, Pause, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { groundFor } from "../map/load.js";
 import { step, poseOf, DT } from "../sim/crossing.js";
-import { stepDriver, driverPose, withDriver, aheadOf, playerHonk, headwayOf } from "../sim/drive.js";
+import { stepDriver, driverPose, withDriver, aheadOf, playerHonk, headwayOf, followTarget } from "../sim/drive.js";
 import { worldFor, playerContact, START } from "../sim/scene.js";
 import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
@@ -525,8 +525,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         if (turnAhead == null && judgedStop.current.at > judged.current.at) drawStop(ctx, size, 86, me.lastStop, (now - judgedStop.current.at) / 1000);
         else drawCorner(ctx, size, 86, Math.round(me.v * 3.6), turnAhead, me.lastTurn, (now - judged.current.at) / 1000);
         if (tally) { ctx.fillStyle = "rgba(230,232,236,0.6)"; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillText(tally, size.w / 2, 104); }
-        drawSlider(ctx, size, inp.slider, me.v, me.grade ?? 0, ahead.stop);
-        drawHeadway(ctx, size, headwayOf(me, sc.world));
+        const hw = headwayOf(me, sc.world);
+        drawSlider(ctx, size, inp.slider, me.v, me.grade ?? 0, ahead.stop, ahead.stop ? null : followTarget(me, hw));
+        drawHeadway(ctx, size, hw);
         drawWheelBar(ctx, size, inp.steer);
         drawSignals(ctx, size, input.current.state.signal, now);
         drawHorn(ctx, size, sc.me?.honkAt != null && sc.world.t - sc.me.honkAt < HONK_FOR);

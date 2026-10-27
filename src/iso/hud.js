@@ -9,8 +9,6 @@
    ===================================================================== */
 import { SLIDER_W, SLIDER_TOP, SIGNAL_ZONE, HORN_ZONE } from "./controls.js";
 import { NEUTRAL, holdBand } from "../sim/player.js";
-import { FOLLOWS_CLOSE } from "../sim/drive.js";
-import { CAR } from "../sim/traffic.js";
 
 const FONT = "600 10px system-ui, sans-serif";
 
@@ -19,8 +17,11 @@ const FONT = "600 10px system-ui, sans-serif";
    this speed and grade, so it climbs as the car speeds up and as the
    road climbs, and finding it is a readable act rather than guesswork
    -- and the thumb coloured by what it is doing. `v` and `grade` are
-   the car's; without them the band is not drawn. */
-export function drawSlider(ctx, size, slider, v = null, grade = 0, stop = null) {
+   the car's; without them the band is not drawn. `follow` is the band
+   that holds the car ahead's speed (drive.js followTarget): a second,
+   violet marker the thumb is steered onto to match them, which comes to
+   lie inside the hold band as the speeds converge. */
+export function drawSlider(ctx, size, slider, v = null, grade = 0, stop = null, follow = null) {
   const margin = 24, x = size.w - SLIDER_W / 2, top = SLIDER_TOP, bottom = size.h - margin, mid = (top + bottom) / 2;
   const yOf = (u) => mid - (u * (bottom - top)) / 2;
   ctx.lineCap = "round";
@@ -28,7 +29,7 @@ export function drawSlider(ctx, size, slider, v = null, grade = 0, stop = null) 
   ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
   ctx.strokeStyle = "rgba(255,255,255,0.35)";
   ctx.beginPath(); ctx.moveTo(x, yOf(NEUTRAL)); ctx.lineTo(x, yOf(-NEUTRAL)); ctx.stroke();
-  let holding = false, stopping = false;
+  let holding = false, stopping = false, following = false;
   /* THE STOP MARKER takes the hold band's place when there is something
      to stop for (drive.js stopFor): the band is every pressure that
      brings the car to rest at the line, the white bar the pressure that
@@ -66,50 +67,37 @@ export function drawSlider(ctx, size, slider, v = null, grade = 0, stop = null) 
       ctx.fillStyle = "rgba(111,182,255,0.9)"; ctx.font = FONT; ctx.textAlign = "right"; ctx.textBaseline = "middle";
       ctx.fillText("hold", x - 20, yOf(band.at));
     }
+    /* THE FOLLOW TARGET, drawn over the hold band. Matched -- the two
+       overlap -- it says so where "hold" is. */
+    if (follow && follow.at <= 1) {
+      following = slider >= follow.lo - 0.01 && slider <= follow.hi + 0.01;
+      const matched = follow.matched;
+      const f0 = yOf(Math.min(1, follow.hi)), f1 = yOf(Math.max(-1, follow.lo));
+      ctx.strokeStyle = following ? "rgba(190,140,255,0.95)" : "rgba(190,140,255,0.6)"; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(x, f0); ctx.lineTo(x, Math.max(f0 + 1, f1)); ctx.stroke();
+      ctx.strokeStyle = "rgba(190,140,255,0.95)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - 14, yOf(follow.at)); ctx.lineTo(x + 14, yOf(follow.at)); ctx.stroke();
+      ctx.fillStyle = "rgba(190,140,255,0.95)"; ctx.font = FONT; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      ctx.fillText(matched ? "matched" : follow.can ? "follow" : "too close", x - 20, yOf(follow.at) + (matched ? 12 : 0));
+    }
   }
   const y = yOf(slider);
-  ctx.fillStyle = stopping ? (stop.kind === "corner" ? "#4cd0be" : "#ff8a4c") : holding ? "#6fb6ff" : slider > NEUTRAL ? "#6cc070" : slider < -NEUTRAL ? "#e0574f" : "#cfd3da";
+  ctx.fillStyle = stopping ? (stop.kind === "corner" ? "#4cd0be" : "#ff8a4c") : holding ? "#6fb6ff" : following ? "#be8cff" : slider > NEUTRAL ? "#6cc070" : slider < -NEUTRAL ? "#e0574f" : "#cfd3da";
   ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.font = FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(stopping ? (stop.kind === "corner" ? "SLOW" : "STOP") : holding ? "HOLD" : slider > NEUTRAL ? "GO" : slider < -NEUTRAL ? "BRK" : "--", x, y);
+  ctx.fillText(stopping ? (stop.kind === "corner" ? "SLOW" : "STOP") : holding ? "HOLD" : following ? "FLW" : slider > NEUTRAL ? "GO" : slider < -NEUTRAL ? "BRK" : "--", x, y);
 }
 
-/* THE FOLLOWING GAP (drive.js headwayOf): a gauge to swim traffic by,
-   read at a glance with the eyes on the road (the maintainer, 27 October).
-   A thin strip down the outside of the throttle bar, your bumper at the
-   bottom: the bar rises with the gap to the car ahead, on a square-root
-   scale to GAUGE_LENGTHS so the close end -- where it matters -- has the
-   room. A tick at the ruled 0.75 car lengths (DECISIONS 10.24). Neutral
-   while outside it; amber inside it above the speed floor -- the
-   threshold, said, not marked. A chevron says closing or dropping back, so
-   holding station behind somebody is one glance. The figure in car
-   lengths at the top of the strip, the seconds under it. */
-const GAUGE_LENGTHS = 8;   // car lengths at the top of the strip: 36 m, beyond which the bar is full
+/* THE TIME TO THE CAR AHEAD (drive.js headwayOf), top right above the
+   throttle bar: the seconds until the player's front reaches where the car
+   ahead's rear is now. The maintainer kept it when the gauge it sat on was
+   replaced by the follow target (27 October): "keep the current time to
+   impact indicator though, I like it". */
 export function drawHeadway(ctx, size, hw) {
   if (!hw) return;
-  const closeAt = FOLLOWS_CLOSE / CAR.length;
-  const x = size.w - SLIDER_W / 2 + 22, top = SLIDER_TOP, bottom = size.h - 24, h = bottom - top;
-  const yOf = (lengths) => bottom - Math.sqrt(Math.min(1, Math.max(0, lengths) / GAUGE_LENGTHS)) * h;
-  const ink = hw.inside ? "#f2b84b" : "rgba(230,232,236,0.85)";
-  ctx.lineCap = "butt";
-  ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 6;
-  ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
-  ctx.strokeStyle = ink;
-  ctx.beginPath(); ctx.moveTo(x, bottom); ctx.lineTo(x, yOf(hw.lengths)); ctx.stroke();
-  /* The car ahead, where the bar ends, and the ruled threshold. */
-  ctx.fillStyle = ink; ctx.fillRect(x - 6, yOf(hw.lengths) - 2, 12, 4);
-  ctx.strokeStyle = "rgba(242,184,75,0.9)"; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(x - 7, yOf(closeAt)); ctx.lineTo(x + 7, yOf(closeAt)); ctx.stroke();
-  /* Closing (down: the gap shrinking) or dropping back, past half a metre a second. */
-  if (Math.abs(hw.closing) > 0.5) {
-    const y = yOf(hw.lengths) + (hw.closing > 0 ? 10 : -10), d = hw.closing > 0 ? 1 : -1;
-    ctx.fillStyle = ink; ctx.beginPath(); ctx.moveTo(x - 5, y - d * 3); ctx.lineTo(x + 5, y - d * 3); ctx.lineTo(x, y + d * 3); ctx.closePath(); ctx.fill();
-  }
-  ctx.textAlign = "right"; ctx.textBaseline = "bottom"; ctx.fillStyle = ink;
-  ctx.font = "600 13px system-ui, sans-serif";
-  ctx.fillText(`${hw.lengths < 10 ? hw.lengths.toFixed(1) : Math.round(hw.lengths)} car${hw.lengths >= 0.95 && hw.lengths < 1.05 ? "" : "s"}`, size.w - 4, top - 14);
+  ctx.textAlign = "right"; ctx.textBaseline = "bottom";
   ctx.font = FONT; ctx.fillStyle = "rgba(230,232,236,0.6)";
-  ctx.fillText(`${hw.secs.toFixed(1)} s`, size.w - 4, top - 2);
+  ctx.fillText(`${hw.secs.toFixed(1)} s`, size.w - 4, SLIDER_TOP - 2);
 }
 
 /* THE STOP, JUDGED (drive.js): manner before position, the maintainer's
