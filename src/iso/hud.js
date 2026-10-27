@@ -72,6 +72,22 @@ export function drawSlider(ctx, size, slider, v = null, grade = 0, stop = null) 
   ctx.fillText(stopping ? (stop.kind === "corner" ? "SLOW" : "STOP") : holding ? "HOLD" : slider > NEUTRAL ? "GO" : slider < -NEUTRAL ? "BRK" : "--", x, y);
 }
 
+/* THE FOLLOWING GAP (drive.js headwayOf), at the top of the throttle
+   bar on its left: seconds to the car ahead in the lane, and the metres
+   under it. Neutral on purpose -- no colour says close or comfortable
+   until the maintainer has said where those are. */
+export function drawHeadway(ctx, size, hw) {
+  if (!hw) return;
+  const x = size.w - SLIDER_W / 2 - 22, y = SLIDER_TOP + 2;
+  ctx.textAlign = "right"; ctx.textBaseline = "top";
+  ctx.fillStyle = "rgba(230,232,236,0.6)"; ctx.font = FONT;
+  ctx.fillText("car ahead", x, y);
+  ctx.fillStyle = "rgba(230,232,236,0.92)"; ctx.font = "600 15px system-ui, sans-serif";
+  ctx.fillText(`${hw.secs.toFixed(1)} s`, x, y + 12);
+  ctx.fillStyle = "rgba(230,232,236,0.6)"; ctx.font = FONT;
+  ctx.fillText(`${Math.round(hw.clear)} m`, x, y + 30);
+}
+
 /* THE STOP, JUDGED (drive.js): manner before position, the maintainer's
    own rule -- a harsh stop is a braking fault wherever it ends; a
    controlled one in the wrong place is short or over the line. */

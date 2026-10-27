@@ -27,6 +27,8 @@ import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
 import { poseOnGraph, intentOf, normDeg, curbLegOf, exitRouteInto, exitAlong, exitSAt } from "./graph.js";
 import { poseAt } from "./intersection.js";
 import { CAR, DT } from "./traffic.js";
+import { placeOf, laneIndexOf, approachNeighbours } from "./placement.js";
+import { lenOf } from "./traffic.js";
 
 const LANE = 3.6;
 const LAUNCHED = 1.5;        // m/s: moving off, as crossing.js has it
@@ -349,6 +351,68 @@ function cornerFor(me, course, stop) {
   if (d > Math.max(15, 2.5 * stoppingRoom(Math.max(0, me.v - vc)) + 10)) return null;
   const band = slowBand(me.v, d, vc, me.grade ?? 0);
   return band && { ...band, d, vc, kind: "corner" };
+}
+
+/* THE FOLLOWING GAP, AS THE PLAYER CAN SEE IT (27 October, the
+   maintainer: a headway readout on the throttle bar). Following too close
+   is something an examiner marks, and the player had no way to see their
+   own following distance. The time gap to the car ahead in the player's
+   own lane: clear road bumper to bumper over the player's speed -- the
+   time until their front reaches where the car ahead's rear is now, which
+   is how the two-second rule is counted.
+
+   THE CAR AHEAD IN THE LANE, by the two rules the sim follows by, not
+   `whatStops`' leader -- that is whatever presses hardest, a stop line or a
+   car crossing the intersection, and neither is a car being followed. The
+   nearer of: the lane index (placement.js `neighboursAt`), every car in
+   the player's lane by its place along the road, whatever node it is on;
+   and the queue by the rule (`approachNeighbours`), every car from the
+   player's own approach by distance along its own path -- through the box
+   and past where an exit splits, where the lane index sees nobody. The
+   first version read the lane index alone and went blank whenever either
+   car was in a box: on the highway, at every merge and diverge, which is
+   where a following gap matters most (tools/measure/headway-trace.mjs, held
+   car by car against the cars' poses). Still blank: a car beyond the next
+   intersection while the player has not reached it.
+
+   Never a car ALONGSIDE: a changer counts in both its lanes while it
+   moves across (the sim's rule), and one beside the player overlaps them
+   along the road -- the nearest ahead by place, at a negative gap, hid the
+   car really ahead behind it. And never a car that has taken another exit:
+   the queue rule keeps cars from one approach together past where an
+   off-ramp splits; the player is not following a car on the ramp.
+
+   A READOUT, NOT A STANDARD: no colour band and no fault. What gap is too
+   close at this game's scale is the maintainer's (DECISIONS 6, the
+   entitled gap), and whether it is a fault on the sheet -- and which
+   section of the guide -- is his too (10.18). SHOWN_UNDER and MOVING are
+   display constants: past five seconds nobody is following anybody, and
+   under 2 m/s the time gap of a queue creeping forward means nothing. */
+const SHOWN_UNDER = 5;   // s
+const MOVING = 2;        // m/s
+export function headwayOf(me, world) {
+  if (!world || !me || (me.v ?? 0) < MOVING) return null;
+  const at = placeOf(world.course, me.k ?? 0, me.route, me.s);
+  let inLane = null;
+  if (at) {
+    const xs = laneIndexOf(world).get(at.lane) ?? [], half = lenOf(me) / 2;
+    for (const e of xs) {
+      if (e.a.id === me.id || e.c <= at.c) continue;
+      const clear = e.c - at.c - half - lenOf(e.a) / 2;
+      if (clear >= 0 && (!inLane || clear < inLane.clear)) inLane = { car: e.a, clear };
+    }
+  }
+  const L = world.course.at[me.k ?? 0].layout, mine = L.paths[me.route];
+  const q = approachNeighbours(world, me).ahead;
+  const inQueue = q && q.clear >= 0 && (L.paths[q.car.route]?.to === mine.to || q.car.s < L.paths[q.car.route]?.clearAt) ? q : null;
+  /* The same car by both: the queue's gap, which is along the paths the two
+     drive. Just past a box onto an acceleration lane the lane index put the
+     player ~4 m further along than their path does (2.1 m against the poses'
+     6.5, 27 October) -- noted in SIMULATOR 1.2.19, not chased here. */
+  const ahead = inLane && inQueue && inLane.car.id === inQueue.car.id ? inQueue : [inLane, inQueue].filter(Boolean).sort((x, y) => x.clear - y.clear)[0];
+  if (!ahead) return null;
+  const secs = ahead.clear / me.v;
+  return secs < SHOWN_UNDER ? { secs, clear: ahead.clear, id: ahead.car.id } : null;
 }
 
 export function aheadOf(me, course, world = null) {

@@ -1665,7 +1665,7 @@ src/sim/walkers.js       people walking along the sidewalks: out of a door, alon
 src/map/sidewalks.js     sidewalks derived from the road's drawn edge, stopped at the other road's edge at an intersection so two roads' sidewalks cover the corner
 src/sim/towns.js         who drives in a district: a character is a weighting over which axis its people are weak on (DRIVING-SCHOOL.md 3)
 src/sim/exam.js          STAGE 3, the exam mode as a reinterpretation: a candidate drives, the turn taps give the direction, the slider's lower half is your hand
-src/sim/drive.js         the player on the map: the turn signal as the turn commit, lane changes by drifting
+src/sim/drive.js         the player on the map: the turn signal as the turn commit, lane changes by drifting; the following gap to the car ahead (headwayOf)
 src/sim/player.js        the car under the player's two controls: pedal, wheel, grip, contact
 src/map/format.js        the map format: roads as strokes in metres, KINDS with lanes per direction, chunks
 src/map/bays.js          turn bays: a lane that begins before an intersection, its taper derived from the lane change's own numbers
@@ -2066,6 +2066,7 @@ node tools/verify-encounters.mjs   what the player meets: cars within 30 m count
 node tools/verify-mergecount.mjs   merges judged (split from verify-encounters): every lane change near a car counted, on an approach or an exit stretch, held event by event against an independent count from the player's route and the cars' poses
 node tools/verify-voice.mjs        the voice: the limiter's budget held as properties over random events and stated in the check, the lines to their spec, and every detector on its situation and its opposite (stopping for somebody on foot not yet)
 node tools/verify-merge.mjs        acceleration lanes and the merge: the map says which entry (a lane or a yield sign, both drivable); at 60, 150 and 300 cars nobody merges into occupied space, nothing crashes, nobody runs past the lane's taper or reaches a seam in it; merges happen, a driver who knows what the lane is for joins at least 10 km/h faster, the bold merge earlier than the timid, and courtesy reaches the merge
+node tools/verify-headway.mjs      the following gap on the throttle bar: the car the poses say is ahead in the player's lane, at the same gap, wherever both statements are sound; never a car beside the player or on another exit
 node tools/verify-waves.mjs        green waves: a car holding the posted speed from a green meets the next green on every timed link of every map; a corridor runs only where the road has priority (never through an uncontrolled crossroads); one cycle per system and no green shortened; a map with fewer than two linked signals keeps its plans; and in the sim the platoon goes through far more often with the wave than without, nothing crashing
 ```
 

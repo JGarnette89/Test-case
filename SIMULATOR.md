@@ -48,7 +48,7 @@ minute at a frame rate the maintainer can play at (DECISIONS 10.17).**
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
 7. suite cost: 12 at once instead of 8 (1700 -> 1382 s); verify-compliance's 145 runs in worker threads, identical counts (950 -> 448 s under load); the derived suite 1588 -> 1356 s. The pole is now eight checks at 870-1020 s, most of them several independent worlds -- the same treatment would apply (TESTING.md)
 10. ~~THE 57 MS~~ -- CLOSED: a median frame beside mean parts, during the spiral; reproduced with no hidden overhead (SIMULATOR 1.2.17); the readout now prints the frame's mean
-30. THE FOLLOW-CAR INDICATOR (the maintainer, 27 October): a headway readout on the throttle bar -- following too close is markable and the player cannot see their own following distance. NEXT, after which the game layer (rivals with intent, the marking guide, the sectional sheet) is briefed. PERFORMANCE WORK STOPS HERE (1.2.19): the big wins were broken things, and they are fixed
+30. THE FOLLOW-CAR INDICATOR (the maintainer, 27 October): the readout BUILT, neutral, no fault (1.2.20, verify-headway). OPEN for the maintainer: the bands (to be built on the entitled gap already ruled, 0.9 : 0.45 s -- with the traffic's own 0.7 s headway inside it), and whether following too close is a fault and in which sections of the guide (10.18). NEXT, after which the game layer (rivals with intent, the marking guide, the sectional sheet) is briefed. PERFORMANCE WORK STOPS HERE (1.2.19): the big wins were broken things, and they are fixed
 29. ~~LOD~~ -- PARKED with its design and predictions (1.2.19); instead shaping's per-try pass over the fleet, contact detection's string keys and the pose's walk along its path -- exact (17 hashes, contacts old against new), the endless highway -10% on the desk; his phone predicted 19.5 -> ~17.5 ms at 180. The allocation readout (bytes a frame and a step) shipped 2aa7e1e
 28. THE OVERTAKE ASYMMETRY IS NOT THE LATTICE (the maintainer at 108 in a 100: overtook 3.6 a minute, overtaken 0.3). Asked of the AI (tools/measure/overtake-spread.mjs, endless highway, 280 cars, two seeds): wanted speed / limit p10 0.92, median 1.03-1.04, p90 1.17-1.19, max 1.35 -- 19-25% of the fleet wants more than 108%; and AI drivers who want exactly the limit are overtaken 1.3-2.7 a minute and overtake 2.9-3.2. The spread reaches the road; at 108 only about a fifth of the fleet is faster than him, by smaller margins, and his 0.3 is about what that predicts. Closed: he is simply fast
 27. MERGES JUDGED READ ZERO PARTLY BECAUSE THE COUNTER WAS BLIND ON EXIT STRETCHES -- FIXED: it read a lane change as the route's `from` lane changing, catching approach changes and missing most on exit stretches (the old counter matched 11 of 20 real lane changes near a car, 3 of 9 on exit stretches; now 20 of 20, 9 of 9 -- tools/verify-mergecount.mjs, split from verify-encounters, sabotaged). The rest of his zero is sparse traffic (4 in view, 4.5 met a minute): lane changes with a car within 30 m are rare there. The phone's readout shows the counter from this build
@@ -3605,6 +3605,99 @@ for contact detection is still paid -- now cheaper per pose, not avoided.
 **PREDICTED FOR HIS PHONE, before he reads it:** the endless highway at 180
 shaped, step 19.5 -> ~17.5 ms (16.5-18.5); fps a little up, not to 60; the
 world unchanged -- same met a minute within noise. The city: no change.
+
+**AN EXTERNAL PROFILE, RECONCILED (27 October).** A step-scaling report
+from a Gemini run (pasted by the maintainer; NOT in the repo) split the
+step by category. Against this section's own measurements:
+- **Its milliseconds are not usable; its proportions roughly are.** It
+  read 17.93 ms at 180 cars on the endless highway and 40.70 at 400 on the
+  city. Like for like -- it ran UNSHAPED (spawning and shaping 0.00 ms) --
+  the desk reads 5.30 and 15.85 (shaped-hash.mjs, 120 s, the good driver):
+  3.4x and 2.6x apart, so no single factor. Look-away was ruled out as the
+  cause (on against off: 2.0x on the highway, 1.36x on the city -- it
+  cannot make 3.4x and 2.6x). Cost added PER CALL fits, and fits the
+  differing ratios: the highway makes more small calls per millisecond of
+  real work.
+- **AND THAT INSTRUMENT IS BIASED TOWARD ITS OWN HEADLINE.** A cost added
+  per call inflates exactly the category made of many cheap calls -- the
+  neighbour search -- which is the category it then names as dominant: 35%
+  of the highway step, 40% of the city's. Neighbour search IS the largest
+  (a sampling profile, with no per-call cost, puts whatStops at 46% of the
+  shaped highway step inclusive), but its share in that report is
+  overstated by the instrument. DECISIONS 10.23's pattern, in an external
+  tool.
+- **Its 300-car highway column (51.91 ms, above 400's 39.92 in every
+  category) is one run's event, not spawn churn**: unshaped, the loop does
+  fill to 300, and the desk's step is monotone there (8.94 ms at 300, 13.34
+  at 400). Discarded.
+- **Ranked by growth ratio it surfaces trivia** (clearBetween 7.75x for
+  0.36 ms); by absolute growth the list is whatStops, poseOnGraph and the
+  pedestrian functions. poseOnGraph's walk along the path is the segAt fix
+  above. whatStops is the decision core, the index already took 22% off
+  it, and two exact prunes after it moved nothing: left, with performance
+  work.
+- **Shaping 0.00 against 11% is configuration, not disagreement**: it ran
+  unshaped; #/map opens shaped, which is where the shaping fix pays, and on
+  the unshaped city it pays nothing -- as the table above says.
+
+**NOTED, NOT CHASED: the lane index's place just past a box onto an
+acceleration lane.** Tracing the following readout (below), the player
+2 m past the box edge onto the endless highway's acceleration lane was
+placed by placement.js `placeOf` (graph.js exitAlong) ~4 m further along
+the road than its path puts it: 2.1 m to the car ahead on the same path
+by the index, 6.4 by the paths, 6.5 by the poses. Placement and density
+shaping read that index; whether a placement near there is ever wrong by
+it is unmeasured.
+
+##### 1.2.20 The following gap on the throttle bar -- 27 October
+
+The maintainer asked for it: following too close is something an
+examiner marks, and the player had no way to see their own following
+distance. `drive.js headwayOf`, drawn by `hud.js drawHeadway` at the top
+of the throttle bar on its left: "car ahead", the time gap in seconds and
+the metres under it -- the clear road bumper to bumper over the player's
+speed, which is how the two-second rule counts. Shown while the player is
+moving (2 m/s) and the gap is under 5 s (display constants, not a
+standard).
+
+**NEUTRAL, NO FAULT, ON PURPOSE.** What is close at this game's scale and
+whether it is a fault on the sheet are the maintainer's. The scale is
+already ruled, for encroachment: a driver is taught 2-3 s and this
+game's pace does not allow it, so the entitled gap is `LOOKAHEAD` = 0.9 s
+with real driving's 2:1 split kept at 0.9 : 0.45 (DECISIONS 6; CLAUDE.md
+"Encroachment is measured in seconds"). Bands for this readout should be
+built on that, not a fresh 3/2 s. Two things to put to him with it: the
+traffic's own chosen headway is 0.7 s (traffic.js HEADWAY), INSIDE the
+0.9 s it is owed -- flagged unreconciled since stage 0 -- so ordinary
+traffic would read amber on those bands; and the encounter instrument's
+"following" is 2.5 s (encounters.js FOLLOW_S), a third statement of a
+following gap. Whether following too close is one fault or several
+entries by section (DECISIONS 10.18) is his ruling, asked; one standard,
+not varying with speed or weather, until he has driven with it.
+
+**WHICH CAR IS AHEAD, and how that was found** (tools/verify-headway.mjs;
+the trace in tools/measure/headway-trace.mjs). By the two rules the sim
+follows by -- the lane index (every car in the player's lane by its
+place along the road) and the queue by the rule (every car from the
+player's approach, along its own path, through the box) -- the nearer.
+Held sample by sample against the cars' POSES, an independent statement:
+- The first version read the lane index alone and went blank whenever
+  either car was in a box -- on the highway, every merge and diverge. 71
+  of 480 samples on the endless highway named a car the poses saw and the
+  readout did not; 56 on the city.
+- A car alongside the player (a changer counts in both its lanes) sat
+  nearer by place at a negative gap and hid the car really ahead.
+- The queue rule kept a car that had taken an off-ramp as the car ahead.
+- Just past the acceleration lane's box the index's gap was 4 m short
+  (above); the queue's, along the paths, is used when both name one car.
+After: where both statements are sound (same lane by the map, neither in a
+box, nobody changing lane), 55 of 55 on the highway within 0.20 m and 23
+of 23 on the city; never a car beside the player or on another exit.
+Sabotaged -- a car alongside let through, the body lengths dropped from the
+gap -- it fails each. Its boundary, said: the poses are a straight line,
+so a bend, a skewed road and a box are where it cannot speak, and there
+the readout rests on the sim's own two rules. Still blank, by design: a
+car beyond the next intersection while the player has not reached it.
 
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 
