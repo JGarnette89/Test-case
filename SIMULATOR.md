@@ -48,7 +48,7 @@ minute at a frame rate the maintainer can play at (DECISIONS 10.17).**
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
 7. suite cost: 12 at once instead of 8 (1700 -> 1382 s); verify-compliance's 145 runs in worker threads, identical counts (950 -> 448 s under load); the derived suite 1588 -> 1356 s. The pole is now eight checks at 870-1020 s, most of them several independent worlds -- the same treatment would apply (TESTING.md)
 10. ~~THE 57 MS~~ -- CLOSED: a median frame beside mean parts, during the spiral; reproduced with no hidden overhead (SIMULATOR 1.2.17); the readout now prints the frame's mean
-30. THE FOLLOW-CAR INDICATOR (the maintainer, 27 October): the readout BUILT, neutral, no fault (1.2.20, verify-headway). OPEN for the maintainer: the bands (to be built on the entitled gap already ruled, 0.9 : 0.45 s -- with the traffic's own 0.7 s headway inside it), and whether following too close is a fault and in which sections of the guide (10.18). NEXT, after which the game layer (rivals with intent, the marking guide, the sectional sheet) is briefed. PERFORMANCE WORK STOPS HERE (1.2.19): the big wins were broken things, and they are fixed
+30. THE FOLLOW-CAR INDICATOR (the maintainer, 27 October): RULED (DECISIONS 10.24) -- follows too closely is markable: inside 0.75 car lengths (3.375 m) for 2-3 s, the 2-3 s a DWELL not a gap; above a derived floor of 7.1 km/h (where a sound driver's own gap is that). The gauge BUILT (1.2.20, verify-headway). OPEN for the maintainer: one entry or several by section (10.18) -- the fault is not built until then. NEXT, after which the game layer (rivals with intent, the marking guide, the sectional sheet) is briefed. PERFORMANCE WORK STOPS HERE (1.2.19): the big wins were broken things, and they are fixed
 29. ~~LOD~~ -- PARKED with its design and predictions (1.2.19); instead shaping's per-try pass over the fleet, contact detection's string keys and the pose's walk along its path -- exact (17 hashes, contacts old against new), the endless highway -10% on the desk; his phone predicted 19.5 -> ~17.5 ms at 180. The allocation readout (bytes a frame and a step) shipped 2aa7e1e
 28. THE OVERTAKE ASYMMETRY IS NOT THE LATTICE (the maintainer at 108 in a 100: overtook 3.6 a minute, overtaken 0.3). Asked of the AI (tools/measure/overtake-spread.mjs, endless highway, 280 cars, two seeds): wanted speed / limit p10 0.92, median 1.03-1.04, p90 1.17-1.19, max 1.35 -- 19-25% of the fleet wants more than 108%; and AI drivers who want exactly the limit are overtaken 1.3-2.7 a minute and overtake 2.9-3.2. The spread reaches the road; at 108 only about a fifth of the fleet is faster than him, by smaller margins, and his 0.3 is about what that predicts. Closed: he is simply fast
 27. MERGES JUDGED READ ZERO PARTLY BECAUSE THE COUNTER WAS BLIND ON EXIT STRETCHES -- FIXED: it read a lane change as the route's `from` lane changing, catching approach changes and missing most on exit stretches (the old counter matched 11 of 20 real lane changes near a car, 3 of 9 on exit stretches; now 20 of 20, 9 of 9 -- tools/verify-mergecount.mjs, split from verify-encounters, sabotaged). The rest of his zero is sparse traffic (4 in view, 4.5 met a minute): lane changes with a car within 30 m are rare there. The phone's readout shows the counter from this build
@@ -3660,13 +3660,27 @@ speed, which is how the two-second rule counts. Shown while the player is
 moving (2 m/s) and the gap is under 5 s (display constants, not a
 standard).
 
-**NEUTRAL, NO FAULT, ON PURPOSE.** What is close at this game's scale and
+**REBUILT THE SAME DAY AS A GAUGE, on the maintainer's ruling (DECISIONS
+10.24): for swimming traffic first, read at a glance with the eyes on the
+road.** A thin strip down the outside of the throttle bar, the player's
+bumper at its foot, rising with the gap to the car ahead on a square-root
+scale to 8 car lengths (so the close end has the room); a tick at the
+ruled 0.75 car lengths (3.375 m); a chevron for closing or dropping back
+(past 0.5 m/s), so holding station behind somebody while waiting for a gap
+is one glance; the gap in car lengths above it and the seconds under that.
+Neutral outside the threshold, amber inside it above the 7.1 km/h floor
+-- the threshold said, nothing marked. The fault waits on 10.18 (one entry
+or several). The paragraphs below describe the first, text-only version
+and how the car ahead is found, which is unchanged.
+
+**NEUTRAL, NO FAULT, ON PURPOSE (the first version).** What is close at this game's scale and
 whether it is a fault on the sheet are the maintainer's. The scale is
 already ruled, for encroachment: a driver is taught 2-3 s and this
 game's pace does not allow it, so the entitled gap is `LOOKAHEAD` = 0.9 s
 with real driving's 2:1 split kept at 0.9 : 0.45 (DECISIONS 6; CLAUDE.md
-"Encroachment is measured in seconds"). Bands for this readout should be
-built on that, not a fresh 3/2 s. Two things to put to him with it: the
+"Encroachment is measured in seconds"). [SUPERSEDED the same day by DECISIONS
+10.24: the maintainer ruled the threshold a DISTANCE, 0.75 car lengths, not a
+time -- the entitled gap stays encroachment's.] Two things to put to him with it: the
 traffic's own chosen headway is 0.7 s (traffic.js HEADWAY), INSIDE the
 0.9 s it is owed -- flagged unreconciled since stage 0 -- so ordinary
 traffic would read amber on those bands; and the encounter instrument's

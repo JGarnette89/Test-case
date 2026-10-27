@@ -9,6 +9,8 @@
    ===================================================================== */
 import { SLIDER_W, SLIDER_TOP, SIGNAL_ZONE, HORN_ZONE } from "./controls.js";
 import { NEUTRAL, holdBand } from "../sim/player.js";
+import { FOLLOWS_CLOSE } from "../sim/drive.js";
+import { CAR } from "../sim/traffic.js";
 
 const FONT = "600 10px system-ui, sans-serif";
 
@@ -72,20 +74,42 @@ export function drawSlider(ctx, size, slider, v = null, grade = 0, stop = null) 
   ctx.fillText(stopping ? (stop.kind === "corner" ? "SLOW" : "STOP") : holding ? "HOLD" : slider > NEUTRAL ? "GO" : slider < -NEUTRAL ? "BRK" : "--", x, y);
 }
 
-/* THE FOLLOWING GAP (drive.js headwayOf), at the top of the throttle
-   bar on its left: seconds to the car ahead in the lane, and the metres
-   under it. Neutral on purpose -- no colour says close or comfortable
-   until the maintainer has said where those are. */
+/* THE FOLLOWING GAP (drive.js headwayOf): a gauge to swim traffic by,
+   read at a glance with the eyes on the road (the maintainer, 27 October).
+   A thin strip down the outside of the throttle bar, your bumper at the
+   bottom: the bar rises with the gap to the car ahead, on a square-root
+   scale to GAUGE_LENGTHS so the close end -- where it matters -- has the
+   room. A tick at the ruled 0.75 car lengths (DECISIONS 10.24). Neutral
+   while outside it; amber inside it above the speed floor -- the
+   threshold, said, not marked. A chevron says closing or dropping back, so
+   holding station behind somebody is one glance. The figure in car
+   lengths at the top of the strip, the seconds under it. */
+const GAUGE_LENGTHS = 8;   // car lengths at the top of the strip: 36 m, beyond which the bar is full
 export function drawHeadway(ctx, size, hw) {
   if (!hw) return;
-  const x = size.w - SLIDER_W / 2 - 22, y = SLIDER_TOP + 2;
-  ctx.textAlign = "right"; ctx.textBaseline = "top";
-  ctx.fillStyle = "rgba(230,232,236,0.6)"; ctx.font = FONT;
-  ctx.fillText("car ahead", x, y);
-  ctx.fillStyle = "rgba(230,232,236,0.92)"; ctx.font = "600 15px system-ui, sans-serif";
-  ctx.fillText(`${hw.secs.toFixed(1)} s`, x, y + 12);
-  ctx.fillStyle = "rgba(230,232,236,0.6)"; ctx.font = FONT;
-  ctx.fillText(`${Math.round(hw.clear)} m`, x, y + 30);
+  const closeAt = FOLLOWS_CLOSE / CAR.length;
+  const x = size.w - SLIDER_W / 2 + 22, top = SLIDER_TOP, bottom = size.h - 24, h = bottom - top;
+  const yOf = (lengths) => bottom - Math.sqrt(Math.min(1, Math.max(0, lengths) / GAUGE_LENGTHS)) * h;
+  const ink = hw.inside ? "#f2b84b" : "rgba(230,232,236,0.85)";
+  ctx.lineCap = "butt";
+  ctx.strokeStyle = "rgba(255,255,255,0.12)"; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+  ctx.strokeStyle = ink;
+  ctx.beginPath(); ctx.moveTo(x, bottom); ctx.lineTo(x, yOf(hw.lengths)); ctx.stroke();
+  /* The car ahead, where the bar ends, and the ruled threshold. */
+  ctx.fillStyle = ink; ctx.fillRect(x - 6, yOf(hw.lengths) - 2, 12, 4);
+  ctx.strokeStyle = "rgba(242,184,75,0.9)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x - 7, yOf(closeAt)); ctx.lineTo(x + 7, yOf(closeAt)); ctx.stroke();
+  /* Closing (down: the gap shrinking) or dropping back, past half a metre a second. */
+  if (Math.abs(hw.closing) > 0.5) {
+    const y = yOf(hw.lengths) + (hw.closing > 0 ? 10 : -10), d = hw.closing > 0 ? 1 : -1;
+    ctx.fillStyle = ink; ctx.beginPath(); ctx.moveTo(x - 5, y - d * 3); ctx.lineTo(x + 5, y - d * 3); ctx.lineTo(x, y + d * 3); ctx.closePath(); ctx.fill();
+  }
+  ctx.textAlign = "right"; ctx.textBaseline = "bottom"; ctx.fillStyle = ink;
+  ctx.font = "600 13px system-ui, sans-serif";
+  ctx.fillText(`${hw.lengths < 10 ? hw.lengths.toFixed(1) : Math.round(hw.lengths)} car${hw.lengths >= 0.95 && hw.lengths < 1.05 ? "" : "s"}`, size.w - 4, top - 14);
+  ctx.font = FONT; ctx.fillStyle = "rgba(230,232,236,0.6)";
+  ctx.fillText(`${hw.secs.toFixed(1)} s`, size.w - 4, top - 2);
 }
 
 /* THE STOP, JUDGED (drive.js): manner before position, the maintainer's

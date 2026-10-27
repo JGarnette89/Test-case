@@ -16,11 +16,16 @@
 
    1. Where both are sound, the same car, the gap within 0.5 m.
    2. Never a car alongside, never a car on another exit.
-   3. It appears: the shaped highway and the city both show it often. */
+   3. It appears: the shaped highway and the city both show it often.
+   4. The maintainer's ruling (DECISIONS 10.24), stated HERE and not read
+      from the code: inside 0.75 car lengths of a 4.5 m car, 3.375 m, flagged
+      only above the speed where a sound driver's own following gap is that
+      -- a property of the following model, so a wrong floor fails it. */
 import { worldFor } from "../src/sim/scene.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { step, poseOf } from "../src/sim/crossing.js";
-import { withDriver, headwayOf } from "../src/sim/drive.js";
+import { withDriver, headwayOf, FOLLOWS_CLOSE, FOLLOW_FLOOR } from "../src/sim/drive.js";
+import { wantedGap } from "../src/sim/traffic.js";
 import { placeOf } from "../src/sim/placement.js";
 import { goodStep } from "./lib/good-driver.mjs";
 
@@ -31,7 +36,7 @@ function drive(id, secs) {
   const raw = TEST_MAPS.find((m) => m.id === id).build();
   let { world: w, me } = worldFor(1, 50, 2.0, true, 180, raw, raw.sections?.[0]?.start ?? null, false);
   const me0 = me, sc = { me, args: [1], saveWallet: false };
-  const out = { samples: 0, shown: 0, sound: 0, agree: 0, worst: 0, misses: [], alongside: 0, otherExit: 0 };
+  const out = { flagWrong: 0, closeWrong: 0, samples: 0, shown: 0, sound: 0, agree: 0, worst: 0, misses: [], alongside: 0, otherExit: 0 };
   for (let i = 0; i < secs * 20; i++) {
     if (!me || me.atEdge) { me = { ...me0 }; w = withDriver(w, me); }
     me = goodStep(me, w, sc, { overtake: true, pace: 1.19 });
@@ -43,6 +48,9 @@ function drive(id, secs) {
     if (hw) {
       out.shown++;
       if (hw.clear < 0) out.alongside++;
+      if (hw.inside !== (hw.clear < 3.375 && me.v >= FOLLOW_FLOOR)) out.flagWrong++;
+      const cc = w.actors.find((a) => a.id === hw.id);
+      if (cc && Math.abs(hw.closing - (me.v - cc.v)) > 1e-9) out.closeWrong++;
       const L = w.course.at[me.k ?? 0].layout, c = w.actors.find((a) => a.id === hw.id);
       /* Another exit: past its box onto a road the player is not taking -- unless it is still changing lane, when the sim counts it in both (lanechange.js). */
       if (c && !c.lc && (c.k ?? 0) === (me.k ?? 0) && c.s > L.paths[c.route].clearAt && L.paths[c.route].to !== L.paths[me.route].to && placeOf(w.course, c.k ?? 0, c.route, c.s)?.lane !== placeOf(w.course, me.k ?? 0, me.route, me.s)?.lane) out.otherExit++;
@@ -73,6 +81,13 @@ for (const [id, label] of [["test-loop", "the endless highway, shaped"], ["city"
   check(r.sound >= 20 && r.agree === r.sound, `where both statements are sound, the same car at the same gap: ${r.agree} of ${r.sound} (worst ${r.worst.toFixed(2)} m)${r.misses.length ? `\n         ${r.misses.join("\n         ")}` : ""}`);
   check(r.alongside === 0 && r.otherExit === 0, `never a car beside the player (${r.alongside}) or on another exit (${r.otherExit})`);
   check(r.shown >= r.samples / 10, `it is shown: ${r.shown} of ${r.samples} samples`);
+  check(r.flagWrong === 0 && r.closeWrong === 0, `"inside" exactly when under 3.375 m above the floor, and the chevron the right way, every sample shown (${r.flagWrong} and ${r.closeWrong} wrong)`);
 }
+
+console.log("\nthe ruled threshold and the speed floor");
+check(Math.abs(FOLLOWS_CLOSE - 0.75 * 4.5) < 1e-9, `0.75 car lengths of 4.5 m: ${FOLLOWS_CLOSE} m`);
+const sound = { v: FOLLOW_FLOOR, headway: undefined, caution: 1 };
+const at = wantedGap(sound, { v: FOLLOW_FLOOR }), below = wantedGap({ ...sound, v: FOLLOW_FLOOR * 0.9 }, { v: FOLLOW_FLOOR * 0.9 }), above = wantedGap({ ...sound, v: FOLLOW_FLOOR * 1.1 }, { v: FOLLOW_FLOOR * 1.1 });
+check(Math.abs(at - 3.375) < 0.01 && below < 3.375 && above > 3.375, `the floor (${(FOLLOW_FLOOR * 3.6).toFixed(1)} km/h) is where a sound driver following steadily wants exactly 3.375 m: ${at.toFixed(3)} m there, ${below.toFixed(2)} below it, ${above.toFixed(2)} above`);
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nOK: the following gap on the throttle bar names the car the poses say is ahead in the player's lane, at the same gap, and never one beside them or on another exit.");
 process.exit(failed ? 1 : 0);

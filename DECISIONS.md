@@ -4498,6 +4498,85 @@ SIMULATOR log they read as bad luck; together they are the pattern:
   gaps judged rising only on the city is a real, useful shape of result,
   not a partial failure.
 
+## 10.24 FOLLOWS TOO CLOSELY: 0.75 CAR LENGTHS, HELD FOR 2-3 SECONDS (the maintainer, 27 October)
+
+The maintainer, verbatim, because the translation matters:
+
+*"follows too closely is an explicit mark on the examiners sheet. I wanted
+the follow indicator to help with following the car ahead, when waiting
+for gaps in traffic to appear when swimming traffic on the highway. 2-3
+second gap is the real mark, but I'm fairly sure that won't play well on a
+screen, a lot of empty space. my best guess for a markable 'follows too
+closely' will be about .75 car lengths behind the other car, for too long
+(2-3 seconds within this gap make a digestible translation for the
+markable with regards to gameplay)"*
+
+**The ruling.**
+1. **Following too closely is a markable fault.** It is an explicit mark
+   on the real sheet.
+2. **The threshold is a DISTANCE: 0.75 car lengths of clear road behind
+   the car ahead.** A car length in this model is `CAR.length` = **4.5 m**
+   (traffic.js; CLAUDE.md "True-to-life scale"), so the threshold is
+   **3.375 m, bumper to bumper** (drive.js `FOLLOWS_CLOSE`). Not a truck's
+   or a bus's length: the unit is a car's, whoever is ahead.
+3. **The 2-3 SECONDS IS A DWELL, NOT A GAP.** It is how long the player
+   must stay inside 3.375 m before it is a fault.
+
+**READ THIS BEFORE "FIXING" IT.** In the real rule, 2-3 seconds is the
+GAP -- the time between your front and where the car ahead's rear was. In
+this ruling, 2-3 seconds is the TIME SPENT INSIDE a distance gap. Same
+number, different quantity. Whoever sees "2-3 s" next to a following
+fault and converts the threshold back into a time gap will believe they
+are correcting a bug, and will be undoing the maintainer's ruling: a 2-3 s
+gap at highway speed is 55-80 m, "a lot of empty space" on a phone, and
+the threshold was moved to a distance on purpose so it is legible on
+screen. Not tuned, not open for tuning without him.
+
+**THE QUEUE PROBLEM, AND THE SPEED FLOOR -- derived, proposed by the
+project, 27 October.** At 3.375 m every car standing at a light (the
+standstill gap is 2.0 m, traffic.js STANDSTILL) or crawling in a queue is
+inside the threshold, continuously; a real examiner does not mark closing
+up at a red. Measured on the traffic itself (tools/measure/follow-close.mjs,
+every AI driver against its own leader, three minutes a map), episodes
+reaching 2 s inside 3.375 m: test map 1, sound drivers, **79.6 a minute**
+with no floor; city 25.6; shaped highway 13.6. So the fault applies only
+above a floor, and the floor is DERIVED, not chosen:
+
+    FOLLOW_FLOOR = (FOLLOWS_CLOSE - STANDSTILL) / HEADWAY (asked of wantedGap)
+                 = (3.375 - 2.0) / 0.7 = 1.96 m/s = 7.1 km/h
+
+-- the speed at which a SOUND driver's own chosen following gap (the
+following model at caution 1, steady, nobody closing: traffic.js
+`wantedGap`) is exactly 0.75 car lengths. Below it, being that close is
+what normal following IS; above it, being that close is closer than a
+sound driver chooses -- careless. It moves if any of the three constants
+moves, and verify-headway holds it as that property of the following
+model, not as a number. With it: 0.0 episodes a minute for sound drivers
+on all three maps, 0.4 for bold drivers on test map 1 and for sound ones
+on the shaped highway (merging), so the AI is not marked constantly and
+the fault is almost entirely the player's to commit. The alternative
+considered, the reaction boundary (the speed whose reaction distance,
+REACTION_FLOOR x v, is 3.375 m: 35 km/h), marks nothing anywhere in the
+traffic and would let a player tailgate freely in town; not proposed.
+
+**Arithmetic worth knowing, not a decision:** above 35 km/h, 3.375 m is
+less than the distance covered in a reaction time -- at 100 km/h it is
+0.12 s. So on the highway, inside the threshold is not merely close but
+closer than anybody can react to. The threshold is the maintainer's; a
+speed-varying one was parked (27 October) until he has driven with the
+gauge.
+
+**OPEN, the maintainer's (asked): one entry or several.** Under 10.18 a
+mark is what happened, where, under which section; following too
+closely on a junction approach and on an open highway may be different
+entries in the guide. **The fault is not built until that is settled.**
+The gauge (SIMULATOR 1.2.20) shows the threshold and says when the player
+is inside it above the floor; it marks nothing.
+
+**The dwell (2 or 3 s) is the maintainer's range, not narrowed here.**
+The traffic measurement above found the floor, not the dwell, decides
+whether the AI is marked: 2 s and 3 s gave nearly the same counts.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

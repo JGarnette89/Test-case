@@ -28,7 +28,7 @@ import { poseOnGraph, intentOf, normDeg, curbLegOf, exitRouteInto, exitAlong, ex
 import { poseAt } from "./intersection.js";
 import { CAR, DT } from "./traffic.js";
 import { placeOf, laneIndexOf, approachNeighbours } from "./placement.js";
-import { lenOf } from "./traffic.js";
+import { lenOf, STANDSTILL } from "./traffic.js";
 
 const LANE = 3.6;
 const LAUNCHED = 1.5;        // m/s: moving off, as crossing.js has it
@@ -382,12 +382,30 @@ function cornerFor(me, course, stop) {
    the queue rule keeps cars from one approach together past where an
    off-ramp splits; the player is not following a car on the ramp.
 
-   A READOUT, NOT A STANDARD: no colour band and no fault. What gap is too
-   close at this game's scale is the maintainer's (DECISIONS 6, the
-   entitled gap), and whether it is a fault on the sheet -- and which
-   section of the guide -- is his too (10.18). SHOWN_UNDER and MOVING are
-   display constants: past five seconds nobody is following anybody, and
-   under 2 m/s the time gap of a queue creeping forward means nothing. */
+   FOR SWIMMING TRAFFIC FIRST (the maintainer, 27 October: "to help with
+   following the car ahead, when waiting for gaps in traffic to appear when
+   swimming traffic on the highway"): a continuous gauge read at a glance,
+   with the gap in car lengths and whether it is closing. The fault's
+   threshold is a mark on it.
+
+   FOLLOWS TOO CLOSELY, RULED (DECISIONS 10.24): inside 0.75 car lengths --
+   CAR.length 4.5 m, so 3.375 m of clear road -- FOR 2-3 SECONDS. The 2-3 s
+   is how long the gap is held, NOT the gap: the real rule's 2-3 s gap
+   "won't play well on a screen". Above FOLLOW_FLOOR only: below it a sound
+   driver's own following gap is inside the threshold, so closing up there is
+   normal, not careless. The readout shows the threshold and says when the
+   player is inside it above the floor; marking it waits on how the guide
+   sections it (10.18). SHOWN_UNDER and MOVING are display constants: past
+   five seconds nobody is following anybody, and under 2 m/s the time gap of
+   a queue creeping forward means nothing. */
+export const FOLLOWS_CLOSE = 0.75 * CAR.length;   // m, bumper to bumper: 3.375
+/* THE SPEED BELOW WHICH CLOSING UP IS NORMAL: where a sound driver's own
+   chosen gap -- STANDSTILL + speed x HEADWAY, the following model at
+   caution 1 with nobody closing (traffic.js wantedGap) -- is exactly
+   FOLLOWS_CLOSE. 1.96 m/s, 7.1 km/h. Asked of the model itself (its gap
+   beyond standstill at 1 m/s is the sound headway in seconds), so it moves
+   if the model, the standstill gap or the threshold does. */
+export const FOLLOW_FLOOR = (FOLLOWS_CLOSE - STANDSTILL) / (wantedGap({ v: 1 }, { v: 1 }) - STANDSTILL);
 const SHOWN_UNDER = 5;   // s
 const MOVING = 2;        // m/s
 export function headwayOf(me, world) {
@@ -412,7 +430,9 @@ export function headwayOf(me, world) {
   const ahead = inLane && inQueue && inLane.car.id === inQueue.car.id ? inQueue : [inLane, inQueue].filter(Boolean).sort((x, y) => x.clear - y.clear)[0];
   if (!ahead) return null;
   const secs = ahead.clear / me.v;
-  return secs < SHOWN_UNDER ? { secs, clear: ahead.clear, id: ahead.car.id } : null;
+  if (secs >= SHOWN_UNDER) return null;
+  /* Closing: how much faster than the car ahead, m/s (negative: dropping back). */
+  return { secs, clear: ahead.clear, id: ahead.car.id, lengths: ahead.clear / CAR.length, closing: me.v - (ahead.car.v ?? 0), inside: ahead.clear < FOLLOWS_CLOSE && me.v >= FOLLOW_FLOOR };
 }
 
 export function aheadOf(me, course, world = null) {
