@@ -3,7 +3,7 @@
    of the car ahead, above a speed floor, held for the dwell. Every AI driver
    on the road, each tick, against its own leader (whatStops, a car, in
    following) -- how much car-time is inside, and how many episodes reach 2 s
-   and 3 s, by temperament, at floors 0, the derived one and the reaction one.
+   and 3 s, by temperament, at floors 0, moving (AT_REST, 0.3 m/s -- the maintainer: "only if you are moving"), the derived one and the reaction one.
    node tools/measure/follow-close.mjs [map=test-loop] [cars=180] [secs=180] [shape=1] */
 import { worldFor } from "../../src/sim/scene.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
@@ -14,7 +14,7 @@ import { REACTION_FLOOR } from "../../src/core/perception.js";
 import { goodStep } from "../lib/good-driver.mjs";
 const [id = "test-loop", cars = "180", secs = "180", shp = "1"] = process.argv.slice(2);
 const D = 0.75 * CAR.length;
-const FLOORS = { none: 0, derived: (D - STANDSTILL) / 0.7, reaction: D / REACTION_FLOOR };
+const FLOORS = { none: 0, moving: 0.3, derived: (D - STANDSTILL) / 0.7, reaction: D / REACTION_FLOOR };
 const raw = TEST_MAPS.find((m) => m.id === id).build();
 let { world: w, me } = worldFor(1, 50, 2.0, true, Number(cars), raw, raw.sections?.[0]?.start ?? null, false);
 w = { ...w, shape: Number(shp) === 1 };

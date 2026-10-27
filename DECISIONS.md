@@ -4532,6 +4532,9 @@ gap at highway speed is 55-80 m, "a lot of empty space" on a phone, and
 the threshold was moved to a distance on purpose so it is legible on
 screen. Not tuned, not open for tuning without him.
 
+**[THE RULE IS NOW 10.25's: ONLY WHILE MOVING -- the maintainer replaced
+this floor the same day; what "moving" means is open there.]**
+
 **THE QUEUE PROBLEM, AND THE SPEED FLOOR -- derived, proposed by the
 project, 27 October.** At 3.375 m every car standing at a light (the
 standstill gap is 2.0 m, traffic.js STANDSTILL) or crawling in a queue is
@@ -4576,6 +4579,84 @@ is inside it above the floor; it marks nothing.
 **The dwell (2 or 3 s) is the maintainer's range, not narrowed here.**
 The traffic measurement above found the floor, not the dwell, decides
 whether the AI is marked: 2 s and 3 s gave nearly the same counts.
+
+## 10.25 THE MARKING GUIDE'S HEADINGS, IN THE MAINTAINER'S WORDS -- and follows too closely as the first sectional fault (27 October)
+
+The maintainer, verbatim:
+
+*"you can only be following too closely if you are moving, we already have
+stopping distance for when we are at a standstill. follows too closely is
+on the business road section, residental and highway driving sections,
+exactly as you understand it."*
+
+**THE HEADINGS OF THE REAL SHEET NAMED SO FAR -- INCOMPLETE, he will name
+more as they come up. Never invent one; add only from his words.**
+
+| heading (his words) | where named | entries named under it so far |
+|---|---|---|
+| Intersections | 10.18 ("a heading 'Intersections'") | undue delay at a green; stopping or slowing too soon/late; failure to observe; stopping position ("on a crosswalk or beyond a stop line") |
+| business road | here | follows too closely |
+| residential ("residental") | here | follows too closely |
+| highway driving | here | follows too closely |
+
+Also named, heading not given: hesitation merging onto a highway (10.18:
+"not the same error as the green light"); stopping distance (here: a
+separate existing mark, for a standstill behind another vehicle).
+
+**1. FOLLOWS TOO CLOSELY IS ONE OBSERVABLE, THREE ENTRIES** -- under
+business road, residential and highway driving. It is the first concrete
+instance of 10.18's model and is built as the TEST CASE of that structure,
+not as a special case: a mark is (what happened, where, under which
+heading), and the heading comes from where the player is.
+
+**2. ONLY WHILE MOVING.** At a standstill the mark is STOPPING DISTANCE, a
+separate entry; the two are never conflated. This replaces 10.24's derived
+floor as the RULE. What "moving" means is OPEN, and it matters (asked):
+measured on the traffic (tools/measure/follow-close.mjs), episodes of 2 s
+inside 3.375 m per minute, sound AI drivers:
+
+| "moving" means | test map 1 | city | shaped highway |
+|---|---|---|---|
+| anything (no floor) | 79.6 | 25.6 | 13.6 |
+| above the sim's rest speed, AT_REST 0.3 m/s | 17.2 (3.6 at 3 s) | 2.0 | 0.4 |
+| above 10.24's derived 7.1 km/h | 0.0 | 0.0 | 0.4 |
+
+At 0.3 m/s a queue creeping up -- 1-2 m/s, closing to 2-3 m -- is still
+"moving" and still inside, so on a busy grid the traffic, and a player
+creeping up behind it, is marked several times a minute. Whether creeping
+in a queue is following, or is part of the standstill that stopping
+distance covers, is the maintainer's.
+
+**3. WHAT EXISTS AND WHAT IS MISSING (measured 27 October, before any code):**
+- **No marking sheet runs on a map at all.** marking.js runs only in the
+  old compass-course worlds; the live exam (exam.js) deliberately marks
+  nothing (10.18's scoping). The sectional sheet is new on the map, not a
+  regrouping of an existing one.
+- **No road has a sheet heading.** Roads carry a KIND (residential,
+  collector, arterial, highway, service -- map/format.js KINDS); maps may
+  carry ZONES (residential, commercial, industrial, park, water, highway),
+  and only the city does (one residential, one commercial). The sim already
+  asks which zone a road's midpoint is in (crossing.js districtStreetsOf, for
+  traffic from inside districts). Nothing maps either onto the sheet's
+  headings, and the mapping is not mechanical: is a collector or an arterial
+  through a residential zone "business road" or "residential"? Is a slip
+  road "highway driving"? test map 1 and the endless highway's arterials
+  have no zone at all. **A map-data question, to be scoped separately --
+  not invented in passing.**
+- **"Section" already means two other things in this code**: a map's named
+  test sections (map/format.js `sections`, #/tests) and sectionSheet's
+  stretch of the route (10.18's scoping). The guide's word is the
+  maintainer's "heading"; code calls these HEADINGS.
+- **Stopping distance is not modelled as a mark.** The throttle bar guides a
+  stop behind a car to the sim's standstill gap (STANDSTILL, 2.0 m;
+  drive.js stopFor), but the player's stop is judged only at a LINE -- a
+  stop behind a car is deliberately not judged (drive.js: "whoever is in
+  front decides where you stop"). On the list, with its own standard to be
+  ruled: how close behind a stopped car is too close, and whether too far
+  is a mark.
+- **What carries over** (10.18's scoping): detect.js pairs a mark with a
+  fault by place, category and time -- an extension to (heading, item,
+  place), about 10-20 lines.
 
 ## 11. Verification
 
