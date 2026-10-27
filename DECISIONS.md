@@ -455,6 +455,8 @@ much, because a signal after the fact informed nobody.
 
 ## 5.10 INTERVENTION: three outcomes, and one asymmetry that must survive
 
+**[27 October: the maintainer's three-level design and judged-afterwards mark are in 10.27, unbuilt; where they meet this section is listed there as tensions, not resolved.]**
+
 Maintainer's ruling, verbatim:
 
   "an intervention is an automatic fail in real life, however we are also
@@ -4739,6 +4741,114 @@ real sheet: it is not one gap among several, it is most of the sheet.
 **NOT STARTED, by instruction.** The record is corrected first; the
 maintainer has not asked for marking work to begin. Nothing marking-
 related is built from this until he does.
+
+## 10.27 VISION BY MODE, AND INTERVENTION IN THREE LEVELS, JUDGED AFTERWARDS -- design, unbuilt (the maintainer, 27 October)
+
+Recorded as design beside the real sheet (10.26). **Nothing here is
+built.** Where it meets something already recorded or built, that is said
+under TENSIONS below rather than overwritten.
+
+**1. VISION SPLITS BY MODE.**
+- **Driving (the player at the wheel): no directable view cone.** The
+  bird's-eye view and full awareness all round stay -- that IS the mirror
+  and blind-spot check, done. What changes is OCCLUSION BY OBJECT TYPE: a
+  large truck blocks completely, an untinted sedan is partly transparent;
+  a fog of war over what is genuinely hidden, so the player meets the same
+  constraint the AI drivers already have (sim/sight.js).
+- **Examiner mode: a directable view cone.** It replaces the steering and
+  the throttle rather than competing with them: hands free, attention is
+  the resource spent.
+- **So TRAFFIC CHECK IS AN EXAMINER-MODE MARK.** The question is never
+  whether the player checked their own mirrors; it is whether the player
+  SAW THE CANDIDATE check theirs, and the cone decides that. The mechanic
+  and the mark are one system. (This turns 10.26's largest gap -- no
+  observable for Traffic Check -- into a defined requirement: the
+  candidate's checks must be visible things, and the cone must be where
+  they happened to see them.)
+
+**2. INTERVENTION, THREE LEVELS, ESCALATING.**
+- **Verbal.** Slowest, and it goes THROUGH THE CANDIDATE'S OWN REACTION
+  TIME: a poor-observation candidate is slower to act on the correction as
+  well as being the reason it was needed.
+- **Steering.** A HELD action: the player holds, then slides a finger as
+  they would to steer, a small correction. **While held, the player's view
+  narrows to a cone straight ahead along the car's travel** -- a real cost:
+  a steering intervention can blind the player to the next problem. Two
+  risks: the candidate may resist and wrestle for control (a bold candidate
+  fights, a timid one yields -- the confidence axis with a new observable,
+  felt through the wheel), and the correction itself may be clumsy, made
+  from the passenger seat with a partial view.
+- **Dual brake.** Instant and certain, and NOT IN EVERY CAR: equipment,
+  tied to the vehicles and the garage. Its absence is what forces the
+  player into the risky steering option.
+- **Implementation the maintainer proposes:** an intervention snaps the
+  candidate to perfect skill and omniscience for its duration, as if the
+  examiner took over, then returns them to their own ratings. No separate
+  examiner driving model.
+
+**3. AN INTERVENTION IS A CRITICAL ERROR, AND THE TEST GOES ON.** Marking
+continues unless the candidate is genuinely too dangerous to continue with.
+
+**4. INTERVENTION IS JUDGED AFTERWARDS -- the most important part.** The
+maintainer: examiners are taught to think the occurrence through while
+still driving, and if the intervention was too early or unnecessary, to
+let it go. The player intervenes in the moment and decides afterwards
+whether it goes on the sheet.
+- **That is the same shape as the deferred section sheet already built**
+  (sim/marking.js, `sectionSheet`): act now, judge at the review. So
+  intervening and marking are ONE skill, not two.
+- **It is the first mechanic where the player can be wrong about THEIR OWN
+  action rather than the candidate's.** A nervous examiner intervenes early
+  and must be honest about it; an overconfident one leaves it too late.
+
+**TENSIONS WITH WHAT IS RECORDED OR BUILT -- for the maintainer, not
+resolved here:**
+- **5.10 says a correct intervention is an AUTOMATIC FAIL for the
+  candidate.** Point 3 says a critical error with the test continuing. Both
+  can hold -- the candidate has failed and the drive is completed anyway,
+  as a real test would be -- but it is to be confirmed, not assumed.
+- **5.10 says WHICH OUTCOME HAPPENED IS DERIVED** (would it have ended in
+  contact, by controlled comparison; "nobody writes down 'this one was
+  hasty'"). Point 4 has the PLAYER decide afterwards. Not a contradiction
+  if the two are layered: the player's call is the mark, and the derived
+  counterfactual is what that call is graded against -- honest about a
+  hasty one, or not. That reading is offered, not settled. 5.10's
+  asymmetry (a candidate is never penalised for the examiner's nerves)
+  must survive whichever it is.
+- **5.10.1's supply cap** (interventions run out, because the attention
+  cost alone was measured not to deter spamming) is not mentioned in this
+  design; three levels and a judged-afterwards mark change what spamming
+  costs, and whether the cap is still needed is to be re-measured, not
+  assumed either way.
+- **What is BUILT differs** (sim/exam.js, verify-exam): the bottom of the
+  exam slider is the instructor's brake in EVERY car, and `ease` (the
+  nearest thing to verbal) acts at once at the candidate's own braking rate
+  with NO reaction time. Both stay until this design is built; neither is
+  the design.
+- **Occlusion by object type for the player meets sight.js's rule**, which
+  is binary: an opaque box taller than 2 m hides what is behind it, and a
+  car hides nothing ("a truck hides what is behind it and a car does not",
+  verify-trucks). A partly transparent sedan is new for the AI too. If the
+  player's occlusion and the AI's differ, that is two statements of one
+  quantity -- this project's recurring bug -- so the sedan's partial
+  occlusion should land in sight.js for both, or be ruled player-only on
+  purpose.
+- **The snap to perfect skill sits oddly with the steering level's own
+  risks.** If the candidate is perfect and omniscient for the duration,
+  they neither wrestle nor need correcting clumsily. Probably the snap is
+  the model of a successful takeover (dual brake, or verbal once acted
+  on) and the steering level is the player's input against the
+  candidate's resistance -- to confirm.
+- **Consistent, recorded so it is not re-argued:** CLAUDE.md's gaze-cone
+  requirements hold for the examiner's cone -- relative to the car's
+  heading, never absolute, and reading the candidate's own car is a
+  different act from spotting anybody else's. And CLAUDE.md's three
+  layers are respected: the cone is layer 3 (what the player noticed); the
+  candidate's own perception (attention.js) stays layer 2. **A
+  prerequisite this design implies:** the candidate's checks -- mirrors,
+  shoulder, left-right-left -- have to exist as visible events; attention.js
+  models when a driver looks away from the road, not a check anybody could
+  watch them make.
 
 ## 11. Verification
 

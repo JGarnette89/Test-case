@@ -1256,7 +1256,10 @@ three-layer reframing, the five axes and R2's build order:
 - **Does going off course end the drive, or do you re-route?** Real tests
   re-route. Re-routing needs `planRoute` to replan from the actual exit
   heading rather than plan the whole course up front.
-- **What is an intervention, in law and on the sheet?** An examiner taking
+- **What is an intervention, in law and on the sheet?** PARTLY ANSWERED 27
+  October (DECISIONS 10.27, design, unbuilt): three levels -- verbal, steering,
+  dual brake -- a critical error that does not end the test, judged by the
+  player afterwards like the deferred sheet. An examiner taking
   control is itself a recorded outcome. Automatic fail for the candidate? Is
   failing to intervene a fail for the player? **This is the blocking
   question now**, not a distant one: the mechanical prerequisite is
