@@ -83,16 +83,16 @@ import { CARS, carsFor, carsMaxFor } from "../map/cars.js";
    map, the player starts at the first edge `loadMap` finds
    (`map/edges.js` -- a plain module, not this one, so a headless check
    can ask the same question without Node trying to parse JSX). */
-export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false) {
+export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, checks = false) {
   /* The world is built in sim/scene.js, where the sim's worker builds the
      same one from the same arguments (sim/remote.js). */
-  const args = [seed, kmh, every, drive, cars, rawMap, startAt, lookAway, unshaped];
+  const args = [seed, kmh, every, drive, cars, rawMap, startAt, lookAway, unshaped, { checks }];
   const { loaded, world, me } = worldFor(...args);
   const b = loaded.bounds;
   const ground = groundFor(loaded, { cell: 20 });
   return {
     /* When this drive began and how it was set (the crash log, below). */
-    t0: world.t, lookAway, seed, shaped: !!world.shape,
+    t0: world.t, lookAway, checks, seed, shaped: !!world.shape,
     loaded,
     ground,
     centre: { x: b.x + b.w / 2, y: b.y + b.h / 2 },
@@ -129,7 +129,7 @@ export function actorsOf(scene, carry) {
     /* A CRASHED car flashes its hazards: orange and dark, twice a second,
        so a wreck is never just another stopped car. */
     const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;
-    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, blinker: a.blinker ?? null, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null, courtesy: !!(a.courtesy && !a.courtesy.done && a.courtesy.forPlayer), name: a.rival ?? null });
+    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, look: a.look ?? null, blinker: a.blinker ?? null, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null, courtesy: !!(a.courtesy && !a.courtesy.done && a.courtesy.forPlayer), name: a.rival ?? null });
   }
   /* PEOPLE ON FOOT (sim/peds.js): waiting at the curb or crossing. */
   for (const q of w.peds ?? []) out.push({ id: q.id, n: q.look ?? q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });
@@ -149,6 +149,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [limit, setLimit] = useState(50);
   const [playing, setPlaying] = useState(true);
   const [lookAway, setLookAway] = useState(false);
+  /* Drivers check mirrors and blind spots, and look along the cross road (sim/checks.js) -- built, not on by default, a switch so the maintainer can watch them (SIMULATOR IN FLIGHT 31). */
+  const [checksOn, setChecksOn] = useState(false);
   const [shapeOn, setShapeOn] = useState(true);
   /* CLEAN MODE (settings.js): for showing the game -- no readout, the debug controls behind More. The frame loop reads cleanRef. */
   const [clean, setClean] = useState(false);
@@ -202,10 +204,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const mapId = scene.current.loaded.id;
   const carsMax = carsMaxFor(scene.current.loaded);
 
-  const restart = (s = seed, kmh = limit, m = mode, n = cars, look = lookAway, sh = shapeOn) => {
-    setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n); setLookAway(look); setShapeOn(sh);
+  const restart = (s = seed, kmh = limit, m = mode, n = cars, look = lookAway, sh = shapeOn, ck = checksOn) => {
+    setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n); setLookAway(look); setShapeOn(sh); setChecksOn(ck);
     scene.current?.remote?.stop();
-    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look, !sh);
+    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look, !sh, ck);
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
     cam.current = { ...newChase(), id: null };
     owed.current = 0; contacts.current = 0; flash.current = 0; free.current = null; setLook(false);
@@ -245,8 +247,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       /* Off by default again (settings.js: the crossroads gridlock without crashes, SIMULATOR item 21); a saved choice under this key stands. */
       const look = s.clean === true ? false : s.lookAwayOn === true;
       const sh = s.clean === true ? true : s.shapeOn !== false;
-      if (s.simWorker === true && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look, sh); return; }
-      if (kmh !== limit || m !== mode || n !== cars || look !== lookAway || sh !== shapeOn) restart(seed, kmh, m, n, look, sh);
+      const ck = s.checksOn === true;
+      if (s.simWorker === true && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look, sh, ck); return; }
+      if (kmh !== limit || m !== mode || n !== cars || look !== lookAway || sh !== shapeOn || ck !== checksOn) restart(seed, kmh, m, n, look, sh, ck);
       if (s.slider === "spring") input.current.state.spring = true;
       if (s.assist in ASSIST) { assistRef.current = s.assist; setAssist(s.assist); }
     });
@@ -761,6 +764,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           <button className="btn" style={{ ...S.chip, borderColor: lookAway ? C.amber : "rgba(255,255,255,0.12)", color: lookAway ? C.white : DIM }}
             onClick={() => { setSetting("lookAwayOn", !lookAway); restart(seed, limit, mode, cars, !lookAway); }}>
             {lookAway ? "Drivers look away: on" : "Drivers look away: off"}</button>
+          {/* The candidate's checks (sim/checks.js): mirrors, blind spots, left-right-left, drawn as a pale wedge from the driver's seat. A restart, as look-away is. */}
+          <button className="btn" style={{ ...S.chip, borderColor: checksOn ? C.amber : "rgba(255,255,255,0.12)", color: checksOn ? C.white : DIM }}
+            onClick={() => { setSetting("checksOn", !checksOn); restart(seed, limit, mode, cars, lookAway, shapeOn, !checksOn); }}>
+            {checksOn ? "Drivers check mirrors: on" : "Drivers check mirrors: off"}</button>
           {/* Only where the map asks to be shaped: off to read the same build unshaped (DECISIONS 10.17's comparison). A restart, as look-away is. */}
           {scene.current?.loaded?.traffic?.shape && (
             <button className="btn" style={{ ...S.chip, borderColor: shapeOn ? C.amber : "rgba(255,255,255,0.12)", color: shapeOn ? C.white : DIM }}

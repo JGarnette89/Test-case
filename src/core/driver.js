@@ -96,6 +96,14 @@ export const DIFFICULTY = {
   "right-on-red": 0.35,
   "yield-to-bus": 0.15,
   "accel-lane": 0.20,
+  /* THE CHECKS (sim/checks.js, 27 October): knowing to look over the
+     shoulder before a lane change, and to look left-right-left before
+     pulling away from a line. Both placed WITHOUT A RULING, flagged: the
+     maintainer's to set. Left-right-left is taught from the first lesson
+     and the shoulder check is the one most often dropped, so the shoulder
+     check is the harder. LAST, as above. */
+  "shoulder-check": 0.25,
+  "left-right-left": 0.10,
 };
 /* HOW WELL A KIND OF SIGN HAS STUCK WITH THIS DRIVER: one draw per driver
    per KIND, never per encounter -- knowledge is consistent (a driver who

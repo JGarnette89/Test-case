@@ -9,7 +9,8 @@ import { seedGraph, step } from "../../src/sim/crossing.js";
 import { DT } from "../../src/sim/traffic.js";
 const [id = "city", secs = 120, cars = 200, seed = 3, trucks = 0] = process.argv.slice(2);
 const L = loadMap(TEST_MAPS.find((t) => t.id === id).build());
-let w = seedGraph(Number(seed), 50, L, { target: Number(cars), posted: true, trucks: Number(trucks), ...(process.env.PERCEIVE ? { perceive: true } : {}) });
+let w0 = seedGraph(Number(seed), 50, L, { target: Number(cars), posted: true, trucks: Number(trucks), ...(process.env.PERCEIVE ? { perceive: true } : {}), checks: process.env.CHECKS !== "0" });
+let w = w0;
 const h = createHash("sha1");
 for (let i = 0; i < Number(secs) / DT; i++) {
   w = step(w);

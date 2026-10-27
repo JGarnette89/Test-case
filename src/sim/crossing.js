@@ -59,6 +59,7 @@ import { reads, anticipates } from "../core/driver.js";
 import { BAY } from "../map/format.js";
 import { lookingAway, loomingRate, LOOMING, lastDue, LOOK_EVERY } from "./attention.js";
 import { placeOf, neighboursAt, approachNeighbours, cellKey } from "./placement.js";
+import { lookOf, eyesOffSince, scanChecks, sideOf, rebaseLooks } from "./checks.js";
 import { parkingOf, initialParked } from "./parking.js";
 import { tallerThanEye, boxOf, eyeOf, hiddenFrom, blocked, segHitsBox, conesFrom, blockedFrom } from "./sight.js";
 import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
@@ -428,13 +429,71 @@ function takePlain(world, list, idx, me, mine, mineAt, hood, node, gen, out) {
    picture they had when they looked away, carried forward
    (sim/attention.js). */
 export function seenBy(world, me) {
-  const back = Math.round(lookingAway(world.t, me) / DT);
-  if (!back || !world.past?.length) return world.actors;
-  /* `noPeriphery`: a check's controlled comparison, never a setting. */
-  if (!world.noPeriphery && loomed(world, me)) return world.actors;
-  const i = Math.min(back, world.past.length);
-  return carriedForward(world, world.past[i - 1], i * DT, me.k ?? 0);
+  let back = Math.round(lookingAway(world.t, me) / DT);
+  /* A CHECK IS EYES OFF THE ROAD TOO (checks.js, 27 October): a perceiving
+     driver at their mirror, over their shoulder or looking along the cross
+     road is not looking ahead, and carries the road ahead from when they
+     looked away -- the scheduled glance's own rule. */
+  const checking = world.checks === true && (me.lag ?? 0) > 0 && !me.player;
+  /* ...while MOVING: a car standing at its line sees the box in front of it whichever way it looks along the cross road, and a stopped driver's road ahead is the line and the car ahead (27 October: carried while standing, every scanning driver at a red built a picture of its own every tick -- +55% step at 260 cars on test map 1). */
+  const off = checking && (me.v ?? 0) >= AT_REST ? eyesOffSince(me, world.t) : null;
+  if (off != null) back = Math.max(back, Math.round((world.t - off) / DT));
+  let out = world.actors;
+  if (back && world.past?.length && !(!world.noPeriphery && loomed(world, me))) {
+    const i = Math.min(back, world.past.length);
+    out = carriedForward(world, world.past[i - 1], i * DT, me.k ?? 0);
+  }
+  return out;
 }
+
+/* AT A LINE, THE CROSS ROAD AS LAST LOOKED AT (checks.js). A perceiving
+   driver approaching or waiting at their line knows the traffic coming
+   from their left as they last saw it when they looked left, carried
+   forward, and the right likewise; the side they are looking along now,
+   as it is. A side never looked at is the oldest picture the world keeps,
+   carried; a car that has arrived since is not in it at all. Ahead and
+   oncoming are the road ahead's (above). Only at their own node, only near
+   the line. */
+const LINE_NEAR = 15;   // m short of the line: where the cross road is what a driver must know
+function sidesAsLooked(world, me, list) {
+  const L = world.course.at[me.k ?? 0]?.layout, mine = L?.paths?.[me.route];
+  if (!mine || me.going || me.s > mine.stopAt || waitAt(mine, me) - me.s > LINE_NEAR) return list;
+  const look = lookOf(me, world.t), now = sideOf(look?.kind);
+  const sideOfCar = (c) => {
+    if ((c.k ?? 0) !== (me.k ?? 0)) return null;
+    const from = L.paths[c.route]?.from;
+    if (!from || from === mine.from || L.legs[from]?.base === L.legs[mine.from]?.base || oncoming(L, mine.from, from)) return null;
+    return onRightOf(L, mine.from, from) ? "right" : "left";
+  };
+  /* Each side's moment, and its snapshot indexed once (shared by every
+     driver who reads it). Only the few cars on the cross road are carried,
+     one by one -- a whole carried neighbourhood per driver per tick cost
+     test map 1 half its step again at 260 cars (27 October, measured). */
+  const asOf = (side) => {
+    if (side === now) return null;   // looking along it now: as it is
+    const at = me.looked?.[side];
+    const back = Math.min(world.past.length, at == null ? world.past.length : Math.max(1, Math.round((world.t - at) / DT)));
+    const snap = world.past[back - 1];
+    let byId = idsOf.get(snap);
+    if (!byId) { byId = new Map(snap.map((c) => [c.id, c])); idsOf.set(snap, byId); }
+    return { byId, ago: back * DT };
+  };
+  const carry = (then, ago) => (then.player || then.crash || !(then.v > 0) ? then : { ...then, s: Math.min(then.s + then.v * ago, pathOf(world, then).length) });
+  const pics = {};
+  let out = null;
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i], side = sideOfCar(c);
+    if (!side) { if (out) out.push(c); continue; }
+    if (!(side in pics)) pics[side] = asOf(side);
+    const pic = pics[side], seenThen = pic ? pic.byId.get(c.id) : null;
+    const then = pic ? (seenThen ? carry(seenThen, pic.ago) : null) : c;
+    if (then === c) { if (out) out.push(c); continue; }
+    if (!out) out = list.slice(0, i);
+    if (then) out.push(then);
+  }
+  return out ?? list;
+}
+const idsOf = new WeakMap();
 
 /* PAST THE BOX, THE NEW ROAD'S LIMIT: the speed a driver wants on the
    exit stretch of their path (the step's, below; and density shaping's, for
@@ -571,6 +630,14 @@ function carriedForward(world, snap, ago, k) {
 const AT_REST = 0.3;
 /* How close to the line counts as being AT it. */
 const AT_LINE = 2.0;
+/* Where a driver begins looking along the cross road (checks.js): slowing,
+   within this of a line they must stop or give way at. Flagged. */
+/* Begun far enough back that it is mostly done by the time the car is at
+   rest -- from 50 km/h at a comfortable stop, 9 m/s is about 15 m and two
+   seconds out (27 October: begun at 12 m and 6 m/s it added its whole
+   length to every stop, and a hesitant driver's extra wait read 2.0x a
+   sound one's where it had read over 2). */
+const SCAN_FROM = 25, SCAN_V = 9, SCAN_AGAIN = 2.0;
 /* Two cars that stopped within this of each other arrived together, and
    the right-hand rule decides. */
 const SAME_MOMENT = 0.4;
@@ -1203,6 +1270,8 @@ export function whatStops(me, world) {
   if (!relevant) visit = others ?? nearNode(world, seen, mineAt);
   else if (!tall.length) visit = relevant;
   else { const ids = new Set(relevant.map((a) => a.id)); visit = others.filter((a) => ids.has(a.id)); }
+  /* THE CROSS ROAD AS LAST LOOKED ALONG (sidesAsLooked), for a perceiving driver near their line -- applied to the few cars visited, never to the shared list: a list of its own per driver rebuilt the neighbour index for each of them every tick (relevanceOf 1.8 -> 8.8 ms on test map 1 at 260 cars, 27 October). */
+  if (world.checks === true && (me.lag ?? 0) > 0 && !me.player && world.past?.length) visit = sidesAsLooked(world, me, visit);
   /* Made once per call, not per car visited: two closures for every pair of
      cars every tick cost whatStops about 11% of its own time (profiled, 22
      October) and are needed only for a car mid-change. */
@@ -1431,7 +1500,15 @@ export function whatStops(me, world) {
      of one driver at two confidences); reached only when nothing visible
      holds them, so computing it costs nothing extra. */
   let byHidden = false;
-  const held = short && (walkerAtLine || visit.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0, liveOf(world, me.k)))
+  /* STILL LOOKING ALONG THE CROSS ROAD (checks.js): a driver who is
+     scanning before they pull away does not pull away until it is done. */
+  /* The FIRST look at a line holds the start; looking again while waiting keeps the picture fresh and holds nothing (27 October: re-scans holding the start kept a driver who had looked from taking the gap when it came). */
+  /* ...and holds only a car AT REST at the line: one rolling up to a yield
+     with the way clear is not made to stop to finish looking, and one
+     committed at an amber is never held (verify-signs, verify-signal: both
+     were, 27 October). */
+  const scanning = world.checks === true && !!me.scan && !me.scan.round && me.stoppedAt != null && (world.t ?? 0) < me.scan.until;
+  const held = short && (scanning || walkerAtLine || visit.some((a) => a.id !== me.id && blockedBy(me, a, layout, me.caution, world.t ?? 0, liveOf(world, me.k)))
     /* The margin, only for the driver at the head of the queue: one behind
        somebody is held by them, and what the head can see decides. */
     || (byHidden = tall.length > 0 && !(leader && leader.id !== "line" && gap < 15) && phantomHolds(world, me, layout, mine, eye, tall)));
@@ -1858,7 +1935,9 @@ export function step(world) {
       const brakeLamp = pressing || (brakeLampAt != null && world.t - brakeLampAt < BRAKE_LAMP_HOLD);
       const turning = (mine.intent === "left" || mine.intent === "right") && s < (mine.clearAt ?? mine.stopAt) + 2 && mine.stopAt - s < Math.max(25, 3 * v);
       const changing = raw.lc && !raw.lc.abort && world.t < raw.lc.t0 + raw.lc.T;
-      const blinker = turning ? mine.intent : changing ? (raw.lc.L0 < 0 ? "right" : "left") : null;
+      /* ...and from the first look of a lane change being prepared (checks.js): mirror, signal, shoulder, move. */
+      const prepping = !changing && raw.lcPrep && world.t < raw.lcPrep.ready + 1.0;
+      const blinker = turning ? mine.intent : changing ? (raw.lc.L0 < 0 ? "right" : "left") : prepping ? (raw.lcPrep.dir > 0 ? "right" : "left") : null;
       const at = { ...raw, v, s, stoppedAt, going, accepted, ...(amberGo ? { amberGo } : {}), pass: pass && s <= pass.s3 ? pass : null, brakeLamp, brakeLampAt: brakeLampAt ?? null, blinker };
       const sitting = stoppedAt != null && !going;
       /* How long the opening in front of them has been there this time,
@@ -1877,6 +1956,25 @@ export function step(world) {
          quantity every reader meant. */
       const out = { ...at, a: (v - me.v) / DT, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
       if (offer || raw.courtesy) out.courtesy = offer;
+      /* THE CHECKS (checks.js). A scan along the cross road, once per line,
+         begun as the car slows within SCAN_FROM of a line it must stop or
+         give way at; what the eyes are on now, for the screen and the
+         examiner; and when each side of the cross road was last looked
+         along, for what the driver knows of it (sidesAsLooked). */
+      if (world.checks === true) {
+        /* ...and AGAIN while waiting there, SCAN_AGAIN after the last look
+           ended: a driver held at a line keeps looking (the real sheet marks
+           "none while waiting"), and one who looked once and then waited on a
+           picture gone stale was held by traffic long gone -- six sound
+           drivers marked for undue delay on test map 1 (27 October). */
+        const lineKey = `${raw.k ?? 0}:${raw.leg ?? 0}`;
+        const again = raw.scan?.key === lineKey && stoppedAt != null && world.t >= raw.scan.until + SCAN_AGAIN;
+        if ((raw.scan?.key !== lineKey || again) && !going && s <= mine.stopAt && waitAt(mine, me) - s < SCAN_FROM && v < SCAN_V
+          && (stoppedAt != null || controlOf(me, layoutOf(world, me), mine, world.t, me, liveOf(world, me.k)) !== "none")) {
+          const round = again ? (raw.scan.round ?? 0) + 1 : 0;
+          out.scan = { key: lineKey, round, ...scanChecks(raw, world.t, rng((world.seed ?? 1) * 92821 + (raw.n ?? 0) * 6151 + (raw.leg ?? 0) * 31 + (raw.k ?? 0) + round * 7919)()) };
+        }
+      }
       /* A DUE GLANCE, TAKEN WHEN IT FITS (attention.js, `timeFree` above). `glanceAnyTime`: a check's controlled comparison, never a setting (and `anticipate`, core/driver.js). */
       if ((raw.lag ?? 0) > 0 && !raw.player) {
         const last = raw.glanceAt !== undefined ? raw.glanceAt : lastDue(world.t, raw);
@@ -1979,7 +2077,17 @@ export function step(world) {
          lane, so every course the sim had before is untouched. Decided
          from `raw` for who they are -- the ratings, the caution -- and
          from the tick's own view for what is in front of them. */
-      const stepped = world.course.graph && world.laneChanges !== false ? laneStep(world, { ...raw, v: me.v }, out, view) : out;
+      let stepped = world.course.graph && world.laneChanges !== false ? laneStep(world, { ...raw, v: me.v }, out, view) : out;
+      /* WHAT THE EYES ARE ON NOW, after the lane change has decided this
+         tick -- a look it begins is drawn the tick it begins (read before it,
+         a prepared change's first look showed a tick late, and the picture was
+         carried while the screen showed the road: verify-checks, 27 October).
+         And when each side of the cross road was last looked along. */
+      if (world.checks === true) {
+        /* At the moment the returned world describes, t + DT, like every other field the step writes (verify-checks: read at t, the last tick of a look showed it while the picture was already the present). */
+        const tNext = world.t + DT, look = lookOf(stepped, tNext), side = sideOf(look?.kind);
+        stepped = { ...stepped, look, ...(side ? { looked: { ...(raw.looked ?? {}), [side]: tNext } } : {}) };
+      }
       /* A BUS'S STOP IS ITS LANE'S: one that is in another lane than the
          stop it was heading for -- a change its route needed -- looks for
          the next stop on the lane it is actually in. */
@@ -2065,6 +2173,7 @@ export function step(world) {
         stoppedAt: null, going: false, accepted: false,
         openFor: 0, openedAt: null,
         lc: null,   // a lane change finishes before the line; never carried over a seam
+        lcPrep: null, scan: null, looked: null,   // the looks belong to the intersection they were made at (checks.js)
         amberGo: false,   // an amber decision belongs to the intersection it was made at
         want: wanted,     // where they are going here, if their lane does not get them there (wantFor)
       };
@@ -2708,7 +2817,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent" } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
@@ -2738,7 +2847,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   /* `actuated: false`: every light on its clock, as before the loops (actuated.js) -- for comparing against. */
@@ -2820,7 +2929,7 @@ function warmed(w0, acrossIt) {
        kept a start forty seconds in the future, so its car sat a whole
        lane off, in both lanes, until the clock caught up -- found as a
        3.6 m jump at a seam (SIMULATOR.md 1.1.13). */
-    actors: w.actors.map((a) => ({
+    actors: w.actors.map((a0) => rebaseLooks(a0, shift)).map((a) => ({
       ...a, stoppedAt: back(a.stoppedAt), openedAt: back(a.openedAt),
       lcDone: back(a.lcDone ?? null),
       /* ...and when they last looked away (attention.js, 22 October): left on

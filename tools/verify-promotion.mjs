@@ -84,8 +84,9 @@ console.log("\n2. EACH RULE REFUSES WHAT IT IS FOR");
   if (!lone) check(false, "no lone car at speed found to build the ahead and behind cases on");
   else {
     const half = 4.5;
-    const behindIt = make(lone.k, lone.route, lone.s - (half + 20), lone.v);
-    check(ask(behindIt).why.includes("ahead"), `twenty metres behind a car at its speed (${lone.id} at ${lone.v.toFixed(0)} m/s): refused for the car ahead (${ask(behindIt).why.join(", ")})`);
+    /* EIGHT metres behind, at its speed: inside any gap the sim calls competent at 15 m/s and up (a sound driver wants 2 m and 0.7 s of speed: 12.5 m at 15). Twenty passed by luck of the car found -- at 28 m/s it was inside, at 20 m/s it is a legal gap (27 October). */
+    const behindIt = make(lone.k, lone.route, lone.s - (half + 8), lone.v);
+    check(ask(behindIt).why.includes("ahead"), `eight metres behind a car at its speed (${lone.id} at ${lone.v.toFixed(0)} m/s): refused for the car ahead (${ask(behindIt).why.join(", ")})`);
     const inFront = make(lone.k, lone.route, lone.s + (half + 15), Math.max(0, lone.v - 10));
     check(ask(inFront).why.includes("behind"), `fifteen metres in front of it, 10 m/s slower: refused for the car behind (${ask(inFront).why.join(", ")})`);
     /* space: the next lane of the same road, level with it. */

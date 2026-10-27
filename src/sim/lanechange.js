@@ -53,6 +53,7 @@ import { poseAt } from "./intersection.js";
 import { atNode } from "./crossing.js";
 import { exitRouteInto, exitAlong, approachAlong } from "./graph.js";
 import { fits } from "./corner.js";
+import { lcChecks } from "./checks.js";
 
 /* THE LANE BESIDE, by place across the approach (graph.js `legAt`):
    `d` = -1 toward the centre line, +1 toward the curb. A turn bay sits
@@ -87,6 +88,15 @@ const BLIND_BEHIND = 10, BLIND_AHEAD = CAR.length;
    20 Hz decision, and asking it twice a second rather than twenty times
    is most of what keeps its cost small (SIMULATOR.md 1.1.13). */
 export const LC_EVERY = 10;
+/* After the looks, how long the decision waits to be taken up: the next
+   time the driver considers a change (every LC_EVERY ticks), and a tick. */
+/* ...and while the driver keeps their eyes on the lane they mean to join,
+   for PREP_HOLD more: a driver waiting for a gap to open goes when it does,
+   rather than starting the looks again each time one closes (27 October:
+   without it, fewer got over for their turn and joiners stood at the end
+   of an acceleration lane for minutes). A flagged design constant. */
+const PREP_HOLD = 2.0;
+const PREP_GRACE = (LC_EVERY + 1) * DT + PREP_HOLD;
 /* Once changed, not again for this long: a driver settles in a lane. */
 const SETTLE = 6;
 
@@ -806,7 +816,24 @@ function attempt(world, out, path, best, T0) {
   const obs = deficitOf(out.ratings ?? {}, "observation").deficit ?? 0;
   const r = rng((world.seed ?? 1) * 7919 + (out.n ?? 0) * 104729 + (out.lcCount ?? 0) * 31 + 7);
   const inBlind = nb.behind && nb.db < BLIND_BEHIND;
-  const missed = !!inBlind && r() < obs * 0.6;
+  /* THE CHECKS AS EVENTS (checks.js, 27 October): the mirror and the
+     shoulder check toward the move are LOOKS the driver makes before
+     moving, decided here -- observation whether they look at all (the same
+     draw, at the same rate, as the roll this replaced), knowledge whether
+     the shoulder check is made, and in time. The blind spot is missed
+     exactly when nobody looked over the shoulder before the move. Decided
+     now, the change WAITS for the looks (`lcPrep`) and is judged again
+     when it can begin. `world.checks !== true`: the roll as it was. */
+  let missed, plan = null;
+  if (world.checks !== true) missed = !!inBlind && r() < obs * 0.6;
+  else {
+    if (out.lcPrep && t < out.lcPrep.ready) return out;   // still looking
+    const p = out.lcPrep;
+    const prepared = p && p.dir === best.dir && t <= p.ready + PREP_GRACE;
+    plan = prepared ? p : lcChecks(out, best.dir, t, r());
+    missed = !!inBlind && !plan.shoulder;
+    if (!prepared && plan.steps.length) plan = { ...plan, begin: true };
+  }
   if (!leadOk) return out;
   /* ...and every car beyond it that can demand room, each at its own lead need (above). */
   for (const { car, d } of nb.aheads ?? []) if (car !== nb.ahead && clearBetween(d, out, car) < leadNeed(out, car, kappa)) return out;
@@ -831,6 +858,9 @@ function attempt(world, out, path, best, T0) {
      never one that cannot be survived. */
   if (missed && !lagSurvivable) return counted;
 
+  /* DECIDED, NOT YET BEGUN: the looks first, the turn signal on from now
+     (crossing.js), the gap judged again when they are done. */
+  if (plan?.begin) return { ...out, lcPrep: { dir: best.dir, at: t, steps: plan.steps, ready: plan.ready, shoulder: plan.shoulder, late: plan.late, wrong: plan.wrong ?? null } };
   /* GO. The steering axis decides the blend. */
   const steer = deficitOf(out.ratings ?? {}, "steering").deficit ?? 0;
   /* The old lane, relative to the new: moving right (toward the curb)
@@ -849,14 +879,20 @@ function attempt(world, out, path, best, T0) {
     s: best.s2,
     lcCount: (out.lcCount ?? 0) + 1,
     ...(best.mandatory ? { turnChanges: (out.turnChanges ?? 0) + 1 } : {}),
+    ...(plan ? { lcPrep: null } : {}),
     lc: {
+      /* The checks that went with it (checks.js): whether the shoulder was looked over in time, a look that came late, and how the driver got it wrong, for the sheet to read. */
+      /* A late look is timed from the move itself, which begins at the next consideration after the looks -- up to PREP_GRACE later; timed from the looks, "late" could land before the move (verify-checks, 27 October). */
+      ...(plan ? { checked: !!plan.shoulder, late: plan.late ? plan.late.map(([k, a, b]) => [k, t + 0.3, t + 0.3 + (b - a)]) : null, wrong: plan.wrong ?? (plan.skipped ? "skipped" : null), prepAt: plan.at ?? t } : {}),
       /* fromLeg is the APPROACH lane left, which holds the car in both approach lanes (crossing.js); an exit change is in both exit lanes by fromTo alone. */
       /* t0 is the blend's clock, which stands still with the car (above);
          `at` is when the change began, and does not move. */
       from: out.route, fromLeg: best.exit ? null : path.from, fromTo: path.to, t0: t, at: t,
       T: T0 * (1 + 0.5 * steer),
       L0, ov: weaveRoom(LANE) * steer,
-      missed, blind: !!inBlind, exit: !!best.exit, merge: !!best.merge, noticeAfter: REACTION_FLOOR + obs * REGISTER_SPAN,
+      missed, blind: !!inBlind, exit: !!best.exit, merge: !!best.merge,
+      /* A late shoulder check finds the car missed when it is made, if that is sooner than noticing it anyway. */
+      noticeAfter: plan?.late?.length ? Math.min(REACTION_FLOOR + obs * REGISTER_SPAN, 0.3 + (plan.late[0][2] - plan.late[0][1]) + REACTION_FLOOR) : REACTION_FLOOR + obs * REGISTER_SPAN,
       /* Who they missed: until they notice, they do not brake for that car
          either (crossing.js, following). */
       unseen: missed ? nb.behind.id : null,

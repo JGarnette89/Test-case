@@ -21,7 +21,7 @@ export const START = { road: "A-north", end: "end" };   // the player begins at 
 
 /* The loaded map, the seeded world and -- when driving -- the player,
    placed clear (drive.js `placePlayer`). Deterministic in its arguments. */
-export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false) {
+export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, { checks = false } = {}) {
   const loaded = loadMap(rawMap ?? testMap1());
   if (cars == null) cars = carsFor(loaded);
   if (!loaded.ok) throw new Error(`${rawMap ? "map" : "test map"}: ${loaded.error}`);
@@ -36,7 +36,8 @@ export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, st
      misses what changed meanwhile. Off by default -- it makes crashes,
      which stay where they happened for the player to see. */
   /* THE RIVALS (sim/rivals.js) drive every map the screen opens. */
-  let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true, perceive: !!lookAway, walkers: true, rivals: true });
+  /* `checks`: the candidate's checks (sim/checks.js) -- off unless asked for, while they are built and not on (SIMULATOR IN FLIGHT 31). */
+  let world = seedGraph(seed, kmh, loaded, { every, target: cars, posted: true, perceive: !!lookAway, walkers: true, rivals: true, checks });
   /* DENSITY SHAPING (sim/shaping.js), where the map asks for it and somebody is driving -- unless the player switched it off (`unshaped`, the readout comparison: shaped against unshaped on one build, DECISIONS 10.17). */
   if (drive && loaded.traffic?.shape && !unshaped) world = { ...world, shape: true };
   let me = null;

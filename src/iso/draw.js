@@ -25,6 +25,7 @@
 import { viewOf } from "./project.js";
 import { lightAt, arrowAt, movementLight } from "../sim/signal.js";
 import { HONK_FOR } from "../sim/horn.js";
+import { CHECKS } from "../sim/checks.js";
 import { poseAt, groundAt as stage0Ground, LANE } from "./road.js";
 import { C } from "../theme.js";
 
@@ -158,6 +159,23 @@ function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t) {
     const p = spot(back, sgn * side, rearZ);
     if (a.brakeLamp) { dot(p, r * 2.1, "rgba(255,40,30,0.35)"); dot(p, r, "#ff2a1e"); }
     else dot(p, r * 0.8, "#5c1714");
+  }
+  /* A CHECK, MADE VISIBLE (sim/checks.js, 27 October; the maintainer: a
+     driver checking has to be something you can watch). From the driver's
+     seat -- the left front of the cabin -- a pale wedge toward what they are
+     looking at: behind for the rear-view mirror, the rear quarter for a side
+     mirror, the blind spot over the shoulder, along the cross road from a
+     line. A map symbol, a fixed reach on the ground with a floor in pixels,
+     like the lamps. */
+  if (a.look && CHECKS[a.look.kind]) {
+    const head = spot(L * 0.05, -W * 0.25, frontZ);
+    const reach = Math.max(6, 22 / Math.max(k, 0.1));
+    const b = ((deg + CHECKS[a.look.kind].bearing) * Math.PI) / 180, spread = 0.32;
+    const tip = (da) => view.into(at.x + fx * L * 0.05 + rx * -W * 0.25 + Math.cos(b + da) * reach, at.y + fy * L * 0.05 + ry * -W * 0.25 + Math.sin(b + da) * reach, at.z + frontZ, PT);
+    const p1 = tip(-spread), p2 = tip(spread);
+    ctx.fillStyle = "rgba(255,236,150,0.32)"; ctx.strokeStyle = "rgba(255,236,150,0.85)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(head[0], head[1]); ctx.lineTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.closePath(); ctx.fill(); ctx.stroke();
+    dot(head, r * 0.9, "rgba(255,236,150,0.95)");
   }
   if (a.blinker && Math.floor((t + ((a.n ?? 0) % 7) * 0.09) * 3) % 2 === 0) {
     const sgn = a.blinker === "right" ? 1 : -1;

@@ -57,7 +57,8 @@ console.log("\n2. WHAT A DRIVER WHO LOOKED AWAY STILL BELIEVES");
     if (!(me.lag > 0)) continue;
     const off = lookingAway(w.t, me);
     const seen = seenBy(w, me);
-    if (!off) { looking++; if (seen === w.actors) lookingOk++; continue; }
+    /* Looking at the road: no glance away and no check in progress (sim/checks.js -- a mirror or shoulder check takes the eyes off the road too). */
+    if (!off && !me.look) { looking++; if (seen === w.actors) lookingOk++; continue; }
     const back = Math.min(Math.round(off / DT), w.past.length);
     if (back < 1) continue;   // away for under half a tick: still the present
     const then = new Map(w.past[back - 1].map((a) => [a.id, a]));
