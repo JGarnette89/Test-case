@@ -4744,6 +4744,8 @@ related is built from this until he does.
 
 ## 10.27 VISION BY MODE, AND INTERVENTION IN THREE LEVELS, JUDGED AFTERWARDS -- design, unbuilt (the maintainer, 27 October)
 
+**[Its tensions RESOLVED the same day by the maintainer: 10.28. Point 1's "the cone decides" is refined there -- seeing a check is free, judging it is not.]**
+
 Recorded as design beside the real sheet (10.26). **Nothing here is
 built.** Where it meets something already recorded or built, that is said
 under TENSIONS below rather than overwritten.
@@ -4849,6 +4851,111 @@ resolved here:**
   shoulder, left-right-left -- have to exist as visible events; attention.js
   models when a driver looks away from the road, not a check anybody could
   watch them make.
+
+## 10.28 10.27'S TENSIONS, RESOLVED BY THE MAINTAINER -- design, unbuilt (27 October)
+
+Every tension 10.27 raised has his answer. **Nothing here is built.** What
+is still open after these answers is listed at the end, flagged, not
+resolved.
+
+**1. INTERVENTION: FAIL, AND CONTINUE.** A correct intervention fails the
+candidate AND the drive goes on, the rest of the test marked. 5.10's
+automatic fail and 10.27's critical-error-and-continue are the same thing;
+both records stand.
+
+**2. THE PLAYER RECALLS FOUR THINGS ABOUT EACH INTERVENTION** -- the time,
+the type of intervention, the violation that occurred, and where it
+occurred -- in a dedicated part of the sheet, with the result given at
+the end, graded against what actually happened, "because we always know
+what really happened".
+- **This settles 10.27's second tension in the direction offered there:**
+  the player's account is the mark; the world's record is what it is
+  graded against. 5.10's derived counterfactual (would it have ended in
+  contact) is part of "what really happened".
+- **IT IS A MEMORY MECHANIC, NOT ONLY A JUDGEMENT ONE.** The player holds
+  four facts about one event while the drive carries on. **This is the
+  attention interlock the September cold review found missing** (5.7; 10.18
+  point 4): the four jobs never actually competed, because nothing the
+  player did cost attention while the others ran. Holding an intervention's
+  four facts is the first mechanic that genuinely consumes attention while
+  the other jobs continue.
+- **OPEN, asked, not assumed: free recall or selection from options.** A
+  large difference in difficulty on a phone. Neither is assumed anywhere
+  until he answers.
+
+**3. TERMINATION IS FOR A CANDIDATE WHO IS A DANGER -- A SET PIECE.** It
+starts a distinct mode: the test is over, and the player must bring the car
+back to the testing centre USING THE INTERVENTION CONTROLS ONLY, against a
+distressed or angry driver -- flavour of crying, pleading, raging while the
+car swerves. It gives termination weight, and it exercises all three
+intervention levels in sequence.
+
+**4. THE SIGHT MODEL IS SHARED.** The sedan's partial transparency goes
+into the shared sight code (sim/sight.js) for the AI drivers and the
+player alike: one definition, not two. 10.27's fifth tension resolved.
+
+**5. TRAFFIC CHECKS: THE PLAYER ALWAYS SEES WHERE THE CANDIDATE IS
+LOOKING.** The direction of the candidate's look and what their cone
+illuminates are always shown, without the player aiming their own
+sightline there. The maintainer's reasoning: from the passenger seat you
+catch a blind-spot check in peripheral vision while doing your own.
+- **THE CONSEQUENCE, which relocates the tension rather than removing it:
+  SEEING THAT A CHECK HAPPENED IS FREE; JUDGING WHETHER IT WAS ANY GOOD IS
+  NOT.** "They checked the mirror" costs the player nothing. "They checked
+  the mirror and missed the car in it" needs the player to have seen that
+  car themselves, with their own cone. Likewise a check made too early, or
+  aimed at the wrong place. That is the sharper tension, and closer to the
+  real job.
+- **This refines 10.27 point 1**, which said the examiner's cone decides
+  whether the player saw the candidate check: it decides whether the player
+  can judge the check, not whether they saw it happen.
+
+**6. THE GATING DEPENDENCY FOR THE WHOLE EXAMINER LAYER: CHECKS AS
+EVENTS.** The candidate's mirror, shoulder and left-right-left checks must
+exist as DISCRETE, OBSERVABLE EVENTS, each with a DIRECTION and a TIMING --
+not attention.js's "looking away from the road". Traffic Check (10.26's
+largest gap), the free half of point 5 and the judged half all stand on it.
+Nothing in the examiner layer that marks observation can be built before
+it.
+
+**STILL OPEN AFTER THESE ANSWERS -- flagged, not resolved:**
+- **Free recall or selection** (point 2): asked, unanswered.
+- **The recall budget is already spent once.** The deferred section sheet
+  was sized to free recall: "free recall runs out at about four items, so
+  the band is 3-4" faults a section, and section length is DERIVED from
+  that (CLAUDE.md, "A candidate has a CHARACTER"). One intervention is four
+  facts. If interventions draw on the same memory as faults, one
+  intervention fills a section's whole budget, and the derivation of
+  section length no longer holds as written. Whether they share a budget,
+  and how the sheet is sized when they do, is undecided -- and depends on
+  free recall against selection.
+- **The candidate's look gains a direction.** "What their cone
+  illuminates" (point 5) needs the candidate's looking to be directional.
+  attention.js today is not: a driver is looking or away, and while
+  looking sees the present. Directional perception for the candidate is a
+  change to layer 2 (CLAUDE.md, "Three layers"), beyond the discrete check
+  events of point 6 -- it changes what a candidate can miss, not only what
+  the player can see.
+- **"Partly transparent" is not yet a quantity.** sight.js is binary today
+  (an opaque box taller than 2 m hides; a car hides nothing). Partial
+  transparency for a driver deciding -- a lower chance of registering, a
+  longer registration delay, a fraction of the body seen -- is a modelling
+  choice with consequences for every driver, and it must stay seeded and
+  deterministic (10.9). To be defined before it is built.
+- **Termination in a car with no dual brake** (point 3 against 10.27 point
+  2): the set piece "exercises all three levels", and the dual brake is
+  equipment not every car has. Whether termination can happen in such a
+  car, and how the car is brought back without the one certain stop, is
+  open.
+- **Where an intervention "occurred"** (point 2) is most naturally the
+  route's declared leg and manoeuvre (10.26); and "the violation" is most
+  naturally an entry on the sheet (10.26's heading -> phase -> item ->
+  variant). Both therefore wait on the route and sheet structure, which is
+  not built.
+- **5.10.1's supply cap** is still unaddressed. Four facts to recall per
+  intervention is a cost that grows with every intervention, which may be
+  the deterrent 5.10.1 found the attention cost alone could not be -- to be
+  measured, not assumed.
 
 ## 11. Verification
 

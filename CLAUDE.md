@@ -1258,8 +1258,11 @@ three-layer reframing, the five axes and R2's build order:
   heading rather than plan the whole course up front.
 - **What is an intervention, in law and on the sheet?** PARTLY ANSWERED 27
   October (DECISIONS 10.27, design, unbuilt): three levels -- verbal, steering,
-  dual brake -- a critical error that does not end the test, judged by the
-  player afterwards like the deferred sheet. An examiner taking
+  dual brake -- a critical error that fails the candidate and does not end
+  the test, judged by the player afterwards like the deferred sheet, the
+  player recalling its time, type, violation and place (10.28); termination
+  only for a danger, as a set piece. GATED on the candidate's checks existing
+  as observable events (10.28 point 6). An examiner taking
   control is itself a recorded outcome. Automatic fail for the candidate? Is
   failing to intervene a fail for the player? **This is the blocking
   question now**, not a distant one: the mechanical prerequisite is
