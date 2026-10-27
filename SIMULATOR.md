@@ -48,6 +48,8 @@ minute at a frame rate the maintainer can play at (DECISIONS 10.17).**
 6. ~~the deliberate-breakage pass~~ -- done, all twelve fail when their module is broken (TESTING.md); verify-lanecost bites only at about ten times its cost
 7. suite cost: 12 at once instead of 8 (1700 -> 1382 s); verify-compliance's 145 runs in worker threads, identical counts (950 -> 448 s under load); the derived suite 1588 -> 1356 s. The pole is now eight checks at 870-1020 s, most of them several independent worlds -- the same treatment would apply (TESTING.md)
 10. ~~THE 57 MS~~ -- CLOSED: a median frame beside mean parts, during the spiral; reproduced with no hidden overhead (SIMULATOR 1.2.17); the readout now prints the frame's mean
+30. THE FOLLOW-CAR INDICATOR (the maintainer, 27 October): a headway readout on the throttle bar -- following too close is markable and the player cannot see their own following distance. NEXT, after which the game layer (rivals with intent, the marking guide, the sectional sheet) is briefed. PERFORMANCE WORK STOPS HERE (1.2.19): the big wins were broken things, and they are fixed
+29. ~~LOD~~ -- PARKED with its design and predictions (1.2.19); instead shaping's per-try pass over the fleet, contact detection's string keys and the pose's walk along its path -- exact (17 hashes, contacts old against new), the endless highway -10% on the desk; his phone predicted 19.5 -> ~17.5 ms at 180. The allocation readout (bytes a frame and a step) shipped 2aa7e1e
 28. THE OVERTAKE ASYMMETRY IS NOT THE LATTICE (the maintainer at 108 in a 100: overtook 3.6 a minute, overtaken 0.3). Asked of the AI (tools/measure/overtake-spread.mjs, endless highway, 280 cars, two seeds): wanted speed / limit p10 0.92, median 1.03-1.04, p90 1.17-1.19, max 1.35 -- 19-25% of the fleet wants more than 108%; and AI drivers who want exactly the limit are overtaken 1.3-2.7 a minute and overtake 2.9-3.2. The spread reaches the road; at 108 only about a fifth of the fleet is faster than him, by smaller margins, and his 0.3 is about what that predicts. Closed: he is simply fast
 27. MERGES JUDGED READ ZERO PARTLY BECAUSE THE COUNTER WAS BLIND ON EXIT STRETCHES -- FIXED: it read a lane change as the route's `from` lane changing, catching approach changes and missing most on exit stretches (the old counter matched 11 of 20 real lane changes near a car, 3 of 9 on exit stretches; now 20 of 20, 9 of 9 -- tools/verify-mergecount.mjs, split from verify-encounters, sabotaged). The rest of his zero is sparse traffic (4 in view, 4.5 met a minute): lane changes with a car within 30 m are rare there. The phone's readout shows the counter from this build
 26. A LANE CHANGE JUDGED ONLY THE NEAREST CAR AHEAD -- FIXED (22 October): both neighbour searches now return every car ahead within reach (the lead need against a car standing still, the farthest any car can demand room), and a change is begun only if each leaves its own lead need. Measured per lane change, independently by pose (tools/measure/lc-closing.mjs, shaped, two seeds of 5 min): changes begun into a car closing too fast to stop for comfortably 1 in 10,364 before, 0 in 10,431 after -- the one was the traced crash; changes not starved. Crashes, 40 shaped minutes: 1 before, 0 after (too rare to read alone). NOT A CHECK: a check resting on one event a ten minutes is the implied-sample-size trap; the measure stands instead. The off-ramp-bound car alongside (defect 1 below) was NOT in the crash -- recorded, not changed: nothing it causes has been shown. Was, found gating density shaping (world wrong, NOT shaping's): traced (endless highway, 280 cars, shaped, seed 2, t 257.8), a driver moved from lane 1 into lane 2 judging only the player 10.8 m ahead (faster, about to pull out) -- leadOk -- while (1) a car bound for the off-ramp overlapped it alongside, invisible because exitNeighbours admits only cars bound for the target lane while whatStops queues every car from the same approach (two definitions of who is in a lane), and (2) a car 16 m beyond the player was 13 m/s slower, hidden because gapFor reads the nearest car ahead only. Rear-ended it 1.8 s later. Rate: 1 crash in 40 shaped minutes, 0 in 40 unshaped, none involving a placed car or the player (tools/measure/lc-crashes.mjs). FIX: judge every car ahead in the target lane within reach (the hardest-pressing, as whatStops follows) and admit cars in the lane by where they are, not where they are bound. Next after shaping's own gates
@@ -63,7 +65,7 @@ minute at a frame rate the maintainer can play at (DECISIONS 10.17).**
 16. LOOK-AWAY, AS RULED (the maintainer, 22 October; DECISIONS 10.19): a glance is never blindness, is taken when it fits, and is the observation axis. 1 PERIPHERAL VISION -- built: the car ahead looming brings the eyes back a reaction later; the repro 12 crashes -> 0. 2 DEMAND GATING -- built: a due glance waits until the road leaves its length; long glances on clear road 57% -> 83%. 3 SKILL -- built: a poor observer skips the wait their deficit of the time; unfit glances sound 1%, poor 17%. Rates over 20 min: old glance 18 crashes, periphery alone 1, gating alone 3, all three 0 (verify-lookaway holds the mechanisms). DEFAULT ON AGAIN, the toggle kept (a saved choice under lookAwayOn stands). At 280 cars, look-away on: endless highway 0, city 0 by a glance, test highway 1 rear-end with nobody looking away. THE COST, HELD: desk only, the step with it on costs 1.6x off at 260 cars (median 29-30 ms against 17-19) -- the perception machinery, not gridlock. DO NOT OPTIMISE until the maintainer's phone reading says it matters (10.4: the index, the ceiling table and the jam hypothesis all misled); if it does, the first question is whether a glancing driver's carried picture needs to persist at all or can be derived. NEXT: anticipation as one property (item 18) (10.15) feeding gap-seeking, courtesy onset, lane-end merging and look-away timing
 15. LOOK-AWAY WAS THE GRIDLOCK (the maintainer, 22 October, the same crossroads at 260 cars with it OFF): zero crashes, step 21 ms against 57.5, 58 fps against 14, sim 1.00x against 0.74x, long tasks 0 against 4946 ms. The chain: glance rear-ends in queues -> wrecks block approaches -> gridlock -> every car with far more neighbours -> the step triples. EVERY 260-280-CAR NUMBER TAKEN TODAY WITH LOOK-AWAY ON IS GRIDLOCK-CONFOUNDED -- MEASUREMENTS OF A DEFECT, NOT OF THE ENGINE; compare nothing new against them, re-measure (look-away off, then as rebuilt, item 16) -- the 280-car highway readings (36-50 ms, the drift, the jam at the merge, the GC line), the crossroads: evidence for this finding, NOT baselines. Re-measure with it off. Look-away was already off by default; the setting is renamed (lookAwayOn) so a saved on resets. What it does (crossing.js seenBy): TOTAL blindness to change for the whole glance -- every car carried forward at the speed it had -- with glances up to 2.4 s every 6 s (blind a median 9-10% of the time, the poorest tenth 26-28%, the worst ~40%); 12 crashes in 10 minutes, all rear-ends in queues, the follower looking away in every one, none a turner against oncoming (tools/measure/lookaway-crashes.mjs). Cost tracks CARS PER NEIGHBOURHOOD -- a warning for density shaping, which concentrates them
 14. THE CROSSROADS CRASHES (the maintainer, test map 1, 260 cars, watching, look-away on): reproduced (tools/measure/crash-replay.mjs, seed 1) -- 4 in 120 s with look-away on, 0 with it off; all four REAR-ENDS in queues at the signalled node, each follower a poor observer (glance 1.7-2.4 s) looking away for ~2 s while closing on a stopping queue: the look-away design firing, not right of way. Open for the maintainer: is that rate wanted at 260 cars. AND A PATTERN: verify-crashes and verify-observation validate test map 1 at 150 cars, the merge was signed off at 150 -- the maintainer drives at 260-280; a density sweep of the checks is due
-13. LOD AND SHAPING, ONE PIECE (DECISIONS 10.17): UNHELD (1.2.18) -- the clean 280-car reading has the world at 1.00x real time and 37 fps with 3 cars in view and 10.2 met a minute; the budget is confirmed and the allocation-first question is unmotivated at these counts. DENSITY SHAPING IS NOW THE PROJECT. Concentration's effect on the step is still to be MEASURED, not designed around (the clustering cost seen was collision gridlock). Was: held for the GC reading -- first answer what share of the phone's step is collection, not compute; if most, allocation reduction leads (what immutability buys, where the 8 MB goes, a ping-pong of car arrays), LOD second. Meanwhile the promotion check is written (placement.js admissible, verify-promotion, 10.9). Rule: no performance work is believed until a phone reading says so (DECISIONS 10.4)
+13. LOD AND SHAPING, ONE PIECE (DECISIONS 10.17): **LOD PARKED, 27 October (1.2.19)** -- measured before it was built: shaping already put ~90 of 180 cars within 700 m, the shaped highway holds no more cars and more buy nothing he feels, ~20% of the step for a week's work; the design and predictions are in 1.2.19, look-away (coarse cars never glance) is the biggest reason to revisit; the fixed work done instead, exact, -10% on the highway. Was: UNHELD (1.2.18) -- the clean 280-car reading has the world at 1.00x real time and 37 fps with 3 cars in view and 10.2 met a minute; the budget is confirmed and the allocation-first question is unmotivated at these counts. DENSITY SHAPING IS NOW THE PROJECT. Concentration's effect on the step is still to be MEASURED, not designed around (the clustering cost seen was collision gridlock). Was: held for the GC reading -- first answer what share of the phone's step is collection, not compute; if most, allocation reduction leads (what immutability buys, where the 8 MB goes, a ping-pong of car arrays), LOD second. Meanwhile the promotion check is written (placement.js admissible, verify-promotion, 10.9). Rule: no performance work is believed until a phone reading says so (DECISIONS 10.4)
 12. THE GREEN, SPLIT (the maintainer, 22 October; DECISIONS 10.16): the horn at 2.0 s (HONK_AFTER, was 2.5), the mark at 4 s as undue delay's own constant; the escalation checked on a forced dawdler. OPEN for the maintainer: no modelled candidate reaches 4 s alone (poorest 2.7 s), so the observation fault is out of reach until the model has a distracted driver
 11. DENSITY SHAPING (DECISIONS 10.17): ON FOR THE ENDLESS HIGHWAY since 22 October (verify-shaping in the suite; the jolts were the placed car's speed -- crossing.js exitLimit, one definition). Desk at 280 cars, 119%: met x2.4, overtakes x2.3 (targets met), merges judged x1.8 (target x2, SHORT -- partial). THE CITY, its own result (DECISIONS 10.17): every gate passes, but at the maintainer's style (119%, overtaking) met x1.18 and gaps judged x1.0 -- targets x1.3 and x2 NOT met, so it stays OFF; for a keep-right driver at 95% met x1.6-2.6 and gaps judged x3-9. A shorter window made his style worse; not tuned. Open: placement along the player's route. NEXT: the maintainer's phone reading on the highway, shaped and unshaped on one build; the lane-change fix (26); then LOD. History: built, NOT ON (later the same day: the queue-by-the-rule fix, the check at the maintainer's 119% pace -- 19-24 met a minute against his own 5.5 -- and tools/wip-shaping.mjs, outside the suite; still failing on placed cars slowing with their leaders, and an encounter figure that swings 5-23 between seeds at 3 minutes) -- placement.js and shaping.js committed inert (hash gate identical); on the loop, measured 17-20 met a minute against 2.2-2.6 with 0 crashes, but verify-shaping (tools/scratch/verify-shaping.wip.mjs) still fails on followers braking hard behind placed cars, and the encounter figure is unstable with the space check in. Hurts a dense grid (test map 1): per map, as data. Also found: a lane change onto a car at shaped density (world, own item); the loop's off-ramp ends are in sight
 9. the 259-car highway (the maintainer's readout, 22 October; SIMULATOR 1.2.17) [PHONE CONCLUSIONS VOID, 1.2.18 -- the desk ramp stands]: (1) the step is superlinear in cars PER NODE, linear on the city -- the fix is the one sorted neighbour index; (2) the page was spiralling -- step budget shipped; (3) LOD next, with the neighbour index and gap predicate first (placement's first half pulled forward) -- the index's FIRST STEP shipped (whatStops' own lane, exact, -22% at 260 cars on the loop, SIMULATOR 1.2.17); next the lane change's and courtesy's scans onto it, then the gap predicate. Crashes: traffic alone 0 in 40 min; the readout now says which were with the player
@@ -3465,6 +3467,144 @@ minute), and standing cars climb from ~95 to ~140 in both. The phone's extra
 cost may be allocation: a glancing driver's carried picture copies every car
 for each distinct moment glances began, dozens of whole-world copies a tick
 -- a hypothesis, unmeasured. Look-away is off by default until it is settled.
+
+##### 1.2.19 LOD, measured before it was built, and PARKED -- 27 October
+
+**THE MAINTAINER'S PHONE, HIS BEST CONFIGURATION** (relayed 27 October;
+recorded here because it existed in no document): the endless highway,
+**180 cars, shaping on, look-away off -- 22 cars in view, 14.8 met a
+minute, 2.7 merges judged a minute, step 19.5 ms; 60 fps at 129 cars,
+comfortable at 180.** It is what #/map opens at (60de896). The desk's
+step on the same map and configuration is ~7.3 ms (lod-split.mjs, two
+seeds), so the phone factor HERE is ~2.7 -- on this map only (1.2.18).
+
+**THE BRIEF LOD WAS GIVEN, AND WHAT MEASURING IT FOUND.** The brief:
+"~180 simulated, ~22 in view: we pay full price for every car he cannot
+see." Measured on the desk before any code (tools/measure/lod-split.mjs,
+lod-census.mjs, lod-hold.mjs, lod-profile.mjs):
+
+1. **Shaping had already put the cars where the player is.** Shaped, 180
+   cars, two seeds: 44-57 within 400 m of the player, 64-85 within 600 m,
+   75-97 within 700 m, and only 4-8 beyond 2 km. "22 in view" is what is
+   DRAWN; a full tier has to reach past sight so that promotion happens
+   where nobody can see it, so it holds ~90 cars, not 22. LOD and shaping
+   were one piece of work (DECISIONS 10.17's reframe), and shaping did most
+   of what LOD was for.
+2. **More cars do not reach him on the shaped highway.** Asked for 240 the
+   map holds 228-229; asked for 300, 256-259 (shaping admits arrivals only
+   inside the window, and the window is full at competent gaps). Met a
+   minute, two seeds of 5 minutes at his 119%: 21.1 at 180, 21.7 at 240,
+   20.3 at 300 -- flat (noisy, and no trend). So headroom on the highway has
+   nowhere to go, and 300 cars there is a configuration DECISIONS 10.22's
+   scope rule rejects. The map where cars turn into encounters is the city
+   (shaping off): at 200 cars 12 are within 400 m.
+3. **A third of the step is not per-car decisions.** Profiled, 180 cars
+   shaped: the per-car closure ~69% (whatStops 46%), shaping 11% (8% of it
+   one pass over every car per placement try), contact detection 7%, the
+   rest poses, tails, people and lights. LOD touches only the 69%.
+4. **On the city half the far cars are where no cheap stand-in is safe.**
+   Beyond 700 m, the share whose decision could be held (on a lane's
+   stretch, not changing lane, not standing, not within half a second plus
+   a comfortable stop of their line): highway 80%, city 48%, test map 1 52%
+   -- the rest in a box (5-10%), standing (25-35% on the city and test map 1)
+   or near their line.
+5. **The promotion gate as written measured the wrong thing** --
+   DECISIONS 10.9 and 10.23's eighth instrument.
+
+**THE DESIGN, KEPT FOR WHEN SOMETHING NEEDS THE HEADROOM.** Two tiers, no
+dormant:
+- FULL within 600 m of the player (Euclidean: SIGHT 400 + 200 m, at least
+  7 s at the city's worst closing speed, two cars at 50 km/h); demoted only
+  past 700 m (hysteresis). Always full: the player, a wreck, and everybody
+  when nobody is driving (watching has no pose to measure from, and the
+  camera may not be an input -- the world would depend on the screen,
+  10.9).
+- COARSE, every tick: follows its lane leader by the same `decide` -- so
+  every headway is one the following law produced, which is what keeps a
+  promoted car out of somebody's headway: nothing is inserted, the car was
+  in every index all along. Every tenth tick (staggered by id, so the cost
+  is flat -- a spike is what the phone feels), the full decision. Every
+  tick in full whenever holding is not safe: in a box, mid-change,
+  standing, or near its line. Lost between full decisions: lane-change
+  timing (up to 0.5 s late), glances, horns, the memo, brake lamps -- none
+  visible from where the player is.
+- NO DORMANT TIER: shaped, almost nothing is far; on the city far cars
+  queue at signals, and a car advanced by formula cannot queue, so it
+  fails promotion by construction.
+- DETERMINISM as 10.9: the tier stored on the car, decided inside `step`
+  from the world before the tick and the player's pose; LOD off hashes
+  identically on all seven maps.
+- PROMOTION CHECKED PER EVENT, never as a total (10.23): no contact; no
+  hard braking by the promoted car or its new follower for 5 s; and an
+  all-full TWIN replayed from 10 s before each promotion, gaps compared at
+  the same tick -- a coarse gap the twin did not produce is a failure,
+  traced one by one. `admissible` is placement's gate only (10.9).
+
+**THE PREDICTIONS, written before any code** (step = fixed + full cars at
+their cost + coarse cars at ~0.4x (highway) to ~0.6x (city) of it; the
+phone at 2.7x on the highway; +-10 points on the decision share):
+
+| | desk now | desk LOD | phone now | phone LOD |
+|---|---|---|---|---|
+| highway 180 shaped | 7.3 ms | 5.8-6.4 (-12 to -22%) | 19.5 (his) | 15-17.5 |
+| highway 300 shaped (holds ~250) | 11.8 | 8.5-9.5 (-20 to -28%) | ~32 (not read) | 23-26 |
+| city 300 unshaped | 11.9 | 9-10 (-15 to -25%) | not read | ~-20% of it |
+
+At 180, fps up modestly, not to 60 (a frame that carries a step stays over
+16.7 ms); met a minute unchanged; allocation down about a third.
+
+**WHY IT IS PARKED, NOT CANCELLED (the maintainer, 27 October).** About a
+fifth of the step for about a week's work, and the headroom has nowhere to
+go: the shaped highway will not hold more cars, and more cars buy nothing
+he feels. **Do not re-propose LOD without first answering what the headroom
+would be spent on.** The things that would answer it:
+- **LOOK-AWAY, THE BIGGEST SINGLE REASON TO REVISIT.** Coarse cars would
+  never look away (agreed in principle; it parks with LOD), so look-away's
+  cost -- ~41 ms against ~25 without it on the phone at 280 cars unshaped,
+  IN FLIGHT 25 -- would be paid by full-tier cars only, about half the
+  fleet at 180. Glance crashes would then happen only near the player.
+- The city at more cars, where cars do turn into encounters (unshaped,
+  met a minute rises with density: 6.6 at 200, 9.6 at 300, 1.2.14).
+- A feature that costs step time and has nowhere else to come from.
+
+**DONE INSTEAD: THE FIXED WORK, EXACT** (the maintainer's call, 27
+October). Three changes, no behaviour moved:
+- placement.js `admissible(..., { all: false })`, shaping's use: stops at
+  the first rule that refuses, cheapest first, so the space and arrival
+  rules (each a pass over the fleet) run only for a spot the headway rules
+  admit; and the space rule reads poses from one grid per actors array and
+  clock instead of a pose of every car per try. Shaping 0.84 -> 0.29 ms.
+- crossing.js `contactsIn`: grid cells keyed by a number, not a string.
+- intersection.js `segAt`: the segment a place is on, found by halving
+  instead of a walk from the start (paths on the endless highway average
+  264 points; every pose walked them twice -- here and graph.js
+  poseOnGraph). The same index, so the same pose to the last bit.
+
+Held exact by: 17 world hashes identical before and after
+(tools/measure/shaped-hash.mjs -- a DRIVEN, shaped run, since
+world-hash.mjs has nobody at the wheel and shaping never runs in it -- on
+the endless highway at 180 (two seeds) and 300, the city shaped, test map 1
+with look-away, the test highway shaped with look-away; and world-hash.mjs
+on all seven maps plus test map 1 and the city with everybody perceiving
+late); and contactsIn old against new on worlds with clones injected
+(tools/measure/contacts-dump.mjs: 1,164 contacts, 90 snapshots with
+several at once, identical; sabotaged -- half the neighbouring cells
+skipped -- it differs in 28 snapshots). Ordinary traffic no longer crashes
+at all (0 in 3 minutes even with everybody perceiving late), which is why
+contacts are compared on made worlds.
+
+| desk, mean step, alternating runs | before | after |
+|---|---|---|
+| endless highway, 180 shaped (2 seeds x 2) | 5.99 ms | 5.40 (-10%) |
+| endless highway, 300 shaped | 10.13 | 9.22 (-9%) |
+| the city, 200 unshaped | 5.55 | 5.60 (unchanged: short paths, no shaping) |
+
+Against the estimate given before it was built (~15%): **two-thirds of
+it.** The 15% was the whole cost of the two items, and a pose of every car
+for contact detection is still paid -- now cheaper per pose, not avoided.
+**PREDICTED FOR HIS PHONE, before he reads it:** the endless highway at 180
+shaped, step 19.5 -> ~17.5 ms (16.5-18.5); fps a little up, not to 60; the
+world unchanged -- same met a minute within noise. The city: no change.
 
 ### Stage 2 — the editor, first version -- BUILT, 27 September
 

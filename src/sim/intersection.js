@@ -379,6 +379,17 @@ function crossOf(p, pu, q, qu) {
   return { x: p.x + pu.x * t, y: p.y + pu.y * t };
 }
 
+/* THE SEGMENT `s` IS ON: the first i >= 1 with at[i] >= s, or the last --
+   what a walk from the start found, found by halving (27 October). The
+   endless highway's paths run to 264 points on average, and every pose of
+   every car walked them from the start, twice (here and graph.js
+   poseOnGraph). The same index, so the same pose to the last bit. */
+export function segAt(at, s) {
+  let lo = 1, hi = at.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (at[m] < s) lo = m + 1; else hi = m; }
+  return lo;
+}
+
 /* Position and heading at `s` metres along a path. */
 export function poseAt(path, s) {
   const { pts, at } = path;
@@ -386,8 +397,8 @@ export function poseAt(path, s) {
     const h = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
     return { x: pts[0].x + Math.cos(h) * s, y: pts[0].y + Math.sin(h) * s, rot: (h * 180) / Math.PI };
   }
-  for (let i = 1; i < at.length; i++) {
-    if (s > at[i] && i < at.length - 1) continue;
+  if (at.length > 1) {
+    const i = segAt(at, s);
     const span = at[i] - at[i - 1] || 1;
     const k = Math.min(1, (s - at[i - 1]) / span);
     const a = pts[i - 1], b = pts[i];

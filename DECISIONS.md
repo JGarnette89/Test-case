@@ -3315,8 +3315,11 @@ What this obliges, before LOD lands:
   promotion), so the same history promotes to the same place.
 - **The promotion check is written before the feature**, as `verify-start`
   was for spawning into traffic, which bit twice: every promoted car arrives
-  on a lane, at a speed the traffic it joins could have produced, clear of
-  every headway -- enumerated over the tier boundary, not sampled.
+  on a lane, at a speed the traffic it joins could have produced, **in a
+  state the full simulation itself could have produced** -- enumerated over
+  the tier boundary, event by event, not sampled. (Until 27 October this
+  read "clear of every headway". REWRITTEN, below: that is placement's
+  standard, and ordinary untouched traffic fails it.)
 - **WRITTEN, 22 October, before the feature**: placement.js `admissible` is
   the one test anything that puts a car into the full simulation asks --
   density shaping now, LOD's promotion later -- naming the rule that refused
@@ -3329,6 +3332,29 @@ What this obliges, before LOD lands:
   space rule, a car its own neighbour): each fails it. Writing it found a
   real bug: asked about a car already in the world -- the promotion case --
   the index read the car as its own follower; now never.
+- **PROMOTION IS NOT PLACEMENT, AND `admissible` DOES NOT GATE IT
+  (27 October, the maintainer).** Placement CHOOSES a place, so it may hold
+  out for a comfortably clear one; promotion chooses nothing (10.10) -- the
+  car is already where the world put it. Asked of ordinary full-detail
+  traffic that had never been promoted -- cars 600-1000 m from the player,
+  the band promotion would happen in (tools/measure/lod-census.mjs) --
+  `admissible` refused **46-57% of car-samples on the endless highway on
+  the space rule alone**: any car within 10 m centre to centre, which is
+  the car in the next lane. The headway rules refused another 2-13% at the
+  competent standard, and more at the driver's own caution, because bold
+  drivers follow closely and that is the model working. A gate that most of
+  the untouched world fails is not measuring promotion; red with nothing
+  wrong, or a coarse model "fixed" toward a standard the full model does
+  not meet -- 10.23's pattern for the eighth time. So: promotion is checked
+  against the FULL MODEL ITSELF -- no contact, no hard braking by the
+  promoted car or its new follower, and an all-full twin replayed from
+  before each promotion with the gaps compared per event (SIMULATOR
+  1.2.19). `admissible` stays the gate for placement, where it is right;
+  for promotion only its lane, speed and arrival rules mean anything.
+  verify-promotion holds placement's predicate and stays as it is.
+- **LOD IS PARKED** (27 October, SIMULATOR 1.2.19): measured before it was
+  built, about a fifth of the step, and on the shaped highway the headroom
+  has nowhere to go. This section is the ruling for when it returns.
 - **The full-tier world, alone, is not required to be identical with LOD on
   and off** -- the point of LOD is that far traffic is approximated -- but a
   run with every car held in full tier must hash exactly as today's step
@@ -4377,6 +4403,19 @@ cannot reach belongs to the sequel.** Apply it when scoping anything.
    guessed. Look-away becomes one of these dials.
 Not 3 or 4 until shaping and LOD are done.
 
+**AMENDED, 27 October: cleanup went ahead of LOD, and LOD is parked.**
+This order was set before LOD's size was known. Measured before any of it
+was built (SIMULATOR 1.2.19), LOD was worth about a fifth of the step for
+about a week's work, and its headroom had nowhere to go: shaping had
+already put about half the fleet within 700 m of the player, the shaped
+highway holds no more cars, and more cars bought nothing the maintainer
+feels. Two items of fixed per-tick work -- shaping's pass over the fleet
+per placement try, and contact detection (with the pose under it) -- were
+exact, hash-checked and cheap, so they went first: -10% on the highway.
+**Performance work then stops** (the maintainer): every big win of the
+month was a broken thing, and those are fixed. 4 (fidelity settings) waits
+for a reason to spend headroom, as LOD does.
+
 **A CORRECTION TO THE FIGURE GIVEN FOR 3, before anybody acts on it.** "~88
 us per car per tick against an achievable 5-10" is 24.6 ms / 280 cars --
 the arithmetic is right and the premise is not: the step is NOT per-car
@@ -4390,7 +4429,7 @@ neighbourhood term is worth. Before 3 starts, the step is SPLIT and measured
 -- fixed per-car work, the neighbour term, per-tick overhead -- and the
 3-5x is predicted from that split, in writing, before any of it is built.
 
-## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October)
+## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-9 added 27 October)
 
 **The general finding about how this project fails.** Six times in a week a
 confident conclusion was wrong, and every time the simulation was fine and
@@ -4408,6 +4447,27 @@ SIMULATOR log they read as bad luck; together they are the pattern:
    the route's `from` lane changing, so it caught 11 of 20 real lane
    changes near a car and 3 of 9 on the open road -- and its zeros were
    quoted for a week as evidence about the world (SIMULATOR 27).
+
+7. **The shared drive that never noticed an arrival** (22 October, 10.17):
+   a driver on trips stood at the curb "meeting" the traffic going past.
+8. **The promotion gate (27 October), caught before it was used.**
+   `admissible` was written as the one test anything entering the full
+   simulation asks, LOD's promotion included. Asked of untouched full
+   traffic it refused 46-57% of cars on the space rule alone (the car in
+   the next lane) and a few percent more on headway: a placement standard
+   standing in for a promotion one -- the proxy pattern (CLAUDE.md item 2)
+   inside a gate. Found by asking the gate about traffic that had not been
+   through the thing it gates, which is the cheap sabotage for any gate:
+   **before trusting a validator, feed it the cases that must pass.**
+   (10.9.)
+9. **The world hash that never shaped (27 October).** world-hash.mjs, the
+   gate for "nothing moved", runs with nobody at the wheel -- and density
+   shaping runs only with a player, so a change to shaping would have
+   hashed identical whatever it did. The driven hash (shaped-hash.mjs)
+   closes it; and since ordinary traffic no longer crashes, contact
+   detection is compared on worlds with contacts made on purpose
+   (contacts-dump.mjs). A gate is checked for whether the code under it
+   RUNS in the gate's run, before its "identical" is believed.
 
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a

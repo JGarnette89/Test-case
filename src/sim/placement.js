@@ -137,8 +137,16 @@ export function approachNeighbours(world, me, actors = world.actors) {
    ===================================================================== */
 /* No car of any road nearer than this, centre to centre: two car lengths. A flagged design constant. */
 export const CLEAR_AROUND = 10;
-export function admissible(world, car, { poseOf, wantsAccel, brakeOf, actors = world.actors, kappa = 1 } = {}) {
+/* `all: false` -- placement's own use -- stops at the first rule that
+   refuses, cheapest first: the space and arrival rules are each a pass over
+   the fleet (a pose for every car; the step's neighbour index rebuilt for a
+   world with the car in it), and were most of shaping's cost when asked of a
+   spot the headway rules had already refused (27 October). `ok` is the same
+   either way; `why` is then the first reason only. A check that wants every
+   rule's verdict asks with the default. */
+export function admissible(world, car, { poseOf, wantsAccel, brakeOf, actors = world.actors, kappa = 1, all = true } = {}) {
   const why = [];
+  const done = () => !all && why.length > 0;
   const at = placeOf(world.course, car.k ?? 0, car.route, car.s);
   if (!at) return { ok: false, why: ["lane"] };
   if ((car.v ?? 0) > (car.v0 ?? car.v ?? 0) + 0.5) why.push("speed");
@@ -147,13 +155,43 @@ export function admissible(world, car, { poseOf, wantsAccel, brakeOf, actors = w
   if (nb.ahead && nb.ahead.clear < leadNeed(car, nb.ahead.car, kappa)) why.push("ahead");
   if (nb.behind && nb.behind.clear < lagNeed(car, nb.behind.car, kappa)) why.push("behind");
   if ((ap.ahead && ap.ahead.clear < leadNeed(car, ap.ahead.car, kappa)) || (ap.behind && ap.behind.clear < lagNeed(car, ap.behind.car, kappa))) why.push("queue");
+  const out = () => ({ ok: why.length === 0, why, at, ahead: nb.ahead, behind: nb.behind, queue: ap });
+  if (done()) return out();
   if (poseOf) {
     const p0 = poseOf(w, car);
-    if (actors.some((b) => b !== car && b.id !== car.id && !b.parked && (() => { const q = poseOf(w, b); return Math.hypot(q.x - p0.x, q.y - p0.y) < CLEAR_AROUND; })())) why.push("space");
+    if (nearIn(w, actors, poseOf, p0).some((e) => e.b !== car && e.b.id !== car.id && Math.hypot(e.p.x - p0.x, e.p.y - p0.y) < CLEAR_AROUND)) why.push("space");
   }
+  if (done()) return out();
   if (wantsAccel && brakeOf && wantsAccel({ ...w, actors: [...actors.filter((b) => b.id !== car.id), car] }, car) < -brakeOf(car)) why.push("arrival");
-  return { ok: why.length === 0, why, at, ahead: nb.ahead, behind: nb.behind, queue: ap };
+  return out();
 }
+
+/* Every unparked car's pose, in CLEAR_AROUND cells, once per actors array
+   and clock -- shaping asks up to four spots a tick of the same `next`, and
+   each asked for a pose of every car. A pose depends on the course, the
+   clock and the road (crossing.js poseOf), so those are the key with the
+   array; the cars returned are those in the 3x3 cells round a place, every
+   one that could be within CLEAR_AROUND of it, with their poses. */
+const poseGrids = new WeakMap();
+function nearIn(w, actors, poseOf, p0) {
+  let g = poseGrids.get(actors);
+  if (!g || g.t !== w.t || g.course !== w.course || g.road !== w.road || g.poseOf !== poseOf) {
+    g = { t: w.t, course: w.course, road: w.road, poseOf, cells: new Map() };
+    for (const b of actors) {
+      if (b.parked) continue;
+      const p = poseOf(w, b), key = cellKey(Math.floor(p.x / CLEAR_AROUND), Math.floor(p.y / CLEAR_AROUND));
+      let xs = g.cells.get(key);
+      if (!xs) g.cells.set(key, (xs = []));
+      xs.push({ b, p });
+    }
+    poseGrids.set(actors, g);
+  }
+  const cx = Math.floor(p0.x / CLEAR_AROUND), cy = Math.floor(p0.y / CLEAR_AROUND), out = [];
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (const e of g.cells.get(cellKey(cx + dx, cy + dy)) ?? []) out.push(e);
+  return out;
+}
+/* A cell's key as one number: maps are a few km across, so +-2^20 cells of any size is room to spare. */
+export const cellKey = (cx, cy) => (cx + 1048576) * 2097152 + (cy + 1048576);
 
 /* ROOM FOR `me` (its kind, ratings and speed v) at centreline place c in
    `lane`: the competent standard both ways, by the lane change's own needs. */

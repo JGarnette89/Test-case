@@ -42,7 +42,7 @@
 import { turnPoints } from "../core/turn.js";
 
 import { CAR, weaveRoom } from "./traffic.js";
-import { conflictsBetween, poseAt, LINE_SETBACK } from "./intersection.js";
+import { conflictsBetween, poseAt, segAt, LINE_SETBACK } from "./intersection.js";
 import { CROSSWALK_W } from "../map/format.js";
 import { signalFor, isSignal } from "./signal.js";
 import { coordinate } from "./progression.js";
@@ -1089,8 +1089,7 @@ export function poseOnGraph(course, k, route, s) {
   const p = course.at[k].layout.paths[route];
   const pose = poseAt(p, s);
   const { pts, at } = p;
-  let i = 1;
-  while (i < at.length - 1 && at[i] < s) i++;
+  const i = segAt(at, s);
   const f = Math.max(0, Math.min(1, (s - at[i - 1]) / (at[i] - at[i - 1] || 1)));
   const z = (pts[i - 1].z ?? 0) + ((pts[i].z ?? 0) - (pts[i - 1].z ?? 0)) * f;
   return { ...pose, z };

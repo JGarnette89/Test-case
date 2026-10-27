@@ -58,7 +58,7 @@ import { knownControl, theirControl } from "./reading.js";
 import { reads, anticipates } from "../core/driver.js";
 import { BAY } from "../map/format.js";
 import { lookingAway, loomingRate, LOOMING, lastDue, LOOK_EVERY } from "./attention.js";
-import { placeOf, neighboursAt, approachNeighbours } from "./placement.js";
+import { placeOf, neighboursAt, approachNeighbours, cellKey } from "./placement.js";
 import { parkingOf, initialParked } from "./parking.js";
 import { tallerThanEye, boxOf, eyeOf, hiddenFrom, blocked, segHitsBox, conesFrom, blockedFrom } from "./sight.js";
 import { REACTION_FLOOR, REGISTER_FLOOR, REGISTER_SPAN, JITTER } from "../core/perception.js";
@@ -3047,7 +3047,10 @@ export function contactsIn(world) {
      the old test and with the same nodes allowed; the contacts found are
      put back in the old order: `a` as the fleet lists it, `b` as the
      neighbourhood does. */
-  const CELL = 16, grid = new Map(), cellOf = (p) => `${Math.floor(p.x / CELL)},${Math.floor(p.y / CELL)}`;
+  /* Cells keyed by one number (placement.js cellKey), not a string: building
+     "cx,cy" for every car and for each of its nine neighbouring cells was a
+     quarter of this function (27 October). */
+  const CELL = 16, grid = new Map(), cellOf = (p) => cellKey(Math.floor(p.x / CELL), Math.floor(p.y / CELL));
   const actors = world.actors, at = new Map();
   actors.forEach((a, i) => { at.set(a, i); if (a.player) return; const key = cellOf(poseFor(a).p); let xs = grid.get(key); if (!xs) grid.set(key, (xs = [])); xs.push(a); });
   const found = [];
@@ -3055,7 +3058,7 @@ export function contactsIn(world) {
     if (a.player) continue;
     const p = poseFor(a).p, cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL), hood = hoodOf(world.course, a.k ?? 0);
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
-      for (const b of grid.get(`${cx + dx},${cy + dy}`) ?? []) {
+      for (const b of grid.get(cellKey(cx + dx, cy + dy)) ?? []) {
         if (!(a.id < b.id) || !hood.has(b.k ?? 0)) continue;
         if (test(a, b)) found.push({ c: out[out.length - 1], a, b });
       }

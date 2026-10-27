@@ -213,7 +213,7 @@ export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, pos
        tick it arrives (placed short of a bend at its own cruising speed, one
        braked at about 5 m/s^2 and the car behind with it). The one test LOD's
        promotion will ask too. */
-    if (!far(poseOf, wn, car, me) || !admissible(wn, car, { poseOf, wantsAccel, brakeOf, actors: next }).ok) continue;
+    if (!far(poseOf, wn, car, me) || !admissible(wn, car, { poseOf, wantsAccel, brakeOf, actors: next, all: false }).ok) continue;
     return { next: [...next, car], win, retired, placed: car };
   }
   return { next, win, retired, placed: null };
