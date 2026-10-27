@@ -4919,8 +4919,8 @@ Nothing in the examiner layer that marks observation can be built before
 it.
 
 **STILL OPEN AFTER THESE ANSWERS -- flagged, not resolved:**
-- **Free recall or selection** (point 2): asked, unanswered.
-- **The recall budget is already spent once.** The deferred section sheet
+- ~~**Free recall or selection** (point 2)~~ -- ANSWERED, 10.29: the time taken automatically, type, violation and place recognised from lists; attribution across interventions, in order, is the test.
+- **The recall budget is already spent once.** [RE-CHECKED in 10.29: it survives on the old engine's figures -- recognition, and about one intervention a section in five; re-measured when the sheet exists on the map.] The deferred section sheet
   was sized to free recall: "free recall runs out at about four items, so
   the band is 3-4" faults a section, and section length is DERIVED from
   that (CLAUDE.md, "A candidate has a CHARACTER"). One intervention is four
@@ -4956,6 +4956,70 @@ it.
   intervention is a cost that grows with every intervention, which may be
   the deterrent 5.10.1 found the attention cost alone could not be -- to be
   measured, not assumed.
+
+## 10.29 RECORDING AN INTERVENTION: THE TIME IS TAKEN, THE REST IS RECOGNISED -- and the guide is not the sheet (the maintainer, 27 October; design, unbuilt)
+
+His words, verbatim:
+
+*"The time should be recorded from the intervention action itself, and the
+rest should be selected from a list after the fact. the reason for the
+automatic time inclusion is so that the event itself is already recorded,
+and it's up to the examiner to remember what exactly happened."*
+
+*"attribution across interventions is the key. remember the order of what
+happened and where."*
+
+*"pulling up the guide is something users might do a lot at the beginning,
+when they are still learning what means what. this would be seperate from
+selecting the violation on the scoresheet."*
+
+**1. THE TIME IS CAPTURED AUTOMATICALLY AT THE INTERVENTION; TYPE,
+VIOLATION AND PLACE ARE SELECTED FROM A LIST AFTERWARDS.** Recognition,
+not free recall. This answers 10.28's open "free recall or selection".
+
+**2. ATTRIBUTION ACROSS INTERVENTIONS IS THE TEST.** Type is NOT
+auto-filled, though the game knows which control was used. The sheet
+shows timestamped slots with the times given; the player supplies what
+each one was -- the type, the violation, the place. With several
+interventions in a drive, mixing them up is the failure, and remembering
+the ORDER is as much the test as the detail. The times being given is
+exactly what makes it a test of order and cause rather than of whether
+anything happened.
+
+**3. THE MARKING GUIDE IS REFERENCE; THE SHEET IS INPUT. Two surfaces, two
+costs, never merged.** The guide answers "what does this mark mean", and a
+player opens it often while learning and rarely once they have; the sheet
+asks "which mark applies". (A note made the same day that the two
+converge was wrong and is withdrawn.)
+- **THE PROPERTY TO PROTECT: the game gets easier as the player learns,
+  not as anything in the game levels up.** The guide's cost -- searching it
+  while the drive goes on -- falls as the player stops needing it. Mastery,
+  not progression, and it arrives as a consequence rather than a designed
+  system. Anything that would undermine it -- auto-filling the guide's
+  answers, shortening the list for new players, a hint system -- is weighed
+  against it before it is built.
+- **The selection list's scope is a difficulty dial of its own.** The
+  real sheet is four levels deep with lettered variants (10.26); picking a
+  violation from all of it, with the drive continuing, is demanding even
+  as recognition. What the sheet's list offers is a design decision, made
+  knowing that.
+
+**4. THE MEMORY BUDGET, RE-CHECKED (10.28 left it open).** The deferred
+section sheet was sized to free recall: about four items, 3-4 faults a
+section, section length derived from 1.11 faults an intersection (2.7-3.6
+intersections; CLAUDE.md "A candidate has a CHARACTER"). An intervention
+was feared to be four more free-recall facts. As ruled it is ONE event
+whose time is given and whose three details are RECOGNISED from lists:
+cued, not free, and the cue is the slot itself. And it is rare: contact
+was coming on 16 of 240 intersections in the old engine's measurement
+(5.10.1), so about 0.2 intervention-worthy events in a three-intersection
+section. On those figures the sheet's derivation survives: the faults stay
+the free-recall load it was sized for, and an intervention adds a cued
+recognition about one section in five. **The figures are the old
+engine's**, compass courses with generated intersections; they are
+re-measured on the map when the sectional sheet exists there, not assumed
+to carry over. What it does NOT settle: several interventions close
+together, where order is the test -- that is meant to be hard (point 2).
 
 ## 11. Verification
 
