@@ -78,6 +78,8 @@ checks is HISTORY -- the reasoning still holds where it is about the law
 or the axes, and the code is in git. `verify-core` holds that nothing
 reaches for it.
 
+**[HANDOFF-2026-10-28.md](HANDOFF-2026-10-28.md) is where the last session stopped: the checks gates, the skill dial and readout as a falsification test, the "too polite" measurement, destinations, and the self-occlusion finding.**
+
 **[HANDOVER.md](HANDOVER.md) is the residue of the session that built
 signals, corner slowing, lane changing and keep-right (24 September),
 written as it was retired.** Not a summary -- these documents are the

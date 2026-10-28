@@ -4500,6 +4500,13 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     rule -- and hidden from a TRUCK's driver by the truck's own body, the eye
     placed 1.5 m ahead of centre (a car's front) inside a 9 m box that the
     sight test counted as an occluder.
+    **Both mechanisms the project lead proposed for it were wrong** -- the
+    car ahead hid nothing (an ordinary car), and nobody was deferring to a
+    leader -- **and the fix brief, written at the project lead's
+    instruction, overstated the problem because it rested on the miscount.**
+    The pattern now has a name: plausible mechanisms supplied that turn out
+    not to be active; the only thing that has caught it is testing them
+    rather than accepting them (items 10 and 11; SIMULATOR IN FLIGHT 32).
 
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
