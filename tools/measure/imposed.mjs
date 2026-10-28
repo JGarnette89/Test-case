@@ -15,7 +15,9 @@ const [id, cars, seed, mins, chk] = process.argv.slice(2);
 if (chk == null) throw new Error("usage: map cars seed mins checks(0|1)");
 let w = seedGraph(Number(seed), 50, loadMap(TEST_MAPS.find((t) => t.id === id).build()), { every: 2.0, target: Number(cars), posted: true, checks: chk === "1" });
 for (let i = 0; i < 60 / DT; i++) w = step(w);
-const open = new Map(), done = [], seen = new Set();   // seen: a change outlives its 4 s window, and must not be opened twice   // change key -> { band, kind, at, followers: Map(id -> peak decel) }
+const open = new Map(), done = [], seen = new Set();
+/* THE BACKGROUND, the control for blaming the change: every moving car, in back-to-back 4 s windows, whose leader in that window was never a car mid-change -- its hardest braking, from the traffic alone. */
+const bg = [], win = new Map();   // seen: a change outlives its 4 s window, and must not be opened twice   // change key -> { band, kind, at, followers: Map(id -> peak decel) }
 for (let i = 0; i < Number(mins) * 60 / DT; i++) {
   w = step(w);
   const byId = new Map(w.actors.map((a) => [a.id, a]));
@@ -37,6 +39,15 @@ for (let i = 0; i < Number(mins) * 60 / DT; i++) {
     const dec = Math.max(0, -(a.a ?? 0));
     if (o.who == null || o.who === a.id) { o.who = a.id; o.peak = Math.max(o.peak, dec); }
   }
+  for (const a of w.actors) {
+    if (a.player) continue;
+    const lw = win.get(a.id) ?? { from: w.t, peak: 0, tainted: false, moving: true };
+    if ((a.v ?? 0) < 1) lw.moving = false;
+    const l = whatStops(a, w).leader, L = l && byId.get(l.id);
+    if (a.lc || L?.lc) lw.tainted = true;
+    lw.peak = Math.max(lw.peak, -(a.a ?? 0));
+    if (w.t - lw.from >= 4) { if (!lw.tainted && lw.moving && L) bg.push(lw.peak); win.set(a.id, { from: w.t, peak: 0, tainted: false, moving: true }); } else win.set(a.id, lw);
+  }
   for (const [k, o] of open) if (w.t - o.at > 4) { done.push(o); open.delete(k); }
 }
 const q = (xs, p) => (xs.length ? xs.slice().sort((x, y) => x - y)[Math.min(xs.length - 1, Math.floor(p * xs.length))] : null);
@@ -44,5 +55,6 @@ const sum = (rows) => { const xs = rows.filter((o) => o.who).map((o) => o.peak);
 const out = { map: id, cars: Number(cars), seed: Number(seed), mins: Number(mins), checks: Number(chk), all: sum(done) };
 for (const b of ["bold", "sound", "timid"]) out[b] = sum(done.filter((o) => o.band === b));
 for (const k of ["choice", "keepRight", "forTurn", "merge"]) out[k] = sum(done.filter((o) => o.kind === k));
+out.background = { windows: bg.length, over1: +(bg.filter((x) => x > 1).length / Math.max(1, bg.length) * 100).toFixed(1) + "%", over3: +(bg.filter((x) => x > 3).length / Math.max(1, bg.length) * 100).toFixed(1) + "%" };
 out.looked = sum(done.filter((o) => !o.missed)); out.missed = sum(done.filter((o) => o.missed));
 console.log(JSON.stringify(out));
