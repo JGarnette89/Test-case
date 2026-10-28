@@ -202,7 +202,7 @@ worker threads and adding them up (tools/lib/compliance-runs.mjs):
 identical output with one worker and four, 950 -> 448 s under the suite's
 load, both sabotages caught through the parallel path. The pole is now
 eight checks at 870-1020 s; most simulate several independent worlds and
-could take the same treatment. After that the lever is a cheaper step -- which the
+could take the same treatment. (28 October: a split of verify-compliance was asked for on the 950 s figure, which is this entry's BEFORE. Measured on the derived run of that morning, 12 at once: 465 s of a 1,581 s wall, 2.5% of 18,826 check-seconds; the suite is CPU-bound, so the wall follows total work and the slowest batch -- verify-peds 1,009 s, then six at 790-890 s. Not split: it would cost nothing less. Its own parts, timed alone: the city run 27 s, the 72 light runs 0.4 s each, the 72 busy runs 5.5 s each -- about 430 s of CPU in four worker threads.) After that the lever is a cheaper step -- which the
 phone would feel too: the week's changes made a step about 6-7% dearer
 (test map 1 10.18 -> 10.86 ms, the city 6.28 -> 6.68 at 250 cars).
 
