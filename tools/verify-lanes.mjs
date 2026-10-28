@@ -88,7 +88,7 @@ function watch(seed, target, secs) {
       const was = before.get(a.id), L = w.course.at[a.k].layout, p = L.paths[a.route];
       if (a.lc && !a.lc.abort && (!was || !was.lc || was.lc.at !== a.lc.at)) {
         const fromPath = L.paths[a.lc.from];
-        starts.push({ id: a.id, run: seed, caution: a.caution, obs: deficitOf(a.ratings, "observation").deficit, steer: deficitOf(a.ratings, "steering").deficit,
+        starts.push({ id: a.id, run: seed, caution: a.caution, aggr: a.aggression ?? null, obs: deficitOf(a.ratings, "observation").deficit, steer: deficitOf(a.ratings, "steering").deficit,
           gap: a.lc.gap, tight: a.lc.tight, missed: a.lc.missed, blind: a.lc.blind, mandatory: a.lc.mandatory, keepRight: a.lc.keepRight, ov: a.lc.ov, exit: !!a.lc.exit, keptIntent: fromPath?.intent === p.intent });
         if (a.lc.exit) exitChanges++;
       }
@@ -142,8 +142,22 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
   const seenStarts = starts.filter((s) => !s.missed && Number.isFinite(s.tight));
   const tightBy = (lo, hi) => seenStarts.filter((s) => s.caution >= lo && s.caution < hi && s.tight < 1).length;
   const minBy = (lo, hi) => Math.min(...seenStarts.filter((s) => s.caution >= lo && s.caution < hi).map((s) => s.tight));
-  check(tightBy(0, 0.7) > 0 && tightBy(1, 3) === 0,
-    `and HOW TIGHT: ${tightBy(0, 0.7)} changes by bold drivers took a gap a competent driver would refuse (tightest ${minBy(0, 0.7).toFixed(2)} of the competent requirement); drivers at or above competent caution took none (tightest ${minBy(1, 3).toFixed(2)})`);
+  /* RESTATED 28 OCTOBER (DECISIONS 10.32; SIMULATOR IN FLIGHT 35). It said
+     drivers at or above competent caution took NO gap a competent driver
+     would refuse -- tightness as confidence's alone, which is the conflation
+     10.32 removed. A gap is now taken on the cost it forces on the car
+     behind, within the driver's tolerance (aggression): a sound judge with a
+     high tolerance takes a tight gap BY CHOICE. So the claim, in the model's
+     own terms: bold drivers still take gaps a competent judge would refuse
+     (misjudging); and the sound-confidence drivers who take them exist and
+     are the MORE AGGRESSIVE of their kind (choosing). A tolerance that
+     ignored aggression fails it either way -- no such changes, or no
+     difference. Sabotaged: imposesOf at LIFT for everybody. */
+  const soundStarts = seenStarts.filter((s) => s.caution >= 1 && s.caution < 3 && s.aggr != null);
+  const soundTight = soundStarts.filter((s) => s.tight < 1);
+  const meanAggr = (xs) => xs.reduce((t, s) => t + s.aggr, 0) / Math.max(1, xs.length);
+  check(tightBy(0, 0.7) > 0 && soundTight.length >= 3 && meanAggr(soundTight) > meanAggr(soundStarts) + 0.03,
+    `and HOW TIGHT: ${tightBy(0, 0.7)} changes by bold drivers took a gap a competent driver would refuse (tightest ${minBy(0, 0.7).toFixed(2)} of the competent requirement) -- misjudging; ${soundTight.length} by drivers at or above competent caution did (tightest ${minBy(1, 3).toFixed(2)}), and they are the more aggressive: mean aggression ${meanAggr(soundTight).toFixed(3)} against ${meanAggr(soundStarts).toFixed(3)} for every change at that caution -- choosing`);
 }
 
 /* 2. OBSERVATION: whether the gap was SEEN. */

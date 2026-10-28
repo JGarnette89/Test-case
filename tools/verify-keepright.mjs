@@ -11,7 +11,7 @@ import { loadMap } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
 import { seedGraph, step, overlapping, poseOf } from "../src/sim/crossing.js";
 import { lateralOf, changing, LC_TIME, LC_EVERY, RETURN_AFTER, KEEP_RIGHT_FAULT } from "../src/sim/lanechange.js";
-import { weaveRoom, DT, CAR, wantedGap } from "../src/sim/traffic.js";
+import { weaveRoom, DT, CAR, wantedGap, decide, imposesOf } from "../src/sim/traffic.js";
 import { noticing } from "../src/sim/marking.js";
 import { deficitOf, knows } from "../src/core/driver.js";
 
@@ -79,7 +79,21 @@ const mean = (xs) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : Na
     if (ahead && ahead.d - CAR.length < Math.max(30, want * 4) && ahead.b.v < want - 1) return "inTheWay";
     const stop = (v, vl) => Math.max(0, (v * v - vl * vl) / 16);
     if (ahead && ahead.d - CAR.length < Math.max(1.5 + stop(a.v, ahead.b.v), wantedGap(a, ahead.b))) return "noGap";
-    if (behind && behind.d - CAR.length < Math.max(1.5 + stop(behind.b.v, a.v), wantedGap(behind.b, a))) return "noGap";
+    /* BEHIND, RESTATED 28 OCTOBER (DECISIONS 10.32): for a driver who carries
+       aggression, "no gap" is the ruling in COST terms -- the car behind would
+       have to brake harder than this driver will impose (judged as a competent
+       driver would judge it), or could not stop behind them at all. Kept as a
+       distance it was a second definition of what the model now decides by
+       cost: two statements of one quantity, and they disagreed on 3 of 1,851
+       decisions. The car behind's braking is its own following model's
+       answer, as the ruling means it; everything else here is found
+       independently. A driver without the field keeps the distance. */
+    if (behind) {
+      const room = behind.d - CAR.length;
+      if (room < 1.5 + stop(behind.b.v, a.v)) return "noGap";
+      const tol = imposesOf(a);
+      if (tol == null ? room < wantedGap(behind.b, a) : -decide({ ...behind.b, v0: Math.max(behind.b.v0 ?? behind.b.v ?? 0, 0.1) }, { leader: a, gap: room }) > tol) return "noGap";
+    }
     return null;
   };
   /* One run answers several questions. `mode` is "on", "off" (the rule
