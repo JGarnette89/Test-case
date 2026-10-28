@@ -14,7 +14,7 @@ import { DT, lenOf } from "../../src/sim/traffic.js";
 const [id, cars, seed, secs] = process.argv.slice(2);
 let w = seedGraph(Number(seed), 50, loadMap(TEST_MAPS.find((t) => t.id === id).build()), { every: 2.0, target: Number(cars), posted: true, ...(process.env.IMPOSED === "0" ? { imposed: false } : {}) });
 for (let i = 0; i < 60 / DT; i++) w = step(w);
-const C = { samples: 0, withLeader: 0, otherLeg: 0, phantom: 0, phantomHard: 0, realHard: 0, real: 0 };
+const C = { kinds: {}, ex: [], samples: 0, withLeader: 0, otherLeg: 0, phantom: 0, phantomHard: 0, realHard: 0, real: 0 };
 for (let i = 0; i < Number(secs) / DT; i++) {
   w = step(w);
   if (i % 20) continue;
@@ -29,9 +29,15 @@ for (let i = 0; i < Number(secs) / DT; i++) {
     if (other) C.otherLeg++;
     const me = poseOf(w, a), it = poseOf(w, L), straight = Math.hypot(it.x - me.x, it.y - me.y);
     const hard = -(a.a ?? 0) > 3;
-    if (straight > v.gap + (lenOf(a) + lenOf(L)) / 2 + 5) { C.phantom++; if (hard) C.phantomHard++; }
+    if (straight > v.gap + (lenOf(a) + lenOf(L)) / 2 + 5) {
+      C.phantom++; if (hard) C.phantomHard++;
+      /* WHAT KIND: across a node boundary (followed by lane projection), a car mid-change, the same leg, or another. */
+      const kind = (L.k ?? 0) !== (a.k ?? 0) ? "acrossNode" : L.lc || a.lc ? "changing" : P[L.route]?.from === P[a.route]?.from ? (L.route === a.route ? "sameRoute" : "sameLegOtherRoute") : "otherLeg";
+      C.kinds[kind] = (C.kinds[kind] ?? 0) + 1;
+      if (C.ex.length < 4 && kind === process.env.SHOW) C.ex.push({ me: a.id, k: a.k, route: a.route, s: +a.s.toFixed(1), it: L.id, itK: L.k, itRoute: L.route, itS: +L.s.toFixed(1), gap: +v.gap.toFixed(1), straight: +straight.toFixed(1) });
+    }
     else { C.real++; if (hard) C.realHard++; }
   }
 }
 const pct = (x, n) => +(100 * x / Math.max(1, n)).toFixed(1);
-console.log(JSON.stringify({ map: id, cars: Number(cars), seed: Number(seed), secs: Number(secs), imposed: process.env.IMPOSED !== "0", carSeconds: C.samples, withLeader: C.withLeader, leaderBoundElsewherePct: pct(C.otherLeg, C.withLeader), phantomPct: pct(C.phantom, C.withLeader), hardWhenPhantomPct: pct(C.phantomHard, C.phantom), hardWhenRealPct: pct(C.realHard, C.real), phantoms: C.phantom }));
+console.log(JSON.stringify({ map: id, cars: Number(cars), seed: Number(seed), secs: Number(secs), imposed: process.env.IMPOSED !== "0", carSeconds: C.samples, withLeader: C.withLeader, leaderBoundElsewherePct: pct(C.otherLeg, C.withLeader), phantomPct: pct(C.phantom, C.withLeader), hardWhenPhantomPct: pct(C.phantomHard, C.phantom), hardWhenRealPct: pct(C.realHard, C.real), phantoms: C.phantom, kinds: C.kinds, examples: C.ex }));

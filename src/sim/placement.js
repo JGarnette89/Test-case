@@ -24,6 +24,7 @@
 import { exitAlong, approachAlong } from "./graph.js";
 import { leadNeed, lagNeed } from "./lanechange.js";
 import { lenOf } from "./traffic.js";
+import { sharesLane } from "./occupancy.js";
 
 /* The lane and centreline place of a car on route `route` at node k, s
    along it: its approach lane before the line, its exit lane after the
@@ -93,7 +94,11 @@ export function neighboursAt(world, lane, c, me) {
    the curb lane, by the rule, while the lane index filed the two under
    different roads (22 October: every follower verify-shaping caught braking
    hard behind a placed car was this). Nearest ahead and behind among them,
-   with the clear road between. */
+   with the clear road between.
+   CORRECTED 28 OCTOBER (IN FLIGHT 38): that rule was the defect, and this
+   was taught to AGREE with it. A car 70-180 m up the off-ramp is not in the
+   curb lane; it was braked for as if it were. Both now read occupancy.js:
+   the same leg AND short of where the paths part. */
 export function approachNeighbours(world, me, actors = world.actors) {
   const L = world.course.at[me.k ?? 0]?.layout, mine = L?.paths?.[me.route];
   if (!mine) return { ahead: null, behind: null };
@@ -101,7 +106,8 @@ export function approachNeighbours(world, me, actors = world.actors) {
   for (const b of actors) {
     if (b === me || b.id === me.id || b.parked || (b.k ?? 0) !== (me.k ?? 0)) continue;
     const p = L.paths[b.route];
-    if (!p || p.from !== mine.from) continue;
+    /* THE LANE, PHYSICALLY (occupancy.js; IN FLIGHT 38) -- not "the same leg for the whole path", which this was made to agree with on 22 October: a car past its split is on another road. */
+    if (!p || !sharesLane(L, me, b)) continue;
     const d = b.s - me.s;
     if (d > 0 && d < da) { da = d; ahead = b; }
     if (d <= 0 && -d < db) { db = -d; behind = b; }

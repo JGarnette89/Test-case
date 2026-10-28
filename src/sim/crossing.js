@@ -54,6 +54,7 @@ import { planPass, passOffset, passerAhead } from "./passing.js";
 import { rng } from "../core/rng.js";
 import { shape, windowOf, admits } from "./shaping.js";
 import { townOf } from "./towns.js";
+import { sharesLane } from "./occupancy.js";
 import { applySkill } from "./skill.js";
 import { knownControl, theirControl } from "./reading.js";
 import { reads, anticipates } from "../core/driver.js";
@@ -1334,7 +1335,11 @@ export function whatStops(me, world) {
        it ends, so there the lanes are closer than that: held to the old
        lane until the blend is over, as before (a car in a half-open bay was
        struck from behind the day this was first written without it). */
-    const shareLane = theirs.from === mine.from
+    /* THE SAME LANE, PHYSICALLY (occupancy.js; IN FLIGHT 38): the same leg AND
+       both short of where our paths come a lane apart. It was the same leg for
+       the whole path, so a car gone up the off-ramp 30 m sideways was still
+       the car in front -- 10-27% of all following, against cars not there. */
+    const shareLane = sharesLane(layout, me, them)
       || (changing(them.lc, world.t) && them.lc.fromLeg === mine.from && protrudes(them, me))
       /* An approach change only: one on the exit stretch has no fromLeg (null), and null === null
          made two exit changers on one road -- going opposite ways -- share a lane (20 October). */
@@ -2374,7 +2379,7 @@ const BRAKE_LAMP_ON = 0.6, BRAKE_LAMP_HOLD = 0.5;   // m/s^2; s
 export function joinAt(world, actors, car) {
   const mine = pathOf(world, car);
   const behind = actors
-    .filter((a) => (a.k ?? 0) === (car.k ?? 0) && pathOf(world, a).from === mine.from)
+    .filter((a) => (a.k ?? 0) === (car.k ?? 0) && sharesLane(layoutOf(world, car), car, a))   // in its lane, physically (occupancy.js)
     .reduce((lo, a) => (a.s < lo.s ? a : lo), { s: Infinity, v: Infinity });
   const room = behind.s - (lenOf(car) + lenOf(behind)) / 2;
   const fits = (v) => room > wantedGap({ ...car, v }, behind);

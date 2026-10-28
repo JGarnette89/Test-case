@@ -47,6 +47,7 @@
 import { deficitOf, knows, soundnessOf, COMPETENT_AT, anticipates } from "../core/driver.js";
 import { rng } from "../core/rng.js";
 import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
+import { sharesLane } from "./occupancy.js";
 import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, widthOf, clearBetween, stoppingRoom } from "./traffic.js";
 import { changeTime } from "../core/motion.js";
 import { poseAt } from "./intersection.js";
@@ -182,7 +183,7 @@ function reasonToStayOut(world, out, layout, path, leg, look, want) {
   const route = layout.routesFrom(toLeg).find((r) => exitOf(r) === exit && fits(out, layout.paths[r], world.road?.lane));
   if (!route) return "turn";
   const s2 = out.s * (layout.paths[route].stopAt / path.stopAt);
-  const nb = neighbours(world, out, toLeg, s2);
+  const nb = neighbours(world, out, toLeg, s2, route);
   if ((nb.behind && nb.db < BLIND_BEHIND) || (nb.ahead && clearBetween(nb.da, out, nb.ahead) < 2)) return "passing";
   if (nb.ahead && clearBetween(nb.da, out, nb.ahead) < look && (nb.ahead.v ?? 0) < want - 1) return "inTheWay";
   const g = gapFor(out, nb, 1, world);
@@ -222,14 +223,17 @@ export const LC_SPEED = 3;   // m/s: nobody begins a change slower than this (la
    standing still (the slower, the more), so that and a car's length is how
    far each search collects. */
 const reachAhead = (me) => leadNeed(me, { v: 0 }, kappaOf(me)) + 10;
-function neighbours(world, me, legId, s) {
+function neighbours(world, me, legId, s, route = null) {
   let ahead = null, behind = null, da = Infinity, db = Infinity;
   const reach = reachAhead(me), aheads = [];
   const layout = world.course.at[me.k ?? 0].layout;
   for (const a of atNode(world, world.actors, me.k ?? 0)) {
     if (a.id === me.id || (a.k ?? 0) !== (me.k ?? 0)) continue;
     const from = layout.paths[a.route]?.from;
-    const inLane = from === legId || (changing(a.lc, world.t) && a.lc.fromLeg === legId);
+    /* In the target lane PHYSICALLY (occupancy.js): from that leg and, when the
+       route moved onto is known, short of the split from it -- a car from the
+       same leg already turned away is not in it. */
+    const inLane = (from === legId && (route == null || sharesLane(layout, { route, s }, a))) || (changing(a.lc, world.t) && a.lc.fromLeg === legId);
     if (!inLane) continue;
     const d = a.s - s;
     if (d >= 0 && d < da) { da = d; ahead = a; }
@@ -272,7 +276,7 @@ export function laneStep(world, me, out, view) {
       const path = layout.paths[out.route];
       /* On the exit stretch the lanes are the `to` legs and the coordinate is distance remaining. */
       const exit = !!out.lc.exit, rem = path.length - out.s;
-      const nb = exit ? exitNeighbours(world, out, layout, path.to, rem) : neighbours(world, out, path.from, out.s);
+      const nb = exit ? exitNeighbours(world, out, layout, path.to, rem, out.route, out.s) : neighbours(world, out, path.from, out.s, out.route);
       const beside = (nb.behind && nb.db < BLIND_BEHIND) || (nb.ahead && nb.da < BLIND_AHEAD);
       /* NO SWINGING BACK INTO A LANE THAT IS ENDING (21 October): an abort
          out of a merge put the car back in its acceleration lane at the very
@@ -356,7 +360,7 @@ export function laneStep(world, me, out, view) {
     const s2 = out.s * (layout.paths[route].stopAt / path.stopAt);
     /* A bay not open yet: stay put and keep wanting it. */
     if (closedBay(layout, toLeg, s2)) return out;
-    return attempt(world, out, path, { dir, toLeg, route, s2, nb: neighbours(world, out, toLeg, s2), mandatory: true }, T0);
+    return attempt(world, out, path, { dir, toLeg, route, s2, nb: neighbours(world, out, toLeg, s2, route), mandatory: true }, T0);
   }
 
   /* Room to finish before the line at THIS driver's pace: their own blend
@@ -381,7 +385,7 @@ export function laneStep(world, me, out, view) {
     /* Not knowing the rule, never; knowing it, at their compliance --
        except that somebody faster coming up behind makes it cost, and then
        anybody who knows the rule goes back at the prompt interval. */
-    const nb = neighbours(world, out, path.from, out.s);
+    const nb = neighbours(world, out, path.from, out.s, out.route);
     const pressed = !!nb.behind && nb.db < look && (nb.behind.v0 ?? nb.behind.v ?? 0) > want + 1;
     const cd = pressed ? 0 : deficitOf(out.ratings ?? {}, "compliance").deficit ?? 0;
     const after = knows(out, "keep-right") ? RETURN_AFTER / Math.max(1e-9, 1 - cd) : Infinity;
@@ -429,7 +433,7 @@ export function laneStep(world, me, out, view) {
     if (!route) continue;
     const target = layout.paths[route];
     const s2 = out.s * (target.stopAt / path.stopAt);
-    const nb = neighbours(world, out, toLeg, s2);
+    const nb = neighbours(world, out, toLeg, s2, route);
     const there = nb.ahead && clearBetween(nb.da, out, nb.ahead) < look ? Math.min(want, nb.ahead.v) : want;
     const gain = there - here;
     if (gain < LC_GAIN * Math.max(0.2, caution)) continue;
@@ -543,7 +547,7 @@ const BESIDE_TURN = 5;     // degrees between the car's heading and the target l
 const BESIDE_SEP = 0.6;    // m off a lane's width across: in its own lane, not still swinging out of the box   // m past the box before the exit stretch counts as road to change lane on
 /* The cars in an exit lane, ahead and behind, by distance remaining -- and,
    ahead, those already past the seam on the next intersection's approach. */
-function exitNeighbours(world, me, layout, toLeg, rem) {
+function exitNeighbours(world, me, layout, toLeg, rem, route = null, sRoute = null) {
   let ahead = null, behind = null, da = Infinity, db = Infinity;
   const reach = reachAhead(me), aheads = [];
   /* Past the box, places are compared along the road's centreline
@@ -562,6 +566,20 @@ function exitNeighbours(world, me, layout, toLeg, rem) {
        as behind, at its own speed, which costs a changer nothing it should
        not. */
     if (!p) continue;
+    /* ...AND A CAR BOUND ELSEWHERE THAT IS STILL IN THIS LANE (occupancy.js;
+       IN FLIGHT 38): from the same leg as the place asked about, short of
+       where its path parts from that one. Counted by destination alone, a
+       car on its way up the off-ramp but still in the curb lane was invisible,
+       and 15% of keep-right moves here began inside the side-ahead floor
+       behind one. Short of the split the two paths are one centreline, so
+       distance along the path is distance along the lane. */
+    if (route != null && p.to !== toLeg && p.from === layout.paths[route]?.from && sharesLane(layout, { route, s: sRoute }, a)) {
+      const d = a.s - sRoute;
+      if (d >= 0 && d < da) { da = d; ahead = a; }
+      if (d >= 0 && d <= reach) aheads.push({ car: a, d });
+      if (d < 0 && -d < db) { db = -d; behind = a; }
+      continue;
+    }
     if (!(p.to === toLeg || (changing(a.lc, world.t) && a.lc.fromTo === toLeg))) continue;
     const theirs = myAlong != null && a.s > p.clearAt ? exitAlong(course, a.k ?? 0, a.route, a.s) : null;
     const d = theirs != null ? theirs - myAlong : rem - (p.length - a.s);
@@ -654,7 +672,7 @@ export function mergePlan(world, out, layout, path, outLeg) {
      lane queued behind (verify-merge, seed 4, traced). A driver second in a
      standing queue at a ramp's end waits for the one in front to go. */
   if (standing) {
-    const own = exitNeighbours(world, out, layout, path.to, path.length - out.s);
+    const own = exitNeighbours(world, out, layout, path.to, path.length - out.s, out.route, out.s);
     if (own.ahead && (own.ahead.v ?? 0) < 0.5 && own.da < toEnd) return null;
   }
   if (!layout.legAt) return null;
@@ -665,7 +683,7 @@ export function mergePlan(world, out, layout, path, outLeg) {
   const target = layout.paths[route], rem = path.length - out.s;
   const { s2, sep, turn } = besideOn(path, out.s, target, target.length - rem);
   if (turn > BESIDE_TURN || Math.abs(sep - LANE) > BESIDE_SEP || s2 <= target.clearAt + 1) return null;
-  const nb = exitNeighbours(world, out, layout, toLeg, target.length - s2);
+  const nb = exitNeighbours(world, out, layout, toLeg, target.length - s2, route, s2);
   /* UP TO SPEED FIRST -- for a driver who knows what the lane is for
      (core/driver.js "accel-lane"): moving over below the traffic's speed
      hands the car behind the difference. The traffic's speed is the car
@@ -780,7 +798,7 @@ function exitStep(world, out, layout, path, view) {
        nearly two lanes across and blended over the centre line into a car
        waiting at the light. */
     if (turn > BESIDE_TURN || Math.abs(sep - LANE) > BESIDE_SEP) return null;
-    return { dir, to: pos + dir, toLeg, route, s2, sep, nb: exitNeighbours(world, out, layout, toLeg, target.length - s2) };
+    return { dir, to: pos + dir, toLeg, route, s2, sep, nb: exitNeighbours(world, out, layout, toLeg, target.length - s2, route, s2) };
   };
   /* THE MOTIVE, as on the approach: held back by a slower car in this lane. */
   const leader = view?.leader;
@@ -840,7 +858,7 @@ function attempt(world, out, path, best, T0) {
      too late, and stopped at the end). */
   {
     const here = world.course.at[out.k ?? 0].layout;
-    const own = best.exit ? exitNeighbours(world, out, here, path.to, path.length - out.s) : neighbours(world, out, path.from, out.s);
+    const own = best.exit ? exitNeighbours(world, out, here, path.to, path.length - out.s, out.route, out.s) : neighbours(world, out, path.from, out.s, out.route);
     if (own.ahead && clearBetween(own.da, out, own.ahead) < Math.max(lenOf(out), Math.max(0, out.v - (own.ahead.v ?? 0)) * T0 * 0.5)) return out;
   }
   const { leadGap, lagGap, leadOk, lagOk, lagSurvivable } = gapFor(out, nb, kappa, world);
