@@ -5370,6 +5370,14 @@ confidence is how well a driver JUDGES the cost of an action, aggression is
 how much cost they ACCEPT imposing. Anyone tidying `caution` back into one
 number re-creates both symptoms.
 
+## 10.33 AXES ARE CHEAP; NEW EVALUATIONS ARE NOT -- the test any new dimension must pass (the project lead, on the maintainer's constraint, 28 October)
+
+The maintainer: do not bog down the engine. The rule that answers it: **an extra value per driver is memory and disappears into the noise; anything that adds a per-tick, per-neighbour evaluation is where the cost lives.** 180 cars at about 15 neighbours each is thousands of evaluations a tick, and neighbour work is already 35-40% of the step. Aggression (10.32) was free because it changed what an EXISTING decision concludes -- the lag test in gapFor -- not how often anything is evaluated.
+
+**The test, for every new dimension or behaviour:** does it change the conclusion of a decision already being made, from quantities already in hand -- or does it add a decision, a scan, a forecast, or a pass over neighbours? The first is allowed by default. The second needs a measured step cost before it is built, and a reason the existing decisions cannot carry it. **Measure, do not agree:** a claim that something is free is checked by the step time with it on and off, on a world dense enough to show the neighbour cost.
+
+The maintainer's objection that sharpened it (on impatience): *"can our drivers actually predict 10 seconds into the future to gauge both gap 1 and 2 at the same time and choose they don't want to wait? otherwise it's just another tolerance check."* Lookahead -- comparing two future gaps -- fails this test twice: it is a new forecast per neighbour, and it is a second tolerance threshold wearing a hat. A driver reads RATE OF CHANGE instead (is this gap opening or closing?), from the relative speed every driver already has for following. Tolerance asks how big the gap IS; impatience would ask whether it is getting BETTER -- a magnitude against a derivative.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
