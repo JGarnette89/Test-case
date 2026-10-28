@@ -5194,6 +5194,56 @@ anticipation rather than at the seam. The city's 97% of missed turns says
 the existing want is not acted on well even now; that wants understanding
 before more is built on it.
 
+## 10.31 A MISSED CHECK'S CUT-IN IS A SPECTRUM, NOT THE CEILING -- ruled, not built (the maintainer, 27 October)
+
+**The ruling, verbatim:** *"it shouldn't always be full braking, it depends
+on what is necessary."*
+
+**The measurement it answers** (tools/measure/cutin-braking.mjs,
+whole-world traffic, no player, 10 minutes; SIMULATOR IN FLIGHT 31): a lane
+change begun with somebody unseen in the blind spot left the car behind
+braking at 8 m/s^2 -- the hardest a car can -- after about two in three:
+
+| | checks off | checks on |
+|---|---|---|
+| endless highway, 180 cars | 20 of 30, 120 an hour | 19 of 29, 114 an hour |
+| test map 1, 200 cars | 7 of 14, 42 an hour | 11 of 22, 66 an hour |
+
+**The diagnosis is structural, not a constant set wrong.** A missed check is
+permitted down to the point where the follower can JUST stop at its maximum
+braking (lanechange.js `lagSurvivable`, the floor at `vehicleOf(behind).most`).
+That rule defines the worst survivable case, so every cut-in that would be
+refused at a comfortable gap lands exactly on it. There is no gradient: a
+cut-in is harmless or an emergency stop, nothing between. What it should
+produce is a spectrum whose severity follows how poor the driver is -- a
+slightly careless driver cuts in close enough that the follower lifts off; a
+genuinely bad one forces hard braking; the maximum is the rare extreme.
+
+**The same shape as the courtesy ruling, and the fifth behaviour in that
+family**, alongside gap-seeking, courtesy onset, merging out of an ending
+lane and glance timing: the discriminator is the quality of the driver, not
+every instance sitting at the ceiling. It may well derive from the same
+anticipation property (10.20) rather than needing its own rule -- establish
+that before building anything.
+
+**Already established by reading, for whoever takes it:** the acceptable gap
+for a SEEN change is the COMFORTABLE one -- `lagNeed` sheds the closing speed
+at the follower's comfortable braking (`vehicleOf(behind).brake`) plus this
+driver's own acceleration, scaled by confidence (`kappa`). Only the missed
+check uses the maximum (`lagSurvivable`, `.most`), and it uses nothing else:
+`if (missed && !lagSurvivable)` is the whole test, with no driver in it. So
+the gradient is probably small rather than a new mechanism: a missed check's
+floor drawn between the comfortable rate and the maximum by the driver's
+deficiency (which axis -- observation, confidence -- is the open question),
+the maximum reserved for the worst. Check this against the anticipation
+property first; measure with cutin-braking.mjs (it counts harsh, past
+HARSH_AT, and emergency separately, so a spectrum shows as the two parting).
+
+**Queued after the skill dial and the per-driver readout**: the dial is what
+lets the maintainer judge whether the gradient reads right, and the readout
+is where he will see which driver forced which stop. Not built.
+
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
