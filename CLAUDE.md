@@ -2269,6 +2269,16 @@ invisible to the encroachment fault because it only ever watches priors — in
   times its recorded time and killed as a tree, nothing left running. The
   rule and the reasons are item 8 of the cold-start section; there is no
   hand-kept table to consult.
+- **A FEATURE IS NOT SHIPPED UNTIL IT IS PUSHED AND THE SERVED STAMP IS
+  CHECKED.** The maintainer tests on GitHub Pages
+  (https://jgarnette89.github.io/Test-case/), which deploys only on a push --
+  not on a local `vite build`, and not from a LAN server unless one is
+  actually running. On 28 October a feature was reported as built "for Jay"
+  while he sat for hours on the last pushed commit, refreshing. So: push,
+  then fetch the served page, take its `assets/index-*.js` name, fetch that,
+  and grep `<sha> built` -- the stamp on the SERVED page, never the local
+  tree. index.html carries `Cache-Control: max-age=600`; there is no
+  service worker. Before saying "on the LAN", check a vite server is running.
 - **VERIFY FROM THE SERVER SIDE, NOT THE BROWSER SIDE.** The maintainer,
   25 September, after the browser pane's approval prompts piled up: an
   agent here cannot judge anything visual anyway -- no animation frames
