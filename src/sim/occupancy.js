@@ -84,6 +84,16 @@ export function sharesLane(layout, me, them) {
   return me.s < sp.a && them.s < sp.b;
 }
 
+/* Whether `car` is, at its own place, in the lane of `route` -- the same
+   leg and short of where its path parts from that one (the truck that hides
+   a road behind it, crossing.js; whoever is in front of the player). */
+export function inLaneOf(layout, car, route) {
+  if (car.route === route) return true;
+  const pc = layout.paths[car.route], pr = layout.paths[route];
+  if (!pc || !pr || pc.from !== pr.from) return false;
+  return car.s < splitOf(layout, car.route, route).a;
+}
+
 /* Whether a car on `route` at `s` is in the lane of `target` -- the same
    question asked of a place on a route rather than a car (the lane change's
    target lane, placement's slot). */

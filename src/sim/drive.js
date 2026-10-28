@@ -21,6 +21,7 @@
    their route from the signal. Pure: the screen owns the state.
    ===================================================================== */
 import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand, holdBand, sliderFor, accelFor } from "./player.js";
+import { inLaneOf } from "./occupancy.js";
 import { whatStops, poseOf, AT_LINE } from "./crossing.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
@@ -242,7 +243,7 @@ export function stepDriver(me, input, world, dt = DT) {
   const err = next.s - waitAt;
   /* Behind a car is not at a line: whoever is in front decides where
      you stop, and the line's verdict would be about their position. */
-  const infront = world.actors.find((a) => a.id !== me.id && (a.k ?? 0) === next.k && a.route && layout.paths[a.route]?.from === path.from && a.s > next.s && a.s - next.s < CAR.length + 8);
+  const infront = world.actors.find((a) => a.id !== me.id && (a.k ?? 0) === next.k && a.route && inLaneOf(layout, a, next.route) && a.s > next.s && a.s - next.s < CAR.length + 8);   // in my lane physically (occupancy.js)
   if (cameToRest && next.s < path.stopAt + 1 && err > -12 && !infront) {
     const verdict = brakePeak > HARSH_AT ? "harsh" : err > 0.3 ? "over" : err < -AT_LINE ? "short" : "clean";
     lastStop = { verdict, err, peak: brakePeak, at: world.t };

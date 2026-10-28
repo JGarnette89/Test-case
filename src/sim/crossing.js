@@ -54,7 +54,7 @@ import { planPass, passOffset, passerAhead } from "./passing.js";
 import { rng } from "../core/rng.js";
 import { shape, windowOf, admits } from "./shaping.js";
 import { townOf } from "./towns.js";
-import { sharesLane } from "./occupancy.js";
+import { sharesLane, inLaneOf } from "./occupancy.js";
 import { applySkill } from "./skill.js";
 import { knownControl, theirControl } from "./reading.js";
 import { reads, anticipates } from "../core/driver.js";
@@ -388,7 +388,15 @@ function takePlain(world, list, idx, me, mine, mineAt, hood, node, gen, out) {
   /* My approach. */
   const A = sortedBy(idx, node?.sf.get(mine.from), (n) => idx.s[n]);
   if (A) walks.push({ xs: A, from: firstAbove(A, (n) => idx.s[n], me.s), dir: 1,
-    delta: (n) => idx.s[n] - me.s, gap: (n) => clearBetween(idx.s[n] - me.s, me, list[n]), counts: (n) => list[n].id !== me.id });
+    /* COUNTS ONLY WHO WHATSTOPS WILL COUNT (occupancy.js; IN FLIGHT 38). This
+       walk keeps the car that presses hardest and drops the rest as never the
+       answer -- exact only while it counts the same cars whatStops does. It
+       counted every car from my leg, the old definition, so a car gone up
+       another route pressed hardest by path distance, was the only one passed
+       on, and whatStops (rightly) refused it: the car really in front had
+       been dropped, and was driven into -- 50 crashes in a shaped highway
+       world, the first full run of the fix. A fifth reader of one quantity. */
+    delta: (n) => idx.s[n] - me.s, gap: (n) => clearBetween(idx.s[n] - me.s, me, list[n]), counts: (n) => list[n].id !== me.id && sharesLane(world.course.at[mineAt].layout, me, list[n]) });
   /* My exit, from another approach. */
   const myLeft = mine.length - me.s;
   const B = me.s > mine.clearAt - lenOf(me) ? sortedBy(idx, node?.st.get(mine.to), (n) => idx.rem[n]) : null;
@@ -1656,7 +1664,7 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
        hides behind itself holds only whoever is queued behind it. (Without
        this a truck waiting at its line held every driver whose path it
        crossed: drivers at a line held 26% of the time against 14%.) */
-    const inLane = trucksHere.filter((a) => pathOf(world, a)?.from === p2.from);
+    const inLane = trucksHere.filter((a) => inLaneOf(layout, a, r2));   // in that lane physically (occupancy.js): a truck past its split hides nothing of it
     for (let s = meet.a, j = 0; s >= Math.max(0, meet.a - speed * PHANTOM_LOOK); s -= 3, j++) {
       if (inLane.some((a) => a.s > s)) break;
       const q = sampleAt(p2, meet.a, j);
