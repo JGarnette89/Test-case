@@ -963,8 +963,20 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0, live = 
      For a leg that never stops this is the ONLY commitment test, and it
      is the right one: a through car is committed once it reaches the
      line, because that is the point at which it can do nothing else. */
-  if (them.going || them.s >= theirs.stopAt) return true;
-  if (me.going || me.s >= mine.stopAt) return false;
+  /* ...EXCEPT A CAR THAT FAILED TO STOP (SIMULATOR IN FLIGHT 40, statement
+     A, `world.failToStop`): crossing the line braking at its maximum for a
+     hold is not a choice to go, and must not be rewarded with the right of
+     way it was being held against. It stays held by anybody it was giving way
+     to; others treat it as an obstacle only where it cannot stop before the
+     point their paths meet. Two failed cars: today's rule, so somebody goes. */
+  const failedHeld = (x, xIn) => x.failedStop && !x.going && stoppingRoom(x.v, vehicleOf(x).most) <= xIn;
+  if (them.going || them.s >= theirs.stopAt) {
+    if (!(failedHeld(them, hit.b - them.s) && !me.failedStop)) return true;
+  }
+  if (me.going || me.s >= mine.stopAt) {
+    if (failedHeld(me, hit.a - me.s) && !them.failedStop) return true;
+    return false;
+  }
 
   /* What I expect of them is their posted rule, not whether they read it. */
   const iCtl = controlOf(me, layout, mine, t, me, live), theyCtl = controlOf(them, layout, theirs, t, me, live);
@@ -1075,6 +1087,11 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0, live = 
        away, so a car 108 m off at 50 km/h arrived "first", and a steady
        stream held a car at its line for three minutes. */
     if (!layout.signal && me.stoppedAt != null && me.v < AT_REST) return !hasGap(me, them, layout, caution);
+    /* ...AND NOT RELEASED MID-EMERGENCY-STOP (IN FLIGHT 40, statement B,
+       `world.noEmergencyRelease`): a car braking at its maximum because it is
+       held stays held -- near its line it would otherwise "arrive first" for
+       being close, and be let go while still standing on the brake. */
+    if (me.emergencyHold) return true;
     const mineIn = hit.a - me.s;
     const theirsIn = conflictOf(layout, them.route, me.route).a - them.s;
     const dm = mineIn / Math.max(me.v, 0.5), dt = theirsIn / Math.max(them.v, 0.5);
@@ -1958,6 +1975,20 @@ export function step(world) {
          while stationary. The change of speed over the tick is the
          quantity every reader meant. */
       const out = { ...at, a: (v - me.v) / DT, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
+      /* FAILING TO STOP, AND THE EMERGENCY STOP (IN FLIGHT 40; read by
+         blockedBy). Each only under its own switch, so with both off no car
+         carries either field and the world is main's, tick for tick. */
+      {
+        const atMax = out.a <= -0.95 * vehicleOf(raw).most || (raw.a ?? 0) <= -0.95 * vehicleOf(raw).most;
+        if (world.failToStop) {
+          if (raw.s < mine.stopAt && s >= mine.stopAt && atMax && !going) out.failedStop = true;
+          else if (raw.failedStop && (going || s > mine.clearAt)) out.failedStop = false;
+        }
+        if (world.noEmergencyRelease) {
+          const heldNow = view.held && view.leader?.id === "line";
+          out.emergencyHold = s < mine.stopAt && v >= AT_REST && ((heldNow && atMax) || !!raw.emergencyHold);
+        }
+      }
       if (offer || raw.courtesy) out.courtesy = offer;
       /* THE CHECKS (checks.js). A scan along the cross road, once per line,
          begun as the car slows within SCAN_FROM of a line it must stop or
