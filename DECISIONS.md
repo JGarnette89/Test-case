@@ -4652,6 +4652,26 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     and overshot-while-held are different defects, and the first description
     would have sent the fix the wrong way.
 
+20. **The project lead's fourth wrong mechanism this week -- and what it
+    would have cost (28 October; IN FLIGHT 40).** "A car that fails to stop
+    is rewarded with right of way" was a plausible, well-reasoned fix from
+    the lead engineer. Built behind a switch and measured before merging, it
+    took the city from 5 crashes in 28 ten-minute runs to 28 -- FIVE TIMES
+    MORE DANGEROUS -- and its companion took cars standing for up to 204 s.
+    Then the trace: the crash it was built around happens at the same moment
+    under every configuration, because the car learned of the conflict only
+    on crossing the seam into the node, 26.7 m from the meeting point at
+    20.7 m/s, needing 26.7 m to stop -- never able to give way from the
+    moment it knew. No right-of-way rule fixes a conflict discovered too late
+    to act on; the item is not about who yields but about WHEN A DRIVER CAN
+    SEE THE CONFLICT AT ALL. **The strongest argument yet for the practice:
+    build behind a switch, measure against the world as it is, and merge only
+    what the measurement supports -- however plausible the mechanism, and
+    whoever proposed it.** And the classification that started it ("a 0.1 m
+    overshoot", then "rewarded with right of way") was withdrawn twice for
+    this one crash: a mechanism resting on a single traced case is a
+    hypothesis, not a finding, until it is counted over every case.
+
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
   surprising reading is a finding about the world, the instrument is
