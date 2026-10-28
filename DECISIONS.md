@@ -4548,6 +4548,25 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     how many cars, which seeds, which switches, and what the default of each
     is. "Identical with checks off" means nothing without knowing which mode
     the script ran in.
+15. **The project lead's mechanism, wrong for the fourth time this week
+    (28 October), and an instrument that watched the wrong half.** With the
+    candidate's checks on, keep-right moves fell 62% (415 -> 157) against
+    overtakes' 17%. The mechanism handed over to test: a low-urgency move is
+    dropped when the looks outlast its gap, where an overtake is retried.
+    WRONG. On the exit stretch `exitStep` called `attempt`, which answers a
+    decided change with its looks begun (`lcPrep`) and the route unchanged;
+    `exitStep` tested only the route and returned the driver it started
+    with, discarding the looks. They restarted every consideration and never
+    completed, so every exit keep-right move with checks on was made by a
+    driver who had SKIPPED their checks (23 of 23 over two seeds) -- the
+    opposite of "looking first delays a move". The first instrument written
+    for the trace (keepright-trace.mjs) watched the approach's hog spells,
+    the half where keep-right ROSE, and would have supported the comfortable
+    reading; keepright-exit.mjs split the moves by stretch and by who looked.
+    The same lesson as items 10 and 12, from the other side: **a mechanism
+    is a hypothesis however it arrives, including from the project lead, and
+    is tested in the run it claims to explain.** Predictions written before
+    the fix, results (four met, one partly) in SIMULATOR IN FLIGHT 31.
 
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a

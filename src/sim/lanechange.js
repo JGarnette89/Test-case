@@ -807,6 +807,13 @@ function exitStep(world, out, layout, path, view) {
     if (o && !(o.nb.ahead && clearBetween(o.nb.da, out, o.nb.ahead) < look && (o.nb.ahead.v ?? 0) < want - 1)) {
       const moved = attempt(world, out, path, { ...o, keepRight: true, exit: true }, T0);
       if (moved.route !== out.route) return { ...moved, keptRight: (out.keptRight ?? 0) + 1 };
+      /* DECIDED, LOOKING FIRST: the looks `attempt` began are kept. Returning
+         the driver unchanged threw them away every consideration, so nobody
+         who looked ever moved back on the exit stretch -- keep-right fell
+         from 89 to 8 a run with the checks on, and those 8 had skipped their
+         checks (28 October, SIMULATOR IN FLIGHT 31). Only the looks: the
+         rest of `moved` is counters this branch never kept. */
+      if (moved.lcPrep !== out.lcPrep) return { ...out, lcPrep: moved.lcPrep };
     }
   }
   return out;
