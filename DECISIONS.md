@@ -5308,6 +5308,68 @@ lets the maintainer judge whether the gradient reads right, and the readout
 is where he will see which driver forced which stop. Not built.
 
 
+## 10.32 AGGRESSION IS THE COST A DRIVER WILL IMPOSE ON OTHERS -- and the world shows drivers dealing with each other (the maintainer, 28 October; ruled, not built)
+
+Three rulings on SIMULATOR IN FLIGHT 35's proposal, and a principle.
+
+**1. LAW-BREAKING IS AGGRESSION CROSSED WITH LOW COMPLIANCE, NOT AGGRESSION ALONE.**
+Verbatim: *"agressive drivers don't necessarily break the law, but if they
+are highly aggressive with low compliance they will do so spectacularly
+whenever it benefits them to."* Two existing dimensions multiplying, not a
+new rule. It fits what is already built: today a scofflaw (low compliance)
+rolls a stop only with NOBODY ABOUT (crossing.js `nobodyAbout`) -- breaking
+the law where it costs nobody anything, which is the bottom of the
+aggression scale. Aggression extends that to breaking it where it costs
+somebody else up to what this driver will impose. Compliance decides whether
+the law matters to them; aggression decides how much of other people's cost
+they will spend; and only where it benefits them.
+
+**2. A HORN AT A BLAMELESS DRIVER, FOR BEING HELD UP: YES.** Kept as its own
+recorded class of horn; verify-greens' "every horn is aimed at an error"
+stays as written for the class it describes.
+
+**THE PRINCIPLE, stated generally for the first time (with ruling 2):**
+*"I think this will add flavor to the world if the player sees other cars
+honking at each other. this is the type of interaction I'm looking for
+throughout."* **THE WORLD SHOULD CONTAIN INTERACTIONS BETWEEN AI DRIVERS
+THAT THE PLAYER WITNESSES RATHER THAN TAKES PART IN.** Not only horns: a
+driver let in, a gap refused, somebody cut off and braking, a queue
+honking at a dawdler. Before this the bar for a behaviour was whether it
+reached the player; now an exchange between two other cars, seen from
+across the intersection, is content in its own right. It is the same
+direction as 10.8 (a state the player cannot read is a state the screen did
+not show) turned outward: an interaction nobody can see happening was not
+worth simulating, and one the player can see is worth drawing well.
+
+**3. THE DEFINITION. AGGRESSION IS HOW MUCH COST A DRIVER IS WILLING TO
+IMPOSE ON OTHERS TO ACCOMPLISH THEIR GOAL** -- measured as the deceleration
+they are prepared to force on other road users. Verbatim: *"if aggression is
+necessary for any rule breaking, even the most compliant driver might show
+'aggression' when taking decisive actions. we might think of this as the
+driver dipping slightly into non compliance to accomplish their goal of
+changing lanes where they can tolerate some slowing of traffic behind, but
+not as much as a driver who expects other cars to brake significantly for
+them to reposition."* Consequences:
+- **NOBODY IS AT ZERO.** A driver who will impose no cost never moves. The
+  bottom of the scale is "a slight lift-off behind me", the top "I expect
+  you to stand on your brakes". The default population carries some, which
+  answers "too polite": today's world is not at zero, it is at too little --
+  and, measured below, at no declared amount at all.
+- **IT IS DIRECTLY MEASURABLE**: the deceleration a driver's actions force on
+  others (tools/measure/imposed.mjs). A check can hold the real quantity.
+- **IT SITS OPPOSITE COURTESY**: courtesy is accepting cost for somebody
+  else, aggression imposing it.
+
+**DO NOT RE-CONFLATE (the reason SIMULATOR IN FLIGHT 35 was opened):** the
+bold tail of confidence was the only home aggression had, so a SKILL ("can
+they judge the margin") was doing the work of a DISPOSITION ("will they
+impose a cost"), drawn bold or timid half and half. That one conflation is
+why the skill dial at -1 made the road timid, and why a rival written
+aggressive read on the driver card as misjudging. The fix separates them:
+confidence is how well a driver JUDGES the cost of an action, aggression is
+how much cost they ACCEPT imposing. Anyone tidying `caution` back into one
+number re-creates both symptoms.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
