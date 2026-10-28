@@ -5239,6 +5239,11 @@ the maximum reserved for the worst. Check this against the anticipation
 property first; measure with cutin-braking.mjs (it counts harsh, past
 HARSH_AT, and emergency separately, so a spectrum shows as the two parting).
 
+**The maintainer's lean on the axis (28 October): OBSERVATION**, not
+confidence -- what went wrong was not looking; confidence governs how big a
+gap is accepted once looked. To be MEASURED rather than taken: if
+observation shows no visible spread there, confidence may be the lever.
+
 **Queued after the skill dial and the per-driver readout**: the dial is what
 lets the maintainer judge whether the gradient reads right, and the readout
 is where he will see which driver forced which stop. Not built.
