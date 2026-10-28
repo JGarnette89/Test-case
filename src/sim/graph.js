@@ -771,12 +771,34 @@ function pathBetween(place, A, B, meta) {
    on a curve, where a projection onto one direction is not. In the box
    a car is held at the end of its approach and the start of its exit. */
 export function laneSpanOnGraph(course, k, route, s) {
-  const p = course.at[k].layout.paths[route];
-  const sIn = Math.min(s, p.stopAt), sOut = Math.max(0, s - p.clearAt);
+  const p = course.at[k].layout.paths[route], at = lanePlacesOf(p, s);
   return [
-    { lane: p.laneIn.id, along: p.laneIn.at0 + sIn },
-    { lane: p.laneOut.id, along: p.laneOut.at0 + sOut },
+    { lane: p.laneIn.id, along: at.inAlong, on: at.inOn },
+    { lane: p.laneOut.id, along: at.outAlong, on: at.outOn },
   ];
+}
+
+/* WHERE A CAR IS ON ITS TWO LANES, AND WHETHER IT IS ON EACH -- THE ONE
+   DEFINITION (IN FLIGHT 39). It was `min(s, stopAt)` and
+   `max(0, s - clearAt)`, meant to hold a car IN ITS BOX at the end of its
+   approach and the start of its exit -- but applied at every s, so a car
+   still on its approach stood at the start of its exit lane and a car already
+   on its exit stood at the end of its approach lane: on a lane it was not on,
+   at that lane's nearest end. Following across a seam matched lanes, and a
+   quarter of the city's following decisions read the car ahead two or more
+   times nearer than it was. Two readers had already found it and fixed it
+   downstream (placement.js placeOf; buses.js laneAt, 30 September) and the
+   source was never corrected (DECISIONS 10.23 item 17). Now: ON the approach
+   lane while short of the box's far side, ON the exit lane once past the stop
+   line -- both through the box -- at UNCLAMPED positions, so distance runs
+   along the path and a car in the box shows just beyond its approach lane's
+   end, where it is. Read by laneSpanOnGraph, the lane index and takePlain
+   (crossing.js) alike: one definition, never restated. */
+export function lanePlacesOf(p, s) {
+  return {
+    inOn: s <= p.clearAt, inAlong: p.laneIn.at0 + s,
+    outOn: s >= p.stopAt, outAlong: p.laneOut.at0 + (s - p.clearAt),
+  };
 }
 
 /* THE POSTED SPEED A CAR IS DRIVING TO, in m/s: the speed of the road

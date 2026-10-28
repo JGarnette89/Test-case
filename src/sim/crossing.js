@@ -38,7 +38,7 @@ import {
   courseOf, laneSpan, nextFor, joinedTo, poseOn,
   radiusFor,
 } from "./course.js";
-import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt, kindAt , exitAlong } from "./graph.js";
+import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt, kindAt , exitAlong, lanePlacesOf } from "./graph.js";
 import { stepLights, LOOP } from "./actuated.js";
 import { HONK_AGAIN } from "./horn.js";
 import { askOf, askedOf, offerOf, courtesyAccel, mergeAskOf } from "./courtesy.js";
@@ -212,8 +212,10 @@ function relevanceOf(world, list) {
     if (present) {
       idx.plain[n] = plain ? 1 : 0;
       idx.s[n] = a.s; idx.rem[n] = p.length - a.s;
-      if (p.laneIn) { idx.laneIn[n] = p.laneIn.id; idx.alIn[n] = p.laneIn.at0 + Math.min(a.s, p.stopAt); }
-      if (p.laneOut && p.laneOut.id !== p.laneIn?.id) { idx.laneOut[n] = p.laneOut.id; idx.alOut[n] = p.laneOut.at0 + Math.max(0, a.s - p.clearAt); }
+      /* Where it is on each lane, and only the lanes it is on (graph.js lanePlacesOf, IN FLIGHT 39). */
+      const at = p.laneIn ? lanePlacesOf(p, a.s) : null;
+      if (p.laneIn && at.inOn) { idx.laneIn[n] = p.laneIn.id; idx.alIn[n] = at.inAlong; }
+      if (p.laneOut && p.laneOut.id !== p.laneIn?.id && at?.outOn) { idx.laneOut[n] = p.laneOut.id; idx.alOut[n] = at.outAlong; }
       if (plain) {
         if (idx.laneIn[n] != null) bucket(idx.sl, idx.laneIn[n]).push(n);
         if (idx.laneOut[n] != null) bucket(idx.sl, idx.laneOut[n]).push(n);
@@ -222,8 +224,9 @@ function relevanceOf(world, list) {
         if (idx.laneOut[n] != null) bucket(idx.npLane, idx.laneOut[n]).push(n);
       }
     }
-    if (p.laneIn) bucket(idx.lane, p.laneIn.id).push(n);
-    if (p.laneOut && p.laneOut.id !== p.laneIn?.id) bucket(idx.lane, p.laneOut.id).push(n);
+    { const at = p.laneIn ? lanePlacesOf(p, a.s) : { inOn: true, outOn: true };
+      if (p.laneIn && at.inOn) bucket(idx.lane, p.laneIn.id).push(n);
+      if (p.laneOut && p.laneOut.id !== p.laneIn?.id && at.outOn) bucket(idx.lane, p.laneOut.id).push(n); }
     let node = idx.at.get(k);
     if (!node) idx.at.set(k, (node = { f: new Map(), c: new Map(), t: new Map(), r: new Map(), o: new Map(), sf: new Map(), st: new Map(), nf: new Map(), nt: new Map() }));
     bucket(node.f, p.from).push(n);
@@ -404,8 +407,11 @@ function takePlain(world, list, idx, me, mine, mineAt, hood, node, gen, out) {
     delta: (n) => myLeft - idx.rem[n], gap: (n) => clearBetween(myLeft - idx.rem[n], me, list[n]),
     counts: (n) => { const t = list[n], p = world.course.at[ks[n]].layout.paths[t.route]; return t.id !== me.id && idx.rem[n] < myLeft && p.from !== mine.from && t.s > p.stopAt; } });
   /* My two lanes, across the seam. */
-  const sIn = Math.min(me.s, mine.stopAt), sOut = Math.max(0, me.s - mine.clearAt);
-  for (const [lane, myAl] of mine.laneOut ? [[mine.laneIn.id, mine.laneIn.at0 + sIn], [mine.laneOut.id, mine.laneOut.at0 + sOut]] : [[mine.laneIn.id, mine.laneIn.at0 + sIn]]) {
+  /* My lanes, only those I am on, where I am on each (graph.js lanePlacesOf, IN FLIGHT 39). */
+  const myAt = lanePlacesOf(mine, me.s), myLanes = [];
+  if (myAt.inOn) myLanes.push([mine.laneIn.id, myAt.inAlong]);
+  if (mine.laneOut && myAt.outOn) myLanes.push([mine.laneOut.id, myAt.outAlong]);
+  for (const [lane, myAl] of myLanes) {
     const C = sortedBy(idx, idx.sl.get(lane), (n) => along(n, lane));
     if (!C) continue;
     walks.push({ xs: C, from: firstAbove(C, (n) => along(n, lane), myAl), dir: 1,
@@ -1314,7 +1320,9 @@ export function whatStops(me, world) {
     if ((them.k ?? 0) !== mineAt) {
       const theirSpan = laneSpan(course, them.k ?? 0, them.route, them.s);
       for (const my of mySpan) {
-        const on = theirSpan.find((t) => t.lane === my.lane);
+        /* Only a lane each of us is ON (graph.js lanePlacesOf, IN FLIGHT 39). */
+        if (my.on === false) continue;
+        const on = theirSpan.find((t) => t.lane === my.lane && t.on !== false);
         if (!on) continue;
         const d = clearBetween(on.along - my.along, me, them);
         if (d >= 0) consider(d, them);
@@ -2740,7 +2748,7 @@ function pullingOut(world, n, actors) {
   const car = rival ? asRival(drawn, rival) : drawn;
   const mine = laneSpan(world.course, at.k, chosen.route, s)[0];
   for (const a of actors) {
-    const on = laneSpan(world.course, a.k ?? 0, a.route, a.s).find((x) => x.lane === mine.lane);
+    const on = laneSpan(world.course, a.k ?? 0, a.route, a.s).find((x) => x.lane === mine.lane && x.on !== false);
     if (!on) continue;
     const d = on.along - mine.along;
     if (d >= 0 && d < (lenOf(a) + lenOf(car)) / 2 + 6) return null;

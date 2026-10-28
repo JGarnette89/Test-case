@@ -303,8 +303,8 @@ export function laneSpan(course, k, route, s) {
   const path = course.at[k].layout.paths[route];
   const pose = poseOn(course, k, route, s);
   return [
-    { lane: laneIn(course, k, path.from), along: alongDir(pose, dirIn(path.from)) },
-    { lane: laneOut(course, k, path.to), along: alongDir(pose, dirOut(path.to)) },
+    { lane: laneIn(course, k, path.from), along: alongDir(pose, dirIn(path.from)), on: true },
+    { lane: laneOut(course, k, path.to), along: alongDir(pose, dirOut(path.to)), on: true },
   ];
 }
 

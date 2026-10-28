@@ -134,7 +134,7 @@ export function encounterTick(st, me, world) {
     if (a.player || (a.v ?? 0) <= 2) continue;
     const theirs = laneSpan(course, a.k ?? 0, a.route, a.s);
     let behind = false;
-    for (const m of mine) { const o = theirs.find((x) => x.lane === m.lane); if (o && m.along - o.along > 0 && m.along - o.along <= head(a.v) + 4.5) behind = true; }
+    for (const m of mine) { if (m.on === false) continue; const o = theirs.find((x) => x.lane === m.lane && x.on !== false); if (o && m.along - o.along > 0 && m.along - o.along <= head(a.v) + 4.5) behind = true; }   // only lanes both are on (IN FLIGHT 39)
     if (behind) { st.followed += DT; break; }
   }
   /* GAPS JUDGED: standing at the line while a car on a conflicting route comes on. Once per approach. */
