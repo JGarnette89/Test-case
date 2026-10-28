@@ -192,8 +192,36 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
   const need = drivers.reduce((s, d) => s + (d.turnsMet ?? 0) + (d.missedTurns ?? 0), 0);
   const met = drivers.reduce((s, d) => s + (d.turnsMet ?? 0), 0), missedT = drivers.reduce((s, d) => s + (d.missedTurns ?? 0), 0);
   const forTurn = starts.filter((s) => s.mandatory).length;
-  check(need > 30 && forTurn > 20 && met / need > 0.6,
-    `drivers in the wrong lane for their turn: ${need} of them, ${met} got over and made it (${(100 * met / need).toFixed(0)}%), ${missedT} could not before the line and went where their lane went; ${forTurn} lane changes were made for a turn`);
+  /* THE BAR IS A COMPARISON AND A FLOOR, both from measured spread (28
+     October, the project lead's ruling; SIMULATOR IN FLIGHT 31). It was
+     "over 60%", which nobody derived -- a few points under the figure when
+     it was written, so the candidate's checks (each change waits for its
+     looks) tripped it by two points (DECISIONS 10.23 item 13). Measured,
+     tools/measure/turns-spread.mjs, this world and this counting, seeds
+     1-16, over all 560 three-seed pools (the statistic this pools):
+     checks off mean 62.0%, sd 1.8, min 57.2; the drop with checks on, the
+     same seeds, mean 6.1 points, sd 1.9, max 11.3. So:
+       THE CHECKS MAY COST TURNS BUT NOT COLLAPSE THEM -- on within
+         TURN_DROP of off: mean + 4 sd = 13.7, rounded to 14, above the
+         largest of the 560;
+       AND THE PAIR CANNOT SINK TOGETHER -- off above TURN_FLOOR, 50%:
+         "most drivers who need a lane fail to get one" is the line never
+         accepted, 6.7 sd under the mean and 7 points under the worst pool.
+     The checks-on side counts turns only, the same drivers seen. The off
+     side is `runs`, the DEFAULT world: when checks become the default, it
+     must name checks: false or both sides are on and the comparison is void. */
+  const TURN_DROP = 0.14, TURN_FLOOR = 0.5;
+  const onRuns = [3, 5, 9].map((seed) => {
+    let w = seedGraph(seed, 50, loaded, { target: 200, posted: true, checks: true });
+    const seen = new Map();
+    for (let i = 0; i < 150 * 20; i++) { w = step(w); for (const a of w.actors) seen.set(a.id, a); }
+    return [...seen.values()];
+  }).flat();
+  const metOn = onRuns.reduce((s, d) => s + (d.turnsMet ?? 0), 0), needOn = metOn + onRuns.reduce((s, d) => s + (d.missedTurns ?? 0), 0);
+  check(need > 30 && forTurn > 20 && met / need > TURN_FLOOR,
+    `drivers in the wrong lane for their turn: ${need} of them, ${met} got over and made it (${(100 * met / need).toFixed(0)}%, floor ${100 * TURN_FLOOR}%), ${missedT} could not before the line and went where their lane went; ${forTurn} lane changes were made for a turn`);
+  check(needOn > 30 && met / need - metOn / needOn <= TURN_DROP,
+    `and with the candidate's checks on, the looks before each change cost turns but do not collapse them: ${metOn} of ${needOn} (${(100 * metOn / needOn).toFixed(1)}%) against ${(100 * met / need).toFixed(1)}% off, a drop of ${(100 * (met / need - metOn / needOn)).toFixed(1)} points (at most ${Math.round(100 * TURN_DROP)})`);
   const missRate = (lo, hi) => { const g = drivers.filter((d) => d.caution >= lo && d.caution < hi); const n = g.reduce((s, d) => s + (d.turnsMet ?? 0) + (d.missedTurns ?? 0), 0); return { n, r: n ? g.reduce((s, d) => s + (d.missedTurns ?? 0), 0) / n : NaN }; };
   const b = missRate(0, 0.7), tm = missRate(1.3, 3);
   check(b.n >= 10 && tm.n >= 10 && tm.r > b.r, `and confidence decides who makes it: timid drivers missed ${(100 * tm.r).toFixed(0)}% of the turns they needed a lane for (${tm.n}), bold ones ${(100 * b.r).toFixed(0)}% (${b.n})`);
