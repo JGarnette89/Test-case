@@ -4579,6 +4579,22 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     accepted unmeasured. **A figure that justifies work is re-measured
     before the work, whoever quotes it.**
 
+17. **Two definitions of who is in a lane -- and the earlier fix made them
+    agree on the wrong one (28 October; IN FLIGHT 38).** The project's most
+    reliable source of bugs, at least the fourth instance (CLAUDE.md item 2):
+    the following model (whatStops) counts cars from the same leg as sharing a
+    lane for their WHOLE paths, past where the paths split; the exit-stretch
+    lane change counts them by the leg they are going to. 15% of keep-right
+    moves on the highway's exit stretch began inside the side-ahead floor and
+    ended in maximum braking -- every instrument missed it, because
+    verify-shaping blamed the placement for it. Traced, the FOLLOWING model
+    was the wrong one: the "leader" was a median 30 m sideways, on the ramp,
+    and phantom leaders like it are 10-27% of all following. The 22 October
+    fix for placement had been to make placement AGREE with whatStops -- two
+    readers made consistent with a wrong definition. **Making two readers agree
+    is not the fix; asking which one matches the world is. The fix is one
+    definition, checked against where the cars physically are.**
+
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
   surprising reading is a finding about the world, the instrument is
