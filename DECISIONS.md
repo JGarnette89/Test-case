@@ -4623,6 +4623,35 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     by grepping for the definition; it is checked by running the world and
     looking for what the change made impossible happening anyway.
 
+19. **Small samples, the fourth trap this week -- and checks that assert a
+    world that does not exist, the fifth (28 October).** Two ten-minute city
+    runs gave the lane-occupancy branch 5 crashes against main's 1 over 14
+    seeds -- "about a 4% chance" if the rates were equal -- and a mechanism
+    hunt began. 28 runs each gave 7 against 5, and the 14 new seeds 2
+    against 4 the other way: noise. The fourth small-sample trap in a week,
+    after the single-seed verify-walkers, the three-seed verify-lanes bar and
+    the one-pass verify-drive. **A difference between two worlds is settled
+    by enough runs that a reversal on fresh seeds is unlikely, BEFORE a
+    mechanism is chased; "4% by chance" from 14 runs, selected after the
+    fact, is a reason to run more, not a finding.** And the check that set it
+    off asserted something unfounded: verify-rivals' "nobody overlapping"
+    asserts ZERO crashes over seeds 2 and 3, while main itself crashes about
+    once in five or six such runs (5 in 28 at 150 cars with rivals) -- it
+    passed on the luck of its seeds. The fifth check found this week
+    asserting something no measurement supported. **A zero-event assertion
+    is a statement about a RATE; it needs the rate measured, and a sample
+    large enough that zero would be unlikely if the rate were what it
+    replaces.** Not restated yet, deliberately: IN FLIGHT 40 may change the
+    city's crash rate substantially, and the honest assertion depends on what
+    it becomes.
+    **A CORRECTION ON THE RECORD, kept rather than overwritten:** the crash
+    on seed 2 was first described here and to the project lead as "a 0.1 m
+    overshoot while braking at maximum". Tick by tick it was not: car-104 was
+    RELEASED by the right-of-way rule a tick before its line while still
+    braking at its maximum, and accelerated across. Released mid-emergency-stop
+    and overshot-while-held are different defects, and the first description
+    would have sent the fix the wrong way.
+
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
   surprising reading is a finding about the world, the instrument is
