@@ -169,8 +169,20 @@ for (const mapId of ["city", "test-peds"]) {
      same on the code before the green waves (549 crossings, 1) and after
      (538, 1), so a 15-minute run of 89 crossings failed about one run in
      six depending on the seed (7 October). Heedless strikes are reported. */
-  const struckCareful = [...mannerOf.values()].filter((m) => m !== "heedless").length, struckHeedless = mannerOf.size - struckCareful;
-  ok(struckCareful === 0, `${mapId}: with the traffic watching, no careful person is struck (${struckCareful}; ${struckHeedless} heedless, a hazard kept on purpose); ${crossed} crossings, ${(crossed / (MINS / 60)).toFixed(0)} an hour`);
+  /* ITS SAMPLE, STATED (CLAUDE.md item 3): one seed, 15 minutes a map. Against a
+     defect that struck about once in two hours of traffic (a truck's driver
+     hidden from mid-block crossings by its own body, 27 October) that is weak --
+     it missed it on seed 3 until a change of trajectory landed on it. The strong
+     statement is tools/measure/ped-strikers.mjs, eight seeds of 15 minutes each
+     way: 0 careful pedestrians struck in four hours, with checks off and on. This
+     check fails with that defect restored (sabotaged once). */
+  /* THREE MANNERS, NOT TWO (peds.js): careful, trusting and heedless. Counting
+     everybody not heedless as careful filed a TRUSTING person -- who steps
+     off whenever nothing is on the paint and does not pause for a car, by
+     design -- struck by an AI car as a careful one struck (27 October; the
+     fairness rule owes the player a response, not the traffic). */
+  const struckCareful = [...mannerOf.values()].filter((m) => m === "careful").length, struckHeedless = mannerOf.size - struckCareful;
+  ok(struckCareful === 0, `${mapId}: with the traffic watching, no careful person is struck (${struckCareful}; ${struckHeedless} trusting or heedless, a hazard kept on purpose); ${crossed} crossings, ${(crossed / (MINS / 60)).toFixed(0)} an hour`);
 }
 
 console.log(fails ? `\n${fails} FAILED` : "\nall passed");

@@ -196,7 +196,12 @@ export function inSight(world, eye, q) {
   /* ...and a truck, standing or moving (sim/sight.js): somebody stepping
      out from in front of one is not there for a driver until they are past
      it -- nor for the player, whose fairness counts the hidden time. */
-  for (const b of world.tall ?? []) if (Math.hypot(b.x - mid.x, b.y - mid.y) < reach + b.l / 2 && segHitsBox(eye, q, b)) return false;
+  /* ...never the viewer's own: a truck's driver sits inside its own box (the
+     eye is 1.5 m ahead of the centre, a car's front; a 9 m truck's is 4.5 m
+     on), and counted, the truck hid every pedestrian at a mid-block crossing
+     from its own driver -- a sound driver drove on into somebody standing in
+     its lane (verify-walkers, 27 October: tools/scratch/ped-mode2b.mjs). */
+  for (const b of world.tall ?? []) if (b.id !== eye.id && Math.hypot(b.x - mid.x, b.y - mid.y) < reach + b.l / 2 && segHitsBox(eye, q, b)) return false;
   return true;
 }
 const CELL = 25;
@@ -416,7 +421,8 @@ function eyeOf(world, me) {
   let i = 0; while (i < path.at.length - 2 && path.at[i + 1] < s) i++;
   const f = Math.max(0, Math.min(1, (s - path.at[i]) / Math.max(1e-9, path.at[i + 1] - path.at[i])));
   const p = path.pts[i], q = path.pts[i + 1];
-  return { x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f };
+  /* Whose eye: the sight test leaves the viewer's own body out (inSight). */
+  return { x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f, id: me.id };
 }
 
 /* Could every car that would cross this pedestrian's path stop short of it? */

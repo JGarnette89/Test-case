@@ -4435,7 +4435,7 @@ neighbourhood term is worth. Before 3 starts, the step is SPLIT and measured
 -- fixed per-car work, the neighbour term, per-tick overhead -- and the
 3-5x is predicted from that split, in writing, before any of it is built.
 
-## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-10 added 27 October)
+## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-11 added 27 October)
 
 **The general finding about how this project fails.** Six times in a week a
 confident conclusion was wrong, and every time the simulation was fine and
@@ -4487,6 +4487,19 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     people agreeing is worth nothing against one measurement. **Before an
     explanation is accepted, check that its mechanism was active in the run
     it explains.**
+
+11. **The pedestrian with three manners, counted as two (27 October).**
+    verify-walkers, and the measure built to diagnose it, counted every
+    pedestrian not "heedless" as careful; peds.js has three manners, and a
+    TRUSTING person -- who steps off whenever nothing is on the paint and
+    does not pause for a car, by design -- struck by an AI car was filed as a
+    careful one struck. One of the two "strike modes" briefed for fixing was
+    the model working as designed. The other was real, and found only by
+    asking whether the pedestrian was absent from the driver's consideration
+    or present and filtered: present, on the path, held by the near-half
+    rule -- and hidden from a TRUCK's driver by the truck's own body, the eye
+    placed 1.5 m ahead of centre (a car's front) inside a 9 m box that the
+    sight test counted as an occluder.
 
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a

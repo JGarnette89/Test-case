@@ -19,7 +19,8 @@ const hist = [], done = new Set(), out = [];
 for (let k = 0; k < 15 * 60 / DT; k++) {
   w = step(w); hist.push(w); if (hist.length > 80) hist.shift();
   for (const q of w.peds ?? []) {
-    if (q.state !== "struck" || done.has(q.id) || q.manner === "heedless") continue;
+    /* Careful only: trusting and heedless people take risks by design (peds.js). */
+    if (q.state !== "struck" || done.has(q.id) || (q.manner ?? "careful") !== "careful") continue;
     done.add(q.id);
     const c = (w.crashes ?? []).find((x) => x.a === q.id || x.b === q.id), cid = c && (c.a === q.id ? c.b : c.a);
     const a = w.actors.find((x) => x.id === cid);
