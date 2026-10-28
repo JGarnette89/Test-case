@@ -4435,7 +4435,7 @@ neighbourhood term is worth. Before 3 starts, the step is SPLIT and measured
 -- fixed per-car work, the neighbour term, per-tick overhead -- and the
 3-5x is predicted from that split, in writing, before any of it is built.
 
-## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-12 added 27 October, 13 on 28 October)
+## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-12 added 27 October, 13-14 on 28 October)
 
 **The general finding about how this project fails.** Six times in a week a
 confident conclusion was wrong, and every time the simulation was fine and
@@ -4533,6 +4533,21 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     12's: a bar is a claim about the world; it states where it comes from --
     a derivation, a measured spread, or a line nobody would accept -- or it
     is not a bar.**
+
+14. **An instrument whose default contradicted what it was believed to
+    measure (28 October), the worst of these: it put a wrong claim in front
+    of the maintainer.** tools/scratch/hashes.sh -- the 17-hash gate -- calls
+    world-hash.mjs and shaped-hash.mjs, and both run with the candidate's
+    checks ON unless CHECKS=0; the gate never sets it. So "the shaping fix
+    read identical with checks off" was a checks-on reading, relayed as a
+    statement about the default world. Re-run with CHECKS=0 it was not
+    exact there either (one shaped world moved, test-highway, 325 -> 337
+    placements). Found only because a trace of the merge fix built its world
+    with checks off and disagreed with the gate. **The rule: state the
+    instrument's settings alongside its result, every time** -- which map,
+    how many cars, which seeds, which switches, and what the default of each
+    is. "Identical with checks off" means nothing without knowing which mode
+    the script ran in.
 
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
