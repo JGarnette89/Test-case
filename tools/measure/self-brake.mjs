@@ -10,7 +10,7 @@
    Usage: node tools/measure/self-brake.mjs map cars seed secs */
 import { loadMap } from "../../src/map/load.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
-import { seedGraph, step, whatStops } from "../../src/sim/crossing.js";
+import { seedGraph, step, whatStops, poseOf } from "../../src/sim/crossing.js";
 import { DT, vehicleOf } from "../../src/sim/traffic.js";
 const [id, cars, seed, secs] = process.argv.slice(2);
 let w = seedGraph(Number(seed), 50, loadMap(TEST_MAPS.find((t) => t.id === id).build()), { every: 2.0, target: Number(cars), posted: true, ...(process.env.IMPOSED === "0" ? { imposed: false } : {}) });
@@ -27,7 +27,10 @@ for (let i = 0; i < Number(secs) / DT; i++) {
     const v = whatStops(a, w), L = v.leader, real = L && L.id !== "line" && L.id !== "ped";
     const floor = real ? 1.5 + Math.max(0, (a.v * a.v - (L.v ?? 0) ** 2) / (2 * vehicleOf(a).most)) : 0;
     const Lr = real ? w.actors.find((x) => x.id === L.id) : null, P = w.course.at[a.k ?? 0].layout.paths;
-    open.set(key, { diverging: !!(Lr && P[Lr.route] && P[a.route] && P[Lr.route].to !== P[a.route].to), id: a.id, at: a.lc.at, kind: kindOf(a.lc), exit: !!a.lc.exit, underFloor: real && v.gap < floor, gap: v.gap, floor, peak: 0 });
+    /* WHERE THE CAR FOLLOWED REALLY IS: its offset across the changer's heading, and along it -- is it in the lane ahead, or already curving away? */
+    let side = null, along = null;
+    if (Lr) { const me = poseOf(w, a), it = poseOf(w, Lr), dx = it.x - me.x, dy = it.y - me.y, h = me.rot ?? 0; along = dx * Math.cos(h) + dy * Math.sin(h); side = -dx * Math.sin(h) + dy * Math.cos(h); }
+    open.set(key, { side, along, diverging: !!(Lr && P[Lr.route] && P[a.route] && P[Lr.route].to !== P[a.route].to), id: a.id, at: a.lc.at, kind: kindOf(a.lc), exit: !!a.lc.exit, underFloor: real && v.gap < floor, gap: v.gap, floor, peak: 0 });
   }
   const byId = new Map(w.actors.map((a) => [a.id, a]));
   for (const [k, o] of open) {
@@ -39,4 +42,7 @@ for (let i = 0; i < Number(secs) / DT; i++) {
 const by = {};
 for (const o of done) { const k = o.kind + (o.exit ? ".exit" : ""); by[k] ??= { n: 0, underFloor: 0, underFloorDiverging: 0, selfOver6: 0 }; by[k].n++; if (o.underFloor) { by[k].underFloor++; if (o.diverging) by[k].underFloorDiverging++; } if (o.peak > 6) by[k].selfOver6++; }
 const ex = done.filter((o) => o.underFloor).slice(0, 3).map((o) => `${o.id} ${o.kind}${o.exit ? ".exit" : ""} gap ${o.gap.toFixed(1)} floor ${o.floor.toFixed(1)} peak ${o.peak.toFixed(1)}`);
-console.log(JSON.stringify({ map: id, cars: Number(cars), seed: Number(seed), secs: Number(secs), imposed: process.env.IMPOSED !== "0", changes: done.length, by, examples: ex }));
+const sides = done.filter((o) => o.underFloor && o.diverging && o.side != null).map((o) => Math.abs(o.side)).sort((x, y) => x - y);
+const dists = done.filter((o) => o.underFloor && o.diverging && o.side != null).map((o) => +Math.hypot(o.side, o.along).toFixed(1)).sort((x, y) => x - y);
+const sideStats = sides.length ? { n: sides.length, min: +sides[0].toFixed(2), median: +sides[Math.floor(sides.length / 2)].toFixed(2), max: +sides[sides.length - 1].toFixed(2), overHalfLane: sides.filter((x) => x > 1.8).length } : null;
+console.log(JSON.stringify({ map: id, cars: Number(cars), seed: Number(seed), secs: Number(secs), imposed: process.env.IMPOSED !== "0", changes: done.length, by, examples: ex, sideOfDivergingLeader: sideStats, straightLineToIt: dists }));
