@@ -27,6 +27,7 @@
 import { placeOf, laneIndexOf, roomAt, admissible } from "./placement.js";
 import { exitSAt } from "./graph.js";
 import { rng } from "../core/rng.js";
+import { DT } from "./traffic.js";
 
 /* The window, a flagged design constant: the maintainer's arithmetic put
    the cars a phone affords in "a 6 km window" as one every ~37 m. */
@@ -146,7 +147,12 @@ const far = (poseOf, w, a, from) => { const p = poseOf(w, a); return Math.hypot(
 export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, poseOf, kindOf, wantsAccel, brakeOf }) {
   const win = windowOf(world, next);
   if (!win) return { next, win: null, retired: 0, placed: null };
-  const w = { ...world, actors: next };
+  /* ON THE CLOCK THE CARS ARE AT. `next` is the actors one tick on, so their
+     poses are asked at world.t + DT, as contact detection asks them (crossing.js
+     step). On the old clock a car mid-lane-change stood where it was a tick
+     ago, sideways: a car placed 10.04 m from a merging car was 9.98 m from it
+     in the world it joined (verify-promotion, checks on, 27 October). */
+  const w = { ...world, t: world.t + DT, actors: next };
   const me = poseOf(w, win.pl);
   /* Retire: outside the window and out of sight -- ONE A TICK, AND ONLY WITH
      THE MAP AT ITS TARGET, so every car retired is followed by a place for
@@ -169,7 +175,7 @@ export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, pos
   if (world.target == null || next.length >= world.target) return { next, win, retired, placed: null };
   const r = rng(world.seed * 6151 + (world.tick ?? 0) * 7 + 3);
   const lanes = [...win.ahead.keys(), win.road].flatMap((r) => win.g.lanes.get(r) ?? []).filter((l) => !win.g.special.has(l));
-  const wn = { ...world, actors: next };
+  const wn = w;
   for (let tries = 0; tries < 4; tries++) {
     const lane = lanes[Math.floor(r() * lanes.length) % lanes.length];
     const len = win.g.len.get(roadOf(lane)) ?? 0;
