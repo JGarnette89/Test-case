@@ -50,7 +50,7 @@ import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
 import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, widthOf, clearBetween, stoppingRoom } from "./traffic.js";
 import { changeTime } from "../core/motion.js";
 import { poseAt } from "./intersection.js";
-import { atNode } from "./crossing.js";
+import { atNode, whatStops } from "./crossing.js";
 import { exitRouteInto, exitAlong, approachAlong } from "./graph.js";
 import { fits } from "./corner.js";
 import { lcChecks } from "./checks.js";
@@ -185,7 +185,7 @@ function reasonToStayOut(world, out, layout, path, leg, look, want) {
   const nb = neighbours(world, out, toLeg, s2);
   if ((nb.behind && nb.db < BLIND_BEHIND) || (nb.ahead && clearBetween(nb.da, out, nb.ahead) < 2)) return "passing";
   if (nb.ahead && clearBetween(nb.da, out, nb.ahead) < look && (nb.ahead.v ?? 0) < want - 1) return "inTheWay";
-  const g = gapFor(out, nb, 1);
+  const g = gapFor(out, nb, 1, world);
   if (!g.leadOk || !g.lagOk) return "noGap";
   return { dir: 1, toLeg, route, s2, nb };
 }
@@ -479,7 +479,7 @@ export function lagNeed(out, behind, kappa = kappaOf(out)) {
   const stop = Math.max(0, ((behind?.v ?? 0) ** 2 - out.v * out.v) / (2 * vehicleOf(behind).most));
   return Math.max(1.5 + stop, kappa * (wantedGap(behind ?? { v: 0 }, out) + shedOf((behind?.v ?? 0) - out.v, vehicleOf(behind).brake + mineAccel)));
 }
-function gapFor(out, nb, kappa) {
+function gapFor(out, nb, kappa, world = null) {
   /* At the FOLLOWER's hardest braking: a truck behind stops longer. */
   const stopIn = (v, vl, who) => Math.max(0, (v * v - vl * vl) / (2 * vehicleOf(who).most));
   const leadGap = nb.ahead ? clearBetween(nb.da, out, nb.ahead) : Infinity;
@@ -508,7 +508,19 @@ function gapFor(out, nb, kappa) {
   const needLag = lagNeed(out, nb.behind, kappa);
   /* The floor alone, for the car behind: whether it can stop behind this one at all. */
   const lagSurvivable = lagGap >= 1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind);
-  return { leadGap, lagGap, leadOk: leadGap >= needLead, lagOk: lagGap >= needLag, lagSurvivable };
+  /* A CAR THAT CANNOT MOVE UNTIL YOU DO IS NOT ONE YOU CUT OFF (28 October,
+     the maintainer's ruling). The comfortable gap behind asks whether the
+     car there will have to brake hard; a car at rest whose leader is this
+     one is waiting on it and cannot close at all. Without this, a joiner
+     stopped part-way across behind a joiner standing at the end of the lane
+     (a merging car follows the lane it leaves until its blend is over, and
+     a stopped blend never ends) was refused by that joiner as too close
+     behind, and each waited on the other for good with the through lane
+     queued behind (verify-merge, seed 1, checks on). The floor still holds:
+     room for the car behind to be there at all. */
+  let lagOk = lagGap >= needLag;
+  if (!lagOk && world && lagSurvivable && (nb.behind.v ?? 0) < 0.5 && whatStops(nb.behind, world).leader?.id === out.id) lagOk = true;
+  return { leadGap, lagGap, leadOk: leadGap >= needLead, lagOk, lagSurvivable };
 }
 
 /* THE GAP, THE LOOK AND THE GO -- the same for a change a driver wants
@@ -824,7 +836,7 @@ function attempt(world, out, path, best, T0) {
     const own = best.exit ? exitNeighbours(world, out, here, path.to, path.length - out.s) : neighbours(world, out, path.from, out.s);
     if (own.ahead && clearBetween(own.da, out, own.ahead) < Math.max(lenOf(out), Math.max(0, out.v - (own.ahead.v ?? 0)) * T0 * 0.5)) return out;
   }
-  const { leadGap, lagGap, leadOk, lagOk, lagSurvivable } = gapFor(out, nb, kappa);
+  const { leadGap, lagGap, leadOk, lagOk, lagSurvivable } = gapFor(out, nb, kappa, world);
 
   /* THE BLIND-SPOT CHECK, AT THIS DRIVER'S OBSERVATION. Drawn once per
      manoeuvre from the driver's own seed, so a run replays exactly. */
