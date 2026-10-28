@@ -4568,6 +4568,17 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     is tested in the run it claims to explain.** Predictions written before
     the fix, results (four met, one partly) in SIMULATOR IN FLIGHT 31.
 
+16. **A figure quoted from memory rather than re-measured (28 October).**
+    A split of verify-compliance was asked for "because it is roughly 950 s
+    of a 28-minute suite". 950 s was its time BEFORE the 22 October fix
+    that ran its runs in worker threads -- TESTING.md already said so.
+    Measured that morning: 465 s of a 1,581 s wall, 2.5% of the
+    check-seconds, on a CPU-bound runner where the wall follows total work.
+    The split would have cost nothing less. The same shape as items 10 and
+    15, one step earlier: not a mechanism accepted untested but a NUMBER
+    accepted unmeasured. **A figure that justifies work is re-measured
+    before the work, whoever quotes it.**
+
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
   surprising reading is a finding about the world, the instrument is
