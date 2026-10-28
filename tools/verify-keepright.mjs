@@ -91,8 +91,8 @@ const mean = (xs) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : Na
     if (behind) {
       const room = behind.d - CAR.length;
       if (room < 1.5 + stop(behind.b.v, a.v)) return "noGap";
-      const tol = imposesOf(a);
-      if (tol == null ? room < wantedGap(behind.b, a) : -decide({ ...behind.b, v0: Math.max(behind.b.v0 ?? behind.b.v ?? 0, 0.1) }, { leader: a, gap: room }) > tol) return "noGap";
+      const imposition = imposesOf(a);
+      if (imposition == null ? room < wantedGap(behind.b, a) : -decide({ ...behind.b, v0: Math.max(behind.b.v0 ?? behind.b.v ?? 0, 0.1) }, { leader: a, gap: room }) > imposition) return "noGap";
     }
     return null;
   };

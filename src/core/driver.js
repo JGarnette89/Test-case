@@ -303,7 +303,10 @@ export function composeDriver(seed = 1, town = null, level = 0, aggressionLevel 
    A DISPOSITION, NOT A SKILL -- never one of the ratings, never in AXES: the
    five skills and compliance say what a driver CAN do and whether rules
    matter to them; this says how much braking they are prepared to force on
-   somebody else. Read as a tolerance in m/s^2 (sim/traffic.js `imposesOf`).
+   somebody else. Read as an IMPOSITION in m/s^2 (sim/traffic.js `imposesOf`):
+   the most braking this driver will force on somebody else. Not "tolerance":
+   in the maintainer's usage tolerant means considerate, the opposite end, and
+   a ruling worded one way would be read the other (DECISIONS 10.32).
 
    DO NOT FOLD IT INTO CONFIDENCE. Confidence is how well a driver JUDGES
    what an action will cost the car behind (bold underestimate, timid
@@ -317,7 +320,7 @@ export function composeDriver(seed = 1, town = null, level = 0, aggressionLevel 
    (0..1) scales it, so the dial moves the whole distribution and the same
    people stay in the same order. `aggressionLevel` null: the old world, in
    which nobody carries the field at all (`world.imposed === false`). Zero
-   aggression is not zero cost: the tolerance starts at a lift-off.
+   aggression is not zero cost: the imposition starts at a lift-off.
    ===================================================================== */
 export function aggressionOf(seed, level) {
   const L = Math.max(0, Math.min(1, Number(level) || 0));

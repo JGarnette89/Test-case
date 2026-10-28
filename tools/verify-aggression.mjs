@@ -6,12 +6,12 @@
    2. INDEPENDENT OF SKILL BY CONSTRUCTION: a driver's ratings are the same at
       every aggression level and their aggression the same at every skill
       level; the dial moves the distribution and keeps the order.
-   3. NOBODY AT ZERO: the tolerance starts at a lift-off and rises with
+   3. NOBODY AT ZERO: the imposition starts at a lift-off and rises with
       aggression to the hardest braking -- a driver who imposes nothing never
       moves.
    4. THE DECISION IS THE QUANTITY: the deceleration lane changes force on the
       car behind, MEASURED in the world, rises with the dial -- not read back
-      from the code. A rule that ignored the tolerance would fail here.
+      from the code. A rule that ignored the imposition would fail here.
    5. COURTESY IS ITS OTHER READING: a compliant driver offers whatever their
       confidence; nobody aggressive past COURTEOUS_BELOW does.
    6. DENYING: it happens at the dial's top, never at its default, and only
@@ -70,7 +70,7 @@ console.log("\n3. NOBODY AT ZERO");
   const at = (a) => imposesOf({ aggression: a });
   ok(at(0) === LIFT && LIFT > 0 && at(0) < BRAKE, `aggression 0 still imposes a lift-off (${at(0)} m/s^2, under a comfortable stop at ${BRAKE})`);
   ok(at(1) === MOST_BRAKE && [0, 0.25, 0.5, 0.75, 1].every((a, i, xs) => i === 0 || at(a) > at(xs[i - 1])), `rising to the hardest braking at 1 (${at(1)}), strictly`);
-  ok(imposesOf({}) === null, "a driver without the field has no tolerance (the old rule decides)");
+  ok(imposesOf({}) === null, "a driver without the field has no imposition (the old rule decides)");
 }
 
 /* The braking a change forces: the car whose new leader is a changer, its hardest in 4 s. */

@@ -5341,6 +5341,18 @@ direction as 10.8 (a state the player cannot read is a state the screen did
 not show) turned outward: an interaction nobody can see happening was not
 worth simulating, and one the player can see is worth drawing well.
 
+**THE QUANTITY IS NAMED IMPOSITION, NOT TOLERANCE (renamed 28 October, the
+project lead).** It was first written "tolerance" -- the cost a driver will
+accept imposing, so HIGH meant WORSE -- while in the maintainer's own usage
+"tolerant" means considerate, the opposite end. A ruling worded in one sense
+would have been read in the other. IMPOSITION reads exactly as defined (how
+much cost will this driver impose) and nothing in everyday speech pulls it the
+other way. Earlier entries that say "tolerance" for it mean imposition. The
+four corners, stated plainly: patient and low-imposition slots in unnoticed;
+impatient and high-imposition takes the first gap and makes people lift off
+repeatedly; impatient and low-imposition is always moving but never forces a
+brake.
+
 **3. THE DEFINITION. AGGRESSION IS HOW MUCH COST A DRIVER IS WILLING TO
 IMPOSE ON OTHERS TO ACCOMPLISH THEIR GOAL** -- measured as the deceleration
 they are prepared to force on other road users. Verbatim: *"if aggression is

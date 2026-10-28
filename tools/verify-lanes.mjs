@@ -146,11 +146,11 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
      drivers at or above competent caution took NO gap a competent driver
      would refuse -- tightness as confidence's alone, which is the conflation
      10.32 removed. A gap is now taken on the cost it forces on the car
-     behind, within the driver's tolerance (aggression): a sound judge with a
-     high tolerance takes a tight gap BY CHOICE. So the claim, in the model's
+     behind, within the driver's imposition (aggression): a sound judge with a
+     high imposition takes a tight gap BY CHOICE. So the claim, in the model's
      own terms: bold drivers still take gaps a competent judge would refuse
      (misjudging); and the sound-confidence drivers who take them exist and
-     are the MORE AGGRESSIVE of their kind (choosing). A tolerance that
+     are the MORE AGGRESSIVE of their kind (choosing). An imposition that
      ignored aggression fails it either way -- no such changes, or no
      difference. Sabotaged: imposesOf at LIFT for everybody. */
   const soundStarts = seenStarts.filter((s) => s.caution >= 1 && s.caution < 3 && s.aggr != null);

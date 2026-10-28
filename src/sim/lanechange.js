@@ -526,7 +526,7 @@ function gapFor(out, nb, kappa, world = null) {
      this gap (the following model, `decide` -- the sim's own, not a second
      one); JUDGED through this driver's confidence (`kappa`, the factor that
      scaled the gap before -- bold underestimate, timid overestimate); taken
-     if within what this driver will impose (`imposesOf`). The floor holds
+     if within this driver's IMPOSITION (`imposesOf`). The floor holds
      for everybody. A driver without the field -- the old world
      (`world.imposed === false`, the exact control), a rival not yet moved
      onto it -- keeps the distance rule above. */

@@ -637,7 +637,7 @@ export const weaveAt = (me, s) =>
    zero, or nobody would ever move -- to "stand on your brakes", the hardest
    a car can do, at 1. LIFT is a flagged design constant. A driver with no
    aggression field (the old world, a rival not yet moved onto it) has no
-   tolerance: the old gap rule decides for them.
+   imposition: the old gap rule decides for them.
    ===================================================================== */
 export const LIFT = 0.5;
 export const imposesOf = (d) => (d?.aggression == null ? null : LIFT + Math.max(0, Math.min(1, d.aggression)) * (MOST_BRAKE - LIFT));
