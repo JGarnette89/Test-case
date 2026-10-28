@@ -13,14 +13,18 @@
    "possible at entry, impossible when held" (held late, within the node);
    "possible when held" (could have stopped, did not). The city at 150 with
    rivals, ten minutes a seed, from either tree.
+   And for every hold that ends in an overshoot: HOW LONG THE CAR IT WAS HELD FOR
+   HAD BEEN AT THIS NODE when the hold began -- near zero, the conflict appeared
+   the moment that car crossed its own seam (late discovery, the other side);
+   long, it was there all along and the decision to hold came late.
    Usage: node overshoot-entry.mjs <treeRoot> seeds(comma) */
 const [root, seedsArg] = process.argv.slice(2);
 const { loadMap } = await import(`file:///${root}/src/map/load.js`);
 const { TEST_MAPS } = await import(`file:///${root}/src/map/samples.js`);
-const { seedGraph, step, whatStops, layoutOf } = await import(`file:///${root}/src/sim/crossing.js`);
+const { seedGraph, step, whatStops, layoutOf, blockedBy } = await import(`file:///${root}/src/sim/crossing.js`);
 const { DT, stoppingRoom, vehicleOf } = await import(`file:///${root}/src/sim/traffic.js`);
 const city = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
-const out = { seeds: seedsArg, overshoots: 0, impossibleFromEntry: 0, heldLate: 0, couldHaveStopped: 0, rows: [] };
+const out = { seeds: seedsArg, overshoots: 0, impossibleFromEntry: 0, heldLate: 0, couldHaveStopped: 0, blockerAge: [], rows: [] };
 for (const seed of seedsArg.split(",").map(Number)) {
   let w = seedGraph(seed, 50, city, { target: 150, posted: true, rivals: true });
   const entry = new Map(), hold = new Map();
@@ -29,9 +33,15 @@ for (const seed of seedsArg.split(",").map(Number)) {
     for (const a of prev.actors) {
       if (a.player || a.crash) continue;
       const key = `${a.k}|${a.route}`, e = entry.get(a.id);
-      if (!e || e.key !== key) entry.set(a.id, { key, s: a.s, v: a.v });
+      if (!e || e.key !== key) entry.set(a.id, { key, s: a.s, v: a.v, t: prev.t });
       const v = whatStops(a, prev);
-      if (v.held && v.leader?.id === "line") { if (!hold.has(a.id)) hold.set(a.id, { s: a.s, v: a.v }); }
+      if (v.held && v.leader?.id === "line") {
+        if (!hold.has(a.id)) {
+          const L = layoutOf(prev, a), by = prev.actors.filter((c) => c.id !== a.id && (c.k ?? 0) === (a.k ?? 0) && blockedBy(a, c, L, a.caution, prev.t, null));
+          const ages = by.map((c) => { const ce = entry.get(c.id); return ce && ce.key === `${c.k}|${c.route}` ? prev.t - ce.t : null; }).filter((x) => x != null);
+          hold.set(a.id, { s: a.s, v: a.v, blockerAge: ages.length ? Math.min(...ages) : null });
+        }
+      }
       else hold.delete(a.id);
     }
     w = step(w);
@@ -45,6 +55,7 @@ for (const seed of seedsArg.split(",").map(Number)) {
       out.overshoots++;
       const kind = !fromEntry ? "impossibleFromEntry" : !fromHold ? "heldLate" : "couldHaveStopped";
       out[kind]++;
+      if (kind === "heldLate") out.blockerAge.push(h.blockerAge);
       if (out.rows.length < 12) out.rows.push({ seed, t: +w.t.toFixed(1), id: a.id, kind, entryV: +(e?.v ?? 0).toFixed(1), entryRoom: +(P.stopAt - (e?.s ?? 0)).toFixed(1), needAtEntry: +stoppingRoom(e?.v ?? 0, most).toFixed(1), holdV: +h.v.toFixed(1), holdRoom: +(P.stopAt - h.s).toFixed(1), needAtHold: +stoppingRoom(h.v, most).toFixed(1) });
     }
   }
