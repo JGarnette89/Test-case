@@ -178,7 +178,7 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
          standstill gap (one left-turner 0.2 m in, for 25 s, was 518 of 626
          "harsh" car-ticks here on 21 October, with the moving count the
          same as the build before) and slows nothing. */
-      if (-(a.a ?? 0) > HARSH_AT && (was?.v ?? 0) >= 0.5) { harsh++; if (was?.amberGo) wentThenBraked++; }
+      if (-(a.a ?? 0) > HARSH_AT && (was?.v ?? 0) >= 0.5) { harsh++; /* FOR THE LINE: short of it. `amberGo` stays set until the next intersection, so counting every hard brake while it was set filed a car braking 28 m past the line for somebody cutting in -- a missed shoulder check, found out at the survivable floor, by design -- as braking for the line (27 October, with the candidate's checks on). */ if (was?.amberGo && was.s <= p.stopAt) wentThenBraked++; }
     }
   }
   const onRed = launches.filter((l) => l.light === "red");
