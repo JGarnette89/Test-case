@@ -254,11 +254,17 @@ const span = (r, [lo, hi]) => lo + r() * (hi - lo);
    `town.bold` is the share of weak confidence that falls on the bold side.
    With no town every axis weighs 1 and bold is one half, and the pick below
    reduces EXACTLY to the uniform one it replaced -- the same draw from the
-   same number -- so every driver drawn before is the driver drawn now. */
-export function composeDriver(seed = 1, town = null) {
+   same number -- so every driver drawn before is the driver drawn now.
+
+   `level` is the SKILL DIAL (the maintainer's request, 28 October;
+   SIMULATOR IN FLIGHT 34): the whole population's profile moved, not the
+   ratings clamped -- see `profileAt`. At 0 it is the profile above, and the
+   draw is the one it always was. */
+export function composeDriver(seed = 1, town = null, level = 0) {
+  const P = profileAt(level);
   const r = rng(seed);
   const bag = [...SKILLS];
-  const n = WEAK_AXES[0] + Math.floor(r() * (WEAK_AXES[1] - WEAK_AXES[0] + 1));
+  const n = P.weakAxes[0] + Math.floor(r() * (P.weakAxes[1] - P.weakAxes[0] + 1));
   const weak = new Set();
   const weightOf = (a) => town?.weights?.[a] ?? 1;
   for (let i = 0; i < n && bag.length; i++) {
@@ -272,18 +278,48 @@ export function composeDriver(seed = 1, town = null) {
   for (const axis of SKILLS) {
     if (axis === "confidence") {
       const side = r() < 1 - (town?.bold ?? 0.5) ? -1 : 1;
-      const dev = span(r, weak.has(axis) ? WEAK_DEVIATION : SOUND_DEVIATION);
+      const dev = span(r, weak.has(axis) ? P.weakDeviation : P.soundDeviation);
       const half = side < 0 ? CONFIDENT_ENOUGH : 1 - CONFIDENT_ENOUGH;
       ratings[axis] = clamp01(CONFIDENT_ENOUGH + side * dev * half);
     } else {
-      ratings[axis] = clamp01(span(r, weak.has(axis) ? WEAK_RANGE : SOUND_RANGE));
+      ratings[axis] = clamp01(span(r, weak.has(axis) ? P.weakRange : P.soundRange));
     }
   }
   /* Compliance and the rules, from a second stream (see AXES). */
   const r2 = rng((Math.imul(seed >>> 0, 0x9e3779b1) ^ 0x85ebca6b) >>> 0);
-  if (r2() < shareAt(COMPLY_WEAK, town?.weights?.compliance ?? 1)) weak.add("compliance");
-  ratings.compliance = clamp01(span(r2, weak.has("compliance") ? WEAK_RANGE : SOUND_RANGE));
+  if (r2() < shareAt(P.complyWeak, town?.weights?.compliance ?? 1)) weak.add("compliance");
+  ratings.compliance = clamp01(span(r2, weak.has("compliance") ? P.weakRange : P.soundRange));
   return { id: `drv-${seed >>> 0}`, ratings, weakOn: [...weak], stuck: stuckFor(r2), skill: 1 };
+}
+
+/* THE SKILL DIAL'S PROFILE, -1 (the worst population) to +1 (the best).
+   Every number that shapes the draw moves, so the DISTRIBUTION moves --
+   how many axes a driver is weak on, how weak a weak axis is, how sound a
+   sound one is, how far off the optimum confidence sits -- rather than the
+   ratings being pushed against a floor or ceiling afterwards. Each end is
+   interpolated linearly from today's profile (level 0) to its extreme:
+     -1  four or five weak axes of five, weak at 0-0.3, "sound" at 0.5-0.8,
+         confidence 0.8-1.0 of the way to its end when weak;
+     +1  no weak axis, sound at 0.9-1.0, confidence within 0.1 of optimum.
+   Compliance is weak as often as any one skill, at every level, by the
+   same derivation as COMPLY_WEAK. The extremes are FLAGGED design
+   constants for a debug instrument, not a ruling: at -1 the maintainer's
+   "every candidate has a real strength" no longer holds, by intent -- it
+   is the driver at the bottom of every axis the dial exists to show. */
+const DIAL_LOW = { weakAxes: [4, 5], weakRange: [0, 0.3], soundRange: [0.5, 0.8], weakDeviation: [0.8, 1.0], soundDeviation: [0.25, 0.55] };
+const DIAL_HIGH = { weakAxes: [0, 0], weakRange: [0.5, 0.8], soundRange: [0.9, 1.0], weakDeviation: [0.3, 0.6], soundDeviation: [0, 0.1] };
+export const SKILL_LEVELS = [-1, 1];
+export function profileAt(level = 0) {
+  const base = { weakAxes: WEAK_AXES, weakRange: WEAK_RANGE, soundRange: SOUND_RANGE, weakDeviation: WEAK_DEVIATION, soundDeviation: SOUND_DEVIATION, complyWeak: COMPLY_WEAK };
+  const L = Math.max(-1, Math.min(1, Number(level) || 0));
+  if (L === 0) return base;
+  const to = L < 0 ? DIAL_LOW : DIAL_HIGH, f = Math.abs(L);
+  const mix = ([a, b], [c, d]) => [a + (c - a) * f, b + (d - b) * f];
+  const out = { weakRange: mix(WEAK_RANGE, to.weakRange), soundRange: mix(SOUND_RANGE, to.soundRange), weakDeviation: mix(WEAK_DEVIATION, to.weakDeviation), soundDeviation: mix(SOUND_DEVIATION, to.soundDeviation) };
+  const [lo, hi] = mix(WEAK_AXES, to.weakAxes).map(Math.round);
+  out.weakAxes = [lo, Math.max(lo, hi)];
+  out.complyWeak = (out.weakAxes[0] + out.weakAxes[1]) / 2 / SKILLS.length;
+  return out;
 }
 
 /* HOW OFTEN COMPLIANCE IS SOMEBODY'S WEAKNESS: as often as any one skill

@@ -43,7 +43,9 @@ import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
-import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption, drawNav, drawReceipt, drawHeadway } from "../iso/hud.js";
+import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption, drawNav, drawReceipt, drawHeadway, drawDriverCard, CARD_W, CARD_H } from "../iso/hud.js";
+import { viewOf } from "../iso/project.js";
+import { AXES, soundnessOf, LACKING_AT, COMPETENT_AT, CONFIDENT_ENOUGH } from "../core/driver.js";
 import { offerFare, accept } from "../sim/jobs.js";
 import { loadWallet } from "../sim/money.js";
 import { HONK_FOR } from "../sim/horn.js";
@@ -152,6 +154,14 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   /* Drivers check mirrors and blind spots, and look along the cross road (sim/checks.js) -- built, not on by default, a switch so the maintainer can watch them (SIMULATOR IN FLIGHT 31). */
   const [checksOn, setChecksOn] = useState(false);
   const [shapeOn, setShapeOn] = useState(true);
+  /* THE TRAFFIC SKILL DIAL (sim/skill.js; SIMULATOR IN FLIGHT 34): where the population's ratings sit, -1 to +1, 0 as drawn.
+     LIVE -- everybody on the map is redrawn at it -- and kept across a restart, never saved: a testing knob that came back
+     on its own would leave the next drive's traffic worse with nothing on screen saying why. The frame loop reads skillRef. */
+  const [skill, setSkill] = useState(0);
+  const skillRef = useRef(0);
+  /* THE DRIVER BEING LOOKED AT: a tap on a car while watching, or looking around. Its card is drawn on the canvas; a ref, set by taps, never by the frame loop. */
+  const picked = useRef(null);
+  const drawn = useRef({ actors: [], view: null });
   /* CLEAN MODE (settings.js): for showing the game -- no readout, the debug controls behind More. The frame loop reads cleanRef. */
   const [clean, setClean] = useState(false);
   const cleanRef = useRef(false);
@@ -208,6 +218,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n); setLookAway(look); setShapeOn(sh); setChecksOn(ck);
     scene.current?.remote?.stop();
     scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look, !sh, ck);
+    if (skillRef.current) scene.current.world = { ...scene.current.world, skill: skillRef.current };
+    picked.current = null;
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
     cam.current = { ...newChase(), id: null };
     owed.current = 0; contacts.current = 0; flash.current = 0; free.current = null; setLook(false);
@@ -326,6 +338,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           }
           if (hit) { contacts.current++; flash.current = 1; setStopped(true); }
         }, (message) => { console.warn("the sim's worker failed; stepping in the page", message); own.remote = null; });
+        /* The worker builds its world from the recipe, which has no dial: told after, in order behind the init. */
+        if (own.world.skill) own.remote?.set("skill", own.world.skill);
       }
       const tSim0 = performance.now();
       if (playing && !stopped && !(mode === "drive" && look) && sc.remote) {
@@ -429,6 +443,21 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const tDraw0 = performance.now();
       const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + carry, lights: sc.world.lights, route: sc.me ? sc.routePts : null, dest: sc.me && sc.dest ? { x: sc.dest.x, y: sc.dest.y, z: 0 } : null });
 
+      /* THE DRIVER LOOKED AT: a ring round the car and its card (iso/hud.js drawDriverCard) -- the followed car's when none is picked. */
+      drawn.current = { actors, view: { k, rot, cam: { ...cam.current }, size } };
+      {
+        const followed = !sc.me && (follow === "car" || follow.startsWith("rival-")) ? (follow === "car" ? cam.current.id : follow) : null;
+        const id = picked.current ?? followed;
+        const who = id ? sc.world.actors.find((a) => a.id === id) : null;
+        if (!who && picked.current) picked.current = null;   // left the map
+        const pose = who ? actors.find((a) => a.id === id) : null;
+        if (who && pose) {
+          const [px, py] = viewOf(k, cam.current, rot, size).P(pose.x, pose.y, pose.z ?? 0);
+          ctx.strokeStyle = "#f2b84b"; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(px, py, Math.max(14, 3.2 * k), 0, Math.PI * 2); ctx.stroke();
+          drawDriverCard(ctx, 8, sc.me ? 124 : size.h - CARD_H - 8, who, { axes: AXES, soundnessOf, lacking: LACKING_AT, competent: COMPETENT_AT, middle: CONFIDENT_ENOUGH });
+        }
+      }
       const tDraw1 = performance.now();
       if (now - fpsAt > 1000) {
         const sum = meter.current.summary(120);
@@ -471,7 +500,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         const frameLine = ` = means/p95: sim ${mp("sim")} + poses ${mp("poses")} + draw ${mp("draw")} (list ${mp("list")}, sort ${mp("sort")}, paint ${mp("paint")}, overlay ${mp("overlay")}) + hud ${mp("hud")}`
           + `\ndrawn (5 s mean, of all there are now): ${fp.items?.mean ?? "-"} things · cars ${fp.cars?.mean ?? "-"} of ${of.cars ?? "-"} · road pieces ${fp.segments?.mean ?? "-"} of ${of.segments ?? "-"} · ground ${fp.cells?.mean ?? "-"} of ${of.cells ?? "-"} · buildings ${fp.props?.mean ?? "-"} of ${of.props ?? "-"}`;
         const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick p50/p95/max ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step p50/p95 ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip mean ${ck.rt.mean} (p95 ${ck.rt.p95}) = wait ${ck.wait.mean} + step ${ck.stepMean} + answer ${ck.diff.mean} + back ${ck.back.mean} (read ${ck.read.mean}) + reply ${ck.reply.mean}, all means` : ""}\nframe mean/p95 ${ck.ours.mean}/${ck.ours.p95} ms (median ${ck.ours.p50})${frameLine}${taskLine}` : "";
-        readout.current = `${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"}${crashLine} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
+        readout.current = `${skillRef.current ? `traffic skill ${skillRef.current > 0 ? "+" : ""}${skillRef.current.toFixed(1)} · ` : ""}${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"}${crashLine} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
         fpsAt = now;
       }
       /* A CRASH ANYWHERE IS SAID, for eight seconds, with where it is from
@@ -593,6 +622,22 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   };
   const camUp = (e) => {
     const g = gesture.current;
+    /* A TAP, not a drag: the car under it, if any, is the driver looked at -- the nearest drawn within a touch target. */
+    if (g.start?.mode === "pending" && g.pointers.size === 1) {
+      const [x, y] = at(e), d = drawn.current, sc = scene.current;
+      if (d.view && sc) {
+        const P = viewOf(d.view.k, d.view.cam, d.view.rot, d.view.size).P;
+        const ids = new Set(sc.world.actors.filter((a) => !a.player).map((a) => a.id));
+        let best = null, bestD = 30;
+        for (const a of d.actors) {
+          if (a.ped || !ids.has(a.id)) continue;
+          const [px, py] = P(a.x, a.y, a.z ?? 0), dd = Math.hypot(px - x, py - y);
+          if (dd < bestD) { best = a.id; bestD = dd; }
+        }
+        picked.current = best;
+        if (best && mode === "watch" && follow === "car") cam.current.id = best;
+      }
+    }
     g.pointers.delete(e.pointerId);
     /* Lifting one finger of a pinch ends it; the other does not become a pan. */
     if (g.pointers.size === 0) g.start = null;
@@ -758,6 +803,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             Cars <b style={{ color: C.white, minWidth: 28, textAlign: "right" }}>{cars}</b>
             <input type="range" min={CARS.min} max={carsMax} step={CARS.step} value={cars} style={{ width: 140, fontSize: 16 }}
               onChange={(e) => { const n = Number(e.target.value); setCars(n); setSetting("carsByMap", { ...(settings().carsByMap ?? {}), [mapId]: n }); if (scene.current) { scene.current.world = { ...scene.current.world, target: n }; scene.current.remote?.set("target", n); } }} />
+          </label>
+          {/* THE TRAFFIC SKILL DIAL: live -- everybody on the map is redrawn at it (sim/skill.js). Tap a car to see its five axes. */}
+          <label style={{ ...S.label, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            Traffic skill <b style={{ color: skill ? C.amber : C.white, minWidth: 34, textAlign: "right" }}>{skill > 0 ? "+" : ""}{skill.toFixed(1)}</b>
+            <input type="range" min={-1} max={1} step={0.1} value={skill} style={{ width: 140, fontSize: 16 }}
+              onChange={(e) => { const v = Math.round(Number(e.target.value) * 10) / 10; skillRef.current = v; setSkill(v); if (scene.current) { scene.current.world = { ...scene.current.world, skill: v }; scene.current.remote?.set("skill", v); } }} />
           </label>
           {/* A restart: a world keeps its drivers' recent past only when they can look away. */}
           {(!clean || more) && (<>

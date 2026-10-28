@@ -299,8 +299,16 @@ export { cautionOf };
 /* How far short of a line the least-knowing driver stops: the old engine's
    `stopsShort` (engine/index.js, M(3.2)), carried over rather than chosen. */
 export const STOP_SHORT = 3.2;
-export function driver(road, seed, n, ratings = null, town = null, kind = "car") {
-  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }), stuck: stuckFor(rng(seed * 15485863 + n + 7)) } : composeDriver(seed * 7919 + n, town);
+/* WHO THE DRIVER IS, AS IT REACHES THE ROAD: every field `driver` derives
+   from the ratings, and nothing else. A driver redrawn live by the skill
+   dial (skill.js) takes exactly these from a fresh `driver` and keeps
+   everything about where they are and what they are doing -- one list,
+   held against `driver` itself by verify-skill (a field that moves with
+   the ratings and is missing here is a driver only half redrawn). */
+export const PERSONAL = ["ratings", "weakOn", "stuck", "caution", "rollsStops", "brake", "short", "weave", "lag", "notices", "v0", "headway"];
+/* `level`: the skill dial (core/driver.js `profileAt`); 0 is the population as drawn. */
+export function driver(road, seed, n, ratings = null, town = null, kind = "car", level = 0) {
+  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }), stuck: stuckFor(rng(seed * 15485863 + n + 7)) } : composeDriver(seed * 7919 + n, town, level);
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
   const vehicle = { kind };

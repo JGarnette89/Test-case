@@ -54,6 +54,7 @@ import { planPass, passOffset, passerAhead } from "./passing.js";
 import { rng } from "../core/rng.js";
 import { shape, windowOf, admits } from "./shaping.js";
 import { townOf } from "./towns.js";
+import { applySkill } from "./skill.js";
 import { knownControl, theirControl } from "./reading.js";
 import { reads, anticipates } from "../core/driver.js";
 import { BAY } from "../map/format.js";
@@ -1766,6 +1767,8 @@ function loopDets(world, k) {
 }
 
 export function step(world) {
+  /* THE SKILL DIAL MOVED: everybody on the map redrawn at it, before anybody decides (skill.js). */
+  world = applySkill(world);
   const parkedNow = [];   // cars that pulled into a slot this tick (parking.js)
   /* WHO WAS HONKED AT LAST TICK: a horn is heard at once, by the car it is meant for. */
   const honked = new Set();
@@ -2592,7 +2595,7 @@ export function carFor(world, n, k, route, want, kind, base = (world.road.percei
   const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6), kind: kindAt(world.course, k, route) };
   /* THE RIVALS (rivals.js): an absent one is the next car to arrive -- their profile, through the same `driver`. */
   const rival = rivalDue(world, world.actors, kind);
-  const who = driver(road, world.seed, n, rival?.ratings ?? null, null, kind);
+  const who = driver(road, world.seed, n, rival?.ratings ?? null, null, kind, world.skill ?? 0);
   const car = {
     ...who,
     n,
@@ -2714,7 +2717,7 @@ function pullingOut(world, n, actors) {
      elsewhere and is drawn as it always was. */
   const rival = rivalDue(world, actors);
   const drawn = {
-    ...driver(road, world.seed, n, rival?.ratings ?? null, rival ? null : townOf(at.character)),
+    ...driver(road, world.seed, n, rival?.ratings ?? null, rival ? null : townOf(at.character), "car", world.skill ?? 0),
     home: at.zone,
     n, k: at.k, route: chosen.route, ...(chosen.want ? { want: chosen.want } : {}),
     leg: 0, s, v: 0,

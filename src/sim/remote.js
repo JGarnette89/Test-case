@@ -44,14 +44,16 @@ const STATIC = new Set(["course", "layout", "road"]);
      Never sent.
    - `ratings`, `weakOn`, `stuck`: who the driver IS, fixed when they
      are made. Sent when a driver first appears (absent from the last
-     answer), and the page keeps the copy it already holds. */
+     answer), and the page keeps the copy it already holds -- or when they
+     are REDRAWN (the skill dial, skill.js): a new ratings object, so the
+     page's copy is not who the driver is any more. */
 const PRIVATE = new Set(["memo"]);
 const ONCE = ["ratings", "weakOn", "stuck"];
 function slimActors(list, prev) {
-  const known = new Set();
-  if (prev) for (const a of prev) known.add(a.id);
+  const known = new Map();
+  if (prev) for (const a of prev) known.set(a.id, a.ratings);
   return list.map((a) => {
-    const o = {}, seen = known.has(a.id);
+    const o = {}, seen = known.has(a.id) && known.get(a.id) === a.ratings;
     for (const k in a) if (!PRIVATE.has(k) && !(seen && ONCE.includes(k))) o[k] = a[k];
     return o;
   });

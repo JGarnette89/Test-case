@@ -264,3 +264,43 @@ export function drawReceipt(ctx, size, receipt, now) {
   ctx.globalAlpha = 1;
 }
 const money = (x) => `${(x ?? 0).toFixed(2)}`;
+
+/* =====================================================================
+   WHO THIS DRIVER IS (the maintainer's request, 28 October; SIMULATOR IN
+   FLIGHT 34): the car tapped, its FIVE AXES AND COMPLIANCE each on its own
+   bar -- never a summary score, because the question being asked of the
+   screen is WHICH axis is low in a driver behaving badly. Each bar is the
+   rating as the driver holds it; confidence, the one axis with a middle
+   (core/driver.js CONFIDENT_ENOUGH), is drawn from timid to bold with the
+   optimum marked, so a bold driver and a timid one read as different
+   failures. The colour is soundness against the project's own lines:
+   lacking at or under LACKING_AT, competent at or over COMPETENT_AT.
+   ===================================================================== */
+export const CARD_W = 204, CARD_H = 132;
+const LABELS = { observation: "observation", confidence: "confidence", steering: "steering", braking: "braking", knowledge: "knowledge", compliance: "compliance" };
+export function drawDriverCard(ctx, x, y, d, { axes, soundnessOf, lacking, competent, middle }) {
+  if (!d?.ratings) return;
+  ctx.fillStyle = "rgba(20,22,26,0.88)"; ctx.fillRect(x, y, CARD_W, CARD_H);
+  ctx.strokeStyle = "#f2b84b"; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, CARD_W - 1, CARD_H - 1);
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.font = "600 11px system-ui, sans-serif"; ctx.fillStyle = "#ffffff";
+  ctx.fillText(d.rival ? d.rival : d.id, x + 8, y + 6);
+  ctx.font = FONT; ctx.fillStyle = "rgba(230,232,236,0.7)"; ctx.textAlign = "right";
+  ctx.fillText(d.weakOn?.length ? `weak: ${d.weakOn.join(", ")}` : "weak on nothing", x + CARD_W - 8, y + 7);
+  const bx = x + 74, bw = CARD_W - 74 - 60;
+  axes.forEach((a, i) => {
+    const ry = y + 26 + i * 17, v = d.ratings[a] ?? 1, s = soundnessOf(d.ratings, a);
+    ctx.textAlign = "left"; ctx.fillStyle = "rgba(230,232,236,0.85)"; ctx.font = FONT;
+    ctx.fillText(LABELS[a] ?? a, x + 8, ry + 1);
+    ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(bx, ry + 2, bw, 8);
+    ctx.fillStyle = s <= lacking ? "#e0574f" : s >= competent ? "#6cc070" : "#f2b84b";
+    if (a === "confidence") {
+      /* from the optimum toward the side they are off on */
+      const m = bx + bw * middle, p = bx + bw * v;
+      ctx.fillRect(Math.min(m, p), ry + 2, Math.max(2, Math.abs(p - m)), 8);
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(m - 0.5, ry, 1, 12);
+    } else ctx.fillRect(bx, ry + 2, bw * v, 8);
+    ctx.textAlign = "right"; ctx.fillStyle = "rgba(230,232,236,0.85)";
+    ctx.fillText(a === "confidence" ? (v < middle - 0.05 ? `timid ${v.toFixed(2)}` : v > middle + 0.05 ? `bold ${v.toFixed(2)}` : v.toFixed(2)) : v.toFixed(2), x + CARD_W - 4, ry + 1);
+  });
+}
