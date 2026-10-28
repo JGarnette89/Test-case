@@ -24,6 +24,9 @@ const city = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
 const out = { tree: root.includes("oldtree") ? "main" : "branch", seeds: seedsArg, overshoots: 0, crashes: [] };
 for (const seed of seedsArg.split(",").map(Number)) {
   let w = seedGraph(seed, 50, city, { target: 150, posted: true, rivals: true });
+  /* IN FLIGHT 40's switches, stated with the result: FTS=1 statement A, NER=1 statement B. */
+  w = { ...w, ...(process.env.FTS === "1" ? { failToStop: true } : {}), ...(process.env.NER === "1" ? { noEmergencyRelease: true } : {}) };
+  const stand = new Map(); let longest = 0, over60 = 0;
   const hist = new Map();   // id -> { heldT, overT, overMax, overV, crossT, crossHeld }
   const H = (id) => hist.get(id) ?? hist.set(id, {}).get(id);
   const seenCrash = new Set();
@@ -46,6 +49,7 @@ for (const seed of seedsArg.split(",").map(Number)) {
         if (heldNow.has(a.id) && a.v > 0.5) { out.overshoots++; h.overT = w.t; h.overMax = (a.a ?? 0) <= -0.95 * vehicleOf(a).most; h.overV = a.v; }
       }
     }
+    for (const a of w.actors) { if (a.player || a.crash || a.parked) continue; if ((a.v ?? 0) < 0.3) { const t0 = stand.get(a.id) ?? w.t; stand.set(a.id, t0); const d = w.t - t0; if (d > longest) longest = d; if (d > 60 && d - DT <= 60) over60++; } else stand.delete(a.id); }
     for (const c of w.crashes ?? []) {
       const key = `${c.t}|${c.a}|${c.b}`;
       if (seenCrash.has(key)) continue;
@@ -62,5 +66,7 @@ for (const seed of seedsArg.split(",").map(Number)) {
       out.crashes.push({ seed, t: +c.t.toFixed(2), shape, A, B });
     }
   }
+  out.longestStand = Math.max(out.longestStand ?? 0, +longest.toFixed(1)); out.standsOver60 = (out.standsOver60 ?? 0) + over60;
 }
+out.fts = process.env.FTS === "1"; out.ner = process.env.NER === "1";
 console.log(JSON.stringify(out));
