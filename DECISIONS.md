@@ -4601,6 +4601,28 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     no reader is presumed right for being central or old -- each is checked
     against where the cars physically are.
 
+18. **The reader that does not read the quantity: a shortcut that filters
+    the candidates BEFORE it is computed (28 October; IN FLIGHT 38).** The fix
+    for who is in a lane changed every reader a sweep could find -- and the
+    first full run of it put 50 crashes into a shaped highway world that had
+    none, and 1-3 into four unshaped ones. The cause was a fifth reader the
+    sweep could not find: whatStops reads its candidates through a sorted-index
+    shortcut (crossing.js takePlain, 22 October) that walks the cars from my
+    leg, keeps only the one that presses hardest and drops the rest as never
+    the answer. It counted every car from my leg -- the OLD definition -- so a
+    car gone up another route was the only one passed on, whatStops (rightly,
+    now) refused it, and the car really in front had already been discarded
+    and was driven into. The shortcut never mentions the definition; it
+    PRE-FILTERS before the definition is applied. **To find these, the
+    question is not only "who reads this quantity" but "WHAT SELECTS OR
+    FILTERS THE CANDIDATES BEFORE THE QUANTITY IS COMPUTED". Indexes, caches,
+    early exits and fast paths are where an old definition hides** -- each is
+    exact only while it agrees with the definition downstream of it, and the
+    agreement is nowhere written down. And it was found by the CRASHES, not by
+    the sweep: the sweep came second. A change to a definition is not checked
+    by grepping for the definition; it is checked by running the world and
+    looking for what the change made impossible happening anyway.
+
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
   surprising reading is a finding about the world, the instrument is
