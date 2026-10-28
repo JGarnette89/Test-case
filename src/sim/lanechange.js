@@ -47,7 +47,7 @@
 import { deficitOf, knows, soundnessOf, COMPETENT_AT, anticipates } from "../core/driver.js";
 import { rng } from "../core/rng.js";
 import { REACTION_FLOOR, REGISTER_SPAN } from "../core/perception.js";
-import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, widthOf, clearBetween, stoppingRoom } from "./traffic.js";
+import { CAR, DT, MOST_BRAKE, wantedGap, weaveRoom, vehicleOf, lenOf, widthOf, clearBetween, stoppingRoom, decide, imposesOf } from "./traffic.js";
 import { changeTime } from "../core/motion.js";
 import { poseAt } from "./intersection.js";
 import { atNode, whatStops } from "./crossing.js";
@@ -519,6 +519,22 @@ function gapFor(out, nb, kappa, world = null) {
      queued behind (verify-merge, seed 1, checks on). The floor still holds:
      room for the car behind to be there at all. */
   let lagOk = lagGap >= needLag;
+  /* THE COST THE CHANGE IMPOSES, CHOSEN (DECISIONS 10.32; SIMULATOR IN
+     FLIGHT 35). A driver who carries aggression decides the lag on the
+     DECELERATION the change will force on the car behind, not on a distance:
+     PREDICTED as that car's own next decision with this one as its leader at
+     this gap (the following model, `decide` -- the sim's own, not a second
+     one); JUDGED through this driver's confidence (`kappa`, the factor that
+     scaled the gap before -- bold underestimate, timid overestimate); taken
+     if within what this driver will impose (`imposesOf`). The floor holds
+     for everybody. A driver without the field -- the old world
+     (`world.imposed === false`, the exact control), a rival not yet moved
+     onto it -- keeps the distance rule above. */
+  const imposes = imposesOf(out);
+  if (imposes != null && nb.behind) {
+    const b = nb.behind, forced = Math.max(0, -decide({ ...b, v0: Math.max(b.v0 ?? b.v ?? 0, 0.1) }, { leader: out, gap: lagGap }));
+    lagOk = lagSurvivable && forced * kappa <= imposes;
+  }
   if (!lagOk && world && lagSurvivable && (nb.behind.v ?? 0) < 0.5 && whatStops(nb.behind, world).leader?.id === out.id) lagOk = true;
   return { leadGap, lagGap, leadOk: leadGap >= needLead, lagOk, lagSurvivable };
 }

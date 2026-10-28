@@ -65,8 +65,25 @@ import { exitAlong } from "./graph.js";
 export const GENTLE = 0.5;     // of a vehicle's comfortable braking: easing off for somebody with no deadline -- a flagged design constant
 export const COURTESY_FOR = 4.0;   // s: the undue-delay standard (crossing.js UNDUE_AT) -- a gap not taken in that long is withdrawn
 
-/* Would this driver let somebody in at all -- their temperament, nothing else. */
+/* Would this driver let somebody in at all -- their temperament, nothing else.
+   COURTESY IS THE OTHER READING OF AGGRESSION (DECISIONS 10.32): the cost a
+   driver will ACCEPT for somebody else falls as the cost they will IMPOSE
+   rises -- one disposition, read two ways, so the ordinary driver both eases
+   off for a joiner and moves over with a lift-off behind. For a driver who
+   carries aggression, then, the gate is compliance and aggression under
+   COURTEOUS_BELOW; confidence, a SKILL, no longer decides it (it did only
+   because the bold tail was where aggression lived). Without the field --
+   the old world, a rival not yet moved onto it -- the old gate. */
+/* DENYING (DECISIONS 10.32): the inverse of the offer. The one driver asked,
+   at aggression DENY_FROM or more, closes the space instead -- wanting
+   DENY_PUSH over their own speed, at half their following gap -- with the
+   chance their aggression, one draw per ask (core/driver.js occasionDraw).
+   The joiner meets a closing gap and refuses it or waits: a cost imposed on
+   them. Flagged design constants; DENY_FROM sits above the default range. */
+export const DENY_FROM = 0.5, DENY_PUSH = 0.1, DENY_HEADWAY = 0.5;
+export const COURTEOUS_BELOW = 0.5;   // a flagged design constant: above the dial's default range (0-0.3), so the default world's drivers all may
 export function courteous(d) {
+  if (d.aggression != null) return soundnessOf(d.ratings ?? {}, "compliance") >= COMPETENT_AT && d.aggression < COURTEOUS_BELOW;
   const caution = d.caution ?? cautionOf(d.ratings ?? {});
   return soundnessOf(d.ratings ?? {}, "compliance") >= COMPETENT_AT && caution >= COMPETENT_AT;
 }

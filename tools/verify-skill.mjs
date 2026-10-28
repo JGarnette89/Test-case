@@ -74,7 +74,8 @@ console.log("\n3. A REDRAW IS EXACTLY THE FIELDS THE RATINGS DECIDE");
   const STATE = ["v"];
   const missing = [...moved].filter((k) => !PERSONAL.includes(k) && !STATE.includes(k));
   ok(missing.length === 0, `every field that moves with the level is in PERSONAL${missing.length ? ` -- missing: ${missing.join(", ")}` : ` (${[...moved].join(", ")})`}`);
-  const dead = PERSONAL.filter((k) => k !== "stuck" && !moved.has(k));
+  /* `aggression` is moved by the OTHER dial, never this one -- independent by construction (verify-aggression section 2). */
+  const dead = PERSONAL.filter((k) => k !== "stuck" && k !== "aggression" && !moved.has(k));
   ok(dead.length === 0, `every PERSONAL field but stuck moves for somebody${dead.length ? ` -- never moves: ${dead.join(", ")}` : ""}`);
 }
 

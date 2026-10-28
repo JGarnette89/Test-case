@@ -6,6 +6,7 @@
    held to "nothing moved" where those actually run. Also prints the mean
    step, for the same run's before and after.
    CHECKS=0: the candidate's checks off (sim/checks.js) -- today's world before them.
+   IMPOSED=0: the old gap rule, nobody carrying aggression (DECISIONS 10.32) -- the exact control.
    Usage: node tools/measure/shaped-hash.mjs [map=test-loop] [secs=180] [cars=180] [seed=1] [shape=1] [perceive=0] */
 import { createHash } from "node:crypto";
 import { worldFor } from "../../src/sim/scene.js";
@@ -16,7 +17,7 @@ import { DT } from "../../src/sim/traffic.js";
 import { goodStep } from "../lib/good-driver.mjs";
 const [id = "test-loop", secs = "180", cars = "180", seed = "1", shp = "1", perceive = "0"] = process.argv.slice(2);
 const raw = TEST_MAPS.find((m) => m.id === id).build();
-let { world: w, me } = worldFor(Number(seed), 50, 2.0, true, Number(cars), raw, raw.sections?.[0]?.start ?? null, Number(perceive) === 1, false, { checks: process.env.CHECKS !== "0" });
+let { world: w, me } = worldFor(Number(seed), 50, 2.0, true, Number(cars), raw, raw.sections?.[0]?.start ?? null, Number(perceive) === 1, false, { checks: process.env.CHECKS !== "0", ...(process.env.IMPOSED === "0" ? { imposed: false } : {}) });
 /* GLANCE_ANY=1: the old blind glance (a check's controlled comparison, crossing.js) -- traffic that crashes, so contact detection is exercised with several contacts a tick. */
 w = { ...w, shape: Number(shp) === 1, ...(process.env.GLANCE_ANY ? { glanceAnyTime: true } : {}), ...(process.env.CHECKS === "0" ? { checks: false } : {}) };
 const me0 = me, sc = { me, args: [1], saveWallet: false };

@@ -40,8 +40,8 @@ import {
 } from "./course.js";
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt, kindAt , exitAlong } from "./graph.js";
 import { stepLights, LOOP } from "./actuated.js";
-import { HONK_AGAIN } from "./horn.js";
-import { askOf, askedOf, offerOf, courtesyAccel, mergeAskOf } from "./courtesy.js";
+import { HONK_AGAIN, HELD_FROM, heldPatienceOf } from "./horn.js";
+import { askOf, askedOf, offerOf, courtesyAccel, mergeAskOf, DENY_FROM, DENY_PUSH, DENY_HEADWAY } from "./courtesy.js";
 import { rivalDue, asRival } from "./rivals.js";
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing, LC_SPEED, laneEndRoom, changeRoom, CHANGE_FROM } from "./lanechange.js";
@@ -54,9 +54,9 @@ import { planPass, passOffset, passerAhead } from "./passing.js";
 import { rng } from "../core/rng.js";
 import { shape, windowOf, admits } from "./shaping.js";
 import { townOf } from "./towns.js";
-import { applySkill } from "./skill.js";
+import { applySkill, aggressionLevelOf } from "./skill.js";
 import { knownControl, theirControl } from "./reading.js";
-import { reads, anticipates } from "../core/driver.js";
+import { reads, anticipates, occasionDraw } from "../core/driver.js";
 import { BAY } from "../map/format.js";
 import { lookingAway, loomingRate, LOOMING, lastDue, LOOK_EVERY } from "./attention.js";
 import { placeOf, neighboursAt, approachNeighbours, cellKey } from "./placement.js";
@@ -1843,7 +1843,9 @@ export function step(world) {
       /* Letting somebody in (courtesy.js): the one driver asked, if they offer. */
       const mineAsk = askedFor.get(raw.id);
       const offer = mineAsk ? offerOf(world, raw, mineAsk.ask, mineAsk.who, noticeAfter(raw, mineAsk.ask.since)) : null;
-      const told = raw.ease ? Math.min(own, Math.max(decide({ ...me, v0: me.v0 * (1 - raw.ease) }, view), -(me.brake ?? 2.7))) : own;
+      /* ...OR DENIES IT (courtesy.js DENY_FROM): asked, not offering, aggressive enough, and this ask drawn against their aggression -- they close the space, through the same following model. */
+      const deny = !offer && mineAsk && raw.aggression != null && raw.aggression >= DENY_FROM && world.t - mineAsk.ask.since >= noticeAfter(raw, mineAsk.ask.since) && occasionDraw(raw, `deny:${mineAsk.ask.id}:${mineAsk.ask.k}:${mineAsk.ask.toLeg}`) < raw.aggression;
+      const told = raw.ease ? Math.min(own, Math.max(decide({ ...me, v0: me.v0 * (1 - raw.ease) }, view), -(me.brake ?? 2.7))) : deny ? decide({ ...me, v0: me.v0 * (1 + DENY_PUSH), headway: (me.headway ?? 1) * DENY_HEADWAY }, view) : own;
       /* THE CORNER (corner.js): on a map, a turning path slows the car to
          the speed this driver takes it at, through the same following
          model. The real `view` still decides right of way below. */
@@ -1959,6 +1961,7 @@ export function step(world) {
          quantity every reader meant. */
       const out = { ...at, a: (v - me.v) / DT, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
       if (offer || raw.courtesy) out.courtesy = offer;
+      if (deny || raw.deny) out.deny = deny ? { for: mineAsk.ask.id, forPlayer: !!mineAsk.ask.forPlayer, since: raw.deny?.for === mineAsk.ask.id ? raw.deny.since : world.t } : null;
       /* THE CHECKS (checks.js). A scan along the cross road, once per line,
          begun as the car slows within SCAN_FROM of a line it must stop or
          give way at; what the eyes are on now, for the screen and the
@@ -2074,8 +2077,17 @@ export function step(world) {
       out.freeSince = freeNow ? (raw.freeSince ?? world.t) : null;
       out.freeStop = freeNow && world.t - out.freeSince >= REGISTER_FLOOR + REGISTER_SPAN;
       const quiet = raw.honkAt == null || world.t - raw.honkAt >= HONK_AGAIN;
-      if (nearMiss != null && quiet) { out.honkAt = world.t; out.honkTo = nearMiss; }
-      else if (fume != null && patience < Infinity && world.t - fume >= patience && (raw.honkAt == null || world.t - raw.honkAt >= Math.max(patience, HONK_AGAIN))) { out.honkAt = world.t; out.honkTo = grudge; }
+      /* HELD UP BY A BLAMELESS CAR (horn.js HELD_FROM; DECISIONS 10.32 ruling 2): an aggressive driver below their want behind a moving car, nothing else to honk at. Its own class (`honkWhy`). */
+      let heldBy = null;
+      if (raw.aggression != null && raw.aggression >= HELD_FROM && grudge == null && nearMiss == null && lid != null) {
+        const ld = byIdNow.get(lid);
+        if (ld && !ld.crash && (ld.v ?? 0) > 2 && (ld.v ?? 0) < (raw.v0 ?? 0) - 2 && view.gap < Math.max(30, 3 * (raw.v0 ?? 0))) heldBy = ld.id;
+      }
+      if (raw.aggression != null && (heldBy != null || raw.heldBy != null)) { out.heldBy = heldBy; out.heldSince = heldBy == null ? null : raw.heldBy === heldBy ? raw.heldSince : world.t; }
+      if (nearMiss != null && quiet) { out.honkAt = world.t; out.honkTo = nearMiss; if (raw.honkWhy) out.honkWhy = null; }
+      else if (fume != null && patience < Infinity && world.t - fume >= patience && (raw.honkAt == null || world.t - raw.honkAt >= Math.max(patience, HONK_AGAIN))) { out.honkAt = world.t; out.honkTo = grudge; if (raw.honkWhy) out.honkWhy = null; }
+      /* Once per HOLD: a driver honks at whoever is in their way, and does not lean on it (back behind the same car later, after another, is a new hold) (the first version re-honked every few seconds -- 720 horns a minute from 150 cars at the dial's top). */
+      else if (heldBy != null && raw.heldHonked !== heldBy && quiet && world.t - out.heldSince >= heldPatienceOf(raw.aggression)) { out.honkAt = world.t; out.honkTo = heldBy; out.honkWhy = "heldUp"; out.heldHonked = heldBy; }
       /* WHAT THEY SAW THIS TICK, remembered for when a truck hides it (see
          `whatStops`); nothing to remember with no truck near. */
       if (view.seen) {
@@ -2595,7 +2607,7 @@ export function carFor(world, n, k, route, want, kind, base = (world.road.percei
   const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6), kind: kindAt(world.course, k, route) };
   /* THE RIVALS (rivals.js): an absent one is the next car to arrive -- their profile, through the same `driver`. */
   const rival = rivalDue(world, world.actors, kind);
-  const who = driver(road, world.seed, n, rival?.ratings ?? null, null, kind, world.skill ?? 0);
+  const who = driver(road, world.seed, n, rival?.ratings ?? null, null, kind, world.skill ?? 0, aggressionLevelOf(world));
   const car = {
     ...who,
     n,
@@ -2717,7 +2729,7 @@ function pullingOut(world, n, actors) {
      elsewhere and is drawn as it always was. */
   const rival = rivalDue(world, actors);
   const drawn = {
-    ...driver(road, world.seed, n, rival?.ratings ?? null, rival ? null : townOf(at.character), "car", world.skill ?? 0),
+    ...driver(road, world.seed, n, rival?.ratings ?? null, rival ? null : townOf(at.character), "car", world.skill ?? 0, aggressionLevelOf(world)),
     home: at.zone,
     n, k: at.k, route: chosen.route, ...(chosen.want ? { want: chosen.want } : {}),
     leg: 0, s, v: 0,
@@ -2845,7 +2857,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, imposed = true } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
@@ -2875,7 +2887,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), /* THE OLD GAP RULE (lanechange.js gapFor, DECISIONS 10.32): `imposed: false` is the exact control -- nobody carries aggression and every world is the world before it. */ ...(imposed === false ? { imposed: false } : {}), spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   /* `actuated: false`: every light on its clock, as before the loops (actuated.js) -- for comparing against. */

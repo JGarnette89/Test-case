@@ -305,10 +305,15 @@ export const STOP_SHORT = 3.2;
    everything about where they are and what they are doing -- one list,
    held against `driver` itself by verify-skill (a field that moves with
    the ratings and is missing here is a driver only half redrawn). */
-export const PERSONAL = ["ratings", "weakOn", "stuck", "caution", "rollsStops", "brake", "short", "weave", "lag", "notices", "v0", "headway"];
+export const PERSONAL = ["ratings", "weakOn", "stuck", "aggression", "caution", "rollsStops", "brake", "short", "weave", "lag", "notices", "v0", "headway"];
 /* `level`: the skill dial (core/driver.js `profileAt`); 0 is the population as drawn. */
-export function driver(road, seed, n, ratings = null, town = null, kind = "car", level = 0) {
-  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }), stuck: stuckFor(rng(seed * 15485863 + n + 7)) } : composeDriver(seed * 7919 + n, town, level);
+/* `aggressionLevel`: the aggression dial (core/driver.js aggressionOf), or
+   null for the old world, where nobody carries aggression (crossing.js
+   `aggressionLevelOf`). A set profile (`ratings`, a rival) carries none
+   until the rivals are moved onto it -- the next step, after the maintainer
+   has seen it on ordinary traffic (SIMULATOR IN FLIGHT 35). */
+export function driver(road, seed, n, ratings = null, town = null, kind = "car", level = 0, aggressionLevel = null) {
+  const who = ratings ? { ratings, weakOn: lackingIn({ ratings }), stuck: stuckFor(rng(seed * 15485863 + n + 7)) } : composeDriver(seed * 7919 + n, town, level, aggressionLevel);
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
   const vehicle = { kind };
@@ -414,6 +419,7 @@ export function driver(road, seed, n, ratings = null, town = null, kind = "car",
     ratings: who.ratings,
     weakOn: who.weakOn,
     stuck: who.stuck,
+    ...(who.aggression != null ? { aggression: who.aggression } : {}),
     caution,
     rollsStops,
     brake,
@@ -623,6 +629,22 @@ export const stoppingRoom = (v, b = BRAKE) => (v * v) / (2 * b);
 export const WEAVE_OVER = 55;
 export const weaveAt = (me, s) =>
   (me.weave ?? 0) * Math.sin(((s + (me.weavePhase ?? 0)) / WEAVE_OVER) * 2 * Math.PI);
+
+/* =====================================================================
+   THE COST A DRIVER WILL IMPOSE, AS A DECELERATION (DECISIONS 10.32; core/
+   driver.js aggressionOf for what aggression is and why it is not
+   confidence). From "a slight lift-off" at aggression 0 -- nobody is at
+   zero, or nobody would ever move -- to "stand on your brakes", the hardest
+   a car can do, at 1. LIFT is a flagged design constant. A driver with no
+   aggression field (the old world, a rival not yet moved onto it) has no
+   tolerance: the old gap rule decides for them.
+   ===================================================================== */
+export const LIFT = 0.5;
+export const imposesOf = (d) => (d?.aggression == null ? null : LIFT + Math.max(0, Math.min(1, d.aggression)) * (MOST_BRAKE - LIFT));
+/* The dial's default: imposes from a lift-off to about a comfortable stop
+   (0.5 to 2.75 m/s^2). A choice, flagged, made to be measured against the
+   cost a change imposed before anybody chose it (tools/measure/imposed.mjs). */
+export const AGGRESSION_DEFAULT = 0.3;
 
 export function wantedGap(me, leader) {
   const closing = me.v - leader.v;

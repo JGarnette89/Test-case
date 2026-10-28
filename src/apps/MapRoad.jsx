@@ -46,6 +46,7 @@ import { terrain } from "../iso/road.js";
 import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption, drawNav, drawReceipt, drawHeadway, drawDriverCard, CARD_W, CARD_H } from "../iso/hud.js";
 import { viewOf } from "../iso/project.js";
 import { AXES, soundnessOf, LACKING_AT, COMPETENT_AT, CONFIDENT_ENOUGH } from "../core/driver.js";
+import { AGGRESSION_DEFAULT, imposesOf } from "../sim/traffic.js";
 import { offerFare, accept } from "../sim/jobs.js";
 import { loadWallet } from "../sim/money.js";
 import { HONK_FOR } from "../sim/horn.js";
@@ -159,6 +160,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
      on its own would leave the next drive's traffic worse with nothing on screen saying why. The frame loop reads skillRef. */
   const [skill, setSkill] = useState(0);
   const skillRef = useRef(0);
+  /* THE AGGRESSION DIAL (sim/skill.js; DECISIONS 10.32): how much cost the population will impose, 0..1, AGGRESSION_DEFAULT as drawn. Live, kept across a restart, never saved -- as the skill dial. */
+  const [aggr, setAggr] = useState(AGGRESSION_DEFAULT);
+  const aggrRef = useRef(AGGRESSION_DEFAULT);
   /* THE DRIVER BEING LOOKED AT: a tap on a car while watching, or looking around. Its card is drawn on the canvas; a ref, set by taps, never by the frame loop. */
   const picked = useRef(null);
   const drawn = useRef({ actors: [], view: null });
@@ -219,6 +223,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     scene.current?.remote?.stop();
     scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look, !sh, ck);
     if (skillRef.current) scene.current.world = { ...scene.current.world, skill: skillRef.current };
+    if (aggrRef.current !== AGGRESSION_DEFAULT) scene.current.world = { ...scene.current.world, aggression: aggrRef.current };
     picked.current = null;
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
     cam.current = { ...newChase(), id: null };
@@ -340,6 +345,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         }, (message) => { console.warn("the sim's worker failed; stepping in the page", message); own.remote = null; });
         /* The worker builds its world from the recipe, which has no dial: told after, in order behind the init. */
         if (own.world.skill) own.remote?.set("skill", own.world.skill);
+        if (own.world.aggression != null) own.remote?.set("aggression", own.world.aggression);
       }
       const tSim0 = performance.now();
       if (playing && !stopped && !(mode === "drive" && look) && sc.remote) {
@@ -455,7 +461,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           const [px, py] = viewOf(k, cam.current, rot, size).P(pose.x, pose.y, pose.z ?? 0);
           ctx.strokeStyle = "#f2b84b"; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.arc(px, py, Math.max(14, 3.2 * k), 0, Math.PI * 2); ctx.stroke();
-          drawDriverCard(ctx, 8, sc.me ? 124 : size.h - CARD_H - 8, who, { axes: AXES, soundnessOf, lacking: LACKING_AT, competent: COMPETENT_AT, middle: CONFIDENT_ENOUGH });
+          drawDriverCard(ctx, 8, sc.me ? 124 : size.h - CARD_H - 8, who, { axes: AXES, soundnessOf, lacking: LACKING_AT, competent: COMPETENT_AT, middle: CONFIDENT_ENOUGH, imposes: imposesOf });
         }
       }
       const tDraw1 = performance.now();
@@ -500,7 +506,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         const frameLine = ` = means/p95: sim ${mp("sim")} + poses ${mp("poses")} + draw ${mp("draw")} (list ${mp("list")}, sort ${mp("sort")}, paint ${mp("paint")}, overlay ${mp("overlay")}) + hud ${mp("hud")}`
           + `\ndrawn (5 s mean, of all there are now): ${fp.items?.mean ?? "-"} things · cars ${fp.cars?.mean ?? "-"} of ${of.cars ?? "-"} · road pieces ${fp.segments?.mean ?? "-"} of ${of.segments ?? "-"} · ground ${fp.cells?.mean ?? "-"} of ${of.cells ?? "-"} · buildings ${fp.props?.mean ?? "-"} of ${of.props ?? "-"}`;
         const simLine = ck ? `\nsim ${ck.rate.toFixed(2)}x real time · tick p50/p95/max ${ck.tick.p50}/${ck.tick.p95}/${ck.tick.max} · step p50/p95 ${ck.step.p50}/${ck.step.p95} ms ${sc.remote ? "(worker)" : "(page)"}${ck.rt.p50 != null ? `\ntrip mean ${ck.rt.mean} (p95 ${ck.rt.p95}) = wait ${ck.wait.mean} + step ${ck.stepMean} + answer ${ck.diff.mean} + back ${ck.back.mean} (read ${ck.read.mean}) + reply ${ck.reply.mean}, all means` : ""}\nframe mean/p95 ${ck.ours.mean}/${ck.ours.p95} ms (median ${ck.ours.p50})${frameLine}${taskLine}` : "";
-        readout.current = `${skillRef.current ? `traffic skill ${skillRef.current > 0 ? "+" : ""}${skillRef.current.toFixed(1)} · ` : ""}${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"}${crashLine} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
+        readout.current = `${skillRef.current ? `traffic skill ${skillRef.current > 0 ? "+" : ""}${skillRef.current.toFixed(1)} · ` : ""}${aggrRef.current !== AGGRESSION_DEFAULT ? `aggression ${aggrRef.current.toFixed(2)} · ` : ""}${sc.world.actors.length} cars on the map · ${drew.cars} in view · ${nCrash ? `${nCrash} crash${nCrash === 1 ? "" : "es"}${crashLine} · ` : ""}${sum.fps} fps · p95 ${sum.p95}ms${simLine}`;
         fpsAt = now;
       }
       /* A CRASH ANYWHERE IS SAID, for eight seconds, with where it is from
@@ -809,6 +815,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             Traffic skill <b style={{ color: skill ? C.amber : C.white, minWidth: 34, textAlign: "right" }}>{skill > 0 ? "+" : ""}{skill.toFixed(1)}</b>
             <input type="range" min={-1} max={1} step={0.1} value={skill} style={{ width: 140, fontSize: 16 }}
               onChange={(e) => { const v = Math.round(Number(e.target.value) * 10) / 10; skillRef.current = v; setSkill(v); if (scene.current) { scene.current.world = { ...scene.current.world, skill: v }; scene.current.remote?.set("skill", v); } }} />
+          </label>
+          {/* THE AGGRESSION DIAL: live, like skill -- how much braking the traffic will force on each other. Independent of skill: set both and see the corners. */}
+          <label style={{ ...S.label, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            Aggression <b style={{ color: aggr !== AGGRESSION_DEFAULT ? C.amber : C.white, minWidth: 34, textAlign: "right" }}>{aggr.toFixed(2)}</b>
+            <input type="range" min={0} max={1} step={0.05} value={aggr} style={{ width: 140, fontSize: 16 }}
+              onChange={(e) => { const v = Math.round(Number(e.target.value) * 20) / 20; aggrRef.current = v; setAggr(v); if (scene.current) { scene.current.world = { ...scene.current.world, aggression: v }; scene.current.remote?.set("aggression", v); } }} />
           </label>
           {/* A restart: a world keeps its drivers' recent past only when they can look away. */}
           {(!clean || more) && (<>

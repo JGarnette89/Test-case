@@ -6,14 +6,18 @@
    over that time -- the deceleration the change cost it. Split by whether the blind spot was missed (observation, not choice), by the
    changer's confidence (bold, sound, timid by cautionOf) and whether the
    change was for a turn, a merge, keep-right or a choice. One map, one seed,
-   checks stated. Usage: node tools/measure/imposed.mjs map cars seed mins checks(0|1) */
+   checks stated. Settings by environment, stated with every result: IMPOSED=0 the old
+   gap rule (DECISIONS 10.32's exact control); AGGR the aggression dial (default its
+   default); SKILL the skill dial (default 0).
+   Usage: node tools/measure/imposed.mjs map cars seed mins checks(0|1) */
 import { loadMap } from "../../src/map/load.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
 import { seedGraph, step, whatStops } from "../../src/sim/crossing.js";
 import { DT } from "../../src/sim/traffic.js";
 const [id, cars, seed, mins, chk] = process.argv.slice(2);
 if (chk == null) throw new Error("usage: map cars seed mins checks(0|1)");
-let w = seedGraph(Number(seed), 50, loadMap(TEST_MAPS.find((t) => t.id === id).build()), { every: 2.0, target: Number(cars), posted: true, checks: chk === "1" });
+let w = seedGraph(Number(seed), 50, loadMap(TEST_MAPS.find((t) => t.id === id).build()), { every: 2.0, target: Number(cars), posted: true, checks: chk === "1", ...(process.env.IMPOSED === "0" ? { imposed: false } : {}) });
+w = { ...w, ...(process.env.AGGR != null ? { aggression: Number(process.env.AGGR) } : {}), ...(process.env.SKILL != null ? { skill: Number(process.env.SKILL) } : {}) };
 for (let i = 0; i < 60 / DT; i++) w = step(w);
 const open = new Map(), done = [], seen = new Set();
 /* THE BACKGROUND, the control for blaming the change: every moving car, in back-to-back 4 s windows, whose leader in that window was never a car mid-change -- its hardest braking, from the traffic alone. */
@@ -52,7 +56,7 @@ for (let i = 0; i < Number(mins) * 60 / DT; i++) {
 }
 const q = (xs, p) => (xs.length ? xs.slice().sort((x, y) => x - y)[Math.min(xs.length - 1, Math.floor(p * xs.length))] : null);
 const sum = (rows) => { const xs = rows.filter((o) => o.who).map((o) => o.peak); return { n: rows.length, followed: xs.length, med: q(xs, 0.5)?.toFixed(2), p90: q(xs, 0.9)?.toFixed(2), max: q(xs, 1)?.toFixed(2), over1: xs.filter((x) => x > 1).length, over3: xs.filter((x) => x > 3).length }; };
-const out = { map: id, cars: Number(cars), seed: Number(seed), mins: Number(mins), checks: Number(chk), all: sum(done) };
+const out = { map: id, cars: Number(cars), seed: Number(seed), mins: Number(mins), checks: Number(chk), imposed: process.env.IMPOSED !== "0", aggr: process.env.AGGR ?? "default", skill: process.env.SKILL ?? 0, all: sum(done) };
 for (const b of ["bold", "sound", "timid"]) out[b] = sum(done.filter((o) => o.band === b));
 for (const k of ["choice", "keepRight", "forTurn", "merge"]) out[k] = sum(done.filter((o) => o.kind === k));
 out.background = { windows: bg.length, over1: +(bg.filter((x) => x > 1).length / Math.max(1, bg.length) * 100).toFixed(1) + "%", over3: +(bg.filter((x) => x > 3).length / Math.max(1, bg.length) * 100).toFixed(1) + "%" };

@@ -15,7 +15,7 @@
    character, whose ratings are their profile). At level 0 with the dial
    never touched nothing here runs, and the world is the world it was.
    ===================================================================== */
-import { driver, PERSONAL } from "./traffic.js";
+import { driver, PERSONAL, AGGRESSION_DEFAULT } from "./traffic.js";
 import { postedAt, kindAt } from "./graph.js";
 import { townOf } from "./towns.js";
 
@@ -27,12 +27,18 @@ const townFor = (world, a) => {
   return z ? townOf(z.character ?? "ordinary") : null;
 };
 
-export function redrawn(world, a, level = world.skill ?? 0) {
+/* THE AGGRESSION DIAL (SIMULATOR IN FLIGHT 35), the same way: where the
+   population's aggression sits, 0..1, AGGRESSION_DEFAULT when untouched --
+   or null in the old world (`world.imposed === false`, the exact control),
+   where nobody carries aggression and the old gap rule decides. */
+export const aggressionLevelOf = (world) => (world.imposed === false ? null : world.aggression ?? AGGRESSION_DEFAULT);
+
+export function redrawn(world, a, level = world.skill ?? 0, aggressionLevel = aggressionLevelOf(world)) {
   if (a.player || a.candidate || a.rival || a.n == null) return a;
   const base = world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null };
   const posted = world.road.posted && world.course?.graph ? postedAt(world.course, a.k ?? 0, a.route) : null;
   const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6), kind: kindAt(world.course, a.k ?? 0, a.route) };
-  const who = driver(road, world.seed, a.n, null, townFor(world, a), a.kind ?? "car", level);
+  const who = driver(road, world.seed, a.n, null, townFor(world, a), a.kind ?? "car", level, aggressionLevel);
   const out = { ...a };
   for (const k of PERSONAL) out[k] = who[k];
   return out;
@@ -42,6 +48,7 @@ export function redrawn(world, a, level = world.skill ?? 0) {
    population was last drawn, redraw it. */
 export function applySkill(world) {
   const want = world.skill ?? 0, drawn = world.skillDrawn ?? 0;
-  if (want === drawn) return world;
-  return { ...world, skillDrawn: want, actors: world.actors.map((a) => redrawn(world, a, want)) };
+  const aWant = world.aggression ?? null, aDrawn = world.aggressionDrawn ?? null;
+  if (want === drawn && aWant === aDrawn) return world;
+  return { ...world, skillDrawn: want, ...(aWant !== aDrawn ? { aggressionDrawn: aWant } : {}), actors: world.actors.map((a) => redrawn(world, a, want)) };
 }

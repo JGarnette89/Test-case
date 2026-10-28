@@ -19,6 +19,9 @@
      crash        contact between two cars (world.crashes, new entries)
    Also: the mean of each axis's soundness over the cars on the map at the
    end, so the population the counts came from is stated with them.
+   Settings by environment, stated with the result: IMPOSED=0 the old gap rule; AGGR the
+   aggression dial. Also counts heldUp horns (their own class) apart from horns at errors,
+   courtesy offers and denials.
    Usage: node tools/measure/skill-spread.mjs map cars seed level checks(0|1) */
 import { loadMap } from "../../src/map/load.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
@@ -30,10 +33,11 @@ import { AXES, soundnessOf } from "../../src/core/driver.js";
 const [mapId, cars, seed, level, chk] = process.argv.slice(2);
 if (chk == null) throw new Error("usage: map cars seed level checks(0|1)");
 const loaded = loadMap(TEST_MAPS.find((m) => m.id === mapId).build());
-let w = seedGraph(Number(seed), 50, loaded, { every: 2.0, target: Number(cars), posted: true, checks: chk === "1" });
-w = { ...w, skill: Number(level) };
+let w = seedGraph(Number(seed), 50, loaded, { every: 2.0, target: Number(cars), posted: true, checks: chk === "1", ...(process.env.IMPOSED === "0" ? { imposed: false } : {}) });
+w = { ...w, skill: Number(level), ...(process.env.AGGR != null ? { aggression: Number(process.env.AGGR) } : {}) };
 for (let i = 0; i < 60 / DT; i++) w = step(w);
 const C = { rolled: 0, harsh: 0, keepRight: 0, tightChange: 0, blindMiss: 0, missedTurn: 0, lateGreen: 0, horn: 0, crash: 0 };
+const X = { heldUpHorn: 0, offers: 0, denials: 0 }, offerSeen = new Set(), denySeen = new Set();
 const lined = new Map(), green = new Map(), seenLc = new Set(), crashSeen = new Set((w.crashes ?? []).map((c) => `${c.t}|${c.a}|${c.b}`));
 let prev = new Map(w.actors.map((a) => [a.id, a])), carMinutes = 0;
 for (let i = 0; i < 180 / DT; i++) {
@@ -69,7 +73,9 @@ for (let i = 0; i < 180 / DT; i++) {
       const g = green.get(a.id);
       if (!g.counted && w.t - g.since > UNDUE_AT) { C.lateGreen++; g.counted = true; }
     }
-    if (a.honkAt != null && a.honkAt !== b?.honkAt) C.horn++;
+    if (a.honkAt != null && a.honkAt !== b?.honkAt) { if (a.honkWhy === "heldUp") X.heldUpHorn++; else C.horn++; }
+    if (a.courtesy && !offerSeen.has(a.id + "@" + a.courtesy.since)) { offerSeen.add(a.id + "@" + a.courtesy.since); X.offers++; }
+    if (a.deny && !denySeen.has(a.id + "@" + a.deny.since)) { denySeen.add(a.id + "@" + a.deny.since); X.denials++; }
   }
   for (const c of w.crashes ?? []) { const k = `${c.t}|${c.a}|${c.b}`; if (!crashSeen.has(k)) { crashSeen.add(k); C.crash++; } }
   prev = new Map(w.actors.map((a) => [a.id, a]));
@@ -78,4 +84,4 @@ const per100 = Object.fromEntries(Object.entries(C).map(([k, v]) => [k, +(v / ca
 const total = +(Object.entries(C).filter(([k]) => k !== "crash").reduce((s, [, v]) => s + v, 0) / carMinutes * 100).toFixed(2);
 const ais = w.actors.filter((a) => !a.player && !a.rival);
 const mean = Object.fromEntries(AXES.map((x) => [x, +(ais.reduce((s, a) => s + soundnessOf(a.ratings, x), 0) / Math.max(1, ais.length)).toFixed(2)]));
-console.log(JSON.stringify({ map: mapId, cars: Number(cars), seed: Number(seed), level: Number(level), checks: Number(chk), carMinutes: Math.round(carMinutes), counts: C, per100carMin: per100, totalPer100: total, soundness: mean }));
+console.log(JSON.stringify({ map: mapId, cars: Number(cars), seed: Number(seed), level: Number(level), checks: Number(chk), imposed: process.env.IMPOSED !== "0", aggr: process.env.AGGR ?? "default", carMinutes: Math.round(carMinutes), counts: C, also: X, per100carMin: per100, totalPer100: total, soundness: mean }));

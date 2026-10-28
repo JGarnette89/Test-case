@@ -238,8 +238,13 @@ export function anticipates(d, key, world) {
   const s = soundnessOf(d?.ratings ?? {}, "observation");
   if (s >= 1) return true;
   if (s <= 0) return false;
-  return rng((keyHash(key) ^ Math.imul((d?.n ?? 0) + 1, 2654435761)) >>> 0)() < s;
+  return occasionDraw(d, key) < s;
 }
+/* ONE UNIFORM DRAW PER DRIVER PER OCCASION, from the driver's number and the
+   occasion's key: the same occasion asked twice gives the same answer and a
+   world replays exactly. Anticipation reads it against observation; denying
+   somebody a gap reads it against aggression (crossing.js). */
+export const occasionDraw = (d, key) => rng((keyHash(key) ^ Math.imul((d?.n ?? 0) + 1, 2654435761)) >>> 0)();
 export const strengthsOf = (d) => AXES.filter((a) => soundnessOf(d?.ratings, a) >= COMPETENT_AT);
 export const lackingIn = (d) => AXES.filter((a) => soundnessOf(d?.ratings, a) <= LACKING_AT);
 /* How far from the optimum confidence sits, as a share of the distance to
@@ -260,7 +265,7 @@ const span = (r, [lo, hi]) => lo + r() * (hi - lo);
    SIMULATOR IN FLIGHT 34): the whole population's profile moved, not the
    ratings clamped -- see `profileAt`. At 0 it is the profile above, and the
    draw is the one it always was. */
-export function composeDriver(seed = 1, town = null, level = 0) {
+export function composeDriver(seed = 1, town = null, level = 0, aggressionLevel = null) {
   const P = profileAt(level);
   const r = rng(seed);
   const bag = [...SKILLS];
@@ -289,7 +294,34 @@ export function composeDriver(seed = 1, town = null, level = 0) {
   const r2 = rng((Math.imul(seed >>> 0, 0x9e3779b1) ^ 0x85ebca6b) >>> 0);
   if (r2() < shareAt(P.complyWeak, town?.weights?.compliance ?? 1)) weak.add("compliance");
   ratings.compliance = clamp01(span(r2, weak.has("compliance") ? P.weakRange : P.soundRange));
-  return { id: `drv-${seed >>> 0}`, ratings, weakOn: [...weak], stuck: stuckFor(r2), skill: 1 };
+  return { id: `drv-${seed >>> 0}`, ratings, weakOn: [...weak], stuck: stuckFor(r2), skill: 1, ...(aggressionLevel != null ? { aggression: aggressionOf(seed, aggressionLevel) } : {}) };
+}
+
+/* =====================================================================
+   AGGRESSION: HOW MUCH COST A DRIVER WILL IMPOSE ON OTHERS TO GET WHAT THEY
+   WANT (the maintainer, 28 October; DECISIONS 10.32, SIMULATOR IN FLIGHT 35).
+   A DISPOSITION, NOT A SKILL -- never one of the ratings, never in AXES: the
+   five skills and compliance say what a driver CAN do and whether rules
+   matter to them; this says how much braking they are prepared to force on
+   somebody else. Read as a tolerance in m/s^2 (sim/traffic.js `imposesOf`).
+
+   DO NOT FOLD IT INTO CONFIDENCE. Confidence is how well a driver JUDGES
+   what an action will cost the car behind (bold underestimate, timid
+   overestimate); aggression is how much they ACCEPT costing it. Before
+   this, the bold tail of confidence was the only home aggression had, and
+   that one conflation made the skill dial at -1 timid rather than dangerous
+   and made a rival written aggressive read as a misjudger.
+
+   ITS OWN STREAM, so moving either dial leaves the other's draw untouched --
+   independent by construction. A temperament, one uniform draw; the dial
+   (0..1) scales it, so the dial moves the whole distribution and the same
+   people stay in the same order. `aggressionLevel` null: the old world, in
+   which nobody carries the field at all (`world.imposed === false`). Zero
+   aggression is not zero cost: the tolerance starts at a lift-off.
+   ===================================================================== */
+export function aggressionOf(seed, level) {
+  const L = Math.max(0, Math.min(1, Number(level) || 0));
+  return L * rng((Math.imul((seed >>> 0) ^ 0x5bd1e995, 0x27d4eb2d) ^ 0x165667b1) >>> 0)();
 }
 
 /* THE SKILL DIAL'S PROFILE, -1 (the worst population) to +1 (the best).

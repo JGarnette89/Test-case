@@ -276,9 +276,9 @@ const money = (x) => `${(x ?? 0).toFixed(2)}`;
    failures. The colour is soundness against the project's own lines:
    lacking at or under LACKING_AT, competent at or over COMPETENT_AT.
    ===================================================================== */
-export const CARD_W = 204, CARD_H = 132;
+export const CARD_W = 204, CARD_H = 160;
 const LABELS = { observation: "observation", confidence: "confidence", steering: "steering", braking: "braking", knowledge: "knowledge", compliance: "compliance" };
-export function drawDriverCard(ctx, x, y, d, { axes, soundnessOf, lacking, competent, middle }) {
+export function drawDriverCard(ctx, x, y, d, { axes, soundnessOf, lacking, competent, middle, imposes = null }) {
   if (!d?.ratings) return;
   ctx.fillStyle = "rgba(20,22,26,0.88)"; ctx.fillRect(x, y, CARD_W, CARD_H);
   ctx.strokeStyle = "#f2b84b"; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, CARD_W - 1, CARD_H - 1);
@@ -303,4 +303,19 @@ export function drawDriverCard(ctx, x, y, d, { axes, soundnessOf, lacking, compe
     ctx.textAlign = "right"; ctx.fillStyle = "rgba(230,232,236,0.85)";
     ctx.fillText(a === "confidence" ? (v < middle - 0.05 ? `timid ${v.toFixed(2)}` : v > middle + 0.05 ? `bold ${v.toFixed(2)}` : v.toFixed(2)) : v.toFixed(2), x + CARD_W - 4, ry + 1);
   });
+  /* AGGRESSION, DRAWN APART (DECISIONS 10.32): not a skill -- WHAT THEY WILL
+     IMPOSE, not what they can do -- so below a rule, in its own colour, and
+     said as the quantity: the braking they are prepared to force on the car
+     behind. Sound confidence with this high is doing it on purpose; bold
+     confidence with this low is misjudging. */
+  const ay = y + 26 + axes.length * 17 + 6;
+  ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.fillRect(x + 8, ay - 4, CARD_W - 16, 1);
+  ctx.textAlign = "left"; ctx.font = FONT; ctx.fillStyle = "rgba(230,232,236,0.85)";
+  ctx.fillText("aggression", x + 8, ay + 1);
+  ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(bx, ay + 2, bw, 8);
+  if (d.aggression == null) { ctx.textAlign = "right"; ctx.fillText("old rule", x + CARD_W - 4, ay + 1); return; }
+  ctx.fillStyle = "#b47cff"; ctx.fillRect(bx, ay + 2, bw * d.aggression, 8);
+  ctx.textAlign = "right"; ctx.fillStyle = "rgba(230,232,236,0.85)";
+  ctx.fillText(d.aggression.toFixed(2), x + CARD_W - 4, ay + 1);
+  if (imposes) { ctx.textAlign = "left"; ctx.fillStyle = "rgba(230,232,236,0.6)"; ctx.fillText(`will make the car behind brake up to ${imposes(d).toFixed(1)} m/s²`, x + 8, ay + 15); }
 }
