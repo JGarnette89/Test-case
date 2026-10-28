@@ -5463,6 +5463,39 @@ confidence is how well a driver JUDGES the cost of an action, aggression is
 how much cost they ACCEPT imposing. Anyone tidying `caution` back into one
 number re-creates both symptoms.
 
+## 10.34 DRIVERS ARE TOLD THINGS TOO LATE TO ACT ON THEM -- a general property of the model, named (28 October)
+
+Three times this month the same shape, each first chased as its own bug:
+
+1. **The city's missed turns** (IN FLIGHT 32): drivers were told their exit
+   one intersection ahead, with a median of -84 m of room to get over --
+   negative from the start. Not acting too late: told too late to act.
+2. **The merge jam** (IN FLIGHT 17): cars rode a dying lane because they
+   learned it was dying too late to leave it.
+3. **Overshoots at the line** (IN FLIGHT 40): of 69 on main over 28
+   ten-minute city runs, **0 could have stopped when the hold began** -- every
+   one was physically unavoidable by then. 13 could not have stopped from the
+   moment they entered the node; 56 entered with room (often 40-87 m against
+   15-30 m needed) and were held too late -- and of those whose blocker could
+   be named, 19 of 30 were held against a car that had been visible at the
+   node for 2 s or more (median 3.6 s, up to 20). These are not drivers
+   failing to stop. They are drivers told to stop too late to do it -- which
+   retires the "a car that fails to stop" framing, the project lead's
+   hypothesis and its statement A with it, at a level deeper than the
+   measurement that killed them (28 crashes against 5, DECISIONS 10.23 item
+   20).
+
+**THE PROPERTY: the model frequently withholds, until too late, information a
+driver could have had.** It is distinct from ANTICIPATION (10.20), which is a
+driver CHOOSING to react rather than anticipate; this is the model not giving
+them the choice. **How to recognise the next one:** a failure whose victim was
+physically unable to act at the moment the model first let it know -- measure
+"could it have acted when it was told" and "could it have acted when it could
+first have known" separately, before building any rule about how it acted.
+The fix is never a rule about the failing act (who yields, who is committed,
+who gives up); it is the moment the information arrives.
+
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
