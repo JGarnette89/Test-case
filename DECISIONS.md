@@ -4435,7 +4435,7 @@ neighbourhood term is worth. Before 3 starts, the step is SPLIT and measured
 -- fixed per-car work, the neighbour term, per-tick overhead -- and the
 3-5x is predicted from that split, in writing, before any of it is built.
 
-## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-12 added 27 October)
+## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-12 added 27 October, 13 on 28 October)
 
 **The general finding about how this project fails.** Six times in a week a
 confident conclusion was wrong, and every time the simulation was fine and
@@ -4519,6 +4519,20 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     caught a car 190 m on braking for a cut-in. **The rule: a check that
     measures a proxy must assert that the proxy still tracks its target, or
     it quietly stops being a check.**
+
+13. **An underived constant asserted by a check (28 October), the third
+    this week by the project lead's count.** verify-lanes asserted that over
+    60% of drivers in the wrong lane for their turn get over. Nobody derived
+    60%; it sat a few points under the figure measured when the check was
+    written, so a two-point move from an intended change (the candidate's
+    checks) failed it while a real collapse a few points further would have
+    read the same. Replaced by a controlled comparison -- checks on within a
+    margin of checks off -- plus an absolute floor on checks off so the pair
+    cannot drift down together, both set from the measured spread of the
+    check's own statistic (SIMULATOR IN FLIGHT 31). **The rule, beside item
+    12's: a bar is a claim about the world; it states where it comes from --
+    a derivation, a measured spread, or a line nobody would accept -- or it
+    is not a bar.**
 
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
