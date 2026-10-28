@@ -4435,7 +4435,7 @@ neighbourhood term is worth. Before 3 starts, the step is SPLIT and measured
 -- fixed per-car work, the neighbour term, per-tick overhead -- and the
 3-5x is predicted from that split, in writing, before any of it is built.
 
-## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-11 added 27 October)
+## 10.23 EVERY TIME WE WERE CONFIDENTLY WRONG THIS WEEK, AN INSTRUMENT WAS THE CAUSE (22 October; items 7-12 added 27 October)
 
 **The general finding about how this project fails.** Six times in a week a
 confident conclusion was wrong, and every time the simulation was fine and
@@ -4507,6 +4507,18 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     The pattern now has a name: plausible mechanisms supplied that turn out
     not to be active; the only thing that has caught it is testing them
     rather than accepting them (items 10 and 11; SIMULATOR IN FLIGHT 32).
+
+12. **A proxy that drifted from its target (27 October), the fourth of this
+    shape** -- after the frame readout's median beside its parts' means
+    (item 4), the merge counter reading a lane change as the route's `from`
+    changing (item 6), and verify-walkers' two manners (item 11).
+    verify-signal's "a driver who decided at the amber is never then
+    braking hard for the line" counted hard braking while `amberGo` was set:
+    a proxy for "approaching the line" that stopped being one the moment
+    the state outlived the approach -- it lasts to the next intersection, and
+    caught a car 190 m on braking for a cut-in. **The rule: a check that
+    measures a proxy must assert that the proxy still tracks its target, or
+    it quietly stops being a check.**
 
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
