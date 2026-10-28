@@ -4591,9 +4591,15 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     was the wrong one: the "leader" was a median 30 m sideways, on the ramp,
     and phantom leaders like it are 10-27% of all following. The 22 October
     fix for placement had been to make placement AGREE with whatStops -- two
-    readers made consistent with a wrong definition. **Making two readers agree
-    is not the fix; asking which one matches the world is. The fix is one
-    definition, checked against where the cars physically are.**
+    readers made consistent with a wrong definition -- the bug propagated under
+    cover of the principle. And the reader that was right was the newer,
+    smaller one (the exit-stretch lane change); the "obviously correct" central
+    function was the deviant. **THE RULE, STATED SO THE WEAKER VERSION CANNOT
+    COME BACK: FIND WHICH DEFINITION MATCHES THE PHYSICAL WORLD, THEN SHARE
+    THAT ONE. Agreement between readers is worthless if they agree on a
+    fiction.** "One shared definition" is the second step, never the first; and
+    no reader is presumed right for being central or old -- each is checked
+    against where the cars physically are.
 
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
