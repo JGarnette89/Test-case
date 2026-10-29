@@ -163,3 +163,37 @@ A cold session that knows the reasons should reorder if a reason changes.
 - Do not tune the skill/aggression dials, courtesy or caution to answer "too
   polite" — its cause is unknown.
 - Do not change a check before its verdict is written (CLAUDE.md item 8).
+
+## 9. NEW, NEAR THE TOP OF NEXT WEEK: ONE COMBINED MAP, AND FEATURES THAT BELONG TO THE WORLD
+
+Jay: *"one map that combines everything we are working on. the menu is
+overloaded, and I'm not sure every test map has every feature in it. need to
+simplify the menu and make sure each run is up to date no matter where it is
+launched."*
+
+**The valuable part is not the map. It is a consistency defect** (DECISIONS
+10.35, named as a class beside two-definitions and 10.34's told-too-late):
+features belong to screens, not to the world — shaping on for the highway and
+off for the city, look-away's default changed twice, the candidate's checks
+opt-in, the skill dial on one screen — so the same simulation behaves
+differently by entry point, and non-comparable runs were compared this week.
+The fix is that a feature is a property of the world; "up to date wherever it
+is launched" then follows without upkeep.
+
+**The project lead's recommendation, to be weighed, not taken:** go down to
+TWO maps, not a ninth — one combined map carrying every tested feature
+(signalised crossroads, a stop junction, a T, residential and business
+stretches for the marking headings, bends, pedestrian crossings, a lane drop,
+a merge taper, a highway section with proper on- and off-ramps) plus the
+endless highway for sustained driving; everything else retired or behind a
+debug menu.
+
+**Establish first, before building:**
+1. **An inventory of which features exist on which map today.** Nobody knows,
+   Jay included — that inventory IS the deliverable behind "I'm not sure every
+   test map has every feature".
+2. **Which of the eight maps each `verify-*` check depends on.** Retiring a
+   map a check relies on would be discovered the hard way.
+
+It does not touch the simulation core, so it **does not wait on 39 or 40** —
+it can run in parallel, or go first if Jay wants something visible early.

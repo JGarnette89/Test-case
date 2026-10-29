@@ -5496,6 +5496,30 @@ The fix is never a rule about the failing act (who yields, who is committed,
 who gives up); it is the moment the information arrives.
 
 
+## 10.35 A FEATURE IS A PROPERTY OF THE WORLD, NOT OF THE SCREEN THAT LAUNCHED IT -- a class, named (28 October)
+
+The maintainer: *"one map that combines everything we are working on. the
+menu is overloaded, and I'm not sure every test map has every feature in it.
+need to simplify the menu and make sure each run is up to date no matter where
+it is launched."*
+
+**This is a consistency defect, not a UI tidy** (the project lead). Features
+belong to screens rather than to the world: density shaping is on for the
+endless highway and off for the city; look-away's default has changed twice;
+the candidate's checks are opt-in; the skill dial exists on one screen. So THE
+SAME SIMULATION BEHAVES DIFFERENTLY DEPENDING ON THE ENTRY POINT -- and runs
+that were not comparable were compared more than once this week (the checks
+on or off by an instrument's default, 10.23 item 14; the city and the highway
+shaped differently). **The fix: a feature is a property of the world, not of
+the screen that launched it.** Then "up to date wherever it is launched"
+follows without being maintained.
+
+**A class, beside the two-definitions pattern (CLAUDE.md item 2, 10.23 items
+17-18) and 10.34 (told too late): one thing expressed in several places that
+drift apart.** The tell: a behaviour whose answer depends on which screen, map
+or instrument asked.
+
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
