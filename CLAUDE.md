@@ -78,7 +78,9 @@ checks is HISTORY -- the reasoning still holds where it is about the law
 or the axes, and the code is in git. `verify-core` holds that nothing
 reaches for it.
 
-**[HANDOFF-2026-10-28.md](HANDOFF-2026-10-28.md) is where the last session stopped: the checks gates, the skill dial and readout as a falsification test, the "too polite" measurement, destinations, and the self-occlusion finding.**
+**[HANDOFF-2026-10-28-evening.md](HANDOFF-2026-10-28-evening.md) IS WHERE THE LAST SESSION STOPPED -- READ IT FIRST.** The repository's own checkout is on branch `lane-occupancy`, NOT `main`; five local, unpushed, unmerged branches (38, 39, 40's switches, aggression phase 1, a test tree) with their worktrees in the ignored `tools/scratch/kr/`; the agreed order and its reasons; what waits on Jay; what not to do.
+
+**[HANDOFF-2026-10-28.md](HANDOFF-2026-10-28.md) is the session before that: the checks gates, the skill dial and readout as a falsification test, the "too polite" measurement, destinations, and the self-occlusion finding.**
 
 **[HANDOVER.md](HANDOVER.md) is the residue of the session that built
 signals, corner slowing, lane changing and keep-right (24 September),
