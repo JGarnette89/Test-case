@@ -61,6 +61,12 @@ generated stand-in city instead).
 | 8 | CHARACTERS/VEHICLES: a motorcycle that filters between lanes | Ontario law: lane filtering is not legal; the sim assumes one vehicle per lane | **Cut the filtering**; a motorcycle, if ever, is a narrow rigid row in `VEHICLES` that keeps its lane (section 6) |
 | 9 | SIMULATOR.md section 8 and the reframe: "one continuous handmade ~8 km² world" | practice: generated districts inside drawn shapes, test maps | **Both, staged**: the handmade blockout (the maintainer's) with generation inside it remains the target; until then, test maps carry each feature |
 | 10 | CLAUDE.md, the roguelike/purgatory sections, Purgatory Road artifact | STORY.md | **STORY.md**; the roguelike is deleted code (cut B) and its notes are history |
+| 11 | STORY.md (13 Oct): Metro Grid, present day, A.U.T.O. watching human drivers | STORY.md (3 Nov): Red City, Miskawin, 1980s-90s analog, A.U.T.O. has replaced drivers with pods | **3 Nov is the setting**; its premise, acts, mentor and rivals are unstated, so the 13 Oct answers stand until the maintainer says otherwise (STORY.md 5) |
+| 12 | PLAN 6: drifting and weight transfer deferred; grip, not a slip model | STORY.md (3 Nov): weight transfer in the core vision; drift is Maya's discipline | **Open** -- the maintainer's; a slip model is a SHARED foundation of weeks, and would join item 13 |
+| 13 | DIALOGUE.md: all units metric; DAY-NIGHT default 1: illegal driving always judged as illegal | Zane: dodging speed gantries "at 90 mph" | **Metric stands** (145 km/h); whether default 1 governs Zane and Maya is the maintainer's (STORY.md 4.1) |
+| 14 | DISTRICTS.md correction 2: the city modelled on no one place | a Great Lakes border motor-town with an international bridge | **Open** -- the maintainer's (STORY.md 4.2) |
+| 15 | PLAN 7 (built): the route on the road, the turn banner, lane advice | the analog era: paper slips, street names, no digital navigation | **Keep what is built until replaced by something that works as well**; street-name signs do not exist yet (STORY.md 4.5) |
+| 16 | DAY-NIGHT default 11: missions on a phone/dispatch screen | Artie's carbon-copy board | **Artie's board** -- the same screen, in period; no gameplay change |
 
 ---
 

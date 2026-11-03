@@ -82,6 +82,8 @@ reaches for it.
 
 **[HANDOFF-2026-10-28.md](HANDOFF-2026-10-28.md) is the session before that: the checks gates, the skill dial and readout as a falsification test, the "too polite" measurement, destinations, and the self-occlusion finding.**
 
+**THE SETTING CHANGED ON 3 NOVEMBER: [STORY.md](STORY.md) is now Red City, in Miskawin, in the 1980s-90s analog era**, with Artie Brooks's dispatch board and five specialists in place of four rivals. Recorded as direction: section 4 lists the standing rulings it conflicts with and section 5 what it leaves unsaid. Neither is settled until the maintainer answers, and no code changes on the record alone.
+
 **[HANDOVER.md](HANDOVER.md) is the residue of the session that built
 signals, corner slowing, lane changing and keep-right (24 September),
 written as it was retired.** Not a summary -- these documents are the

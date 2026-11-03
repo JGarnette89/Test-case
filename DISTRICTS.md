@@ -14,6 +14,13 @@ landmarks. See [CHARACTERS.md](CHARACTERS.md) for whose district is whose,
 [JOBS.md](JOBS.md) and [DIALOGUE.md](DIALOGUE.md) for the other two content
 files, and [PLAN.md](PLAN.md) for when any of it is built.
 
+**3 November: each district has a specialist (STORY.md, Red City).**
+Industrial and Port: Victor Braga. Suburbs and Retail: Brenda Braga.
+Downtown and Nightclub: Maya Lin. Rural Outer County: Hank Miller. Highway
+Network: Zane "Slip" Gault -- the first person attached to it. Red City's
+"modelled on no one place" question is STORY.md 4.2; correction 2 below
+stands until the maintainer answers it.
+
 ## A DESIGN FINDING: EACH DISTRICT HAS A DIFFERENT RELATIONSHIP TO THE GREEN WAVE
 
 It emerged from the geography rather than being designed, and it is what

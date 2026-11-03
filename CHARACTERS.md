@@ -4,6 +4,18 @@ From the maintainer's CHARACTERS document (written with another model;
 recorded from its summary -- the original is not yet in the repo). Setting
 and campaign: [STORY.md](STORY.md).
 
+**CAST CHANGED, 3 November (STORY.md, Red City).** Five SPECIALISTS ("the
+Connects") replace four rivals, under a new mentor, **Artie Brooks**
+(dispatcher). Victor Braga: industrial freight. Brenda Braga: the suburbs
+**and the exam mode** -- an authority now, not only a timid driver. **Maya
+Lin** (downtown, night) where Mason "Swerve" Lin was; **Hank Miller** (rural)
+where "Grizzly" Hannah Miller was; **Zane "Slip" Gault** (highways) is new and
+gives the Highway Network district its person. Whether Maya and Hank are the
+same people renamed, whether Jay stays, and whether these five are still
+anyone's RIVALS are open (STORY.md section 5). The code still names Mason
+and Hannah (`sim/rivals.js`, `content/dialogue.js`). What follows is the
+13 October record, and its axis reasoning stands whatever the names become.
+
 ## They are axis profiles, which makes them cheap
 
 Every driver in the sim is five skills and compliance (`core/driver.js`:
