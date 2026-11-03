@@ -14,6 +14,15 @@ landmarks. See [CHARACTERS.md](CHARACTERS.md) for whose district is whose,
 [JOBS.md](JOBS.md) and [DIALOGUE.md](DIALOGUE.md) for the other two content
 files, and [PLAN.md](PLAN.md) for when any of it is built.
 
+**3 November: each district has a specialist (STORY.md, Red City).**
+Industrial and Port: Victor Braga. Suburbs and Retail: Brenda Braga.
+Downtown and Nightclub: Maya Lin. Rural Outer County: Hank Miller. Highway
+Network: Zane "Slip" Gault -- the first person attached to it.
+**Correction 2 stands (the maintainer, 3 November):** Miskawin is one
+fictional region with one rule set; southwestern Ontario and Michigan are
+examples of the variety of road it should have, not where it is set
+(STORY.md 4, item 4).
+
 ## A DESIGN FINDING: EACH DISTRICT HAS A DIFFERENT RELATIONSHIP TO THE GREEN WAVE
 
 It emerged from the geography rather than being designed, and it is what

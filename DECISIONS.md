@@ -5463,6 +5463,16 @@ confidence is how well a driver JUDGES the cost of an action, aggression is
 how much cost they ACCEPT imposing. Anyone tidying `caution` back into one
 number re-creates both symptoms.
 
+## 10.33 AXES ARE CHEAP; NEW EVALUATIONS ARE NOT -- the test any new dimension must pass (the project lead, on the maintainer's constraint, 28 October)
+
+The maintainer: do not bog down the engine. The rule that answers it: **an extra value per driver is memory and disappears into the noise; anything that adds a per-tick, per-neighbour evaluation is where the cost lives.** 180 cars at about 15 neighbours each is thousands of evaluations a tick, and neighbour work is already 35-40% of the step. Aggression (10.32) was free because it changed what an EXISTING decision concludes -- the lag test in gapFor -- not how often anything is evaluated.
+
+**The test, for every new dimension or behaviour:** does it change the conclusion of a decision already being made, from quantities already in hand -- or does it add a decision, a scan, a forecast, or a pass over neighbours? The first is allowed by default. The second needs a measured step cost before it is built, and a reason the existing decisions cannot carry it. **Measure, do not agree:** a claim that something is free is checked by the step time with it on and off, on a world dense enough to show the neighbour cost.
+
+The maintainer's objection that sharpened it (on impatience): *"can our drivers actually predict 10 seconds into the future to gauge both gap 1 and 2 at the same time and choose they don't want to wait? otherwise it's just another tolerance check."* Lookahead -- comparing two future gaps -- fails this test twice: it is a new forecast per neighbour, and it is a second tolerance threshold wearing a hat. A driver reads RATE OF CHANGE instead (is this gap opening or closing?), from the relative speed every driver already has for following. Tolerance asks how big the gap IS; impatience would ask whether it is getting BETTER -- a magnitude against a derivative.
+
+(Moved to `main` 3 November, with the document merge. The aggression it cites is on `aggression-phase1`, unmerged; 10.32 on `main` is the ruling, not the build.)
+
 ## 10.34 DRIVERS ARE TOLD THINGS TOO LATE TO ACT ON THEM -- a general property of the model, named (28 October)
 
 Three times this month the same shape, each first chased as its own bug:
@@ -5519,6 +5529,21 @@ follows without being maintained.
 drift apart.** The tell: a behaviour whose answer depends on which screen, map
 or instrument asked.
 
+
+## 10.36 TWO WAYS TO SPEED UP THE SUITE THAT MAKE IT BLINDER -- saved worlds and subgraphs, refuted (3 November)
+
+**These are the obvious ideas for anybody optimising a slow suite, so the reasons are recorded and not just the prohibition.** Both were reported as recommendations in an external review's checks report (Gemini, 30 October). **SECOND-HAND: that report is not in the repository; what is known of it is one session's account (PLAN 4b).** The refutations stand on how the suite works, whatever the report says.
+
+**1. SAVED WARMED WORLDS.** Warm-up is most of a slow check's time (TESTING.md), so saving the warmed world looks free. It is refuted either way it could be built:
+
+- **A snapshot tied to the sim is invalid exactly when the check runs.** `check.mjs` runs a check when something in its import closure changed (CLAUDE.md item 8), and that closure holds the sim. So the snapshot is stale at the only moments it is wanted, and it saves time only where nothing the check depends on moved, which is where the check does not run.
+- **A snapshot not tied to the sim tests new code against traffic the new code would not produce.** The check then passes on a world no longer reachable, and every defect that shows up in how traffic builds is out of its sight. Green here is worse than red: CLAUDE.md item 3.
+
+**What is sound is reuse WITHIN one run**: the same seed, map and options, already stepped by the same code in the same process, and only where trials cannot write the world. That is what `verify-courtesy`'s shared warm-up is, and it saves real time without making anything stale.
+
+**2. PER-DISTRICT SUBGRAPHS.** Running a check on part of the map cuts the cost in proportion, and removes the traffic that crosses the part's boundary. **Boundaries are exactly where this project's defects live**: the cross-boundary following check that passed with the rule deleted (5.15.4); IN FLIGHT 39, following misread across a node; 40's right of way known only within a node (10.34). A subgraph has an edge the world does not, cars arrive there unlike anywhere real, and a claim about a whole world is no longer what is being tested. It is the same shape as saved worlds: a faster check of something other than the thing claimed.
+
+**How to recognise the next one:** ask what the speed-up stops the check from seeing, and whether a defect there would still fail it. A saving that changes what is simulated is not a saving; CLAUDE.md item 8 already says the lever for slow checks is the sample, measured, or a cheaper sim (TESTING.md).
 
 ## 11. Verification
 

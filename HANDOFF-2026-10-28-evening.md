@@ -7,6 +7,22 @@ nothing that moves the default world was to be started.
 
 ## 1. STATE — read this before touching git
 
+**UPDATED 3 NOVEMBER; where this and the text below differ, this wins.**
+- **`lane-occupancy`, `cross-node-gap`, `aggression-phase1`, `fail-to-stop` and
+  `exit-lane-changes` are PUSHED**, none merged. `fail-to-stop` and
+  `exit-lane-changes` carry a DO NOT MERGE commit at their tip (a GitHub branch
+  has no description field). `occ-plus-40`, the throwaway, stays local.
+- **`exit-lane-changes` was missing from the table below**: 20 October, stale,
+  about 115 behind `main`. Also not listed: older detached worktrees
+  `dd-30f9ce2`, `dd-fd1127e`, `dd-old` and `wt748`.
+- **A cloud session worked on 3 November**, on
+  `claude/sim-architecture-audit-mf0fun`. Its documents are on `main`: Red City
+  (STORY.md, seven rulings), MAP-INVENTORY.md, PLAN section 4b. Still only on
+  that branch: the trial city (`src/map/trial.js`, not wired in, **no traffic
+  numbers to be quoted from it until 39 is in**) and its measurement tool.
+- **The agreed order in section 2 was checked on 3 November and stands.** No
+  sim code has moved.
+
 **`main` is what Jay drives** (GitHub Pages, https://jgarnette89.github.io/Test-case/,
 rebuilt on every push). Its last *feature* is the traffic skill dial and
 per-driver card (`85a4fcf`); every push since is records only. The served
@@ -120,8 +136,9 @@ A cold session that knows the reasons should reorder if a reason changes.
 
 ## 5. OPEN LEADS — do not rediscover
 
-- **The 26 unnamed blockers** (40's first question): 26 of 69 holds began
-  with no blocker named by `blockedBy` — the largest category, unknown.
+- **The 26 unnamed blockers** (40's first question; SIMULATOR IN FLIGHT 40): 26
+  of the 56 held-late cars began their hold with no blocker named (corrected 3
+  November from "26 of 69") — the largest category, unknown.
 - **IN FLIGHT 36, free-flow hard braking:** 1 four-second window in 18 past
   3 m/s² on an open highway (5.6%; city 11.4%) — **confirmed NOT explained by
   38 or 39** (moved ≤0.4 points). A separate defect under every braking figure.
@@ -188,7 +205,10 @@ a merge taper, a highway section with proper on- and off-ramps) plus the
 endless highway for sustained driving; everything else retired or behind a
 debug menu.
 
-**Establish first, before building:**
+**Establish first, before building:** -- BOTH DONE 3 November:
+[MAP-INVENTORY.md](MAP-INVENTORY.md), measured (features map by map,
+against this list, checks to maps, and which features each screen switches
+on).
 1. **An inventory of which features exist on which map today.** Nobody knows,
    Jay included — that inventory IS the deliverable behind "I'm not sure every
    test map has every feature".
