@@ -8,10 +8,12 @@
      node tools/measure/trial-city.mjs [cars] [minutes] [seed]   */
 import { trialCity } from "../../src/map/trial.js";
 import { loadMap } from "../../src/map/load.js";
+import { mapFromBrief } from "../../src/map/brief.js";
 import { seedGraph, step, overlapping, DT } from "../../src/sim/crossing.js";
 
 const CARS = Number(process.argv[2] ?? 400), MIN = Number(process.argv[3] ?? 10), SEED = Number(process.argv[4] ?? 1);
-const L = loadMap(trialCity());
+/* NOHW=1: the same brief without the highway -- the controlled comparison for anything the city does on its own. */
+const L = loadMap(process.env.NOHW ? mapFromBrief({ size: "large", arterials: "loop", everyType: true, downtown: true, buses: true, drivers: "mixed" }, 1) : trialCity());
 let w = seedGraph(SEED, 50, L, { target: CARS, posted: true, walkers: true });
 const legRoad = (a) => { const lay = w.course.at[a.k ?? 0]?.layout, p = lay?.paths[a.route]; return p ? [lay.legs[p.from]?.road, lay.legs[p.to]?.road] : [null, null]; };
 const onHw = (id) => /^hw-/.test(id ?? ""), onRamp = (id) => /^(on|off)-/.test(id ?? "");
