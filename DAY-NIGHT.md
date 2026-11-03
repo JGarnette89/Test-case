@@ -75,8 +75,11 @@ which free roam does not have at all today.
 **3 November: the setting changed (STORY.md, Red City).** Defaults 5
 (storyline), 10 (names and world) and 11 (how missions are offered) are
 superseded by it -- Red City in Miskawin, the 1980s-90s, Artie Brooks's
-paper dispatch board. Default 1 (racing judged as illegal) is the open
-question STORY.md 4.1 asks about Zane and Maya. The rest stand.
+paper dispatch board. Default 1 (racing judged as illegal) is WITHDRAWN (the maintainer,
+3 November): night is free driving, traffic calmer in some areas for speed
+and rule-breaking, and content is not restricted -- whether anything
+answers it is the story's to decide (STORY.md 4, item 3). Its sanctioned
+events half is not ruled out, only no longer the default. The rest stand.
 
 Put to the maintainer on 9 October and PARKED by instruction: no budget to
 answer them now. Work proceeds on these defaults; they are not to be

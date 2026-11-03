@@ -62,9 +62,9 @@ generated stand-in city instead).
 | 9 | SIMULATOR.md section 8 and the reframe: "one continuous handmade ~8 km² world" | practice: generated districts inside drawn shapes, test maps | **Both, staged**: the handmade blockout (the maintainer's) with generation inside it remains the target; until then, test maps carry each feature |
 | 10 | CLAUDE.md, the roguelike/purgatory sections, Purgatory Road artifact | STORY.md | **STORY.md**; the roguelike is deleted code (cut B) and its notes are history |
 | 11 | STORY.md (13 Oct): Metro Grid, present day, A.U.T.O. watching human drivers | STORY.md (3 Nov): Red City, Miskawin, 1980s-90s analog, A.U.T.O. has replaced drivers with pods | **3 Nov is the setting**; its premise, acts, mentor and rivals are unstated, so the 13 Oct answers stand until the maintainer says otherwise (STORY.md 5) |
-| 12 | PLAN 6: drifting and weight transfer deferred; grip, not a slip model | STORY.md (3 Nov): weight transfer in the core vision; drift is Maya's discipline | **Open** -- the maintainer's; a slip model is a SHARED foundation of weeks, and would join item 13 |
-| 13 | DIALOGUE.md: all units metric; DAY-NIGHT default 1: illegal driving always judged as illegal | Zane: dodging speed gantries "at 90 mph" | **Metric stands** (145 km/h); whether default 1 governs Zane and Maya is the maintainer's (STORY.md 4.1) |
-| 14 | DISTRICTS.md correction 2: the city modelled on no one place | a Great Lakes border motor-town with an international bridge | **Open** -- the maintainer's (STORY.md 4.2) |
+| 12 | PLAN 6: drifting and weight transfer deferred; grip, not a slip model | STORY.md (3 Nov): weight transfer in the core vision; drift is Maya's discipline | **RULED 3 Nov: a full physics model (grip and weight transfer, per vehicle and surface) is the endpoint**; items 13-14 grow to it. Open: whether the traffic shares it (STORY.md 4) |
+| 13 | DIALOGUE.md: all units metric; DAY-NIGHT default 1: illegal driving always judged as illegal | Zane: dodging speed gantries "at 90 mph" | **RULED 3 Nov: metric always; default 1 withdrawn** -- night is free driving with calmer traffic in places, content unrestricted; whether anything answers it is the story's (STORY.md 4) |
+| 14 | DISTRICTS.md correction 2: the city modelled on no one place | a Great Lakes border motor-town with an international bridge | **RULED 3 Nov: southwestern Ontario and Michigan, as a feel** -- every kind of road; the editor can make other places. The naming rule stands (STORY.md 4) |
 | 15 | PLAN 7 (built): the route on the road, the turn banner, lane advice | the analog era: paper slips, street names, no digital navigation | **Keep what is built until replaced by something that works as well**; street-name signs do not exist yet (STORY.md 4.5) |
 | 16 | DAY-NIGHT default 11: missions on a phone/dispatch screen | Artie's carbon-copy board | **Artie's board** -- the same screen, in period; no gameplay change |
 
@@ -223,15 +223,21 @@ dependency argument, placed below where their blocker is built.
 13. **Per-vehicle and per-surface handling** -- the global constants
     (`stoppingRoom`, `BRAKE`, `LATERAL`, `radiusFor`, grip) become
     properties of a vehicle and of a surface, as the per-road speed limits
-    did. SHARED. Two to three weeks.
+    did. SHARED. Two to three weeks. **3 November: the first step toward
+    a full physics model -- grip and weight transfer per vehicle and
+    surface -- which is now the endpoint (STORY.md 4, item 1); drift falls
+    out of it. The player's car first; whether the traffic shares it is
+    open.** Costed then: months, not weeks.
 14. **Surfaces** -- gravel, wet asphalt; grip and the traffic's corner
-    speeds follow; weather reuses it later. SHARED. One to two weeks.
+    speeds follow; weather reuses it later -- and lake-effect snow and ice
+    are now in the setting. SHARED. One to two weeks.
     **Gravel unlocks two jobs** (rural produce delivery, gravel quarry
     haul) **and Hannah's district** -- the job list corroborates it as a
     shared foundation independently.
 15. **Head-to-head racing** -- a course of checkpoints (C), an opponent
-    that drives TO it with a rival's profile, sanctioned events first
-    (DAY-NIGHT.md default 1). SHARED for all four rivals. Three weeks.
+    that drives TO it with any driver's profile -- named or not, as the
+    mission says (the maintainer, 3 November: "anybody we want to"; e.g.
+    Zane offers a race against NPCs on the highway). SHARED. Three weeks.
 16. **Day and night** -- the density dial by time, the night's rule set,
     night rendering (lamps exist; headlights and darkness do not; the
     `shadowBlur` cost noted). SHARED. Two to three weeks.
@@ -319,7 +325,8 @@ mechanic means something different in each place (DISTRICTS.md).
   kept as an asset (SIMULATOR.md roadmap), nothing more.
 - **Motorcycle lane filtering** -- cut (illegal in Ontario; breaks one
   vehicle per lane everywhere). A motorcycle at all: deferred.
-- **Drifting and weight transfer** as physics -- deferred; Hannah's county
+- ~~**Drifting and weight transfer** as physics -- deferred~~ **REINSTATED 3
+  November as the endpoint of items 13-14 (STORY.md 4, item 1).** Was: deferred; Hannah's county
   gets surfaces (grip), not a slip model.
 - **Parking lots as simulated places** (the Costco lot: carts, circling,
   queues) -- deferred indefinitely; a destination at a lot's entrance

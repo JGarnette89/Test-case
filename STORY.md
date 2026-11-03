@@ -9,6 +9,10 @@ is recorded beside it, not settled by whoever reads this next. The
 13 October Metro Grid record is kept at the bottom as history, because this
 document is silent on several things that one decided (section 5).
 
+**RULED, 3 November (section 4, at its top): a full physics model is the
+endpoint; anybody can be raced; night is free driving; the region is
+southwestern Ontario and Michigan; metric always.**
+
 **RECORDED AS DIRECTION, WITH SIX THINGS IT DOES NOT SAY (section 5).**
 The setting, the era, the hub and the five specialists are clear enough to
 record as decided. The player's premise, the campaign's shape, the mentor,
@@ -123,7 +127,8 @@ Day and night contracts across Red City and its townships:
 - **Varied human vehicles** (rusted sedan, V8, tuned compact). Each needs
   per-vehicle handling first: `stoppingRoom`, `BRAKE`, `LATERAL`,
   `radiusFor` and grip are still global (PLAN.md 13, VEHICLES-GARAGE.md).
-- **A slip model** -- weight transfer, drift. `sim/player.js` has grip.
+- **A slip model** -- weight transfer, drift; RULED the endpoint (section
+  4, item 1). `sim/player.js` has grip.
   PLAN 6 deferred this explicitly; the new core vision reverses that
   (section 4, item 3).
 - **Weather and surfaces**: gravel (already PLAN 14), and now snow and ice
@@ -146,9 +151,63 @@ Day and night contracts across Red City and its townships:
 
 ---
 
-## 4. Conflicts with standing rulings -- the maintainer's call, not settled here
+## 4. Conflicts with standing rulings
 
-1. **90 mph, and speeding as content.** The project is metric
+### RULED, 3 November (the maintainer, answering items 1-3 and section 5.5)
+
+1. **A FULL PHYSICS MODEL IS THE ENDPOINT.** Verbatim: *"a full physics
+   model is the ideal endpoint, simulating grip and weight transfer. If our
+   game is modelled around putting the user in different traffic situations
+   (in different vehicles) we want as many possibilities as we can."* So
+   PLAN 6's "grip, not a slip model" is withdrawn: weight transfer and grip
+   limits per vehicle and per surface are the target of PLAN 13-14, and
+   drift is what that model produces at the limit, not a separate feature.
+   **Not decided, and the next question under it:** whether the TRAFFIC
+   drives on the same model or stays on today's motion with per-vehicle
+   numbers. The player's car first is the cheap order; a whole city on a
+   force model is a frame-budget question for the phone.
+2. **ANYBODY CAN BE RACED.** Verbatim: *"the answer to this is anybody we
+   want to. For example, we get a mission from Zane to race NPCs on the
+   highway and we go from there. There could be named or unnamed NPCs
+   depending on story beats."* So racing (PLAN 15) stays SHARED: an
+   opponent is any driver -- a profile on the axes, named or not -- given a
+   course, and the specialists are where missions come from, not
+   necessarily who you race.
+3. **NIGHT IS FREE DRIVING, AND CONTENT IS NOT RESTRICTED.** Verbatim:
+   *"'judged as illegal' is a nebulous statement. By whom? Auto? Then to
+   what end? At this point we want a night cycle to put the player in, and
+   they can drive however they want. Traffic should be calmer in some areas
+   at night allowing for faster driving and rule breaking. Putting
+   restrictions on what we can present as content doesn't make sense at
+   this point."* DAY-NIGHT default 1 is withdrawn. What is built now is a
+   night the player drives as they like, with quieter traffic in places;
+   whether anything -- A.U.T.O., police, fines, demerits -- answers it is
+   left for the story and missions to decide. **What does not move:** the
+   sim still knows the law. A red is still a red to the traffic, a fault
+   is still named truly where the game names one, and "the fiction can be
+   strange, the law cannot" is about describing the rules truthfully, not
+   about stopping the player breaking them.
+4. **THE REGION IS SOUTHWESTERN ONTARIO AND MICHIGAN.** Verbatim: *"I wanted
+   something that felt similar to home but allowed for a variety of
+   environments. SW Ontario/Michigan give you almost every type of road you
+   could drive on. The map editor could always create a new environment,
+   this is just what we will focus on."* The Windsor-Detroit reading is
+   intended as a FEEL, which revises DISTRICTS.md correction 2's "modelled
+   on no one place": the region is now named. Its naming rule -- functional
+   names, no named real route such as Highway 401 -- was not raised and
+   stands.
+5. **METRIC ALWAYS.** Zane's 90 mph is 145 km/h, and every unit in the
+   game, the dialogue and the missions is metric.
+
+**One question the region raises, for when it matters:** an international
+bridge puts Michigan on the far side. Where Michigan and Ontario law
+genuinely differ (rather than being worded differently), which applies
+across the river is a domain call -- CLAUDE.md's rule is to take the
+general North American reading and pick any real difference deliberately.
+
+### Still open
+
+1. ~~**90 mph, and speeding as content.**~~ **RULED above (3, 5).** The project is metric
    (DIALOGUE.md's spec: "all units metric") and Ontario/North American;
    90 mph is 145 km/h. More than the unit: Zane's discipline is dodging
    speed enforcement at speed, and Maya's is street performance. DAY-NIGHT
@@ -156,13 +215,13 @@ Day and night contracts across Red City and its townships:
    allowed and **always judged as illegal; the law is never misdescribed**
    -- and CLAUDE.md's "humour is allowed, the traffic law is not". Does
    that default stand for Zane and Maya?
-2. **"Modelled on no one place."** DISTRICTS.md correction 2 (the
+2. ~~**"Modelled on no one place."**~~ **RULED above (4).** DISTRICTS.md correction 2 (the
    maintainer, 14 October): functional North American names, the city
    modelled on no one place, no named real route. A rust-belt motor-town
    with an international bridge on the Great Lakes reads strongly as
    Windsor-Detroit. Is that now intended, or should the bridge stay
    generic?
-3. **Weight transfer and drift.** Deferred in PLAN 6 ("Hannah's county gets
+3. ~~**Weight transfer and drift.**~~ **RULED above (1).** Deferred in PLAN 6 ("Hannah's county gets
    surfaces, not a slip model"); now in the core vision and two
    specialists' disciplines. A slip model is a player-car rewrite plus the
    traffic's corner speeds -- a SHARED foundation of weeks, not decoration.
@@ -210,7 +269,7 @@ Day and night contracts across Red City and its townships:
 4. **Mason and Hannah.** Renamed to Maya Lin and Hank Miller, or replaced
    by different people? The built code names them (`sim/rivals.js`,
    `content/dialogue.js`, `sim/voice.js`, `iso/hud.js`).
-5. **Rivals.** "Connects" are allies. Racing head-to-head (PLAN 15) and
+5. ~~**Rivals.**~~ **RULED, section 4 item 2: anybody, named or not.** "Connects" are allies. Racing head-to-head (PLAN 15) and
    territory both assumed opponents. Who do you race?
 6. **Revival against Zone Quality.** Same idea or different? Per district
    or city-wide? Raised by what, exactly -- contracts, trained drivers,

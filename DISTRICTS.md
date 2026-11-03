@@ -17,9 +17,10 @@ files, and [PLAN.md](PLAN.md) for when any of it is built.
 **3 November: each district has a specialist (STORY.md, Red City).**
 Industrial and Port: Victor Braga. Suburbs and Retail: Brenda Braga.
 Downtown and Nightclub: Maya Lin. Rural Outer County: Hank Miller. Highway
-Network: Zane "Slip" Gault -- the first person attached to it. Red City's
-"modelled on no one place" question is STORY.md 4.2; correction 2 below
-stands until the maintainer answers it.
+Network: Zane "Slip" Gault -- the first person attached to it.
+**Correction 2 revised, 3 November:** the region is southwestern Ontario and
+Michigan, as a feel (STORY.md 4, item 4). Its naming rule -- functional
+names, no named real route -- stands.
 
 ## A DESIGN FINDING: EACH DISTRICT HAS A DIFFERENT RELATIONSHIP TO THE GREEN WAVE
 
