@@ -213,9 +213,11 @@ Eight things to know before your first change:
      the sim is invalid exactly when the check runs, and one not tied to it
      tests new code on traffic it would not produce. A subgraph is fine only
      with traffic still crossing its edges.** DECISIONS 10.36.
-   - **Never assume a background run's notification will arrive.** A session
-     went idle on one on 28 October and was never woken. Keep a fallback that
-     checks the result, not only a wait. TESTING.md.
+   - **Never make a notification the only way a run gets read.** A session
+     went idle on one on 28 October and was not woken; every run on 3 November
+     did notify, so this is one incident and not a standing fault. Leave a long
+     fallback rather than a polling loop, and read the file when asked.
+     TESTING.md.
    - **A slow check is cut to the sample it needs, measured, never
      guessed.** Its floors are compared with what it actually counts; the
      sample comes down while every count stays clear of its floor, a

@@ -26,8 +26,12 @@ nothing that moves the default world was to be started.
   traffic numbers to be quoted from it until 39 is in.**
 - **Waiting to be committed, once they reach this machine:** the maintainer's
   source documents `REPORT-CHECKS.md`, `ARCHITECTURAL-AUDIT.md` and the Red City
-  story (STORY.md is the RECORD of that story, with its rulings; do not overwrite
-  it with the source). Conflicts: DECISIONS 10.37.
+  story, the last as `STORY-SOURCE-2026-11-03.md` (STORY.md is the RECORD of that
+  story, with its rulings; do not overwrite it with the source). He holds them;
+  the project lead has asked him to put them in the repository root. Conflicts:
+  DECISIONS 10.37.
+- **Blocked on reading those documents, not on a summary of them:** the keep-right
+  worker-thread recommendation, and checking what the record says they say.
 - **The agreed order in section 2 was checked on 3 November and stands.** No
   sim code has moved.
 

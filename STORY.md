@@ -275,7 +275,9 @@ Day and night contracts across Red City and its townships:
    over-yields) and the timid tail's first character (CHARACTERS.md). As
    the exam mode's zero-tolerance authority she is a different role. Both
    can be true -- a timid driver who examines strictly -- but it is a
-   choice.
+   choice. **Separately, and with the maintainer (DECISIONS 10.37):** whether
+   "zero-tolerance scoring" is color or a ruling against partial marks. Not
+   assumed either way; build nothing on it until he answers.
 7. **The exam mode's place.** (RULED, item 7 above: a mission any character can give.) PLAN 2 row 3 put it as the Act I prologue
    (the test that costs the licence) and then teaching at the academy. The
    new document makes it a day job: students through Brenda's routes. That
