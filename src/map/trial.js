@@ -44,16 +44,21 @@ const BRIEF = { size: "large", arterials: "loop", everyType: true, downtown: tru
 const YH = 2000;          // m: the highway's centreline, 500 m south of the city's south arterial
 const HALF = 8;           // m: carriageway centreline off the highway's: 3 lanes (5.4 m) and half a 5 m median
 const TERM = 200;         // m: a ramp terminal is this far either side of the highway, on the crossing road
-/* A ramp leaves or joins at 35 degrees, as on the loop: shallower and the
-   graph reads the split as going STRAIGHT on (graph.js STRAIGHT_TOL), and
-   every through lane would be told it may take the one-lane ramp. So the
-   ramp's length along the highway follows from the angle and the terminal. */
+/* A RAMP is a curve: it leaves or joins the highway at 35 degrees, as on
+   the loop -- shallower and the graph reads the split as going STRAIGHT on
+   (graph.js STRAIGHT_TOL), and every through lane is offered the one-lane
+   ramp -- and meets its terminal SQUARE, as a real diamond's does. A
+   straight ramp met the terminal at 35 degrees too, which made the turn
+   onto the bridge 125 degrees, sharper than the graph's HAIRPIN allows:
+   the only "left" left was straight across onto the on-ramp. RAMP_X is
+   how far along the highway the curve needs: with its ends at 35 and 0
+   degrees, the 192 m from carriageway to terminal wants about 460 m. */
 const RAMP_ANG = 35;
-const RAMP_X = Math.round((TERM - HALF) / Math.tan((RAMP_ANG * Math.PI) / 180));   // m: 274
+const RAMP_X = 460;
 const BRIDGE_TOP = 7.5;   // m over the highway, as test-highway's bridge
 const PLATEAU = 30;       // m either side of the highway centreline the deck holds its height
 const SOUTH = 2700;       // m: where the roads south of the highway leave the map
-const STRAIGHT = [-900, 3600];   // x: the highway runs straight and level between these
+const STRAIGHT = [-900, 3800];   // x: the highway runs straight and level between these
 const BEND_R = 1000, BEND_DEG = 30, TAIL = 800;   // beyond them: a 1 km bend through 30 degrees, then straight to the edge
 const ACCEL = 350;        // m of acceleration lane, as on the loop and the open highway (a flagged figure)
 const STEP = 4;           // m between highway points: the loader reads curvature between its own samples
@@ -184,23 +189,33 @@ export function trialCity(seed = 1) {
     m.roads.push(road({ id: `hw-wb-${i}`, kind: "highway", lanes: 3, oneWay: true, points: pts, ...extra }));
   });
 
-  /* THE RAMPS, one lane each, one way: off-ramps at 60, on-ramps at 80, as on the loop. */
+  /* THE RAMPS, one lane each, one way: off-ramps at 60, on-ramps at 70 -- the loop's 80, lowered by the loader for the curve out of the terminal (270 m radius 25 m along wants 336 m at 80), so posted at what the curve allows. */
   /* An off-ramp's one lane turns left or right at its terminal, never
      straight across onto the on-ramp: the general rule offered it, and a
      car at the stopped east terminal waited 192 s to cross six lanes of
      free-flowing arterial to get back on the highway it had just left. */
-  const ramp = (id, a, b, speed) => {
+  /* A cubic from `a` leaving along unit `ta` to `b` arriving along unit `tb`, its control arms a third of the chord. */
+  const ramp = (id, a, ta, b, tb, speed) => {
+    const k = Math.hypot(b.x - a.x, b.y - a.y) / 3;
+    const p1 = { x: a.x + ta.x * k, y: a.y + ta.y * k }, p2 = { x: b.x - tb.x * k, y: b.y - tb.y * k };
     const pts = [];
-    for (let i = 0; i <= 40; i++) pts.push({ x: r2(a.x + ((b.x - a.x) * i) / 40), y: r2(a.y + ((b.y - a.y) * i) / 40), z: 0 });
+    for (let i = 0; i <= 60; i++) {
+      const t = i / 60, u = 1 - t;
+      const x = u * u * u * a.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * b.x;
+      const y = u * u * u * a.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * b.y;
+      pts.push({ x: r2(x), y: r2(y), z: 0 });
+    }
     m.roads.push(road({ id, kind: "arterial", lanes: 1, oneWay: true, speed, points: pts, ...(id.startsWith("off") ? { turns: { end: [["left", "right"]] } } : {}) }));
   };
   for (const X of [0, 2000]) {
     const ebAt = (x) => ({ x, y: YH + HALF }), wbAt = (x) => ({ x, y: YH - HALF });
     const south = { x: X, y: YH + TERM }, north = { x: X, y: YH - TERM };
-    ramp(`off-eb-${X}`, ebAt(X - RAMP_X), south, 60);
-    ramp(`on-eb-${X}`, south, ebAt(X + RAMP_X), 80);
-    ramp(`off-wb-${X}`, wbAt(X + RAMP_X), north, 60);
-    ramp(`on-wb-${X}`, north, wbAt(X - RAMP_X), 80);
+    const c = Math.cos((RAMP_ANG * Math.PI) / 180), s = Math.sin((RAMP_ANG * Math.PI) / 180);
+    /* y is down: eastbound's right is +y (south), westbound's is -y (north). */
+    ramp(`off-eb-${X}`, ebAt(X - RAMP_X), { x: c, y: s }, south, { x: 1, y: 0 }, 60);
+    ramp(`on-eb-${X}`, south, { x: 1, y: 0 }, ebAt(X + RAMP_X), { x: c, y: -s }, 70);
+    ramp(`off-wb-${X}`, wbAt(X + RAMP_X), { x: -c, y: -s }, north, { x: -1, y: 0 }, 60);
+    ramp(`on-wb-${X}`, north, { x: -1, y: 0 }, wbAt(X - RAMP_X), { x: -c, y: s }, 70);
     /* The terminals. Signalled: every approach. Stopped: the off-ramps only; the arterial runs free. */
     const ends = [[`off-eb-${X}`, "end"], [`off-wb-${X}`, "end"], [`s${X}-n`, "end"], [`s${X}-bridge`, "start"], [`s${X}-bridge`, "end"], [`s${X}-s`, "start"]];
     for (const [id, end] of ends) {
