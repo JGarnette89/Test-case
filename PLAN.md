@@ -288,16 +288,19 @@ dependency argument, placed below where their blocker is built.
 
 An external review (Gemini) audited the code against the Red City story in
 three areas; checked against the code on 3 November. **It changes nothing
-in the order above.** **SECOND-HAND:** neither the audit nor its checks report
-is in the repository; this section is one session's account of what was
-pasted to it. Where it lands:
+in the order above.** **Provenance:** `ARCHITECTURAL-AUDIT.md` and
+`REPORT-CHECKS.md` were supplied by the maintainer and read by the project lead
+on 3 November; neither is in the repository yet, so this section remains one
+session's account. Conflicts with the story: DECISIONS 10.37. Where it lands:
 
 | the audit's phase | where it already sits |
 |---|---|
 | P0, a contract engine replacing the taxi | items 9a-9c. `jobs.js` is already the job machinery with the taxi as its first job, and pay is already separate (`money.js`); what is missing is a job of several stops (9c) and a scoring rule per job, by its metric (9a first). Written the project's way: a job is a RECORD (JOBS.md already gives vehicle, district, difficulty, metric) and its scorer is picked by its metric -- not the audit's `Contract` class with evaluator objects |
 | P1, one screen | the combined-map item (handoff 2026-10-28 evening section 9; DECISIONS 10.35). `ExamRide.jsx` shares `sceneFor` with MapRoad but runs its own canvas and loop. `RoadStrip.jsx` is already imported by nothing |
 | P2, the analog presentation | a presentation pass after that. The instruments AND the navigation display (route on the road, turn banner, lane advice) are KEPT and restyled (STORY.md 4, ruling 6). The genuinely cheap pieces: a needle speedometer, an odometer, a paper receipt, a dot-matrix caption. NEW SYSTEMS, not restyles: street names (the map format has none, nor signs for them) under any paper route card; audio (the game has none) under CB squelch; an engine model under a tachometer |
-| P3, vehicle kinds and revival | after item 13 and the physics model it now grows to; revival drives the skill dial (`sim/skill.js`) and a vehicle mix |
+| P3, vehicle kinds and revival | after item 13 and the physics model it now grows to; revival drives the skill dial (`sim/skill.js`) and a vehicle mix. **Position open: see below** |
+
+**The vehicle archetypes: the project lead's view, for the order, not yet set with the maintainer.** Its best and cheapest item: distinct physics per class is mostly a data table, and it is what makes a rusted sedan feel different from a tuned import. **It is not free.** Populating them moves every world and re-baselines every check, so it belongs after the world settles (39, 40). **Read against the code:** `VEHICLES` already has `accel`, `brake`, `most`, `cap` and `lateral` per row, so the longitudinal half is data; `radiusFor` and grip, per PLAN 13, are what to check next. A row nobody draws moves nothing, since trucks have their own stream. **`cap: 1.4` needs care:** an ordinary car's `cap` is `Infinity`, so 1.4 would limit a sports car where a sedan is not limited at all, and it cuts into the speed spread already tuned (`wantedFor`). And STORY.md section 3 still stands against the audit's `variance` and `headway` as vehicle fields: the driver owns those.
 
 **The mission rule it needed (STORY.md 4, ruling 7):** a mission is not
 tied to its giver, and the job machinery carries both seats -- the player
@@ -310,15 +313,15 @@ Maya's drift on the physics model (13), Zane's slipstream on drag (not
 modelled), Victor's load shift on articulation and load physics (phase 4).
 Buildable now: Brenda's exam and Artie's courier runs.
 
-**Its checks report** (30 October; **SECOND-HAND** until `report-checks.md` is
-in hand -- the project lead is getting it from the maintainer): a duplicated
+**Its checks report** (30 October; **timings not to be quoted**, TESTING.md): a duplicated
 warm-up in `verify-courtesy` section 7, and a second found in the same search,
 `verify-trucks` sections 3 and 7. **Both fixed, sabotaged and on `main`**
 (TESTING.md): side by side under one load, 593 s -> 434 s and 571 s -> 548 s,
 output identical line for line. "The other slow checks run distinct worlds -- their time
-is their sample" is that session's claim, not verified. **Saved warmed worlds
-and per-district subgraphs are REFUTED, not waiting for anything: DECISIONS
-10.36.** The report's claim that `verify-screens` harnesses `ExaminerDrive` is
+is their sample" is that session's claim, not verified. **Cached warmed worlds are refuted; district subgraphs stand only with traffic
+kept flowing across their edges: DECISIONS 10.36.** Its keep-right worker-thread
+recommendation is approved by the project lead, sabotage first; **not started,
+because its text has not reached this machine.** The report's claim that `verify-screens` harnesses `ExaminerDrive` is
 false (deleted 24 September; confirmed by search on 3 November).
 
 ## 4a. The content already written, against what can be built

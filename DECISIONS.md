@@ -5530,20 +5530,34 @@ drift apart.** The tell: a behaviour whose answer depends on which screen, map
 or instrument asked.
 
 
-## 10.36 TWO WAYS TO SPEED UP THE SUITE THAT MAKE IT BLINDER -- saved worlds and subgraphs, refuted (3 November)
+## 10.36 SPEEDING UP THE SUITE: SAVED WORLDS REFUTED, SUBGRAPHS ONLY WITH TRAFFIC ACROSS THE EDGE (3 November)
 
-**These are the obvious ideas for anybody optimising a slow suite, so the reasons are recorded and not just the prohibition.** Both were reported as recommendations in an external review's checks report (Gemini, 30 October). **SECOND-HAND: that report is not in the repository; what is known of it is one session's account (PLAN 4b).** The refutations stand on how the suite works, whatever the report says.
+**These are the obvious ideas for anybody optimising a slow suite, so the reasons are recorded and not just the verdicts.** Both come from an external review's checks report (Gemini, 30 October). **Provenance: `REPORT-CHECKS.md`, supplied by the maintainer; read by the project lead, not yet in the repository, and not read by the agent writing this. Its timings are not to be quoted (TESTING.md, "Gemini's numbers"); its reasoning about where the time goes is sound.**
 
-**1. SAVED WARMED WORLDS.** Warm-up is most of a slow check's time (TESTING.md), so saving the warmed world looks free. It is refuted either way it could be built:
+**1. CACHED PRE-WARMED SNAPSHOTS: REFUTED.** Warm-up is most of a slow check's time (TESTING.md), so saving the warmed world looks free. The report does not address the objection (the project lead's reading):
 
-- **A snapshot tied to the sim is invalid exactly when the check runs.** `check.mjs` runs a check when something in its import closure changed (CLAUDE.md item 8), and that closure holds the sim. So the snapshot is stale at the only moments it is wanted, and it saves time only where nothing the check depends on moved, which is where the check does not run.
-- **A snapshot not tied to the sim tests new code against traffic the new code would not produce.** The check then passes on a world no longer reachable, and every defect that shows up in how traffic builds is out of its sight. Green here is worse than red: CLAUDE.md item 3.
+- **A snapshot tied to the sim is invalid exactly when the check runs.** `check.mjs` runs a check when something in its import closure changed (CLAUDE.md item 8), and that closure holds the sim. So the snapshot is stale at the only moments it is wanted.
+- **A snapshot not tied to the sim tests new code against traffic the new code would not produce.** The check then passes on a world no longer reachable, and every defect that shows in how traffic builds is out of its sight. Green here is worse than red: CLAUDE.md item 3.
 
-**What is sound is reuse WITHIN one run**: the same seed, map and options, already stepped by the same code in the same process, and only where trials cannot write the world. That is what `verify-courtesy`'s shared warm-up is, and it saves real time without making anything stale.
+**What is sound is reuse WITHIN one run**: the same seed, map and options, already stepped by the same code in the same process, and only where trials cannot write the world. That is `verify-courtesy`'s shared warm-up, which the report's finding led to (TESTING.md).
 
-**2. PER-DISTRICT SUBGRAPHS.** Running a check on part of the map cuts the cost in proportion, and removes the traffic that crosses the part's boundary. **Boundaries are exactly where this project's defects live**: the cross-boundary following check that passed with the rule deleted (5.15.4); IN FLIGHT 39, following misread across a node; 40's right of way known only within a node (10.34). A subgraph has an edge the world does not, cars arrive there unlike anywhere real, and a claim about a whole world is no longer what is being tested. It is the same shape as saved worlds: a faster check of something other than the thing claimed.
+**2. DISTRICT SUBGRAPHS: THE IDEA IS SOUND; ONLY CUTTING THE CROSSING TRAFFIC IS WRONG.** This entry first rejected them outright, the same day; the project lead narrowed it, and this is the version that stands. **On one large map a check testing a junction should not step 8 km², and that makes this important.** What is wrong is only removing traffic that crosses the subgraph's boundary, because **boundaries are where this project's defects live**: the cross-boundary following check that passed with the rule deleted (5.15.4); IN FLIGHT 39, following misread across a node; 40's right of way known only within a node (10.34).
 
-**How to recognise the next one:** ask what the speed-up stops the check from seeing, and whether a defect there would still fail it. A saving that changes what is simulated is not a saving; CLAUDE.md item 8 already says the lever for slow checks is the sample, measured, or a cheaper sim (TESTING.md).
+**So: extract the subgraph, keep traffic flowing across its edges, with enough buffer that boundary behaviour is still exercised.** It is not a blanket prohibition. A check moved onto one is sabotaged again there, as any cut is, including a sabotage at the boundary. How much buffer is enough is not yet measured.
+
+**How to recognise the next one:** ask what the speed-up stops the check from seeing, and whether a defect there would still fail it.
+
+## 10.37 THREE CONFLICTS WITH THE RED CITY DOCUMENTS, AND TWO DESIGNS THAT SURVIVE THEM -- flagged to the maintainer, not resolved (the project lead, 3 November)
+
+**Provenance: the maintainer's Red City story (STORY.md records it) and `ARCHITECTURAL-AUDIT.md` (Gemini, 1 November), read by the project lead; the audit is not yet in the repository and was not read by the agent writing this.**
+
+**1. THE HEADWAY READOUT STAYS.** The project lead's reading is that the analog presentation would delete it: the follow gauge the maintainer asked for, built to his spec (10.24), its gap sound to a worst 0.20 m where checkable and unverified inside intersections and on bends (handoff 28 October). **The maintainer has already ruled on this class: STORY.md section 4, ruling 6, names "the following gap" among the readouts kept and redrawn, "never a replacement scheme".** So it is not removed in any HUD work, on the ruling as well as on this flag. **What is left for him is the form only.** The project lead's likely resolution is his own throttle-target idea drawn as a mechanical needle: same function, no anachronism, and a restyle in the ruling's own terms.
+
+**2. A.U.T.O.'S PODS AS A DELIBERATELY STERILE EARLY GAME** sits against 10.30: *"traffic should be interacting as an interesting gameplay element"*. STORY.md 4, open item 4, already asks how early variety arrives.
+
+**3. A FULL PHYSICS MODEL (STORY.md 4, ruling 1) AGAINST 10.22 AND THE STEP BUDGET.** 10.22 makes the phone the only target, single-threaded, at 24.6 ms a step at 280 cars on the endless highway. The ruling is the endpoint for the player's car; whether the traffic shares it is the open question, and that is where these two meet.
+
+**TWO DESIGNS NEITHER DOCUMENT MENTIONS, AND THEY STAND: the sectional marking sheet with the real Ontario headings (10.25, 10.26) and the three-level intervention with retrospective judgement (10.27, 10.28).** Brenda runs exams in the new story and ruling 7 keeps the limited-control seat, so nothing removes them. **This is the project lead's reading, not a ruling.** One phrase to put to the maintainer: STORY.md gives Brenda "zero-tolerance exam scoring", where the established rule is that partial success is partial marks, like a road test (CLAUDE.md, domain authority). Until he says otherwise, that is her character and not a change to how the sheet scores.
 
 ## 11. Verification
 

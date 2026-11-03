@@ -15,6 +15,8 @@ one region with one set of rules, its roads drawn from places like
 southwestern Ontario and Michigan; metric always; the instruments and the
 navigation display kept and restyled; any character can give any mission.**
 
+**Conflicts flagged to the maintainer on 3 November, and the two designs that survive this document (the marking sheet, intervention): DECISIONS 10.37.**
+
 **RECORDED AS DIRECTION, WITH SIX THINGS IT DOES NOT SAY (section 5).**
 The setting, the era, the hub and the five specialists are clear enough to
 record as decided. The player's premise, the campaign's shape, the mentor,

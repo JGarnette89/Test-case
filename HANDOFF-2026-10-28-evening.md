@@ -20,6 +20,10 @@ nothing that moves the default world was to be started.
   (STORY.md, seven rulings), MAP-INVENTORY.md, PLAN section 4b. Still only on
   that branch: the trial city (`src/map/trial.js`, not wired in, **no traffic
   numbers to be quoted from it until 39 is in**) and its measurement tool.
+- **Waiting to be committed, once they reach this machine:** the maintainer's
+  source documents `REPORT-CHECKS.md`, `ARCHITECTURAL-AUDIT.md` and the Red City
+  story (STORY.md is the RECORD of that story, with its rulings; do not overwrite
+  it with the source). Conflicts: DECISIONS 10.37.
 - **The agreed order in section 2 was checked on 3 November and stands.** No
   sim code has moved.
 
