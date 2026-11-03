@@ -17,48 +17,54 @@ say so.
 
 ## 1. Features, map by map
 
-| Feature | `city` | `test-peds` | `test-signs` | `test-buses` | `test-1` | `test-highway` | `test-loop` | `bench` | `brief-default` |
-|---|---|---|---|---|---|---|---|---|---|
-| Offered on | #/tests | #/tests | #/tests | #/tests | #/tests | #/tests | #/tests | #/bench | #/tests, make a map |
-| Extent of its roads (km²) | 2.85 | 1.12 | 1.12 | 1.28 | 1.84 | 9.82 | 5.4 | 3 | 3 |
-| Road (km) | 22.1 | 3 | 3 | 2.4 | 6.5 | 10.2 | 13.6 | 31 | 30 |
-| Road by kind (km) | arterial 6.1, collector 1.4, residential 14.8 | collector 1.4, residential 1.6 | collector 1.4, residential 1.6 | collector 1.6, residential 0.8 | collector 2.8, arterial 2.5, residential 1.2 | highway 6.3, collector 4.1 | highway 10.4, arterial 3.2 | arterial 6.8, collector 5, residential 16.6 | arterial 6.8, collector 5, residential 15.6 |
-| Default cars | 300 | 40 | 40 | 20 | 120 | 230 | 140 | 380 | 370 |
-| T intersections | 32 | -- | -- | -- | 1 | -- | 8 | 30 | 28 |
-| Crossroads | 46 | 2 | 2 | 1 | 3 | 2 | -- | 91 | 82 |
-| Five-way or more | -- | -- | -- | -- | 1 | -- | -- | -- | -- |
-| Signals | 2 | -- | -- | -- | 1 | 2 | -- | 3 | 4 |
-| Signals with a left arrow | -- | -- | -- | -- | 1 | -- | -- | 1 | -- |
-| Green-wave systems | 1 | -- | -- | -- | 1 | 1 | -- | 1 | 1 |
-| All-way stops | 40 | 1 | -- | -- | 1 | -- | -- | 58 | 50 |
-| Stop on the minor road | 32 | -- | -- | 1 | 1 | -- | -- | 57 | 56 |
-| Yield on the minor road | -- | -- | 1 | -- | -- | -- | -- | 1 | -- |
-| Uncontrolled (incl. highway splits) | 4 | 1 | 1 | -- | 1 | -- | 8 | 1 | -- |
-| Highway junctions (ramps meeting) | -- | -- | -- | -- | -- | 2 | 8 | -- | -- |
-| Signs as objects | stop 196 | stop 6 | yield 2 | stop 2 | stop 7 | -- | -- | stop 316, yield 2 | stop 284 |
-| One-way roads | -- | -- | -- | -- | -- | -- | 16 | -- | -- |
-| Speed limits (km/h) | 40, 50, 60 | 40, 50 | 40, 50 | 40, 50 | 40, 50, 60 | 50, 100 | 60, 80, 100 | 40, 50, 60 | 40, 50, 60 |
-| Crosswalk ends | -- | 9 | -- | -- | -- | -- | -- | 214 | -- |
-| Mid-block crossings | -- | 1 | -- | -- | -- | -- | -- | -- | -- |
-| Sidewalk pieces | 286 | 16 | 14 | 8 | 35 | 12 | 16 | 468 | 426 |
-| Bus stops, curb | -- | -- | -- | 2 | -- | -- | -- | 10 | -- |
-| Bus stops, bay | -- | -- | -- | 2 | -- | -- | -- | 10 | -- |
-| Roads with turn bays | -- | -- | -- | -- | 4 | -- | -- | -- | -- |
-| Acceleration lanes | -- | -- | -- | -- | -- | -- | 4 | -- | -- |
-| Lane drops (lanes change at a join) | -- | -- | -- | -- | -- | -- | -- | -- | -- |
-| Overpasses | -- | -- | -- | -- | 1 | 1 | -- | -- | -- |
-| Highest point (m) | -- | -- | -- | -- | 7 | 10 | 10 | -- | -- |
-| Roads turning over 25° along their length | -- | -- | -- | -- | 1 | 3 | 2 | -- | -- |
-| Parking (km of road) | 14.6 | 1.6 | 1.6 | 0.8 | 1.2 | -- | -- | 19 | 18 |
-| Buildings | 786 | -- | -- | -- | -- | -- | -- | 1041 | 1289 |
-| Zones (kind/character) | residential/rolling-stops, commercial/tailgaters | -- | -- | -- | -- | -- | -- | residential, commercial, residential, residential, commercial, residential | residential, residential, residential, residential, residential, residential |
-| Generated streets | 98 | -- | -- | -- | -- | -- | -- | ? | 132 |
-| Truck share | 0.06 | 0.06 | 0.06 | 0.06 | 0.06 | 0.15 | 0.12 | 0.06 | 0.06 |
-| Density shaping asked for | false | false | false | false | false | false | true | false | false |
-| Sections | 6 | 3 | 2 | 3 | 6 | 5 | 3 | 5 | 3 |
-| Load warnings | 78 | 3 | 2 | 1 | 6 | 2 | 8 | 121 | 110 |
+| Feature | `city` | `trial-city` | `test-peds` | `test-signs` | `test-buses` | `test-1` | `test-highway` | `test-loop` | `bench` | `brief-default` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Offered on | #/tests | #/tests | #/tests | #/tests | #/tests | #/tests | #/tests | #/tests | #/bench | #/tests, make a map |
+| Extent of its roads (km²) | 2.85 | 20.91 | 1.12 | 1.12 | 1.28 | 1.84 | 9.82 | 5.4 | 3 | 3 |
+| Road (km) | 22.1 | 80.5 | 3 | 3 | 2.4 | 6.5 | 10.2 | 13.6 | 31 | 30 |
+| Road by kind (km) | arterial 6.1, collector 1.4, residential 14.8 | arterial 14.4, collector 13.4, residential 32.2, highway 14.8 | collector 1.4, residential 1.6 | collector 1.4, residential 1.6 | collector 1.6, residential 0.8 | collector 2.8, arterial 2.5, residential 1.2 | highway 6.3, collector 4.1 | highway 10.4, arterial 3.2 | arterial 6.8, collector 5, residential 16.6 | arterial 6.8, collector 5, residential 15.6 |
+| Default cars | 300 | 900 | 40 | 40 | 20 | 120 | 230 | 140 | 380 | 370 |
+| T intersections | 32 | 68 | -- | -- | -- | 1 | -- | 8 | 30 | 28 |
+| Crossroads | 46 | 172 | 2 | 2 | 1 | 3 | 2 | -- | 91 | 82 |
+| Five-way or more | -- | -- | -- | -- | -- | 1 | -- | -- | -- | -- |
+| Signals | 2 | 5 | -- | -- | -- | 1 | 2 | -- | 3 | 4 |
+| Signals with a left arrow | -- | 1 | -- | -- | -- | 1 | -- | -- | 1 | -- |
+| Green-wave systems | 1 | 1 | -- | -- | -- | 1 | 1 | -- | 1 | 1 |
+| All-way stops | 40 | 110 | 1 | -- | -- | 1 | -- | -- | 58 | 50 |
+| Stop on the minor road | 32 | 114 | -- | -- | 1 | 1 | -- | -- | 57 | 56 |
+| Yield on the minor road | -- | 1 | -- | 1 | -- | -- | -- | -- | 1 | -- |
+| Uncontrolled (incl. highway splits) | 4 | 9 | 1 | 1 | -- | 1 | -- | 8 | 1 | -- |
+| Highway junctions (ramps meeting) | -- | 8 | -- | -- | -- | -- | 2 | 8 | -- | -- |
+| Signs as objects | stop 196 | stop 606, yield 2 | stop 6 | yield 2 | stop 2 | stop 7 | -- | -- | stop 316, yield 2 | stop 284 |
+| One-way roads | -- | 19 | -- | -- | -- | -- | -- | 16 | -- | -- |
+| Speed limits (km/h) | 40, 50, 60 | 40, 50, 60, 70, 100 | 40, 50 | 40, 50 | 40, 50 | 40, 50, 60 | 50, 100 | 60, 80, 100 | 40, 50, 60 | 40, 50, 60 |
+| Crosswalk ends | -- | 228 | 9 | -- | -- | -- | -- | -- | 214 | -- |
+| Mid-block crossings | -- | -- | 1 | -- | -- | -- | -- | -- | -- | -- |
+| Sidewalk pieces | 286 | 904 | 16 | 14 | 8 | 35 | 12 | 16 | 468 | 426 |
+| Bus stops, curb | -- | 24 | -- | -- | 2 | -- | -- | -- | 10 | -- |
+| Bus stops, bay | -- | 23 | -- | -- | 2 | -- | -- | -- | 10 | -- |
+| Roads with turn bays | -- | -- | -- | -- | -- | 4 | -- | -- | -- | -- |
+| Acceleration lanes | -- | 4 | -- | -- | -- | -- | -- | 4 | -- | -- |
+| Lane drops (lanes change at a join) | -- | 1 | -- | -- | -- | -- | -- | -- | -- | -- |
+| Overpasses | -- | 10 | -- | -- | -- | 1 | 1 | -- | -- | -- |
+| Highest point (m) | -- | 7.5 | -- | -- | -- | 7 | 10 | 10 | -- | -- |
+| Roads turning over 25° along their length | -- | 12 | -- | -- | -- | 1 | 3 | 2 | -- | -- |
+| Parking (km of road) | 14.6 | 37 | 1.6 | 1.6 | 0.8 | 1.2 | -- | -- | 19 | 18 |
+| Buildings | 786 | 2314 | -- | -- | -- | -- | -- | -- | 1041 | 1289 |
+| Zones (kind/character) | residential/rolling-stops, commercial/tailgaters | residential, residential/tailgaters, residential/rolling-stops, residential/wanderers, residential/late-brakers, commercial, commercial, residential/hesitant, residential, residential/tailgaters, residential/rolling-stops, residential/wanderers | -- | -- | -- | -- | -- | -- | residential, commercial, residential, residential, commercial, residential | residential, residential, residential, residential, residential, residential |
+| Generated streets | 98 | 282 | -- | -- | -- | -- | -- | -- | ? | 132 |
+| Truck share | 0.06 | 0.06 | 0.06 | 0.06 | 0.06 | 0.06 | 0.15 | 0.12 | 0.06 | 0.06 |
+| Density shaping asked for | false | false | false | false | false | false | false | true | false | false |
+| Sections | 6 | 10 | 3 | 2 | 3 | 6 | 5 | 3 | 5 | 3 |
+| Load warnings | 78 | 241 | 3 | 2 | 1 | 6 | 2 | 8 | 121 | 110 |
 
 Notes on reading it:
+
+- **`trial-city` was added on 3 November** (src/map/trial.js), after the
+  rest of this document was written: it is the combined map's trial, built
+  from section 2's finding below. Its column is the measure of how far it
+  got -- the one lane drop on any map, ramps joined to the city, 2314
+  buildings -- and its 900 default cars are a question, not a setting.
 
 - **"Uncontrolled" includes highway splits.** On `test-loop` all 8 are
   where a ramp meets the loop, not street intersections. The next row
