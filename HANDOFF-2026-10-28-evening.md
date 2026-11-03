@@ -188,7 +188,10 @@ a merge taper, a highway section with proper on- and off-ramps) plus the
 endless highway for sustained driving; everything else retired or behind a
 debug menu.
 
-**Establish first, before building:**
+**Establish first, before building:** -- BOTH DONE 3 November:
+[MAP-INVENTORY.md](MAP-INVENTORY.md), measured (features map by map,
+against this list, checks to maps, and which features each screen switches
+on).
 1. **An inventory of which features exist on which map today.** Nobody knows,
    Jay included — that inventory IS the deliverable behind "I'm not sure every
    test map has every feature".
