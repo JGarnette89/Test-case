@@ -23,7 +23,7 @@ say so.
 | Extent of its roads (km²) | 2.85 | 20.91 | 1.12 | 1.12 | 1.28 | 1.84 | 9.82 | 5.4 | 3 | 3 |
 | Road (km) | 22.1 | 80.5 | 3 | 3 | 2.4 | 6.5 | 10.2 | 13.6 | 31 | 30 |
 | Road by kind (km) | arterial 6.1, collector 1.4, residential 14.8 | arterial 14.4, collector 13.4, residential 32.2, highway 14.8 | collector 1.4, residential 1.6 | collector 1.4, residential 1.6 | collector 1.6, residential 0.8 | collector 2.8, arterial 2.5, residential 1.2 | highway 6.3, collector 4.1 | highway 10.4, arterial 3.2 | arterial 6.8, collector 5, residential 16.6 | arterial 6.8, collector 5, residential 15.6 |
-| Default cars | 300 | 900 | 40 | 40 | 20 | 120 | 230 | 140 | 380 | 370 |
+| Default cars | 300 | 400 | 40 | 40 | 20 | 120 | 230 | 140 | 380 | 370 |
 | T intersections | 32 | 68 | -- | -- | -- | 1 | -- | 8 | 30 | 28 |
 | Crossroads | 46 | 172 | 2 | 2 | 1 | 3 | 2 | -- | 91 | 82 |
 | Five-way or more | -- | -- | -- | -- | -- | 1 | -- | -- | -- | -- |
@@ -60,12 +60,14 @@ say so.
 
 Notes on reading it:
 
-- **`trial-city` was added on 3 November** (src/map/trial.js), after the
-  rest of this document was written: it is the combined map's trial, built
-  from section 2's finding below. Its column is the measure of how far it
-  got -- the one lane drop on any map, ramps joined to the city, 2314
-  buildings -- and its 900 default cars are a question, not a setting.
-
+- **The trial city is in this table from 3 November, generated**: it is
+  `src/map/trial.js`, in `TEST_MAPS` (second, so the screen does not build it
+  on opening) and offered on `#/tests`, by the maintainer's instruction to
+  merge it to `main`. Its column is what the generator counts from the loaded
+  map, like every other. Before that it stood here ungenerated and was
+  removed (the project lead, 3 November). **Quote no traffic numbers from it
+  until IN FLIGHT 39 is in** (the project lead, 3 November): what is counted
+  here is the map, not how traffic runs on it.
 - **"Uncontrolled" includes highway splits.** On `test-loop` all 8 are
   where a ramp meets the loop, not street intersections. The next row
   separates them.
@@ -81,9 +83,11 @@ Notes on reading it:
 - **Load warnings** are the loader's own, and every map has some. 121 on
   the bench map is worth a look before it becomes the base of anything.
 
-## 2. Against Jay's list for the combined map
+## 2. Against the list for the combined map
 
-The list from handoff section 9, each item against where it exists today:
+The request for one combined map is Jay's. **The list of what it should carry
+is the project lead's recommendation** (handoff section 9), to be weighed.
+Each item against where it exists today:
 
 | Wanted | Where it is now |
 |---|---|

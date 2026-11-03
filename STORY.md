@@ -12,13 +12,15 @@ document is silent on several things that one decided (section 5).
 **RULED, 3 November (section 4, at its top): a full physics model is the
 endpoint; anybody can be raced; night is free driving; the region is
 one region with one set of rules, its roads drawn from places like
-southwestern Ontario and Michigan; metric always.**
+southwestern Ontario and Michigan; metric always; the instruments and the
+navigation display kept and restyled; any character can give any mission.**
+
+**Conflicts flagged to the maintainer on 3 November, and the two designs that survive this document (the marking sheet, intervention): DECISIONS 10.37.**
 
 **RECORDED AS DIRECTION, WITH SIX THINGS IT DOES NOT SAY (section 5).**
 The setting, the era, the hub and the five specialists are clear enough to
 record as decided. The player's premise, the campaign's shape, the mentor,
-whether the specialists are still rivals, how revival is measured, and the
-rulings in section 4 are not. Nothing in code changes on this record alone.
+whether the specialists are still rivals, and how revival is measured are not. Nothing in code changes on this record alone.
 
 Characters: [CHARACTERS.md](CHARACTERS.md) (cast change at its top).
 Vehicles: [VEHICLES-GARAGE.md](VEHICLES-GARAGE.md). Day and night:

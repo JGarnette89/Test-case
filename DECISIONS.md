@@ -5463,6 +5463,16 @@ confidence is how well a driver JUDGES the cost of an action, aggression is
 how much cost they ACCEPT imposing. Anyone tidying `caution` back into one
 number re-creates both symptoms.
 
+## 10.33 AXES ARE CHEAP; NEW EVALUATIONS ARE NOT -- the test any new dimension must pass (the project lead, on the maintainer's constraint, 28 October)
+
+The maintainer: do not bog down the engine. The rule that answers it: **an extra value per driver is memory and disappears into the noise; anything that adds a per-tick, per-neighbour evaluation is where the cost lives.** 180 cars at about 15 neighbours each is thousands of evaluations a tick, and neighbour work is already 35-40% of the step. Aggression (10.32) was free because it changed what an EXISTING decision concludes -- the lag test in gapFor -- not how often anything is evaluated.
+
+**The test, for every new dimension or behaviour:** does it change the conclusion of a decision already being made, from quantities already in hand -- or does it add a decision, a scan, a forecast, or a pass over neighbours? The first is allowed by default. The second needs a measured step cost before it is built, and a reason the existing decisions cannot carry it. **Measure, do not agree:** a claim that something is free is checked by the step time with it on and off, on a world dense enough to show the neighbour cost.
+
+The maintainer's objection that sharpened it (on impatience): *"can our drivers actually predict 10 seconds into the future to gauge both gap 1 and 2 at the same time and choose they don't want to wait? otherwise it's just another tolerance check."* Lookahead -- comparing two future gaps -- fails this test twice: it is a new forecast per neighbour, and it is a second tolerance threshold wearing a hat. A driver reads RATE OF CHANGE instead (is this gap opening or closing?), from the relative speed every driver already has for following. Tolerance asks how big the gap IS; impatience would ask whether it is getting BETTER -- a magnitude against a derivative.
+
+(Moved to `main` 3 November, with the document merge. The aggression it cites is on `aggression-phase1`, unmerged; 10.32 on `main` is the ruling, not the build.)
+
 ## 10.34 DRIVERS ARE TOLD THINGS TOO LATE TO ACT ON THEM -- a general property of the model, named (28 October)
 
 Three times this month the same shape, each first chased as its own bug:
@@ -5519,6 +5529,35 @@ follows without being maintained.
 drift apart.** The tell: a behaviour whose answer depends on which screen, map
 or instrument asked.
 
+
+## 10.36 SPEEDING UP THE SUITE: SAVED WORLDS REFUTED, SUBGRAPHS ONLY WITH TRAFFIC ACROSS THE EDGE (3 November)
+
+**These are the obvious ideas for anybody optimising a slow suite, so the reasons are recorded and not just the verdicts.** Both come from an external review's checks report (Gemini, 30 October). **Provenance: `REPORT-CHECKS.md`, supplied by the maintainer; read by the project lead, not yet in the repository, and not read by the agent writing this. Its timings are not to be quoted (TESTING.md, "Gemini's numbers"); its reasoning about where the time goes is sound.**
+
+**1. CACHED PRE-WARMED SNAPSHOTS: REFUTED.** Warm-up is most of a slow check's time (TESTING.md), so saving the warmed world looks free. The report does not address the objection (the project lead's reading):
+
+- **A snapshot tied to the sim is invalid exactly when the check runs.** `check.mjs` runs a check when something in its import closure changed (CLAUDE.md item 8), and that closure holds the sim. So the snapshot is stale at the only moments it is wanted.
+- **A snapshot not tied to the sim tests new code against traffic the new code would not produce.** The check then passes on a world no longer reachable, and every defect that shows in how traffic builds is out of its sight. Green here is worse than red: CLAUDE.md item 3.
+
+**What is sound is reuse WITHIN one run**: the same seed, map and options, already stepped by the same code in the same process, and only where trials cannot write the world. That is `verify-courtesy`'s shared warm-up, which the report's finding led to (TESTING.md).
+
+**2. DISTRICT SUBGRAPHS: THE IDEA IS SOUND; ONLY CUTTING THE CROSSING TRAFFIC IS WRONG.** This entry first rejected them outright, the same day; the project lead narrowed it, and this is the version that stands. **On one large map a check testing a junction should not step 8 km², and that makes this important.** What is wrong is only removing traffic that crosses the subgraph's boundary, because **boundaries are where this project's defects live**: the cross-boundary following check that passed with the rule deleted (5.15.4); IN FLIGHT 39, following misread across a node; 40's right of way known only within a node (10.34).
+
+**So: extract the subgraph, keep traffic flowing across its edges, with enough buffer that boundary behaviour is still exercised.** It is not a blanket prohibition. A check moved onto one is sabotaged again there, as any cut is, including a sabotage at the boundary. How much buffer is enough is not yet measured.
+
+**How to recognise the next one:** ask what the speed-up stops the check from seeing, and whether a defect there would still fail it.
+
+## 10.37 THREE CONFLICTS WITH THE RED CITY DOCUMENTS, AND TWO DESIGNS THAT SURVIVE THEM -- flagged to the maintainer, not resolved (the project lead, 3 November)
+
+**Provenance: the maintainer's Red City story (STORY.md records it) and `ARCHITECTURAL-AUDIT.md` (Gemini, 1 November), read by the project lead; the audit is not yet in the repository and was not read by the agent writing this.**
+
+**1. THE HEADWAY READOUT STAYS.** The project lead's reading is that the analog presentation would delete it: the follow gauge the maintainer asked for, built to his spec (10.24), its gap sound to a worst 0.20 m where checkable and unverified inside intersections and on bends (handoff 28 October). **The maintainer has already ruled on this class: STORY.md section 4, ruling 6, names "the following gap" among the readouts kept and redrawn, "never a replacement scheme".** So it is not removed in any HUD work, on the ruling as well as on this flag. **What is left for him is the form only.** The project lead's likely resolution is his own throttle-target idea drawn as a mechanical needle: same function, no anachronism, and a restyle in the ruling's own terms.
+
+**2. A.U.T.O.'S PODS AS A DELIBERATELY STERILE EARLY GAME** sits against 10.30: *"traffic should be interacting as an interesting gameplay element"*. STORY.md 4, open item 4, already asks how early variety arrives.
+
+**3. A FULL PHYSICS MODEL (STORY.md 4, ruling 1) AGAINST 10.22 AND THE STEP BUDGET.** 10.22 makes the phone the only target, single-threaded, at 24.6 ms a step at 280 cars on the endless highway. The ruling is the endpoint for the player's car; whether the traffic shares it is the open question, and that is where these two meet.
+
+**TWO DESIGNS NEITHER DOCUMENT MENTIONS, AND THEY STAND: the sectional marking sheet with the real Ontario headings (10.25, 10.26) and the three-level intervention with retrospective judgement (10.27, 10.28).** Brenda runs exams in the new story and ruling 7 keeps the limited-control seat, so nothing removes them. **This is the project lead's reading, not a ruling.** One phrase to put to the maintainer: STORY.md gives Brenda "zero-tolerance exam scoring", where the established rule is that partial success is partial marks, like a road test (CLAUDE.md, domain authority). Until he says otherwise, that is her character and not a change to how the sheet scores.
 
 ## 11. Verification
 

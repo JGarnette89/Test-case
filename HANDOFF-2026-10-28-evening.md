@@ -7,6 +7,30 @@ nothing that moves the default world was to be started.
 
 ## 1. STATE — read this before touching git
 
+**UPDATED 3 NOVEMBER; where this and the text below differ, this wins.**
+- **`lane-occupancy`, `cross-node-gap`, `aggression-phase1`, `fail-to-stop` and
+  `exit-lane-changes` are PUSHED**, none merged. `fail-to-stop` and
+  `exit-lane-changes` carry a DO NOT MERGE commit at their tip (a GitHub branch
+  has no description field). `occ-plus-40`, the throwaway, stays local.
+- **`exit-lane-changes` was missing from the table below**: 20 October, stale,
+  about 115 behind `main`. Also not listed: older detached worktrees
+  `dd-30f9ce2`, `dd-fd1127e`, `dd-old` and `wt748`.
+- **A cloud session worked on 3 November**, on
+  `claude/sim-architecture-audit-mf0fun`. Its documents are on `main`: Red City
+  (STORY.md, seven rulings), MAP-INVENTORY.md, PLAN section 4b. Still only on
+  that branch until the evening: the trial city (`src/map/trial.js`) and its
+  measurement tool. **Merged to `main` on 3 November by the maintainer's
+  instruction**, in `TEST_MAPS` on `#/tests`, with `traffic.cars` (a map's own
+  default car count; the trial city says 400) and verify-signs keeping a map's
+  existing signs -- the derived set, 53 of 53, passed on that tree. **Still no
+  traffic numbers to be quoted from it until 39 is in.**
+- **Waiting to be committed, once they reach this machine:** the maintainer's
+  source documents `REPORT-CHECKS.md`, `ARCHITECTURAL-AUDIT.md` and the Red City
+  story (STORY.md is the RECORD of that story, with its rulings; do not overwrite
+  it with the source). Conflicts: DECISIONS 10.37.
+- **The agreed order in section 2 was checked on 3 November and stands.** No
+  sim code has moved.
+
 **`main` is what Jay drives** (GitHub Pages, https://jgarnette89.github.io/Test-case/,
 rebuilt on every push). Its last *feature* is the traffic skill dial and
 per-driver card (`85a4fcf`); every push since is records only. The served
@@ -120,8 +144,9 @@ A cold session that knows the reasons should reorder if a reason changes.
 
 ## 5. OPEN LEADS — do not rediscover
 
-- **The 26 unnamed blockers** (40's first question): 26 of 69 holds began
-  with no blocker named by `blockedBy` — the largest category, unknown.
+- **The 26 unnamed blockers** (40's first question; SIMULATOR IN FLIGHT 40): 26
+  of the 56 held-late cars began their hold with no blocker named (corrected 3
+  November from "26 of 69") — the largest category, unknown.
 - **IN FLIGHT 36, free-flow hard braking:** 1 four-second window in 18 past
   3 m/s² on an open highway (5.6%; city 11.4%) — **confirmed NOT explained by
   38 or 39** (moved ≤0.4 points). A separate defect under every braking figure.
