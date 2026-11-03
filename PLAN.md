@@ -312,11 +312,10 @@ Buildable now: Brenda's exam and Artie's courier runs.
 
 **Its checks report** (30 October; **SECOND-HAND** until `report-checks.md` is
 in hand -- the project lead is getting it from the maintainer): a duplicated
-warm-up in `verify-courtesy` section 7, recorded 893 s -> 422 s (the first
-under load alongside other checks, the second alone, so not a measured
-saving), and a second found in the same search, `verify-trucks` sections 3
-and 7, 566 s -> 528 s. **Both changes are on the cloud branch and reach `main`
-only once sabotaged.** "The other slow checks run distinct worlds -- their time
+warm-up in `verify-courtesy` section 7, and a second found in the same search,
+`verify-trucks` sections 3 and 7. **Both fixed, sabotaged and on `main`**
+(TESTING.md): side by side under one load, 593 s -> 434 s and 571 s -> 548 s,
+output identical line for line. "The other slow checks run distinct worlds -- their time
 is their sample" is that session's claim, not verified. **Saved warmed worlds
 and per-district subgraphs are REFUTED, not waiting for anything: DECISIONS
 10.36.** The report's claim that `verify-screens` harnesses `ExaminerDrive` is

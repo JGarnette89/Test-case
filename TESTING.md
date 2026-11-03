@@ -41,6 +41,22 @@ so they are upper bounds -- a subset runs with less contention.
 - **Splitting** the two longest files lets the runner run their halves
   side by side; under eight-way load each had run past twenty minutes.
 
+- **Two duplicated warm-ups removed, sabotaged before reaching `main` (3
+  November).** `verify-courtesy` section 7 and `verify-trucks` section 7 now
+  reuse a world the check had already stepped; same worlds, same trials, same
+  floors. Old and new side by side under one load: courtesy 593 -> 434 s, trucks
+  571 -> 548 s, output identical line for line (31 and 41 lines). The 893 -> 422
+  first recorded for courtesy compared a loaded run with a solo one. Sabotaged,
+  each failing the check: "let in" never said (0 of 5), nobody offers (0 of 8),
+  `fits` always true (63 of 361 passages), the shared observer unhooked (0 of 0
+  against the floor of 40), trucks not spanning their path (0.43 m against
+  0.05). The proof that trials leave the warmed world alone
+  (`measure/courtesy-warm.mjs`) goes false when a trial nudges it by 1e-9 m.
+  **Two sabotages first missed, and the sabotage was the fault:** a nudge in
+  `gapBeside` landed on the trial's own copy, and a rear at half a body length
+  still leaves both ends on the path, which is all section 3 claims. A sabotage
+  that survives has to be read before it is believed either way.
+
 **What is still slow, and why it stays.** A change anywhere in the sim
 reaches 37 checks, because `crossing.js` imports almost every sim module:
 the import graph is exact and cannot shrink that. Keep-right (its counts
