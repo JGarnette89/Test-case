@@ -129,6 +129,11 @@ const northSouth = (x, y0, y1, step = 5) => {
 export function trialCity(seed = 1) {
   let m = mapFromBrief(BRIEF, seed);
   m = { ...m, id: "trial-city", name: "Trial city -- the bench brief, large, with a highway and two interchanges" };
+  /* 400 CARS, a flagged choice: the top of what the phone runs (300-400,
+     SIMULATOR.md's measured budget). The density formula gives 900 on this
+     much road -- a sparse map at 400, which density shaping (DECISIONS
+     10.17, verified on the loop only) may be the answer to. */
+  m.traffic = { ...(m.traffic ?? {}), cars: 400 };
   const W = 2000, H = 1500;   // BRIEF.size.large: 4 x 3 blocks of 500 m (brief.js CELL)
   const xs = [0, 500, 1000, 1500, 2000];
 
