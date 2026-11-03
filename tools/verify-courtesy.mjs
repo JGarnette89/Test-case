@@ -46,6 +46,28 @@ console.log("\n1. WHO OFFERS IS THE AXES");
 
 const loop = loadMap(testLoop());
 
+/* ONE WARM-UP, SHARED (3 November). Sections 2-4 warmed seeds 1-6 to
+   120-210 s and section 7 then warmed the same seeds, map and options again
+   from t = 0 to 180 and 240 s -- six fresh warm-ups at 52 s each, over five
+   minutes of this check stepping traffic it had already stepped. A warmed
+   world is unchanged by the trials run against it (they copy it), so the
+   world at a moment is the same whichever path reached it: measured on
+   seed 1 to 240 s, whole world field by field, with the trials of sections
+   2-4 run on the way (tools/measure/courtesy-warm.mjs; the comparison
+   catches a 1e-9 m nudge to one car). So every moment reached is kept, and
+   a later one steps on from the latest kept at or before it. Same worlds,
+   same trials, same sample. */
+const warmed = new Map();
+const warmAt = (seed, at) => {
+  const kept = warmed.get(seed) ?? new Map();
+  warmed.set(seed, kept);
+  const from = Math.max(-1, ...[...kept.keys()].filter((t) => t <= at));
+  let w = from < 0 ? seedGraph(seed, 50, loop, { target: 200, posted: true }) : kept.get(from);
+  while (w.t < at) w = step(w);
+  kept.set(at, w);
+  return w;
+};
+
 console.log("\n2-4. A PLAYER SIGNALLING LEFT AT 90 ON THE HIGHWAY");
 {
   const on = [], off = [], cars = [];
@@ -63,12 +85,10 @@ console.log("\n2-4. A PLAYER SIGNALLING LEFT AT 90 ON THE HIGHWAY");
      of one they do not: the first must give a gap that the same moment
      without courtesy does not, the second must never offer. Chosen by their
      drawn ratings; what they then do is the sim's. */
-  const MOMENTS = 24, PICKS = 2, WANT = { yes: 8, no: 6 }, bases = [], offered = [], overPairs = [], kinds = [];
+  const MOMENTS = 24, PICKS = 2, WANT = { yes: 8, no: 6 }, offered = [], overPairs = [], kinds = [];
   const got = { yes: 0, no: 0 };
   for (let m = 0; m < MOMENTS && (got.yes < WANT.yes || got.no < WANT.no); m++) {
-    let base = bases[m % 6] ?? seedGraph(1 + (m % 6), 50, loop, { target: 200, posted: true });
-    while (base.t < 120 + 30 * Math.floor(m / 6)) base = step(base);
-    bases[m % 6] = base;
+    const base = warmAt(1 + (m % 6), 120 + 30 * Math.floor(m / 6));
     for (let i = 0; i < 4; i++) for (const kind of ["yes", "no"]) for (let pick = 0; pick < PICKS && got[kind] < WANT[kind]; pick++) {
     const only = (a) => courteous(a) === (kind === "yes");
     const ever = new Map();
@@ -191,13 +211,12 @@ console.log("\n7. TAKEN, IT IS NOTICED -- IN THE RUNNING SIM");
   };
   const on = [], off = [];
   for (const seed of [1, 2, 3, 4, 5, 6]) {
-    let base = seedGraph(seed, 50, loop, { target: 200, posted: true });
     /* TWO MOMENTS PER SEED (22 October): at one, 2 trials a side qualified
        once the merge fix changed the traffic the moments are drawn from --
        under the floor of 3, with the property holding in every one. The
        sample, not the floor, was what moved. */
     for (const at of [180, 240]) {
-      while (base.t < at) base = step(base);
+      const base = warmAt(seed, at);
       for (let i = 0; i < 4; i++) { const a = run(base, i, true); if (a) on.push(a); const b = run(base, i, false); if (b) off.push(b); }
     }
   }
