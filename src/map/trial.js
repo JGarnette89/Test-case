@@ -185,10 +185,14 @@ export function trialCity(seed = 1) {
   });
 
   /* THE RAMPS, one lane each, one way: off-ramps at 60, on-ramps at 80, as on the loop. */
+  /* An off-ramp's one lane turns left or right at its terminal, never
+     straight across onto the on-ramp: the general rule offered it, and a
+     car at the stopped east terminal waited 192 s to cross six lanes of
+     free-flowing arterial to get back on the highway it had just left. */
   const ramp = (id, a, b, speed) => {
     const pts = [];
     for (let i = 0; i <= 40; i++) pts.push({ x: r2(a.x + ((b.x - a.x) * i) / 40), y: r2(a.y + ((b.y - a.y) * i) / 40), z: 0 });
-    m.roads.push(road({ id, kind: "arterial", lanes: 1, oneWay: true, speed, points: pts }));
+    m.roads.push(road({ id, kind: "arterial", lanes: 1, oneWay: true, speed, points: pts, ...(id.startsWith("off") ? { turns: { end: [["left", "right"]] } } : {}) }));
   };
   for (const X of [0, 2000]) {
     const ebAt = (x) => ({ x, y: YH + HALF }), wbAt = (x) => ({ x, y: YH - HALF });

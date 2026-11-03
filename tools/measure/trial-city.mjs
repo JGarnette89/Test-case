@@ -42,4 +42,8 @@ console.log(`step: ${(ms / N).toFixed(1)} ms mean`);
 console.log(`overlaps not a crash: ${over} (${[...overPairs].slice(0, 6).join(", ")}); crashes logged: ${crashes}`);
 console.log(`ramps, different cars on each: ${Object.entries(ramps).sort().map(([k, v]) => `${k} ${v.size}`).join(", ") || "none"}`);
 console.log(`cars seen on the highway ${hw.size}, in the city ${city.size}; highway then city ${hwThenCity.size}, city then highway ${cityThenHw.size}`);
+for (const c of (w.crashes ?? [])) {
+  const near = L.nodes.map((n) => ({ n, d: Math.hypot(n.at.x - c.at.x, n.at.y - c.at.y) })).sort((p, q) => p.d - q.d)[0];
+  console.log(`  crash at t ${c.t.toFixed(0)} (${c.at.x.toFixed(0)}, ${c.at.y.toFixed(0)}): ${near.d.toFixed(0)} m from node ${near.n.id} [${near.n.legs.map((l) => `${l.road}:${l.control}`).join(" ")}]`);
+}
 console.log(`longest standstill: ${longest.s.toFixed(0)} s, car ${longest.id} on ${JSON.stringify(longest.roads)} at t ${longest.t?.toFixed(0)}`);
