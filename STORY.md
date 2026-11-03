@@ -208,6 +208,28 @@ Day and night contracts across Red City and its townships:
    game, the dialogue and the missions is metric.
 
 
+6. **THE INSTRUMENTS STAY; THEY ARE RESTYLED, NOT REMOVED.** Verbatim:
+   *"Instrument layer should stay as that's how the player is controlling
+   the game, the current control scheme should be brought to match the
+   aesthetic, not thrown away."* So the slider, the wheel bar, the signal
+   taps and the readouts on them (HOLD, SLOW, STOP, FLW, BRK, the following
+   gap) are kept as they work and redrawn in the period's look -- a
+   restyle of what exists, never a replacement scheme. Answers the
+   instruments half of item 5 below; the NAVIGATION half (the route drawn
+   on the road, the turn banner, against paper slips and street names) was
+   not asked and stays open there.
+7. **ANY CHARACTER CAN GIVE ANY KIND OF MISSION, INCLUDING ONE WITH LIMITED
+   CONTROL.** Verbatim: *"Brenda could give you either mission, so we need
+   to be able to accommodate both. If we wanted, any character could give
+   us a limited control mission, it's not tied to any one person."* So a
+   mission is not tied to its giver, and the job machinery has to carry
+   both seats: the player DRIVING while somebody judges, and the player
+   with LIMITED CONTROL -- examining a candidate who drives (`sim/exam.js`:
+   directions by the turn taps, the instructor's brake on the slider), or
+   any other mission where somebody else has the wheel. Answers items 6
+   and 7 below as far as the build is concerned; Brenda's character stays
+   the story's.
+
 ### Still open
 
 1. ~~**90 mph, and speeding as content.**~~ **RULED above (3, 5).** The project is metric
@@ -236,7 +258,7 @@ Day and night contracts across Red City and its townships:
    to thread. Is the early game meant to feel thin -- the point of the arc
    -- and if so how early does variety arrive? And are the pods also
    NPCs the examiner's candidates share the road with?
-5. **The analog era against what is built.** The route on the road, the
+5. **The analog era against what is built.** (The instruments: RULED, item 6 above. The navigation display: still open.) The route on the road, the
    turn banner, the lane advice and the headway readout are how a phone
    player gets anywhere today (PLAN 7, built 14 October; DECISIONS 10.34
    on drivers told too late). Removing them is a gameplay change, not a
@@ -244,13 +266,13 @@ Day and night contracts across Red City and its townships:
    street-name signs, which it does not yet (`sim/reading.js` reads
    regulatory signs, not names). Restyle now, replace later, or keep them
    as Artie's notes?
-6. **Brenda, rival or examiner?** She was built as a rival driver
+6. **Brenda, rival or examiner?** (For the build: RULED, item 7 above -- she can give either kind of mission.) She was built as a rival driver
    (`sim/rivals.js`: confidence 0, compliance 1; she stops short and
    over-yields) and the timid tail's first character (CHARACTERS.md). As
    the exam mode's zero-tolerance authority she is a different role. Both
    can be true -- a timid driver who examines strictly -- but it is a
    choice.
-7. **The exam mode's place.** PLAN 2 row 3 put it as the Act I prologue
+7. **The exam mode's place.** (RULED, item 7 above: a mission any character can give.) PLAN 2 row 3 put it as the Act I prologue
    (the test that costs the licence) and then teaching at the academy. The
    new document makes it a day job: students through Brenda's routes. That
    is DAY-NIGHT default 6 again.

@@ -284,6 +284,38 @@ dependency argument, placed below where their blocker is built.
 
 ---
 
+## 4b. The architectural audit (1 November) against this order
+
+An external review (Gemini) audited the code against the Red City story in
+three areas; checked against the code on 3 November. **It changes nothing
+in the order above.** Where it lands:
+
+| the audit's phase | where it already sits |
+|---|---|
+| P0, a contract engine replacing the taxi | items 9a-9c. `jobs.js` is already the job machinery with the taxi as its first job, and pay is already separate (`money.js`); what is missing is a job of several stops (9c) and a scoring rule per job, by its metric (9a first). Written the project's way: a job is a RECORD (JOBS.md already gives vehicle, district, difficulty, metric) and its scorer is picked by its metric -- not the audit's `Contract` class with evaluator objects |
+| P1, one screen | the combined-map item (handoff 2026-10-28 evening section 9; DECISIONS 10.35). `ExamRide.jsx` shares `sceneFor` with MapRoad but runs its own canvas and loop. `RoadStrip.jsx` is already imported by nothing |
+| P2, the analog presentation | a presentation pass after that. The instruments are KEPT and restyled (STORY.md 4, ruling 6). The genuinely cheap pieces: a needle speedometer, an odometer, a paper receipt, a dot-matrix caption. NEW SYSTEMS, not restyles: street names (the map format has none, nor signs for them) under any paper route card; audio (the game has none) under CB squelch; an engine model under a tachometer |
+| P3, vehicle kinds and revival | after item 13 and the physics model it now grows to; revival drives the skill dial (`sim/skill.js`) and a vehicle mix |
+
+**The mission rule it needed (STORY.md 4, ruling 7):** a mission is not
+tied to its giver, and the job machinery carries both seats -- the player
+driving while somebody judges, and the player with limited control while
+somebody else drives (the exam mode is the first of these). Build 9a-9c so
+a job names which seat the player is in.
+
+**Its specialist evaluators are mostly blocked:** Hank's on surfaces (14),
+Maya's drift on the physics model (13), Zane's slipstream on drag (not
+modelled), Victor's load shift on articulation and load physics (phase 4).
+Buildable now: Brenda's exam and Artie's courier runs.
+
+**Its checks report** (30 October): the one duplicated warm-up it found
+(`verify-courtesy` section 7) is fixed, 893 s -> 422 s, and a second
+found in the same search (`verify-trucks` sections 3 and 7), 566 s ->
+528 s; outputs identical both times. The other slow checks run distinct
+worlds -- their time is their sample. Saved warmed worlds and per-district
+subgraphs wait for the combined map. Its claim that `verify-screens`
+harnesses `ExaminerDrive` is false (deleted 24 September).
+
 ## 4a. The content already written, against what can be built
 
 **Three external content files now exist, all written against real
