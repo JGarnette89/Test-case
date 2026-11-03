@@ -214,10 +214,12 @@ Day and night contracts across Red City and its townships:
    aesthetic, not thrown away."* So the slider, the wheel bar, the signal
    taps and the readouts on them (HOLD, SLOW, STOP, FLW, BRK, the following
    gap) are kept as they work and redrawn in the period's look -- a
-   restyle of what exists, never a replacement scheme. Answers the
-   instruments half of item 5 below; the NAVIGATION half (the route drawn
-   on the road, the turn banner, against paper slips and street names) was
-   not asked and stays open there.
+   restyle of what exists, never a replacement scheme. **The navigation
+   display falls under the same ruling** (the maintainer, 3 November:
+   "Navigation display falls under the same ruling, restyle it."): the
+   route drawn on the road, the turn banner and the lane advice are kept
+   and restyled. Paper route cards and street names may come as additions;
+   they replace nothing.
 7. **ANY CHARACTER CAN GIVE ANY KIND OF MISSION, INCLUDING ONE WITH LIMITED
    CONTROL.** Verbatim: *"Brenda could give you either mission, so we need
    to be able to accommodate both. If we wanted, any character could give
@@ -258,7 +260,7 @@ Day and night contracts across Red City and its townships:
    to thread. Is the early game meant to feel thin -- the point of the arc
    -- and if so how early does variety arrive? And are the pods also
    NPCs the examiner's candidates share the road with?
-5. **The analog era against what is built.** (The instruments: RULED, item 6 above. The navigation display: still open.) The route on the road, the
+5. **The analog era against what is built.** (RULED, item 6 above: instruments and navigation display both kept and restyled.) The route on the road, the
    turn banner, the lane advice and the headway readout are how a phone
    player gets anywhere today (PLAN 7, built 14 October; DECISIONS 10.34
    on drivers told too late). Removing them is a gameplay change, not a
