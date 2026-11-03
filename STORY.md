@@ -11,6 +11,7 @@ document is silent on several things that one decided (section 5).
 
 **RULED, 3 November (section 4, at its top): a full physics model is the
 endpoint; anybody can be raced; night is free driving; the region is
+one region with one set of rules, its roads drawn from places like
 southwestern Ontario and Michigan; metric always.**
 
 **RECORDED AS DIRECTION, WITH SIX THINGS IT DOES NOT SAY (section 5).**
@@ -187,23 +188,25 @@ Day and night contracts across Red City and its townships:
    is still named truly where the game names one, and "the fiction can be
    strange, the law cannot" is about describing the rules truthfully, not
    about stopping the player breaking them.
-4. **THE REGION IS SOUTHWESTERN ONTARIO AND MICHIGAN.** Verbatim: *"I wanted
-   something that felt similar to home but allowed for a variety of
-   environments. SW Ontario/Michigan give you almost every type of road you
-   could drive on. The map editor could always create a new environment,
-   this is just what we will focus on."* The Windsor-Detroit reading is
-   intended as a FEEL, which revises DISTRICTS.md correction 2's "modelled
-   on no one place": the region is now named. Its naming rule -- functional
-   names, no named real route such as Highway 401 -- was not raised and
-   stands.
+4. **ONE REGION, ONE SET OF RULES, WITH THE ROADS OF A PLACE LIKE HOME.**
+   Verbatim: *"I wanted something that felt similar to home but allowed for
+   a variety of environments. SW Ontario/Michigan give you almost every type
+   of road you could drive on. The map editor could always create a new
+   environment, this is just what we will focus on."* And, correcting the
+   first record of it the same day: *"I didn't intend for the region to have
+   an international split. So the same rules would apply. I used Ontario and
+   Michigan as examples only."* So Miskawin is ONE fictional region with ONE
+   rule set -- the project's default, Ontario practice read the general North
+   American way (CLAUDE.md, domain authority) -- and southwestern Ontario
+   and Michigan are EXAMPLES of the variety of road it should have, not
+   places it is set in or split between. **The bridge is a bridge, not a
+   border**: the document's "international bridge" stays a landmark and a
+   bottleneck, with nothing on the far side that changes the rules. This
+   leaves DISTRICTS.md correction 2 ("modelled on no one place") standing,
+   naming rule included.
 5. **METRIC ALWAYS.** Zane's 90 mph is 145 km/h, and every unit in the
    game, the dialogue and the missions is metric.
 
-**One question the region raises, for when it matters:** an international
-bridge puts Michigan on the far side. Where Michigan and Ontario law
-genuinely differ (rather than being worded differently), which applies
-across the river is a domain call -- CLAUDE.md's rule is to take the
-general North American reading and pick any real difference deliberately.
 
 ### Still open
 
@@ -215,7 +218,7 @@ general North American reading and pick any real difference deliberately.
    allowed and **always judged as illegal; the law is never misdescribed**
    -- and CLAUDE.md's "humour is allowed, the traffic law is not". Does
    that default stand for Zane and Maya?
-2. ~~**"Modelled on no one place."**~~ **RULED above (4).** DISTRICTS.md correction 2 (the
+2. ~~**"Modelled on no one place."**~~ **RULED above (4): it still is; one region, one rule set.** DISTRICTS.md correction 2 (the
    maintainer, 14 October): functional North American names, the city
    modelled on no one place, no named real route. A rust-belt motor-town
    with an international bridge on the Great Lakes reads strongly as
