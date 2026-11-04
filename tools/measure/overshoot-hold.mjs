@@ -30,6 +30,7 @@ const bump = (o, k) => { o[k] = (o[k] ?? 0) + 1; };
 for (const seed of seedsArg.split(",").map(Number)) {
   let w = seedGraph(seed, 50, city, { target: Number(carsArg), posted: true, rivals: true });
   if (process.env.MARGIN === "1") w = { ...w, marginCanStop: true };
+  if (process.env.CAUTION === "1") w = { ...w, sightCaution: true };
   const releasedAt = new Map(), counted = new Set();
   out.checks = w.checks === true;
   const entry = new Map(), hold = new Map();

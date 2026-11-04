@@ -104,6 +104,10 @@ export const DIFFICULTY = {
      check is the harder. LAST, as above. */
   "shoulder-check": 0.25,
   "left-right-left": 0.10,
+  /* A BLOCKED SIGHTLINE WARRANTS CAUTION (DECISIONS 10.39): knowing that what a
+     truck hides could come out. 0.25 placed WITHOUT A RULING, flagged: the
+     maintainer's to set. LAST, as above. */
+  "blocked-sightline": 0.25,
 };
 /* HOW WELL A KIND OF SIGN HAS STUCK WITH THIS DRIVER: one draw per driver
    per KIND, never per encounter -- knowledge is consistent (a driver who

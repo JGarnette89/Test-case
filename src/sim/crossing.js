@@ -1596,7 +1596,8 @@ export function whatStops(me, world) {
       if (u === "hold" || u === "stop") consider(toEnd + restAt(p2, me), { id: "line", v: 0, headway: me.headway });
     }
   }
-  return { leader, gap, held, ...(byHidden ? { byHidden } : {}), queued, hold: short && (under === "hold" || dawdling), red: short && under === "hold", ...(seenNow ? { seen: seenNow } : {}) };
+  const cover = world.sightCaution === true && tall.length ? coverOf(world, me, layout, mine, eye, tall) : null;
+  return { leader, gap, held, ...(cover ? { cover } : {}), ...(byHidden ? { byHidden } : {}), queued, hold: short && (under === "hold" || dawdling), red: short && under === "hold", ...(seenNow ? { seen: seenNow } : {}) };
 }
 
 /* THE MARGIN FOR WHAT YOU CANNOT SEE IS CONFIDENCE (CLAUDE.md: occlusion
@@ -1650,9 +1651,74 @@ function sampleAt(p2, from, j) {
   while (list.at.length <= j) list.at.push(list.at[list.at.length - 1] - 3);
   return list.pose[j] ?? (list.pose[j] = poseAt(p2, list.at[j]));
 }
+/* THE FIRST STRETCH OF A ROAD THAT CROSSES MINE THAT IS HIDDEN AND COULD HOLD SOMEBODY, walking back from where it meets mine. */
+function hiddenOn(p2, meet, speed, inLane, eye, cones, tall) {
+  for (let s = meet.a, j = 0; s >= Math.max(0, meet.a - speed * PHANTOM_LOOK); s -= 3, j++) {
+    /* Nothing comes through a truck in that road's own lane. */
+    if (inLane.some((a) => a.s > s)) return null;
+    const q = sampleAt(p2, meet.a, j);
+    if (!blockedFrom(eye, q, cones)) continue;
+    /* ...nor where a truck itself stands: road a truck covers is hidden and has no room for anybody. */
+    if (tall.some((b) => segHitsBox(q, q, { ...b, l: b.l + 5, w: b.w + 5 }))) continue;
+    return { s, j };
+  }
+  return null;
+}
+
+/* A BLOCKED SIGHTLINE: where the nearest hidden road meets mine, and the speed to
+   have reached by the line for it (DECISIONS 10.39, the maintainer: "cover the
+   brake and use caution wherever a sightline is blocked"). Whatever the crossing
+   road's standing: "wherever". THE SPEED IS DERIVED: the one from which, foot over
+   the brake (REACTION_FLOOR), this car could stop at its hardest short of that
+   point. A pure question about the road and the trucks, nothing about the driver's
+   skill: a check asks it of drivers who do not respond at all. */
+export function blockedSightline(world, me) {
+  const layout = layoutOf(world, me), mine = pathOf(world, me), at = waitAt(mine, me);
+  if (!(me.s < at) || !world.tall?.length) return null;
+  const pose = poseOnce(world, me);
+  const tall = world.tall.filter((b) => b.id !== me.id && Math.abs(b.x - pose.x) < SIGHT_NEAR && Math.abs(b.y - pose.y) < SIGHT_NEAR);
+  return tall.length ? sightlineFrom(world, me, layout, mine, eyeOf(pose, me), tall) : null;
+}
+function sightlineFrom(world, me, layout, mine, eye, tall) {
+  const myBase = layout.legs[mine.from]?.base ?? mine.from, ids = actorById(world.actors), at = waitAt(mine, me);
+  const trucksHere = [];
+  for (const b of tall) { const a = ids.get(b.id); if (a && (a.k ?? 0) === (me.k ?? 0)) trucksHere.push(a); }
+  const cones = conesFrom(eye, tall);
+  let nearest = Infinity;
+  for (const [r2, p2] of pathList(layout)) {
+    if (r2 === me.route || (layout.legs[p2.from]?.base ?? p2.from) === myBase) continue;
+    const meet = conflictOf(layout, r2, me.route);
+    if (!meet || meet.b >= nearest) continue;
+    const speed = (world.road.posted ? postedAt(world.course, me.k ?? 0, r2) : null) ?? world.road.speed;
+    const inLane = trucksHere.filter((a) => inLaneOf(layout, a, r2));
+    if (hiddenOn(p2, meet, speed, inLane, eye, cones, tall)) nearest = meet.b;
+  }
+  if (nearest === Infinity) return null;
+  const room = Math.max(0.5, nearest - at), most = vehicleOf(me).most;
+  return { at, room, vc: most * (Math.sqrt(REACTION_FLOOR * REACTION_FLOOR + (2 * room) / most) - REACTION_FLOOR) };
+}
+/* THE DRIVER'S RESPONSE: three axes, three different signatures. KNOWLEDGE, a constant:
+   not knowing it warrants caution, they never slow. OBSERVATION, a rate: anticipates()
+   decides per occasion; a driver reacting begins their registration lag late, from the
+   wanted speed so the moment does not move as they slow, and arrives faster. CONFIDENCE, a
+   size: the bold shave only part of it, the maximally bold nothing, the timid more. */
+function coverOf(world, me, layout, mine, eye, tall) {
+  if (me.player || me.going || !reads(me, "blocked-sightline")) return null;
+  const at = waitAt(mine, me), d = at - me.s, c = me.caution ?? 1, brake = me.brake ?? 2.7, want = me.v0 ?? me.v ?? 0;
+  if (d <= 0 || c <= 0 || d > (want * want) / (2 * brake) + 5) return null;
+  const seen = sightlineFrom(world, me, layout, mine, eye, tall);
+  if (!seen) return null;
+  const vc = c > 1 ? seen.vc / c : want - (want - Math.min(want, seen.vc)) * c;
+  const need = (want * want - vc * vc) / (2 * brake);
+  if (d > (anticipates(me, `sight:${me.k ?? 0}:${me.route}`, world) ? need : need - want * (me.notices ?? REACTION_FLOOR))) return null;
+  return { vc, at };
+}
+
 function phantomHolds(world, me, layout, mine, eye, tall) {
   const assume = Math.max(0, Math.min(1, me.caution ?? 1));
   if (assume <= 0) return false;
+  /* CAUTION, NOT A STOP, FOR A DRIVER UNDER WAY (DECISIONS 10.39; off by default): coverOf answers for them. At rest, deciding to launch, the hold stands: nobody pulls out blind. */
+  if (world.sightCaution === true && (me.v ?? 0) >= AT_REST) return false;
   /* A HOLD NO BRAKES CAN OBEY IS NOT A HOLD (4 November; IN FLIGHT 40; OFF by
      default, on trial). A truck can move into line at any distance, and the
      margin then asked a driver at 15 m/s, 3 m from their line, for a median
@@ -1681,14 +1747,9 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
        this a truck waiting at its line held every driver whose path it
        crossed: drivers at a line held 26% of the time against 14%.) */
     const inLane = trucksHere.filter((a) => inLaneOf(layout, a, r2));   // in that lane physically (occupancy.js): a truck past its split hides nothing of it
-    for (let s = meet.a, j = 0; s >= Math.max(0, meet.a - speed * PHANTOM_LOOK); s -= 3, j++) {
-      if (inLane.some((a) => a.s > s)) break;
-      const q = sampleAt(p2, meet.a, j);
-      if (!blockedFrom(eye, q, cones)) continue;
-      /* ...nor where a truck itself stands: road a truck covers is hidden
-         and has no room for anybody (a truck crossing the box ahead held
-         the car behind it for the stretch of cross road it stood on). */
-      if (tall.some((b) => segHitsBox(q, q, { ...b, l: b.l + 5, w: b.w + 5 }))) continue;
+    const found = hiddenOn(p2, meet, speed, inLane, eye, cones, tall);
+    if (found) {
+      const { s, j } = found;
       /* OBJECT PERMANENCE. A vehicle can be in the hidden stretch only if it
          got there unseen: where the road beyond the stretch is in view,
          anything in it came through the part this driver is watching, so
@@ -1700,7 +1761,7 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
       let far = null;
       for (let s2 = s - 3, j2 = j + 1; s2 >= Math.max(0, meet.a - speed * PHANTOM_LOOK); s2 -= 3, j2++) if (!blockedFrom(eye, sampleAt(p2, meet.a, j2), cones)) { far = s2; break; }
       const waited = me.stoppedAt != null ? (world.t ?? 0) - me.stoppedAt : 0;
-      if (far != null && waited > (s - far) / Math.max(speed, 1) + REACTION_FLOOR) break;
+      if (far != null && waited > (s - far) / Math.max(speed, 1) + REACTION_FLOOR) continue;
       /* AND WHERE THE WHOLE APPROACH IS HIDDEN, not for ever: past the
          wait the maintainer marks as undue delay (UNDUE_AT), scaled by
          this driver's own caution, they conclude nothing is coming -- the
@@ -1708,10 +1769,9 @@ function phantomHolds(world, me, layout, mine, eye, tall) {
          driver edges forward to see past the truck; creeping for a view is
          not modelled yet, and without this a driver with the right of way
          and a truck that waited for them stood each other off for ever. */
-      if (far == null && waited > UNDUE_AT * (me.caution ?? 1)) break;
+      if (far == null && waited > UNDUE_AT * (me.caution ?? 1)) continue;
       const ghost = { id: "phantom", k: me.k ?? 0, route: r2, s, v: speed * assume, stoppedAt: null, going: false, accepted: false, kind: "car", caution: 1 };
       if (blockedBy(me, ghost, layout, me.caution, world.t ?? 0, liveOf(world, me.k))) return true;
-      break;
     }
   }
   return false;
@@ -1878,7 +1938,8 @@ export function step(world) {
          model. The real `view` still decides right of way below. */
       /* MEETING A GAP (lanechange.js gapTarget): a joiner holding the speed that brings it level with the gap it picked -- through the same following model, its wanted speed set to that one. Only on its acceleration lane. */
       const meeting = raw.mergeV != null && layoutOf(world, raw).legs[pathOf(world, raw).to]?.accel ? decide({ ...me, v0: Math.max(0.1, raw.mergeV) }, view) : Infinity;
-      const a = Math.min(told, meeting, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world), offer && !offer.done ? courtesyAccel(world, me, mineAsk.ask, mineAsk.who) : Infinity);
+      const covering = view.cover ? Math.max(speedBy(me, view.cover.vc, view.cover.at), -(me.brake ?? 2.7)) : Infinity;
+      const a = Math.min(told, meeting, covering, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world), offer && !offer.done ? courtesyAccel(world, me, mineAsk.ask, mineAsk.who) : Infinity);
       const v = Math.max(0, me.v + a * DT);
       const s = me.s + v * DT;
       const mine = pathOf(world, me);
