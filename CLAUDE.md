@@ -11,6 +11,8 @@ More than one agent works in this repository. Anything decided by argument
 and not written down is invisible to every tool that was not part of that
 argument, so the documentation is a CONTRACT rather than a diary.
 
+**STANDING INSTRUCTION FROM THE MAINTAINER: "I want to avoid adding 50 half-cooked features." Cite it when anything new is proposed (DECISIONS 10.38).**
+
 **THE ORDER OF ALL WORK IS [PLAN.md](PLAN.md) (13 October 2026)**: every
 recorded piece of design -- story, characters, vehicles, garage, day and
 night, objectives, dialogue -- reconciled into one sequence with its
@@ -78,7 +80,11 @@ checks is HISTORY -- the reasoning still holds where it is about the law
 or the axes, and the code is in git. `verify-core` holds that nothing
 reaches for it.
 
-**[HANDOFF-2026-10-28.md](HANDOFF-2026-10-28.md) is where the last session stopped: the checks gates, the skill dial and readout as a falsification test, the "too polite" measurement, destinations, and the self-occlusion finding.**
+**[HANDOFF-2026-10-28-evening.md](HANDOFF-2026-10-28-evening.md) IS WHERE THE LAST SESSION STOPPED -- READ IT FIRST.** The repository's own checkout is on branch `lane-occupancy`, NOT `main`; its branches (38, 39, 40's switches, aggression phase 1), unmerged and pushed on 3 November, and a test tree left local, with their worktrees in the ignored `tools/scratch/kr/`; the agreed order and its reasons; what waits on Jay; what not to do. And section 9: Jay's new item -- one combined map, and features as a property of the world, not the screen (DECISIONS 10.35).
+
+**[HANDOFF-2026-10-28.md](HANDOFF-2026-10-28.md) is the session before that: the checks gates, the skill dial and readout as a falsification test, the "too polite" measurement, destinations, and the self-occlusion finding.**
+
+**THE SETTING CHANGED ON 3 NOVEMBER: [STORY.md](STORY.md) is now Red City, in Miskawin, in the 1980s-90s analog era**, with Artie Brooks's dispatch board and five specialists in place of four rivals. **Seven rulings are settled (STORY.md section 4): a full physics model as the endpoint, anybody can be raced, night is free driving, one region with one rule set, metric always, the instruments and navigation display kept and restyled, and any character can give any mission.** Still open and the maintainer's: section 4's remaining conflicts and section 5, including the player's premise, the campaign, and how pods fit. No code changes on the record alone.
 
 **[HANDOVER.md](HANDOVER.md) is the residue of the session that built
 signals, corner slowing, lane changing and keep-right (24 September),
@@ -205,6 +211,15 @@ Eight things to know before your first change:
      outside `src/sim/` -- before a milestone ships, and when something
      unexplained happens. Not per iteration, ever.
    - **The old engine's 22 checks are gone with it** (cut C, 14 October).
+   - **Do not cache warmed worlds to speed the suite up: a snapshot tied to
+     the sim is invalid exactly when the check runs, and one not tied to it
+     tests new code on traffic it would not produce. A subgraph is fine only
+     with traffic still crossing its edges.** DECISIONS 10.36.
+   - **Never make a notification the only way a run gets read.** A session
+     went idle on one on 28 October and was not woken; every run on 3 November
+     did notify, so this is one incident and not a standing fault. Leave a long
+     fallback rather than a polling loop, and read the file when asked.
+     TESTING.md.
    - **A slow check is cut to the sample it needs, measured, never
      guessed.** Its floors are compared with what it actually counts; the
      sample comes down while every count stays clear of its floor, a

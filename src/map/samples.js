@@ -54,6 +54,7 @@
 import { emptyMap, road } from "./format.js";
 import { fillZone, fillLots } from "./generate.js";
 import { loadMap } from "./load.js";
+import { trialCity } from "./trial.js";
 
 /* A straight stroke, or a bowed one: `bow` metres sideways at the
    middle, so a road can bend without anybody computing an arc. */
@@ -433,6 +434,8 @@ export function testLoop() {
    (the city is generated, so it is built only when opened). */
 export const TEST_MAPS = [
   { id: "city", name: "Stand-in city", blurb: "Two neighbourhoods with their own drivers, parked cars, buildings, an arterial loop and a collector on signals.", build: testCityReady },
+  /* SECOND, not first: the screen builds its first map the moment it opens, and this one is generated large (about 10 s here). */
+  { id: "trial-city", name: "Trial city", blurb: "The trial for the final map: a large city of every intersection type, a downtown and buses, with a divided highway past it joined by two diamond interchanges -- signals on one, stopped ramps on the other -- and an exit-only lane. Traffic comes and goes at the highway's ends and the city's edges.", build: () => trialCity(1) },
   { id: "test-peds", name: "Pedestrians", blurb: "Crosswalks at a four-way stop and at an uncontrolled crossroads, and the people who walk them.", build: testPeds },
   { id: "test-signs", name: "Signs", blurb: "A yield crossroads and an uncontrolled crossroads on one through road.", build: testSigns },
   { id: "test-buses", name: "Buses", blurb: "Curb stops and bays on a two-lane collector: a bus stops, people get off and on, the traffic waits behind it or passes the bay, and gives way to a bus pulling out -- if it knows to.", build: testBuses },

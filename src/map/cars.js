@@ -21,5 +21,10 @@ export const CARS = { min: 10, max: 300, step: 10, start: 120 };
 export const DENSITY = 120 / 28.5;
 export const CARS_CEILING = 600;
 const round10 = (n) => Math.round(n / 10) * 10;
-export const carsFor = (loaded) => Math.max(CARS.min, round10(DENSITY * (loaded?.laneKm ?? 28.5)));
+/* A MAP MAY SAY ITS OWN (load.js `traffic.cars`, 3 November): the trial
+   city's 211 lane-km gave 900 by the formula -- over this dial's own top of
+   600, and more than twice what the phone runs. Kept inside the dial. */
+export const carsFor = (loaded) => (loaded?.traffic?.cars > 0
+  ? Math.max(CARS.min, Math.min(carsMaxFor(loaded), loaded.traffic.cars))
+  : Math.max(CARS.min, round10(DENSITY * (loaded?.laneKm ?? 28.5))));
 export const carsMaxFor = (loaded) => Math.min(CARS_CEILING, Math.max(CARS.max, round10(3 * DENSITY * (loaded?.laneKm ?? 28.5))));

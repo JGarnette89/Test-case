@@ -61,6 +61,12 @@ generated stand-in city instead).
 | 8 | CHARACTERS/VEHICLES: a motorcycle that filters between lanes | Ontario law: lane filtering is not legal; the sim assumes one vehicle per lane | **Cut the filtering**; a motorcycle, if ever, is a narrow rigid row in `VEHICLES` that keeps its lane (section 6) |
 | 9 | SIMULATOR.md section 8 and the reframe: "one continuous handmade ~8 km² world" | practice: generated districts inside drawn shapes, test maps | **Both, staged**: the handmade blockout (the maintainer's) with generation inside it remains the target; until then, test maps carry each feature |
 | 10 | CLAUDE.md, the roguelike/purgatory sections, Purgatory Road artifact | STORY.md | **STORY.md**; the roguelike is deleted code (cut B) and its notes are history |
+| 11 | STORY.md (13 Oct): Metro Grid, present day, A.U.T.O. watching human drivers | STORY.md (3 Nov): Red City, Miskawin, 1980s-90s analog, A.U.T.O. has replaced drivers with pods | **3 Nov is the setting**; its premise, acts, mentor and rivals are unstated, so the 13 Oct answers stand until the maintainer says otherwise (STORY.md 5) |
+| 12 | PLAN 6: drifting and weight transfer deferred; grip, not a slip model | STORY.md (3 Nov): weight transfer in the core vision; drift is Maya's discipline | **RULED 3 Nov: a full physics model (grip and weight transfer, per vehicle and surface) is the endpoint**; items 13-14 grow to it. Open: whether the traffic shares it (STORY.md 4) |
+| 13 | DIALOGUE.md: all units metric; DAY-NIGHT default 1: illegal driving always judged as illegal | Zane: dodging speed gantries "at 90 mph" | **RULED 3 Nov: metric always; default 1 withdrawn** -- night is free driving with calmer traffic in places, content unrestricted; whether anything answers it is the story's (STORY.md 4) |
+| 14 | DISTRICTS.md correction 2: the city modelled on no one place | a Great Lakes border motor-town with an international bridge | **RULED 3 Nov: one fictional region, one rule set** -- southwestern Ontario and Michigan are examples of the road variety wanted, not a setting or a border; the bridge is not international in effect; correction 2 stands (STORY.md 4) |
+| 15 | PLAN 7 (built): the route on the road, the turn banner, lane advice | the analog era: paper slips, street names, no digital navigation | **RULED 3 Nov: kept and restyled, never replaced** (STORY.md 4, ruling 6); paper route cards and street names may come as additions, and street-name signs do not exist yet |
+| 16 | DAY-NIGHT default 11: missions on a phone/dispatch screen | Artie's carbon-copy board | **Artie's board** -- the same screen, in period; no gameplay change |
 
 ---
 
@@ -217,15 +223,21 @@ dependency argument, placed below where their blocker is built.
 13. **Per-vehicle and per-surface handling** -- the global constants
     (`stoppingRoom`, `BRAKE`, `LATERAL`, `radiusFor`, grip) become
     properties of a vehicle and of a surface, as the per-road speed limits
-    did. SHARED. Two to three weeks.
+    did. SHARED. Two to three weeks. **3 November: the first step toward
+    a full physics model -- grip and weight transfer per vehicle and
+    surface -- which is now the endpoint (STORY.md 4, item 1); drift falls
+    out of it. The player's car first; whether the traffic shares it is
+    open.** Costed then: months, not weeks.
 14. **Surfaces** -- gravel, wet asphalt; grip and the traffic's corner
-    speeds follow; weather reuses it later. SHARED. One to two weeks.
+    speeds follow; weather reuses it later -- and lake-effect snow and ice
+    are now in the setting. SHARED. One to two weeks.
     **Gravel unlocks two jobs** (rural produce delivery, gravel quarry
     haul) **and Hannah's district** -- the job list corroborates it as a
     shared foundation independently.
 15. **Head-to-head racing** -- a course of checkpoints (C), an opponent
-    that drives TO it with a rival's profile, sanctioned events first
-    (DAY-NIGHT.md default 1). SHARED for all four rivals. Three weeks.
+    that drives TO it with any driver's profile -- named or not, as the
+    mission says (the maintainer, 3 November: "anybody we want to"; e.g.
+    Zane offers a race against NPCs on the highway). SHARED. Three weeks.
 16. **Day and night** -- the density dial by time, the night's rule set,
     night rendering (lamps exist; headlights and darkness do not; the
     `shadowBlur` cost noted). SHARED. Two to three weeks.
@@ -272,6 +284,46 @@ dependency argument, placed below where their blocker is built.
 
 ---
 
+## 4b. The architectural audit (1 November) against this order
+
+An external review (Gemini) audited the code against the Red City story in
+three areas; checked against the code on 3 November. **It changes nothing
+in the order above.** **Provenance:** `ARCHITECTURAL-AUDIT.md` and
+`REPORT-CHECKS.md` were supplied by the maintainer and committed on 3 November
+(this section was written before they were read here and has not been rechecked
+line by line). Conflicts with the story: DECISIONS 10.37. Where it lands:
+
+| the audit's phase | where it already sits |
+|---|---|
+| P0, a contract engine replacing the taxi | items 9a-9c. `jobs.js` is already the job machinery with the taxi as its first job, and pay is already separate (`money.js`); what is missing is a job of several stops (9c) and a scoring rule per job, by its metric (9a first). Written the project's way: a job is a RECORD (JOBS.md already gives vehicle, district, difficulty, metric) and its scorer is picked by its metric -- not the audit's `Contract` class with evaluator objects |
+| P1, one screen | the combined-map item (handoff 2026-10-28 evening section 9; DECISIONS 10.35). `ExamRide.jsx` shares `sceneFor` with MapRoad but runs its own canvas and loop. `RoadStrip.jsx` is already imported by nothing |
+| P2, the analog presentation | a presentation pass after that. The instruments AND the navigation display (route on the road, turn banner, lane advice) are KEPT and restyled (STORY.md 4, ruling 6). The genuinely cheap pieces: a needle speedometer, an odometer, a paper receipt, a dot-matrix caption. NEW SYSTEMS, not restyles: street names (the map format has none, nor signs for them) under any paper route card; audio (the game has none) under CB squelch; an engine model under a tachometer |
+| P3, vehicle kinds and revival | after item 13 and the physics model it now grows to; revival drives the skill dial (`sim/skill.js`) and a vehicle mix. **Position open: see below** |
+
+**The vehicle archetypes: the project lead's view, for the order, not yet set with the maintainer.** Its best and cheapest item: distinct physics per class is mostly a data table, and it is what makes a rusted sedan feel different from a tuned import. **It is not free.** Populating them moves every world and re-baselines every check, so it belongs after the world settles (39, 40). **Read against the code:** `VEHICLES` already has `accel`, `brake`, `most`, `cap` and `lateral` per row, so the longitudinal half is data; `radiusFor` and grip, per PLAN 13, are what to check next. A row nobody draws moves nothing, since trucks have their own stream. **DO NOT COPY THE AUDIT'S TABLE AS WRITTEN: its `cap` values are a defect.** An ordinary car's `cap` is `Infinity`, so `v8_muscle` at 1.4, `tuned_compact` at 1.35 and `rust_sedan` at 1.25 would all limit cars an ordinary car is not limited beside, the reverse of what those rows are for. It also cuts into the speed spread already tuned (`wantedFor`). And STORY.md section 3 still stands against the audit's `variance` and `headway` as vehicle fields: the driver owns those.
+
+**The mission rule it needed (STORY.md 4, ruling 7):** a mission is not
+tied to its giver, and the job machinery carries both seats -- the player
+driving while somebody judges, and the player with limited control while
+somebody else drives (the exam mode is the first of these). Build 9a-9c so
+a job names which seat the player is in.
+
+**Its specialist evaluators are mostly blocked:** Hank's on surfaces (14),
+Maya's drift on the physics model (13), Zane's slipstream on drag (not
+modelled), Victor's load shift on articulation and load physics (phase 4).
+Buildable now: Brenda's exam and Artie's courier runs.
+
+**Its checks report** (30 October; **its timings are loaded-run numbers, not costs**, TESTING.md): a duplicated
+warm-up in `verify-courtesy` section 7, and a second found in the same search,
+`verify-trucks` sections 3 and 7. **Both fixed, sabotaged and on `main`**
+(TESTING.md): side by side under one load, 593 s -> 434 s and 571 s -> 548 s,
+output identical line for line. "The other slow checks run distinct worlds -- their time
+is their sample" is that session's claim, not verified. **Cached warmed worlds are refuted; district subgraphs stand only with traffic
+kept flowing across their edges: DECISIONS 10.36.** Its keep-right worker-thread
+recommendation is approved by the project lead, sabotage first; **not started,
+its text is now read: run `verify-keepright`'s three modes in worker threads (section 6, claiming 811 s to about 300 s, a loaded-run starting figure).** The report's claim that `verify-screens` harnesses `ExaminerDrive` is
+false (deleted 24 September; confirmed by search on 3 November).
+
 ## 4a. The content already written, against what can be built
 
 **Three external content files now exist, all written against real
@@ -313,7 +365,8 @@ mechanic means something different in each place (DISTRICTS.md).
   kept as an asset (SIMULATOR.md roadmap), nothing more.
 - **Motorcycle lane filtering** -- cut (illegal in Ontario; breaks one
   vehicle per lane everywhere). A motorcycle at all: deferred.
-- **Drifting and weight transfer** as physics -- deferred; Hannah's county
+- ~~**Drifting and weight transfer** as physics -- deferred~~ **REINSTATED 3
+  November as the endpoint of items 13-14 (STORY.md 4, item 1).** Was: deferred; Hannah's county
   gets surfaces (grip), not a slip model.
 - **Parking lots as simulated places** (the Costco lot: carts, circling,
   queues) -- deferred indefinitely; a destination at a lot's entrance

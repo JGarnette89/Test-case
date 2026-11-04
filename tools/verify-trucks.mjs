@@ -97,12 +97,59 @@ console.log("\n2. IN TRAFFIC");
   console.log(`   (crashes involving a truck in ten minutes of the city at 200 cars: ${truckCrashes.length})`);
 }
 
+/* ONE CITY, TWO QUESTIONS (3 November). Sections 3 and 7 each stepped the
+   same world -- seed 3, the city, 200 cars, 30% trucks -- from t = 0 for
+   180 s. It now runs once, in section 3, and section 7's observer watches
+   every tick of it; neither observer writes the world. Same world, same
+   ticks, same counts (the two versions' output compared line for line). */
+const sec7 = (() => {
+  const spare = (3.6 - VEHICLES.truck.width) / 2, half = VEHICLES.truck.length / 2;
+  const cut = (p) => {
+    /* The tightest curvature along the turn, from headings 3 m apart. */
+    let k = 0;
+    for (let s = p.stopAt; s + 3 <= p.clearAt; s += 0.5) {
+      let d = ((poseAt(p, s + 3).rot - poseAt(p, s).rot) * Math.PI) / 180;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      k = Math.max(k, Math.abs(d) / 3);
+    }
+    if (k < 1e-3) return 0;
+    const r = 1 / k;
+    return r > half ? r - Math.sqrt(r * r - half * half) : Infinity;
+  };
+  const st = { turns: 0, tooTight: 0, avoidable: 0, seen: new Set() };
+  const watch = (w) => {
+    let { turns, tooTight, avoidable } = st;
+    const seen = st.seen;
+    for (const a of w.actors) {
+      if (a.kind !== "truck") continue;
+      /* The turn taken is the route it has as it crosses the line -- a
+         truck placed in a turning lane changes lanes before it. */
+      const key = `${a.id}@${a.k}`;
+      const L = layoutOf(w, a), p = pathOf(w, a);
+      if (seen.has(key) || a.s < p.stopAt) continue;
+      seen.add(key);
+      if (p.intent === "straight") continue;
+      turns++;
+      if (cut(p) > spare) {
+        tooTight++;
+        const base = L.legs[p.from]?.base;
+        const others = Object.keys(L.paths).filter((r) => L.legs[L.paths[r].from]?.base === base);
+        if (others.some((r) => L.paths[r].intent === "straight" || cut(L.paths[r]) <= spare)) avoidable++;
+      }
+    }
+    Object.assign(st, { turns, tooTight, avoidable });
+  };
+  return { st, watch };
+})();
+
 console.log("\n3. A LONG VEHICLE SPANS ITS PATH");
 {
   let w = seedGraph(3, 50, city, { target: 200, posted: true, trucks: 0.3 });
   let worst = 0, turning = 0;
   for (let i = 0; i < 180 / DT; i++) {
     w = step(w);
+    sec7.watch(w);
     if (i % 4) continue;
     for (const a of w.actors) {
       if (a.kind !== "truck" || a.lc || a.crash) continue;
@@ -205,43 +252,7 @@ console.log("\n7. A TRUCK DOES NOT TAKE A CORNER IT CANNOT MAKE");
      split. A tight right from a stop cut 2 m inside, over the curb, onto
      somebody waiting there. Counted: every turn a truck set out on, and
      whether its leg offered a way on it could make instead. */
-  let w = seedGraph(3, 50, city, { target: 200, posted: true, trucks: 0.3 });
-  const spare = (3.6 - VEHICLES.truck.width) / 2, half = VEHICLES.truck.length / 2;
-  const cut = (p) => {
-    /* The tightest curvature along the turn, from headings 3 m apart. */
-    let k = 0;
-    for (let s = p.stopAt; s + 3 <= p.clearAt; s += 0.5) {
-      let d = ((poseAt(p, s + 3).rot - poseAt(p, s).rot) * Math.PI) / 180;
-      while (d > Math.PI) d -= 2 * Math.PI;
-      while (d < -Math.PI) d += 2 * Math.PI;
-      k = Math.max(k, Math.abs(d) / 3);
-    }
-    if (k < 1e-3) return 0;
-    const r = 1 / k;
-    return r > half ? r - Math.sqrt(r * r - half * half) : Infinity;
-  };
-  let turns = 0, tooTight = 0, avoidable = 0;
-  const seen = new Set();
-  for (let i = 0; i < 180 / DT; i++) {
-    w = step(w);
-    for (const a of w.actors) {
-      if (a.kind !== "truck") continue;
-      /* The turn taken is the route it has as it crosses the line -- a
-         truck placed in a turning lane changes lanes before it. */
-      const key = `${a.id}@${a.k}`;
-      const L = layoutOf(w, a), p = pathOf(w, a);
-      if (seen.has(key) || a.s < p.stopAt) continue;
-      seen.add(key);
-      if (p.intent === "straight") continue;
-      turns++;
-      if (cut(p) > spare) {
-        tooTight++;
-        const base = L.legs[p.from]?.base;
-        const others = Object.keys(L.paths).filter((r) => L.legs[L.paths[r].from]?.base === base);
-        if (others.some((r) => L.paths[r].intent === "straight" || cut(L.paths[r]) <= spare)) avoidable++;
-      }
-    }
-  }
+  const { turns, tooTight, avoidable, seen } = sec7.st;
   console.log(`   (${turns} turns set out on by trucks, ${tooTight} of them tighter than a truck can make, where the leg offered no other way on)`);
   check(avoidable === 0 && seen.size > 40, `no truck sets out on a corner it cannot make when its leg offers another way on (${avoidable} of ${seen.size} truck passages)`);
 }

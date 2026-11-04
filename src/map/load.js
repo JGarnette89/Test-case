@@ -583,8 +583,12 @@ export function loadMap(map) {
   /* ...and whether its traffic is SHAPED around a player (sim/shaping.js):
      a map's own choice, because where it helps is measured per map -- the
      endless highway's corridor, not a dense grid (DECISIONS 10.17). */
-  const traffic = Number.isFinite(tr) || map.traffic?.shape === true
-    ? { ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}) }
+  /* ...and how many cars it is meant to be driven at (map/cars.js
+     `carsFor`): a map too big for the density formula to give a count the
+     phone can run says so itself. Absent, the formula. */
+  const cars = Number(map.traffic?.cars);
+  const traffic = Number.isFinite(tr) || map.traffic?.shape === true || cars > 0
+    ? { ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}), ...(cars > 0 ? { cars: Math.round(cars) } : {}) }
     : null;
   return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, stops, laneKm, warnings, ...(traffic ? { traffic } : {}) };
 }

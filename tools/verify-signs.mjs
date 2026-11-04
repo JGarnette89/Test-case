@@ -33,7 +33,11 @@ const P = (x, y) => ({ x, y, z: 0 });
 const codes = (l) => l.warnings.map((w) => w.code);
 
 /* The same map with every stop and yield written as a sign standing there
-   instead of as the road end's shorthand. */
+   instead of as the road end's shorthand. The signs the map already has
+   stay: until 3 November every test map was all shorthand, and replacing
+   the sign list outright dropped the trial city's 44 (its brief's controls
+   and its ramps' stops, set through the editor's model), so the two maps
+   compared differed by those -- the conversion was lossy, not the rule. */
 const asSigns = (m) => {
   const signs = [];
   const roads = m.roads.map((r) => {
@@ -41,7 +45,7 @@ const asSigns = (m) => {
     for (const e of ["start", "end"]) if (control[e] === "stop" || control[e] === "yield") { signs.push({ id: `s-${r.id}-${e}`, kind: control[e], road: r.id, end: e }); control[e] = "none"; }
     return { ...r, control };
   });
-  return { ...m, roads, signs };
+  return { ...m, roads, signs: [...(m.signs ?? []), ...signs] };
 };
 
 console.log("\n1. A SIGN IS THE RULE AT ITS APPROACH");
