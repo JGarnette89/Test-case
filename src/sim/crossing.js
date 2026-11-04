@@ -1179,6 +1179,34 @@ function canStopFor(world, me, them) {
   return false;
 }
 
+/* THE CAR AHEAD, AS THIS DRIVER HAS NOTICED IT (DECISIONS 10.46; off unless
+   `world.brakeReaction`). A brake lamp coming on is a change, and a driver takes
+   their own `notices` to register a change in front of them -- the same delay a
+   light gone green is read through. Until then the leader is still doing what
+   it was doing: at the speed it had when the lamp came on, carried forward
+   (`lampOnset.behind`, the road it has lost against that since, which needs
+   no position and so does not care about a seam). ONLY THE CAR-FOLLOWING READS
+   THIS: right of way reads the present (a constant lag on everything crashed
+   sound drivers together in a box, 5.16.3). ONLY A CHANGE: a car stopped a
+   while ago is seen stopped, so a standing queue is no surprise. "capped" and a
+   number are the measurement's controls: the periphery's reaction-time rule,
+   and one delay for everybody. */
+function asNoticed(world, me, them) {
+  /* The screen writes the player in afresh before each tick (drive.js withDriver), so theirs is kept on the world. */
+  const on = world.brakeReaction, o = them.player ? world.playerLamp : them.lampOnset;
+  if (!on || !o || me.player || them.crash) return them;
+  const T = typeof on === "number" ? on : me.notices ?? REACTION_FLOOR, since = (world.t ?? 0) - o.t;
+  if (since >= T) return them;
+  if (on === "capped" && me.loomSince != null && (world.t ?? 0) - me.loomSince >= REACTION_FLOOR) return them;
+  return { ...them, s: them.s + o.behind, v: o.v, trueV: them.v, unnoticed: o.behind };
+}
+/* The lamp's onset, kept while the lamp stays on. */
+const lampOnsetOf = (raw, lamp, v0, v, t) => {
+  if (!lamp) return null;
+  const o = raw.lampOnset ?? { t, v: v0, behind: 0 };
+  return { t: o.t, v: o.v, behind: o.behind + Math.max(0, o.v - v) * DT };
+};
+
 export function whatStops(me, world) {
   const layout = layoutOf(world, me);
   const mine = layout.paths[me.route];
@@ -1324,8 +1352,9 @@ export function whatStops(me, world) {
         if (my.on === false) continue;
         const on = theirSpan.find((t) => t.lane === my.lane && t.on !== false);
         if (!on) continue;
-        const d = clearBetween(on.along - my.along, me, them);
-        if (d >= 0) consider(d, them);
+        const seenThem = asNoticed(world, me, them);
+        const d = clearBetween(on.along + (seenThem.unnoticed ?? 0) - my.along, me, them);
+        if (d >= 0) consider(d, seenThem);
       }
       continue;
     }
@@ -1382,7 +1411,8 @@ export function whatStops(me, world) {
       return (d === 1 && off > reach) || (d === -1 && off < -reach);
     })();
     if ((shareLane || straddles) && them.s > me.s && !unseen) {
-      consider(clearBetween(them.s - me.s, me, them), them);
+      const seenThem = asNoticed(world, me, them);
+      consider(clearBetween(seenThem.s - me.s, me, them), seenThem);
     }
 
     /* SOMEBODY ALREADY ACROSS MY PATH IS IN FRONT OF ME, committed or not.
@@ -1446,7 +1476,7 @@ export function whatStops(me, world) {
       /* Two lanes of one road: compared along its centreline (graph.js exitAlong), not by distance remaining, which disagrees across lanes on a bend. */
       const mA = exitAlong(world.course, me.k ?? 0, me.route, me.s), tA = exitAlong(world.course, them.k ?? 0, them.route, them.s);
       const ahead = mA != null && tA != null ? tA - mA : (mine.length - me.s) - (theirs.length - them.s);
-      if (ahead > 0) consider(clearBetween(ahead, me, them), them);
+      if (ahead > 0) { const seenThem = asNoticed(world, me, them); consider(clearBetween(ahead + (seenThem.unnoticed ?? 0), me, them), seenThem); }
     }
     if (theirs.to === mine.to && theirs.from !== mine.from) {
       const myLeft = mine.length - me.s;
@@ -1458,7 +1488,8 @@ export function whatStops(me, world) {
          line: a gridlock at the five-way -- lowered from 120 cars to 40,
          the map was still at 44 two minutes later. */
       if (theirLeft < myLeft && me.s > mine.clearAt - lenOf(me) && them.s > theirs.stopAt) {
-        consider(clearBetween(myLeft - theirLeft, me, them), them);
+        const seenThem = asNoticed(world, me, them);
+        consider(clearBetween(myLeft - theirLeft + (seenThem.unnoticed ?? 0), me, them), seenThem);
       }
     }
   }
@@ -1979,6 +2010,13 @@ export function step(world) {
          while stationary. The change of speed over the tick is the
          quantity every reader meant. */
       const out = { ...at, a: (v - me.v) / DT, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
+      if (world.brakeReaction) {
+        out.lampOnset = lampOnsetOf(raw, brakeLamp && !(v < 0.5 && decel <= BRAKE_LAMP_ON && (me.v ?? 0) < 0.5), me.v ?? 0, v, world.t);
+        if (world.brakeReaction === "capped") {
+          const ld = view.leader, rate = ld && ld.lampOnset ? loomingRate(widthOf(ld), (me.v ?? 0) - (ld.trueV ?? ld.v), view.gap - (ld.unnoticed ?? 0)) : 0;
+          out.loomSince = rate > LOOMING ? (raw.loomSince ?? world.t) : null;
+        }
+      }
       if (offer || raw.courtesy) out.courtesy = offer;
       /* THE CHECKS (checks.js). A scan along the cross road, once per line,
          begun as the car slows within SCAN_FROM of a line it must stop or
@@ -2359,6 +2397,10 @@ export function step(world) {
   /* THE LIGHTS (actuated.js), decided from the traffic as it was at the
      start of this tick -- what the loops saw -- like every driver. */
   const lights = world.lights ? stepLights(signalPlans(world.course), world.lights, (k) => loopDets(world, k), t) : null;
+  if (world.brakeReaction) {
+    const p = world.actors.find((a) => a.player);
+    world = { ...world, playerLamp: p ? lampOnsetOf({ lampOnset: world.playerLamp }, (p.a ?? 0) < -BRAKE_LAMP_ON, p.v ?? 0, p.v ?? 0, world.t) : null };
+  }
   let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(lights ? { lights } : {}), playerFreeSince, ...(signalOn || world.signalOn ? { signalOn } : {}), ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walkedRest : {}), ...(strolled ? strolled : {}) };
   if (tall) out.tall = tall; else if (out.tall) delete out.tall;
   /* A CAR THAT REACHES SOMEBODY ON FOOT has struck them (peds.js
