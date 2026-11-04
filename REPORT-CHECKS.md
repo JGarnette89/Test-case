@@ -1,3 +1,7 @@
+> **SOURCE DOCUMENT, NOT THE RECORD.** Dated 30 October 2026; the project lead attributes it to an external review by Gemini. Uploaded by the maintainer on 3 November 2026 in `226198a`, which holds this file unaltered. Everything below the rule is the source verbatim; only this note was added. Where it was accepted, narrowed or refused: DECISIONS 10.36, TESTING.md "Gemini's numbers".
+
+---
+
 # REPORT: Check Execution Times and the Singular Large Map Architecture
 
 **Date**: 30 October 2026  

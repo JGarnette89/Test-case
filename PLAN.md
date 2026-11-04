@@ -289,9 +289,9 @@ dependency argument, placed below where their blocker is built.
 An external review (Gemini) audited the code against the Red City story in
 three areas; checked against the code on 3 November. **It changes nothing
 in the order above.** **Provenance:** `ARCHITECTURAL-AUDIT.md` and
-`REPORT-CHECKS.md` were supplied by the maintainer and read by the project lead
-on 3 November; neither is in the repository yet, so this section remains one
-session's account. Conflicts with the story: DECISIONS 10.37. Where it lands:
+`REPORT-CHECKS.md` were supplied by the maintainer and committed on 3 November
+(this section was written before they were read here and has not been rechecked
+line by line). Conflicts with the story: DECISIONS 10.37. Where it lands:
 
 | the audit's phase | where it already sits |
 |---|---|
@@ -300,7 +300,7 @@ session's account. Conflicts with the story: DECISIONS 10.37. Where it lands:
 | P2, the analog presentation | a presentation pass after that. The instruments AND the navigation display (route on the road, turn banner, lane advice) are KEPT and restyled (STORY.md 4, ruling 6). The genuinely cheap pieces: a needle speedometer, an odometer, a paper receipt, a dot-matrix caption. NEW SYSTEMS, not restyles: street names (the map format has none, nor signs for them) under any paper route card; audio (the game has none) under CB squelch; an engine model under a tachometer |
 | P3, vehicle kinds and revival | after item 13 and the physics model it now grows to; revival drives the skill dial (`sim/skill.js`) and a vehicle mix. **Position open: see below** |
 
-**The vehicle archetypes: the project lead's view, for the order, not yet set with the maintainer.** Its best and cheapest item: distinct physics per class is mostly a data table, and it is what makes a rusted sedan feel different from a tuned import. **It is not free.** Populating them moves every world and re-baselines every check, so it belongs after the world settles (39, 40). **Read against the code:** `VEHICLES` already has `accel`, `brake`, `most`, `cap` and `lateral` per row, so the longitudinal half is data; `radiusFor` and grip, per PLAN 13, are what to check next. A row nobody draws moves nothing, since trucks have their own stream. **DO NOT COPY THE AUDIT'S TABLE AS WRITTEN: its `cap: 1.4` (as relayed) is a defect.** An ordinary car's `cap` is `Infinity`, so 1.4 would limit a sports car where a sedan is not limited at all, the reverse of what the row is for. It also cuts into the speed spread already tuned (`wantedFor`). And STORY.md section 3 still stands against the audit's `variance` and `headway` as vehicle fields: the driver owns those.
+**The vehicle archetypes: the project lead's view, for the order, not yet set with the maintainer.** Its best and cheapest item: distinct physics per class is mostly a data table, and it is what makes a rusted sedan feel different from a tuned import. **It is not free.** Populating them moves every world and re-baselines every check, so it belongs after the world settles (39, 40). **Read against the code:** `VEHICLES` already has `accel`, `brake`, `most`, `cap` and `lateral` per row, so the longitudinal half is data; `radiusFor` and grip, per PLAN 13, are what to check next. A row nobody draws moves nothing, since trucks have their own stream. **DO NOT COPY THE AUDIT'S TABLE AS WRITTEN: its `cap` values are a defect.** An ordinary car's `cap` is `Infinity`, so `v8_muscle` at 1.4, `tuned_compact` at 1.35 and `rust_sedan` at 1.25 would all limit cars an ordinary car is not limited beside, the reverse of what those rows are for. It also cuts into the speed spread already tuned (`wantedFor`). And STORY.md section 3 still stands against the audit's `variance` and `headway` as vehicle fields: the driver owns those.
 
 **The mission rule it needed (STORY.md 4, ruling 7):** a mission is not
 tied to its giver, and the job machinery carries both seats -- the player
@@ -321,7 +321,7 @@ output identical line for line. "The other slow checks run distinct worlds -- th
 is their sample" is that session's claim, not verified. **Cached warmed worlds are refuted; district subgraphs stand only with traffic
 kept flowing across their edges: DECISIONS 10.36.** Its keep-right worker-thread
 recommendation is approved by the project lead, sabotage first; **not started,
-and it stays blocked until the report's own text has been read here, not a summary of it.** The report's claim that `verify-screens` harnesses `ExaminerDrive` is
+its text is now read: run `verify-keepright`'s three modes in worker threads (section 6, claiming 811 s to about 300 s, a loaded-run starting figure).** The report's claim that `verify-screens` harnesses `ExaminerDrive` is
 false (deleted 24 September; confirmed by search on 3 November).
 
 ## 4a. The content already written, against what can be built

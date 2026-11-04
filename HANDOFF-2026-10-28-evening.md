@@ -24,14 +24,11 @@ nothing that moves the default world was to be started.
   default car count; the trial city says 400) and verify-signs keeping a map's
   existing signs -- the derived set, 53 of 53, passed on that tree. **Still no
   traffic numbers to be quoted from it until 39 is in.**
-- **Waiting to be committed, once they reach this machine:** the maintainer's
-  source documents `REPORT-CHECKS.md`, `ARCHITECTURAL-AUDIT.md` and the Red City
-  story, the last as `STORY-SOURCE-2026-11-03.md` (STORY.md is the RECORD of that
-  story, with its rulings; do not overwrite it with the source). He holds them;
-  the project lead has asked him to put them in the repository root. Conflicts:
-  DECISIONS 10.37.
-- **Blocked on reading those documents, not on a summary of them:** the keep-right
-  worker-thread recommendation, and checking what the record says they say.
+- **The source documents are committed:** `REPORT-CHECKS.md`,
+  `ARCHITECTURAL-AUDIT.md`, `STORY-SOURCE-2026-11-03.md` (STORY.md is the RECORD,
+  with its rulings; do not overwrite it with the source). Conflicts: DECISIONS 10.37.
+- **Not started:** the keep-right worker-thread change (approved, sabotage first),
+  and rechecking PLAN 4b line by line against the audit's text.
 - **The agreed order in section 2 was checked on 3 November and stands.** No
   sim code has moved.
 

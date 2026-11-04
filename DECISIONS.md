@@ -5532,7 +5532,7 @@ or instrument asked.
 
 ## 10.36 SPEEDING UP THE SUITE: SAVED WORLDS REFUTED, SUBGRAPHS ONLY WITH TRAFFIC ACROSS THE EDGE (3 November)
 
-**These are the obvious ideas for anybody optimising a slow suite, so the reasons are recorded and not just the verdicts.** Both come from an external review's checks report (Gemini, 30 October). **Provenance: `REPORT-CHECKS.md`, supplied by the maintainer; read by the project lead, not yet in the repository, and not read by the agent writing this. Do not plan from a timing it quotes, since a loaded run's number is not a cost (TESTING.md, "Gemini's numbers"); that does not make the report wrong, and its reasoning about where the time goes is sound.**
+**These are the obvious ideas for anybody optimising a slow suite, so the reasons are recorded and not just the verdicts.** Both come from an external review's checks report (Gemini, 30 October). **Provenance: `REPORT-CHECKS.md`, supplied by the maintainer; committed 3 November (`226198a`), and since read in full by the agent writing this. Do not plan from a timing it quotes, since a loaded run's number is not a cost (TESTING.md, "Gemini's numbers"); that does not make the report wrong, and its reasoning about where the time goes is sound.**
 
 **1. CACHED PRE-WARMED SNAPSHOTS: REFUTED.** Warm-up is most of a slow check's time (TESTING.md), so saving the warmed world looks free. The report does not address the objection (the project lead's reading):
 
@@ -5549,7 +5549,7 @@ or instrument asked.
 
 ## 10.37 THREE CONFLICTS WITH THE RED CITY DOCUMENTS, AND TWO DESIGNS THAT SURVIVE THEM -- flagged to the maintainer, not resolved (the project lead, 3 November)
 
-**Provenance: the maintainer's Red City story (STORY.md records it) and `ARCHITECTURAL-AUDIT.md` (Gemini, 1 November), read by the project lead; the audit is not yet in the repository and was not read by the agent writing this.**
+**Provenance: the maintainer's Red City story (STORY.md records it) and `ARCHITECTURAL-AUDIT.md` (Gemini, 1 November), committed 3 November and since read in full: `STORY-SOURCE-2026-11-03.md`, `ARCHITECTURAL-AUDIT.md`.**
 
 **1. THE HEADWAY READOUT STAYS.** The project lead's reading is that the analog presentation would delete it: the follow gauge the maintainer asked for, built to his spec (10.24), its gap sound to a worst 0.20 m where checkable and unverified inside intersections and on bends (handoff 28 October). **The maintainer has already ruled on this class: STORY.md section 4, ruling 6, names "the following gap" among the readouts kept and redrawn, "never a replacement scheme".** **So the audit, as the project lead read it, conflicts with a ruling already made; the gauge is not at risk**, and it is not removed in any HUD work. **What is left for him is the form only.** The project lead's likely resolution is his own throttle-target idea drawn as a mechanical needle: same function, no anachronism, and a restyle in the ruling's own terms.
 
@@ -5557,7 +5557,19 @@ or instrument asked.
 
 **3. A FULL PHYSICS MODEL (STORY.md 4, ruling 1) AGAINST 10.22 AND THE STEP BUDGET.** 10.22 makes the phone the only target, single-threaded, at 24.6 ms a step at 280 cars on the endless highway. The ruling is the endpoint for the player's car; whether the traffic shares it is the open question, and that is where these two meet.
 
-**TWO DESIGNS NEITHER DOCUMENT MENTIONS, AND THEY STAND: the sectional marking sheet with the real Ontario headings (10.25, 10.26) and the three-level intervention with retrospective judgement (10.27, 10.28).** Brenda runs exams in the new story and ruling 7 keeps the limited-control seat, so nothing removes them. **This is the project lead's reading, not a ruling.** **One question is with the maintainer (the project lead is asking him):** STORY.md gives Brenda "zero-tolerance exam scoring", where his own rule is that partial success is partial marks, like a road test (CLAUDE.md, domain authority). The phrase may be color or may be a scoring ruling, and **neither is assumed here.** Nothing is to be built on it until he answers.
+**TWO DESIGNS NEITHER DOCUMENT MENTIONS, AND THEY STAND: the sectional marking sheet with the real Ontario headings (10.25, 10.26) and the three-level intervention with retrospective judgement (10.27, 10.28).** Brenda runs exams in the new story and ruling 7 keeps the limited-control seat, so nothing removes them. **This is the project lead's reading, not a ruling.** **Brenda's "zero-tolerance exam scoring": RULED, 10.38. It is her manner, and partial marks stand.**
+
+## 10.38 A CHARACTER'S DESCRIPTION IS COLOR; BRENDA, THE EXAM MODE, AND THE SCOPE RULE (the maintainer, relayed by the project lead, 3 November)
+
+**RULED, verbatim: "zero-tolerance is a characteristic of Brenda as a character versus the gameplay itself."** So the marking rule stands unchanged: partial success earns partial marks. Zero-tolerance is her manner, not the scoring.
+
+**THE GENERAL PRINCIPLE (the project lead's statement of it; it will recur): a character's description is color unless it names a rule, and color never overrides a ruling about how the game scores.** Read the next mechanical-sounding character blurb the same way. **It already applies:** `ARCHITECTURAL-AUDIT.md` 4.2 turns the phrase into a `BrendaExamEvaluator` with "zero-tolerance regulatory grading"; that is not to be built as written.
+
+**STANDING INSTRUCTION, verbatim: "I want to avoid adding 50 half-cooked features."** Cite it when anything new is proposed.
+
+**DIRECTION, NOT WORK. Brenda's role has changed:** as real drivers return to the roads, bad driving becomes a problem in the world: "driving has become a lost art and the drivers are terrible". The exam mode becomes part of the main story as well as a side activity. **Undecided:** whether that is money for upgrades or a larger objective such as starting a school.
+
+**OPEN POSSIBILITY, EXPLICITLY UNSCOPED: the exam mode might at heart be a multiplayer mode.** He raised it and immediately noted that it is easy to get off course. It generates no work. None of this changes the order.
 
 ## 11. Verification
 

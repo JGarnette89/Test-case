@@ -1,3 +1,7 @@
+> **SOURCE DOCUMENT, ADVISORY, NOT THE RECORD.** Dated 1 November 2026; the project lead attributes it to Gemini. Uploaded by the maintainer on 3 November 2026 in `226198a`, which holds this file unaltered. Everything below the rule is the source verbatim; only this note was added. Where it lands and where it conflicts: PLAN 4b, DECISIONS 10.37, 10.38. **Its `BrendaExamEvaluator` "zero-tolerance" grading and its `cap` values are not to be built as written.**
+
+---
+
 # ARCHITECTURAL AUDIT & IMPLEMENTATION ROADMAP FOR CLAUDE
 **Project**: Red City — Miskawin Motor-Town Simulation  
 **Document**: Architectural Alignment & Gap Analysis for Engineering Execution  

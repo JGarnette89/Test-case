@@ -11,6 +11,8 @@ More than one agent works in this repository. Anything decided by argument
 and not written down is invisible to every tool that was not part of that
 argument, so the documentation is a CONTRACT rather than a diary.
 
+**STANDING INSTRUCTION FROM THE MAINTAINER: "I want to avoid adding 50 half-cooked features." Cite it when anything new is proposed (DECISIONS 10.38).**
+
 **THE ORDER OF ALL WORK IS [PLAN.md](PLAN.md) (13 October 2026)**: every
 recorded piece of design -- story, characters, vehicles, garage, day and
 night, objectives, dialogue -- reconciled into one sequence with its
