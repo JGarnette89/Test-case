@@ -168,6 +168,9 @@ A cold session that knows the reasons should reorder if a reason changes.
   should do on maps whose density is not the highway's** (DECISIONS 10.42).
 - **Scoped, not built: buildings that hide things** (DECISIONS 10.43). Depends on the
   caution decision, and bears on the combined map.
+- **RULED, commitment (DECISIONS 10.45): three states; creeping is past the line and not
+  committed.** Item 0 is answered (10.44): item 1 is gated on the project lead's decision
+  whether to make the rear-end risk real.
 - **Held:** `margin-can-stop` and `sight-caution`, both off, on their branches.
 - **For Jay, a feel question and not a defect:** a player who moves into the gap
   just after a courtesy offer lapses gets no "let in".
