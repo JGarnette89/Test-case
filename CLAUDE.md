@@ -15,6 +15,8 @@ argument, so the documentation is a CONTRACT rather than a diary.
 
 **ONE BEHAVIOR, THREE AXES, THREE SIGNATURES (DECISIONS 10.40, 4 November): at a blocked sightline a knowledge gap is a constant (never slows), an observation gap a rate (sometimes slows), a confidence gap a size (always slows, barely), where the old rule showed no order at all. The strongest evidence yet that the driver model earns its complexity, and the pattern to look for next: a behavior where each axis fails in a way the others cannot reach. Read its six caveats with it: small extreme bands, a failed prediction, approach speed and not yet consequence, a real cost, not shipped, and an underived 0.25.**
 
+**WHAT THE ROAD IS FOR, AND THE PARKED CARS (DECISIONS 10.41, 10.42, 5 November): the maintainer wants a road visibly full of people making decisions, with incidents the player witnesses, not behavior tuned to real-world statistics; rates matter for legibility. Parked cars are NOT in the car count, but they are 86-97% of the cars on the city and on maps with no districts they can never leave.**
+
 **THE ORDER OF ALL WORK IS [PLAN.md](PLAN.md) (13 October 2026)**: every
 recorded piece of design -- story, characters, vehicles, garage, day and
 night, objectives, dialogue -- reconciled into one sequence with its

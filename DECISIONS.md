@@ -5627,6 +5627,51 @@ or instrument asked.
 5. **IT IS NOT SHIPPED.** On the branch `sight-caution`, off, until the scene reports. Nobody driving the game can see this yet, and that a player can read these signatures by eye is the project lead's framing, not something measured.
 6. **KNOWLEDGE'S DIFFICULTY OF 0.25 HAS NO DERIVATION**, a placeholder set by analogy with `shoulder-check`, itself placed without a ruling, and it decides how many drivers fall in that band (about 8%). The maintainer's to set.
 
+## 10.41 WHAT THE ROAD IS FOR: PEOPLE MAKING DECISIONS THE PLAYER WITNESSES, NOT REAL-WORLD STATISTICS (the maintainer, with the project lead's pushback, which he invited, 5 November)
+
+**DIRECTION, THE MAINTAINER'S:** he does not want behavior tuned to real-world statistics. The target is a road visibly full of people making individual decisions, with incidents the player witnesses. His example: the car ahead failing to use caution and getting t-boned in front of you.
+
+**THE PROJECT LEAD'S PUSHBACK, RECORDED WITH IT:** rates still matter, not for realism but for legibility. An event that happens too often reads as a bug rather than a decision. Measurement earns its place in proving a mechanism works at all, after which frequency is a feel question, and his.
+
+**THE IMPLICATION HE HAS NOT YET DRAWN:** at one crash per two hours he would essentially never witness one, so his target implies a HIGHER incident rate than reality. (On the city: 0.43 an hour at 180 cars and 1.29 at 300, 28 October, on the old world, and those are crashes anywhere on the map, not in front of anybody.)
+
+## 10.42 THE PARKED CARS: NOT IN THE BUDGET, BUT MOST OF WHAT HE SEES, AND ON MOST MAPS THEY CAN NEVER MOVE (facts, 5 November; nothing fixed)
+
+**The maintainer: "the majority of cars are just parked along the road, and they never ever seem to move. nobody ever gets in and drives so we spend the car budget for no moving traffic."** `tools/measure/parked-census.mjs`, the game's own world with the good driver, two seeds, four minutes.
+
+**THE HYPOTHESIS THAT PARKED CARS ARE IN THE COUNT IS FALSE.** Parked cars are `world.parked`, not `world.actors`; the target and the readout count actors. Asked for 180, every map holds 177-179 actors, whatever is parked. **So "180 cars" never included them, and no encounter rate, shaping ratio or per-car figure was counted over them.**
+
+**BUT HIS OBSERVATION IS RIGHT, AND SHARPER THAN THE HYPOTHESIS.**
+
+| map | cars asked | moving | standing | parked | parked, of all cars | within 100 m: moving / parked | parked cars leaving |
+|---|---|---|---|---|---|---|---|
+| city | 180 | 164 | 15 | 1,875 | 91% | 2.5 / 27.6 | 10.9 a minute |
+| city | 300 | 247 | 52 | 1,843 | 86% | 5.0 / 27.6 | 18.2 a minute |
+| test map 1 | 180 | 125 | 54 | 135 | 43% | 10.3 / 10.1 | **none** |
+| test map 1 | 300 | 184 | 115 | 135 | 31% | 18.4 / 10.1 | **none** |
+| highway, loop | 180, 300 | 149-273 | 1-83 | 0 | 0% | 5-10 / 0 | no parking |
+| peds, signs | 180 | 72, 83 | 107, 96 | 181 | 50% | 13 / 20 | **none** |
+| buses | 180 | 53 | 126 | 88 | 33% | 12 / 1 | **none** |
+| trial city | 180 | 164 | 15 | 4,973 | 97% | 3.2 / 6.6 | 7.9 a minute |
+
+**CAN A PARKED CAR EVER START DRIVING? ONLY IN A DISTRICT.** `pullingOut` runs only for district streets (`districtStreetsOf`), and a map with no districts has none: test map 1, peds, signs and buses show 0 of their parked cars ever leaving, and by the code they cannot. On those maps his sentence is literally true. On the city the mechanism exists and is close to invisible: 10.9 a minute against 1,875 is any one car leaving about every three hours, and near the player about one every six minutes. **READ, NOT MEASURED:** a car pulling out is drawn fresh from the arrival counter (`spawned`), and the slot's `n` is not read, so it is a new person, not the one who parked; parking.js's "the same people all day" is true of the count only.
+
+**COST.** Step, near alone, 180 cars, same seed, two rounds each: the city 4.85 and 4.80 ms with parking, 4.27 and 4.19 without (about +0.6 ms, 14%); test map 1 9.83 and 9.64 against 9.37 and 9.39 (about +0.35 ms). The worlds differ a little, since trips end differently, so this bounds it rather than isolating it: not stepped like cars, not free either. Already on record as a DRAW cost, 17-21% of canvas calls (SIMULATOR 1.2.x). **His "budget for no moving traffic" is a real cost at the frame, not in the sim's count.**
+
+**THE FINDING NOBODY ASKED FOR: THE MARGINAL CAR ON A SMALL MAP STANDS STILL.** From 180 to 300 asked, moving rises by 83 of 120 on the city (69%), 59 on test map 1 (49%), 20 on buses, 17 on signs, **5 on peds (4%)**. At 180, peds is 60% standing, signs 54%, buses 70%. Those maps' own defaults are 40, 40 and 20, and CLEAN MODE SETS 180 ON ALL OF THEM (`cleanCars`, MapRoad.jsx, "measured best on the maintainer's phone", on the city). That is "why adding cars bought so little", on small maps: it is a jam, not parking.
+
+**180 IS ALSO THIN ON THE CITY:** 71 lane-km, default 300 by the map's own density rule, so Clean mode runs it at 60%. 2.5 moving cars within 100 m is what that looks like. The low encounter rate on the city is density, not a miscount.
+
+**WHICH RECORDED MEASUREMENTS THIS AFFECTS (each read against the counters, none re-run):**
+
+- **NOT AFFECTED by parked cars:** encounters and met per minute (encounters.js reads `world.actors`); every shaping ratio, the 3.18, 2.78, 2.30 and 2.20 (the highway has no parking at all); phantom leaders; overshoots; crash counts; "too polite" v/v0 (actors over 1 m/s), **SO THIS DOES NOT EXPLAIN "TOO POLITE", WHICH STAYS OPEN.**
+- **STEP COST PER CAR, CITY:** carries up to about 0.6 ms of a 4.8 ms step not caused by the cars counted. The 300-car and 180-car per-car figures on the city overstate per-car cost by up to about 14% at 180. Test map 1 about 4%.
+- **FIGURES AT A SET COUNT ON SMALL MAPS, DIFFERENT CAUSE:** anything measured at 180 or more on test maps counts a standing queue as traffic: the step-cost-per-car rise on test map 1 (45 us a car, SIMULATOR 5.x) and the lookaway repro at 260 cars are measured with a third or more of the map standing. **verify-lookaway's 260 and verify-headway's old 180 were on maps where this applies; not re-run.**
+- **"160 -> 280 cars on the highway bought 5.5 -> 6.0 met a minute" (SIMULATOR, the case for shaping):** not parking, since there is none there; the highway standing share is 17% at 180 and 28% at 300 on test-highway, and under 1% on the loop, so this stands, for the reason it was recorded.
+- **FRAME BUDGET ON THE PHONE, 180 AS "MEASURED BEST":** measured with 91% of the cars drawn being parked. The moving budget might be different with fewer parked cars drawn. Nobody has measured it.
+
+**NOT FIXED, BY INSTRUCTION.** Several directions follow, and all are the maintainer's: whether parked cars should leave at a visible rate, whether maps without districts should allow it, how many should be drawn, and what Clean mode should do on small maps.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
