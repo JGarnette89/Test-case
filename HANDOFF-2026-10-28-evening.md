@@ -171,6 +171,10 @@ A cold session that knows the reasons should reorder if a reason changes.
 - **RULED, commitment (DECISIONS 10.45): three states; creeping is past the line and not
   committed.** Item 0 is answered (10.44): item 1 is gated on the project lead's decision
   whether to make the rear-end risk real.
+- **THE ORDER (the project lead, 5 November; DECISIONS 10.46): the rear-end risk (its
+  predictions are 10.46), the price of slowing with prior sight, environment (10.43), creeping.
+  CREEPING IS BLOCKED ON ENVIRONMENT, not on its design: nothing near a corner hides anything
+  yet, so it would produce no visible behavior.**
 - **Held:** `margin-can-stop` and `sight-caution`, both off, on their branches.
 - **For Jay, a feel question and not a defect:** a player who moves into the gap
   just after a courtesy offer lapses gets no "let in".
