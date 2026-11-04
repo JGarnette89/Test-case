@@ -4700,6 +4700,7 @@ SIMULATOR log they read as bad luck; together they are the pattern:
   tests whether they create decisions (gaps judged). Met rising on both and
   gaps judged rising only on the city is a real, useful shape of result,
   not a partial failure.
+   21. **THE SAME WRONG DEFINITION, THIRD APPEARANCE: LOOK HERE FIRST (the project lead, 4 November).** Who is in a lane was wrong in the following model; on 22 October placement was taught to AGREE with it, so two readers were consistent with a fiction (item 17); and verify-promotion then ENFORCED that agreement, requiring a car past the box on an off-ramp to be refused as if in the through lane's queue, when the path had split 14 m before the box ended. A geometric impossibility, asserted. **So when a definition is corrected and a check goes red, the first question is whether that check was written to the old definition, and the test is physical, poses and not the code's own vocabulary.** Not a licence to restate a check on sight: a verdict first, scored against what was predicted, and the restatement sabotaged both ways.
 
 ## 10.24 FOLLOWS TOO CLOSELY: 0.75 CAR LENGTHS, HELD FOR 2-3 SECONDS (the maintainer, 27 October)
 
