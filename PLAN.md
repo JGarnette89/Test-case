@@ -321,7 +321,7 @@ output identical line for line. "The other slow checks run distinct worlds -- th
 is their sample" is that session's claim, not verified. **Cached warmed worlds are refuted; district subgraphs stand only with traffic
 kept flowing across their edges: DECISIONS 10.36.** Its keep-right worker-thread
 recommendation is approved by the project lead, sabotage first; **not started,
-its text is now read: run `verify-keepright`'s three modes in worker threads (section 6, claiming 811 s to about 300 s, a loaded-run starting figure).** The report's claim that `verify-screens` harnesses `ExaminerDrive` is
+DONE 4 November: 327 s to 69 s at nine workers, measured near alone (TESTING.md).** The report's claim that `verify-screens` harnesses `ExaminerDrive` is
 false (deleted 24 September; confirmed by search on 3 November).
 
 ## 4a. The content already written, against what can be built
