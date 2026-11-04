@@ -5604,6 +5604,29 @@ or instrument asked.
 
 **MEASURED, 4 NOVEMBER (branch `sight-caution`, off; SIMULATOR IN FLIGHT 40): ALL THREE AXES PARTICIPATE, EACH AS ITS OWN SIGNATURE.** Confidence is a size, observation a rate, knowledge a constant, and observation accounts for the most occasions lost (80, against 30 and 29) without doing nearly all of it. The old rule shows no order on any of them. **What this change is for, that the good driver then handles an emerging car smoothly, is not yet measured.**
 
+## 10.40 ONE BEHAVIOR, THREE AXES, THREE SIGNATURES: THE STRONGEST EVIDENCE YET THAT THE DRIVER MODEL EARNS ITS COMPLEXITY (4 November)
+
+**The project lead's assessment, recorded as such: the best thing this project has produced.** Whether five axes earn their complexity has been open, in the project lead's account, since the cold review in September. The standard was set long before this result, at 4.4 of this file: an axis earns its place when it fails in a way the others cannot reach.
+
+**The result.** At a blocked sightline (10.39), the same situation read through three axes gives three different kinds of failure, none of them overlapping:
+
+- **A KNOWLEDGE GAP IS A CONSTANT.** The driver who does not know a blocked sightline warrants caution never slows. Slowed on 0 of 11 occasions, 8 drivers.
+- **AN OBSERVATION GAP IS A RATE.** The driver who sometimes misses it sometimes slows. Slowed at all on 29% and 39% of occasions in the two poor bands (n 7 and 23), against 100% and 97% in the sound ones (n 36 and 34), and when they do slow it is by about as much.
+- **A CONFIDENCE GAP IS A SIZE.** The driver who sees it and knows slows by less, on nearly every occasion. Mean cut in speed -6% at the boldest (n 8), 8% (n 4), 19% (n 17), 23% (n 35), 31% for the timid (n 79).
+
+**Which reads as a sentence about a person, the project lead's framing of what the maintainer asked for: looking at a driver and seeing what is wrong with them.** Never slows at a blind corner: a knowledge gap. Sometimes slows: observation. Always slows, but barely: bold.
+
+**UNDER THE OLD RULE THERE WAS NO ORDER AT ALL.** The same bands slowed on 65, 72, 45, 60% (observation) and 50, 80, 38, 59, 57% (confidence). A uniform hold could not say anything about anybody. This came from replacing a defect with a graded response, not from tuning (10.39). And it was designed so it could fail: three signatures were written down before the run, and it was possible for any two to come out indistinguishable.
+
+**WHAT MUST STAY ATTACHED WHEREVER THESE NUMBERS ARE QUOTED:**
+
+1. **THE EXTREME BANDS ARE AS FEW AS 4-12 OCCASIONS.** 0 of 11 for knowledge is 8 drivers. The shape across bands is the evidence; no single extreme band's number is.
+2. **MY 30% PREDICTION FAILED, AND IT WAS A GUESS AT AN UNDERIVED NUMBER.** Sound drivers were predicted at least 30% slower than the baseline; they came out 21% below their own speed and 9% below the baseline. Half of all occasions clear before a driver would act.
+3. **THE SIGNATURES ARE MEASURED IN APPROACH SPEED, NOT YET UNDER CONSEQUENCE.** Whether the three fail differently when a car actually comes out is what the staged scene tests (SIMULATOR IN FLIGHT 40). Until then this is what they do, not what it costs them.
+4. **IT HAS A COST THAT IS NOT BURIED:** overshoots 64 against 52 with the amber switch alone (78 with neither), because drivers no longer stopped by the margin reach real conflicts faster. Whether what they reach is handled or hit is a stated outcome of the scene.
+5. **IT IS NOT SHIPPED.** On the branch `sight-caution`, off, until the scene reports. Nobody driving the game can see this yet, and that a player can read these signatures by eye is the project lead's framing, not something measured.
+6. **KNOWLEDGE'S DIFFICULTY OF 0.25 HAS NO DERIVATION**, a placeholder set by analogy with `shoulder-check`, itself placed without a ruling, and it decides how many drivers fall in that band (about 8%). The maintainer's to set.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
