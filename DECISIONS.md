@@ -5588,6 +5588,20 @@ or instrument asked.
 
 **OPEN POSSIBILITY, EXPLICITLY UNSCOPED: the exam mode might at heart be a multiplayer mode.** He raised it and immediately noted that it is easy to get off course. It generates no work. None of this changes the order.
 
+## 10.39 A BLOCKED SIGHTLINE IS CAUTION, AND HOW MUCH IS SKILL (the maintainer, relayed by the project lead, 4 November)
+
+**RULED, verbatim: "cover the brake and use caution wherever a sightline is blocked. bad drivers might not do this so it's another way to express skill level through one of the axes."**
+
+**So the behavior is right and the magnitude is wrong.** A blocked sightline produces caution, not a stop. The rule that demanded a median 186 m/s^2 (SIMULATOR IN FLIGHT 40) was a defect in how much, not whether. "Wherever" answers the question put to him: a driver with a green or a clear uncontrolled approach does slow.
+
+**A DEFECT TURNED INTO A FEATURE, AND WORTH MARKING.** The hold was wrong, and what replaces it is more expressive than anything we would have built had it merely been tuned: it is a new place to read a driver.
+
+**What it should look like (the project lead):** a good driver arrives at a blocked sightline already slower with margin in hand, so if something emerges they handle it smoothly; a poor one arrives at full speed and has to brake hard, or does not react at all. Measurable: approach speed at the obstruction, and the braking that follows.
+
+**Which axes is to be tested, not taken (the project lead's reading):** observation (noticing it is blocked), knowledge (knowing it warrants caution), confidence or imposition (noticing, understanding and going anyway). If all three participate, show it; if one dominates, say that. Not spread across three for tidiness.
+
+**Two changes, measured separately, predictions first.** The amber-rule switch (`world.marginCanStop`) addresses impossibility; this addresses caution. The amber fix must not silently implement this.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
