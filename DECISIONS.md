@@ -4713,6 +4713,11 @@ SIMULATOR log they read as bad luck; together they are the pattern:
    | lead | the 26 were held late for a car visible for seconds | all 26 a truck's margin: a hold for a car that usually is not there (IN FLIGHT 40) |
    | agent | the 26 are at least 60% not a car at the node | MET, 100%; but its second half, that the remainder was the instrument's own mismatch, was wrong in its reasoning: 1 of 30, nothing left unnamed |
    | agent | a late overshoot is discovery at the seam | 13 of 69 (IN FLIGHT 40) |
+   | lead | the real-car holds are a decision late against a car visible for seconds | 13 of 34 the blocker had just arrived, 7 cut off by a left-turner, 14 left-turners on position alone (IN FLIGHT 40) |
+   | agent | most real-car holds are a change in the blocker's state (R1) | 13 of 34 |
+   | agent | a corner un-accepts the gap because the need rises (R3) | the need fell; the mechanism held on 4 of 4, for a reason I had the arithmetic wrong on |
+   | lead | parked cars are in the car budget, explaining low encounters and too polite | not in the count; explains neither. Jay's observation stands: 91% of the cars he sees (10.42) |
+   | agent | bold and maximally bold hit most in the staged scene (E2) | they hit none, and take tight passes instead (IN FLIGHT 40) |
    | agent | courtesy's two failures are too few trials | true of the shortfall; the check's second assertion could not fail at all, and its falsifier fired on the larger sample: a lapsed offer (IN FLIGHT 39) |
    | agent | headway's mean shown stays within 0.75-1.33 of main's | missed at 0.74 at 180 cars, where the check turned out to be passing on one seed's luck (IN FLIGHT 39) |
 
