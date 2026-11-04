@@ -1,0 +1,66 @@
+/* WHAT WAS THE OVERSHOOTER HELD FOR? (4 November; IN FLIGHT 40's first question.)
+   overshoot-entry.mjs left 26 of 56 held-late cars with no blocker named. It asked
+   blockedBy with live = null, over true positions, and counted any failure to find
+   a blocker with a known age as "unnamed". Here the first tick of each hold that
+   ends in an overshoot is named in the terms whatStops itself holds by:
+     hidden    byHidden: a truck's margin, nothing visible holding them
+     walker    somebody on a crosswalk, held at the line
+     scanning  still looking along the cross road (checks only)
+     car       blockedBy names a car, with the live signal the sim passes; its age at
+               this node, and whether the old call (live = null) would have named it
+     picture   only the car's own picture names one (checks only: not asked here)
+     none      none of the above: whatStops holds for a reason this cannot name
+   Each overshoot is also "impossible from entry", "held late" or "could have
+   stopped", as overshoot-entry.mjs judges it (hardest braking, no reaction time).
+   Usage: node overshoot-hold.mjs <treeRoot> seeds(comma) [cars=150] */
+const [root, seedsArg, carsArg = "150"] = process.argv.slice(2);
+const { loadMap } = await import(`file:///${root}/src/map/load.js`);
+const { TEST_MAPS } = await import(`file:///${root}/src/map/samples.js`);
+const { seedGraph, step, whatStops, layoutOf, blockedBy, waitAt } = await import(`file:///${root}/src/sim/crossing.js`);
+const { heldAhead } = await import(`file:///${root}/src/sim/peds.js`);
+const { DT, stoppingRoom, vehicleOf } = await import(`file:///${root}/src/sim/traffic.js`);
+const city = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
+const out = { root: root.split("/").pop(), seeds: seedsArg, cars: Number(carsArg), checks: null, overshoots: 0, kinds: {}, by: {}, ages: [], oldCallMissed: 0, rows: [] };
+const bump = (o, k) => { o[k] = (o[k] ?? 0) + 1; };
+for (const seed of seedsArg.split(",").map(Number)) {
+  let w = seedGraph(seed, 50, city, { target: Number(carsArg), posted: true, rivals: true });
+  out.checks = w.checks === true;
+  const entry = new Map(), hold = new Map();
+  for (let i = 0; i < 600 / DT; i++) {
+    const prev = w;
+    for (const a of prev.actors) {
+      if (a.player || a.crash) continue;
+      const key = `${a.k}|${a.route}`, e = entry.get(a.id);
+      if (!e || e.key !== key) entry.set(a.id, { key, s: a.s, v: a.v, t: prev.t });
+      const v = whatStops(a, prev);
+      if (!(v.held && v.leader?.id === "line")) { hold.delete(a.id); continue; }
+      if (hold.has(a.id)) continue;
+      const L = layoutOf(prev, a), mine = L.paths[a.route], k = a.k ?? 0, live = prev.lights?.[k]?.live ?? null;
+      const others = prev.actors.filter((c) => c.id !== a.id && (c.k ?? 0) === k);
+      const named = others.filter((c) => blockedBy(a, c, L, a.caution, prev.t, live));
+      const oldCall = others.filter((c) => blockedBy(a, c, L, a.caution, prev.t, null));
+      const walker = heldAhead(prev, a, mine);
+      const scanning = prev.checks === true && !!a.scan && a.scan.must && !a.scan.round && a.stoppedAt != null && prev.t < a.scan.until;
+      const why = v.byHidden ? "hidden" : walker && walker.s >= waitAt(mine, a) ? "walker" : scanning ? "scanning" : named.length ? "car" : "none";
+      const ages = named.map((c) => { const ce = entry.get(c.id); return ce && ce.key === `${c.k}|${c.route}` ? prev.t - ce.t : null; }).filter((x) => x != null);
+      hold.set(a.id, { s: a.s, v: a.v, why, age: ages.length ? Math.min(...ages) : null, oldNamed: oldCall.length > 0, red: !!v.red, hold: !!v.hold, signal: !!L.signal, control: L.place?.control?.[mine.from] ?? null, intent: mine.intent, by: named[0]?.id ?? null });
+    }
+    w = step(w);
+    for (const a of w.actors) {
+      const h = hold.get(a.id); if (!h) continue;
+      const b = prev.actors.find((x) => x.id === a.id); if (!b) continue;
+      const P = layoutOf(w, a).paths[a.route];
+      if (!(b.s < P.stopAt && a.s >= P.stopAt && a.v > 0.5)) continue;
+      const most = vehicleOf(a).most, e = entry.get(a.id);
+      const kind = !(e && stoppingRoom(e.v, most) <= P.stopAt - e.s) ? "impossibleFromEntry" : !(stoppingRoom(h.v, most) <= P.stopAt - h.s) ? "heldLate" : "couldHaveStopped";
+      out.overshoots++; bump(out.kinds, kind);
+      if (kind === "heldLate") {
+        bump(out.by, h.why);
+        if (h.why === "car") { out.ages.push(h.age == null ? null : +h.age.toFixed(1)); if (!h.oldNamed) out.oldCallMissed++; }
+        if (h.why !== "car" && out.rows.length < 24) out.rows.push({ seed, t: +w.t.toFixed(1), id: a.id, why: h.why, holdV: +h.v.toFixed(1), toLine: +(P.stopAt - h.s).toFixed(1), signal: h.signal, red: h.red, hold: h.hold, control: h.control, intent: h.intent });
+      }
+      hold.delete(a.id);
+    }
+  }
+}
+console.log(JSON.stringify(out));
