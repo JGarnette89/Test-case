@@ -27,8 +27,8 @@ nothing that moves the default world was to be started.
 - **The source documents are committed:** `REPORT-CHECKS.md`,
   `ARCHITECTURAL-AUDIT.md`, `STORY-SOURCE-2026-11-03.md` (STORY.md is the RECORD,
   with its rulings; do not overwrite it with the source). Conflicts: DECISIONS 10.37.
-- **Not started:** the keep-right worker-thread change (approved, sabotage first),
-  and rechecking PLAN 4b line by line against the audit's text.
+- **Done 4 November:** the keep-right worker-thread change (TESTING.md). **Not
+  started:** rechecking PLAN 4b line by line against the audit's text.
 - **The agreed order in section 2 was checked on 3 November and stands.** No
   sim code has moved.
 
