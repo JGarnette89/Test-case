@@ -5627,7 +5627,7 @@ or instrument asked.
 
 1. **THE EXTREME BANDS ARE AS FEW AS 4-12 OCCASIONS.** 0 of 11 for knowledge is 8 drivers. The shape across bands is the evidence; no single extreme band's number is.
 2. **MY 30% PREDICTION FAILED, AND IT WAS A GUESS AT AN UNDERIVED NUMBER.** Sound drivers were predicted at least 30% slower than the baseline; they came out 21% below their own speed and 9% below the baseline. Half of all occasions clear before a driver would act.
-3. **UNDER CONSEQUENCE, TESTED ON ONE GEOMETRY (5 November, SIMULATOR IN FLIGHT 40): THEY DO FAIL DIFFERENTLY.** Knowledge-poor hits (10 of 260). Observation-poor splits: when they slowed, 0 of 232, like sound; when they did not, 4 of 27. Bold does not hit, and takes it anyway: 0 hits, 40-50 tight passes against sound's 14. A small effective sample: about 26 offsets, and every hit on one of them. **And the sound driver survives but does not handle it smoothly: the derived speed buys a stop at their hardest, median 8.0 m/s^2, so that half of the description is not shown, by design.**
+3. **UNDER CONSEQUENCE, TESTED ON ONE GEOMETRY (5 November, SIMULATOR IN FLIGHT 40): THEY DO FAIL DIFFERENTLY.** Knowledge-poor hits (10 of 260). Observation-poor splits: when they slowed, 0 of 232, like sound; when they did not, 4 of 27. Bold does not hit, and takes it anyway: 0 hits, 40-50 tight passes against sound's 14. A small effective sample: about 26 offsets, and every hit on one of them; the control closes with no trucks. MY PREDICTION ABOUT BOLD DRIVERS WAS WRONG IN DIRECTION AND RIGHT IN MECHANISM: I had them among the worst for hits, and they hit none. **And the sound driver survives but does not handle it smoothly: the derived speed buys a stop at their hardest, median 8.0 m/s^2, so that half of the description is not shown, by design.**
 4. **IT HAS A COST THAT IS NOT BURIED:** overshoots 64 against 52 with the amber switch alone (78 with neither), because drivers no longer stopped by the margin reach real conflicts faster. Whether what they reach is handled or hit is a stated outcome of the scene.
 5. **IT IS NOT SHIPPED.** On the branch `sight-caution`, off, until the scene reports. Nobody driving the game can see this yet, and that a player can read these signatures by eye is the project lead's framing, not something measured.
 6. **KNOWLEDGE'S DIFFICULTY OF 0.25 HAS NO DERIVATION**, a placeholder set by analogy with `shoulder-check`, itself placed without a ruling, and it decides how many drivers fall in that band (about 8%). The maintainer's to set.
@@ -5663,7 +5663,7 @@ or instrument asked.
 
 **COST.** Step, near alone, 180 cars, same seed, two rounds each: the city 4.85 and 4.80 ms with parking, 4.27 and 4.19 without (about +0.6 ms, 14%); test map 1 9.83 and 9.64 against 9.37 and 9.39 (about +0.35 ms). The worlds differ a little, since trips end differently, so this bounds it rather than isolating it: not stepped like cars, not free either. Already on record as a DRAW cost, 17-21% of canvas calls (SIMULATOR 1.2.x). **His "budget for no moving traffic" is a real cost at the frame, not in the sim's count.**
 
-**THE FINDING NOBODY ASKED FOR: THE MARGINAL CAR ON A SMALL MAP STANDS STILL.** From 180 to 300 asked, moving rises by 83 of 120 on the city (69%), 59 on test map 1 (49%), 20 on buses, 17 on signs, **5 on peds (4%)**. At 180, peds is 60% standing, signs 54%, buses 70%. Those maps' own defaults are 40, 40 and 20, and CLEAN MODE SETS 180 ON ALL OF THEM (`cleanCars`, MapRoad.jsx, "measured best on the maintainer's phone", on the city). That is "why adding cars bought so little", on small maps: it is a jam, not parking.
+**THE FINDING NOBODY ASKED FOR: THE MARGINAL CAR ON A SMALL MAP STANDS STILL.** From 180 to 300 asked, moving rises by 83 of 120 on the city (69%), 59 on test map 1 (49%), 20 on buses, 17 on signs, **5 on peds (4%)**. At 180, peds is 60% standing, signs 54%, buses 70%. Those maps' own defaults are 40, 40 and 20, and CLEAN MODE SETS 180 ON ALL OF THEM (`cleanCars`, MapRoad.jsx, "measured best on the maintainer's phone", on the city). That is "why adding cars bought so little", on small maps: it is a jam, not parking. **THE 180 IS THE ENDLESS HIGHWAY'S** (SIMULATOR 1.2.19, his best configuration there), not the city's, as this entry first said. **THE PROJECT LEAD RECORDS IT AS HIS DEFECT:** he specified 180 from the highway and it was applied to every map, some of whose sensible density is 20-40. It is an instance of 10.35: a feature belonging to a screen and not to the world. **THE DATES, AS GIT HAS THEM: Clean mode's 180 landed Thursday 22 October (`60de896`), and 10.35 was named Wednesday 28 October (`a469173`), so it preceded the principle by six days;** the project lead's own account had it three days after. What Clean mode should do instead is with the maintainer.
 
 **180 IS ALSO THIN ON THE CITY:** 71 lane-km, default 300 by the map's own density rule, so Clean mode runs it at 60%. 2.5 moving cars within 100 m is what that looks like. The low encounter rate on the city is density, not a miscount.
 
@@ -5676,6 +5676,44 @@ or instrument asked.
 - **FRAME BUDGET ON THE PHONE, 180 AS "MEASURED BEST":** measured with 91% of the cars drawn being parked. The moving budget might be different with fewer parked cars drawn. Nobody has measured it.
 
 **NOT FIXED, BY INSTRUCTION.** Several directions follow, and all are the maintainer's: whether parked cars should leave at a visible rate, whether maps without districts should allow it, how many should be drawn, and what Clean mode should do on small maps.
+
+## 10.43 BUILDINGS THAT HIDE THINGS: SCOPED, NOT BUILT (5 November)
+
+**The project lead: in a city, buildings are the principal thing that hides a car, far more than trucks, so a sightline feature that only responds to trucks barely shows on the maintainer's maps and cannot express the behavior at intersections, where it matters most. It also bears on the combined map.** `tools/measure/building-sight.mjs`, no source changed. Desk machine; the phone is several times slower.
+
+**CAN THE SIGHT MODEL TAKE A STATIC OCCLUDER? YES, MECHANICALLY.** A sight blocker is already a plain box, `{ id, x, y, heading, l, w }`, in `world.tall`. Every test takes boxes, and a check already hands it a static one (verify-trucks' `between`). `phantomHolds` looks ids up and skips any that is not a vehicle. What blocks it is one line: the step rewrites `world.tall` from the vehicles each tick (crossing.js 2363), so a static list has to be merged there. **`peds.js inSight` also reads `world.tall`, so buildings would hide people on foot from drivers too**, which touches the fairness owed the player (`verify-peds`) and is not free of consequence.
+
+**ARE BUILDINGS GEOMETRY THE SIM CAN SEE? THEY ARE GEOMETRY; THE SIM DOES NOT READ THEM.** The loader keeps each as position, heading, length, width and height, the same box and the same heading convention (`loaded.props`, chunked), and only the renderer and the loader's own road test use them. Height is there (5 m at the lowest, 7 median), all above `HIDES`. Plan-only, so a building under a deck and hills are not handled.
+
+**SIX OF THE EIGHT TEST MAPS HAVE NO BUILDINGS AT ALL.** The city has 786, the trial city 2,314; test map 1, peds, signs, buses, highway and loop have none.
+
+**WHAT THEY WOULD HIDE, FROM THE GEOMETRY:**
+
+| | crossing roads hidden in part from 30 m back | from the line | hidden entirely, either place |
+|---|---|---|---|
+| city (3,898 pairs) | 52% | 0.6% | 0 |
+| trial city (13,048 pairs) | 53% | 0.3% | 0 |
+
+**That is the shape the feature wants: blind on the approach and clear at the line.** A driver who stops can see, so the missing creeping does not leave anybody stuck, and caution has somewhere to fire at about half of all approaches, where trucks gave it a few. On a sample, not a design: lots are set about 30 m from a node (median nearest building), and a corner building closer than that would change it.
+
+**COST PER TICK, ON THE ASKING, WHICH IS THE WHOLE OF 10.33'S TEST:**
+
+| world, caution on | step | whatStops as is | all buildings to every car | only those near, by a grid |
+|---|---|---|---|---|
+| city, 180 | 4.62 ms | 2.04 | 4.36 (+2.32, 50% of the step) | 2.71 (**+0.67, 14%**) |
+| city, 300 | 8.68 | 3.94 | 7.87 (+3.93, 45%) | 5.15 (**+1.21, 14%**) |
+| trial city, 300 | 13.14 | 4.88 | 12.70 (+7.82, 60%) | 5.53 (**+0.65, 5%**) |
+
+**By 10.33 this adds an evaluation, so it has to earn its way, and an index is not optional:** handed every building it costs half a step. The grid's own lookup is outside those timers, and people on foot are not in them. **A CHEAPER SHAPE IS AVAILABLE AND UNTRIED:** buildings do not move and neither do paths, so the answer can be a table made once at load, per approach, per crossing road, every 5 m over the last 60 m: 43,397 entries in 0.3 s on the city, 136,104 in 1.1 s on the trial city, then a lookup per tick. It passes 10.33's test where the per-tick form does not. Trucks still need the moving test; only the static half becomes a table.
+
+**WHAT IT DEPENDS ON, IN ORDER:**
+
+1. **THE CAUTION CHANGE MUST BE DECIDED FIRST, AND THE SPEED QUESTION WITH IT.** Under the rule on `main` a moving driver is HELD by what they cannot see. Half of all approaches blind from 30 m under that rule would stop the city. Buildings on the current rule are not an option at all.
+2. **THE CAUTION SPEED IS THE MAINTAINER'S, AND THIS MAKES IT BIGGER.** A choice felt at a few trucks becomes one felt at about half of all approaches, so the flow cost measured at trucks (none visible) does not carry over and has to be measured again.
+3. **EVERY WORLD WITH BUILDINGS MOVES**, and the checks on them re-baseline, the city's and the trial city's at least.
+4. **THE COMBINED MAP (10.35, handoff section 9) SHOULD NOT BE BUILT AS IF THIS WILL NOT HAPPEN:** where buildings stand at corners is then a traffic decision, and a map laid out without it needs revisiting.
+
+**WHAT IS NOT KNOWN:** whether a world behaving under buildings keeps its flow, crash rate and the three signatures; none of that was stepped. Whether the player, who sees from above, can see what a driver cannot, and what that does to fairness and to what he reads, is a design question nobody has asked.
 
 ## 11. Verification
 

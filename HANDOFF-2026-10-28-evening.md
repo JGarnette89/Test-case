@@ -162,6 +162,12 @@ A cold session that knows the reasons should reorder if a reason changes.
 - **For Jay, put to him by the project lead, not to be guessed:** should a driver
   with a green, or a clear uncontrolled approach, slow at all for what a truck might
   be hiding? The amber-rule switch addresses impossibility, not this.
+- **For Jay, framed by the project lead, not to be pre-empted:** the caution speed,
+  survival with flow against smoothness with a slower road. **And what Clean mode
+  should do on maps whose density is not the highway's** (DECISIONS 10.42).
+- **Scoped, not built: buildings that hide things** (DECISIONS 10.43). Depends on the
+  caution decision, and bears on the combined map.
+- **Held:** `margin-can-stop` and `sight-caution`, both off, on their branches.
 - **For Jay, a feel question and not a defect:** a player who moves into the gap
   just after a courtesy offer lapses gets no "let in".
 - **"Too polite" is unexplained:** not the skill distribution, not cross-node
