@@ -25,13 +25,13 @@ const { movementLight } = await import(`file:///${root}/src/sim/signal.js`);
 const { heldAhead } = await import(`file:///${root}/src/sim/peds.js`);
 const { DT, stoppingRoom, vehicleOf } = await import(`file:///${root}/src/sim/traffic.js`);
 const city = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
-const out = { root: root.split("/").pop(), seeds: seedsArg, cars: Number(carsArg), checks: null, margin: process.env.MARGIN === "1", overshoots: 0, crashes: 0, carOnCar: 0, harsh: 0, ticks: 0, released: 0, releasedCrash: 0, crashRows: [], kinds: {}, by: {}, ages: [], oldCallMissed: 0, rows: [] };
+const out = { root: root.split("/").pop(), seeds: seedsArg, cars: Number(carsArg), checks: null, margin: process.env.MARGIN === "1", overshoots: 0, crashes: 0, carOnCar: 0, harsh: 0, ticks: 0, released: 0, releasedCrash: 0, crashRows: [], overshootCrash: 0, kinds: {}, by: {}, ages: [], oldCallMissed: 0, rows: [] };
 const bump = (o, k) => { o[k] = (o[k] ?? 0) + 1; };
 for (const seed of seedsArg.split(",").map(Number)) {
   let w = seedGraph(seed, 50, city, { target: Number(carsArg), posted: true, rivals: true });
   if (process.env.MARGIN === "1") w = { ...w, marginCanStop: true };
   if (process.env.CAUTION === "1") w = { ...w, sightCaution: true };
-  const releasedAt = new Map(), counted = new Set();
+  const releasedAt = new Map(), counted = new Set(), overAt = new Map();
   out.checks = w.checks === true;
   const entry = new Map(), hold = new Map();
   for (let i = 0; i < 600 / DT; i++) {
@@ -63,6 +63,8 @@ for (const seed of seedsArg.split(",").map(Number)) {
       out.crashes++;
       const ids = [c.a, c.b].filter((x) => x != null), people = ids.filter((id) => String(id).startsWith("car")).length;
       if (people === 2) out.carOnCar++;
+      /* WHAT THE OVERSHOOT REACHED: handled, or hit? In a crash within 8 s of crossing the line while held. */
+      if (ids.some((id) => overAt.has(id) && w.t - overAt.get(id) <= 8)) out.overshootCrash++;
       const rel = ids.find((id) => releasedAt.has(id) && w.t - releasedAt.get(id) <= 10);
       if (rel != null) out.releasedCrash++;
       out.crashRows.push({ seed, t: +w.t.toFixed(1), a: c.a, b: c.b, released: rel ?? null, since: rel != null ? +(w.t - releasedAt.get(rel)).toFixed(1) : null });
@@ -75,7 +77,7 @@ for (const seed of seedsArg.split(",").map(Number)) {
       if (!(b.s < P.stopAt && a.s >= P.stopAt && a.v > 0.5)) continue;
       const most = vehicleOf(a).most, e = entry.get(a.id);
       const kind = !(e && stoppingRoom(e.v, most) <= P.stopAt - e.s) ? "impossibleFromEntry" : !(stoppingRoom(h.v, most) <= P.stopAt - h.s) ? "heldLate" : "couldHaveStopped";
-      out.overshoots++; bump(out.kinds, kind);
+      out.overshoots++; bump(out.kinds, kind); overAt.set(a.id, w.t);
       if (kind === "heldLate") {
         bump(out.by, h.why);
         if (h.why === "car") { out.ages.push(h.age == null ? null : +h.age.toFixed(1)); if (!h.oldNamed) out.oldCallMissed++; }
