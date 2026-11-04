@@ -17,6 +17,7 @@ const [root, seedsArg, carsArg = "150"] = process.argv.slice(2);
 const { loadMap } = await import(`file:///${root}/src/map/load.js`);
 const { TEST_MAPS } = await import(`file:///${root}/src/map/samples.js`);
 const { seedGraph, step, whatStops, layoutOf, blockedBy, waitAt } = await import(`file:///${root}/src/sim/crossing.js`);
+const { movementLight } = await import(`file:///${root}/src/sim/signal.js`);
 const { heldAhead } = await import(`file:///${root}/src/sim/peds.js`);
 const { DT, stoppingRoom, vehicleOf } = await import(`file:///${root}/src/sim/traffic.js`);
 const city = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
@@ -43,7 +44,7 @@ for (const seed of seedsArg.split(",").map(Number)) {
       const scanning = prev.checks === true && !!a.scan && a.scan.must && !a.scan.round && a.stoppedAt != null && prev.t < a.scan.until;
       const why = v.byHidden ? "hidden" : walker && walker.s >= waitAt(mine, a) ? "walker" : scanning ? "scanning" : named.length ? "car" : "none";
       const ages = named.map((c) => { const ce = entry.get(c.id); return ce && ce.key === `${c.k}|${c.route}` ? prev.t - ce.t : null; }).filter((x) => x != null);
-      hold.set(a.id, { s: a.s, v: a.v, why, age: ages.length ? Math.min(...ages) : null, oldNamed: oldCall.length > 0, red: !!v.red, hold: !!v.hold, signal: !!L.signal, control: L.place?.control?.[mine.from] ?? null, intent: mine.intent, by: named[0]?.id ?? null });
+      hold.set(a.id, { myLight: L.signal ? movementLight(L.signal, L.legs[mine.from]?.base, mine.intent, prev.t, live) : null, stopSign: L.place?.control?.[mine.from] ?? null, asks: a.v * a.v / (2 * Math.max(0.01, waitAt(mine, a) - a.s)), s: a.s, v: a.v, why, age: ages.length ? Math.min(...ages) : null, oldNamed: oldCall.length > 0, red: !!v.red, hold: !!v.hold, signal: !!L.signal, control: L.place?.control?.[mine.from] ?? null, intent: mine.intent, by: named[0]?.id ?? null });
     }
     w = step(w);
     for (const a of w.actors) {
@@ -57,7 +58,8 @@ for (const seed of seedsArg.split(",").map(Number)) {
       if (kind === "heldLate") {
         bump(out.by, h.why);
         if (h.why === "car") { out.ages.push(h.age == null ? null : +h.age.toFixed(1)); if (!h.oldNamed) out.oldCallMissed++; }
-        if (h.why !== "car" && out.rows.length < 24) out.rows.push({ seed, t: +w.t.toFixed(1), id: a.id, why: h.why, holdV: +h.v.toFixed(1), toLine: +(P.stopAt - h.s).toFixed(1), signal: h.signal, red: h.red, hold: h.hold, control: h.control, intent: h.intent });
+        if (h.why === "hidden") (out.hidden ??= []).push({ light: h.myLight ?? "unsignalled", control: h.stopSign, intent: h.intent, v: +h.v.toFixed(1), toLine: +(P.stopAt - h.s).toFixed(1), asks: +h.asks.toFixed(1) });
+        if (h.why !== "car" && out.rows.length < 0) out.rows.push({ seed, t: +w.t.toFixed(1), id: a.id, why: h.why, holdV: +h.v.toFixed(1), toLine: +(P.stopAt - h.s).toFixed(1), signal: h.signal, red: h.red, hold: h.hold, control: h.control, intent: h.intent });
       }
       hold.delete(a.id);
     }
