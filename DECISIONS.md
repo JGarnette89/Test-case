@@ -5735,6 +5735,20 @@ or instrument asked.
 
 **7. THE ENVIRONMENT NEEDS FILLING GENERALLY** (trees, bushes, signage), and it belongs to the buildings scope (10.43). `PROP_KINDS` holds house, shop and apartment and nothing else.
 
+### THE NUMBER YES, THE THRESHOLD NO: DO NOT COLLAPSE THESE (the project lead, 5 November, correcting their own suggestion)
+
+**The tidy-looking merge is wrong, and somebody will be tempted by it.** The deceleration forced on the car behind can be predicted once, by that car's own `decide`, and shared. **WHAT A DRIVER COMPARES IT WITH CANNOT BE SHARED.** `imposesOf` is how much cost a driver is WILLING TO PUT ON SOMEBODY ELSE. The price of slowing is how much RISK THEY SEE TO THEMSELVES. Read through imposition, an aggressive driver, who imposes freely, slows MORE at a blind corner, which is backward. Two thresholds, one number: this is the two-definitions pattern's opposite, and an aggression refactor that "removes the duplicate" reintroduces the bug.
+
+### WE ARE NOT OPTIMIZING FOR A SAFE WORLD. WE ARE OPTIMIZING FOR A LEGIBLE ONE (the project lead, 5 November)
+
+**The standard is that the failure modes stay distinguishable, not that the sound driver is safe.** The maintainer has asked to witness the car ahead getting t-boned, and a world where good drivers never hit anything cannot produce that. It recurs: read any "0 hits" here as a measurement, not as a target. With 10.41: rates matter for legibility and not realism.
+
+**THE THREE-AXIS RESULT IS TO BE RE-MEASURED, NOT DEFENDED (10.40).** If the baseline becomes barely slowing and confidence as a size stops being readable here, that is an honest outcome: confidence may simply express itself elsewhere. Do not preserve a signature by keeping a behavior he has ruled wrong.
+
+**THE ORDER (the project lead):** 0, whether a hard brake can actually cause a rear-end with look-away off, since it decides whether 1 is worth building: if it cannot, the price of slowing is a danger that does not exist (CLAUDE.md item 6). 1, the price of slowing and prior sight together, two halves of one behavior; prior sight held to its minimal shape, when each crossing road was last clear, per driver, near a line (a wider memory cost 22 ms a step). 2, creeping, after the maintainer rules on commitment, which the project lead is putting to him. The old engine's `assessCreep` reasoning is reusable, its code is not.
+
+**ITEM 0's PREDICTIONS, COMMITTED BEFORE IT IS BUILT.** RE1: with look-away off, a car following a car cannot be hit into by hard braking: the follower decides from the previous tick with no lag and brakes as hard as the car ahead; 0 contacts at any rate. RE2: a truck following a car can, its hardest being 6 m/s^2 against 8: some contacts, at the hardest rate only. RE3, THE CONTROL: with look-away on the same scene produces contacts; if it does not, the instrument cannot see a rear-end and RE1's zero means nothing. RE4: in the city over 28 seeds with look-away off, no crash is a following car running into one braking. FALSIFIED IF car followers produce contacts with look-away off, in which case the risk is already real.
+
 ### WHAT THIS DOES TO WHAT IS ALREADY RECORDED
 
 - **THE DERIVED SPEED ON `sight-caution` IS RETIRED AS A TARGET.** It answered "from what speed could they stop"; the ruling asks a different question. Hardest against comfortable is withdrawn as a question. Both switches stay held.
