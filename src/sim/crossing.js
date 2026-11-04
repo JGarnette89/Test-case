@@ -1653,6 +1653,14 @@ function sampleAt(p2, from, j) {
 function phantomHolds(world, me, layout, mine, eye, tall) {
   const assume = Math.max(0, Math.min(1, me.caution ?? 1));
   if (assume <= 0) return false;
+  /* A HOLD NO BRAKES CAN OBEY IS NOT A HOLD (4 November; IN FLIGHT 40; OFF by
+     default, on trial). A truck can move into line at any distance, and the
+     margin then asked a driver at 15 m/s, 3 m from their line, for a median
+     186 m/s^2. HARDEST braking, not comfortable, on purpose: this addresses
+     impossibility only. Whether a driver with a green or a clear uncontrolled
+     approach should slow at all for what a truck might hide is a question for
+     the maintainer, and this must not answer it. */
+  if (world.marginCanStop === true && stoppingRoom(me.v ?? 0, vehicleOf(me).most) > Math.max(0, waitAt(mine, me) - me.s)) return false;
   /* Only a driver near enough their line to be deciding: further back
      they are still approaching, and what is hidden changes before they
      get there (scanning for every approaching car was a fifth of a step). */

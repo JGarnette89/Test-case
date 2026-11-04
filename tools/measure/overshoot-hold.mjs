@@ -12,6 +12,10 @@
      none      none of the above: whatStops holds for a reason this cannot name
    Each overshoot is also "impossible from entry", "held late" or "could have
    stopped", as overshoot-entry.mjs judges it (hardest braking, no reaction time).
+   MARGIN=1: world.marginCanStop on. Then RELEASED counts the driver who was asking
+   for the margin (the same tick with the switch off says byHidden) and is not held
+   by it, once per approach, and whether they are in a crash within 10 s of release.
+   Also crashes, car-on-car, and hard braking (past 5.4 m/s^2, moving car-ticks).
    Usage: node overshoot-hold.mjs <treeRoot> seeds(comma) [cars=150] */
 const [root, seedsArg, carsArg = "150"] = process.argv.slice(2);
 const { loadMap } = await import(`file:///${root}/src/map/load.js`);
@@ -21,10 +25,12 @@ const { movementLight } = await import(`file:///${root}/src/sim/signal.js`);
 const { heldAhead } = await import(`file:///${root}/src/sim/peds.js`);
 const { DT, stoppingRoom, vehicleOf } = await import(`file:///${root}/src/sim/traffic.js`);
 const city = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
-const out = { root: root.split("/").pop(), seeds: seedsArg, cars: Number(carsArg), checks: null, overshoots: 0, kinds: {}, by: {}, ages: [], oldCallMissed: 0, rows: [] };
+const out = { root: root.split("/").pop(), seeds: seedsArg, cars: Number(carsArg), checks: null, margin: process.env.MARGIN === "1", overshoots: 0, crashes: 0, carOnCar: 0, harsh: 0, ticks: 0, released: 0, releasedCrash: 0, crashRows: [], kinds: {}, by: {}, ages: [], oldCallMissed: 0, rows: [] };
 const bump = (o, k) => { o[k] = (o[k] ?? 0) + 1; };
 for (const seed of seedsArg.split(",").map(Number)) {
   let w = seedGraph(seed, 50, city, { target: Number(carsArg), posted: true, rivals: true });
+  if (process.env.MARGIN === "1") w = { ...w, marginCanStop: true };
+  const releasedAt = new Map(), counted = new Set();
   out.checks = w.checks === true;
   const entry = new Map(), hold = new Map();
   for (let i = 0; i < 600 / DT; i++) {
@@ -34,6 +40,10 @@ for (const seed of seedsArg.split(",").map(Number)) {
       const key = `${a.k}|${a.route}`, e = entry.get(a.id);
       if (!e || e.key !== key) entry.set(a.id, { key, s: a.s, v: a.v, t: prev.t });
       const v = whatStops(a, prev);
+      if (process.env.MARGIN === "1" && !v.byHidden && a.v > 2 && !counted.has(key + a.id)) {
+        const asked = whatStops(a, { ...prev, marginCanStop: false });
+        if (asked.byHidden) { counted.add(key + a.id); releasedAt.set(a.id, prev.t); out.released++; }
+      }
       if (!(v.held && v.leader?.id === "line")) { hold.delete(a.id); continue; }
       if (hold.has(a.id)) continue;
       const L = layoutOf(prev, a), mine = L.paths[a.route], k = a.k ?? 0, live = prev.lights?.[k]?.live ?? null;
@@ -46,7 +56,17 @@ for (const seed of seedsArg.split(",").map(Number)) {
       const ages = named.map((c) => { const ce = entry.get(c.id); return ce && ce.key === `${c.k}|${c.route}` ? prev.t - ce.t : null; }).filter((x) => x != null);
       hold.set(a.id, { myLight: L.signal ? movementLight(L.signal, L.legs[mine.from]?.base, mine.intent, prev.t, live) : null, stopSign: L.place?.control?.[mine.from] ?? null, asks: a.v * a.v / (2 * Math.max(0.01, waitAt(mine, a) - a.s)), s: a.s, v: a.v, why, age: ages.length ? Math.min(...ages) : null, oldNamed: oldCall.length > 0, red: !!v.red, hold: !!v.hold, signal: !!L.signal, control: L.place?.control?.[mine.from] ?? null, intent: mine.intent, by: named[0]?.id ?? null });
     }
+    const c0 = (prev.crashes ?? []).length;
     w = step(w);
+    for (const c of (w.crashes ?? []).slice(c0)) {
+      out.crashes++;
+      const ids = [c.a, c.b].filter((x) => x != null), people = ids.filter((id) => String(id).startsWith("car")).length;
+      if (people === 2) out.carOnCar++;
+      const rel = ids.find((id) => releasedAt.has(id) && w.t - releasedAt.get(id) <= 10);
+      if (rel != null) out.releasedCrash++;
+      out.crashRows.push({ seed, t: +w.t.toFixed(1), a: c.a, b: c.b, released: rel ?? null, since: rel != null ? +(w.t - releasedAt.get(rel)).toFixed(1) : null });
+    }
+    for (const a of w.actors) { if (a.player) continue; out.ticks++; if (-(a.a ?? 0) > 5.4 && (a.v ?? 0) > 0.5) out.harsh++; }
     for (const a of w.actors) {
       const h = hold.get(a.id); if (!h) continue;
       const b = prev.actors.find((x) => x.id === a.id); if (!b) continue;
