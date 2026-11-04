@@ -5777,6 +5777,23 @@ or instrument asked.
 
 **HOW COMMON, ON THE MEASURE WE HAVE, WHICH DOES NOT SETTLE IT:** over 6 seeds, the city at 150, trucks only: margin holds on moving drivers 168 (right turns 21), at rest 18 (right turns 1). So today's world shows the at-rest case rarely. **THAT IS NOT EVIDENCE AGAINST THE RULING:** nothing near a corner hides anything but a passing truck, buildings stand about 30 m back and hide 0.6% from the line (10.43), and there are no trees. The model cannot yet produce the situation he describes, which is the point of 7.
 
+## 10.45 COMMITMENT: THREE STATES WHERE THE SIM HAS TWO (the maintainer, relayed by the project lead, 5 November; recorded, NOTHING BUILT)
+
+**Verbatim:** *"a car can ONLY creep out after the stop line, the car is committed only when it's driving into the lane. the car should creep only to the point where they would be intersecting the oncoming traffic, but a bad driver might pull too far forward and obstruct the lane. another possibility is the car doesn't yield properly and forces a defensive action even when observing oncoming traffic, misjudging, or not caring, about the gap."*
+
+**THE RULING IN STRUCTURAL TERMS (the project lead):** 1, AT THE LINE. 2, CREEPING: past the line, short of where the car's path would intersect oncoming traffic; NOT committed, and other drivers must not yield to it. 3, COMMITTED: entering the conflicting lane. Past the line is no longer sufficient for commitment. This answers 10.44's question C: it is what creeping was waiting on.
+
+**TWO FAILURE MODES HE NAMES, EACH LANDING ON SOMETHING MODELED:**
+
+- **PULLING TOO FAR FORWARD AND OBSTRUCTING THE LANE.** A stopping-position fault, on the real sheet under Position (the project lead). The sim already detects a car in another's path; what is new is treating it as a fault and not only as a conflict.
+- **FORCING A DEFENSIVE ACTION WHILE WATCHING THE ONCOMING TRAFFIC, "misjudging, or not caring, about the gap". MISJUDGING IS A SKILL FAILURE; NOT CARING IS IMPOSITION. Same observable, two causes** (the project lead): a worked instance of his sectional-marking principle that attribution is part of the mark (10.25, 10.26), and it arrives from a driving behavior rather than being designed for the sheet.
+
+**THE STANDARD, NOW HIS RULING AS WELL, verbatim: "if we are trying to ensure a good driver never has a collision it's just unrealistic."** With 10.44: distinguishable failure modes, not a safe world.
+
+**THE ORDER IS UNCHANGED (the project lead):** item 0, then the price of slowing with prior sight, then creeping. Item 0 was answered before this ruling arrived (10.44); item 1 is gated on the project lead's decision about making the risk real.
+
+**COMMITMENT'S PREDICTIONS, BEFORE THE MEASUREMENT (`tools/measure/commitment.mjs`, no sim change; main, 28 seeds).** C1: the creep limit already exists as `conflictOf(...).b`, with real room between the line and it on most approaches, least for right turns. C2: at least a third of overshoots stop short of the conflict with the road they were held for, so by the ruling those were never committed. C3: drivers are held by a car counted committed only by position, past its line and short of the conflict, the wrong yield the ruling forbids; common. FALSIFIED IF nearly all overshoots go straight into the conflict, in which case the ruling changes nothing for IN FLIGHT 40.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
