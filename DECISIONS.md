@@ -5835,6 +5835,43 @@ The physics, stated independently of the code: a follower at speed v, gap g, del
 
 **THE CONTROLS, TO BE RUN WITH IT:** delay zero (0 of 960 must come back, or the mechanism has broken something else); and the same delay for everybody at the population's median (hits must follow headway and stop following observation, or RR3 was reading something other than the delay).
 
+### Scored, 5 November (the branch `brake-reaction`, off)
+
+**THE MECHANISM WORKS AND THE RISK LANDS ON THE POOR OBSERVER: 0 TO 29 SAME-LANE CRASHES ON THE CITY, 28 OF THE 29 STRIKERS IN THE WORST OBSERVATION QUARTILE. BUT IT EXISTS ONLY IF THE PERIPHERY DOES NOT CAP IT, AND THAT IS A QUESTION ABOUT THE MAINTAINER'S RULING.**
+
+Car followers in `rear-end.mjs`, 120 drawn drivers at each of 2 speeds and 4 braking rates:
+
+| the delay | lead hit, of 960 | hits by delay quartile, lead at 8 m/s^2 |
+|---|---|---|
+| none (10.44; and the control at zero, re-run) | **0** | 0 0 0 0 |
+| one delay for all, the median 0.58 s (control) | 11, all at 8 m/s^2 | 3 3 2 3 |
+| **each driver's own `notices`** | **78** | **0 0 4 47** |
+| own, capped by the periphery's rule | **0** | 0 0 0 0 |
+
+The city, the same 28 seeds at 150 cars for 10 minutes each, about 699 car-hours:
+
+| the delay | same-lane crashes | other vehicle crashes | hard brakes with a car within 15 m behind | seconds over 5.4 per car-hour, best to worst delay quartile |
+|---|---|---|---|---|
+| none | 0 | 2 | 237 | 5.12, 4.97, 4.94, 4.33 |
+| one delay for all, 0.58 s | 0 | 1 | 260 | 5.22, 4.97, 4.83, 4.27 |
+| **own** | **29** (28 car on car, 1 truck behind a car, none mid lane change) | 6 | 522 | 5.25, 5.06, 5.26, 5.73 |
+
+**The player braking in front of a drawn follower** (`rear-end-player.mjs`, own delay, 2 speeds, 3 rates, using the screen's own contact): **80 of 720 hit the player, 75 of those by the worst quartile, none by the best.** At 2.7 m/s^2 from 14 m/s, 2 of 120 hit, and 25 of the worst quartile's 30 brake past 5.4 against 0 of the best's. So what the maintainer described is now true of this model, for this delay.
+
+- **RR1 MET.** Every cell 118 of 120 or better, the inequality predicting the sim per trial.
+- **RR2 FAILED.** 2 of 120 hit a lead at a comfortable 2.7 from 14 m/s, so hits do not begin at 5.4. **In the city the comfortable stop is the ordinary case:** the fronts of the crashes read were braking at 2.4-3.2 m/s^2 from 12-16 m/s: a line or a queue, and a poor observer close behind. That is an ordinary stop with a fault on the follower. Not traced per crash.
+- **RR3 MET.** At a lead of 8, 27 of 29 and 20 of 22 hits are in the worst quartile, monotone, and 1 of 51 had a delay under their headway.
+- **RR4 MET, MORE STRONGLY THAN PREDICTED: capped is 0 of 960.** I predicted a fall of three quarters and it is all of it. **The first capped run showed no difference at all, 29 and 21 hits, and that was MY BUG:** the eyes came back, the read turned true, the rate went unasked for the next tick, and they went away again. A bug read as a result would have said the periphery does not matter.
+- **RR5 MET.** 29, inside 5-60; 28 of 29 in the worst quartile, the other with `notices` 0.56. Median striker 1.8 s against the population's 0.58, and **BOLD AS WELL: all 29 keep a headway of 0.77 or under and 14 are in the tightest quarter of drivers. The dangerous candidate of 4.4, blind and bold, arrived without being asked for.** It is not a cascade, far below the 200 of the falsifier. **THE "STAY WITHIN NOISE OF 6" HALF WAS WRITTEN AGAINST THE WRONG BASELINE:** 6 was every crash in 10.44, and 2 were vehicles. Other vehicle crashes went 2 to 6, not told apart at this sample, not traced; some may follow from a car stopped dead.
+- **RR6 FAILED.** The worst quartile's abrupt braking rises 1.32x where I said at least 2x; the best 1.03x. So my claim that the late hard brake is the common event a player watches is not established: abrupt braking on the city is mostly other things. The scene does show it per stop (above), and hard brakes with a car close behind do double, 237 to 522.
+- **RR7 MET.** Off, the same tick for tick as main on the city, the trial city and the peds map: seed 3, 150 cars, 180 s, hash equal.
+
+**WHY THE CAP ERASES IT: the arithmetic in the section above.** Looming passes its threshold almost at once at following distance, so every driver's delay is a reaction time and a tick or two, which is under every headway drawn.
+
+**NOT DONE, STATED:** no check is written; step cost not measured; the switch has not been run through the suite, where `verify-crashes` ("the default traffic still never crashes") and `verify-rivals` at least must be restated if it goes on; not run with look-away or checks on; the marking sheet does not know a late hard brake from any other. Hard brakes off read 237 here against 10.44's 244, and I have not explained the difference. **It stays off on its branch.**
+
+**THE QUESTION FOR THE MAINTAINER, AND ITEM 1 IS GATED ON IT:** a driver is watching the car ahead and its brake lights come on. How long does a poor observer take to respond: as long as they take to notice a light gone green, at most about 2.4 s for this population and over 1.4 s for 15% of drivers; or does the closing gap reach everybody in about half a second? The ruling in 10.19 was given about a driver looking AWAY. **Extending it to a driver looking ahead makes a rear-end impossible again, and his "if we are trying to ensure a good driver never has a collision it's just unrealistic" is about good drivers: uncapped, no driver in the best quartile struck anybody.** Recommendation: uncapped. It is the only version that meets the project lead's first condition, and it is 1 same-lane crash per 10 minutes of a whole city at 150 cars. Whether that is often enough to witness, or too often, is his (10.41), with the map watched.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
