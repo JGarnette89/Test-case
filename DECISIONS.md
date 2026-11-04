@@ -4702,6 +4702,22 @@ SIMULATOR log they read as bad luck; together they are the pattern:
   not a partial failure.
    21. **THE SAME WRONG DEFINITION, THIRD APPEARANCE: LOOK HERE FIRST (the project lead, 4 November).** Who is in a lane was wrong in the following model; on 22 October placement was taught to AGREE with it, so two readers were consistent with a fiction (item 17); and verify-promotion then ENFORCED that agreement, requiring a car past the box on an off-ramp to be refused as if in the through lane's queue, when the path had split 14 m before the box ended. A geometric impossibility, asserted. **So when a definition is corrected and a check goes red, the first question is whether that check was written to the old definition, and the test is physical, poses and not the code's own vocabulary.** Not a licence to restate a check on sight: a verdict first, scored against what was predicted, and the restatement sabotaged both ways.
 
+   22. **THE FRAMINGS HAVE BEEN WRONG MORE OFTEN THAN THE MEASUREMENTS, AND THAT IS THE MOST RELIABLE THING IN THIS PROJECT (the project lead's words, 4 November: make it visible in the record, not only in messages).** Every entry is a framing given to the work, the project lead's or the agent's, and what it measured to:
+
+   | who | the framing | what it measured to |
+   |---|---|---|
+   | lead | the cross-node misreading makes the traffic "too polite" | city speed +0.3-0.4%; retired (IN FLIGHT 39) |
+   | lead | a car failing to stop is rewarded with right of way | five times the crashes as built; the crash traced was physically unstoppable (item 20) |
+   | lead | fixing 39 might dissolve 40 | a different code path; overshoots 69 to 78 (IN FLIGHT 40) |
+   | lead | shaping's 3.18x was partly bunching behind phantoms | 5.6-6.9% of cars met, no higher in the high seeds, and the 3.18 against 2.15 itself mostly sample (IN FLIGHT 11) |
+   | lead | the 26 were held late for a car visible for seconds | all 26 a truck's margin: a hold for a car that usually is not there (IN FLIGHT 40) |
+   | agent | the 26 are at least 60% not a car at the node | MET, 100%; but its second half, that the remainder was the instrument's own mismatch, was wrong in its reasoning: 1 of 30, nothing left unnamed |
+   | agent | a late overshoot is discovery at the seam | 13 of 69 (IN FLIGHT 40) |
+   | agent | courtesy's two failures are too few trials | true of the shortfall; the check's second assertion could not fail at all, and its falsifier fired on the larger sample: a lapsed offer (IN FLIGHT 39) |
+   | agent | headway's mean shown stays within 0.75-1.33 of main's | missed at 0.74 at 180 cars, where the check turned out to be passing on one seed's luck (IN FLIGHT 39) |
+
+   **What holds up is the method, not the framer: write the prediction and its falsifier down first, then read what comes back, including when it takes the question's own premise with it.** A framing is where a measurement starts, and it is not evidence.
+
 ## 10.24 FOLLOWS TOO CLOSELY: 0.75 CAR LENGTHS, HELD FOR 2-3 SECONDS (the maintainer, 27 October)
 
 The maintainer, verbatim, because the translation matters:

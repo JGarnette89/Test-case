@@ -29,8 +29,12 @@ nothing that moves the default world was to be started.
   with its rulings; do not overwrite it with the source). Conflicts: DECISIONS 10.37.
 - **Done 4 November:** the keep-right worker-thread change (TESTING.md). **Not
   started:** rechecking PLAN 4b line by line against the audit's text.
-- **The agreed order in section 2 was checked on 3 November and stands.** No
-  sim code has moved.
+- **38 AND 39 ARE MERGED TO `main` (4 November), and every traffic number before
+  that date describes the old world** (SIMULATOR IN FLIGHT 39). `lane-occupancy`
+  and `cross-node-gap` are history now. **The restatements in section 4 are done
+  for courtesy, promotion, signal and headway.**
+- **The agreed order in section 2 was checked on 3 November and stands**, with 39
+  and the shaping trace done.
 
 **`main` is what Jay drives** (GitHub Pages, https://jgarnette89.github.io/Test-case/,
 rebuilt on every push). Its last *feature* is the traffic skill dial and
@@ -151,6 +155,15 @@ A cold session that knows the reasons should reorder if a reason changes.
 - **IN FLIGHT 36, free-flow hard braking:** 1 four-second window in 18 past
   3 m/s² on an open highway (5.6%; city 11.4%) — **confirmed NOT explained by
   38 or 39** (moved ≤0.4 points). A separate defect under every braking figure.
+- **The 30 real-car holds** (40's original question, the project lead's): held late
+  against a named car, 15 of them at the node 2 s or more. Open.
+- **`verify-keepright` does not check that a return on the exit stretch waits**:
+  151 of 239 returns on the merged tree carry no delay. On the list.
+- **For Jay, put to him by the project lead, not to be guessed:** should a driver
+  with a green, or a clear uncontrolled approach, slow at all for what a truck might
+  be hiding? The amber-rule switch addresses impossibility, not this.
+- **For Jay, a feel question and not a defect:** a player who moves into the gap
+  just after a courtesy offer lapses gets no "let in".
 - **"Too polite" is unexplained:** not the skill distribution, not cross-node
   misreading. Do not tune dispositions until it is.
 - **verify-courtesy on `cross-node-gap`** (section 4).
