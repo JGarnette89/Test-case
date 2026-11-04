@@ -5749,6 +5749,18 @@ or instrument asked.
 
 **ITEM 0's PREDICTIONS, COMMITTED BEFORE IT IS BUILT.** RE1: with look-away off, a car following a car cannot be hit into by hard braking: the follower decides from the previous tick with no lag and brakes as hard as the car ahead; 0 contacts at any rate. RE2: a truck following a car can, its hardest being 6 m/s^2 against 8: some contacts, at the hardest rate only. RE3, THE CONTROL: with look-away on the same scene produces contacts; if it does not, the instrument cannot see a rear-end and RE1's zero means nothing. RE4: in the city over 28 seeds with look-away off, no crash is a following car running into one braking. FALSIFIED IF car followers produce contacts with look-away off, in which case the risk is already real.
 
+**ITEM 0's RESULT, 5 NOVEMBER: A HARD BRAKE CANNOT CAUSE A REAR-END BETWEEN CARS, AND THE PRICE OF SLOWING IS TODAY A DANGER THAT DOES NOT EXIST.** `tools/measure/rear-end.mjs`: a straight road, a lead settled with a follower settled at their own gap and a third car behind, the lead braking to rest, 120 drawn drivers at each of 4 braking rates and 2 speeds.
+
+| world | car following: lead hit, of 960 | third car hit | truck following: lead hit, of 960 |
+|---|---|---|---|
+| look-away off (Clean mode) | **0** | **0** | 29, all at 8 m/s^2 (2 at 14 m/s, 27 at 25) |
+| look-away on, as built since 10.19 | **0** | **0** | 30, all at 8 m/s^2 |
+| the old glance, blind and any time: THE CONTROL | 53 | 23 | 70 at 8 m/s^2, 121 in all |
+
+**WHY:** a follower decides from the previous tick with no reaction lag, and can brake as hard as anybody. The closest any car follower came was 1.56 m, with a settled headway as short as 0.55 s and the lead at 8 m/s^2. It is collision-free by construction, not by luck. RE1 MET. RE2 MET: a truck's hardest is 6 against a car's 8, so it reaches only the hardest stop, and caution braking would never get there. **RE3 FAILED AS WRITTEN, AND IT IS A FINDING:** look-away on is identical to off, near enough, because 10.19 made glances fit the road and a looming car brings the eyes back, so a driver close behind is not looking away at the moment it matters. Only the old blind glance, the deliberately retired one, shows a rear-end. So the scene can see one, and the world as built does not make one. RE4 MET: over 28 seeds of the city, 6 crashes, 2 between vehicles, 0 in one lane; 244 hard brakes with a car within 15 m behind, 0 of those followers in a crash within 5 s (`tools/measure/rear-end-city.mjs`).
+
+**SO ITEM 1 AS ORDERED IS GATED: BUILT ON THIS WORLD, DRIVERS WOULD FEAR SOMETHING THAT CANNOT HAPPEN, WHICH IS CLAUDE.md ITEM 6.** And a player who stands on the brake in front of traffic is exactly as safe. What the maintainer described, everybody standing on the brake putting themselves at risk, is untrue of this model. **Making it true is its own decision, and it moves a deliberate fix:** 10.19 removed the crashes the blind glance caused because at 260 cars they read as a bug; 5.16.2 recorded a lag that made the bold candidate rear-end the car ahead, off because contact had no response, and contact has one now. The direction in 10.41 and this section's "legible, not safe" point toward a real risk; the project lead's to order.
+
 ### WHAT THIS DOES TO WHAT IS ALREADY RECORDED
 
 - **THE DERIVED SPEED ON `sight-caution` IS RETIRED AS A TARGET.** It answered "from what speed could they stop"; the ruling asks a different question. Hardest against comfortable is withdrawn as a question. Both switches stay held.
