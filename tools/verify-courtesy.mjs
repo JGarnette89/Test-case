@@ -178,7 +178,7 @@ console.log("\n7. TAKEN, IT IS NOTICED -- IN THE RUNNING SIM");
   const LANE = 3.6;
   const run = (base, i, on) => {
     let w = { ...base, courtesy: on };
-    const at0 = playerOn(w.course, `loop-${(i % 4) * 2}`, "end");
+    const at0 = playerOn(w.course, `loop-${i}`, "end");
     const layout = w.course.at[at0.k].layout;
     const base0 = layout.legs[layout.paths[at0.route].from].base;
     const curb = layout.legAt(base0, 2), mid = layout.legAt(base0, 1);
@@ -189,7 +189,7 @@ console.log("\n7. TAKEN, IT IS NOTICED -- IN THE RUNNING SIM");
     const c = level[0], sc = (a) => a.s * (cp.stopAt / layout.paths[a.route].stopAt);
     let pl = { ...at0, route, s: sc(c) + 0.5, v: c.v, off: 0, psi: 0 };
     w = { ...w, actors: w.actors.filter((a) => a.id === c.id || (a.k ?? 0) !== pl.k || Math.abs(sc(a) - pl.s) > 60 || ![curb, mid].includes(layout.paths[a.route]?.from)) };
-    let st = newEventState(), offered = false, moving = false, said = false, moved = false;
+    let st = newEventState(), offered = false, moving = false, said = false, moved = false, onApproach = false, onOffer = false;
     /* Without courtesy a gap comes only when the traffic happens to leave one: longer to wait for it. */
     for (let n = 0; n < (on ? 30 : 90) / DT; n++) {
       const signal = n * DT >= 1 ? "left" : null;
@@ -204,10 +204,10 @@ console.log("\n7. TAKEN, IT IS NOTICED -- IN THE RUNNING SIM");
       const r = detect(prev, { me: pl, world: w }, st);
       st = r.state;
       if (r.events.some((e) => e.id === "letIn")) said = true;
-      if (w.course.at[pl.k].layout.paths[pl.route].from === mid) moved = true;
+      if (!moved && w.course.at[pl.k].layout.paths[pl.route].from === mid) { moved = true; onApproach = pl.s <= w.course.at[pl.k].layout.paths[pl.route].stopAt; onOffer = prev.world.actors.some((a) => a.courtesy?.forPlayer && !a.courtesy.done); }
       if (moved && n * DT > 8) break;
     }
-    return { offered, moved, said };
+    return { offered, moved, said, onApproach, onOffer };
   };
   const on = [], off = [];
   for (const seed of [1, 2, 3, 4, 5, 6]) {
@@ -215,14 +215,18 @@ console.log("\n7. TAKEN, IT IS NOTICED -- IN THE RUNNING SIM");
        once the merge fix changed the traffic the moments are drawn from --
        under the floor of 3, with the property holding in every one. The
        sample, not the floor, was what moved. */
+    /* THE SAMPLE (4 November): IN FLIGHT 39 took the level cars at these two moments on the even stretches from 5 a side to 2, under the floor, with the property holding in every one. Every stretch of the loop, below, gives 35 and 37 at the same two moments, against the same floor of 3. */
     for (const at of [180, 240]) {
       const base = warmAt(seed, at);
-      for (let i = 0; i < 4; i++) { const a = run(base, i, true); if (a) on.push(a); const b = run(base, i, false); if (b) off.push(b); }
+      /* EVERY STRETCH OF THE LOOP: the even ones only, as this was, have approaches too short for a move without courtesy to land before the line. */
+      for (let i = 0; i < 8; i++) { const a = run(base, i, true); if (a) on.push(a); const b = run(base, i, false); if (b) off.push(b); }
     }
   }
-  const taken = on.filter((r) => r.offered && r.moved), alone = off.filter((r) => r.moved);
-  check(taken.length >= 3 && taken.every((r) => r.said), `a gap offered and taken is noticed as being let in: ${taken.filter((r) => r.said).length} of ${taken.length}`);
-  check(alone.length >= 3 && alone.every((r) => !r.said), `and a gap that came on its own, with courtesy off, is not: ${alone.filter((r) => r.said).length} of ${alone.length}`);
+  /* A MOVE THE DETECTOR COULD HAVE SPOKEN ABOUT (4 November). The detector reads the approach (events.js: me.s <= stopAt). Without courtesy the gap comes about 10 s later, about 300 m on, so on the short stretches the move landed past the line and could not be said whatever the detector did: making it say "let in" on every lane change left this at 0 of 8, a pass for the wrong reason. Only moves on the approach are evidence, and the floor stays 3. */
+  /* TAKEN IS WHILE THE OFFER IS LIVE (4 November). "Offered at some point, and moved" also counted a player who moved after the offer was withdrawn: over all eight stretches, 4 of 82 here and 7 of 89 on main, every one with no offer live on the tick before the move (tools/measure/courtesy-taken.mjs). Nothing let them in by then, and the detector was right. Counted and printed, not hidden. */
+  const taken = on.filter((r) => r.offered && r.moved && r.onOffer && r.onApproach), lapsed = on.filter((r) => r.offered && r.moved && !r.onOffer), alone = off.filter((r) => r.moved && r.onApproach);
+  check(taken.length >= 3 && taken.every((r) => r.said) && lapsed.every((r) => !r.said), `a gap offered and taken while on offer is noticed as being let in: ${taken.filter((r) => r.said).length} of ${taken.length} (${lapsed.length} moved after their offer had lapsed, none said: ${lapsed.filter((r) => r.said).length})`);
+  check(alone.length >= 3 && alone.every((r) => !r.said), `and a gap that came on its own, with courtesy off, on the approach where it could be said, is not: ${alone.filter((r) => r.said).length} of ${alone.length} (${off.filter((r) => r.moved).length - alone.length} more moved past the line and are no evidence)`);
 }
 
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nall passed");

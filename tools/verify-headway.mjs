@@ -33,10 +33,10 @@ import { goodStep } from "./lib/good-driver.mjs";
 let failed = 0;
 const check = (ok, what) => { console.log(`  ${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) failed++; };
 
-function drive(id, secs) {
+function drive(id, secs, seed = 1, cars = 180) {
   const raw = TEST_MAPS.find((m) => m.id === id).build();
-  let { world: w, me } = worldFor(1, 50, 2.0, true, 180, raw, raw.sections?.[0]?.start ?? null, false);
-  const me0 = me, sc = { me, args: [1], saveWallet: false };
+  let { world: w, me } = worldFor(seed, 50, 2.0, true, cars, raw, raw.sections?.[0]?.start ?? null, false);
+  const me0 = me, sc = { me, args: [seed], saveWallet: false };
   const out = { flagWrong: 0, closeWrong: 0, samples: 0, shown: 0, sound: 0, agree: 0, worst: 0, misses: [], alongside: 0, otherExit: 0 };
   for (let i = 0; i < secs * 20; i++) {
     if (!me || me.atEdge) { me = { ...me0 }; w = withDriver(w, me); }
@@ -76,9 +76,11 @@ function drive(id, secs) {
   return out;
 }
 
-for (const [id, label] of [["test-loop", "the endless highway, shaped"], ["city", "the city"]]) {
-  console.log(`\n${label}, 180 cars, the good driver at 119% for two minutes`);
-  const r = drive(id, 120);
+/* THE CITY OVER SIX SEEDS AT ITS OWN DENSITY, THE FLOORS UNCHANGED (4 November). One drive at 180 cars was the whole of this: on seeds 1-6 that gives shown 62, 0, 0, 0, 24, 0 of 240 on main and 20, 0, 0, 0, 44, 0 on cross-node-gap, because a two-minute drive through a city well under its default of 300 can meet nobody at all, and the independent statement by poses found nobody either. So it passed on main on seed 1's luck, and failed the day the world moved. Pooled at 300: shown 185 and 188 of 1440, comparable 88 and 83, all agreeing, no phantoms (tools/measure/headway-funnel.mjs). */
+const pool = (s) => { const add = (k) => s.reduce((n, r) => n + r[k], 0); return { ...Object.fromEntries(["samples", "shown", "sound", "agree", "alongside", "otherExit", "flagWrong", "closeWrong"].map((k) => [k, add(k)])), worst: Math.max(...s.map((r) => r.worst)), misses: s.flatMap((r) => r.misses) }; };
+for (const [label, runs] of [["the endless highway, shaped, 180 cars", () => [drive("test-loop", 120)]], ["the city, 300 cars, six seeds", () => [1, 2, 3, 4, 5, 6].map((seed) => drive("city", 120, seed, 300))]]) {
+  console.log(`\n${label}, the good driver at 119% for two minutes`);
+  const r = pool(runs());
   check(r.sound >= 20 && r.agree === r.sound, `where both statements are sound, the same car at the same gap: ${r.agree} of ${r.sound} (worst ${r.worst.toFixed(2)} m)${r.misses.length ? `\n         ${r.misses.join("\n         ")}` : ""}`);
   check(r.alongside === 0 && r.otherExit === 0, `never a car beside the player (${r.alongside}) or on another exit (${r.otherExit})`);
   check(r.shown >= r.samples / 10, `it is shown: ${r.shown} of ${r.samples} samples`);

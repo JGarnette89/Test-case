@@ -4,7 +4,7 @@
    IN FLIGHT 39 misreading (straight line beyond gap plus half-lengths plus 5 m,
    tools/measure/phantom-leader.mjs). Written 4 November, to decide whether the
    branch's 20 of 240 and 8 comparable is too few samples or a gauge that broke.
-   node tools/measure/headway-funnel.mjs [seeds, default 1,2,3,4,5,6] */
+   node tools/measure/headway-funnel.mjs [seeds, default 1,2,3,4,5,6] [cars, default 180] */
 import { worldFor } from "../../src/sim/scene.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
 import { step, poseOf } from "../../src/sim/crossing.js";
@@ -12,10 +12,10 @@ import { withDriver, headwayOf } from "../../src/sim/drive.js";
 import { placeOf } from "../../src/sim/placement.js";
 import { goodStep } from "../lib/good-driver.mjs";
 
-const seeds = (process.argv[2] ?? "1,2,3,4,5,6").split(",").map(Number);
+const seeds = (process.argv[2] ?? "1,2,3,4,5,6").split(",").map(Number), CARS = Number(process.argv[3] ?? 180);
 function drive(id, seed, secs) {
   const raw = TEST_MAPS.find((m) => m.id === id).build();
-  let { world: w, me } = worldFor(seed, 50, 2.0, true, 180, raw, raw.sections?.[0]?.start ?? null, false);
+  let { world: w, me } = worldFor(seed, 50, 2.0, true, CARS, raw, raw.sections?.[0]?.start ?? null, false);
   const me0 = me, sc = { me, args: [seed], saveWallet: false };
   const o = { seed, samples: 0, shown: 0, phantom: 0, sound: 0, agree: 0, shownNoPose: 0, worst: 0, moving: 0 };
   for (let i = 0; i < secs * 20; i++) {

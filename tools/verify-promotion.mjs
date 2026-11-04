@@ -100,20 +100,41 @@ console.log("\n2. EACH RULE REFUSES WHAT IT IS FOR");
       check(rb.why.includes("space") && !rb.why.includes("ahead") && !rb.why.includes("behind"), `level with it in the next lane of its road, its own lane clear: refused for space -- what the lane index alone would admit (${rb.why.join(", ")})`);
     }
   }
-  /* queue: on an off-ramp, from the same approach as a car on the through lane, just ahead of it by the rule. */
-  let qcase = null;
-  for (const a of w.actors) {
-    if (a.lc || a.kind !== "car") continue;
-    const La = L(a.k), pa = La.paths[a.route];
-    if (!pa || a.s < pa.clearAt + 5) continue;
-    const ramp = Object.keys(La.paths).find((r) => La.paths[r].from === pa.from && La.legs[La.paths[r].to]?.road?.startsWith("off-"));
-    if (!ramp || La.paths[ramp].length < a.s + 60) continue;
-    /* Far enough ahead to be clear in space, close enough for its queue; and nobody on the ramp's own lane near. */
-    const cand = make(a.k, ramp, a.s + 16, Math.max(0, (a.v ?? 0) - 8));
-    const rc = ask(cand);
-    if (!rc.why.includes("ahead") && !rc.why.includes("behind") && !rc.why.includes("space")) { qcase = cand; if (rc.why.includes("queue")) break; }
+  /* queue: THE LANE, PHYSICALLY (restated 4 November; DECISIONS 10.23 items 17 and 21). This asked for a car past the box
+     on an off-ramp to be refused as if in the through lane's queue, when every off-ramp here has split from the through path
+     14.3-14.8 m BEFORE its box ends (tools/measure/ramp-splits.mjs): a geometric impossibility, the 22 October agreement with
+     the wrong definition. Two cases now, each a property of the road. SHORT OF THE SPLIT, a car in the box on the ramp's path
+     is in the lane a placement just short of the line would follow: the lane index files no car in a box, so only this rule
+     can see it. PAST THE SPLIT, a car on the ramp is on another road, stated here by the poses and not by the rule. */
+  const rampAt = (() => {
+    for (let k = 0; k < w.course.at.length; k++) {
+      const La = L(k);
+      for (const [ramp, pr] of Object.entries(La.paths)) {
+        if (!La.legs[pr.to]?.road?.startsWith("off-")) continue;
+        const through = Object.keys(La.paths).find((r) => r !== ramp && La.paths[r].from === pr.from && La.legs[La.paths[r].to]?.road?.startsWith("loop-"));
+        if (through) return { k, ramp, through, La, pr, pt: La.paths[through] };
+      }
+    }
+    return null;
+  })();
+  check(!!rampAt, "there is an off-ramp to ask about");
+  if (rampAt) {
+    const { k, ramp, through, La, pr, pt } = rampAt;
+    const others = w.actors.filter((a) => (a.k ?? 0) !== k || La.paths[a.route]?.from !== pr.from);
+    const askIn = (car, extra) => admissible({ ...w, actors: [...others, extra] }, car, opts);
+    /* Short of the split: in the box, 16 m ahead of the placement, slower. */
+    const inBox = { ...make(k, ramp, pr.stopAt + 4, 0) };
+    inBox.v = 2;
+    const short = make(k, through, pt.stopAt - 12);
+    const rs = askIn(short, inBox);
+    check(rs.why.includes("queue") && !rs.why.includes("ahead") && !rs.why.includes("behind") && !rs.why.includes("lane"), `short of the line, a slower car 16 m ahead in the box on the ramp's path, not yet split from this lane: refused for the queue by the rule -- what the lane index alone would admit (${rs.why.join(", ")})`);
+    /* Past the split: 16 m "ahead" along the path, a lane or more away by the poses. */
+    const onThrough = make(k, through, pt.clearAt + 5);
+    const pastRamp = make(k, ramp, onThrough.s + 16, Math.max(0, onThrough.v - 8));
+    const pa = poseOf(w, onThrough), pb = poseOf(w, pastRamp), h = (pa.rot * Math.PI) / 180, sideways = Math.abs(-(pb.x - pa.x) * Math.sin(h) + (pb.y - pa.y) * Math.cos(h));
+    const rp = askIn(pastRamp, onThrough);
+    check(sideways >= 3.6 && !rp.why.includes("queue"), `past the split, on the ramp and ${sideways.toFixed(1)} m sideways of a car on the through lane: another road, not its queue (${rp.why.join(", ") || "nothing refused it"})`);
   }
-  check(!!qcase && ask(qcase).why.includes("queue"), `on an off-ramp, ahead of a car from the same approach and slower, its own lane and space clear: refused for the queue by the rule -- what the lane index alone would admit (${qcase ? ask(qcase).why.join(", ") : "no case found"})`);
   /* arrival: the wiring -- a first decision past the comfortable rate refuses, whatever produced it. */
   const c = make(base.k, base.route, base.s);
   check(same(admissible(w, c, { ...opts, wantsAccel: () => -50 }), ["arrival"]), "a first decision past its own comfortable braking: refused for arrival, and only that");

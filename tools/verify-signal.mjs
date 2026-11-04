@@ -36,6 +36,7 @@ import { signalFor, lightAt, arrowAt, movementLight, controlUnder, GREEN_FOR, PH
 import { testMap1 } from "../src/map/samples.js";
 import { seedGraph, step, run, overlapping, openTo, whatStops } from "../src/sim/crossing.js";
 import { CAR, HARSH_AT, stoppingRoom } from "../src/sim/traffic.js";
+import { cornerAccel } from "../src/sim/corner.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
 
 let failed = 0;
@@ -155,6 +156,7 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
   let w = seedGraph(4, 50, loaded, { every: 1.6 });
   const launches = [], delayedAtRed = new Set();
   let harsh = 0, ticks = 0, rightsOnRed = 0, stoppedFirst = 0, wentThenBraked = 0;
+  const forCorner = [];
   for (let i = 0; i < 20 * 300; i++) {
     const before = new Map(w.actors.map((a) => [a.id, a]));
     w = step(w); ticks += w.actors.length;
@@ -178,7 +180,7 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
          standstill gap (one left-turner 0.2 m in, for 25 s, was 518 of 626
          "harsh" car-ticks here on 21 October, with the moving count the
          same as the build before) and slows nothing. */
-      if (-(a.a ?? 0) > HARSH_AT && (was?.v ?? 0) >= 0.5) { harsh++; /* FOR THE LINE: short of it. `amberGo` stays set until the next intersection, so counting every hard brake while it was set filed a car braking 28 m past the line for somebody cutting in -- a missed shoulder check, found out at the survivable floor, by design -- as braking for the line (27 October, with the candidate's checks on). */ if (was?.amberGo && was.s <= p.stopAt) wentThenBraked++; }
+      if (-(a.a ?? 0) > HARSH_AT && (was?.v ?? 0) >= 0.5) { harsh++; /* FOR THE LINE: short of it. `amberGo` stays set until the next intersection, so counting every hard brake while it was set filed a car braking 28 m past the line for somebody cutting in -- a missed shoulder check, found out at the survivable floor, by design -- as braking for the line (27 October, with the candidate's checks on). */ if (was?.amberGo && was.s <= p.stopAt) { /* FOR THE LINE, NOT FOR THE CORNER (4 November): a driver who chose to go and is turning still brakes for the corner, late if they are a late braker -- the braking axis, and corner.js's demand exactly. */ if (cornerAccel(was, p) <= -(HARSH_AT) && Math.abs(cornerAccel(was, p) - a.a) < 0.05) forCorner.push(`${a.id} ${p.intent} ${a.a.toFixed(2)}`); else wentThenBraked++; } }
     }
   }
   const onRed = launches.filter((l) => l.light === "red");
@@ -209,7 +211,7 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
      catches a non-sticky amber -- with the decision ignored it rose from 108 to
      191 car-ticks, under the line -- so the property itself: a driver who chose
      to carry on at an amber is never then braking hard for it. */
-  check(wentThenBraked === 0, `and a driver who decided at the amber to carry on is never then braking hard for the line (${wentThenBraked} car-ticks)`);
+  check(wentThenBraked === 0, `and a driver who decided at the amber to carry on is never then braking hard for the line (${wentThenBraked} car-ticks; ${forCorner.length} braking for a corner they had chosen to go on and take: ${[...new Set(forCorner.map((x) => x.split(" ").slice(0, 2).join(" ")))].join(", ") || "none"})`);
   /* EVERY CONTACT IN THE FOUR MINUTES, not whatever overlaps on the last
      tick. This read only the final tick, and three crashes in four minutes
      at the five-way went unseen until contact became a crash that stays
