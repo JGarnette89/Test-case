@@ -162,8 +162,9 @@ A cold session that knows the reasons should reorder if a reason changes.
 - **For Jay, put to him by the project lead, not to be guessed:** should a driver
   with a green, or a clear uncontrolled approach, slow at all for what a truck might
   be hiding? The amber-rule switch addresses impossibility, not this.
-- **For Jay, framed by the project lead, not to be pre-empted:** the caution speed,
-  survival with flow against smoothness with a slower road. **And what Clean mode
+- **RULED, the caution speed (DECISIONS 10.44): neither. Barely slowing, because
+  slowing has a price the model does not have yet.** Prior sight, controls, creeping
+  and occlusion by geometry with it, recorded and not built. **For Jay still: what Clean mode
   should do on maps whose density is not the highway's** (DECISIONS 10.42).
 - **Scoped, not built: buildings that hide things** (DECISIONS 10.43). Depends on the
   caution decision, and bears on the combined map.
