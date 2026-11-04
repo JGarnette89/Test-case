@@ -5602,6 +5602,8 @@ or instrument asked.
 
 **Two changes, measured separately, predictions first.** The amber-rule switch (`world.marginCanStop`) addresses impossibility; this addresses caution. The amber fix must not silently implement this.
 
+**MEASURED, 4 NOVEMBER (branch `sight-caution`, off; SIMULATOR IN FLIGHT 40): ALL THREE AXES PARTICIPATE, EACH AS ITS OWN SIGNATURE.** Confidence is a size, observation a rate, knowledge a constant, and observation accounts for the most occasions lost (80, against 30 and 29) without doing nearly all of it. The old rule shows no order on any of them. **What this change is for, that the good driver then handles an emerging car smoothly, is not yet measured.**
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
