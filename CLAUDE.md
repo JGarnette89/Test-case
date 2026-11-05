@@ -17,6 +17,8 @@ argument, so the documentation is a CONTRACT rather than a diary.
 
 **WHAT THE ROAD IS FOR, AND THE PARKED CARS (DECISIONS 10.41, 10.42, 5 November): the maintainer wants a road visibly full of people making decisions, with incidents the player witnesses, not behavior tuned to real-world statistics; rates matter for legibility. Parked cars are NOT in the car count, but they are 86-97% of the cars on the city and on maps with no districts they can never leave. BUILDINGS HIDE NOTHING YET, six of eight test maps have none, and the scope for changing that is 10.43, with trees, bushes and signs. A BLOCKED SIGHTLINE IS BARELY SLOWING, because slowing has a price (10.44): that price, what the driver saw before the view closed, and creeping to see are all ruled and none exists yet. Do not lay out the combined map as if this will not happen.**
 
+**UNDUE DELAY DOES NOT KNOW WHAT THE DRIVER COULD SEE (DECISIONS 10.47, 5 November): `openTo` reads the road, not the view, so a driver waiting correctly at a blocked view is on the undue-delay clock. Do not trust that fault on a map with real occlusion until it has a sight condition. Prior sight has three states, the third being NEVER SEEN.**
+
 **THE ORDER OF ALL WORK IS [PLAN.md](PLAN.md) (13 October 2026)**: every
 recorded piece of design -- story, characters, vehicles, garage, day and
 night, objectives, dialogue -- reconciled into one sequence with its
