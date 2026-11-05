@@ -51,6 +51,7 @@ export const worldKey = (fleet, off = {}) => [fleet, ...["trucks", "buses", "wal
    `benchScene` world, sight included (bench.js `withOff`). */
 export function benchWorld(fleet, off = {}) {
   const world = seedGraph(1, 50, benchMap({ parking: !off.parked }), {
+    brakeReaction: true,
     every: 2.0, target: fleet, posted: true, walkers: !off.walkers,
     ...(off.trucks ? { trucks: 0 } : {}), ...(off.buses ? { buses: 0 } : {}),
     ...(off.crossers ? { pedEvery: Infinity, gapRate: 0 } : {}),

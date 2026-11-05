@@ -20,7 +20,7 @@ const m = emptyMap("rear");
 m.bounds = { x: 0, y: 0, w: 4000, h: 400 };
 m.roads.push(road({ id: "w", kind: "collector", lanes: 1, speed: 90, points: [P(0, 200), P(3000, 200)] }), road({ id: "e", kind: "collector", lanes: 1, speed: 90, points: [P(3000, 200), P(4000, 200)] }), road({ id: "n", kind: "residential", points: [P(3000, 0), P(3000, 200)] }));
 const loaded = loadMap(m);
-const base = seedGraph(1, 50, loaded, { every: 1e9, target: 0, posted: true, trucks: 0, laneChanges: false, keepRight: false });
+const base = seedGraph(1, 50, loaded, { every: 1e9, target: 0, posted: true, trucks: 0, laneChanges: false, keepRight: false, brakeReaction: true });
 const L = base.course.at[0].layout;
 const route = Object.keys(L.paths).find((r) => L.legs[L.paths[r].from]?.road === "w" && L.paths[r].intent === "straight");
 const posted = { ...base.road, speed: 25, kmh: 90, kind: "collector" };
