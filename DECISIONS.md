@@ -5957,6 +5957,27 @@ The city, the same 28 seeds at 150 cars for 10 minutes each, about 699 car-hours
 
 **Still blocked on 10.43, as 10.46 says:** signage does not block anything yet.
 
+## 10.48 WHAT A COLLISION COSTS: DIRECTION FROM THE MAINTAINER, PROPOSALS FROM THE PROJECT LEAD (5 November; NOTHING BUILT, NOTHING SCHEDULED)
+
+**Filed against the vehicle and contract work, not as its own item, since it depends on both. The maintainer's standing instruction applies: "I want to avoid adding 50 half-cooked features" (10.38).**
+
+**THE MAINTAINER'S DIRECTION, as relayed:** lean away from realism here specifically. Cars collide, the weight of the impact is represented, and consequences are not game-ending: the GTA model, where damage accumulates and you fix it, replace it, or it eventually gives out. A player rear-ended through no fault of their own should feel an effect but not be punished for something unavoidable. He raised, and was uncertain about, an insurance-claim loop as a mundane-task system.
+
+### The project lead's proposals, NOT YET RULED ON BY THE MAINTAINER
+
+1. **FAULT ATTRIBUTION IS WHAT MAKES IT WORK.** No blanket rule: rear-ended while stationary at a light is not the player's fault and costs nothing but bodywork; rear-ended after brake-checking somebody is. **This answers the fare question (10.46) without a special case: the fare survives if it was not their fault.** The collision system must consume the same fault machinery the marking sheet does and not have its own: one definition.
+2. **THE COST IS CONTINUITY, NOT ONLY MONEY.** Three tiers, none a fail state: a knock costs paint; a real impact costs the run; a bad one costs the car for a while. Damage accumulating to failure sits underneath as slow pressure.
+3. **WEIGHT OF IMPACT FALLS OUT OF THE VEHICLE ARCHETYPES:** being hit by a loaded truck and nudged by a compact differ.
+4. **A CONSEQUENCE ROUTES THE PLAYER SOMEWHERE, NOT INTO A FORM.** The appeal of that genre is the driving, with paperwork as texture, and a claims form is a menu. Damage sends you to the body shop, a dispute to dispatch, each a trip. It fits the analog setting, where you go in person. This is the project lead's pushback on the insurance-claim loop.
+5. **EVENTUALLY: A DAMAGED CAR THAT HANDLES WRONG**: pulls to one side, brakes unevenly, overheats under load. Damage changes how you drive rather than what you click.
+
+### What the code says against them (the agent, read, not measured)
+
+- **MASS IS NOT IN THE DATA, against proposal 3.** A `VEHICLES` row (traffic.js) has length, width, height, accel, brake, most, cap and lateral; nothing here or in VEHICLES-GARAGE.md states a mass. It is a small addition, one column, but it is an addition and, unread by anything else, moves nothing. **A "loaded" truck needs a load too:** the row is per kind.
+- **THERE IS NOT ONE FAULT MACHINERY TO CONSUME, against proposal 1.** `marking.js` judges candidates and never reads a player; `events.js` is a separate set of detectors for the player. The two already overlap, so "one definition" means reconciling them first, the project's recurring bug at the point it would be built on.
+- **OF THE FOUR THINGS NAMED AS KNOWN:** the following gap is (`headwayOf`), and whether the player could have stopped is derivable from speed and gap. **Whether the player was looking is not: nothing in the sim knows where the player looks. Brake-checking has no detector.** And a crash records its two parties and where, not who struck whom or why (`crashWith`, `playerContact`).
+- **THE FARE IS LIVE:** the delay is on the served build (10.46), `money.js` still voids on any contact, and a player rear-ended at a light loses the fare today. His direction says they should not be punished; nothing changes it until this is built or a smaller fix is ordered.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
