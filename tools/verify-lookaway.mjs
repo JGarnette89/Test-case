@@ -60,7 +60,8 @@ const CARS = 260, SHORT = 60, LONG = 120;
 /* The world #/map builds for watching test map 1, look-away on, with parts
    switched off by the checks' own controlled-comparison flags. */
 function run(seed, { blind = false, anyTime = false, heedAll = false, secs = SHORT } = {}) {
-  let { world: w } = worldFor(seed, 50, 2.0, false, CARS, null, null, true);
+  /* brakeReaction off: this counts what GLANCES do, on the same windows, with no other delay in the world (DECISIONS 10.46). */
+  let { world: w } = worldFor(seed, 50, 2.0, false, CARS, null, null, true, false, { brakeReaction: false });
   w = { ...w, ...(blind ? { noPeriphery: true } : {}), ...(anyTime ? { glanceAnyTime: true } : {}), ...(heedAll ? { anticipate: { glance: "all" } } : {}) };
   let away = 0, back = 0;
   const where = { box: 0, line: 0, following: 0, clear: 0 };

@@ -203,7 +203,8 @@ console.log("\n7. TAKEN, IT IS NOTICED -- IN THE RUNNING SIM");
       w = step(withDriver(w, pl));
       const r = detect(prev, { me: pl, world: w }, st);
       st = r.state;
-      if (r.events.some((e) => e.id === "letIn")) said = true;
+      /* THIS MOVE, not a later one (5 November): the signal stays on, so a player who moved on a lapsed offer can then take a new, live offer into the next lane, and that is rightly said. Counted against the first move, it read as a lapsed offer being said (seed 2, at 180, stretch 1). */
+      if (!moved && r.events.some((e) => e.id === "letIn")) said = true;
       if (!moved && w.course.at[pl.k].layout.paths[pl.route].from === mid) { moved = true; onApproach = pl.s <= w.course.at[pl.k].layout.paths[pl.route].stopAt; onOffer = prev.world.actors.some((a) => a.courtesy?.forPlayer && !a.courtesy.done); }
       if (moved && n * DT > 8) break;
     }

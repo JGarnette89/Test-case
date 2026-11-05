@@ -77,7 +77,8 @@ console.log("1-4. lane changes on the shaped endless highway, 180 cars, three mi
         if (a.player) continue;
         rec.add(a);
         const b = before.get(a.id);
-        if (a.lc && !a.lc.abort && (!b?.lc || b.lc.at !== a.lc.at)) pending.push({ a, T: a.lc.at, due: w.t + 1.5 });
+        /* Only a change prepared since recording began: one prepared in the warm-up had its first look before there was anything to see it (car-494, prepared at -0.75 s, its mirror gone unrecorded, read as "shoulder alone": found when the reaction delay changed the sample, 5 November). */
+        if (a.lc && !a.lc.abort && (!b?.lc || b.lc.at !== a.lc.at) && (a.lc.prepAt ?? a.lc.at) >= 0) pending.push({ a, T: a.lc.at, due: w.t + 1.5 });
       }
       while (pending.length && pending[0].due <= w.t) {
         const { a, T } = pending.shift();

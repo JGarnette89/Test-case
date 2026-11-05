@@ -8,6 +8,8 @@
    looming car brings the eyes back. LOOK=blind: the old glance, blind and at any time
    (noPeriphery, glanceAnyTime, verify-lookaway's own control): THE CONTROL, a rear-end
    from a driver not looking must be something this scene can show.
+   BR=own|<seconds>, none if unset: the reaction delay of DECISIONS 10.46, with the per-trial
+   arithmetic (hit if g + v^2/2a < vT + v^2/2b) and the split by the follower's delay.
    Usage: node tools/measure/rear-end.mjs [drivers=120] */
 import { emptyMap, road } from "../../src/map/format.js";
 import { loadMap } from "../../src/map/load.js";
@@ -15,6 +17,7 @@ import { seedGraph, step, carFor } from "../../src/sim/crossing.js";
 import { driver, DT, PERSONAL, lenOf, vehicleOf } from "../../src/sim/traffic.js";
 
 const N = Number(process.argv[2] ?? 120), LOOK = process.env.LOOK === "1" || process.env.LOOK === "blind", BLIND = process.env.LOOK === "blind";
+const BR = process.env.BR === "own" ? true : process.env.BR != null ? Number(process.env.BR) : false;
 const P = (x, y) => ({ x, y, z: 0 });
 const m = emptyMap("rear");
 m.bounds = { x: 0, y: 0, w: 4000, h: 400 };
@@ -30,7 +33,7 @@ const person = (w, n, id, kind, s) => {
   return out;
 };
 function trial(n, kind, rate, speed) {
-  let w = { ...base, ...(BLIND ? { noPeriphery: true, glanceAnyTime: true } : {}), actors: [], crashes: [] };
+  let w = { ...base, brakeReaction: BR, ...(BLIND ? { noPeriphery: true, glanceAnyTime: true } : {}), actors: [], crashes: [] };
   const lead = { ...person(w, n + 5000, "lead", "car", 700), v: speed, v0: speed };
   const fol = person(w, n, "follower", kind, 620), tail = person(w, n + 9000, "tail", "car", 540);
   fol.v0 = Math.max(fol.v0, speed + 3); fol.v = speed; tail.v0 = Math.max(tail.v0, speed + 3); tail.v = speed;
@@ -52,7 +55,7 @@ function trial(n, kind, rate, speed) {
     const c = (w.crashes ?? []).slice(n0)[0];
     if (c) { hit = [c.a, c.b].sort().join("+"); break; }
   }
-  return { hit, closest, peak, settled, headway, most: vehicleOf(f0).most, fv: f0.v };
+  return { hit, closest, peak, settled, headway, most: vehicleOf(f0).most, fv: f0.v, notices: f0.notices };
 }
 const mean = (a) => a.reduce((p, q) => p + q, 0) / Math.max(1, a.length), med = (a) => { const q = [...a].sort((x, y) => x - y); return q[q.length >> 1] ?? 0; };
 console.log(`look-away ${BLIND ? "BLIND, the control" : LOOK ? "ON, as built" : "off"}; lag of a drawn follower ${person(base, 7, "x", "car", 0).lag?.toFixed(2)}; ${N} drivers each; the lead braking to rest`);
@@ -60,5 +63,11 @@ for (const kind of ["car", "truck"]) for (const speed of [14, 25]) for (const ra
   const rows = [];
   for (let n = 1; n <= N; n++) { const r = trial(n, kind, rate, speed); if (r) rows.push(r); }
   const hits = rows.filter((r) => r.hit), fh = hits.filter((r) => r.hit.includes("follower") && r.hit.includes("lead")), th = hits.filter((r) => r.hit.includes("tail"));
+  if (BR !== false) {
+    const T = (r) => (typeof BR === "number" ? BR : r.notices), says = (r) => r.settled + r.fv ** 2 / (2 * rate) < r.fv * T(r) + r.fv ** 2 / (2 * r.most);
+    const q = [...rows].sort((a, b) => a.notices - b.notices), band = [0, 1, 2, 3].map((i) => q.slice((i * q.length) >> 2, ((i + 1) * q.length) >> 2));
+    const hitOf = (r) => r.hit && r.hit.includes("follower") && r.hit.includes("lead");
+    console.log(`      arithmetic agrees ${rows.filter((r) => says(r) === !!hitOf(r)).length}/${rows.length} | hits by delay quartile ${band.map((b) => b.filter(hitOf).length).join(" ")} | over 5.4 by quartile ${band.map((b) => b.filter((r) => r.peak > 5.4).length).join(" ")} | quartile tops ${band.map((b) => b[b.length - 1]?.notices.toFixed(2)).join(" ")} | hits with delay under headway ${rows.filter((r) => hitOf(r) && T(r) < r.headway).length}`);
+  }
   console.log(`  ${kind.padEnd(5)} at ${String(speed).padStart(2)} m/s, lead braking ${rate.toFixed(1)}: ${String(rows.length).padStart(3)} trials | hit lead ${String(fh.length).padStart(3)}, tail hit ${String(th.length).padStart(3)} | closest ${Math.min(...rows.map((r) => r.closest)).toFixed(2)} m (median ${med(rows.map((r) => r.closest)).toFixed(2)}) | settled gap median ${med(rows.map((r) => r.settled)).toFixed(1)} m, ${med(rows.map((r) => r.headway)).toFixed(2)} s, shortest ${Math.min(...rows.map((r) => r.headway)).toFixed(2)} s | follower peak ${med(rows.map((r) => r.peak)).toFixed(1)}, max ${Math.max(...rows.map((r) => r.peak)).toFixed(1)}, over 5.4: ${rows.filter((r) => r.peak > 5.4).length}`);
 }

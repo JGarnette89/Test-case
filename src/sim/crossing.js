@@ -383,7 +383,6 @@ function relevantTo(world, list, me, mineAt, mine, layout) {
    seam at the joined intersections (ahead along the lane, clear >= 0). */
 function takePlain(world, list, idx, me, mine, mineAt, hood, node, gen, out) {
   const ks = idx.k, stamp = idx.stamp, halfMe = lenOf(me) / 2, most = wantedGap(me, { v: 0 });
-  const press = (d, n) => wantedGap(me, list[n]) / Math.max(d, 0.01);
   /* The least gap a car can have at a distance: the longest rear there is. */
   const least = (delta) => delta - halfMe - idx.maxRear;
   const along = (n, lane) => (idx.laneIn[n] === lane ? idx.alIn[n] : idx.alOut[n]);
@@ -430,7 +429,9 @@ function takePlain(world, list, idx, me, mine, mineAt, hood, node, gen, out) {
       const n = w.xs[i];
       if (most / Math.max(least(w.delta(n)), 0.01) < floor) break;
       if (!w.counts(n)) continue;
-      const p = press(w.gap(n), n);
+      /* AS THIS DRIVER HAS NOTICED THEM (asNoticed), or the floor is set by a car read further on than this says, and the car that really presses is dropped: a sixth reader of one quantity (10.46). */
+      const read = asNoticed(world, me, list[n]);
+      const p = wantedGap(me, read) / Math.max(w.gap(n) + (read.unnoticed ?? 0), 0.01);
       seen.push(n, p);
       if (p > floor) floor = p;
     }
@@ -1179,6 +1180,34 @@ function canStopFor(world, me, them) {
   return false;
 }
 
+/* THE CAR AHEAD, AS THIS DRIVER HAS NOTICED IT (DECISIONS 10.46, the maintainer: "each
+   driver has their own reaction time"). A brake lamp coming on is a change, and a driver takes
+   their own `notices` to register a change in front of them -- the same delay a
+   light gone green is read through. Until then the leader is still doing what
+   it was doing: at the speed it had when the lamp came on, carried forward
+   (`lampOnset.behind`, the road it has lost against that since, which needs
+   no position and so does not care about a seam). ONLY THE CAR-FOLLOWING READS
+   THIS: right of way reads the present (a constant lag on everything crashed
+   sound drivers together in a box, 5.16.3). ONLY A CHANGE: a car stopped a
+   while ago is seen stopped, so a standing queue is no surprise. THE PERIPHERY'S
+   REACTION-TIME RULE DOES NOT CAP THIS: it is about a driver looking away, and
+   capped, nobody rear-ended anybody (0 of 960), the driver's own delay erased. A
+   number is a check's control, one delay for everybody; 0 or false, none. */
+function asNoticed(world, me, them) {
+  /* The screen writes the player in afresh before each tick (drive.js withDriver), so theirs is kept on the world. */
+  const on = world.brakeReaction, o = them.player ? world.playerLamp : them.lampOnset;
+  if (!on || !o || me.player || them.crash) return them;
+  const T = typeof on === "number" ? on : me.notices ?? REACTION_FLOOR, since = (world.t ?? 0) - o.t;
+  if (since >= T) return them;
+  return { ...them, s: them.s + o.behind, v: o.v, unnoticed: o.behind };
+}
+/* The lamp's onset, kept while the lamp stays on. */
+const lampOnsetOf = (raw, lamp, v0, v, t) => {
+  if (!lamp) return null;
+  const o = raw.lampOnset ?? { t, v: v0, behind: 0 };
+  return { t: o.t, v: o.v, behind: o.behind + Math.max(0, o.v - v) * DT };
+};
+
 export function whatStops(me, world) {
   const layout = layoutOf(world, me);
   const mine = layout.paths[me.route];
@@ -1324,8 +1353,9 @@ export function whatStops(me, world) {
         if (my.on === false) continue;
         const on = theirSpan.find((t) => t.lane === my.lane && t.on !== false);
         if (!on) continue;
-        const d = clearBetween(on.along - my.along, me, them);
-        if (d >= 0) consider(d, them);
+        const seenThem = asNoticed(world, me, them);
+        const d = clearBetween(on.along + (seenThem.unnoticed ?? 0) - my.along, me, them);
+        if (d >= 0) consider(d, seenThem);
       }
       continue;
     }
@@ -1382,7 +1412,8 @@ export function whatStops(me, world) {
       return (d === 1 && off > reach) || (d === -1 && off < -reach);
     })();
     if ((shareLane || straddles) && them.s > me.s && !unseen) {
-      consider(clearBetween(them.s - me.s, me, them), them);
+      const seenThem = asNoticed(world, me, them);
+      consider(clearBetween(seenThem.s - me.s, me, them), seenThem);
     }
 
     /* SOMEBODY ALREADY ACROSS MY PATH IS IN FRONT OF ME, committed or not.
@@ -1446,7 +1477,7 @@ export function whatStops(me, world) {
       /* Two lanes of one road: compared along its centreline (graph.js exitAlong), not by distance remaining, which disagrees across lanes on a bend. */
       const mA = exitAlong(world.course, me.k ?? 0, me.route, me.s), tA = exitAlong(world.course, them.k ?? 0, them.route, them.s);
       const ahead = mA != null && tA != null ? tA - mA : (mine.length - me.s) - (theirs.length - them.s);
-      if (ahead > 0) consider(clearBetween(ahead, me, them), them);
+      if (ahead > 0) { const seenThem = asNoticed(world, me, them); consider(clearBetween(ahead + (seenThem.unnoticed ?? 0), me, them), seenThem); }
     }
     if (theirs.to === mine.to && theirs.from !== mine.from) {
       const myLeft = mine.length - me.s;
@@ -1458,7 +1489,8 @@ export function whatStops(me, world) {
          line: a gridlock at the five-way -- lowered from 120 cars to 40,
          the map was still at 44 two minutes later. */
       if (theirLeft < myLeft && me.s > mine.clearAt - lenOf(me) && them.s > theirs.stopAt) {
-        consider(clearBetween(myLeft - theirLeft, me, them), them);
+        const seenThem = asNoticed(world, me, them);
+        consider(clearBetween(myLeft - theirLeft + (seenThem.unnoticed ?? 0), me, them), seenThem);
       }
     }
   }
@@ -1979,6 +2011,9 @@ export function step(world) {
          while stationary. The change of speed over the tick is the
          quantity every reader meant. */
       const out = { ...at, a: (v - me.v) / DT, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
+      if (world.brakeReaction) {
+        out.lampOnset = lampOnsetOf(raw, brakeLamp && !(v < 0.5 && decel <= BRAKE_LAMP_ON && (me.v ?? 0) < 0.5), me.v ?? 0, v, world.t);
+      }
       if (offer || raw.courtesy) out.courtesy = offer;
       /* THE CHECKS (checks.js). A scan along the cross road, once per line,
          begun as the car slows within SCAN_FROM of a line it must stop or
@@ -2359,6 +2394,10 @@ export function step(world) {
   /* THE LIGHTS (actuated.js), decided from the traffic as it was at the
      start of this tick -- what the loops saw -- like every driver. */
   const lights = world.lights ? stepLights(signalPlans(world.course), world.lights, (k) => loopDets(world, k), t) : null;
+  if (world.brakeReaction) {
+    const p = world.actors.find((a) => a.player);
+    world = { ...world, playerLamp: p ? lampOnsetOf({ lampOnset: world.playerLamp }, (p.a ?? 0) < -BRAKE_LAMP_ON, p.v ?? 0, p.v ?? 0, world.t) : null };
+  }
   let out = { ...world, t, tick: world.tick + 1, spawned, nextAt, turnedAway, actors: next, ...(lights ? { lights } : {}), playerFreeSince, ...(signalOn || world.signalOn ? { signalOn } : {}), ...(parked ? { parked } : {}), ...(crashes ? { crashes } : {}), ...(past ? { past } : {}), ...(walked ? walkedRest : {}), ...(strolled ? strolled : {}) };
   if (tall) out.tall = tall; else if (out.tall) delete out.tall;
   /* A CAR THAT REACHES SOMEBODY ON FOOT has struck them (peds.js
@@ -2866,7 +2905,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, brakeReaction = false } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
@@ -2896,7 +2935,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, brakeReaction, ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   /* `actuated: false`: every light on its clock, as before the loops (actuated.js) -- for comparing against. */
@@ -2980,6 +3019,8 @@ function warmed(w0, acrossIt) {
        3.6 m jump at a seam (SIMULATOR.md 1.1.13). */
     actors: w.actors.map((a0) => rebaseLooks(a0, shift)).map((a) => ({
       ...a, stoppedAt: back(a.stoppedAt), openedAt: back(a.openedAt),
+      /* The lamp's onset is on that clock too (DECISIONS 10.46): left on it, a car braking as the warm-up ended came on in the future, unnoticed for as long as the lamp stayed on. */
+      ...(a.lampOnset ? { lampOnset: { ...a.lampOnset, t: a.lampOnset.t - shift } } : {}),
       lcDone: back(a.lcDone ?? null),
       /* ...and when they last looked away (attention.js, 22 October): left on
          the warm-up's clock it lay in the future, and nobody glanced until the
