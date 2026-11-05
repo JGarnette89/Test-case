@@ -143,6 +143,21 @@ for (const r of [base,
 
 /* 2b. DRAWING BY CATEGORY: one frame, drawn at three views, without each kind. */
 console.log("\n2b. one frame drawn (ms, median of 30, and canvas calls), without each kind of content:");
+/* 2a. WHAT THE PARKED CARS ARE OF WHAT IS ON SCREEN (5 November; DECISIONS 10.42): the road users drawn and the canvas calls with and without them, the frame centred on one moving car in 8 in turn, so it is the road as the player sees it and not one lucky place. Calls are what the phone pays per; this canvas paints nothing, so desk milliseconds here are JavaScript only. */
+{
+  const everyone = actorsOf(w, 0), none = actorsOf(w, 0, { parked: true }), S0 = scene(w);
+  const places = w.actors.filter((_, i) => i % 8 === 0).map((c) => poseOf(w, c));
+  for (const [name, k] of [["street zoom", size.w / 60], ["district", size.w / 110]]) {
+    let cars = 0, carsNo = 0, callsAll = 0, callsNo = 0;
+    for (const p of places) {
+      const cam = { x: p.x, y: p.y, z: 0 };
+      calls = 0; const r = drawFrame(ctx, size, { ...S0, cam, rot: 0, k, tilt: false, actors: everyone, t: w.t }); cars += r.cars; callsAll += calls;
+      calls = 0; const q = drawFrame(ctx, size, { ...S0, cam, rot: 0, k, tilt: false, actors: none, t: w.t }); carsNo += q.cars; callsNo += calls;
+    }
+    const n = places.length;
+    console.log(`2a. ${name}, ${n} places: road users drawn ${(cars / n).toFixed(1)}, of which parked ${((cars - carsNo) / n).toFixed(1)} (${(100 * (cars - carsNo) / Math.max(cars, 1)).toFixed(0)}%); canvas calls ${(callsAll / n).toFixed(0)}, parked ${((callsAll - callsNo) / n).toFixed(0)} (${(100 * (callsAll - callsNo) / callsAll).toFixed(0)}%)`);
+  }
+}
 const views = [["street zoom", size.w / 60], ["district (watch a place)", size.w / 110], ["whole map", Math.min(size.w / b.w, size.h / b.h) * 0.9]];
 const actorsAll = actorsOf(w, 0);
 const centre = { x: b.x + b.w / 2, y: b.y + b.h / 2, z: 0 };
