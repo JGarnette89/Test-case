@@ -117,7 +117,7 @@ gradient (two commits: the grade term with level-map hashes as the gate,
 then realistic truck and bus power, with grade in the junction clearing
 prediction alongside it); the open highway (src/map/highway.js is
 written and loads clean, 15 km, no conflict points -- not registered as a
-test map, not driven); body motion and roadside density; placement;
+test map, not driven); body motion (now attached to legibility, DECISIONS 10.51) and roadside density; placement;
 signalling in the driver model; lead-car obligation (DECISIONS 10.13).
 
 **Known, flagged, not scheduled:** harsh braking by cars mid-change rose

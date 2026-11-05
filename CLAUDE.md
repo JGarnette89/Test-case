@@ -21,6 +21,8 @@ argument, so the documentation is a CONTRACT rather than a diary.
 
 **THE PLAYER'S "CONTACT STOPS THE GAME" IS A PLACEHOLDER IN ITS OWN WORDS, NOT A RULING; A CANDIDATE'S CRASH ENDING AN EXAM IS NOT (DECISIONS 10.49). It lives in `setStopped` in MapRoad and Wheel, where no check reaches, and contact has no physics of its own: the stop is only the freeze. Read 10.48 and 10.49 before touching it.**
 
+**A DIFFERENCE THE CHECKS CAN COUNT AND THE MAINTAINER CANNOT SEE MAY BE A SEEING PROBLEM, NOT A MODEL PROBLEM (DECISIONS 10.51). Do not fix it by changing the driver model. The order from here is in 10.51 and PLAN.md: terminal contact, destinations with player-tuned density, the price of slowing.**
+
 **THE ORDER OF ALL WORK IS [PLAN.md](PLAN.md) (13 October 2026)**: every
 recorded piece of design -- story, characters, vehicles, garage, day and
 night, objectives, dialogue -- reconciled into one sequence with its

@@ -4721,7 +4721,7 @@ SIMULATOR log they read as bad luck; together they are the pattern:
    | agent | courtesy's two failures are too few trials | true of the shortfall; the check's second assertion could not fail at all, and its falsifier fired on the larger sample: a lapsed offer (IN FLIGHT 39) |
    | maintainer | parked vehicles were placed against the overall car budget | no, on every map; they do spend the phone's frame budget (10.42) |
    | lead | Clean mode's density is the explanation for the cars that never move | a separate observation: those cars are curb slots, the density point is why added cars bought little (10.42) |
-   | lead | most of the driver model has nothing to express on an open road | half: rolling stops 24x and harsh braking 4.8x across the dial on the city already; lane-change faults are the silent part, 10x rarer than on the loop (10.50) |
+   | lead | most of the driver model has nothing to express on an open road | half: rolling stops 24x and harsh braking 4.8x across the dial on the city already; lane-change faults are the silent part, 10x rarer than on the loop (10.50). **Accepted by the project lead as another of theirs, 5 November** |
    | lead | the three untraced failures may be the recorded-time timeout flaw | they were not timeouts; the crash pair towed, a check counting two moves, a one-seed floor (10.46) |
    | agent | the small maps' rate is at least 3x the city's on test map 1 (ON3) | 2.1x, with 8-10x on peds and signs (10.46) |
    | lead | the ruling on commitment reclassifies the overshoots | 77 of 78 went in; none reclassified (10.45) |
@@ -6035,7 +6035,7 @@ The city, the same 28 seeds at 150 cars for 10 minutes each, about 699 car-hours
 
 ## 10.50 FOUR RULINGS, AND DESTINATIONS AHEAD OF FURTHER DRIVER-MODEL WORK (the maintainer, relayed by the project lead, 5 November; NOTHING BUILT)
 
-**1. CLEAN MODE DOES NOT SERVE SMALL MAPS.** The direction is one feature-rich map; the small maps are vestigial from when this was pre-cooked animation; *"traffic density should be always tuned for the player experience"*, not for simulating a whole map at once. Clean mode offers the proper map with density tuned for how it feels to drive. **THE SMALL MAPS ARE FIXTURES THAT LEAKED INTO THE MENU, NOT MAPS: they stay as check fixtures and leave the menu.** This answers 10.42's "what Clean mode should do" and makes Clean mode's 0.6-0.8 wrecks a minute on small maps (10.46) moot once built. **Not yet settled: which map is the proper one (the combined map of 10.35 does not exist), and whether "the menu" includes #/tests, which the 28 September rule makes every feature's way in.**
+**1. CLEAN MODE DOES NOT SERVE SMALL MAPS.** The direction is one feature-rich map; the small maps are vestigial from when this was pre-cooked animation; *"traffic density should be always tuned for the player experience"*, not for simulating a whole map at once. Clean mode offers the proper map with density tuned for how it feels to drive. **THE SMALL MAPS ARE FIXTURES THAT LEAKED INTO THE MENU, NOT MAPS: they stay as check fixtures and leave the menu.** This answers 10.42's "what Clean mode should do" and makes Clean mode's 0.6-0.8 wrecks a minute on small maps (10.46) moot once built. **Settled by 10.51: the city for now, and the menu is Clean mode's choices only.**
 
 **2. NOT-AT-FAULT COLLISIONS: THE RUN CONTINUES IF THE CAR IS STILL OPERABLE, with damaged handling as the consequence, and A QUICK INSURANCE PAYOUT COVERING PART OF THE DAMAGE, so the player is not punished for somebody else's mistake.** Better than simply not penalizing (the project lead): the world responds rather than the game declining to act, and it fits the analog setting. This settles the fare question's direction (10.46, 10.48). It needs what 10.49 found missing: contact physics, who struck whom, a car that can be damaged. Still his: a person struck, and a candidate's crash in an exam (10.49).
 
@@ -6058,7 +6058,7 @@ Per 100 car-minutes, two seeds, 3 minutes each, about 1,080 car-minutes a row:
 
 - **WHAT SUPPORTS IT: THE LANE IS SILENT ON THE CITY.** Tight changes and blind misses are about 10x rarer than on the loop. Over 900 car-minutes (5 minutes, seed 1): 3,256 intersections entered, **3 arriving in a lane that could not make the exit drawn, 47 lane changes made for a turn**: 5 per 100 car-minutes. That is the fix of IN FLIGHT 32 doing what it was told: the draw avoids any turn a lane cannot reach, so a car's route almost never asks it to move. No driver is competing for a lane on the city.
 - **WHAT DOES NOT: THE DIAL ALREADY MOVES THE CITY A LOT.** Rolling stops 24x and harsh braking 4.8x from +1 to -1, which are axes other than steering expressing without any destination. So "nothing to express" overstates it, and the instrument can see them. **What he can see and what the counts show differ, so a second and third cause are live:** LEGIBILITY, a rolling stop or a hard brake being much less visible than a car wandering in its lane; and DENSITY, 2.5 moving cars within 100 m of the player on the city at 180 (10.42), which is his "flowing traffic" and which destinations do not add. **Interaction needs two cars there to interact.**
-- **A TELL, UNEXPLAINED:** missed turns rise as the population improves, on both maps (city 0.56 to 1.67, loop 2.22 to 5.09). Not traced.
+- **A TELL, UNEXPLAINED, AND POSSIBLY THE INSTRUMENT:** missed turns rise as the population improves, on both maps (city 0.56 to 1.67, loop 2.22 to 5.09). Not traced, by instruction; see 10.51 item 6.
 
 ### The agent's view: agree on the order, the cost is higher than 10.30 said
 
@@ -6074,7 +6074,33 @@ Per 100 car-minutes, two seeds, 3 minutes each, about 1,080 car-minutes a row:
 
 **THE DIAL AS THE INSTRUMENT (the project lead): the table above is the baseline, taken before any of it.** Prediction, to be restated with a falsifier when built: with destinations on, city lane changes for a turn rise from 5 to at least 50 per 100 car-minutes, tight changes and blind misses at least 3x and still ordered by dial, missed turns held near the loop's rate. **If the counts rise and he still cannot see the dial, the reading was wrong and the cause is legibility or density.**
 
-**THE ORDER AS UNDERSTOOD, NOT YET CONFIRMED: terminal contact (10.49), destinations, then the price of slowing with prior sight, which is further driver-model work. Density tuned for the player (ruling 1) has no place in it yet, and his "flowing traffic" depends on it as much as on destinations.**
+**THE ORDER IS CONFIRMED IN 10.51, with density joined to destinations.**
+
+## 10.51 THE ORDER CONFIRMED, AND LEGIBILITY AS ITS OWN ITEM (the project lead, 5 November; NOTHING BUILT)
+
+1. **THE ORDER: TERMINAL CONTACT (10.49), THEN DESTINATIONS AND PLAYER-TUNED DENSITY TOGETHER, THEN THE PRICE OF SLOWING WITH PRIOR SIGHT.** Neither destinations nor density shows without the other, and 2.5 moving cars within 100 m (10.42) is the clearest argument. **One piece of work with one measurement.**
+2. **CLEAN MODE USES THE CITY FOR NOW:** it has places to go and its routing costs about a quarter of the trial city's (2.6 ms against 9.8, a busy desk). Revisit when the combined map of 10.35 exists.
+3. **"LEAVE THE MENU" MEANS CLEAN MODE'S CHOICES ONLY.** #/tests stays: it is how each feature reaches the maintainer (the 28 September rule).
+4. **THE CONTACT BUILD: DESIGN IT ONCE THE MAINTAINER ANSWERS TWO QUESTIONS,** a person struck and a candidate's crash in an exam (10.49). The project lead is asking him. No design before that.
+5. **THE PREDICTION AND FALSIFIER OF 10.50 STAND AS WRITTEN:** if the counts rise and he still cannot see the dial, the project lead's reading was wrong and the cause is legibility or density.
+   - **WHAT JOINING DENSITY DOES TO IT (the agent):** one measurement over two changes cannot say which one worked, so each goes behind its own switch and the measurement is all four cells. And density stops being an untested alternative: if both are on and he still cannot see it, legibility is what is left, or density not yet enough.
+6. **THE TELL IN 10.50, MISSED TURNS RISING AS THE POPULATION IMPROVES ON BOTH MAPS, IS IN THE RECORD AND NOT TRACED, by instruction.** It is counterintuitive enough that it may be an instrument fault rather than a finding, and those have been the most expensive mistakes here. **THE AGENT'S CONDITION: the destinations prediction reads missed turns ("held near the loop's rate"), so the counter has to be trusted before that clause is, and the clause counts for nothing until then.**
+
+### Legibility: a seeing problem, tracked apart from the driver model
+
+**THE MODEL PRODUCES DIFFERENCES THAT ARE MEASURABLY LARGE AND VISUALLY SUBTLE. Lane drift is the one he can see, and it is the one that moves the car where he can see it.** The project lead's framing: a presentation gap and not a model gap, with BODY MOTION as the likely answer: nose dip under braking, roll in a lane change, the maintainer's suspension idea. **Recorded so that a seeing problem is not fixed by changing the driver model.** It is the item on SIMULATOR's parked list, "body motion and roadside density".
+
+**STATUS: A LIVE CAUSE, NOT A MEASURED ONE.** Nothing has tested what he can and cannot see, and what would is his eye.
+
+**WHAT THE RENDERER DOES TODAY (the agent, read, not measured), which narrows the framing without changing it:**
+
+- **A HARD BRAKE IS NOT QUITE INVISIBLE, IT IS IDENTICAL TO A GENTLE ONE.** Brake lamps are drawn (`paintLamps`, draw.js), deliberately oversized as map symbols, bright with a halo while braking. But the lamp is one bit, on past `BRAKE_LAMP_ON` 0.6 m/s^2 (crossing.js). The body does not change at all: on that the project lead is right. So the gap is manner, not whether.
+- **BODY MOTION NEEDS ONE MORE THING TO CROSS.** Only `brakeLamp`, a boolean, reaches the draw. A dip scaled to how hard needs a rate on the pose, and through the worker, whose protocol sends only what changed.
+- **A REAL DIP IS TOO SMALL TO SEE, SO IT WOULD HAVE TO BE EXAGGERATED,** as the lamps and signs are. At an assumed 2 degrees of pitch, a 4.5 m car's ends move about 8 cm. What exaggeration reads on a phone at the driving zoom is not established.
+- **IT CUTS AGAINST A STANDING DECISION:** draw.js keeps boxes level and quantized to 32 headings on purpose, "a sprite set has no pitch", so what is on screen stays what sprites could deliver. Box corners can already pitch (for grade), so boxes make it cheap; **sprites would need art for it. Whether the sprite plan still holds decides that cost, and it is the maintainer's.**
+- **IT ANSWERS ONE OF THE TWO.** Harsh braking has a body to move. A rolling stop's tell is an absence, a car that never quite comes to rest with its lamp on throughout, and a dip does not obviously show that. **Rolling stops, 24x across the dial, may need another answer. Attached to this item, unproposed.**
+
+**The standing instruction applies: "I want to avoid adding 50 half-cooked features" (10.38). NOT SCHEDULED: the project lead set no place in the order.**
 
 ## 11. Verification
 
