@@ -41,13 +41,16 @@ function trial(n, rate, speed, delay) {
   const g = clear(f0, l0), v = f0.v;
   w = { ...w, actors: w.actors.map((a) => (a.id === "lead" ? { ...a, dual: rate } : a)) };
   const n0 = (w.crashes ?? []).length;
-  let peak = 0;
+  /* How hard they braked before their delay was up, the lamp having just come on: nothing is
+     known yet, so they carry on. */
+  let before = 0;
+  const lampT = w.t + DT;
   for (let i = 0; i < 20 / DT; i++) {
     w = step(w);
-    peak = Math.max(peak, -(w.actors.find((a) => a.id === "follower")?.a ?? 0));
-    if ((w.crashes ?? []).length > n0) return { hit: true, g, v, T: f0.notices, peak, rate };
+    if (w.t < lampT + f0.notices - 2 * DT) before = Math.max(before, -(w.actors.find((a) => a.id === "follower")?.a ?? 0));
+    if ((w.crashes ?? []).length > n0) return { hit: true, g, v, T: f0.notices, before, rate };
   }
-  return { hit: false, g, v, T: f0.notices, peak, rate };
+  return { hit: false, g, v, T: f0.notices, before, rate };
 }
 const sweep = (delay) => { const rows = []; for (const speed of [14, 25]) for (const rate of [5.4, 8]) for (let n = 1; n <= N; n++) rows.push(trial(n, rate, speed, delay)); return rows; };
 const quartiles = (rows) => { const q = [...rows].sort((a, b) => a.T - b.T); return [0, 1, 2, 3].map((i) => q.slice((i * q.length) >> 2, ((i + 1) * q.length) >> 2)); };
@@ -63,6 +66,10 @@ const b = quartiles(own).map(hits);
 check(b[3] >= 0.7 * hits(own) && b[3] > b[2] && b[2] >= b[0], `it is the poor observer who has them, by delay quartile: ${b.join(" ")}`);
 check(b[0] === 0, `the sharpest quarter of observers strike nobody: ${b[0]}`);
 
+const slow = own.filter((r) => r.T > 1);
+const worstBefore = Math.max(...slow.map((r) => r.before));
+check(slow.length >= 40 && worstBefore < 1.5, `until their delay is up nothing has changed, position included: of ${slow.length} drivers with over 1 s, the hardest anybody braked before it was up is ${worstBefore.toFixed(2)} m/s^2`);
+
 console.log("2. The controls: the delay is what does it");
 const none = sweep(0);
 check(hits(none) === 0, `with no delay, nobody hits anybody: ${hits(none)} of ${none.length} (the world before this)`);
@@ -72,18 +79,18 @@ check(hits(same) < hits(own) / 2 && s[3] < 0.7 * Math.max(1, hits(same)) + 2, `o
 
 console.log("3. Only a change: a car long stopped is seen stopped");
 {
-  /* Every drawn driver, up to the worst observer, driving up on a standing car. */
+  /* Every drawn driver, up to the worst observer, driving up on a car that braked to a stop long before they got there: its lamp came on, and it is old news. */
   let struck = 0, ran = 0, worst = 0;
   for (let n = 1; n <= 60; n++) {
     let w = { ...base, actors: [], crashes: [] };
-    const lead = { ...person(w, n + 5000, "lead", 700), v: 0, v0: 0.001 }, fol = person(w, n, "follower", 400);
+    const lead = { ...person(w, n + 5000, "lead", 700), v: 14, v0: 14, dual: 2.7 }, fol = person(w, n, "follower", 400);
     fol.v0 = Math.max(fol.v0, 16); fol.v = 14;
     w = { ...w, actors: [lead, fol] };
     worst = Math.max(worst, fol.notices);
     for (let i = 0; i < 60 / DT; i++) { w = step(w); if ((w.crashes ?? []).length) { struck++; break; } }
     ran++;
   }
-  check(struck === 0, `${ran} drivers, delays up to ${worst.toFixed(2)} s, drive up on a standing car: ${struck} hit it`);
+  check(struck === 0, `${ran} drivers, delays up to ${worst.toFixed(2)} s, drive up on a car stopped long before: ${struck} hit it`);
 }
 
 console.log("4. The player: the screen writes them in fresh every tick, and they are read the same");

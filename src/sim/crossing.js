@@ -383,7 +383,6 @@ function relevantTo(world, list, me, mineAt, mine, layout) {
    seam at the joined intersections (ahead along the lane, clear >= 0). */
 function takePlain(world, list, idx, me, mine, mineAt, hood, node, gen, out) {
   const ks = idx.k, stamp = idx.stamp, halfMe = lenOf(me) / 2, most = wantedGap(me, { v: 0 });
-  const press = (d, n) => wantedGap(me, list[n]) / Math.max(d, 0.01);
   /* The least gap a car can have at a distance: the longest rear there is. */
   const least = (delta) => delta - halfMe - idx.maxRear;
   const along = (n, lane) => (idx.laneIn[n] === lane ? idx.alIn[n] : idx.alOut[n]);
@@ -430,7 +429,9 @@ function takePlain(world, list, idx, me, mine, mineAt, hood, node, gen, out) {
       const n = w.xs[i];
       if (most / Math.max(least(w.delta(n)), 0.01) < floor) break;
       if (!w.counts(n)) continue;
-      const p = press(w.gap(n), n);
+      /* AS THIS DRIVER HAS NOTICED THEM (asNoticed), or the floor is set by a car read further on than this says, and the car that really presses is dropped: a sixth reader of one quantity (10.46). */
+      const read = asNoticed(world, me, list[n]);
+      const p = wantedGap(me, read) / Math.max(w.gap(n) + (read.unnoticed ?? 0), 0.01);
       seen.push(n, p);
       if (p > floor) floor = p;
     }
@@ -3018,6 +3019,8 @@ function warmed(w0, acrossIt) {
        3.6 m jump at a seam (SIMULATOR.md 1.1.13). */
     actors: w.actors.map((a0) => rebaseLooks(a0, shift)).map((a) => ({
       ...a, stoppedAt: back(a.stoppedAt), openedAt: back(a.openedAt),
+      /* The lamp's onset is on that clock too (DECISIONS 10.46): left on it, a car braking as the warm-up ended came on in the future, unnoticed for as long as the lamp stayed on. */
+      ...(a.lampOnset ? { lampOnset: { ...a.lampOnset, t: a.lampOnset.t - shift } } : {}),
       lcDone: back(a.lcDone ?? null),
       /* ...and when they last looked away (attention.js, 22 October): left on
          the warm-up's clock it lay in the future, and nobody glanced until the
