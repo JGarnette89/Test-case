@@ -4721,6 +4721,7 @@ SIMULATOR log they read as bad luck; together they are the pattern:
    | agent | courtesy's two failures are too few trials | true of the shortfall; the check's second assertion could not fail at all, and its falsifier fired on the larger sample: a lapsed offer (IN FLIGHT 39) |
    | maintainer | parked vehicles were placed against the overall car budget | no, on every map; they do spend the phone's frame budget (10.42) |
    | lead | Clean mode's density is the explanation for the cars that never move | a separate observation: those cars are curb slots, the density point is why added cars bought little (10.42) |
+   | lead | most of the driver model has nothing to express on an open road | half: rolling stops 24x and harsh braking 4.8x across the dial on the city already; lane-change faults are the silent part, 10x rarer than on the loop (10.50) |
    | lead | the three untraced failures may be the recorded-time timeout flaw | they were not timeouts; the crash pair towed, a check counting two moves, a one-seed floor (10.46) |
    | agent | the small maps' rate is at least 3x the city's on test map 1 (ON3) | 2.1x, with 8-10x on peds and signs (10.46) |
    | lead | the ruling on commitment reclassifies the overshoots | 77 of 78 went in; none reclassified (10.45) |
@@ -6031,6 +6032,49 @@ The city, the same 28 seeds at 150 cars for 10 minutes each, about 699 car-hours
 7. **A PERSON STRUCK IS IN THE SAME BRANCH.** "Lies where they fell, is waited for and is cleared" (peds.js) is built, and it is the same `hit`. **Whether a game about driving well carries on, with bodywork, after the player hits somebody on foot is not settled by "the GTA model", and it is his.**
 
 **NOTHING SCHEDULED BEYOND THIS INVESTIGATION (the project lead).**
+
+## 10.50 FOUR RULINGS, AND DESTINATIONS AHEAD OF FURTHER DRIVER-MODEL WORK (the maintainer, relayed by the project lead, 5 November; NOTHING BUILT)
+
+**1. CLEAN MODE DOES NOT SERVE SMALL MAPS.** The direction is one feature-rich map; the small maps are vestigial from when this was pre-cooked animation; *"traffic density should be always tuned for the player experience"*, not for simulating a whole map at once. Clean mode offers the proper map with density tuned for how it feels to drive. **THE SMALL MAPS ARE FIXTURES THAT LEAKED INTO THE MENU, NOT MAPS: they stay as check fixtures and leave the menu.** This answers 10.42's "what Clean mode should do" and makes Clean mode's 0.6-0.8 wrecks a minute on small maps (10.46) moot once built. **Not yet settled: which map is the proper one (the combined map of 10.35 does not exist), and whether "the menu" includes #/tests, which the 28 September rule makes every feature's way in.**
+
+**2. NOT-AT-FAULT COLLISIONS: THE RUN CONTINUES IF THE CAR IS STILL OPERABLE, with damaged handling as the consequence, and A QUICK INSURANCE PAYOUT COVERING PART OF THE DAMAGE, so the player is not punished for somebody else's mistake.** Better than simply not penalizing (the project lead): the world responds rather than the game declining to act, and it fits the analog setting. This settles the fare question's direction (10.46, 10.48). It needs what 10.49 found missing: contact physics, who struck whom, a car that can be damaged. Still his: a person struck, and a candidate's crash in an exam (10.49).
+
+**3. THE LAPSED OFFER IS CORRECT AS BUILT.** *"drivers won't wait forever, take the gap or eat dust."* **CLOSED.**
+
+**4. THE SKILL DIAL IS HARD TO SEE, HIS DIAGNOSIS:** *"the drivers mostly just go end to end."* It does not feel like cars interact much; he can clearly see lane drift; he needs time driving among flowing traffic, *"which we haven't been able to represent in a city setting at all"*. **The project lead's reading, to test:** skill shows when a driver must decide; lane-keeping is continuous so steering shows regardless; everything else needs a situation, and end-to-end travel supplies few. So destinations go ahead of further driver-model work, subject to the agent's view.
+
+### Testing that reading: half right (the agent; tools/measure/skill-spread.mjs, destinations.mjs, 180 cars)
+
+Per 100 car-minutes, two seeds, 3 minutes each, about 1,080 car-minutes a row:
+
+| map, dial | rolled | harsh | keep right | tight change | blind miss | missed turn | horn |
+|---|---|---|---|---|---|---|---|
+| city -1 | 29.26 | 67.04 | 2.41 | 1.11 | 0.74 | 0.56 | 0 |
+| city 0 | 12.79 | 22.80 | 1.58 | 1.95 | 0.46 | 0.65 | 0.28 |
+| city +1 | 1.21 | 13.93 | 0 | 0.28 | 0 | 1.67 | 0.09 |
+| loop -1 | 0 | 32.04 | 5.93 | 12.04 | 4.17 | 2.22 | 0.09 |
+| loop 0 | 0 | 11.57 | 2.59 | 11.30 | 2.59 | 2.96 | 2.04 |
+| loop +1 | 0 | 2.59 | 0 | 2.50 | 0.28 | 5.09 | 0.09 |
+
+- **WHAT SUPPORTS IT: THE LANE IS SILENT ON THE CITY.** Tight changes and blind misses are about 10x rarer than on the loop. Over 900 car-minutes (5 minutes, seed 1): 3,256 intersections entered, **3 arriving in a lane that could not make the exit drawn, 47 lane changes made for a turn**: 5 per 100 car-minutes. That is the fix of IN FLIGHT 32 doing what it was told: the draw avoids any turn a lane cannot reach, so a car's route almost never asks it to move. No driver is competing for a lane on the city.
+- **WHAT DOES NOT: THE DIAL ALREADY MOVES THE CITY A LOT.** Rolling stops 24x and harsh braking 4.8x from +1 to -1, which are axes other than steering expressing without any destination. So "nothing to express" overstates it, and the instrument can see them. **What he can see and what the counts show differ, so a second and third cause are live:** LEGIBILITY, a rolling stop or a hard brake being much less visible than a car wandering in its lane; and DENSITY, 2.5 moving cars within 100 m of the player on the city at 180 (10.42), which is his "flowing traffic" and which destinations do not add. **Interaction needs two cars there to interact.**
+- **A TELL, UNEXPLAINED:** missed turns rise as the population improves, on both maps (city 0.56 to 1.67, loop 2.22 to 5.09). Not traced.
+
+### The agent's view: agree on the order, the cost is higher than 10.30 said
+
+**Destinations ahead of further driver-model work: agreed.** The measurement above is the case for it, and 10.34 names the general reason: this is the same told-too-late property at its largest. **WHAT CHANGED SINCE 10.30, AND IT RAISES THE COST:**
+
+1. **ITEM 32 REMOVED WHAT MADE IT LOOK CHEAP.** 906 misses became 19 because the draw stopped asking for turns the lane could not reach, median approach 50 m and a median -84 m of room. **A destination cannot use that escape: it needs that turn.** Given a plan through the existing hook as it stands, expect misses back at that order. So the real work is LOOKAHEAD: knowing the lane for a turn several blocks ahead and moving on an earlier stretch. `want` today lives on one approach. This is the piece 10.30 did not count, and it is where anticipation finally gets a say in lane choice (10.30 finding 1).
+2. **A PLAN IS INTENTS BY LEG COUNT, SO ONE MISSED TURN INVALIDATES THE REST.** `wantFor`'s hook is real, but it was written for a candidate on a set course. A driver with a place needs to replan after a miss.
+3. **ROUTING IS NOT FREE:** `routeTo` costs about 2.6 ms on the city and 9.8 on the trial city, on a busy desk, against a 4.8 ms step, and the phone is several times slower. Once a trip it is fine; per driver per intersection it is not. Written for one player, with a sort per pop.
+4. **A TRIP HAS TO END SOMEWHERE:** pull-ins exist on district streets; otherwise a car leaves at an edge. 44% of random routes on test map 1 find no way, which matters less after ruling 1. Shaping's bias (10.30 finding 3) is still to meet.
+5. **IT MOVES EVERY WORLD:** so a switch, as 10.46, and a re-baseline when it goes on.
+
+**WHAT DID NOT CHANGE:** `routeTo`, the plan hook and the give-up rule (`changeRoom`) are there, the player's route already drives the same lane logic (`laneFor`, `nextTurn`), and exits on the loop are still a map change. **It is modest for the loop, where approaches are long, and substantial for the city, which is the setting he asked about.**
+
+**THE DIAL AS THE INSTRUMENT (the project lead): the table above is the baseline, taken before any of it.** Prediction, to be restated with a falsifier when built: with destinations on, city lane changes for a turn rise from 5 to at least 50 per 100 car-minutes, tight changes and blind misses at least 3x and still ordered by dial, missed turns held near the loop's rate. **If the counts rise and he still cannot see the dial, the reading was wrong and the cause is legibility or density.**
+
+**THE ORDER AS UNDERSTOOD, NOT YET CONFIRMED: terminal contact (10.49), destinations, then the price of slowing with prior sight, which is further driver-model work. Density tuned for the player (ruling 1) has no place in it yet, and his "flowing traffic" depends on it as much as on destinations.**
 
 ## 11. Verification
 

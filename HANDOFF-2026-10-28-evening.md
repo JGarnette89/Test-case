@@ -186,6 +186,7 @@ A cold session that knows the reasons should reorder if a reason changes.
 - **RULED (DECISIONS 10.46, 10.47): each driver's own reaction time, uncapped; undue delay is not
   attempting to see, or 4-5 s after a control changes, less if traffic honks repeatedly and
   nothing happens.** Measured in 10.46.
+- **RULED 5 November (DECISIONS 10.50): Clean mode leaves small maps, they are fixtures; not-at-fault collisions continue with damage and a payout; the lapsed offer is closed; destinations ahead of further driver-model work, cost higher than 10.30 said.**
 - **Held:** `margin-can-stop` and `sight-caution`, both off, on their branches.
 - **For Jay, a feel question and not a defect:** a player who moves into the gap
   just after a courtesy offer lapses gets no "let in".
