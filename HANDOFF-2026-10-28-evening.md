@@ -175,6 +175,9 @@ A cold session that knows the reasons should reorder if a reason changes.
   predictions are 10.46), the price of slowing with prior sight, environment (10.43), creeping.
   CREEPING IS BLOCKED ON ENVIRONMENT, not on its design: nothing near a corner hides anything
   yet, so it would produce no visible behavior.**
+- **THE REAR-END RISK IS BUILT AND MEASURED, OFF, ON `brake-reaction` (DECISIONS 10.46): 0 to 29
+  same-lane crashes on the city, 28 of 29 by the worst observers; 0 of 960 if the periphery caps
+  it. Whether it does is Jay's, and item 1 is gated on it. No check yet.**
 - **Held:** `margin-can-stop` and `sight-caution`, both off, on their branches.
 - **For Jay, a feel question and not a defect:** a player who moves into the gap
   just after a courtesy offer lapses gets no "let in".
