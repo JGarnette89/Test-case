@@ -5968,7 +5968,7 @@ The city, the same 28 seeds at 150 cars for 10 minutes each, about 699 car-hours
 1. **FAULT ATTRIBUTION IS WHAT MAKES IT WORK.** No blanket rule: rear-ended while stationary at a light is not the player's fault and costs nothing but bodywork; rear-ended after brake-checking somebody is. **This answers the fare question (10.46) without a special case: the fare survives if it was not their fault.** The collision system must consume the same fault machinery the marking sheet does and not have its own: one definition.
 2. **THE COST IS CONTINUITY, NOT ONLY MONEY.** Three tiers, none a fail state: a knock costs paint; a real impact costs the run; a bad one costs the car for a while. Damage accumulating to failure sits underneath as slow pressure.
 3. **WEIGHT OF IMPACT FALLS OUT OF THE VEHICLE ARCHETYPES:** being hit by a loaded truck and nudged by a compact differ.
-4. **A CONSEQUENCE ROUTES THE PLAYER SOMEWHERE, NOT INTO A FORM.** The appeal of that genre is the driving, with paperwork as texture, and a claims form is a menu. Damage sends you to the body shop, a dispute to dispatch, each a trip. It fits the analog setting, where you go in person. This is the project lead's pushback on the insurance-claim loop.
+4. **A CONSEQUENCE ROUTES THE PLAYER SOMEWHERE, NOT INTO A FORM.** The appeal of that genre is the driving, with paperwork as texture, and a claims form is a menu. Damage sends you to the body shop, a dispute to dispatch, each a trip. It fits the analog setting, where you go in person. **RULED BY THE MAINTAINER AS A PRINCIPLE (relayed 5 November): he endorsed it, and HIS ADDITION is that it gives the player something to do while roaming.**
 5. **EVENTUALLY: A DAMAGED CAR THAT HANDLES WRONG**: pulls to one side, brakes unevenly, overheats under load. Damage changes how you drive rather than what you click.
 
 ### What the code says against them (the agent, read, not measured)
@@ -5976,7 +5976,61 @@ The city, the same 28 seeds at 150 cars for 10 minutes each, about 699 car-hours
 - **MASS IS NOT IN THE DATA, against proposal 3.** A `VEHICLES` row (traffic.js) has length, width, height, accel, brake, most, cap and lateral; nothing here or in VEHICLES-GARAGE.md states a mass. It is a small addition, one column, but it is an addition and, unread by anything else, moves nothing. **A "loaded" truck needs a load too:** the row is per kind.
 - **THERE IS NOT ONE FAULT MACHINERY TO CONSUME, against proposal 1.** `marking.js` judges candidates and never reads a player; `events.js` is a separate set of detectors for the player. The two already overlap, so "one definition" means reconciling them first, the project's recurring bug at the point it would be built on.
 - **OF THE FOUR THINGS NAMED AS KNOWN:** the following gap is (`headwayOf`), and whether the player could have stopped is derivable from speed and gap. **Whether the player was looking is not: nothing in the sim knows where the player looks. Brake-checking has no detector.** And a crash records its two parties and where, not who struck whom or why (`crashWith`, `playerContact`).
-- **THE FARE IS LIVE:** the delay is on the served build (10.46), `money.js` still voids on any contact, and a player rear-ended at a light loses the fare today. His direction says they should not be punished; nothing changes it until this is built or a smaller fix is ordered.
+- **THE FARE, CORRECTED BY 10.49:** this entry said a player rear-ended at a light loses the fare today. **They lose far more: the whole drive.** The world freezes and Restart rebuilds it, so `money.js`'s "contact -- no fare" can never be reached in the live game.
+
+### The project lead's correction: he meant scrutiny, and the examiner mode already is it
+
+**The project lead pushed back on the mundane-task idea as risking a claims form nobody wants, and had misread him.** His reference was Papers Please, where scrutiny IS the game: slow, detail-focused work can be the pleasure rather than a tax on it. **He is right, and the examiner mode is already that genre:** watching a candidate, noticing a shoulder check that did not happen, judging whether it was worth a mark. **THE CONSEQUENCE: WE DO NOT NEED A SECOND SCRUTINY SYSTEM, WE NEED TO BUILD THE ONE ALREADY DESIGNED. Two would compete for the same attention. If a claim loop ever arrives it is texture around the examiner game, not a parallel to it.** "Route them somewhere rather than into a form" stands, as above.
+
+## 10.49 WHAT TERMINAL CONTACT WAS PROTECTING, BEFORE ANYTHING REPLACES IT (investigated 5 November; NOTHING BUILT, NO DESIGN PROPOSED)
+
+**The maintainer named the prerequisite for 10.48: any collision currently stops the game entirely.** The project lead made replacing that the next build and asked what the rule protected first. Read from the code, the record and git; nothing measured.
+
+**THE RECORD HOLDS THREE DIFFERENT THINGS UNDER "CONTACT ENDS A DRIVE", AND ONLY ONE IS A PLACEHOLDER:**
+
+| when | what | what it says it is for |
+|---|---|---|
+| 8 Sept, `outcome.js` (`24d6f06`), old engine | contact or a taken wheel ends a drive, and says who it lands on | "A collision was simply not modelled" and "the accept test was standing in for a state the game could not represent". It carries his ruling on intervention: **MISSED**, contact with nobody taking the wheel, counts against the examiner. **Deleted with the engine, 14 October.** |
+| 18-19 Sept, `Wheel.jsx` (`93053ba`), then `MapRoad.jsx` (`6bb818e`) | the player touching anything stops play | **A PLACEHOLDER IN ITS OWN WORDS, still on screen: "What a collision means here is still open; for now it stops you."** |
+| 28 Sept (`7f30333`), `step` | two traffic cars stop where they hit, stand 45 s, are logged and cleared, and traffic queues behind | The response 5.16.2 was waiting for. **THE WORLD ALREADY CONTINUES AFTER TRAFFIC CONTACT.** The same commit made ExamRide end on the candidate's crash. |
+
+**THE PROJECT LEAD'S RECOLLECTION, CHECKED: THE CAUSATION RAN THE OTHER WAY.** Terminal contact was not introduced because of perception lag; it is older and came from having no state for a collision (5.12) and from intervention. Lag was then HELD OFF until contact had a response: "it switches on when contact ends a drive" (5.16.2; REBUILD stage 5), because the bold candidate, lagged, rear-ended the car ahead, "a contact nothing draws and nothing responds to". **THE INTENT WAS 5.12's: NEVER SILENTLY DISCARD WHAT HAPPENED. "Ends the drive" was the only response then available, and 28 September already met it for traffic. SO: REPLACING THE PLAYER'S STOP WITH A DAMAGE MODEL SATISFIES THE ORIGINAL INTENT, AS LONG AS CONTACT STAYS VISIBLE AND RECORDED. IT DOES NOT REVERSE A DECISION.**
+
+**THE EXCEPTION, AND IT IS NOT A PLACEHOLDER: THE EXAM.** The candidate's crash ending #/exam rests on his ruling on intervention, MISSED counting against the examiner, and 10.27-10.28 are still design: an intervention is a critical error that does not end the test, and termination is a set piece for a danger. ExamRide says so: "What taking the wheel earlier would have meant is still Jay's question." **Graduated damage for the player does not settle what a candidate's crash does to an exam. Separate question, his.**
+
+### What ends on contact today
+
+| where | on what | what happens |
+|---|---|---|
+| `#/map` driving: every test map, Clean mode, the editor's Drive it | the player touching a car, a parked car or a person | **The whole world freezes, in the page and the worker.** "Contact." and one button, Restart, which builds a new scene: job, meter, route, voice, events and streak gone. Only the wallet survives, and only because it is credited at drop-off. |
+| `#/wheel` | a car | the same |
+| `#/exam` | the candidate's crash, or leaving the map | the drive ends, said on screen |
+| watching, and all traffic | any contact between others | nothing ends: a wreck, cleared after 45 s |
+| a taxi fare | nothing of its own | `jobs.js` does not read contact. See below |
+
+**THE BANNER NOW LIES SOMETIMES:** "You hit another car", said to a player rear-ended at a red by the delay of 10.46, or who struck a person or a parked car.
+
+### Do any checks assert it? No, and that is the finding
+
+**NO CHECK ASSERTS THAT CONTACT ENDS A DRIVE, BECAUSE THE RULE LIVES IN `setStopped` IN TWO COMPONENTS, WHERE NOTHING REACHES** (5.12.1's own lesson), and verify-screens renders only a first frame. **Nor does verify-exam look at a crash ending the ride.** So no check needs restating to remove it, and nothing would catch it being wrong. Those that encode part of it, to read when this is built:
+
+- `verify-money`: "contact pays nothing", testing a branch the live game cannot reach (below). The rule 10.48 would change.
+- `verify-worker`: on a hit it holds the player still, `stopped: true`, **while the world keeps stepping, which is not what the screen does.** A field nothing in src reads.
+- `verify-crashes` section 3: "logged against the player", the default `other = "player"` in `crashWith`.
+- `verify-voice`: a hit fires `collision` and resets the streak; holds if the drive continues, and see below.
+- `verify-reaction`, `verify-peds`, `verify-drive`: read the first contact and stop; none depends on what follows.
+
+### What assumes a drive cannot continue
+
+1. **CONTACT HAS NO PHYSICS. THE STOP IS ONLY THE FREEZE.** Nothing changes the player's speed or position, and `playerContact` is overlap with no separation. **Take the freeze away and the player keeps their speed and passes through.** Everything in 10.48 stands on something here that does not exist.
+2. **IT WOULD FIRE EVERY TICK.** `hit` is true while overlapping: `crashWith` declines to log a car already crashed, but `playerContact` still reports a hit, as it does for a parked car or a person. So `collision` would be said at severity 5 each tick, the flash and count run, and the streak resets, until they part.
+3. **`money.js`'s "contact -- no fare" IS UNREACHABLE LIVE, AND THE METER LATCHES.** Reached at last, one touch voids the fare for the whole job, whoever's fault. That is the agent's report earlier today corrected: the fare question as asked was too small.
+4. **A CRASH RECORD DOES NOT SAY WHO STRUCK WHOM** (10.48), and defaults to the player.
+5. **THE PLAYER IS NEVER `crash`**: only the other car is. Traffic treats a stopped player as a car stopped with nothing holding it, so it would honk at somebody just hit (`freeStop`), and the wreck beside them is towed at 45 s on a clock the player has no part in.
+6. **RESTART IS THE ONLY WAY ON:** nothing ends a job, resumes a route or moves a car off a wreck. And it replays the same seed.
+7. **A PERSON STRUCK IS IN THE SAME BRANCH.** "Lies where they fell, is waited for and is cleared" (peds.js) is built, and it is the same `hit`. **Whether a game about driving well carries on, with bodywork, after the player hits somebody on foot is not settled by "the GTA model", and it is his.**
+
+**NOTHING SCHEDULED BEYOND THIS INVESTIGATION (the project lead).**
 
 ## 11. Verification
 

@@ -19,6 +19,8 @@ argument, so the documentation is a CONTRACT rather than a diary.
 
 **UNDUE DELAY DOES NOT KNOW WHAT THE DRIVER COULD SEE (DECISIONS 10.47, 5 November): `openTo` reads the road, not the view, so a driver waiting correctly at a blocked view is on the undue-delay clock. Do not trust that fault on a map with real occlusion until it has a sight condition. Prior sight has three states, the third being NEVER SEEN.**
 
+**THE PLAYER'S "CONTACT STOPS THE GAME" IS A PLACEHOLDER IN ITS OWN WORDS, NOT A RULING; A CANDIDATE'S CRASH ENDING AN EXAM IS NOT (DECISIONS 10.49). It lives in `setStopped` in MapRoad and Wheel, where no check reaches, and contact has no physics of its own: the stop is only the freeze. Read 10.48 and 10.49 before touching it.**
+
 **THE ORDER OF ALL WORK IS [PLAN.md](PLAN.md) (13 October 2026)**: every
 recorded piece of design -- story, characters, vehicles, garage, day and
 night, objectives, dialogue -- reconciled into one sequence with its
