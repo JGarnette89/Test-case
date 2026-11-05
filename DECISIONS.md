@@ -6166,6 +6166,30 @@ The project lead's reading, checked. **Right on steering; nearly right on brakin
 - The maintainer's: is at-fault contact with a car only a repair bill (ruling 2 covers only not-at-fault); whether being rear-ended is presumed not at fault as above; whether driving away from a person struck matters, since no forced respawn makes it possible, and leaving the scene is an offense; what an inoperable car does; what if a bill exceeds the wallet; every amount.
 - The project lead's: minutes of driving standing in for a day until a clock exists.
 
+## 10.53 THE WORLD EXPLAINS ITSELF, AND HOW THE VISUAL STYLE IS CHOSEN (the maintainer and the project lead, 5 November; DIRECTION, NOT SCHEDULED)
+
+**THE MAINTAINER:** *"imagine driving around and encountering a huge accident scene with police and fire and EMS, and the world itself explains what happened just by you coming across it."*
+
+**THE PROPERTY THAT MAKES IT WORK: EMERGENT SCENES COST NOTHING TO AUTHOR (the project lead).** If crashes genuinely occur in the simulation and services respond, every accident scene is unique and situated, because it actually happened there. A scripted game hand-places each one and they repeat. That is the payoff for having built a simulation, available only because the traffic produces real incidents. **Emergency services then have a job that is not decoration: the world reacting to its own events, the same principle as the delayed mail (10.52).**
+
+**DO NOT SCHEDULE IT. DEPENDENCIES, SO NOBODY PICKS IT UP BLIND:**
+
+1. **Contact being non-terminal** (10.49, 10.52, being built).
+2. **Crashes persisting as world state rather than being cleared.** A crash is towed at `CRASH_CLEAR`, 45 s (crossing.js), and a scene has to outlast the response.
+3. **Scene props, which do not exist.**
+
+**The agent's addition, from the code:** nothing in `src/` is an emergency service: the old engine's emergency vehicle went with it on 14 October. **So the responders are new behavior as well as new props:** dispatch from somewhere, a route through traffic, and traffic yielding to them. And the supply is map-wide and thin: about 0.08 traffic crashes a minute on the city at 180 cars (10.46), so a scene being there to come across depends on how long it stands.
+
+**THE CRITERION FOR THE VISUAL STYLE, PUT TO THE MAINTAINER (the project lead): CHOOSE THE STYLE BY WHAT IT CAN EXPRESS, NOT BY HOW IT LOOKS.** It has to carry:
+
+- a speech bubble above a distracted driver;
+- skid marks that persist;
+- a car's body dipping under braking;
+- a rusted beater reading differently from a tuned import;
+- an accident scene with several emergency vehicles, legible at a glance from above.
+
+**The legibility list in 10.52 is an input to the style decision, not the other way round:** the style has to be able to show each tell on it. The sprite question left open in 10.51 is one instance: a sprite set with no pitch fails the third item as it stands.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
