@@ -6202,7 +6202,7 @@ The project lead's reading, checked. **Right on steering; nearly right on brakin
 
 ### Measured
 
-`verify-contact`, about a minute; each below is a stated expectation, and the check was sabotaged 19 ways, all caught:
+`verify-contact`, about a minute; each below is a stated expectation, and the check was sabotaged 18 distinct ways, all caught, after one gap found that way was fixed (two more attempts, on the prune and on the time test in `seen`, changed nothing, as noted below):
 
 | prediction, stated before running | result |
 |---|---|
