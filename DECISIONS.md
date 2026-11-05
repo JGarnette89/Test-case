@@ -6078,7 +6078,7 @@ Per 100 car-minutes, two seeds, 3 minutes each, about 1,080 car-minutes a row:
 
 ## 10.51 THE ORDER CONFIRMED, AND LEGIBILITY AS ITS OWN ITEM (the project lead, 5 November; NOTHING BUILT)
 
-1. **THE ORDER: TERMINAL CONTACT (10.49), THEN DESTINATIONS AND PLAYER-TUNED DENSITY TOGETHER, THEN THE PRICE OF SLOWING WITH PRIOR SIGHT.** Neither destinations nor density shows without the other, and 2.5 moving cars within 100 m (10.42) is the clearest argument. **One piece of work with one measurement.**
+1. **THE ORDER, AMENDED BY 10.52 TO PUT BODY MOTION AFTER TERMINAL CONTACT: TERMINAL CONTACT (10.49), THEN DESTINATIONS AND PLAYER-TUNED DENSITY TOGETHER, THEN THE PRICE OF SLOWING WITH PRIOR SIGHT.** Neither destinations nor density shows without the other, and 2.5 moving cars within 100 m (10.42) is the clearest argument. **One piece of work with one measurement.**
 2. **CLEAN MODE USES THE CITY FOR NOW:** it has places to go and its routing costs about a quarter of the trial city's (2.6 ms against 9.8, a busy desk). Revisit when the combined map of 10.35 exists.
 3. **"LEAVE THE MENU" MEANS CLEAN MODE'S CHOICES ONLY.** #/tests stays: it is how each feature reaches the maintainer (the 28 September rule).
 4. **THE CONTACT BUILD: DESIGN IT ONCE THE MAINTAINER ANSWERS TWO QUESTIONS,** a person struck and a candidate's crash in an exam (10.49). The project lead is asking him. No design before that.
@@ -6095,12 +6095,76 @@ Per 100 car-minutes, two seeds, 3 minutes each, about 1,080 car-minutes a row:
 **WHAT THE RENDERER DOES TODAY (the agent, read, not measured), which narrows the framing without changing it:**
 
 - **A HARD BRAKE IS NOT QUITE INVISIBLE, IT IS IDENTICAL TO A GENTLE ONE.** Brake lamps are drawn (`paintLamps`, draw.js), deliberately oversized as map symbols, bright with a halo while braking. But the lamp is one bit, on past `BRAKE_LAMP_ON` 0.6 m/s^2 (crossing.js). The body does not change at all: on that the project lead is right. So the gap is manner, not whether.
-- **BODY MOTION NEEDS ONE MORE THING TO CROSS.** Only `brakeLamp`, a boolean, reaches the draw. A dip scaled to how hard needs a rate on the pose, and through the worker, whose protocol sends only what changed.
+- **CORRECTED BY THE AGENT, 5 NOVEMBER: THE RATE ALREADY CROSSES.** This line said a dip needed a rate sent through the worker. Every car carries `a` every tick (crossing.js) and `slimActors` sends every field but `memo`. Only `actorsOf` and the bench's copy leave it behind on the way to the draw.
 - **A REAL DIP IS TOO SMALL TO SEE, SO IT WOULD HAVE TO BE EXAGGERATED,** as the lamps and signs are. At an assumed 2 degrees of pitch, a 4.5 m car's ends move about 8 cm. What exaggeration reads on a phone at the driving zoom is not established.
 - **IT CUTS AGAINST A STANDING DECISION:** draw.js keeps boxes level and quantized to 32 headings on purpose, "a sprite set has no pitch", so what is on screen stays what sprites could deliver. Box corners can already pitch (for grade), so boxes make it cheap; **sprites would need art for it. Whether the sprite plan still holds decides that cost, and it is the maintainer's.**
 - **IT ANSWERS ONE OF THE TWO.** Harsh braking has a body to move. A rolling stop's tell is an absence, a car that never quite comes to rest with its lamp on throughout, and a dip does not obviously show that. **Rolling stops, 24x across the dial, may need another answer. Attached to this item, unproposed.**
 
-**The standing instruction applies: "I want to avoid adding 50 half-cooked features" (10.38). NOT SCHEDULED: the project lead set no place in the order.**
+**The standing instruction applies: "I want to avoid adding 50 half-cooked features" (10.38). SCHEDULED BY 10.52.**
+
+## 10.52 A PERSON STRUCK, MAIL, SEEING THE CAUSE, AND THE CONTACT DESIGN (the maintainer, relayed by the project lead, and the agent; 5 November; NOTHING BUILT)
+
+### The rulings and direction
+
+1. **A PEDESTRIAN STRIKE IS A CRITICAL ERROR IN ANY CIRCUMSTANCE, WITH A SEVERE PENALTY AND NO FORCED RESPAWN (the maintainer).** The consequence arrives BY MAIL a day or two later: a large hospital bill, the inverse of the not-at-fault insurance payout. **On a road test it ends the test on the spot and 911 is called.** No fault question arises. It stands on verify-peds' fairness: a player who responds in time never strikes anybody.
+2. **THE GENERAL MECHANISM: DELAYED CONSEQUENCES DELIVERED BY MAIL (the project lead).** It keeps the moment of impact free of menus, fits the analog setting, and is one channel for anything that should not land instantly. The insurance payout and the hospital bill are the first two instances.
+3. **THE ORDER: TERMINAL CONTACT, BODY MOTION, DESTINATIONS WITH PLAYER-TUNED DENSITY, THE PRICE OF SLOWING.** The maintainer: *"I'm most interested in improving the visual acuity of the game... body movement will help, but I have to see it."* The project lead's reasoning: until he can read the model from outside, everything on top is judged against a world he cannot see. **The "roughly half a day" attached to it is in no record and no transcript of this session: the agent did not scope it.** See below.
+4. **DIRECTION ON VISUALS (the maintainer):** a lot of what is represented *"needs to be done over-the-top visually to bring the personality of the drivers out into the world"*: hard braking always leaving rubber marks even when physically marginal, a distracted driver blabbing on the phone with a speech bubble, music loud enough that they are deaf to the environment.
+5. **THE PRINCIPLE UNDERNEATH: SHOW THE CAUSE, NOT THE STATE (the project lead).** A speech bubble does not say "low observation", it says the driver is on the phone, and the late reaction then explains itself. The world explains its own behavior rather than labeling it. That is also what the examiner needs: evidence to mark from, not being told.
+   - **THE LIMIT ON IT (the agent), the rule any tell already lives under: A TELL MUST BE TRUE.** A bubble is drawn while the driver is actually looking away, never from a rating alone; a rubber mark where a car actually braked past a threshold. The threshold can be generous, as he asks, and the event must be real. Otherwise the examiner marks from a decoration, which is authoring the fault.
+6. **SKID MARKS PERSIST (the project lead):** a player can arrive after an event and read what happened. A road carrying its own history suits an examiner game. Nothing on the ground persists today, and no skid mark exists.
+7. **SOUND IS AN UNUSED DIMENSION (the project lead), NOT SCHEDULED:** engine note, bad exhaust, radio, a horn that reads as annoyed. "Music so loud they're deaf" implies hearing it pass. The agent's note: **no driver hears anything today**, so "deaf" is either decoration or a new behavior.
+
+### The legibility list: which axes have a tell (the agent, read from the code; nothing measured)
+
+The project lead's reading, checked. **Right on steering; nearly right on braking; right about Clean mode on observation and wrong about the model; wrong on knowledge; imposition is not in the served build; and it left out two axes, confidence and compliance.** `AXES` in core/driver.js is six.
+
+| axis | what the sim does with it | what shows today | what is missing |
+|---|---|---|---|
+| **steering** | weave up to half the spare lane, lane changes up to 1.5x as long | **The car's own position, always, on every road.** The only axis that shows without an occasion | Nothing first. Roll would add to a lane change |
+| **braking** | plans on up to twice the comfortable rate, so closes further and brakes harder | **Whether, not how hard:** the lamp is one bit, on past 0.6 m/s^2. It comes on later for a late braker; nothing on the car changes | Body dip, then rubber marks |
+| **observation** | notices a green late, reacts late to a lead's brake lamps; glances away and skips checks where those are on | **In Clean mode only the lateness.** Looks are drawn as a wedge, but "Drivers check mirrors" is off by default and Clean does not turn it on. A glance away (also off in Clean) draws nothing | A cause for lateness: the phone. Clean was set to look-away off as the phone's best, so that cost returns |
+| **knowledge** | stops up to 3.2 m short of the line; misreads harder signs; sits in the left lane not knowing keep-right; misses turn lanes | **Position, which is more than none:** 3.2 m short is most of a car. But nothing says why, and it reads as an ordinary car | A cause. No candidate yet |
+| **confidence** (not in the reading) | gaps taken and refused, tight lane changes, hesitation, how soon they honk, whether they offer a gap | **The best served:** the horn badge with its pointer says who is impatient with whom. A courtesy badge, when the player signals | Timid hesitation has no cause shown |
+| **compliance** (not in the reading) | mostly decides who rolls a stop, then the horn, keep-right, courtesy | **A rolling stop has no tell but the car not stopping,** with its lamp on. At 24x across the dial, this is the largest measured difference with the least to see | A cause. Body dip does not obviously show it |
+| **imposition** | **Not on main:** `aggression-phase1`, unmerged (10.32) | Nothing, because it does not exist in the build he plays | Build it first, or leave it off this list |
+
+**TWO THINGS THE TABLE DOES NOT SHOW:**
+
+- **THE SIGNAL CARRIES NO DRIVER.** `blinker` follows the manoeuvre (crossing.js), so every driver signals every turn and change correctly. The most readable thing on a car says nothing about who drives it. "Signalling in the driver model" is already on SIMULATOR's parked list; it is model work, not presentation, and it belongs beside this list because it is a tell with nothing behind it.
+- **HORN AND COURTESY BADGES ALREADY FOLLOW THE PRINCIPLE:** an event, true, with who and to whom. They are the pattern, and he has not said he cannot read them.
+- **HOW OFTEN A TELL IS THERE TO BE SEEN.** Arithmetic only, from 10.50's rates and 2.5 moving cars within 100 m, assuming the player's surroundings are average: at the default a rolling stop about every 3 minutes (0.32 a minute) and a hard brake about every 2 (0.57); at the worst dial setting 0.73 and 1.68; a tight lane change on the city about every 20 minutes. **So a perfect tell is still rare at default, and body motion should be judged at the worst setting against the best. It also says density still matters after this.**
+
+### Body motion: what it takes (the agent)
+
+**A DIP IS SMALL IN CODE AND ITS REAL COST IS JUDGING IT, WHICH ONLY HE CAN DO.** `boxCorners` already pitches a box by a grade and `paintLamps` already takes separate rear and front heights; `a` already reaches the page. A dip is that `a` carried to the draw in `actorsOf` and the bench, turned into a pitch, with buses and trucks included. Roll needs a new term in `boxCorners`, and a sideways rate derived on the page. **Draw only: nothing feeds back, so every world hash stays identical, and that is the check.** The rest is the frame cost through the bench's split, and one exaggeration constant he sets by eye. Half a day of code is plausible; how many rounds with his phone is not known. **His question on sprites stays open (10.51): boxes pitch for free, and a sprite set has no pitch.**
+
+**PREDICTION, TO BE RESTATED WHEN BUILT:** on the city, with the dial at worst and then best, he can say which is which by watching stops. **If he cannot, body motion was not the answer or the rate in view is too low, and that says which of the two to test next.**
+
+### The contact design (the agent; for review, NOT BUILT)
+
+**Scope: the player on `#/map`. `#/exam` keeps ending as it does: a person struck now has his ruling, and a candidate's crash with a car still has none (10.49).** `#/wheel` keeps its stop: stage 0 roads, a bench, its own words say so.
+
+**A. Contact stops being a freeze.** `playerContact` returns what happened: who (car, parked car, person), closing speed, where on each body, and only on FIRST touch of that partner, latched until the two have been apart. That removes 10.49's "fires every tick". The page removes `setStopped` and the banner, and shows a transient line drawn on the canvas, since no DOM changes while the world moves.
+
+**B. Contact has physics, and the least that keeps the world honest.** A car, wreck or parked car is solid: speed into it goes to zero and the player is moved out of overlap, along `s` or the `off` the player already carries, on the page, since `me` is the page's. **THERE IS NO REVERSE, so separation has to leave room to steer away, or a player nose-on to a parked car is stuck for good. That is the one hard part, and the check must drive out of it.** A person is not solid. The other car still crashes and stands 45 s as today. No mass, no spin: the endpoint is a full physics model (STORY), and this is what stands until then.
+
+**C. Who struck whom: one recorded fact, one narrow rule.** Struck from behind with the player in their lane and no lane change in the last 3 s: not at fault. Everything else: at fault. A person: at fault in any circumstance. **Brake-checking has no detector, so a brake-check reads not at fault for now, said out loud.** The crash record gains its striker. It does not reconcile `events.js` with `marking.js` (10.48): not needed for this rule, and it stays open.
+
+**D. What it costs.** Not at fault: no fare penalty, streak kept, its own voice trigger, and a payout by mail. At fault: the fare is void, `collision` as now, a repair bill by mail. A person: fare void, the severe trigger, the hospital bill by mail. `money.js` reads the fault and stops voiding on any touch.
+
+**E. Damage.** One number on the player, rising with closing speed, costing top speed and adding a pull to one side: the ruling's "damaged handling", and the same term for any later wear. A new drive resets it, since there is no body shop yet. **Past a limit the car is inoperable, and what then is unruled.**
+
+**F. Mail.** `sim/mail.js`, pure, through `storage.js` beside the wallet: a posted item with an amount and when it arrives. **THERE IS NO DAY IN THE GAME: `DAY-NIGHT.md` is design, no clock runs, so "a day or two later" has nothing to count.** Until one exists an item arrives after a set number of minutes of driving, which survives across drives. Read in the chrome when not driving; the voice says it has arrived. Amounts are his, flagged as authored.
+
+**G. Traffic.** A player just struck is exempt from honking for the time a wreck stands (`freeStop` would otherwise honk at them).
+
+**CHECKS: `verify-contact`, new, with expectations in the check:** one event per touch; no passing through a car, wreck or parked car at any speed; driving out of every nose-on case with no reverse; rear-struck at a red pays and voids nothing; the same strike after a cut-in does; a person costs every time; a world with no contact is hash-identical; mail survives a reload and arrives once. Each sabotaged. `verify-money`, `verify-worker` (its `stopped` is read by nothing), `verify-voice` and `verify-crashes` section 3 get their verdicts stated before they are changed. A test-map section per case, as every feature has. **PREDICTION:** Clean mode at 180 on the city keeps running through every contact in a soak; today every one ends it. **Merged as one, A to G: a drive that continues with no bill is the half-cooked version of this.**
+
+**DEFAULTS THE DESIGN TAKES, AND WHOSE THEY ARE:**
+
+- The maintainer's: is at-fault contact with a car only a repair bill (ruling 2 covers only not-at-fault); whether being rear-ended is presumed not at fault as above; whether driving away from a person struck matters, since no forced respawn makes it possible, and leaving the scene is an offense; what an inoperable car does; what if a bill exceeds the wallet; every amount.
+- The project lead's: minutes of driving standing in for a day until a clock exists.
 
 ## 11. Verification
 
