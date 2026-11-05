@@ -4721,6 +4721,8 @@ SIMULATOR log they read as bad luck; together they are the pattern:
    | agent | courtesy's two failures are too few trials | true of the shortfall; the check's second assertion could not fail at all, and its falsifier fired on the larger sample: a lapsed offer (IN FLIGHT 39) |
    | maintainer | parked vehicles were placed against the overall car budget | no, on every map; they do spend the phone's frame budget (10.42) |
    | lead | Clean mode's density is the explanation for the cars that never move | a separate observation: those cars are curb slots, the density point is why added cars bought little (10.42) |
+   | lead | the three untraced failures may be the recorded-time timeout flaw | they were not timeouts; the crash pair towed, a check counting two moves, a one-seed floor (10.46) |
+   | agent | the small maps' rate is at least 3x the city's on test map 1 (ON3) | 2.1x, with 8-10x on peds and signs (10.46) |
    | lead | the ruling on commitment reclassifies the overshoots | 77 of 78 went in; none reclassified (10.45) |
    | agent | at least a third of overshoots stop short of the conflict (C2) | 1 of 78 (10.45) |
    | lead | `going` latching at 1.5 m/s is what creeping has to change | it never latches for a car creeping while held; three other obstacles (10.45) |
@@ -5685,6 +5687,20 @@ or instrument asked.
 
 **AND HIS OWN READING, SAID BEFORE THE ANSWER ABOVE REACHED HIM: "we added parked vehicles and they were placed against the overall car budget." NO, ON EVERY MAP.** The density setting is `world.target`, and the only things that read it are the arrival gate and shaping, both against `next.length`, the actors (crossing.js 2226-2227, shaping.js 163, 175). Slots are filled once from the map's zones and the seed (`initialParked`), knowing nothing of the target: the table above holds 177-179 actors on every map with parking, and the same parked count whatever was asked. The highway and the loop have no parking at all. **The one sense in which he is right is the phone's budget, not the density setting:** they cost 17-21% of canvas calls and up to about 14% of a city step, and Clean mode's 180 was measured best with them drawn. **THE PROJECT LEAD'S CORRECTION, FOR THE RECORD: they told him Clean mode's density was the explanation. It was a separate observation and they presented it as the finding.**
 
+**THE RECORD CORRECTED (the project lead, 5 November): the maintainer's reading was wrong and so was theirs; parked cars are not drawn from the density budget.**
+
+**WHAT THEY COST THE FRAME, MEASURED (`tools/measure/frame-cost.mjs`, 180 cars, one seed; the frame centered on one moving car in 8, 22-23 places):**
+
+| map | zoom | road users drawn | of them parked | canvas calls | of them parked |
+|---|---|---|---|---|---|
+| city | street | 28.0 | 15.7 (56%) | 3,556 | 845 (24%) |
+| city | district | 47.3 | 31.1 (66%) | 6,349 | 1,681 (26%) |
+| peds | street | 24.0 | 8.9 (37%) | 2,770 | 481 (17%) |
+| peds | district | 32.4 | 11.8 (36%) | 4,246 | 638 (15%) |
+| test map 1 | street, district | 14.1, 19.0 | 0 | 3,032, 4,762 | 0 |
+
+On the whole city in one view they are 35% of 39,334 calls. **Test map 1's 0 is real and is where they are, not that they are cheap:** all 129 sit in one corner (x 50-690, y 795-1090), with 8 of 180 cars within 60 m of one; centered there, 36% of calls. **THE TOOL'S OLD 2b FIGURES WERE BIASED: its camera centers on the first thing in the list, which is a parked car.** That is why test map 1 read 36% there and the record's 17-21% is not comparable. **MILLISECONDS ARE NOT ESTABLISHED:** this canvas paints nothing, so desk draw times are JavaScript alone, noisy to the point of negative, and leave out fill, which is what a phone pays beyond calls. A whole frame loop without parking saves 1.37 of 14.5 ms on the city and 1.86 of 20.3 on peds (about 9%), a bound on a loaded desk in a world that differs. **The phone's number is one bench run away: #/bench's split has a parked switch.** **VERDICT: MATERIAL ON THE CITY, NOT NOISE: about a quarter of the calls for cars nobody watches move. Worth carrying in the inventory work, and a real input to whether Clean mode draws them all. Not worth optimizing until the phone says what a quarter of the calls costs in milliseconds.**
+
 **NOT FIXED, BY INSTRUCTION.** Several directions follow, and all are the maintainer's: whether parked cars should leave at a visible rate, whether maps without districts should allow it, how many should be drawn, and what Clean mode should do on small maps.
 
 ## 10.43 BUILDINGS THAT HIDE THINGS: SCOPED, NOT BUILT (5 November)
@@ -5898,6 +5914,16 @@ The city, the same 28 seeds at 150 cars for 10 minutes each, about 699 car-hours
 - **ON4 MET.** Moving share within 2 points of off everywhere: largest signs 34.1 to 32.2, peds 31.3 to 32.5.
 
 **THE SUITE, THE LAST TREE:** 51 of 56 in `--all`; `verify-start`, `-peds`, `-walkers` and `-waves` timed out at the 1,200 s cap and pass directly; `verify-checks` failed as above and passes restated. **So all 56 have passed on this tree, in two sittings, which is not one green run.** The timeouts look like load: even checks with no traffic ran 1.2-1.4x their recorded times, and alone the step is no slower on or off. verify-reaction is sabotaged five ways, each failing it, after the first attempt showed two of its sections could not fail.
+
+**THE GATE BEFORE MERGING (the project lead, 5 November: "merging on unexplained suite failures is precisely the thing we would regret"), AND ON1'S THREE OPEN FAILURES TRACED.** The gate asked whether the three were the known timeout flaw. **THEY WERE NOT, AND THE TWO GROUPS HAD BEEN RUN TOGETHER:** the timeouts are start, peds, walkers and waves; the three failed real assertions with the delay on everywhere, and pass now only because their worlds have it off. Run with it on:
+
+- **`verify-merge`, 2 "lost at a seam": THE CRASH PAIR THEMSELVES, towed.** car-2316 and car-2321, crashed at 184.65 s, gone at 229.70 s, CRASH_CLEAR later. Not a defect.
+- **`verify-courtesy`, 1 lapsed offer said: THE CHECK COUNTING TWO MOVES AS ONE.** Seed 2, at 180, stretch 1: the player moved on a lapsed offer, and with the signal still on took a new, live offer into the next lane, which was rightly said. No crash involved; the sample moved. Fixed in the check: "said" is about the move being judged. Passes; sabotaged both ways.
+- **`verify-loop`, speed spread 9.95 against a floor of 10: THE FLOOR IS ON ONE SEED AND ALSO FAILS WITH THE DELAY OFF** (7.57, seed 3). Five seeds, sd in km/h: off 12.87, 12.03, 7.57, 12.81, 12.26; on 9.95, 11.23, 10.58, 8.48, 9.58. Overtakes (off 165, 136, 94, 132, 137; on 156, 128, 118, 135, 132) and fresh cars at minute 15 (0.78-0.84 both) do not move. **SO NOT A BREAK, AND THE MEDIAN SPREAD DOES FALL, 12.3 TO 10.0: WHY IS NOT ESTABLISHED, and five seeds will not settle how much is real.** Nothing asks it now that the check's world is off. For the maintainer's eye on the highway.
+
+**THE TIMEOUTS ARE NOT THIS BRANCH:** run side by side under identical load, branch against main: peds 936 and 934 s, walkers 965 and 964, waves 909 and 908, start 1014 and 1015. All pass. They were killed at the runner's 1,200 s cap, not at 3x a recorded time, whatever the line says: every recorded time times three is over the cap. **THE CAP IS WHAT A LOADED FULL RUN CANNOT MEET, and the message misreports which limit fired.**
+
+**THE FARE GOES TO THE MAINTAINER (the project lead), ASKED:**
 
 **WHAT THE PLAYER PAYS, FOUND NOW AND NOT DECIDED:** `money.js` voids the fare on any contact ("contact -- no fare"), and until now the player could only be the one who hit. **A player rear-ended at a red by a poor observer now loses the fare for it.** Whose fault a collision is, is the maintainer's (`playerContact`: "what a collision IS in this game is still the maintainer's question").
 
