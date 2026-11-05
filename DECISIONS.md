@@ -6129,7 +6129,7 @@ The project lead's reading, checked. **Right on steering; nearly right on brakin
 | **compliance** (not in the reading) | mostly decides who rolls a stop, then the horn, keep-right, courtesy | **A rolling stop has no tell but the car not stopping,** with its lamp on. At 24x across the dial, this is the largest measured difference with the least to see | A cause. Body dip does not obviously show it |
 | **imposition** | **Not on main:** `aggression-phase1`, unmerged (10.32) | Nothing, because it does not exist in the build he plays | Build it first, or leave it off this list |
 
-**TWO THINGS THE TABLE DOES NOT SHOW:**
+**THREE THINGS THE TABLE DOES NOT SHOW:**
 
 - **THE SIGNAL CARRIES NO DRIVER.** `blinker` follows the manoeuvre (crossing.js), so every driver signals every turn and change correctly. The most readable thing on a car says nothing about who drives it. "Signalling in the driver model" is already on SIMULATOR's parked list; it is model work, not presentation, and it belongs beside this list because it is a tell with nothing behind it.
 - **HORN AND COURTESY BADGES ALREADY FOLLOW THE PRINCIPLE:** an event, true, with who and to whom. They are the pattern, and he has not said he cannot read them.
