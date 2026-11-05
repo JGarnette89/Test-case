@@ -20,6 +20,7 @@
       the bench's own world, with sight and the traffic switched as it is.
    ===================================================================== */
 import { worldFor, playerContact } from "../src/sim/scene.js";
+import { afterContact } from "../src/sim/contact.js";
 import { handle, merge, changed } from "../src/sim/remote.js";
 import { step, DT } from "../src/sim/crossing.js";
 import { stepDriver, withDriver } from "../src/sim/drive.js";
@@ -59,17 +60,17 @@ console.log("\n1. THE SAME WORLD, A THREAD AWAY");
       mw = { ...mw, target: 90 };
       honked = true;
     }
-    if (!sme.stopped) {
-      sme = stepDriver(sme, inp, sw, DT);
-      sw = step(withDriver(sw, sme));
-      const c = playerContact(sw, sme); sw = c.world; if (c.hit) { hitsS++; sme = { ...sme, stopped: true }; }
-    } else sw = step(withDriver(sw, sme));
-    if (!mme.stopped) {
-      mme = stepDriver(mme, inp, mw, DT);
-      ({ state, reply } = handle(state, { type: "step", me: mme, seq: n + 2 }));
-      mw = merge(mw, structuredClone(reply.dyn));
-      if (reply.hit) { hitsM++; mme = { ...mme, stopped: true }; }
-    } else { ({ state, reply } = handle(state, { type: "step", me: mme, seq: n + 2 })); mw = merge(mw, structuredClone(reply.dyn)); }
+    sme = stepDriver(sme, inp, sw, DT);
+    sw = step(withDriver(sw, sme));
+    { const c = playerContact(sw, sme); sw = c.world; if (c.hit) hitsS++; sme = afterContact(sme, c, sw).me; sw = withDriver(sw, sme); }
+    mme = stepDriver(mme, inp, mw, DT);
+    ({ state, reply } = handle(state, { type: "step", me: mme, seq: n + 2 }));
+    mw = merge(mw, structuredClone(reply.dyn));
+    if (reply.hit) hitsM++;
+    mme = afterContact(mme, { hit: reply.hit, ...structuredClone(reply.contact ?? {}) }, mw).me;
+    mw = withDriver(mw, mme);
+    /* The player's copy the worker holds is overwritten by the next step, as on the screen; compare it as answered. */
+    state = { ...state, world: withDriver(state.world, mme) };
     if (key(sw) !== key(mw) || key(state.world) !== key(sw)) { same = false; firstDiff = n; break; }
     /* EVERY FIELD, not the key's few: the answer leaves out a driver's
        private memory and re-sends who they are only when they first appear

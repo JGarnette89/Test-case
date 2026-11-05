@@ -35,6 +35,9 @@ import { clearBetween, wantedGap, lenOf, DT } from "./traffic.js";
 /* What each trigger is: how serious (5 a collision, 1 a remark), and whether it is praise. */
 export const TRIGGERS = {
   collision:       { severity: 5, praise: false },
+  struckPerson:    { severity: 5, praise: false },
+  /* Struck through no fault of their own: said, and it costs nothing -- no fare, no streak (DECISIONS 10.52). */
+  struckBy:        { severity: 4, praise: false, noFault: true },
   ranRed:          { severity: 5, praise: false },
   rolledStop:      { severity: 4, praise: false },
   blockingBox:     { severity: 4, praise: false },
@@ -74,6 +77,8 @@ export const SIGNAL_LEAD = 2;         // s: the established 2-3 s, its floor
 export const WAVE = 3;                // greens in a row
 export const OVER = 1.1;              // of the limit, held through a link, loses a wave
 
+const EXCUSED = new Set(["dawdling", "blockingBox", "underLimit"]);
+
 export const newEventState = () => ({ streakFrom: null, streakM: 0, streakS: 0, cleanSaid: false, streakSaid: false, dawdleSince: null, boxFor: 0, boxSaid: false, crawlFor: 0, crawlSaid: false, hogFor: 0, hogSaid: false, wave: 0, overFor: 0, vHist: [], trucks: {} });
 
 const layoutOf = (w, me) => w.course.at[me.k ?? 0]?.layout;
@@ -101,8 +106,9 @@ export function detect(prev, now, state0 = newEventState()) {
   const posted = limitAt(w.course, me) ?? 13.9;
   st.vHist.push(me.v ?? 0);
 
-  /* COLLISION: the screen says the player touched something this tick. */
-  if (now.hit) say("collision");
+  /* CONTACT (sim/contact.js): what happened, on first touch. `hit` alone, with no account of it, is a collision. */
+  if (now.contact?.fresh?.length) { for (const f of now.contact.fresh) say(f.kind === "person" ? "struckPerson" : f.atFault ? "collision" : "struckBy"); }
+  else if (now.hit) say("collision");
 
   /* CROSSING THE LINE this tick, on the same approach. */
   const crossed = sameSpot && path && pPath && pPath.from === path.from && pm.s <= path.stopAt && me.s > path.stopAt;
@@ -231,8 +237,11 @@ export function detect(prev, now, state0 = newEventState()) {
     }
   }
 
+  /* A PLAYER JUST IN A COLLISION is not dawdling, crawling or blocking: they have been hit. */
+  if (t < (me.shakenUntil ?? -Infinity)) for (let i = out.length - 1; i >= 0; i--) if (EXCUSED.has(out[i].id)) out.splice(i, 1);
+
   /* THE STREAK: fault-free distance and time; any fault starts it again. */
-  if (out.some((e) => !e.praise)) { st.streakM = 0; st.streakS = 0; st.cleanSaid = false; st.streakSaid = false; }
+  if (out.some((e) => !e.praise && !e.noFault)) { st.streakM = 0; st.streakS = 0; st.cleanSaid = false; st.streakSaid = false; }
   else {
     st.streakM += (me.v ?? 0) * DT; st.streakS += DT;
     if (st.streakM >= CLEAN_RUN && !st.cleanSaid) { st.cleanSaid = true; say("cleanRun", { metres: Math.round(st.streakM) }); }

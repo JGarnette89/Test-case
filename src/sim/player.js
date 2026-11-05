@@ -220,7 +220,7 @@ export function stepPlayer(me, input, road, poseAt, dt) {
    speed a scrubbing tyre sheds at the limit. */
 export const CLEAN = 4.1;
 const SCRUB = 3.0;
-const HALF_W = 0.9;                        // the car's half-width: over the line by this and the body is across it
+export const HALF_W = 0.9;                        // the car's half-width: over the line by this and the body is across it
 
 /* LANE-KEEPING ASSIST (7 October, the maintainer: "the user will need some
    slight assist to stay in the lane and pointing straight so they aren't
@@ -304,7 +304,7 @@ export function stepPlayerOn(me, input, geom, dt) {
   const moving = Math.abs(input.steer - (me.steer ?? input.steer)) > ASSIST_STILL;
   const handsOff = Math.abs(input.steer) > ASSIST_DEAD || moving ? 0 : (me.handsOff ?? Infinity) + dt;
   const assist = inBox ? 0 : assistSteer(me, input, kappa, input.assist ?? 0, handsOff);
-  const wheel = input.steer + assist;
+  const wheel = input.steer + assist + (input.pull ?? 0);   // a damaged car pulls to one side (DAMAGE)
   let psiDot;
   if (inBox) {
     const want = kappa * v + yawRateFor(input.steer, v);
@@ -396,11 +396,51 @@ function discs(pose) {
   const r = (pose.width ?? 1.8) / 2 + 0.05, reach = pose.length / 2 - r, n = Math.ceil((2 * reach) / r) + 1;
   return Array.from({ length: n }, (_, i) => { const d = -reach + (2 * reach * i) / (n - 1); return { x: pose.x + c * d, y: pose.y + s * d, r }; });
 }
+/* The shortest way out of contact for `a`: the deepest overlapping pair of
+   discs, a unit vector away from `b` and how far. Null when not touching. */
+export function separation(a, b) {
+  if (Math.abs(a.z - b.z) > 2) return null;
+  let best = null;
+  for (const p of discs(a)) for (const q of discs(b)) {
+    const dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy), depth = p.r + q.r - d;
+    if (depth > 0 && (!best || depth > best.depth)) best = { depth, nx: d > 1e-6 ? dx / d : 1, ny: d > 1e-6 ? dy / d : 0 };
+  }
+  return best;
+}
+
 export function touching(a, b) {
   if (Math.abs(a.z - b.z) > 2) return false;   // one is on the overpass
   const A = discs(a), B = discs(b);
   for (const p of A) for (const q of B) if (Math.hypot(p.x - q.x, p.y - q.y) < p.r + q.r) return true;
   return false;
+}
+
+/* DAMAGE (DECISIONS 10.52), one number: 1 is a car that will not go. A closing
+   speed of DAMAGE_AT does all of it at once; a parking knock barely registers,
+   by the square. It costs top speed and adds a pull to one side, and a new
+   drive resets it, there being no body shop yet. Flagged design constants. */
+export const DAMAGE_AT = 16.7;     // m/s, 60 km/h
+export const INOPERABLE = 1;
+export const LIMP = 0.5;           // where a towed car restarts
+export const PULL = 0.08;          // of the wheel, at full damage: 0.25 took a half-damaged car 173 m off line in 30 s with the hands still
+export const LIMP_V = 8.3;         // m/s, 30 km/h: the slowest a damaged car is held to
+export const damagedTop = (d) => Math.max(LIMP_V, V_MAX * (1 - 1.4 * d));
+
+/* BACKING OFF WHAT THEY HIT. The car has no reverse gear, and nose on to a
+   parked car, or wedged between two, forward cannot get out: measured, 94 s and
+   worse (DECISIONS 10.52). So with something in front of them, and only then, the
+   brake held at rest rolls the car back, with steering. `v` stays 0, so nobody
+   reading the player has to know about going backwards, and a player holding the
+   brake at a red can never roll. A stopgap until the full physics model. Flagged. */
+export const BACK_V = 1.5;         // m/s
+export const BACK_ROOM = 8;        // m, from the last push against something
+export const BACK_AT = -0.9;       // of the slider: the brake held hard
+export function backOff(me, input, dt) {
+  const room = me.backRoom ?? 0;
+  if (room <= 0 || me.v > 0.1 || input.slider > BACK_AT) return null;
+  const d = Math.min(room, BACK_V * dt);
+  const psi = me.psi - yawRateFor(input.steer, BACK_V) * (d / BACK_V);
+  return { s: Math.max(0, me.s - d * Math.cos(psi)), off: me.off - d * Math.sin(psi), psi, v: 0, a: 0, backRoom: room - d, backing: true };
 }
 
 export const newPlayer = (s = 0, off = 1.8, v = 0) => ({ s, off, psi: 0, v, a: 0, steer: 0, slider: 0 });

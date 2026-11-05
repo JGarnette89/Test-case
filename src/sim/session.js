@@ -16,6 +16,43 @@ import { poseOnGraph } from "./graph.js";
 import { jobTick, jobText } from "./jobs.js";
 import { newEncounters, encounterTick } from "./encounters.js";
 import { credit, newWallet, saveWallet } from "./money.js";
+import { afterContact, towTick } from "./contact.js";
+import { newMailbox, post, mailTick, lettersFor, towLetter, saveMailbox } from "./mail.js";
+import { DT } from "./traffic.js";
+
+/* THE PLAYER AFTER A TICK: what contact did to them (sim/contact.js), a car that
+   will not go got going again, and the post (sim/mail.js). Both of the screen's
+   loops call this, the worker's a message later. Returns whether a new contact
+   happened. Driving only. */
+export const MAIL_SAVE_EVERY = 30;   // s of driving between saves of the mailbox's clock
+export function contactTick(sc, c, world) {
+  const save = () => { if (sc.saveWallet !== false) saveMailbox(sc.mailbox); };
+  let box = sc.mailbox ?? newMailbox();
+  const r = afterContact(sc.me, c, world);
+  let me = r.me;
+  const posted = r.letters.length > 0;
+  for (const { f, damaged } of r.letters) for (const l of lettersFor(f, damaged)) box = post(box, l, world.t);
+  const tow = towTick(me);
+  me = tow.me;
+  if (tow.towed) { box = post(box, towLetter(), world.t); sc.said = { who: "Tow", text: "Your car is going again, just.", at: nowS() }; }
+  /* Pressed against something, and how to get off it: said once a contact, since nothing else on the screen says so. */
+  if (me.backRoom > 0 && (me.v ?? 0) < 0.3) {
+    sc.pressedFor = (sc.pressedFor ?? 0) + DT;
+    if (sc.pressedFor >= 1.5 && !sc.backHinted) { sc.backHinted = true; sc.said = { who: "Hint", text: "Hold the brake to back off it.", at: nowS() }; }
+  } else if ((me.v ?? 0) > 1) { sc.pressedFor = 0; sc.backHinted = false; }
+  const m = mailTick(box, DT);
+  sc.mailbox = m.box;
+  /* A letter is money when it arrives, and it is said then. */
+  for (const l of m.arrived) {
+    sc.wallet = credit(sc.wallet ?? newWallet(), { what: l.kind, amount: l.amount, at: world.t });
+    if (sc.saveWallet !== false) saveWallet(sc.wallet);
+    sc.said = { who: "Mail", text: `${l.title}: ${l.amount < 0 ? "-" : "+"}$${Math.abs(l.amount)}. Balance $${sc.wallet.balance}.`, at: nowS() };
+  }
+  if (posted || tow.towed || m.arrived.length || Math.floor(m.box.driven / MAIL_SAVE_EVERY) !== Math.floor((m.box.driven - DT) / MAIL_SAVE_EVERY)) save();
+  sc.me = me;
+  return !!c.hit;
+}
+const nowS = () => (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000;
 
 /* WHAT THE GAME NOTICED THIS TICK, AND WHAT IS SAID (sim/events.js, sim/voice.js):
    the player and the world one tick apart, the detectors' memory kept on the

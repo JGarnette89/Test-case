@@ -12,6 +12,14 @@
    derived (trigger-speaker-n), so a line is never said twice in a session.
    ===================================================================== */
 const RAW = {
+  struckBy: {
+    auto: ["Impact from behind recorded. Liability rests with the following driver.", "You were struck from behind. A claim has been opened.", "Rear collision logged. Your insurer will write to you.", "Contact from the rear. The fault is not yours.", "Struck from behind. Check your vehicle. Expect a letter."],
+    jay: ["That one's on them. Breathe. Check your car, then carry on.", "You did nothing wrong there. Take a second.", "Not your fault. Still, you saw how close they were?", "Some people don't look. That's why we leave ourselves room."],
+  },
+  struckPerson: {
+    auto: ["Pedestrian struck. Emergency services notified.", "A person has been hit. Recorded as a critical error.", "Critical error: person on foot struck. Costs will be billed to you.", "Pedestrian impact logged. There is no lesser category for this.", "Person struck. A bill will follow by mail."],
+    jay: ["That's a person. On a road test, it ends right there.", "On a test we'd stop and call 911. That's somebody's whole life.", "There is nothing on the sheet worse than that.", "No excuse covers this one. You look for people, always."],
+  },
   collision: {
     auto: ["Contact registered. Vehicle and incident logged.", "Collision. Grid response dispatched. Remain where you are.", "Impact detected. This will appear on your record.", "Collision event. Liability assessment pending.", "Two vehicles occupied one space. That is not permitted."],
     jay: ["Okay. Breathe. Look at what you were watching, and what you weren't.", "That's the one thing we never do. Slow everything down.", "Contact. Next time, the gap you're unsure of is the gap you don't take.", "Stop. Hazards on. Then we talk about where your eyes were."],

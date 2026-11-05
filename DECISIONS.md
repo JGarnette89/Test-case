@@ -6190,6 +6190,44 @@ The project lead's reading, checked. **Right on steering; nearly right on brakin
 
 **The legibility list in 10.52 is an input to the style decision, not the other way round:** the style has to be able to show each tell on it. The sprite question left open in 10.51 is one instance: a sprite set with no pitch fails the third item as it stands.
 
+## 10.54 CONTACT BUILT: AN EVENT AND A RESPONSE (the agent, on the project lead's "carry on", 5 November; on branch `contact`)
+
+**Built to 10.52's design, on its stated defaults, with every amount flagged as the maintainer's to set. `#/exam` and `#/wheel` are unchanged.** `sim/contact.js`, `sim/mail.js`, `verify-contact`; the banner and `setStopped` are gone from `#/map`.
+
+### Where the build departed from the design, and why
+
+1. **THE CAR HAS A WAY BACK NOW: WITH SOMETHING IN FRONT OF THEM, THE BRAKE HELD AT REST ROLLS IT BACK, WITH STEERING. THE DESIGN DID NOT HAVE THIS.** The design said separation had to leave room to steer away, and named it the hard part. **It was harder than that, and the prediction that it was the weak spot held:** moved out of overlap and steering forward alone took 94 s at 70 degrees. A first fix turned the nose along what it pressed against: 8.8 s at 45 degrees, but cars still wedged into the gap between two parked cars, or pressed on the row across the street, for good. **A real driver reverses, so this reverses.** `backOff` in player.js moves the car and leaves `v` at 0, so nobody reading the player has to know about going backwards; 1.5 m/s, 8 m from the last push; a player braking at a red never rolls, which is checked. The screen says "Hold the brake to back off it" after 1.5 s pressed. **A new control, a stopgap until the full physics model, and the maintainer has not seen it.** The turned-nose fix was removed: one mechanism.
+2. **AN INOPERABLE CAR IS NOT MOVED.** The default given in 10.52's report was a tow and a respawn nearby. Built: it stands 45 s, as a wreck does, and goes again where it stood at half damage, with a tow bill. Simpler and forces nobody anywhere. **Still his question.**
+3. **THE PULL WAS 3x TOO STRONG AS FIRST WRITTEN:** 0.25 of the wheel at full damage took a half-damaged car 173 m off line in 30 s, hands still. 0.08, by judgment. **Measured there at half damage: 101 m in 30 s at 30 km/h with no hands and no assist, which is still a great deal, on purpose until he has driven it.**
+
+### Measured
+
+`verify-contact`, about a minute; each below is a stated expectation, and the check was sabotaged 19 ways, all caught:
+
+| prediction, stated before running | result |
+|---|---|
+| one event per touch | 1 event over 136 ticks in contact; a second only after being apart |
+| nothing driven through at 30, 60, 100 km/h | centre stops 4.5 m short of the wreck's at all three |
+| nobody trapped, inside the 45 s a wreck stands | 0 of 24 nose-on cases; worst 6.9 s at 20 degrees, 13.9 at 45, 12.8 at 70, **42.4 at 90, which is close** |
+| the drive goes on | 9,600 ticks, a driver hunting things at full throttle on the city at 180: 13 contacts (11 cars, 2 parked), no stop; longest stand 61.3 s, a tow plus traffic |
+| rear-ended as they brake is not their fault | 24 of 90 struck, 0 called their fault, by the poor observers as in 10.46 |
+
+**WHAT A SABOTAGE FOUND:** the mail check passed with letters repeating, since a repeat shows only when a later letter arrives. Fixed. Separately, `REARM` is stated twice in `playerContact`, once in `seen` and once in the prune, so removing either changes nothing: it is held only as the constant.
+
+**WHAT IT DOES NOT LOOK AT:** how any of it feels or reads. No check touches the screen beyond mounting it: the Mail panel, the hint, the flash and the damaged handling need his eye. **The worker's path runs only through `verify-worker`'s comparison of page and worker; the in-thread and worker branches of MapRoad are two call sites of `contactTick`.**
+
+### Known, and said out loud
+
+- **The narrow fault rule is wrong in two ways, both from 10.52:** a brake-check reads as not at fault, and **a car running a red into the player's side reads as the player's fault.** The second punishes exactly what ruling 2 says should not be punished, and the rule cannot see it. How often it happens is not measured.
+- **A traffic car touched by the player stops dead for 45 s** at any speed, as it always did, but the player now sees it. A scrape at 5 km/h makes a wreck.
+- **A hit is one contact per partner, so scraping along a parked row is one per car,** each halving speed and adding damage. Plausibly right and unseen.
+- **Mail counts seconds in the drive, moving or not.**
+- **Reloading mid-drive loses the current damage and any fare**, as a restart always has; the mailbox survives.
+
+### The unanswered, built on defaults (10.52)
+
+At-fault with a car is a repair bill and no more. Rear-ended is presumed not at fault. **Driving away from a person struck is allowed and nothing further happens; the bill comes either way.** A bill past the wallet takes the balance negative, and nothing reads a negative balance. Every amount. Minutes of driving standing in for a day.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

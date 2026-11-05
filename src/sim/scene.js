@@ -1,7 +1,7 @@
 /* =====================================================================
-   THE WORLD FOR A MAP, AND THE PLAYER'S CONTACT WITH IT -- one place, so
-   the screen and the sim's worker (sim/remote.js) build the same world
-   from the same arguments and judge the same contact.
+   THE WORLD FOR A MAP -- one place, so the screen and the sim's worker
+   (sim/remote.js) build the same world from the same arguments. The
+   player's contact with it is sim/contact.js, passed on from here.
 
    Moved out of MapRoad.jsx `sceneFor` (13 October), which still calls it:
    a worker cannot import a React screen, and two copies of how a world is
@@ -11,11 +11,9 @@ import { loadMap } from "../map/load.js";
 import { testMap1 } from "../map/samples.js";
 import { firstEdge } from "../map/edges.js";
 import { carsFor } from "../map/cars.js";
-import { seedGraph, poseOf, crashWith } from "./crossing.js";
-import { playerOn, placePlayer, driverPose } from "./drive.js";
-import { touching } from "./player.js";
-import { contactWith } from "./parking.js";
-import { pedAt, strikePed } from "./peds.js";
+import { seedGraph } from "./crossing.js";
+import { playerOn, placePlayer } from "./drive.js";
+export { playerContact } from "./contact.js";
 
 export const START = { road: "A-north", end: "end" };   // the player begins at the map's north edge, driving down to the crossroads
 
@@ -54,24 +52,4 @@ export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, st
     world = placePlayer(world, me);
   }
   return { loaded, world, me };
-}
-
-/* THE PLAYER'S CONTACT, after a tick: a car they touch crashes too -- it
-   stops and is logged -- rather than driving on through them; a parked
-   car is as solid as a moving one; a person on foot falls where they are
-   (sim/peds.js). Contact stops the player's car: what a collision IS in
-   this game is still the maintainer's question. Returns the world and
-   whether they hit anything. */
-export function playerContact(w, me) {
-  const mine = driverPose(me, w.course);
-  let hit = false;
-  for (const a of w.actors) {
-    if (a.player) continue;
-    const p = poseOf(w, a);
-    if (touching(mine, { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, length: p.length, width: p.width })) { hit = true; w = crashWith(w, a.id, { x: p.x, y: p.y, z: p.z ?? 0 }); }
-  }
-  if (!hit && w.parked && contactWith(w.course, w.parked, mine, touching)) hit = true;
-  const struck = hit ? null : pedAt(w, mine);
-  if (struck) { hit = true; w = strikePed(w, struck); }
-  return { world: w, hit };
 }

@@ -19,7 +19,7 @@ argument, so the documentation is a CONTRACT rather than a diary.
 
 **UNDUE DELAY DOES NOT KNOW WHAT THE DRIVER COULD SEE (DECISIONS 10.47, 5 November): `openTo` reads the road, not the view, so a driver waiting correctly at a blocked view is on the undue-delay clock. Do not trust that fault on a map with real occlusion until it has a sight condition. Prior sight has three states, the third being NEVER SEEN.**
 
-**THE PLAYER'S "CONTACT STOPS THE GAME" IS A PLACEHOLDER IN ITS OWN WORDS, NOT A RULING; A CANDIDATE'S CRASH ENDING AN EXAM IS NOT (DECISIONS 10.49). It lives in `setStopped` in MapRoad and Wheel, where no check reaches, and contact has no physics of its own: the stop is only the freeze. Read 10.48 and 10.49 before touching it.**
+**CONTACT NO LONGER ENDS A DRIVE ON `#/map` (DECISIONS 10.54): sim/contact.js is an event per first touch and a response, sim/mail.js carries delayed consequences, and the car has a way back off what it hit. A CANDIDATE'S CRASH ENDING AN EXAM IS STILL A RULING'S, NOT A PLACEHOLDER (10.49), and `#/wheel` keeps its old stop.**
 
 **A DIFFERENCE THE CHECKS CAN COUNT AND THE MAINTAINER CANNOT SEE MAY BE A SEEING PROBLEM, NOT A MODEL PROBLEM (DECISIONS 10.51). Do not fix it by changing the driver model. A TELL SHOWS THE CAUSE, NOT THE STATE, AND MUST BE TRUE (10.52, which holds the per-axis list). The order from here is in 10.52 and PLAN.md: terminal contact, body motion, destinations with player-tuned density, the price of slowing.**
 
@@ -1671,7 +1671,9 @@ src/sim/marking.js       stage 3: deferred marking and the section sheet, fed to
 src/sim/graph.js         THE SIMULATOR (SIMULATOR.md): the sim on a road network -- nodes at any bearing, ONE LEG PER LANE, junction geometry
 src/sim/signal.js        traffic signals: phases derived from the geometry, and a light that resolves to the controls the sim already had plus HOLD
 src/sim/horn.js          the horn's two constants, read by the sim and the renderer alike
-src/sim/scene.js         the world for a map and the player's contact with it -- one place, so the page and the sim's worker build the same world
+src/sim/scene.js         the world for a map -- one place, so the page and the sim's worker build the same world
+src/sim/contact.js       the player's contact: an event on first touch, solid things pushed out of, who was at fault by one narrow rule, damage, a car that will not go
+src/sim/mail.js          delayed consequences: a letter with an amount and when it arrives, in minutes of driving until a day exists, through storage.js
 src/sim/remote.js        the sim in a Web Worker: a pure protocol (`handle`), what crosses (only what changed), and the page's end (`remoteSim`)
 src/sim/pace.js          pacing the worker: when to ask for a tick and how far ahead of the answered world to draw -- the clock comes down when the answer ARRIVES, or every car judders at 20 Hz
 src/sim/sim.worker.js    the worker's shell around `handle`
@@ -1681,7 +1683,7 @@ src/sim/route.js         going somewhere: a place is the curb in front of a buil
 src/sim/money.js         what a job pays: the task's base, the drive's faults at their own severity, the limit, lateness, a tip for a clean drive; the wallet through storage.js
 src/sim/jobs.js          the job machinery and the taxi: an offer, the pickup, the meter, the drop-off, the fare
 src/sim/encounters.js    what the player meets, per minute of driving: cars within 30 m, following and followed, gaps judged -- the player's seat, not the world's workload
-src/sim/session.js       the screen's per-tick logic, where a check can run it: what was noticed, what is said, and the route
+src/sim/session.js       the screen's per-tick logic, where a check can run it: what was noticed, what is said, the route, and contact's response and the post
 src/sim/voice.js         the rate limiter: a line per 12 s (4 for the severe), the most severe pending, nothing stale, nothing twice
 src/content/dialogue.js  the lines, A.U.T.O., Jay and the rivals, keyed by trigger and speaker -- data
 src/sim/detect.js        grading the examiner (moved from the deleted engine): caught, missed, invented, and when
@@ -2101,6 +2103,7 @@ node tools/verify-lanecost.mjs     what lane changing costs the sim (split from 
 node tools/verify-busbays.mjs      bus bays (split from verify-buses): out of the lane, passed, and let out by those who know to give way and could stop, over a run at the rule's own difficulty and one with it made hard
 node tools/verify-passing.mjs      going round a bus at a curb stop (split from verify-buses): on a broken line or none, never a solid one, the gap the passer's to misjudge, less time stood behind the bus
 node tools/verify-places.mjs       going somewhere: places on the right curb, routes that replay along the joins and are the shortest an independent search finds, and a player doing only what the screen says arrives and is noticed
+node tools/verify-contact.mjs      contact is an event and a response (DECISIONS 10.54): one event per touch, nothing driven through, nobody trapped with no reverse, struck from behind costs no fare and a person always costs, damage, a letter arrives once and survives a reload, a player just hit is not honked at, a world nobody touched is the same world, and a driver hunting things on the city at 180 never stops the drive
 node tools/verify-money.mjs        money and the taxi: the fare pays for skill not time (every fault costs its severity, praise nothing, contact voids, the limit and lateness cost, longer never pays more), the wallet through storage, and a fare driven end to end by a good driver -- tipped -- and the same fare speeding paid less
 node tools/verify-encounters.mjs   what the player meets: cars within 30 m counted once each, following and followed only in the player's lane and the right way round, a gap judged once per stand at the line, and on real traffic none of them zero -- the expectations stated in the check, not read from the module
 node tools/verify-mergecount.mjs   merges judged (split from verify-encounters): every lane change near a car counted, on an approach or an exit stretch, held event by event against an independent count from the player's route and the cars' poses
