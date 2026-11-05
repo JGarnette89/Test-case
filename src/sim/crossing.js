@@ -1179,8 +1179,8 @@ function canStopFor(world, me, them) {
   return false;
 }
 
-/* THE CAR AHEAD, AS THIS DRIVER HAS NOTICED IT (DECISIONS 10.46; off unless
-   `world.brakeReaction`). A brake lamp coming on is a change, and a driver takes
+/* THE CAR AHEAD, AS THIS DRIVER HAS NOTICED IT (DECISIONS 10.46, the maintainer: "each
+   driver has their own reaction time"). A brake lamp coming on is a change, and a driver takes
    their own `notices` to register a change in front of them -- the same delay a
    light gone green is read through. Until then the leader is still doing what
    it was doing: at the speed it had when the lamp came on, carried forward
@@ -1188,17 +1188,17 @@ function canStopFor(world, me, them) {
    no position and so does not care about a seam). ONLY THE CAR-FOLLOWING READS
    THIS: right of way reads the present (a constant lag on everything crashed
    sound drivers together in a box, 5.16.3). ONLY A CHANGE: a car stopped a
-   while ago is seen stopped, so a standing queue is no surprise. "capped" and a
-   number are the measurement's controls: the periphery's reaction-time rule,
-   and one delay for everybody. */
+   while ago is seen stopped, so a standing queue is no surprise. THE PERIPHERY'S
+   REACTION-TIME RULE DOES NOT CAP THIS: it is about a driver looking away, and
+   capped, nobody rear-ended anybody (0 of 960), the driver's own delay erased. A
+   number is a check's control, one delay for everybody; 0 or false, none. */
 function asNoticed(world, me, them) {
   /* The screen writes the player in afresh before each tick (drive.js withDriver), so theirs is kept on the world. */
   const on = world.brakeReaction, o = them.player ? world.playerLamp : them.lampOnset;
   if (!on || !o || me.player || them.crash) return them;
   const T = typeof on === "number" ? on : me.notices ?? REACTION_FLOOR, since = (world.t ?? 0) - o.t;
   if (since >= T) return them;
-  if (on === "capped" && me.loomSince != null && (world.t ?? 0) - me.loomSince >= REACTION_FLOOR) return them;
-  return { ...them, s: them.s + o.behind, v: o.v, trueV: them.v, unnoticed: o.behind };
+  return { ...them, s: them.s + o.behind, v: o.v, unnoticed: o.behind };
 }
 /* The lamp's onset, kept while the lamp stays on. */
 const lampOnsetOf = (raw, lamp, v0, v, t) => {
@@ -2012,10 +2012,6 @@ export function step(world) {
       const out = { ...at, a: (v - me.v) / DT, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
       if (world.brakeReaction) {
         out.lampOnset = lampOnsetOf(raw, brakeLamp && !(v < 0.5 && decel <= BRAKE_LAMP_ON && (me.v ?? 0) < 0.5), me.v ?? 0, v, world.t);
-        if (world.brakeReaction === "capped") {
-          const ld = view.leader, rate = ld && ld.lampOnset ? loomingRate(widthOf(ld), (me.v ?? 0) - (ld.trueV ?? ld.v), view.gap - (ld.unnoticed ?? 0)) : 0;
-          out.loomSince = rate > LOOMING ? (raw.loomSince ?? world.t) : null;
-        }
       }
       if (offer || raw.courtesy) out.courtesy = offer;
       /* THE CHECKS (checks.js). A scan along the cross road, once per line,
@@ -2908,7 +2904,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, brakeReaction = true } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
@@ -2938,7 +2934,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, brakeReaction, ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   /* `actuated: false`: every light on its clock, as before the loops (actuated.js) -- for comparing against. */

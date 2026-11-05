@@ -2,7 +2,7 @@
    maintainer described, and the one case the traffic-only scene cannot reach, since the screen
    writes the player in afresh each tick (drive.js withDriver). rear-end.mjs's road; the player
    settled ahead of a drawn follower at their own gap, then braking at a set rate to rest.
-   BR=own|capped|<seconds>. Usage: node tools/measure/rear-end-player.mjs [drivers=120] */
+   BR=own|<seconds>, none if unset. Usage: node tools/measure/rear-end-player.mjs [drivers=120] */
 import { emptyMap, road } from "../../src/map/format.js";
 import { loadMap } from "../../src/map/load.js";
 import { seedGraph, step, carFor } from "../../src/sim/crossing.js";
@@ -11,7 +11,7 @@ import { playerAt, withDriver } from "../../src/sim/drive.js";
 import { playerContact } from "../../src/sim/scene.js";
 
 const N = Number(process.argv[2] ?? 120);
-const BR = process.env.BR === "own" || process.env.BR === "capped" ? process.env.BR : process.env.BR != null ? Number(process.env.BR) : null;
+const BR = process.env.BR === "own" ? true : process.env.BR != null ? Number(process.env.BR) : false;
 const P = (x, y) => ({ x, y, z: 0 });
 const m = emptyMap("rear");
 m.bounds = { x: 0, y: 0, w: 4000, h: 400 };
@@ -22,7 +22,7 @@ const route = Object.keys(L.paths).find((r) => L.legs[L.paths[r].from]?.road ===
 const posted = { ...base.road, speed: 25, kmh: 90, kind: "collector" };
 
 function trial(n, rate, speed) {
-  let w = { ...base, ...(BR != null ? { brakeReaction: BR } : {}), actors: [], crashes: [] };
+  let w = { ...base, brakeReaction: BR, actors: [], crashes: [] };
   const who = driver(posted, 1, n, null, null, "car"), fol = { ...carFor(w, n, 0, route, null, "car"), id: "follower", n, s: 620 };
   for (const k of PERSONAL) fol[k] = who[k];
   fol.v0 = Math.max(fol.v0, speed + 3); fol.v = speed;
