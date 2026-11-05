@@ -182,6 +182,9 @@ A cold session that knows the reasons should reorder if a reason changes.
   item 1; undue delay needs a sight condition, already wrong for trucks; creeping is "until you
   can see" and obstructing the lane is a matter of degree.** With Jay: is sitting at a blind
   junction ever marked?
+- **RULED (DECISIONS 10.46, 10.47): each driver's own reaction time, uncapped; undue delay is not
+  attempting to see, or 4-5 s after a control changes, less if traffic honks repeatedly and
+  nothing happens.** Turning the delay on is in progress on `brake-reaction`.
 - **Held:** `margin-can-stop` and `sight-caution`, both off, on their branches.
 - **For Jay, a feel question and not a defect:** a player who moves into the gap
   just after a courtesy offer lapses gets no "let in".
