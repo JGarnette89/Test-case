@@ -762,6 +762,15 @@ const UNDUE_AT = 4.0;
    (sim/reading.js); anybody else expects the rule as posted. */
 /* An actuated light's state at node k this tick (actuated.js), or null: a light on its clock. */
 const liveOf = (world, k) => world.lights?.[k ?? 0]?.live ?? null;
+/* WHAT A CAR ENTERED UNDER, as posted and not as they read it: the light, or the sign, the
+   moment they crossed their line, and whether they had stopped. Nobody drives by this: it is
+   the record of who owed whom, for when somebody is hit (contact.js). */
+export function entryOf(world, k, path, stoppedAt) {
+  const layout = world.course.at[k].layout;
+  const ctl = layout.signal ? movementLight(layout.signal, layout.legs[path.from]?.base, path.intent, world.t, liveOf(world, k)) : theirControl(layout, path);
+  return { k, t: world.t, ctl: ctl ?? "none", rolled: stoppedAt == null };
+}
+
 function controlOf(actor, layout, path, t = 0, viewer = actor, live = null) {
   const standing = viewer === actor ? knownControl(actor, layout, path, t) : theirControl(layout, path);
   if (!layout.signal) return standing === "stop" || standing === "yield" ? standing : "none";
@@ -884,7 +893,7 @@ function hasGap(me, them, layout, caution) {
    the other's path gives way. Returns null where the pair is not head to
    head at all, because there the rule has nothing to say and something
    else has to decide. */
-function leftYields(mine, theirs, layout) {
+export function leftYields(mine, theirs, layout) {
   /* "Oncoming" is a bearing question the layout answers (graph.js):
      the opposite leg on the compass, the leg within ONCOMING_TOL of
      straight across on a map. */
@@ -2012,6 +2021,7 @@ export function step(world) {
          while stationary. The change of speed over the tick is the
          quantity every reader meant. */
       const out = { ...at, a: (v - me.v) / DT, accepted, openFor, openedAt, waited, delayed: me.delayed || waited > UNDUE_AT };
+      if (me.s <= mine.stopAt && s > mine.stopAt) out.entry = entryOf(world, me.k ?? 0, mine, stoppedAt);
       if (world.brakeReaction) {
         out.lampOnset = lampOnsetOf(raw, brakeLamp && !(v < 0.5 && decel <= BRAKE_LAMP_ON && (me.v ?? 0) < 0.5), me.v ?? 0, v, world.t);
       }

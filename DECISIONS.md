@@ -6225,7 +6225,7 @@ The project lead's reading, checked. **Right on steering; nearly right on brakin
 
 ### Known, and said out loud
 
-- **The narrow fault rule is wrong in two ways, both from 10.52:** a brake-check reads as not at fault, and **a car running a red into the player's side reads as the player's fault.** The second punishes exactly what ruling 2 says should not be punished, and the rule cannot see it. How often it happens is not measured.
+- **A brake-check reads as not at fault,** nothing detecting one. **The other wrong case, a car running a red into the player's side, is fixed in 10.55.**
 - **A traffic car touched by the player stops dead for 45 s** at any speed, as it always did, but the player now sees it. A scrape at 5 km/h makes a wreck.
 - **A hit is one contact per partner, so scraping along a parked row is one per car,** each halving speed and adding damage. Plausibly right and unseen.
 - **Mail counts seconds in the drive, moving or not.**
@@ -6234,6 +6234,57 @@ The project lead's reading, checked. **Right on steering; nearly right on brakin
 ### The unanswered, built on defaults (10.52)
 
 At-fault with a car is a repair bill and no more. Rear-ended is presumed not at fault. **Driving away from a person struck is allowed and nothing further happens; the bill comes either way.** A bill past the wallet takes the balance negative, and nothing reads a negative balance. Every amount. Minutes of driving standing in for a day.
+
+## 10.55 WHO OWED WHOM IN AN INTERSECTION (the project lead's order, 5 November; the agent)
+
+**The project lead: a car running a red into the player's side counted as the player's fault, the exact thing the not-at-fault ruling (10.50) says must not happen; fix it before body motion, and measure how often it occurs.**
+
+### How often: not once, and the sample is small
+
+`tools/measure/side-impact.mjs`: a scripted player who obeys their own light and sign and stops for the car ahead in their lane; each car's light read as it crossed its line. 180 cars, test map 1 and the city, 3 seeds, 8 minutes each, look-away off and on: **96 driven minutes, 150 or so intersections, 60 km.**
+
+- **NO RED-RUNNER STRUCK THE PLAYER, IN 96 MINUTES.** Rule of three: fewer than about one in 30 minutes on a driver doing this, no tighter. **The exposure is thin, and the first run's 0 contacts on test map 1 was 8 intersections in 24 minutes, which is why it was not believed.** The player spent most of it on long stretches and being put back at the start.
+- **TRAFFIC DOES ENTER ON RED, AND MOSTLY LEGALLY:** of 3,145 entries on test map 1, 179 on red. 158 are rights after stopping. 19 never stopped, 8 of them going straight. They are late ambers crossing just after the change, the amber rule committing a driver who could not stop. City: 84 of 15,640. **So a true red-runner hardly exists in this sim; what exists is a car a moment late.**
+
+### What was predicted, and what failed
+
+**PREDICTION 1, HELD:** true red-running is rare. **PREDICTION 2, FAILED, AND ITS PREMISE WAS WRONG:** the agent reported that every side-impact seen was another car failing to yield, called the player's fault, and predicted all four would flip. **That report was an inference from the other car's control alone. Printing both cars' entries shows NONE of the four was a failure to yield:** all four were the scripted player taking a right at speed, 10-14 m/s through a corner. Two ran into the back of a slower car on the exit stretch, which the script does not look for; one swung into the next lane having entered second; one was settled by the right-hand rule. Three remain the player's, correctly; one reads as not theirs. **The script's cornering caused those contacts, and they say nothing about traffic.**
+
+### The rule
+
+**Not a rule about red alone. Every kind of failing to yield had the same wrong answer, whether or not this sample met one, and fault is the premise of the design (the project lead).** `owedBy` in contact.js, from what each car ENTERED UNDER, written once as it crosses its line (`entryOf`: the light, or the sign as POSTED, and whether they stopped). In order:
+
+1. a red, or a stop not made, against somebody who did neither;
+2. a sign against a road with none;
+3. left yields to oncoming (`leftYields`, the sim's own);
+4. with no control at all, the car on the right has the road (`onRightOf`, the sim's own);
+5. otherwise whoever entered second had somebody already in there.
+
+Outside the box, the old rule: struck from behind in lane. **Added: a car changing lane into a player holding theirs is not the player's.**
+
+**WHY NOT `blockedBy`, THE SIM'S OWN RIGHT-OF-WAY FUNCTION:** a second statement of right of way is the recurring bug, so this was the first thing tried. It answers a different question. `blockedBy` is a DECISION: it reads the driver's own knowledge of the sign, uses their judgment of a gap, and says a car in the box finishes, so at the moment of contact it always says the other car may proceed. **Fault is a DUTY, as posted: a driver who misread the sign or misjudged a gap still owed it.** The primitives are shared; the order is written once, here.
+
+### These are traffic-law assumptions, for the maintainer
+
+Each is from the rules already established (Domain authority), and each is his to correct:
+
+- **A car clearing on amber has the road over a player entering on a fresh green.** The player's fault.
+- **A car entering late on amber, into a player already in on green,** is not the player's. Entered second.
+- **Both on red: whoever entered second.**
+- **Both from stop signs: whoever entered second,** not whoever stopped first.
+- **A rolling stop by traffic is often invisible to this rule:** a driver rolling a sign they do not read is recorded by the sim as having stopped, below its crawl speed (`rollsHere`). So a rolled stop against a stopped player can fall to "entered second". Against a road with no sign the sign rule still catches it.
+
+### Checked
+
+`verify-contact` section 3b: 18 cases written out, the right-hand rule's direction stated from where the two cars are in the world, a red-runner through the whole contact to the record of who struck whom, the same contact with the roles swapped, and what a car entered under against what the light said at its line on real traffic: 107 of 107, 15 on red.
+
+**SABOTAGED 15 WAYS, ALL CAUGHT, AFTER THREE GAPS IT FOUND WERE FIXED:** a yield sign survived, because at equal times "entered second" gave the same answer; the right-hand rule had no test at all; and "one of the two owes" passed with the rule backwards, saying nothing about which. **The cases now enter first and still owe, and the direction is stated from the geometry.**
+
+**WHAT IT DOES NOT SHOW: A REAL RED-RUNNER STRIKING A PLAYER, END TO END.** None occurred, so the two halves are held separately: the record on real traffic, and the rule on a stated record. The first time the maintainer meets one is the first real test.
+
+### Still on the list, and being told to him (the project lead)
+
+A brake-check reads as not at fault. **A 5 km/h scrape stops a traffic car dead for 45 s.** Scraping along a parked row is one contact per car, each halving speed and adding damage. **The holding-the-brake rollback is a control he has not seen.** The damage pull is left for him to judge: 101 m in 30 s at 30 km/h, hands off. Added here: **traffic's contact with the player does not yet read any of this: it stops dead whoever was at fault.**
 
 ## 11. Verification
 

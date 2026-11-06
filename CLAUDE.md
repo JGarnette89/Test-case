@@ -1672,7 +1672,7 @@ src/sim/graph.js         THE SIMULATOR (SIMULATOR.md): the sim on a road network
 src/sim/signal.js        traffic signals: phases derived from the geometry, and a light that resolves to the controls the sim already had plus HOLD
 src/sim/horn.js          the horn's two constants, read by the sim and the renderer alike
 src/sim/scene.js         the world for a map -- one place, so the page and the sim's worker build the same world
-src/sim/contact.js       the player's contact: an event on first touch, solid things pushed out of, who was at fault by one narrow rule, damage, a car that will not go
+src/sim/contact.js       the player's contact: an event on first touch, solid things pushed out of, who owed whom in an intersection from what each entered under, struck from behind, cut in on, damage, a car that will not go
 src/sim/mail.js          delayed consequences: a letter with an amount and when it arrives, in minutes of driving until a day exists, through storage.js
 src/sim/remote.js        the sim in a Web Worker: a pure protocol (`handle`), what crosses (only what changed), and the page's end (`remoteSim`)
 src/sim/pace.js          pacing the worker: when to ask for a tick and how far ahead of the answered world to draw -- the clock comes down when the answer ARRIVES, or every car judders at 20 Hz

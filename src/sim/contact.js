@@ -12,13 +12,15 @@
    NOT A PHYSICS MODEL. No mass, no spin: the least that keeps the world
    honest until the full model the story asks for (STORY.md section 4).
 
-   WHO WAS AT FAULT is one narrow rule: struck from behind, in lane, with no
-   lane change just made, is not the player's. Everything else is, and a
-   person always is. Known and said out loud: a brake-check reads as not at
-   fault (nothing detects one), and a car running a red into the player's
-   side reads as at fault. It does not use marking.js (10.48).
+   WHO WAS AT FAULT (DECISIONS 10.55): struck from behind, in lane, with no
+   lane change just made, is not the player's. A car changing lane into them
+   is not. In an intersection it is who owed whom, from what each entered
+   under (`owedBy`). Everything else is the player's, and a person always
+   is. Known and said out loud: a brake-check reads as not at fault, nothing
+   detecting one. It does not use marking.js (10.48).
    ===================================================================== */
-import { poseOf, crashWith, CRASH_CLEAR } from "./crossing.js";
+import { poseOf, crashWith, CRASH_CLEAR, leftYields } from "./crossing.js";
+import { onRightOf } from "./graph.js";
 import { driverPose } from "./drive.js";
 import { touching, separation, HALF_W, DAMAGE_AT, INOPERABLE, LIMP, BACK_ROOM } from "./player.js";
 import { contactWith } from "./parking.js";
@@ -46,6 +48,34 @@ export function rearStruck(me, mine, q, v, t) {
   return t - (me.laneAt ?? -Infinity) >= CHANGED_WITHIN;
 }
 
+/* WHO OWED WHOM IN AN INTERSECTION: "player", "other", or null when one of them was not in it.
+   NOT `blockedBy`, which is a driver's decision, with their own reading of the sign and their
+   own judgment of a gap, and which says a car in the box finishes. This is the DUTY, as posted,
+   and a car that judged a gap and was wrong still owed it. In the order of the law:
+     1. a red, or a stop not made, against somebody who did neither;
+     2. a sign against a road with none;
+     3. left yields to oncoming;
+     4. with no control at all, the car on the right has the road;
+     5. otherwise whoever entered second had somebody already in there. */
+export function owedBy(me, a, layout) {
+  const p = me.entry, o = a.entry;
+  const pPath = layout.paths[me.route], oPath = layout.paths[a.route];
+  if (!p || !o || p.k !== (me.k ?? 0) || o.k !== (a.k ?? 0) || p.k !== o.k || !pPath || !oPath) return null;
+  const within = (who, path) => who.s <= path.clearAt + 2;
+  if (!within(me, pPath) || !within(a, oPath)) return null;
+  const broke = (e) => e.ctl === "red" || (e.ctl === "stop" && e.rolled);
+  if (broke(p) !== broke(o)) return broke(p) ? "player" : "other";
+  const under = (e) => e.ctl === "stop" || e.ctl === "yield";
+  if (under(p) !== under(o)) return under(p) ? "player" : "other";
+  const left = leftYields(pPath, oPath, layout);
+  if (left != null) return left ? "player" : "other";
+  if (p.ctl === "none" && o.ctl === "none") {
+    if (onRightOf(layout, pPath.from, oPath.from)) return "player";
+    if (onRightOf(layout, oPath.from, pPath.from)) return "other";
+  }
+  return p.t > o.t ? "player" : "other";
+}
+
 const closingSpeed = (me, mine, q, v) => {
   const a = (mine.heading * Math.PI) / 180, b = (q.heading * Math.PI) / 180, vm = me.v ?? 0;
   return Math.hypot(vm * Math.cos(a) - v * Math.cos(b), vm * Math.sin(a) - v * Math.sin(b));
@@ -66,9 +96,13 @@ export function playerContact(w, me) {
     solids.push(q);
     now[a.id] = w.t;
     if (seen(a.id)) continue;
-    const v = a.v ?? 0, behind = rearStruck(me, mine, q, v, w.t);
-    fresh.push({ kind: "car", id: a.id, closing: closingSpeed(me, mine, q, v), atFault: !behind });
-    w = crashWith(w, a.id, { x: p.x, y: p.y, z: p.z ?? 0 }, "player", behind ? a.id : "player");
+    const v = a.v ?? 0, layout = w.course.at[me.k ?? 0].layout;
+    const owed = owedBy(me, a, layout);
+    /* A car changing lane into them, with the player holding theirs, owes them the lane. */
+    const cutIn = !!a.lc && !a.lc.abort && Math.abs(me.off ?? 0) <= LANE / 2 - HALF_W && w.t - (me.laneAt ?? -Infinity) >= CHANGED_WITHIN;
+    const notTheirs = owed ? owed === "other" : cutIn || rearStruck(me, mine, q, v, w.t);
+    fresh.push({ kind: "car", id: a.id, closing: closingSpeed(me, mine, q, v), atFault: !notTheirs, why: owed ? "right of way" : cutIn ? "cut in" : notTheirs ? "from behind" : null });
+    w = crashWith(w, a.id, { x: p.x, y: p.y, z: p.z ?? 0 }, "player", notTheirs ? a.id : "player");
   }
   const parked = w.parked ? contactWith(w.course, w.parked, mine, touching) : null;
   if (parked) {

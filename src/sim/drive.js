@@ -22,7 +22,7 @@
    ===================================================================== */
 import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand, holdBand, sliderFor, accelFor, PULL, INOPERABLE, damagedTop, backOff } from "./player.js";
 import { inLaneOf } from "./occupancy.js";
-import { whatStops, poseOf, AT_LINE } from "./crossing.js";
+import { whatStops, poseOf, AT_LINE, entryOf } from "./crossing.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
 import { poseOnGraph, intentOf, normDeg, curbLegOf, exitRouteInto, exitAlong, exitSAt } from "./graph.js";
@@ -261,7 +261,9 @@ export function stepDriver(me, input, world, dt = DT) {
     stops = { ...(stops ?? {}), [verdict]: (stops?.[verdict] ?? 0) + 1 };
   }
   if (next.v > 1.0) brakePeak = 0;
-  return { ...next, leg, atEdge, stoppedAt, going, accepted: going, yaw: (next.psi * 180) / Math.PI, brakePeak, lastStop, stops };
+  /* What they entered under (crossing.js `entryOf`), for who owed whom. */
+  const entry = (me.k === next.k && me.s <= path.stopAt && next.s > path.stopAt) ? entryOf(world, next.k, path, stoppedAt) : next.entry;
+  return { ...next, leg, atEdge, stoppedAt, going, accepted: going, yaw: (next.psi * 180) / Math.PI, brakePeak, lastStop, stops, ...(entry ? { entry } : {}) };
 }
 
 /* THE PLAYER'S POSE IN THE WORLD, with the height of the road under

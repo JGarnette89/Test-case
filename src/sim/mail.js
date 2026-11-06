@@ -32,7 +32,7 @@ export function lettersFor(f, damaged) {
   const repair = Math.round(REPAIR_BASE + REPAIR_PER_DAMAGE * damaged);
   const bill = { kind: "repair", title: "Repair bill", amount: -repair, days: 1, text: f.kind === "parked" ? "For the parked car, and yours." : "For the collision." };
   if (f.atFault) return [bill];
-  return [bill, { kind: "insurance", title: "Insurance payout", amount: Math.round(repair * INSURED_SHARE), days: 1, text: "The other driver struck you. Part of the damage, covered." }];
+  return [bill, { kind: "insurance", title: "Insurance payout", amount: Math.round(repair * INSURED_SHARE), days: 1, text: "It was the other driver's fault. Part of the damage, covered." }];
 }
 export const towLetter = () => ({ kind: "tow", title: "Tow bill", amount: -TOW, days: 1, text: "Your car could not go on." });
 
