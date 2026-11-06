@@ -76,7 +76,7 @@ export { START };   // the player begins at the map's north edge, driving down t
    because the phone ran 114 cars at a locked 60 fps on the SLOW build. */
 /* How many cars a map gets: map/cars.js, where a check can hold it. */
 export { CARS, carsFor, carsMaxFor } from "../map/cars.js";
-import { CARS, carsFor, carsMaxFor } from "../map/cars.js";
+import { CARS, carsFor, carsMaxFor, cleanCarsFor } from "../map/cars.js";
 
 /* THE EDITOR DRIVES THE SAME SCREEN (src/apps/Editor.jsx "drive it"):
    `rawMap`, unloaded, in place of the hardcoded test map, and
@@ -227,8 +227,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     owed.current = 0; contacts.current = 0; flash.current = 0; free.current = null; setLook(false);
   };
 
-  /* Clean mode's defaults, measured best on the maintainer's phone (22 October): 180 cars, shaping on, look-away off. */
-  const cleanCars = () => Math.max(CARS.min, Math.min(carsMax, 180));
+  /* Clean mode's defaults, measured best on the maintainer's phone (22 October): shaping on, look-away off, and the count for this map (map/cars.js). */
+  const cleanCars = () => cleanCarsFor(scene.current.loaded);
   const toggleClean = () => {
     const on = !clean;
     cleanRef.current = on; setClean(on); setMore(false); setSetting("clean", on);

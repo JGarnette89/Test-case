@@ -6241,7 +6241,7 @@ At-fault with a car is a repair bill and no more. Rear-ended is presumed not at 
 
 ### How often: not once, and the sample is small
 
-`tools/measure/side-impact.mjs`: a scripted player who obeys their own light and sign and stops for the car ahead in their lane; each car's light read as it crossed its line. 180 cars, test map 1 and the city, 3 seeds, 8 minutes each, look-away off and on: **96 driven minutes, 140 intersections (8, 62, 9, 61), 59 km. Commit `5fc7cc9`'s branch commit says "about 150": the right number is 140.**
+`tools/measure/side-impact.mjs`: a scripted player who obeys their own light and sign and stops for the car ahead in their lane; each car's light read as it crossed its line. 180 cars, test map 1 and the city, 3 seeds, 8 minutes each, look-away off and on: **96 driven minutes, 140 intersections (8, 62, 9, 61), 59 km. Commit `50ccf7a` says "about 150": the right number is 140.**
 
 - **NO RED-RUNNER STRUCK THE PLAYER, IN 96 MINUTES.** Rule of three: fewer than about one in 30 minutes on a driver doing this, no tighter. **The exposure is thin, and the first run's 0 contacts on test map 1 was 8 intersections in 24 minutes, which is why it was not believed.** The player spent most of it on long stretches and being put back at the start.
 - **TRAFFIC DOES ENTER ON RED, AND MOSTLY LEGALLY:** of 3,145 entries on test map 1, 179 on red. 158 are rights after stopping. 19 never stopped, 8 of them going straight. They are late ambers crossing just after the change, the amber rule committing a driver who could not stop. City: 84 of 15,640. **So a true red-runner hardly exists in this sim; what exists is a car a moment late.**
@@ -6285,6 +6285,32 @@ Each is from the rules already established (Domain authority), and each is his t
 ### Still on the list, and being told to him (the project lead)
 
 A brake-check reads as not at fault. **A 5 km/h scrape stops a traffic car dead for 45 s.** Scraping along a parked row is one contact per car, each halving speed and adding damage. **The holding-the-brake rollback is a control he has not seen.** The damage pull is left for him to judge: 101 m in 30 s at 30 km/h, hands off. Added here: **traffic's contact with the player does not yet read any of this: it stops dead whoever was at fault.**
+
+## 10.56 THE SMALL-ITEMS BUNDLE, AHEAD OF BODY MOTION (the maintainer approved, relayed by the project lead, 5 November)
+
+**The order: the bundle, then body motion, which he expects to consume the usage cap.** Of its four items, the red-runner fault (10.55) and the two record tidies (10.54) were already done and live when the order arrived: the message and the report crossed.
+
+### 1. What Clean mode offers, and how many cars
+
+**He was picking between eight options, two alike and one valid: "trial city" or "stand-in city".** With Clean mode on, `#/tests` now offers **Stand-in city and Endless highway** (`clean` on a `TEST_MAPS` entry). The other six stay behind one button, "All test maps", and with Clean mode off nothing changes: the screen is how every feature reaches him (10.51). **Note: this follows the Clean mode setting. A person with it off still sees eight.**
+
+**The count:** 180 on everything was 4.5 times what a 40-car fixture is built for and 9 times a 20-car one. `cleanCarsFor` in map/cars.js: a map whose own count is under `SMALL_BELOW` (100) keeps it, and the rest get the 180 measured best on the phone. 100 is flagged, and sits in the gap between what the maps are built for, 20-40 and 120 upward. Peds 40, signs 40, buses 20; the city, the loop, the highway and test map 1 stay at 180, so nothing he drives on the two offered maps moves.
+
+**What this does not do: tune density for how it feels (ruling 1).** It stops the fixtures being overfilled. The city at 180 is still 2.5 moving cars within 100 m (10.42). That is the destinations-and-density work (10.51).
+
+### 3. `verify-lanecost`
+
+**The prediction failed, and that changes what can be claimed.** History: 5 failures in 51 recorded runs, the last on 28 October, 8 clean since. **The logs that would say which assertion failed are gone;** the timing assertion is the suspect, not the proven cause. Predicted: under one heavy load, side by side, the old form fails more and the new none. **12 copies of each with 4 spinners on 16 threads: OLD 12 OF 12 PASSED, NEW 12 OF 12 PASSED. THE FLAKE WAS NOT REPRODUCED AND NOT SHOWN FIXED.** (A first control with 16 spinners read 12 of 12 failed: all were the script's own timeout killing runs that had not finished, and it was thrown away.)
+
+**The form was changed anyway, on what the same run did show.** The old form was a difference of differences of wall-clock medians, and it ranged 2.2x across identical runs (3.78 to 8.25 ms); the new one, the CPU spent inside lanechange.js per tick, ranged 1.2x (0.54 to 0.64). It also measures the code itself: the old one switched lane changing off, changing the traffic, the instrument this file already refused. **The bound stays 15%. The margin is narrower than it looks: the worst run was 0.64 against 0.66.** Sabotaged at +0.3 ms and +1.2 ms a tick with the index on: both fail, and neither is near the line. **Not marked run-alone. If it fails again, read its log before anything else: that is the evidence that has been missing.**
+
+### 4. The record tidies
+
+In 10.54, with the 19-against-18 count and the `verify-money` and `verify-worker` verdicts. **Pushed commit messages are left as they are;** each correction names the commit it corrects. 10.55 also corrects `50ccf7a`'s "about 150" intersections to 140.
+
+### Pending with the maintainer (the project lead has asked; not pre-empted)
+
+Whether a 5 km/h scrape should stop a traffic car dead for 45 s, and whether scraping a parked row should count as a separate collision per car.
 
 ## 11. Verification
 
