@@ -19,7 +19,7 @@ argument, so the documentation is a CONTRACT rather than a diary.
 
 **UNDUE DELAY DOES NOT KNOW WHAT THE DRIVER COULD SEE (DECISIONS 10.47, 5 November): `openTo` reads the road, not the view, so a driver waiting correctly at a blocked view is on the undue-delay clock. Do not trust that fault on a map with real occlusion until it has a sight condition. Prior sight has three states, the third being NEVER SEEN.**
 
-**CONTACT NO LONGER ENDS A DRIVE ON `#/map` (DECISIONS 10.54): sim/contact.js is an event per first touch and a response, sim/mail.js carries delayed consequences, and the car has a way back off what it hit. A CANDIDATE'S CRASH ENDING AN EXAM IS STILL A RULING'S, NOT A PLACEHOLDER (10.49), and `#/wheel` keeps its old stop.**
+**CONTACT NO LONGER ENDS A DRIVE ON `#/map` (DECISIONS 10.54): sim/contact.js is an event per first touch and a response, sim/mail.js carries delayed consequences, and reverse is an ordinary control, a fresh pull of the slider at a standstill (10.57). A CANDIDATE'S CRASH ENDING AN EXAM IS STILL A RULING'S, NOT A PLACEHOLDER (10.49), and `#/wheel` keeps its old stop.**
 
 **A DIFFERENCE THE CHECKS CAN COUNT AND THE MAINTAINER CANNOT SEE MAY BE A SEEING PROBLEM, NOT A MODEL PROBLEM (DECISIONS 10.51). Do not fix it by changing the driver model. A TELL SHOWS THE CAUSE, NOT THE STATE, AND MUST BE TRUE (10.52, which holds the per-axis list). The order from here is in 10.52 and PLAN.md: terminal contact, body motion, destinations with player-tuned density, the price of slowing.**
 

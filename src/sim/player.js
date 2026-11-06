@@ -426,21 +426,32 @@ export const PULL = 0.08;          // of the wheel, at full damage: 0.25 took a 
 export const LIMP_V = 8.3;         // m/s, 30 km/h: the slowest a damaged car is held to
 export const damagedTop = (d) => Math.max(LIMP_V, V_MAX * (1 - 1.4 * d));
 
-/* BACKING OFF WHAT THEY HIT. The car has no reverse gear, and nose on to a
-   parked car, or wedged between two, forward cannot get out: measured, 94 s and
-   worse (DECISIONS 10.52). So with something in front of them, and only then, the
-   brake held at rest rolls the car back, with steering. `v` stays 0, so nobody
-   reading the player has to know about going backwards, and a player holding the
-   brake at a red can never roll. A stopgap until the full physics model. Flagged. */
+/* REVERSE, AN ORDINARY CONTROL (the maintainer, DECISIONS 10.57: "reversing should be something
+   the player can always do"; three-point turns and reverse parking are marked on the real sheet).
+
+   THE GESTURE, HIS TO JUDGE BY DRIVING: from a standstill, a FRESH pull of the slider to the bottom,
+   held. Braking to a stop and staying down does not do it, or a car stopped at a red with the
+   slider left where it was (the default, "hold") would roll back into whoever is behind it. Lift
+   and pull again and it does. REV_DWELL keeps a tap from moving the car.
+
+   `v` STAYS 0 AND THE CAR MOVES BY ITS POSITION: nobody reading the player has to know about going
+   backwards. A stopgap of the model, not the control, until the full physics model. Flagged. */
 export const BACK_V = 1.5;         // m/s
-export const BACK_ROOM = 8;        // m, from the last push against something
-export const BACK_AT = -0.9;       // of the slider: the brake held hard
-export function backOff(me, input, dt) {
-  const room = me.backRoom ?? 0;
-  if (room <= 0 || me.v > 0.1 || input.slider > BACK_AT) return null;
-  const d = Math.min(room, BACK_V * dt);
-  const psi = me.psi - yawRateFor(input.steer, BACK_V) * (d / BACK_V);
-  return { s: Math.max(0, me.s - d * Math.cos(psi)), off: me.off - d * Math.sin(psi), psi, v: 0, a: 0, backRoom: room - d, backing: true };
+export const BACK_AT = -0.9;       // of the slider: the bottom of its travel
+export const REV_DWELL = 0.4;      // s the fresh pull is held before the car moves
+export const REV_FROM_V = 0.5;     // m/s: the pull counts as fresh at a crawl, not while braking from speed
+/* When the pull began, or null: `from` is the last value, `t` the clock. */
+export function reversePull(me, slider, t) {
+  if (slider > BACK_AT) return null;
+  if (me.revFrom != null) return me.revFrom;
+  return (me.slider ?? 0) > BACK_AT && (me.v ?? 0) <= REV_FROM_V ? t : null;
+}
+/* One tick backwards along the same geometry forwards uses: the wheel swings the tail, the road's bend followed. */
+export function stepReverse(me, input, geom, dt) {
+  const inBox = !!geom.box && me.s >= geom.box[0] && me.s <= geom.box[1];
+  const kappa = inBox ? (geom.arcAt ? geom.arcAt(me.s) : 0) : curvatureOf(geom, me.s, geom.box);
+  const psi = me.psi + (kappa * BACK_V * Math.cos(me.psi) - yawRateFor(input.steer, BACK_V)) * dt;
+  return { s: me.s - BACK_V * Math.cos(psi) * dt, off: me.off - BACK_V * Math.sin(psi) * dt, psi, v: 0, a: 0, backing: true };
 }
 
 export const newPlayer = (s = 0, off = 1.8, v = 0) => ({ s, off, psi: 0, v, a: 0, steer: 0, slider: 0 });

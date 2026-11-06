@@ -12,7 +12,7 @@ import { worldFor } from "../src/sim/scene.js";
 import { playerContact, afterContact, towTick, TOW_AFTER, owedBy } from "../src/sim/contact.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { movementLight } from "../src/sim/signal.js";
-import { touching, V_MAX, INOPERABLE, BACK_ROOM } from "../src/sim/player.js";
+import { touching, V_MAX, INOPERABLE, BACK_V } from "../src/sim/player.js";
 import { parkedPoses } from "../src/sim/parking.js";
 import { pedPose } from "../src/sim/peds.js";
 import { poseOnGraph } from "../src/sim/graph.js";
@@ -403,21 +403,70 @@ console.log("9. Nobody is trapped: there is no reverse");
   check(cases >= 12 && trapped === 0 && Object.values(worst).every((x) => x <= TOW_AFTER), `nose on to a parked car at 20, 45, 70, 90 degrees, ${cases} cases: ${trapped} trapped; worst seconds to get clear by angle ${Object.entries(worst).map(([d, x]) => `${d}: ${x.toFixed(1)}`).join(", ")} (${(dead * DT).toFixed(0)} s of it with the car past going, scraping the row)`);
 }
 
-console.log("9b. Backing off is only for what they hit");
+console.log("9b. Reverse, an ordinary control (DECISIONS 10.57)");
 {
-  const back = (me) => { let w = withDriver({ ...base, actors: [], crashes: [] }, me), m = me; for (let i = 0; i < 5 / DT; i++) { m = stepDriver(m, { steer: 0, slider: -1 }, w, DT); w = withDriver(w, m); } return m; };
-  const plain = back(playerHere(300, 0));
-  check(plain.s === 300, `the brake held at rest with nothing in front: the car stays (${plain.s})`);
-  const after = back(playerHere(300, 0, { backRoom: BACK_ROOM }));
-  check(after.s < 293 && after.s >= 300 - BACK_ROOM - 1e-9 && after.v === 0, `just pressed against something: it rolls back ${(300 - after.s).toFixed(1)} m in 5 s, ${BACK_ROOM} m at the most, with its speed 0 to everybody else`);
-  const sc = scene(playerHere(655, 3));
-  let w = withDriver({ ...base, actors: [{ ...carAt(base, "ahead", 660), crash: { t: 1e9, with: "x", at: P(0, 0) } }], crashes: [] }, sc.me);
-  for (let i = 0; i < 3 / DT; i++) { const r = tick(sc, w, holdLine(sc.me)); w = r.w; }
-  check(/back off/.test(sc.said?.text ?? "") , `pressed against it, the screen says what to do: "${sc.said?.text}"`);
-  sc.me = { ...sc.me, v: 0 };
-  for (let i = 0; i < 40; i++) { const r = tick(sc, w, { steer: 0, slider: 1 }); w = r.w; }
-  const moved = sc.me.backRoom;
-  check(moved === BACK_ROOM, "still pressing, the room stays");
+  const empty = (me) => withDriver({ ...base, actors: [], crashes: [] }, me);
+  const drive = (me, script) => { let w = empty(me), m = me; for (const [secs, inp] of script) for (let i = 0; i < secs / DT; i++) { m = stepDriver(m, inp, w, DT); w = withDriver({ ...w, t: w.t + DT }, m); } return m; };
+  const BOTTOM = { steer: 0, slider: -1 }, LIFT = { steer: 0, slider: 0 }, GAS = { steer: 0, slider: 1 };
+  /* Available with nothing hit, anywhere, and with no limit but how long it is held. */
+  const fresh = drive(playerHere(500, 0), [[0.2, LIFT], [20, BOTTOM]]);
+  const went = 500 - fresh.s;
+  check(Math.abs(went - BACK_V * (20 - 0.4)) < 1 && fresh.v === 0, `from a standstill with nothing hit, a fresh pull held 20 s: back ${went.toFixed(1)} m, its speed 0 to everybody else`);
+  /* THE RED LIGHT: the reason for the gesture. Braking to a stop and staying down stays put. */
+  const stopped = drive(playerHere(300, 12), [[15, BOTTOM]]);
+  const rest = stopped.s;
+  const stay = drive(stopped, [[20, BOTTOM]]);
+  check(stopped.v < 0.01 && stay.s === rest, `braked to a stop from speed and the slider left at the bottom: it stays, for 20 s more (${(stay.s - rest).toFixed(2)} m)`);
+  /* Lift and pull again, from that same stop. */
+  const again = drive(stay, [[0.2, LIFT], [3, BOTTOM]]);
+  check(rest - again.s > 3, `lift and pull again, from that stop: it rolls back ${(rest - again.s).toFixed(1)} m in 3 s`);
+  const tap = drive(playerHere(300, 0), [[0.2, LIFT], [0.3, BOTTOM], [2, LIFT]]);
+  check(tap.s === 300, "a tap at the bottom moves nothing");
+  const off = drive(playerHere(300, 0), [[0.2, LIFT], [3, BOTTOM], [2, LIFT]]);
+  const held = 300 - off.s;
+  check(held > 3 && held < BACK_V * 3, `lifting stops it: ${held.toFixed(1)} m, no further`);
+  const forward = drive(off, [[3, GAS]]);
+  check(forward.s > off.s + 5 && forward.v > 3, `and forward works straight after: ${(forward.s - off.s).toFixed(1)} m in 3 s`);
+  /* The wheel: reverse with it turned swings the tail that way, which turns the nose the other. */
+  const turned = drive(playerHere(300, 0), [[0.2, LIFT], [5, { steer: 0.5, slider: -1 }]]);
+  check(turned.psi < -0.05, `the wheel to the right in reverse: the nose comes round left (${turned.psi.toFixed(2)} rad)`);
+  /* THE STRAND THE MAINTAINER REPORTED, 6 NOVEMBER, reproduced first: at each impact, back off and drive away.
+     Below the limit it must go both ways; past it, neither, and it must say so. */
+  for (const kmh of [10, 30, 50, 60, 70]) {
+    const sc = scene(playerHere(651, kmh / 3.6));
+    let w = withDriver({ ...base, actors: [{ ...carAt(base, "wreck", 660), crash: { t: 1e9, with: "x", at: P(0, 0) } }], crashes: [] }, sc.me);
+    const go = (secs, inp) => { let any = null; for (let i = 0; i < secs / DT; i++) { const r = tick(sc, w, inp); w = r.w; any = r; } return any; };
+    let hit = false; for (let i = 0; i < 100 && !hit; i++) { const r = tick(sc, w, { steer: 0, slider: 0.3 }); w = r.w; hit = r.hit; }
+    const d = sc.me.damage; go(1, LIFT);
+    const s0 = sc.me.s; go(3, BOTTOM); const s1 = sc.me.s;
+    go(1, LIFT); go(3, { steer: 0.5, slider: 1 }); const moved = Math.hypot(sc.me.s - s1, sc.me.off);
+    if (d < INOPERABLE) check(hit && s0 - s1 > 3 && moved > 4, `${kmh} km/h, damage ${d.toFixed(2)}: back ${(s0 - s1).toFixed(1)} m, then forward ${moved.toFixed(1)} m`);
+    else {
+      check(hit && s0 === s1 && moved < 0.01, `${kmh} km/h, past the limit (${d.toFixed(2)}): goes neither way`);
+      check(/will not go/.test(sc.said?.text ?? "") , `and the screen says so: "${sc.said?.text}"`);
+      go(TOW_AFTER + 1, LIFT); const s2 = sc.me.s; go(3, BOTTOM); const backed = s2 - sc.me.s; go(1, LIFT); go(3, { steer: 0.5, slider: 1 });
+      check(backed > 3 && sc.me.v > 2, `after the tow it goes both ways: back ${backed.toFixed(1)} m, then ${sc.me.v.toFixed(1)} m/s forward`);
+    }
+  }
+  /* Across the seam, not an invisible wall at the end of a path: on a road with a road behind it, with no jump.
+     Found by sabotage: this first chose a path at the map's edge, and passed with the wall in place. */
+  {
+    const w1 = seedGraph(1, 50, loadMap(TEST_MAPS.find((x) => x.id === "test-1").build()), { every: 1e9, target: 0, posted: true });
+    let k0 = -1, r0 = null;
+    for (const j of Object.values(w1.course.joins)) { const L0 = w1.course.at[j.k].layout, r = Object.keys(L0.paths).find((x) => L0.paths[x].from === j.side && L0.paths[x].intent === "straight"); if (r) { k0 = j.k; r0 = r; break; } }
+    let m = { ...playerAt(w1.course, k0, r0), s: 2, off: 0, v: 0, a: 0 }, w = withDriver({ ...w1, actors: [] }, m), jump = 0, crossed = false;
+    for (let i = 0; i < 6 / DT; i++) {
+      const p0 = driverPose(m, w.course);
+      m = stepDriver(m, i < 4 ? LIFT : BOTTOM, w, DT); w = withDriver({ ...w, t: w.t + DT }, m);
+      const p1 = driverPose(m, w.course);
+      jump = Math.max(jump, Math.hypot(p1.x - p0.x, p1.y - p0.y));
+      if (m.k !== k0) crossed = true;
+    }
+    check(crossed && jump < 0.5, `backwards off the start of a path, onto the one leading to it: crossed ${crossed}, the largest step ${jump.toFixed(2)} m`);
+  }
+  /* Reversing into somebody is the player's, whichever way it reads. */
+  const bk = strike(playerHere(700, 0, { backing: true }), carAt(base, "b", 696.5, 3)).fresh[0];
+  check(bk?.atFault, "reversing into a car behind: at fault");
 }
 
 console.log("10. The drive goes on: a driver who never lifts, on the city at 180");

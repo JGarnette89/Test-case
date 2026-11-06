@@ -125,7 +125,7 @@ export function actorsOf(scene, carry) {
     if (a.player) {
       const p = driverPose({ ...a, s: a.s + a.v * carry }, w.course);
       /* The player's lamps: the turn tap IS their signal, and the brake lamp follows the car slowing as theirs does. */
-      out.push({ id: a.id, n: -1, ...p, colour: "#f4f4f2", player: true, blinker: a.signal ?? null, brakeLamp: (a.a ?? 0) < -0.6 || (a.v ?? 0) < 0.1, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null });
+      out.push({ id: a.id, n: -1, ...p, colour: "#f4f4f2", player: true, reversing: !!a.backing, blinker: a.signal ?? null, brakeLamp: (a.a ?? 0) < -0.6 || (a.v ?? 0) < 0.1, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null });
       continue;
     }
     const p = poseOf(w, { ...a, s: Math.min(a.s + a.v * carry, w.course.at[a.k].layout.paths[a.route].length) });
