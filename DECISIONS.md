@@ -4721,6 +4721,7 @@ SIMULATOR log they read as bad luck; together they are the pattern:
    | agent | courtesy's two failures are too few trials | true of the shortfall; the check's second assertion could not fail at all, and its falsifier fired on the larger sample: a lapsed offer (IN FLIGHT 39) |
    | maintainer | parked vehicles were placed against the overall car budget | no, on every map; they do spend the phone's frame budget (10.42) |
    | lead | Clean mode's density is the explanation for the cars that never move | a separate observation: those cars are curb slots, the density point is why added cars bought little (10.42) |
+   | lead | told the maintainer the menu was fixed | with Clean mode off, the default, all eight still showed (10.58, 10.59). Recorded as theirs by the project lead; the agent shipped it and its check passed |
    | lead | most of the driver model has nothing to express on an open road | half: rolling stops 24x and harsh braking 4.8x across the dial on the city already; lane-change faults are the silent part, 10x rarer than on the loop (10.50). **Accepted by the project lead as another of theirs, 5 November** |
    | lead | the three untraced failures may be the recorded-time timeout flaw | they were not timeouts; the crash pair towed, a check counting two moves, a one-seed floor (10.46) |
    | agent | the small maps' rate is at least 3x the city's on test map 1 (ON3) | 2.1x, with 8-10x on peds and signs (10.46) |
@@ -6280,7 +6281,7 @@ Each is from the rules already established (Domain authority), and each is his t
 
 **SABOTAGED 15 WAYS, ALL CAUGHT, AFTER THREE GAPS IT FOUND WERE FIXED:** a yield sign survived, because at equal times "entered second" gave the same answer; the right-hand rule had no test at all; and "one of the two owes" passed with the rule backwards, saying nothing about which. **The cases now enter first and still owe, and the direction is stated from the geometry.**
 
-**WHAT IT DOES NOT SHOW: A REAL RED-RUNNER STRIKING A PLAYER, END TO END.** None occurred, so the two halves are held separately: the record on real traffic, and the rule on a stated record. The first time the maintainer meets one is the first real test.
+**NOT VERIFIED AGAINST THE THING IT WAS BUILT FOR (the project lead, 6 November): live, and it has never met a real red-runner, none in 96 driven minutes. Nothing to do about it now, and it is not to be recorded as verified.** **WHAT IT DOES NOT SHOW: A REAL RED-RUNNER STRIKING A PLAYER, END TO END.** None occurred, so the two halves are held separately: the record on real traffic, and the rule on a stated record. The first time the maintainer meets one is the first real test.
 
 ### Still on the list, and being told to him (the project lead)
 
@@ -6350,6 +6351,17 @@ Reverse is available from any standstill, with nothing hit and no limit but how 
 **Looked at on the served page, in a browser, because a headless render cannot answer it: with Clean mode off, the default, changed only from inside a map, `#/tests` still showed all eight and the map maker. The fix of 10.56 had read correct in its check and was a half-fix on any phone with the setting off.** Which way his is set is not known. So the screen now opens to the two maps whatever the setting, and the other six and the map maker are one tap behind "All test maps (8)". **THE AGENT'S CALL, on the ruling that `#/tests` stays: it stays, one tap further in.** A feature report pointing at a fixture must now say to tap that button.
 
 **The car count still follows the setting:** with Clean mode off a map runs its own count or his saved one, which on the city is 300, not 180. Not changed.
+
+## 10.59 THE MENU'S LESSON, THE PLAN RULED, AND STEERING AUTHORITY GOES TO THE MAINTAINER (the project lead, 6 November)
+
+1. **THE RULE: A UI CHANGE IS NOT VERIFIED UNTIL IT HAS BEEN SEEN ON THE PAGE A USER LOADS, IN THE DEFAULT SETTING.** Local, and in the setting you happen to have, is not verification. **The project lead records as theirs that they told him the menu was fixed when it was not.** Checking the served page is what caught it (10.58). In CLAUDE.md, Conventions.
+2. **THE CHECKS PLAN IS APPROVED, TO STOP AFTER B** (TESTING.md). A, then B, then report the count. Nothing beyond B without a further ruling.
+3. **ITEM E RULED: NO WORK.** The project lead's correction of their own brief: a check deliberately broken that caught it is working, and never having caught a real regression is what a guard on stable code looks like, not evidence of uselessness. "A check that has never failed is either guarding something stable or guarding nothing" is answered by item D, the checks never sabotaged, and not by hunting the ones that have never fired.
+4. **`#/tests` one tap further in: approved.**
+5. **STEERING AUTHORITY IS A DESIGN GAP, NOT A BUG, AND IT IS THE MAINTAINER'S (10.57).** A player can add to a committed turn and never cancel one, and nobody decided what happens when they oppose. The project lead is putting it to him. **No answer is to be picked.** The material is the four behaviors in 10.57's table and the arc geometry. **A strong candidate for his stagger and still a candidate: not confirmed as what he saw.**
+6. **The red-runner fix is live and not verified against a real red-runner** (10.55).
+
+**Nothing further this session unless he asks.**
 
 ## 11. Verification
 

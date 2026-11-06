@@ -6,7 +6,7 @@ account of which checks are load-bearing. The rule it produced is
 CLAUDE.md, cold-start item 8; the tools are `tools/check.mjs` and
 `tools/affected.mjs`.
 
-## THE PLAN FOR GETTING THE CHECKS UNDER CONTROL (6 November): AN INVENTORY, NOT BEGUN
+## THE PLAN FOR GETTING THE CHECKS UNDER CONTROL (6 November): APPROVED BY THE PROJECT LEAD, TO STOP AFTER B; NOT BEGUN
 
 The maintainer's "get the checks under control", read by the project lead as broader than verify-lanecost. **Nothing here has been executed.** Times are each check's last recorded time under load (check-times.json). A whole `--all` is about 35 minutes of wall (2,123 and 2,212 s, last two runs). **THE STATUS COLUMN IS THE 28 OCTOBER HANDOFF'S AND HAS NOT BEEN RE-MEASURED ON MAIN:** several were found on branches and main has moved. Re-confirming comes first, or this fixes things that are no longer wrong.
 
@@ -40,9 +40,9 @@ The maintainer's "get the checks under control", read by the project lead as bro
 
 **D. NEVER AUDITED: 11 checks newer than the 22 October sabotage pass, not named in the audit above.** verify-contact and verify-reaction were sabotaged when written (on the record), so only need entering. **Nine to break once each, on their own module, one run each:** anticipation (428 s), checks (385), encounters (62), lookaway (546), merge (391), mergecount (395), promotion (35), shaping (956), skill (31). About 50 CPU-minutes if each fails at the first try; four at once, about 15 of wall.
 
-**E. NO WORK RECOMMENDED: "never caught a real regression."** The 17 in group 2 below have each been broken on purpose and seen it. Not having caught a regression is what a guard on stable code looks like, and cutting one is a bet with nothing to gain but its time. If time is the point, verify-start is the one to look at. The project lead listed these, so this is a disagreement to rule on, not a finding.
+**E. NO WORK: RULED (DECISIONS 10.59). "Never caught a real regression."** The 17 in group 2 below have each been broken on purpose and seen it. Not having caught a regression is what a guard on stable code looks like, and cutting one is a bet with nothing to gain but its time. If time is the point, verify-start is the one to look at. The project lead accepted this and corrected their brief: never-fired is answered by D, the never-sabotaged.
 
-**THE BOUNDARY, BECAUSE THIS EXPANDS (proposed):** A, then B, then read what B returns; **C only for what B or a re-confirmation shows is still wrong on main**; D last. No new checks. A check that fails for a real defect gets the defect reported and is not fixed in this work. **Stop at the end of B and report the count before committing to the rest.** What B returns cannot be sized before it runs, and that is the honest uncertainty in this plan.
+**THE BOUNDARY, BECAUSE THIS EXPANDS:** A, then B, then read what B returns; **C only for what B or a re-confirmation shows is still wrong on main**; D last. No new checks. A check that fails for a real defect gets the defect reported and is not fixed in this work. **Stop at the end of B and report the count before committing to the rest.** What B returns cannot be sized before it runs, and that is the honest uncertainty in this plan.
 
 **Rough order of cost, machine time, attention not estimated:** A under an hour with one derived run; B 70 minutes of wall; C 2-3 runs of each that survives; D 15 minutes of wall.
 

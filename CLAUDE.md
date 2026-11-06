@@ -2310,6 +2310,7 @@ invisible to the encroachment fault because it only ever watches priors — in
   and grep `<sha> built` -- the stamp on the SERVED page, never the local
   tree. index.html carries `Cache-Control: max-age=600`; there is no
   service worker. Before saying "on the LAN", check a vite server is running.
+- **A UI CHANGE IS NOT VERIFIED UNTIL IT HAS BEEN SEEN ON THE PAGE A USER LOADS, IN THE DEFAULT SETTING (the project lead, 6 November; DECISIONS 10.59).** Local, and in the setting you happen to have, is not verification. The menu fix read correct in its check and was a half-fix with Clean mode off, the default. This is the case the browser is for in the order below: a stamp says which build is served, not what it shows.
 - **VERIFY FROM THE SERVER SIDE, NOT THE BROWSER SIDE.** The maintainer,
   25 September, after the browser pane's approval prompts piled up: an
   agent here cannot judge anything visual anyway -- no animation frames
