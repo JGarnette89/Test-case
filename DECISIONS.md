@@ -6241,7 +6241,7 @@ At-fault with a car is a repair bill and no more. Rear-ended is presumed not at 
 
 ### How often: not once, and the sample is small
 
-`tools/measure/side-impact.mjs`: a scripted player who obeys their own light and sign and stops for the car ahead in their lane; each car's light read as it crossed its line. 180 cars, test map 1 and the city, 3 seeds, 8 minutes each, look-away off and on: **96 driven minutes, 150 or so intersections, 60 km.**
+`tools/measure/side-impact.mjs`: a scripted player who obeys their own light and sign and stops for the car ahead in their lane; each car's light read as it crossed its line. 180 cars, test map 1 and the city, 3 seeds, 8 minutes each, look-away off and on: **96 driven minutes, 140 intersections (8, 62, 9, 61), 59 km. Commit `5fc7cc9`'s branch commit says "about 150": the right number is 140.**
 
 - **NO RED-RUNNER STRUCK THE PLAYER, IN 96 MINUTES.** Rule of three: fewer than about one in 30 minutes on a driver doing this, no tighter. **The exposure is thin, and the first run's 0 contacts on test map 1 was 8 intersections in 24 minutes, which is why it was not believed.** The player spent most of it on long stretches and being put back at the start.
 - **TRAFFIC DOES ENTER ON RED, AND MOSTLY LEGALLY:** of 3,145 entries on test map 1, 179 on red. 158 are rights after stopping. 19 never stopped, 8 of them going straight. They are late ambers crossing just after the change, the amber rule committing a driver who could not stop. City: 84 of 15,640. **So a true red-runner hardly exists in this sim; what exists is a car a moment late.**
