@@ -34,8 +34,8 @@ import { parkingOf, parkedPoses, contactWith, PARK_CLEAR, SLOT } from "../src/si
 import { touching } from "../src/sim/player.js";
 import { PARK_W, LANE } from "../src/map/format.js";
 import { poseOf } from "../src/sim/crossing.js";
-import { TEST_MAPS } from "../src/map/samples.js";
-import { carsFor, carsMaxFor, DENSITY } from "../src/map/cars.js";
+import { TEST_MAPS, cleanMaps } from "../src/map/samples.js";
+import { carsFor, carsMaxFor, cleanCarsFor, DENSITY } from "../src/map/cars.js";
 import { DT } from "../src/sim/traffic.js";
 import { playerOn } from "../src/sim/drive.js";
 import { poseAt, cornersOf, boxesOverlap } from "../src/sim/intersection.js";
@@ -508,6 +508,14 @@ console.log("\n15. HOW MANY CARS A MAP GETS: ITS OWN ROAD, AT ONE DENSITY");
      chosen for test map 1, over 2.5 times the road. */
   const t1 = loadMap(TEST_MAPS.find((t) => t.id === "test-1").build());
   const cy = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
+  /* CLEAN MODE (DECISIONS 10.56): stated here, map by map. */
+  {
+    const want = { city: 180, "test-loop": 180, "test-highway": 180, "test-1": 180, "test-peds": 40, "test-signs": 40, "test-buses": 20, "trial-city": 180 };
+    const got = Object.entries(want).map(([id, n]) => { const c = cleanCarsFor(loadMap(TEST_MAPS.find((m) => m.id === id).build())); return [id, n, c]; });
+    check(got.every(([, n, c]) => n === c), `Clean mode's count: a map built small keeps its own, the others 180 (${got.map(([id, , c]) => `${id} ${c}`).join(", ")})`);
+    check(cleanMaps(TEST_MAPS).map((m) => m.id).join() === "city,test-loop", `Clean mode offers the city and the endless highway, and no fixture (${cleanMaps(TEST_MAPS).map((m) => m.name).join(", ")})`);
+    check(TEST_MAPS.length === 8, "and every test map is still there behind it");
+  }
   check(carsFor(t1) === 120, `test map 1 keeps the 120 it always had (${t1.laneKm.toFixed(1)} lane-km)`);
   const per = (l) => carsFor(l) / l.laneKm;
   check(carsFor(cy) >= 280 && Math.abs(per(cy) - per(t1)) / per(t1) < 0.05, `the city gets ${carsFor(cy)} over its ${cy.laneKm.toFixed(1)} lane-km -- the same density, ${per(cy).toFixed(1)} against ${per(t1).toFixed(1)} per lane-km`);

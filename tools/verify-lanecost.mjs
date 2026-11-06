@@ -27,12 +27,14 @@ const mean = (xs) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : Na
    over half a minute of a warmed world with lane changes on, the neighbour
    index off, as section 6 has always measured. A sample counts if any frame
    on its stack is lanechange.js's. */
-async function ownShare(target) {
-  let w = { ...seedGraph(3, 50, loaded, { target, posted: true, laneChanges: true, keepRight: true }), noIndex: true };
+async function ownCost(target, noIndex = true, seed = 3) {
+  let w = { ...seedGraph(seed, 50, loaded, { target, posted: true, laneChanges: true, keepRight: true }), noIndex };
   for (let i = 0; i < 200; i++) w = step(w);
   const session = new Session(); session.connect();
   await session.post("Profiler.enable"); await session.post("Profiler.setSamplingInterval", { interval: 100 }); await session.post("Profiler.start");
+  const cpu0 = process.cpuUsage();
   for (let i = 0; i < 300; i++) w = step(w);
+  const cpu = process.cpuUsage(cpu0);
   const { profile } = await session.post("Profiler.stop");
   session.disconnect();
   const by = new Map(profile.nodes.map((n) => [n.id, n])), parent = new Map();
@@ -44,7 +46,9 @@ async function ownShare(target) {
     total++;
     for (let id = id0; id != null; id = parent.get(id)) if (/lanechange\.js$/.test(by.get(id).callFrame.url)) { inside++; break; }
   }
-  return inside / Math.max(1, total);
+  const share = inside / Math.max(1, total);
+  /* CPU, not the wall: what this process itself spent, whoever else wants the machine (see the check below). */
+  return { share, ms: (share * (cpu.user + cpu.system)) / 1000 / 300 };
 }
 
 /* 6. THE HEADROOM KEPT, by controlled comparison: the same map, seed and
@@ -85,14 +89,19 @@ async function ownShare(target) {
        the bound is held on what lane changing's code itself costs --
        everything that runs inside lanechange.js, profiled -- and the
        switch's ratio is reported beside it. */
-    const own = await ownShare(target);
+    const own = (await ownCost(target)).share;
     check(own < 0.2, `at ${target} cars lane changing's own code is ${(own * 100).toFixed(1)}% of a step (profiled, every car scanning everybody); switching it off changes the traffic and the step by ${(cost * 100).toFixed(0)}% (${mean(off).toFixed(2)} -> ${mean(on).toFixed(2)} ms a tick, median)`);
     if (target === 300) {
-      const onI = [], offI = [];
-      for (const seed of [3, 5]) { offI.push(tick(target, false, seed, true, false)); onI.push(tick(target, true, seed, true, false)); }
-      const added = mean(onI) - mean(offI), addedBefore = mean(on) - mean(off);
-      /* 15%: two median timings on a shared desk machine wobble by about that much between runs. */
-      check(added <= addedBefore * 1.15, `and with the neighbour index it costs no more: ${added.toFixed(2)} ms a tick added, against ${addedBefore.toFixed(2)} ms scanning everybody`);
+      /* THE CODE'S OWN CPU, AND NOT TWO DIFFERENCES OF WALL-CLOCK MEDIANS (DECISIONS 10.56). This was
+         (on - off) with the index against (on - off) without: four medians of step time, a difference
+         of differences, in a suite running six other checks. It failed 5 of 51 recorded runs and passed
+         when run again. It was also the instrument this file already refuses above, since switching lane
+         changes off changes the traffic. So: the share of samples inside lanechange.js, times the CPU this
+         process spent, each way, two seeds. The 15% is unchanged. */
+      const inI = [], inS = [];
+      for (const seed of [3, 5]) { inI.push((await ownCost(target, false, seed)).ms); inS.push((await ownCost(target, true, seed)).ms); }
+      const withIndex = mean(inI), scanning = mean(inS);
+      check(withIndex <= scanning * 1.15, `and with the neighbour index it costs no more: ${withIndex.toFixed(2)} ms of CPU a tick inside lane changing, against ${scanning.toFixed(2)} ms scanning everybody`);
     }
     /* ...of which keeping right is part: the same comparison with only it off. */
     const noKeep = [];

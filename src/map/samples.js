@@ -433,8 +433,11 @@ export function testLoop() {
 
 /* THE TEST MAPS, for the Test maps screen: each builds its map on demand
    (the city is generated, so it is built only when opened). */
+export const cleanMaps = (maps) => maps.filter((m) => m.clean);
 export const TEST_MAPS = [
-  { id: "city", name: "Stand-in city", blurb: "Two neighbourhoods with their own drivers, parked cars, buildings, an arterial loop and a collector on signals.", build: testCityReady },
+  /* `clean`: offered in Clean mode (DECISIONS 10.50 ruling 1, 10.51, 10.56). Everything else is a fixture: it stays in
+     the list so a feature can point at it, behind "All test maps", and leaves the choices a person driving is given. */
+  { id: "city", clean: true, name: "Stand-in city", blurb: "Two neighbourhoods with their own drivers, parked cars, buildings, an arterial loop and a collector on signals.", build: testCityReady },
   /* SECOND, not first: the screen builds its first map the moment it opens, and this one is generated large (about 10 s here). */
   { id: "trial-city", name: "Trial city", blurb: "The trial for the final map: a large city of every intersection type, a downtown and buses, with a divided highway past it joined by two diamond interchanges -- signals on one, stopped ramps on the other -- and an exit-only lane. Traffic comes and goes at the highway's ends and the city's edges.", build: () => trialCity(1) },
   { id: "test-peds", name: "Pedestrians", blurb: "Crosswalks at a four-way stop and at an uncontrolled crossroads, and the people who walk them.", build: testPeds },
@@ -442,5 +445,5 @@ export const TEST_MAPS = [
   { id: "test-buses", name: "Buses", blurb: "Curb stops and bays on a two-lane collector: a bus stops, people get off and on, the traffic waits behind it or passes the bay, and gives way to a bus pulling out -- if it knows to.", build: testBuses },
   { id: "test-1", name: "Test map 1", blurb: "The loop, the T, the crossroads, the five-way, the overpass and the big arterial.", build: testMap1 },
   { id: "test-highway", name: "Highway", blurb: "Six kilometres of three lanes each way, curving over low hills: two signalled crossroads timed as a green wave, a bridge, and trucks to pass.", build: testHighway },
-  { id: "test-loop", name: "Endless highway", blurb: "A one-way loop of three lanes, about 10.4 km round, with four interchanges keeping the traffic fresh. You start on a slip road and join from an acceleration lane.", build: testLoop },
+  { id: "test-loop", clean: true, name: "Endless highway", blurb: "A one-way loop of three lanes, about 10.4 km round, with four interchanges keeping the traffic fresh. You start on a slip road and join from an acceleration lane.", build: testLoop },
 ];

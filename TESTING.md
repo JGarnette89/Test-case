@@ -202,6 +202,8 @@ twice as dear (7.2% of a step at 120 cars) PASSED; only about ten times
 (51.6%) failed. It guards against gross regressions only -- recorded, not
 tightened. verify-loop moves to group 1.
 
+**verify-lanecost's second assertion was rewritten on 5 November (DECISIONS 10.56)** from a difference of wall-clock medians to the CPU spent inside lanechange.js. The flake was not reproduced, under load, in the old form or the new: if it fails again, read its log first.
+
 **THE COST OF A CORE CHANGE, measured 22 October** -- the question asked
 twice. Subsetting (14 October) pays for leaf changes only: a screen, money
 or routing runs 1-5 checks in seconds, the renderer or the worker 6-11 in

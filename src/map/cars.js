@@ -27,4 +27,14 @@ const round10 = (n) => Math.round(n / 10) * 10;
 export const carsFor = (loaded) => (loaded?.traffic?.cars > 0
   ? Math.max(CARS.min, Math.min(carsMaxFor(loaded), loaded.traffic.cars))
   : Math.max(CARS.min, round10(DENSITY * (loaded?.laneKm ?? 28.5))));
+/* CLEAN MODE'S COUNT (DECISIONS 10.50 ruling 1; 10.56). It put 180 on everything, which is 4.5
+   times what a 40-car fixture is built for and 9 times a 20-car one. A map built small keeps its
+   own; one built for real traffic gets the 180 measured best on the phone (22 October), which on
+   the city is under what its road would take. SMALL_BELOW is a flagged design constant, and it
+   sits in the gap between what the maps are built for: 20-40, and 120 upward. */
+export const CLEAN_CARS = 180, SMALL_BELOW = 100;
+export const cleanCarsFor = (loaded) => {
+  const own = carsFor(loaded);
+  return own < SMALL_BELOW ? own : Math.max(CARS.min, Math.min(carsMaxFor(loaded), CLEAN_CARS));
+};
 export const carsMaxFor = (loaded) => Math.min(CARS_CEILING, Math.max(CARS.max, round10(3 * DENSITY * (loaded?.laneKm ?? 28.5))));

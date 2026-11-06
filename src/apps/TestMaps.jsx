@@ -9,10 +9,11 @@
    the loader); this screen only lists them and opens #/map's screen on
    the chosen one.
    ===================================================================== */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Eye, Car, Wand2, Shuffle } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
-import { TEST_MAPS } from "../map/samples.js";
+import { TEST_MAPS, cleanMaps } from "../map/samples.js";
+import { settings, loadSettings } from "../settings.js";
 import { mapFromBrief, BRIEF, DEFAULT_BRIEF } from "../map/brief.js";
 import MapRoad from "./MapRoad.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
@@ -20,6 +21,14 @@ import ErrorBoundary from "./ErrorBoundary.jsx";
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
 
 export default function TestMaps() {
+  /* CLEAN MODE'S CHOICES (DECISIONS 10.56): the proper map and the endless highway. The fixtures
+     stay one tap away, since this screen is how every feature reaches the maintainer. */
+  const [everything, setEverything] = useState(false);
+  /* Settings arrive after the first render on a reload straight to this screen. */
+  const [, loaded] = useState(false);
+  useEffect(() => { loadSettings().then(() => loaded(true)); }, []);
+  const clean = settings().clean === true;
+  const offered = clean && !everything ? cleanMaps(TEST_MAPS) : TEST_MAPS;
   const [open, setOpen] = useState(TEST_MAPS[0]?.id ?? null);   // which map's sections are shown
   const [chosen, setChosen] = useState(null);                  // { mapId, section, mode } while viewing one
   /* A map is built only when its sections are shown -- the city is
@@ -59,10 +68,15 @@ export default function TestMaps() {
   return (
     <div style={S.page}>
       <div style={S.head}>
-        <span style={S.title}>Test maps</span>
+        <span style={S.title}>{clean && !everything ? "Drive" : "Test maps"}</span>
         <span style={S.sub}>Pick a map, then a section: Watch shows the traffic there, Drive puts you at the wheel heading into it. Each says what to judge.</span>
       </div>
-      <div style={S.card}>
+      {clean && (
+        <button className="btn" style={{ ...S.act, alignSelf: "flex-start", marginBottom: 10 }} onClick={() => setEverything((v) => !v)}>
+          {everything ? "Clean mode's maps only" : `All test maps (${TEST_MAPS.length})`}
+        </button>
+      )}
+      {(!clean || everything) && <div style={S.card}>
         <div style={{ ...S.mapHead, cursor: "default" }}>
           <span style={{ fontFamily: FONT_D, fontSize: 16, color: C.white }}>Make a map</span>
           <span style={{ fontFamily: FONT_U, fontSize: 12, color: DIM, textAlign: "left" }}>Say what it should test, then Make it. Each map comes with a section for every thing asked for.</span>
@@ -100,8 +114,8 @@ export default function TestMaps() {
             ))}
           </>
         )}
-      </div>
-      {TEST_MAPS.map((m) => (
+      </div>}
+      {offered.map((m) => (
         <div key={m.id} style={S.card}>
           <button className="btn" style={S.mapHead} onClick={() => setOpen(open === m.id ? null : m.id)}>
             <span style={{ fontFamily: FONT_D, fontSize: 16, color: C.white }}>{m.name}</span>
