@@ -6292,7 +6292,7 @@ A brake-check reads as not at fault. **A 5 km/h scrape stops a traffic car dead 
 
 ### 1. What Clean mode offers, and how many cars
 
-**He was picking between eight options, two alike and one valid: "trial city" or "stand-in city".** With Clean mode on, `#/tests` now offers **Stand-in city and Endless highway** (`clean` on a `TEST_MAPS` entry). The other six stay behind one button, "All test maps", and with Clean mode off nothing changes: the screen is how every feature reaches him (10.51). **Note: this follows the Clean mode setting. A person with it off still sees eight.**
+**He was picking between eight options, two alike and one valid: "trial city" or "stand-in city".** `#/tests` now offers **Stand-in city and Endless highway** (`clean` on a `TEST_MAPS` entry), with the other six behind one button. **CORRECTED BY 10.58: as first shipped this followed the Clean mode setting, and looking at the served page showed eight options with it off.**
 
 **The count:** 180 on everything was 4.5 times what a 40-car fixture is built for and 9 times a 20-car one. `cleanCarsFor` in map/cars.js: a map whose own count is under `SMALL_BELOW` (100) keeps it, and the rest get the 180 measured best on the phone. 100 is flagged, and sits in the gap between what the maps are built for, 20-40 and 120 upward. Peds 40, signs 40, buses 20; the city, the loop, the highway and test map 1 stay at 180, so nothing he drives on the two offered maps moves.
 
@@ -6344,6 +6344,12 @@ Reverse is available from any standstill, with nothing hit and no limit but how 
 **AND ONE THAT IS NOT TWO CONTROLLERS, BUT COULD READ AS A STAGGER:** `s` advances by v cos(psi) whatever `off` is, and the pose is the path's offset by `off`. On a straight road that is exact. **On an arc it omits the 1 - kappa*off of true path-relative motion, so the car's real speed changes with how far it is off the arc; and at an offset approaching the arc's radius on the inside, the point folds through the center.** Arcs here run about 4 to 10 m, and the player's wheel can reach that. Not measured. **So the answer to "the player always wins" is no: in the box they share the wheel by design and past certain offsets the geometry itself misbehaves. WHETHER EITHER IS WHAT HE SAW IS NOT KNOWN AND IS NOT CLAIMED.** The fix if it comes to that is a decision, who has authority in a committed turn, then a patch.
 
 **For the believable stop (the project lead):** one entanglement fewer, since reverse is no longer tied to collisions. Reading it for the scope: a crash sets `v: 0` in `crashWith` and in `step`, and a car here runs on its path, so two cars carrying momentum through a side impact would pass through each other unless a crashed car leaves its path. **That is the hard part of it, to scope when its turn comes.**
+
+## 10.58 THE MENU, LOOKED AT (the project lead asked that it be confirmed, 6 November)
+
+**Looked at on the served page, in a browser, because a headless render cannot answer it: with Clean mode off, the default, changed only from inside a map, `#/tests` still showed all eight and the map maker. The fix of 10.56 had read correct in its check and was a half-fix on any phone with the setting off.** Which way his is set is not known. So the screen now opens to the two maps whatever the setting, and the other six and the map maker are one tap behind "All test maps (8)". **THE AGENT'S CALL, on the ruling that `#/tests` stays: it stays, one tap further in.** A feature report pointing at a fixture must now say to tap that button.
+
+**The car count still follows the setting:** with Clean mode off a map runs its own count or his saved one, which on the city is 300, not 180. Not changed.
 
 ## 11. Verification
 

@@ -6,6 +6,46 @@ account of which checks are load-bearing. The rule it produced is
 CLAUDE.md, cold-start item 8; the tools are `tools/check.mjs` and
 `tools/affected.mjs`.
 
+## THE PLAN FOR GETTING THE CHECKS UNDER CONTROL (6 November): AN INVENTORY, NOT BEGUN
+
+The maintainer's "get the checks under control", read by the project lead as broader than verify-lanecost. **Nothing here has been executed.** Times are each check's last recorded time under load (check-times.json). A whole `--all` is about 35 minutes of wall (2,123 and 2,212 s, last two runs). **THE STATUS COLUMN IS THE 28 OCTOBER HANDOFF'S AND HAS NOT BEEN RE-MEASURED ON MAIN:** several were found on branches and main has moved. Re-confirming comes first, or this fixes things that are no longer wrong.
+
+**A. THE RUNNER: small, no simulation, and it pays for the rest. Do first.**
+
+| what is wrong | fix | cost |
+|---|---|---|
+| A check whose sample grows times out until its recorded time is updated: the limit is 3x the LAST time | keep a hash of the check file beside its time; a changed file counts as unrecorded and gets the cap | about 20 lines, a fake check to prove it |
+| The line says "3x its last time" when the 1,200 s cap fired, which misled the 5 November gate (10.46) | say which limit fired | 1 line |
+| **A failure's log is overwritten by the next run, which is why the lanecost flake could not be diagnosed: nobody can say which assertion failed in 5 of 51 runs** | keep a failed check's log under its time | about 5 lines. **Most valuable line in this table** |
+| Four checks sit within about 25% of the cap on a loaded run (start 1,007 s, shaping 956, peds 944, walkers 920), and timed out together before | a decision: raise the cap, or cut those samples, which costs a measurement each | raising it is 1 line; cutting is C-sized |
+| 22 entries in check-times.json for checks deleted on 14 October | prune on write | 1 line |
+
+**B. A MEASURED LIST OF WHICH CHECKS PASS ON THEIR SEEDS, in place of guessing.** A load hook, no change to src, that shifts every seed `seedGraph` is given; the suite run at two shifts. **About 70 minutes of wall, little attention, and it returns the real inventory.** Whatever fails is a suspect, not a verdict, since a fair check can fail on a bad draw: each gets read. **The follow-up is the unbounded part: see the boundary. Not every seed goes through `seedGraph`, so a pass here is not proof, and a hook that moves nothing must be shown not to.**
+
+**C. KNOWN UNSOUND, by name.** Each is: re-confirm on main, state where its bar comes from, restate as a measured spread or derivation, sabotage. So about 2-3 runs of that check, plus reading.
+
+| check (last time) | what is wrong | status at 28 October | note |
+|---|---|---|---|
+| verify-lanes "how tight" (553 s) | encoded the confidence and aggression conflation | restated on `aggression-phase1` only | **not on main**; goes with that branch |
+| verify-keepright exceptions (279 s) | two definitions of "no gap" | same | same |
+| verify-rivals (214 s) | asserts ZERO crashes; main crashes about 1 run in 5-6 at those settings | pending, after IN FLIGHT 40 | a rate needs the rate measured. The brake reaction (10.46) has moved it since |
+| verify-shaping (956 s) | passes only on seeds 1-2; jolts on 3 of 8 | pending the trace | slowest here |
+| verify-loop (512 s) | speed spread floor of 10 on ONE seed, which fails with the delay off too (7.57, seed 3; 10.46) | found 5 November, not fixed | its world has the delay off, so it passes |
+| verify-promotion (35 s) | asserts a 22 October agreement with the wrong lane rule | pending | cheap |
+| verify-signal (172 s) | blames corner braking (-5.87 m/s^2) on the amber | pending | a proxy that stopped tracking its target |
+| verify-headway (440 s) | a sample floor: 8 of 8 agree, none missed | pending | **possibly already answered:** six seeds were added on 4 November. Check before working on it |
+| verify-drive (107 s) | one lucky pass of four; the queue is IN FLIGHT 37 | pending | seen on a branch; re-confirm |
+| verify-courtesy (728 s) | "noticed being let in" 2/2 and courtesy-off 0/2, untraced | seen on `cross-node-gap` | may not exist on main |
+| verify-lanecost (427 s) | 5 failures of 51, cause unknown | rewritten 10.56, flake never reproduced | **no work; wait for a log (A)** |
+
+**D. NEVER AUDITED: 11 checks newer than the 22 October sabotage pass, not named in the audit above.** verify-contact and verify-reaction were sabotaged when written (on the record), so only need entering. **Nine to break once each, on their own module, one run each:** anticipation (428 s), checks (385), encounters (62), lookaway (546), merge (391), mergecount (395), promotion (35), shaping (956), skill (31). About 50 CPU-minutes if each fails at the first try; four at once, about 15 of wall.
+
+**E. NO WORK RECOMMENDED: "never caught a real regression."** The 17 in group 2 below have each been broken on purpose and seen it. Not having caught a regression is what a guard on stable code looks like, and cutting one is a bet with nothing to gain but its time. If time is the point, verify-start is the one to look at. The project lead listed these, so this is a disagreement to rule on, not a finding.
+
+**THE BOUNDARY, BECAUSE THIS EXPANDS (proposed):** A, then B, then read what B returns; **C only for what B or a re-confirmation shows is still wrong on main**; D last. No new checks. A check that fails for a real defect gets the defect reported and is not fixed in this work. **Stop at the end of B and report the count before committing to the rest.** What B returns cannot be sized before it runs, and that is the honest uncertainty in this plan.
+
+**Rough order of cost, machine time, attention not estimated:** A under an hour with one derived run; B 70 minutes of wall; C 2-3 runs of each that survives; D 15 minutes of wall.
+
 ## The numbers
 
 | | before (13 October) | after (14 October) |
