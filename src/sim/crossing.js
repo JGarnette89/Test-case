@@ -1836,7 +1836,8 @@ export function step(world) {
   let playerFreeSince = null, playerFree = false;
   if (pl) {
     const ws = whatStops(pl, world);
-    if ((pl.v ?? 0) < AT_REST && freeOf(ws)) { playerFreeSince = world.playerFreeSince ?? world.t; playerFree = world.t - playerFreeSince >= REGISTER_FLOOR + REGISTER_SPAN; }
+    /* A player just in a collision is not dawdling (contact.js `shakenUntil`). */
+    if ((pl.v ?? 0) < AT_REST && freeOf(ws) && !(world.t < (pl.shakenUntil ?? -Infinity))) { playerFreeSince = world.playerFreeSince ?? world.t; playerFree = world.t - playerFreeSince >= REGISTER_FLOOR + REGISTER_SPAN; }
   }
   /* COURTESY (courtesy.js): what the player is signalling for, since when,
      and the one driver it asks. Nothing when there is no player signalling. */
@@ -3271,12 +3272,12 @@ export function contactsIn(world) {
 }
 
 /* The car the player hit has crashed too: it stops, and it is logged. */
-export function crashWith(world, id, at, other = "player") {
+export function crashWith(world, id, at, other = "player", striker = null) {
   const t = world.t;
   let found = false;
   const actors = world.actors.map((a) => { if (a.id !== id || a.crash) return a; found = true; return { ...a, v: 0, a: 0, crash: { t, with: other, at } }; });
   if (!found) return world;
-  return { ...world, actors, crashes: [...(world.crashes ?? []), { t, a: other, b: id, at }].slice(-50) };
+  return { ...world, actors, crashes: [...(world.crashes ?? []), { t, a: other, b: id, at, ...(striker ? { striker } : {}) }].slice(-50) };
 }
 
 export function overlapping(world) {

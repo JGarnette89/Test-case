@@ -114,8 +114,8 @@ export function handle(state, msg) {
     const t0 = typeof performance !== "undefined" ? performance.now() : 0;
     if (msg.me) w = withDriver(w, msg.me);
     w = step(w);
-    let hit = false;
-    if (msg.me) ({ world: w, hit } = playerContact(w, msg.me));
+    let hit = false, fresh = null, solids = null;
+    if (msg.me) ({ world: w, hit, fresh, solids } = playerContact(w, msg.me));
     /* `ms`: what the step cost where it ran -- the page cannot see inside the worker otherwise (pace.js, the sim's clock).
        `diffMs`: building the answer; `at`: when the worker took the message and handed the answer back, on the clock
        page and worker share (timeOrigin + now), so the page can split its round trip into waiting, working and coming back. */
@@ -124,7 +124,7 @@ export function handle(state, msg) {
     const dyn = changed(w, state.sent);
     const t2 = has ? performance.now() : 0;
     const origin = has ? performance.timeOrigin ?? 0 : 0;
-    return { state: { ...state, world: w, sent: w }, reply: { type: "world", seq: msg.seq, dyn, hit, ms: has ? t1 - t0 : null, diffMs: has ? t2 - t1 : null, at: has ? { in: origin + t0, out: origin + t2 } : null } };
+    return { state: { ...state, world: w, sent: w }, reply: { type: "world", seq: msg.seq, dyn, hit, ...(fresh?.length || solids?.length ? { contact: { fresh, solids } } : {}), ms: has ? t1 - t0 : null, diffMs: has ? t2 - t1 : null, at: has ? { in: origin + t0, out: origin + t2 } : null } };
   }
   return { state, reply: null };
 }

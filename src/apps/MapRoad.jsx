@@ -36,7 +36,7 @@ import { worldFor, playerContact, START } from "../sim/scene.js";
 import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
 import { placesOf, routeTo } from "../sim/route.js";
-import { noticeTick } from "../sim/session.js";
+import { noticeTick, contactTick } from "../sim/session.js";
 import { newPace, paceFrame, paceReply, carryOf, pageMore, pageLeft, newSimClock, clockTick, clockSummary, frameTick, frameParts } from "../sim/pace.js";
 import { junctionsOf, postedAt, poseOnGraph, limitAt } from "../sim/graph.js";
 import { parkedPoses } from "../sim/parking.js";
@@ -48,6 +48,7 @@ import { viewOf } from "../iso/project.js";
 import { AXES, soundnessOf, LACKING_AT, COMPETENT_AT, CONFIDENT_ENOUGH } from "../core/driver.js";
 import { offerFare, accept } from "../sim/jobs.js";
 import { loadWallet } from "../sim/money.js";
+import { loadMailbox } from "../sim/mail.js";
 import { HONK_FOR } from "../sim/horn.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
 import { perfMeter, taskProbe, heapProbe } from "../iso/perf.js";
@@ -178,6 +179,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const workerRef = useRef(false);
   /* THE WALLET (sim/money.js): loaded once, carried from scene to scene; a fare paid is written by the session. */
   const walletRef = useRef(null);
+  const mailRef = useRef(null);
   const [offer, setOffer] = useState(null);   // a fare on offer, or a cancel to confirm -- set by taps, never by the frame loop
   /* THE FREE CAMERA (iso/freecam.js). Watching, it is the view called
      "free look" and any drag on the map enters it. Driving, the canvas is
@@ -192,7 +194,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [zoom, setZoom] = useState(1);
   const [rotate, setRotate] = useState(true);   // driving: the view turns with the car; off is the fixed view, for comparison
   const [warnings, setWarnings] = useState([]);
-  const [stopped, setStopped] = useState(false);     // after a contact, until restarted
+  const [mailOpen, setMailOpen] = useState(false);
 
   const scene = useRef(null);
   const cam = useRef({ ...newChase(), id: null });
@@ -215,7 +217,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const carsMax = carsMaxFor(scene.current.loaded);
 
   const restart = (s = seed, kmh = limit, m = mode, n = cars, look = lookAway, sh = shapeOn, ck = checksOn) => {
-    setSeed(s); setLimit(kmh); setMode(m); setStopped(false); setCars(n); setLookAway(look); setShapeOn(sh); setChecksOn(ck);
+    setSeed(s); setLimit(kmh); setMode(m); setCars(n); setLookAway(look); setShapeOn(sh); setChecksOn(ck);
     scene.current?.remote?.stop();
     scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look, !sh, ck);
     if (skillRef.current) scene.current.world = { ...scene.current.world, skill: skillRef.current };
@@ -239,6 +241,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
 
   useEffect(() => { setWarnings(scene.current.loaded.warnings); }, []);
   useEffect(() => { loadWallet().then((w) => { walletRef.current = w; if (scene.current && !scene.current.wallet) scene.current.wallet = w; }); }, []);
+  useEffect(() => { loadMailbox().then((b) => { mailRef.current = b; if (scene.current && !scene.current.mailbox) scene.current.mailbox = b; }); }, []);
   /* The sim's worker goes when the screen does. */
   useEffect(() => () => scene.current?.remote?.stop(), []);
 
@@ -309,8 +312,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
          is stepped first and written into the world, so this tick's
          traffic sees where they really are. */
       /* THE SIM'S WORKER (sim/remote.js), made once per scene. Its answer
-         lays the stepped world over this copy and, on contact, stops the
-         player -- the in-thread loop's `break`, a message later. Where no
+         lays the stepped world over this copy and says what the player
+         touched, for the page to answer (sim/contact.js). Where no
          worker can be made, or it fails, the loop below steps in-thread
          from this copy, exactly as before. */
       if (sc.remote === undefined && !workerRef.current) sc.remote = null;   // the page steps the world (below)
@@ -325,7 +328,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
              the player drawn, and the clock comes down by a tick (sim/pace.js). */
           if (seq !== 1) { if (own.pace) paceReply(own.pace); if (own.sentMe && own.me) { own.me = own.sentMe; own.world = withDriver(own.world, own.me); } }
           if (seq === 1) own.remoteReady = true;
-          else if (own.sentPrev) { noticeTick(own, own.sentPrev, { me: own.sentMe, world: own.world, hit }); own.sentPrev = null; }
+          else if (own.sentPrev) { noticeTick(own, own.sentPrev, { me: own.sentMe, world: own.world, hit, contact: r?.contact }); own.sentPrev = null; }
+          /* Contact (sim/contact.js): the response on the player, who is the page's. */
+          if (seq !== 1 && own.me) { contactTick(own, { hit, ...(r?.contact ?? {}) }, own.world); own.world = withDriver(own.world, own.me); }
           own.sentMe = null;
           /* THE SIM'S CLOCK (pace.js): every tick as it lands, against the wall, the round trip split into its legs on the clock page and worker share. */
           if (!fresh) {
@@ -336,13 +341,13 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
               backMs: r?.at ? abs - (at - h0) - r.at.out : null, readMs: r?.readMs ?? null,
             });
           }
-          if (hit) { contacts.current++; flash.current = 1; setStopped(true); }
+          if (hit) { contacts.current++; flash.current = 1; }
         }, (message) => { console.warn("the sim's worker failed; stepping in the page", message); own.remote = null; });
         /* The worker builds its world from the recipe, which has no dial: told after, in order behind the init. */
         if (own.world.skill) own.remote?.set("skill", own.world.skill);
       }
       const tSim0 = performance.now();
-      if (playing && !stopped && !(mode === "drive" && look) && sc.remote) {
+      if (playing && !(mode === "drive" && look) && sc.remote) {
         /* One tick in flight at most; a frame that finds the answer still
            out draws the world it has. Owed time is held to two ticks, so
            an overloaded worker slows the world rather than piling up. */
@@ -362,7 +367,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           sc.sentPrev = prevTick; sc.sentMe = next; sc.sentAt = performance.now();
           sc.remote.step(next);
         }
-      } else if (playing && !stopped && !(mode === "drive" && look)) {
+      } else if (playing && !(mode === "drive" && look)) {
         owed.current += dt;
         /* A STEP BUDGET PER FRAME (sim/pace.js): stepping until caught up
            spiralled -- three 44 ms steps a frame at 259 cars on the phone. */
@@ -384,20 +389,20 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           heap.current?.step("after", performance.now());
           sc.world = w;
           clockTick(sc.clock ??= newSimClock(), performance.now(), w.t, { stepMs: performance.now() - t0 });
-          /* Contact stops the car where it is (sim/scene.js `playerContact`):
-             what a collision IS in this game is still the maintainer's question. */
+          /* Contact (sim/contact.js): an event and a response, never the end of the drive. */
           if (sc.me) {
             const c = playerContact(w, sc.me);
             sc.world = c.world;
-            noticeTick(sc, prevTick, { me: sc.me, world: sc.world, hit: c.hit });
-            if (c.hit) { contacts.current++; flash.current = 1; setStopped(true); break; }
+            noticeTick(sc, prevTick, { me: sc.me, world: sc.world, hit: c.hit, contact: c });
+            if (contactTick(sc, c, sc.world)) { contacts.current++; flash.current = 1; }
+            sc.world = withDriver(sc.world, sc.me);
           }
         }
         owed.current = pageLeft(owed.current);
       }
 
       const tSim1 = performance.now();
-      const carry = playing && !stopped ? (sc.remote ? carryOf(sc.pace ?? newPace()) : owed.current) : 0;
+      const carry = playing ? (sc.remote ? carryOf(sc.pace ?? newPace()) : owed.current) : 0;
       const actors = actorsOf(sc, carry);
       const tPoses = performance.now();
 
@@ -568,6 +573,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         drawNav(ctx, size, sc.jobText, { y: 54, colour: "#ffd34d" });
         drawReceipt(ctx, size, sc.receipt, now / 1000);
         if (sc.wallet) walletRef.current = sc.wallet; else if (walletRef.current) sc.wallet = walletRef.current;
+        if (sc.mailbox) mailRef.current = sc.mailbox; else if (mailRef.current) sc.mailbox = mailRef.current;
         if (!cleanRef.current) drawReadout(ctx, readout.current, 8, size.h - 44, { up: true, maxW: size.w - 80 });
         if (flash.current > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * flash.current})`; ctx.fillRect(0, 0, size.w, size.h); flash.current = Math.max(0, flash.current - dt * 2); }
       } else {
@@ -587,7 +593,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     };
     tick(performance.now());
     return () => { cancelAnimationFrame(raf.current); window.removeEventListener("keydown", onKey); window.removeEventListener("keyup", onKey); };
-  }, [playing, follow, zoom, seed, limit, mode, stopped, rotate, look]);
+  }, [playing, follow, zoom, seed, limit, mode, rotate, look]);
 
   const at = (e) => { const r = e.currentTarget.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top, { w: r.width, h: r.height }]; };
   const onDown = (e) => { e.currentTarget.setPointerCapture?.(e.pointerId); const [x, y, box] = at(e); input.current.pointer("down", e.pointerId, x, y, box, performance.now()); };
@@ -683,11 +689,22 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }}
           onPointerDown={mode === "drive" && !look ? onDown : camDown} onPointerMove={mode === "drive" && !look ? onMove : camMove}
           onPointerUp={mode === "drive" && !look ? onUp : camUp} onPointerCancel={mode === "drive" && !look ? onUp : camUp} />
-        {stopped && (
+        {mailOpen && (
           <div style={S.banner}>
-            <div style={{ fontFamily: FONT_D, fontSize: 18, fontWeight: 700 }}>Contact.</div>
-            <div style={{ fontFamily: FONT_U, fontSize: 13, color: DIM, margin: "4px 0 10px" }}>You hit another car. What a collision means here is still open; for now it stops you.</div>
-            <button className="btn" style={S.chip} onClick={() => restart()}>Restart</button>
+            <div style={{ fontFamily: FONT_D, fontSize: 18, fontWeight: 700 }}>Mail</div>
+            <div style={{ fontFamily: FONT_U, fontSize: 13, color: DIM, margin: "4px 0 10px", maxHeight: "40vh", overflowY: "auto" }}>
+              {(() => {
+                const items = (scene.current.mailbox?.items ?? []).filter((i) => i.arrived).slice().reverse();
+                const coming = (scene.current.mailbox?.items ?? []).filter((i) => !i.arrived).length;
+                return <>
+                  {!items.length && <div>Nothing yet.</div>}
+                  {items.map((i) => <div key={i.id} style={{ marginBottom: 6 }}><b style={{ color: C.white }}>{i.title}: {i.amount < 0 ? "-" : "+"}${Math.abs(i.amount)}</b> {i.text}</div>)}
+                  {coming > 0 && <div>{coming} on the way.</div>}
+                  <div style={{ marginTop: 6 }}>Balance: ${scene.current.wallet?.balance ?? 0}</div>
+                </>;
+              })()}
+            </div>
+            <button className="btn" style={S.chip} onClick={() => setMailOpen(false)}>Close</button>
           </div>
         )}
       </div>
@@ -717,6 +734,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             onClick={toggleClean}>{clean ? "Clean mode: on" : "Clean mode: off"}</button>
           {clean && (
             <button className="btn" style={S.chip} onClick={() => setMore((v) => !v)}>{more ? "Less" : "More"}</button>
+          )}
+          {(!clean || more) && mode === "drive" && (
+            <button className="btn" style={S.chip} onClick={() => setMailOpen((v) => !v)}>Mail</button>
           )}
           {/* LANE ASSIST (sim/player.js assistSteer): off, gentle, firm. Read by the
               frame loop from a ref, never from React state. */}

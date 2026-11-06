@@ -50,7 +50,7 @@ console.log("\n1. THE FARE PAYS FOR SKILL, NOT TIME");
   let costs = true, praiseFree = true, worst = "";
   const perPoint = [];
   for (const [id, tr] of Object.entries(TRIGGERS)) {
-    if (id === "collision" || id === "arrived") continue;
+    if (id === "collision" || id === "arrived" || id === "struckPerson" || id === "struckBy") continue;   // void, nothing: verify-contact
     const f = fareFor(meterTick(m, me, course, [{ id, t: 1, ...tr }]), onTime);
     if (tr.praise) { if (f.total !== clean.total) { praiseFree = false; worst = id; } }
     else {
@@ -73,7 +73,7 @@ console.log("\n1. THE FARE PAYS FOR SKILL, NOT TIME");
   const times = [0.2, 0.6, 1, 1.3, 2, 5].map((k) => fareFor(m, m.allowed * k).total);
   check(times.every((x, i) => i === 0 || x <= times[i - 1]), `taking longer never pays more: ${times.map((x) => `$${x.toFixed(2)}`).join(", ")} arriving at 0.2 to 5 times the allowance`);
   let x = m;
-  for (const [id, tr] of Object.entries(TRIGGERS)) if (!tr.praise && id !== "collision") for (let i = 0; i < 4; i++) x = meterTick(x, { ...m0, v: posted * 2 }, course, [{ id, t: i, ...tr }]);
+  for (const [id, tr] of Object.entries(TRIGGERS)) if (!tr.praise && !tr.noFault && id !== "collision" && id !== "struckPerson") for (let i = 0; i < 4; i++) x = meterTick(x, { ...m0, v: posted * 2 }, course, [{ id, t: i, ...tr }]);
   const floor = fareFor(x, m.allowed * 10);
   check(floor.total >= 0 && floor.quality >= 0, `and nothing is ever below zero: every fault four times, far over the limit, very late -- $${floor.total.toFixed(2)}`);
 }

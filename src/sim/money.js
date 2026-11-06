@@ -13,8 +13,9 @@
    - THE DEDUCTIONS are the game's own verdicts on the drive: every fault
      the event stream raised during the job (sim/events.js) costs its own
      SEVERITY -- the one number that already says how bad each is, so there
-     is no second table to drift from it -- and touching anything voids the
-     fare. Time over the posted limit costs by the second (the limit is the
+     is no second table to drift from it -- and a collision that was the
+     player's, or striking anybody, voids the fare. Being struck does not
+     (DECISIONS 10.52). Time over the posted limit costs by the second (the limit is the
      road's own, graph.js `postedAt`). Arriving well past a reasonable time
      costs too: the taxi standard (DAY-NIGHT.md default 7) asks for
      arrival in reasonable time, and the allowance is the route's own
@@ -65,8 +66,8 @@ export const newMeter = ({ length, course, route, t }) => ({
 export function meterTick(m, me, course, events) {
   const out = { ...m };
   for (const e of events) {
-    if (e.id === "collision") out.hit = true;
-    else if (!e.praise && e.severity) out.faults = [...out.faults, { id: e.id, severity: e.severity, t: e.t }];
+    if (e.id === "collision" || e.id === "struckPerson") out.hit = true;
+    else if (!e.praise && !e.noFault && e.severity) out.faults = [...out.faults, { id: e.id, severity: e.severity, t: e.t }];
   }
   const posted = limitAt(course, me);
   if (posted && (me.v ?? 0) > posted * OVER_AT) out.overS = m.overS + DT;

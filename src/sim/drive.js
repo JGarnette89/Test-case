@@ -20,7 +20,7 @@
    and line come from the slider and the wheel (sim/player.js), and
    their route from the signal. Pure: the screen owns the state.
    ===================================================================== */
-import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand, holdBand, sliderFor, accelFor } from "./player.js";
+import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand, holdBand, sliderFor, accelFor, PULL, INOPERABLE, damagedTop, backOff } from "./player.js";
 import { inLaneOf } from "./occupancy.js";
 import { whatStops, poseOf, AT_LINE } from "./crossing.js";
 import { REACTION_FLOOR } from "../core/perception.js";
@@ -198,10 +198,21 @@ export function stepDriver(me, input, world, dt = DT) {
     if (want !== route) { route = want; path = layout.paths[route]; }
   }
 
-  let next = stepPlayerOn(me, input, geomOf(path, layout.legs[path.from], world.road?.lane ?? LANE), dt);
+  /* DAMAGE (player.js): the car pulls, and past the limit will not drive. */
+  const d = me.damage ?? 0;
+  const driven = d > 0 ? { ...input, pull: (me.pull ?? 1) * PULL * d, slider: d >= INOPERABLE ? Math.min(input.slider, -0.4) : input.slider } : input;
+  let next = stepPlayerOn(me, driven, geomOf(path, layout.legs[path.from], world.road?.lane ?? LANE), dt);
+  if (d > 0) next = { ...next, v: Math.min(next.v, damagedTop(d)) };
+  /* Backing off what they hit (player.js); driving away ends the right to. */
+  const back = backOff(me, input, dt);
+  if (back) next = { ...next, ...back };
+  else if (next.backing || (next.backRoom != null && next.v > 1)) { const { backing, ...rest } = next; next = next.v > 1 ? { ...rest, backRoom: undefined } : rest; }
   next = { ...next, k, route };
   /* Across into the next lane: the route becomes that lane's. */
+  const wasRoute = route;
   next = laneChange(layout, next, path, course);
+  /* When they last changed lane: being struck from behind just after is theirs (contact.js). */
+  if (next.route !== wasRoute) next = { ...next, laneAt: world.t };
   route = next.route; path = layout.paths[route];
 
   /* Off the end of the path onto the next one, choosing by the signal;
