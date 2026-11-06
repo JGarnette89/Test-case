@@ -6208,9 +6208,16 @@ The project lead's reading, checked. **Right on steering; nearly right on brakin
 |---|---|
 | one event per touch | 1 event over 136 ticks in contact; a second only after being apart |
 | nothing driven through at 30, 60, 100 km/h | centre stops 4.5 m short of the wreck's at all three |
-| nobody trapped, inside the 45 s a wreck stands | 0 of 24 nose-on cases; worst 6.9 s at 20 degrees, 13.9 at 45, 12.8 at 70, **42.4 at 90, which is close** |
+| nobody trapped, inside the 45 s a wreck stands | 0 of 24 nose-on cases; worst 6.9 s at 20 degrees, 13.9 at 45, 12.8 at 70, **42.4 at 90: A NEAR-MISS ON THE PREDICTION, NOT A PASS (the project lead). It is at the limit, on a scripted driver, over 6 cases at that angle, and a slightly different script could cross it** |
 | the drive goes on | 9,600 ticks, a driver hunting things at full throttle on the city at 180: 13 contacts (11 cars, 2 parked), no stop; longest stand 61.3 s, a tow plus traffic |
 | rear-ended as they brake is not their fault | 24 of 90 struck, 0 called their fault, by the poor observers as in 10.46 |
+
+**THREE CORRECTIONS (the project lead, 5 November):**
+
+- **A COUNT THAT DISAGREES WITH ITSELF:** commit `7d51c34` says "sabotaged 19 ways". **The right number is 18 distinct sabotages, all caught.** The commit is pushed and is left as it is; this line and `21152be` are the correction.
+- **THE SAME COMMIT SAYS `verify-money` AND `verify-worker` WERE RESTATED "WITH THEIR VERDICTS IN THE COMMIT'S RECORD". THEY WERE NOT:** the reasons were in code comments only. They are here now.
+  - **`verify-money`. VERDICT: THE CHECK WAS RIGHT AND THE RULE CHANGED.** Two loops held that every trigger but a collision is a fault costing its own severity. Two new triggers are not that, by ruling: being struck costs nothing, and a person voids the fare. Both are now skipped there, and **their expectations are stated in `verify-contact` section 3 rather than dropped.** "Contact pays nothing" still holds for a collision that was the player's.
+  - **`verify-worker`. VERDICT: ITS PARITY WAS RIGHT AND ITS PICTURE OF THE SCREEN WAS FALSE, SINCE BEFORE THIS.** On a hit it set `stopped: true` and went on stepping the world, which no screen ever did, on a field nothing in src reads (10.49). Now both sides answer a contact as the screen does, through `afterContact`, so it holds the worker's account of a contact against the page's response as well as the world. **One thing it does that the screen does not need: it writes the page's player back into the worker's copy before comparing,** because the next step would overwrite it there anyway.
 
 **WHAT A SABOTAGE FOUND:** the mail check passed with letters repeating, since a repeat shows only when a later letter arrives. Fixed. Separately, `REARM` is stated twice in `playerContact`, once in `seen` and once in the prune, so removing either changes nothing: it is held only as the constant.
 
