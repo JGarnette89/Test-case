@@ -22,7 +22,7 @@
 import { poseOf, crashWith, CRASH_CLEAR, leftYields } from "./crossing.js";
 import { onRightOf } from "./graph.js";
 import { driverPose } from "./drive.js";
-import { touching, separation, HALF_W, DAMAGE_AT, INOPERABLE, LIMP, BACK_ROOM } from "./player.js";
+import { touching, separation, HALF_W, DAMAGE_AT, INOPERABLE, LIMP } from "./player.js";
 import { contactWith } from "./parking.js";
 import { pedAt, strikePed } from "./peds.js";
 import { poseOnGraph } from "./graph.js";
@@ -40,6 +40,7 @@ const LANE = 3.6, MARGIN = 0.02;
    and not just arrived in it. */
 export function rearStruck(me, mine, q, v, t) {
   const h = (mine.heading * Math.PI) / 180, dx = q.x - mine.x, dy = q.y - mine.y;
+  if (me.backing) return false;   // reversing into them is the player's doing
   if (dx * Math.cos(h) + dy * Math.sin(h) >= 0) return false;
   const c = Math.cos((((q.heading - mine.heading) * Math.PI) / 180));
   if (c < Math.SQRT1_2) return false;
@@ -149,8 +150,7 @@ export function afterContact(me, c, world) {
       const f = (mine.heading * Math.PI) / 180, fn = Math.cos(f) * sep.nx + Math.sin(f) * sep.ny;
       /* Only speed going INTO the thing: being struck from behind pushes forward and takes nothing. */
       const v = fn < 0 ? (out.v ?? 0) * Math.sqrt(Math.max(0, 1 - fn * fn)) : out.v ?? 0;
-      /* Up against something, they may back off it (player.js `backOff`). */
-      out = { ...out, s, off, v, ...(fn < 0 ? { backRoom: BACK_ROOM } : {}) };
+      out = { ...out, s, off, v };
     }
   }
   return { me: out, letters };

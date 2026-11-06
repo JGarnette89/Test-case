@@ -6196,7 +6196,7 @@ The project lead's reading, checked. **Right on steering; nearly right on brakin
 
 ### Where the build departed from the design, and why
 
-1. **THE CAR HAS A WAY BACK NOW: WITH SOMETHING IN FRONT OF THEM, THE BRAKE HELD AT REST ROLLS IT BACK, WITH STEERING. THE DESIGN DID NOT HAVE THIS.** The design said separation had to leave room to steer away, and named it the hard part. **It was harder than that, and the prediction that it was the weak spot held:** moved out of overlap and steering forward alone took 94 s at 70 degrees. A first fix turned the nose along what it pressed against: 8.8 s at 45 degrees, but cars still wedged into the gap between two parked cars, or pressed on the row across the street, for good. **A real driver reverses, so this reverses.** `backOff` in player.js moves the car and leaves `v` at 0, so nobody reading the player has to know about going backwards; 1.5 m/s, 8 m from the last push; a player braking at a red never rolls, which is checked. The screen says "Hold the brake to back off it" after 1.5 s pressed. **A new control, a stopgap until the full physics model, and the maintainer has not seen it.** The turned-nose fix was removed: one mechanism.
+1. **(SUPERSEDED BY 10.57: reverse is now an ordinary control.) THE CAR HAS A WAY BACK NOW: WITH SOMETHING IN FRONT OF THEM, THE BRAKE HELD AT REST ROLLS IT BACK, WITH STEERING. THE DESIGN DID NOT HAVE THIS.** The design said separation had to leave room to steer away, and named it the hard part. **It was harder than that, and the prediction that it was the weak spot held:** moved out of overlap and steering forward alone took 94 s at 70 degrees. A first fix turned the nose along what it pressed against: 8.8 s at 45 degrees, but cars still wedged into the gap between two parked cars, or pressed on the row across the street, for good. **A real driver reverses, so this reverses.** `backOff` in player.js moves the car and leaves `v` at 0, so nobody reading the player has to know about going backwards; 1.5 m/s, 8 m from the last push; a player braking at a red never rolls, which is checked. The screen says "Hold the brake to back off it" after 1.5 s pressed. **A new control, a stopgap until the full physics model, and the maintainer has not seen it.** The turned-nose fix was removed: one mechanism.
 2. **AN INOPERABLE CAR IS NOT MOVED.** The default given in 10.52's report was a tow and a respawn nearby. Built: it stands 45 s, as a wreck does, and goes again where it stood at half damage, with a tow bill. Simpler and forces nobody anywhere. **Still his question.**
 3. **THE PULL WAS 3x TOO STRONG AS FIRST WRITTEN:** 0.25 of the wheel at full damage took a half-damaged car 173 m off line in 30 s, hands still. 0.08, by judgment. **Measured there at half damage: 101 m in 30 s at 30 km/h with no hands and no assist, which is still a great deal, on purpose until he has driven it.**
 
@@ -6311,6 +6311,39 @@ In 10.54, with the 19-against-18 count and the `verify-money` and `verify-worker
 ### Pending with the maintainer (the project lead has asked; not pre-empted)
 
 Whether a 5 km/h scrape should stop a traffic car dead for 45 s, and whether scraping a parked row should count as a separate collision per car.
+
+## 10.57 REVERSE IS AN ORDINARY CONTROL; WHO HAS THE WHEEL (the maintainer and the project lead, 6 November)
+
+**Jay's list (relayed):** menu and density, the red-runner fault and the record tidies were already live (10.55, 10.56). **His new ruling: "stopping dead after a collision is unrealistic, we need the vehicles to come to a believable stop."** It supersedes the 5 km/h scrape question and is the first piece of "the weight of the impact be represented". **"Get the checks under control":** a plan first, for the project lead to see. **Order: reverse, the checks plan, the hard braking, the believable stop; body motion after that unless he moves it. Do not fix the hard braking and the believable stop in one change.**
+
+**HE DROVE THE CONTACT BUILD:** "runs great / could not go forward after reversing from a crash / if you signal a turn, and take manual control midway you lose control of the car. it kind of staggers and turns on its own, hard to describe fully I'll test more". Then: **"actually, reversing should be something the player can always do, no?"** The project lead's reasons: it removes the cause, since a special state with an entry and exit condition is what can strand you; reverse parking and three-point turns are marked on the real sheet, so the exam needs it anyway; and it is simpler.
+
+### Could not go forward: reproduced first, and it was not the rollback
+
+**Predicted before running: the car past the damage limit, where the rollback still worked and forward was dead until the tow, with nothing on screen.** Each impact speed, back off, then throttle: 10 to 60 km/h all drove away (damage up to 0.99). **70 km/h, damage 1.00: reversed 4.5 m, then 4 s of throttle moved it 0.0 m.** Hits add up, so lesser ones get there too. **It would have survived making reverse ordinary, which is why it was reproduced before the fix.** Now a car that will not go goes neither way and says so: "It will not go. A tow is on its way." **WHETHER THIS IS WHAT HE HIT IS NOT ESTABLISHED: he did not say how hard, and the agent cannot see his run. If it recurs with a car that says nothing, this was not it.**
+
+### The build
+
+Reverse is available from any standstill, with nothing hit and no limit but how long it is held. No precondition, no hint, no mode, across seams, reversing lamps drawn in white. `v` stays 0 and the car moves by its position, so nobody reading the player has to know about going backwards: a stopgap of the MODEL, not the control, until the full physics model. A car reversing into somebody is at fault.
+
+**THE GESTURE IS HIS TO JUDGE BY DRIVING: from a standstill, a FRESH pull of the slider to the bottom, held 0.4 s. Lift and it stops.** The stopgap's "hold the brake at a standstill" could not become general: his slider stays where it is left, so a car braked to a stop at a red with the slider at the bottom would roll back into whoever is behind it. **Measured with the freshness removed: 29 m back in 20 s at a stop. So a stop stays a stop; lift and pull again to reverse.** BACK_V 1.5 m/s, REV_DWELL 0.4 s, REV_FROM_V 0.5 m/s, BACK_AT -0.9 are flagged and his. **The alternatives if this reads badly: a reverse button, or a dwell at the bottom.**
+
+**Checked:** `verify-contact` 9b, sabotaged 12 ways, all caught. **ONE SABOTAGE WAS CAUGHT FOR THE WRONG REASON AND SHOWED A VACUOUS TEST:** a wall at the seam failed a different section while the seam test passed, because it had picked a path at the map's edge. It now takes a road with a road behind it and holds the step under 0.5 m. **The nose-on case at 90 degrees is 43.7 s against the 45 s bar: still a near-miss, on one script.**
+
+### Can two things hold the wheel at once? Yes, read from the code, and nobody decided all of it
+
+**Not a hunt for his report, as instructed, and nothing was added to trace it. Read, not run.**
+
+| where | who steers | status |
+|---|---|---|
+| on the road, hands on | the player, plus damage's pull | **The player wins.** The assist is off above a 0.05 dead band, and while the wheel moves |
+| on the road, hands off | the assist, after 0.6 s, fading in over 0.5 s, at most 0.35 of the wheel | decided (`assistSteer`) |
+| in the box | **the committed arc AND the player's wheel, SUMMED, capped by grip** | **Blended. "The player's wheel adds to that" is written; what happens when they oppose is not.** The arc's turning is always in, so the player cannot cancel a turn, only add to it |
+| leaving the box off line | hands off for 0.6 s, the assist brings the car back | **Nobody decided this case: it can read as the car turning on its own after a player steered through a turn** |
+
+**AND ONE THAT IS NOT TWO CONTROLLERS, BUT COULD READ AS A STAGGER:** `s` advances by v cos(psi) whatever `off` is, and the pose is the path's offset by `off`. On a straight road that is exact. **On an arc it omits the 1 - kappa*off of true path-relative motion, so the car's real speed changes with how far it is off the arc; and at an offset approaching the arc's radius on the inside, the point folds through the center.** Arcs here run about 4 to 10 m, and the player's wheel can reach that. Not measured. **So the answer to "the player always wins" is no: in the box they share the wheel by design and past certain offsets the geometry itself misbehaves. WHETHER EITHER IS WHAT HE SAW IS NOT KNOWN AND IS NOT CLAIMED.** The fix if it comes to that is a decision, who has authority in a committed turn, then a patch.
+
+**For the believable stop (the project lead):** one entanglement fewer, since reverse is no longer tied to collisions. Reading it for the scope: a crash sets `v: 0` in `crashWith` and in `step`, and a car here runs on its path, so two cars carrying momentum through a side impact would pass through each other unless a crashed car leaves its path. **That is the hard part of it, to scope when its turn comes.**
 
 ## 11. Verification
 

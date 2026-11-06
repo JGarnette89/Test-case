@@ -159,6 +159,7 @@ function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t) {
     const p = spot(back, sgn * side, rearZ);
     if (a.brakeLamp) { dot(p, r * 2.1, "rgba(255,40,30,0.35)"); dot(p, r, "#ff2a1e"); }
     else dot(p, r * 0.8, "#5c1714");
+    if (a.reversing) { dot(p, r * 1.9, "rgba(255,255,255,0.4)"); dot(p, r, "#ffffff"); }
   }
   /* A CHECK, MADE VISIBLE (sim/checks.js, 27 October; the maintainer: a
      driver checking has to be something you can watch). From the driver's

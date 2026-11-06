@@ -19,6 +19,7 @@ import { credit, newWallet, saveWallet } from "./money.js";
 import { afterContact, towTick } from "./contact.js";
 import { newMailbox, post, mailTick, lettersFor, towLetter, saveMailbox } from "./mail.js";
 import { DT } from "./traffic.js";
+import { INOPERABLE } from "./player.js";
 
 /* THE PLAYER AFTER A TICK: what contact did to them (sim/contact.js), a car that
    will not go got going again, and the post (sim/mail.js). Both of the screen's
@@ -35,11 +36,8 @@ export function contactTick(sc, c, world) {
   const tow = towTick(me);
   me = tow.me;
   if (tow.towed) { box = post(box, towLetter(), world.t); sc.said = { who: "Tow", text: "Your car is going again, just.", at: nowS() }; }
-  /* Pressed against something, and how to get off it: said once a contact, since nothing else on the screen says so. */
-  if (me.backRoom > 0 && (me.v ?? 0) < 0.3) {
-    sc.pressedFor = (sc.pressedFor ?? 0) + DT;
-    if (sc.pressedFor >= 1.5 && !sc.backHinted) { sc.backHinted = true; sc.said = { who: "Hint", text: "Hold the brake to back off it.", at: nowS() }; }
-  } else if ((me.v ?? 0) > 1) { sc.pressedFor = 0; sc.backHinted = false; }
+  /* A car past going says so, once: measured, it sat dead for 45 s with nothing on the screen (DECISIONS 10.57). */
+  if ((me.damage ?? 0) >= INOPERABLE && (sc.me?.damage ?? 0) < INOPERABLE) sc.said = { who: "Your car", text: "It will not go. A tow is on its way.", at: nowS() };
   const m = mailTick(box, DT);
   sc.mailbox = m.box;
   /* A letter is money when it arrives, and it is said then. */

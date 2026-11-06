@@ -20,7 +20,7 @@
    and line come from the slider and the wheel (sim/player.js), and
    their route from the signal. Pure: the screen owns the state.
    ===================================================================== */
-import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand, holdBand, sliderFor, accelFor, PULL, INOPERABLE, damagedTop, backOff } from "./player.js";
+import { stepPlayerOn, newPlayer, cornerSpeedFor, stopBand, slowBand, holdBand, sliderFor, accelFor, PULL, INOPERABLE, damagedTop, reversePull, stepReverse, REV_DWELL } from "./player.js";
 import { inLaneOf } from "./occupancy.js";
 import { whatStops, poseOf, AT_LINE, entryOf } from "./crossing.js";
 import { REACTION_FLOOR } from "../core/perception.js";
@@ -203,10 +203,10 @@ export function stepDriver(me, input, world, dt = DT) {
   const driven = d > 0 ? { ...input, pull: (me.pull ?? 1) * PULL * d, slider: d >= INOPERABLE ? Math.min(input.slider, -0.4) : input.slider } : input;
   let next = stepPlayerOn(me, driven, geomOf(path, layout.legs[path.from], world.road?.lane ?? LANE), dt);
   if (d > 0) next = { ...next, v: Math.min(next.v, damagedTop(d)) };
-  /* Backing off what they hit (player.js); driving away ends the right to. */
-  const back = backOff(me, input, dt);
-  if (back) next = { ...next, ...back };
-  else if (next.backing || (next.backRoom != null && next.v > 1)) { const { backing, ...rest } = next; next = next.v > 1 ? { ...rest, backRoom: undefined } : rest; }
+  /* REVERSE (player.js): a fresh pull to the bottom from a standstill. A car that will not go goes neither way. */
+  const revFrom = reversePull(me, input.slider, world.t);
+  const reversing = revFrom != null && world.t - revFrom >= REV_DWELL && (me.v ?? 0) <= 0.1 && d < INOPERABLE;
+  next = reversing ? { ...next, ...stepReverse(me, input, geomOf(path, layout.legs[path.from], world.road?.lane ?? LANE), dt), revFrom } : { ...next, revFrom, backing: false };
   next = { ...next, k, route };
   /* Across into the next lane: the route becomes that lane's. */
   const wasRoute = route;
@@ -219,6 +219,19 @@ export function stepDriver(me, input, world, dt = DT) {
      off the edge of the world, back onto the same road's start would be
      wrong, so the car stops at the end: `atEdge` for the screen. */
   let leg = me.leg ?? 0, atEdge = false;
+  /* Backwards off the start of a path, onto the movement that leads to it; at the map's edge, the car stops. */
+  if (next.s < 0) {
+    const from = Object.entries(course.joins).find(([, j]) => j.k === k && j.side === path.from)?.[0];
+    const sep = from ? from.indexOf("|") : -1;   // a side has a bar of its own
+    const kBack = from ? Number(from.slice(0, sep)) : null, sideBack = from ? from.slice(sep + 1) : null;
+    const there = from ? course.at[kBack].layout : null;
+    const into = there && Object.keys(there.paths).filter((r) => there.paths[r].to === sideBack);
+    const r = into && (into.find((x) => there.paths[x].intent === "straight") ?? into[0]);
+    if (r) {
+      next = { ...next, k: kBack, route: r, s: there.paths[r].length + next.s, stoppedAt: null, going: true, accepted: true };
+      k = kBack; layout = there; route = r; path = there.paths[r]; leg = Math.max(0, leg - 1);
+    } else next = { ...next, s: 0 };
+  }
   if (next.s >= path.length) {
     const j = course.joins[`${k}|${path.to}`];
     if (!j) { next = { ...next, s: path.length, v: 0 }; atEdge = true; }
