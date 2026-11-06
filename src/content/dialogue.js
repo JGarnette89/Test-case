@@ -13,8 +13,8 @@
    ===================================================================== */
 const RAW = {
   struckBy: {
-    auto: ["Impact from behind recorded. Liability rests with the following driver.", "You were struck from behind. A claim has been opened.", "Rear collision logged. Your insurer will write to you.", "Contact from the rear. The fault is not yours.", "Struck from behind. Check your vehicle. Expect a letter."],
-    jay: ["That one's on them. Breathe. Check your car, then carry on.", "You did nothing wrong there. Take a second.", "Not your fault. Still, you saw how close they were?", "Some people don't look. That's why we leave ourselves room."],
+    auto: ["Impact recorded. Liability rests with the other driver.", "You were struck. A claim has been opened.", "Collision logged. Your insurer will write to you.", "Contact recorded. The fault is not yours.", "You had the road. Check your vehicle. Expect a letter."],
+    jay: ["That one's on them. Breathe. Check your car, then carry on.", "You did nothing wrong there. Take a second.", "Not your fault. Still, did you see them coming?", "Some people don't look. That's why we leave ourselves room."],
   },
   struckPerson: {
     auto: ["Pedestrian struck. Emergency services notified.", "A person has been hit. Recorded as a critical error.", "Critical error: person on foot struck. Costs will be billed to you.", "Pedestrian impact logged. There is no lesser category for this.", "Person struck. A bill will follow by mail."],

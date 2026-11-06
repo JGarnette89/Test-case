@@ -9,7 +9,9 @@ import { seedGraph, step, poseOf, carFor } from "../src/sim/crossing.js";
 import { driver, DT } from "../src/sim/traffic.js";
 import { playerAt, playerOn, withDriver, stepDriver, driverPose } from "../src/sim/drive.js";
 import { worldFor } from "../src/sim/scene.js";
-import { playerContact, afterContact, towTick, TOW_AFTER } from "../src/sim/contact.js";
+import { playerContact, afterContact, towTick, TOW_AFTER, owedBy } from "../src/sim/contact.js";
+import { TEST_MAPS } from "../src/map/samples.js";
+import { movementLight } from "../src/sim/signal.js";
 import { touching, V_MAX, INOPERABLE, BACK_ROOM } from "../src/sim/player.js";
 import { parkedPoses } from "../src/sim/parking.js";
 import { pedPose } from "../src/sim/peds.js";
@@ -143,6 +145,108 @@ const strike = (me, other) => {
   check(notMine.some((l) => l.amount > 0) && !mine.some((l) => l.amount > 0), "only being struck pays out");
   const person = lettersFor({ kind: "person", atFault: true }, 0);
   check(sum(person) < sum(mine) && person[0].days > mine[0].days, `a person: $${sum(person)}, a day after a repair bill`);
+}
+
+console.log("3b. In an intersection: who owed whom, stated here case by case");
+{
+  /* A plain crossroads, its four legs read off, every case a straight car and a crossing one. */
+  const map = TEST_MAPS.find((x) => x.id === "test-1").build();
+  const lo = loadMap(map);
+  const world = seedGraph(1, 50, lo, { every: 1e9, target: 0, posted: true });
+  /* The first straight movement anywhere with a road crossing it and a left coming the other way. */
+  const offBy = (L, a, b) => Math.abs(Math.sin(((L.legs[a].bearing - L.legs[b].bearing) * Math.PI) / 180));
+  let k = -1, L, routes, paths, mine, from, others, crossing, oncomingLeft;
+  for (let i = 0; i < world.course.at.length && k < 0; i++) {
+    L = world.course.at[i].layout; paths = L.paths; routes = Object.keys(paths);
+    for (const r of routes.filter((x) => paths[x].intent === "straight")) {
+      from = paths[r].from;
+      others = routes.filter((x) => paths[x].from !== from);
+      crossing = others.find((x) => paths[x].intent === "straight" && offBy(L, paths[x].from, from) > 0.7);
+      oncomingLeft = others.find((x) => paths[x].intent === "left" && offBy(L, paths[x].from, from) < 0.2 && Math.cos(((L.legs[paths[x].from].bearing - L.legs[from].bearing) * Math.PI) / 180) < 0);
+      if (crossing && oncomingLeft && others.some((x) => paths[x].intent === "right")) { k = i; mine = r; break; }
+    }
+  }
+  check(k >= 0, "a crossroads to hold it on");
+  const me = (ctl, t = 10, rolled = false, route = mine) => ({ k, route, s: paths[route].stopAt + 3, entry: { k, t, ctl, rolled } });
+  const them = (ctl, t = 10, rolled = false, route = crossing) => ({ k, route, s: paths[route].stopAt + 3, entry: { k, t, ctl, rolled } });
+  const cases = [
+    ["a car on red into a player on green", me("green"), them("red"), "other"],
+    ["the player on red into a car on green", me("red"), them("green"), "player"],
+    ["both on red", me("red"), them("red", 11), "other"],
+    ["right on red into a player on green, the turn is what owes", me("green"), them("red", 10, false, others.find((r) => paths[r].intent === "right")), "other"],
+    ["a car from a stop sign into a player with no sign", me("none"), them("stop"), "other"],
+    ["a stop sign still owes, having entered first", me("none", 12), them("stop", 10), "other"],
+    ["a yield sign still owes, having entered first", me("none", 12), them("yield", 10), "other"],
+    ["a green entered first does not excuse a red", me("green", 12), them("red", 10), "other"],
+    ["the player from a stop sign into a car with no sign", me("stop"), them("none"), "player"],
+    ["a car from a yield sign into a player with no sign", me("none"), them("yield"), "other"],
+    ["a stop rolled into a player who stopped, both signed", me("stop", 10, false), them("stop", 9, true), "other"],
+    ["the player rolling a stop into a car that stopped", me("stop", 9, true), them("stop", 10, false), "player"],
+    ["both stopped: entered second had somebody already in there", me("stop", 12), them("stop", 10), "player"],
+    ["both stopped, the other way", me("stop", 10), them("stop", 12), "other"],
+    ["a car turning left across a player going straight, both on green", me("green"), them("green", 10, false, oncomingLeft), "other"],
+    ["the player turning left across a car going straight", me("green", 10, false, routes.find((r) => paths[r].from === paths[oncomingLeft].from && paths[r].intent === "left")), them("green", 10, false, routes.find((r) => paths[r].from === from && paths[r].intent === "straight")), "player"],
+    ["on a fresh green, into a car clearing on amber", me("green", 12), them("amber", 10), "player"],
+    ["a car late on amber into a player already in on green", me("green", 10), them("amber", 12), "other"],
+  ];
+  for (const [what, p, o, want] of cases) { const got = owedBy(p, o, L); check(got === want, `${what}: ${want === "other" ? "not the player's" : "the player's"}${got === want ? "" : ` (got ${got})`}`); }
+  /* With no control at all, the right-hand rule: found by sabotage it had no test. Exactly one of the two owes,
+     whichever is called the player, at equal times, and neither time can move it. */
+  const a0 = me("none", 10), b0 = them("none", 10);
+  const eachWay = (t1, t2) => [owedBy({ ...a0, entry: { ...a0.entry, t: t1 } }, { ...b0, entry: { ...b0.entry, t: t2 } }, L), owedBy({ ...b0, entry: { ...b0.entry, t: t2 } }, { ...a0, entry: { ...a0.entry, t: t1 } }, L)];
+  const [ab, ba] = eachWay(10, 10);
+  check(ab !== ba, `no control, crossing: one of the two owes, whichever is the player (${ab}, ${ba})`);
+  check(eachWay(8, 12).join() === eachWay(12, 8).join() && eachWay(8, 12).join() === [ab, ba].join(), "and it is the right-hand rule, not who got there first");
+  {
+    const at = poseOnGraph(world.course, k, mine, paths[mine].stopAt - 5), h = (at.rot * Math.PI) / 180;
+    const there = poseOnGraph(world.course, k, crossing, paths[crossing].stopAt - 5);
+    /* The right of travel: forward turned a quarter clockwise on the screen, as the lamps are drawn. */
+    const onMyRight = (there.x - at.x) * -Math.sin(h) + (there.y - at.y) * Math.cos(h) > 0;
+    check(ab === (onMyRight ? "player" : "other"), `the car on the right has the road: the other car is on the player's ${onMyRight ? "right" : "left"}, and ${ab} owes`);
+  }
+  check(owedBy({ ...me("green"), s: 1e6 }, them("red"), L) === null, "past the intersection: not this rule");
+  check(owedBy({ k, route: mine, s: 5 }, them("red"), L) === null, "the player not in it: not this rule");
+  /* Through the whole contact: fault, the fare's event and the record agree. */
+  const w2 = withDriver({ ...world, t: 100, actors: [{ ...carFor(world, 7, k, crossing, null, "car"), id: "runner", n: 7, s: 0, v: 9 }] }, me("green"));
+  const place = playerAt(world.course, k, mine), s0 = paths[mine].conflictAt ?? paths[mine].stopAt + 8;
+  void w2; void s0;
+  let hitSeen = null;
+  for (let s = paths[mine].stopAt; s < paths[mine].clearAt && !hitSeen; s += 0.5) {
+    const pl = { ...place, s, v: 5, a: 0, off: 0, entry: { k, t: 95, ctl: "green", rolled: false } };
+    const q = driverPose(pl, world.course);
+    for (let s2 = paths[crossing].stopAt; s2 < paths[crossing].clearAt; s2 += 0.5) {
+      const p2 = poseOnGraph(world.course, k, crossing, s2);
+      if (Math.hypot(p2.x - q.x, p2.y - q.y) < 1.5) { hitSeen = { pl, s2 }; break; }
+    }
+  }
+  const c = hitSeen && playerContact(withDriver({ ...world, t: 100, actors: [{ ...carFor(world, 7, k, crossing, null, "car"), id: "runner", n: 7, s: hitSeen.s2, v: 9, entry: { k, t: 98, ctl: "red", rolled: true } }], crashes: [] }, hitSeen.pl), hitSeen.pl);
+  check(c && c.hit && !c.fresh[0].atFault && c.fresh[0].why === "right of way" && c.world.crashes.at(-1)?.striker === "runner", "a red-runner into the player's side, through the whole contact: not at fault, and the record says who struck whom");
+  const cFlip = hitSeen && playerContact(withDriver({ ...world, t: 100, actors: [{ ...carFor(world, 7, k, crossing, null, "car"), id: "runner", n: 7, s: hitSeen.s2, v: 9, entry: { k, t: 90, ctl: "green", rolled: false } }], crashes: [] }, { ...hitSeen.pl, entry: { k, t: 98, ctl: "red", rolled: true } }), { ...hitSeen.pl, entry: { k, t: 98, ctl: "red", rolled: true } });
+  check(cFlip && cFlip.hit && cFlip.fresh[0].atFault, "the same contact with the player the one on red: at fault");
+  /* A car changing lane into a player holding theirs. */
+  const cut = strike(playerHere(700, 8), { ...carAt(base, "c", 701.5, 8), lc: { t0: 0, T: 3, L0: -1 } }).fresh[0];
+  check(cut && !cut.atFault && cut.why === "cut in", "a car changing lane into them: not the player's");
+  const cutBoth = strike(playerHere(700, 8, { laneAt: 99 }), { ...carAt(base, "c", 701.5, 8), lc: { t0: 0, T: 3, L0: -1 } }).fresh[0];
+  check(cutBoth && cutBoth.atFault, "...unless the player has just changed lane too");
+}
+{
+  /* The record is what the light actually said, read here as the car crossed: on real traffic. */
+  const lo = loadMap(TEST_MAPS.find((x) => x.id === "test-1").build());
+  let w = seedGraph(2, 50, lo, { target: 120, posted: true });
+  let crossed = 0, agree = 0, onRed = 0;
+  for (let i = 0; i < 90 / DT; i++) {
+    const was = new Map(w.actors.map((a) => [a.id, a])), t0 = w.t, lights = w.lights;
+    w = step(w);
+    for (const a of w.actors) {
+      const b = was.get(a.id), L = w.course.at[a.k ?? 0].layout, q = L.paths[a.route];
+      if (!b || b.k !== a.k || !q || !L.signal || !(b.s <= q.stopAt && a.s > q.stopAt)) continue;
+      crossed++;
+      const lit = movementLight(L.signal, L.legs[q.from]?.base, q.intent, t0, lights?.[a.k ?? 0]?.live ?? null);
+      if (lit === "red") onRed++;
+      if (a.entry?.ctl === lit && a.entry?.k === (a.k ?? 0) && a.entry?.t === t0) agree++;
+    }
+  }
+  check(crossed >= 100 && agree === crossed, `what a car entered under is what the light said at the line: ${agree} of ${crossed}, ${onRed} of them on red`);
 }
 
 console.log("4. A person: a critical error, no respawn, and the drive goes on");
