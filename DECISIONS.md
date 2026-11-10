@@ -6544,7 +6544,7 @@ The project lead's three questions from the handoff, answered by reading the cod
 
 ### 1. What reads the player's position as an offset from its route, and how many places
 
-**One stored quantity, `me.off`, with FIVE WRITERS and THIRTEEN DIRECT READERS in four files**, plus the places below that compute the player's position WITHOUT it.
+**One stored quantity, `me.off`, with FIVE WRITERS and NINE DIRECT READERS (eleven lines) in four files, the first of them -- `driverPose` -- itself called at eight sites**, plus the places below that compute the player's position WITHOUT it.
 
 Writers:
 1. `player.js` `stepPlayerOn`, integrated from the heading: `off += v sin(psi) dt`;
@@ -6594,7 +6594,7 @@ Readers:
 **Contained to the player's car, not the engine's spine.** Its parts:
 - **A locator from a pose to `(k, route, s, off)`:** it does not exist in the sim. `placement.js` `placeOf` goes the other way, and the editor's `nearestOnRoad` works on roads, not lanes. Inside a box several routes overlap, and choosing among them is the hard part.
 - **Re-basing on it, and an "on no lane" state.**
-- **The thirteen readers made to agree, and the two `poseOf` readers folded onto `driverPose`.**
+- **The nine readers made to agree, and the two `poseOf` readers folded onto `driverPose`.**
 - **The grass judged physically:** a surface test exists, `sidewalks.js` `onRoadSurface`.
 - **Checks:** a locator held against independent geometry and sabotaged, and the derived set. That set was 53 checks and about 45 minutes per run for a `player.js` change.
 
