@@ -283,6 +283,18 @@ export function assistSteer(me, input, kappa, strength, handsOff = Infinity) {
    the brake half of the slider gets a job. The turn's record is kept
    on the car while it is in the box and judged as it leaves. */
 export function stepPlayerOn(me, input, geom, dt) {
+  /* LOST: further than a lane beyond the route's own road, the route no
+     longer says where the car is (DECISIONS 10.64: the car has no position
+     except against its route, and a run-wide past the exit's lanes is never
+     re-based). So the lane assist does not steer for a lane the car is
+     not in. THE NARROW GUARD, not the fix: the car is on no known lane,
+     steered by the player alone. LOST_BEYOND is a flagged design constant.
+     THE GRASS IS STILL JUDGED AGAINST THE ROUTE, deliberately: lifting it
+     too took the drag off cars genuinely off the road -- nosed past a
+     parked row, a car pushed into it at full throttle (verify-contact 9
+     and 10, 10 November) -- so pavement far off the route still drags
+     until the car has a real position (DECISIONS 10.64 (b)). */
+  const lost = me.off < geom.edges.left - LOST_BEYOND || me.off > geom.edges.right + LOST_BEYOND;
   /* Off the road the grass drags hard and the car crawls: it can always
      come back, and nothing else about being there is modelled yet. */
   const onRoad = me.off >= geom.edges.left - 0.5 && me.off <= geom.edges.right + 0.5;
@@ -303,7 +315,7 @@ export function stepPlayerOn(me, input, geom, dt) {
      steering, and a slow weave through centre had the assist wake mid-way. */
   const moving = Math.abs(input.steer - (me.steer ?? input.steer)) > ASSIST_STILL;
   const handsOff = Math.abs(input.steer) > ASSIST_DEAD || moving ? 0 : (me.handsOff ?? Infinity) + dt;
-  const assist = inBox ? 0 : assistSteer(me, input, kappa, input.assist ?? 0, handsOff);
+  const assist = inBox || lost ? 0 : assistSteer(me, input, kappa, input.assist ?? 0, handsOff);
   const wheel = input.steer + assist + (input.pull ?? 0);   // a damaged car pulls to one side (DAMAGE)
   let psiDot;
   if (inBox) {
@@ -337,8 +349,9 @@ export function stepPlayerOn(me, input, geom, dt) {
     turns = { ...(turns ?? {}), [verdict]: (turns?.[verdict] ?? 0) + 1 };
     turn = null;
   }
-  return { ...me, v, a, s, psi, off, grade, lat, steer: input.steer, slider: input.slider, assist, handsOff, turn, lastTurn, turns };
+  return { ...me, v, a, s, psi, off, grade, lat, steer: input.steer, slider: input.slider, assist, handsOff, turn, lastTurn, turns, lost };
 }
+export const LOST_BEYOND = 3.6;   // m past the route's road edge: a lane's width of verge still belongs to it
 
 /* The speed a corner wants: the arc's tightest radius at CLEAN. From a
    path with a box and `arcAt`; null for a path that does not turn. */

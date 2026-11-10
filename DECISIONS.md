@@ -6500,6 +6500,44 @@ So **once a run-wide carries the car past the last same-direction lane of the ex
 
 **THE FIX'S SHAPE, the agent's read, not chosen:** (a) **the narrow guard, independent of his ruling:** the assist does not act, and `onRoad` is not judged against the route, while the car is outside its route's carriageway -- it removes the latched pull and the false grass, and leaves a car on no lane steered only by the player; (b) **the real fix:** when the offset leaves the route's carriageway, find the lane whose path the car's pose is nearest and heading-aligned with, and re-base onto it (`laneChange` generalised from "the adjacent lane" to "the lane I am on"); none found, the car is on no lane until it reaches one. (b) is what any abandonment answer would stand on. **Neither built.**
 
+### What the project lead took from it (10 November)
+
+**THE HYPOTHESIS WAS WRONG IN EXACTLY THE WAY THAT WOULD HAVE SENT THE FIX ASTRAY.** The project lead, in their own words: they would have built a give-up rule for turns, and it would have fixed nothing, because the turn already ends. Reproducing before building is what caught it.
+
+**THE FINDING IS ARCHITECTURAL AND BIGGER THAN THE BUG: THE PLAYER'S CAR HAS NO POSITION OF ITS OWN.** It exists only as distance along and offset from a committed route, and nothing ever asks which road it is physically on. That one fact explains the endless recorrection, the grass drag on pavement, and why it survives to a map reset.
+
+**WHAT IT DOES TO THE MAINTAINER'S STEERING-AUTHORITY QUESTION (10.57), the project lead taking it to him -- RULED IN 10.65: the player always overpowers the turn, the option WITH the prerequisite:** it is no longer a preference between three equal behaviors. **Every option that lets the car leave the exit's lanes needs the car to have a real position first** -- (b) above, substantial. **Only an option that keeps the car inside those lanes avoids that work.** Two of the options carry an architectural prerequisite and one does not.
+
+**A DEPENDENCY, FLAGGED AND NOT INVESTIGATED (the project lead):** anything that depends on knowing which lane the car is ACTUALLY in rests on the same gap -- **the examiner's wide-turn fault, leaving your lane, the stopping-position fault the maintainer named for creeping, and probably the marking sheet's Lane entries (10.26).** If the model cannot say where the car is except relative to where it intended to be, none of those can be judged honestly. For the player's car this is established; whether the traffic's own cars share it (they are also `(route, s, off)`-shaped) is not looked at.
+
+### (a) BUILT: THE NARROW GUARD (10 November)
+
+`stepPlayerOn` (`src/sim/player.js`): **LOST** is the car further than `LOST_BEYOND` (3.6 m, a lane of verge, a flagged design constant) past its route's road edge. **While lost, the lane assist does not act** -- the endless recorrection, the symptom the maintainer described. `me.lost` is carried for anything else that wants it. **Not (b): the route is unchanged; the car is on no known lane, steered by the player alone.** The road edges are the APPROACH leg's for the whole path (`geomOf`), so on the exit stretch "the route's road" is approximate -- already true of the grass test.
+
+**THE GRASS HALF WAS BUILT, BROKE A REAL PROPERTY, AND WAS TAKEN OUT.** As first built, "lost" also lifted the grass judgment. The derived run failed `verify-contact` on two lines that pass at HEAD: a car nosed past a parked row at 70-90 degrees, no longer dragged, pushed into it at full throttle (183 s scraping against 0; worst time to get clear at 70 degrees, 68.7 s against 15.5); and section 10's driver who never lifts left cars overlapping on 882 of 9600 ticks against 0. **Parked cars stand past the curb lane, so off the road there is genuinely off the road.** The grass cannot be judged honestly without a real position, so it stays judged against the route: **the false drag on pavement far off the route remains until (b).** This was the cost stated before building, and it bit; reported rather than tuned around.
+
+**Predicted before building:** at 45 km/h the assist is 0 on every lost tick; at 32 km/h nothing changes -- never lost, settles in a lane; every existing check unmoved (the last was wrong for the grass half, above). **Held, as shipped:** at 45 km/h, 154 ticks lost (25 m off), 0 pulled; at 32, never lost, judged wide, settles at 0.01 m; `verify-contact` identical to HEAD.
+
+**THE CHECK:** verify-drive section 8, the maintainer's recipe stated in the check. **Sabotaged, each failing its own line:** assist guard removed -> 72 ticks pulled; `lost` never true -> 0 ticks lost. (The grass line and its sabotage, 96 ticks dragged, went with the grass half.)
+
+**THE DERIVED RUN (`node tools/check.mjs`, the 53 checks the change can reach): 53 of 53 passed, on the narrowed guard.**
+
+**Not built, and the project lead's instruction: (b), re-location onto the lane the car is on. It belongs with the maintainer's ruling.**
+
+## 10.65 STEERING AUTHORITY, RULED: THE PLAYER'S INPUT ALWAYS OVERPOWERS THE AUTOMATIC TURN (the maintainer, 10 November, relayed by the project lead; RULED, NOT STARTED)
+
+**Answers 10.57's question.** His ruling, verbatim: *"I would always say the user input steering overpowers any automatic turning."*
+
+**His reasoning, which is the design principle and not only the verdict:** *"an advanced user may be able to take advantage of both to make a sharper turn where a new user may rely entirely on the auto-turn and more carefully manage speed."*
+
+**THE RULE: THE ASSIST IS A FLOOR, NOT A CEILING.** It will take the corner for you; you can always do better by steering; you are never overridden. **It generalises (the project lead):** it is also what "limited control" means in the examiner mode, where the candidate drives and the player intervenes.
+
+**WHAT IT COSTS, PLAINLY: it is the option with the architectural prerequisite (10.64).** If the player can override a committed turn, the car can end up anywhere, so it needs a REAL POSITION rather than an offset from its intended route. **That is 10.64's fix (b), re-location onto the lane the car is physically in, or "on no lane" -- not a patch.** The narrow guard (10.64 (a)) stays as it is until then.
+
+**WHAT IT BUYS BEYOND THE TURN (costed once, not twice):** the wide-turn fault, leaving your lane, the stopping-position fault the maintainer ruled on for creeping, and the marking sheet's Lane entries all rest on the same gap (10.64). **Giving the car a real position is a prerequisite for the examiner layer, not only for this ruling.**
+
+**ORDER (the project lead): TOP OF THE QUEUE WHEN THERE IS USAGE, alongside the two unexplained results on the product's path (IN FLIGHT 36 and 42, 10.61). Their view: the car's real position first, because the most things wait on it.** Not started: usage is low and this is the substantial option.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

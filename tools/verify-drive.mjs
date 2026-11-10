@@ -372,5 +372,39 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   check(md.lastTurn?.verdict === "clean", `and the turn is clean (${md.lastTurn?.verdict}, ${(md.lastTurn?.vPeak * 3.6).toFixed(0)} km/h through it)`);
 }
 
+/* 8. A CAR RUN WIDE PAST ITS ROUTE'S ROAD IS NOT PULLED BACK TO IT
+   (DECISIONS 10.64, the maintainer's stagger). His recipe: signal a turn,
+   take it so fast the car leaves the lane, then drive by hand. The car is
+   only ever measured against its route, and past the exit's lanes nothing
+   re-bases it -- so the assist steered at full authority for a lane the
+   car was 16-19 m from, and the grass was judged by distance from it. The
+   guard: further than LOST_BEYOND past the route's road, the assist does
+   not act. The grass still does, on purpose (player.js): lifting it took
+   the drag off cars genuinely off the road and broke verify-contact.
+   Stated here, not read from the module: at 45 km/h through the 9.3 m
+   right the car ends up more than a lane off the road; at 32 it does not,
+   and still settles in a lane. */
+{
+  const w0 = { ...seedGraph(1, 50, loaded, { every: 2 }), actors: [] };
+  const run = (kmh) => {
+    const leg = "A-north|end#1", k = w0.course.at.findIndex((s) => s.layout.legs[leg]);
+    const layout = w0.course.at[k].layout, route = routeForSignal(layout, leg, "right"), path = layout.paths[route];
+    let me = { ...playerAt(w0, k, route), s: path.stopAt - 0.5, v: kmh / 3.6, signal: "right", going: true, accepted: true, off: 0 };
+    let world = withDriver(w0, me), lostTicks = 0, pulledWhileLost = 0, crawledWhileLost = 0, offMax = 0;
+    for (let i = 0; i < 20 * 12; i++) {
+      const was = me;
+      me = stepDriver(me, { steer: 0, slider: holdAt(me.v, me.grade ?? 0), assist: 1 }, world, DT);
+      world = withDriver(world, me);
+      offMax = Math.max(offMax, Math.abs(me.off));
+      if (me.lost) { lostTicks++; if (Math.abs(me.assist ?? 0) > 1e-9) pulledWhileLost++; if (was.lost && me.v < was.v - 1.4 * DT) crawledWhileLost++; }
+    }
+    return { me, lostTicks, pulledWhileLost, crawledWhileLost, offMax };
+  };
+  const fast = run(45), slow = run(32);
+  check(fast.lostTicks > 40, `45 km/h into the right runs the car more than a lane off its route's road (${fast.lostTicks} ticks lost, ${fast.offMax.toFixed(1)} m off)`);
+  check(fast.pulledWhileLost === 0, `and out there the lane assist never steers for the route's lane (${fast.pulledWhileLost} ticks pulled)`);
+  check(slow.lostTicks === 0 && Math.abs(slow.me.off) < 0.5 && slow.me.lastTurn?.verdict === "wide", `at 32 km/h it runs wide, is never lost, and the assist settles it in a lane (${slow.me.lastTurn?.verdict}, off ${slow.me.off.toFixed(2)} m)`);
+}
+
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
 console.log("\nOK: the signal picks the exit it means and only before the line, the box is committed to and the road is driven, the seam is seamless, the corner has to be earned, the stop marker holds still when held and slides when left late, and the traffic treats the player as its own.");
