@@ -6538,6 +6538,68 @@ So **once a run-wide carries the car past the last same-direction lane of the ex
 
 **ORDER (the project lead): TOP OF THE QUEUE WHEN THERE IS USAGE, alongside the two unexplained results on the product's path (IN FLIGHT 36 and 42, 10.61). Their view: the car's real position first, because the most things wait on it.** Not started: usage is low and this is the substantial option.
 
+## 10.66 SCOPING THE CAR'S REAL POSITION: THREE ANSWERS, BY READING (10 November; NOTHING RUN, NOTHING BUILT, NO DESIGN)
+
+The project lead's three questions from the handoff, answered by reading the code. **Their caution, kept in view:** "only the player, so it is small" is the answer we want, which is when to trust it least. Where the evidence is thin it says so.
+
+### 1. What reads the player's position as an offset from its route, and how many places
+
+**One stored quantity, `me.off`, with FIVE WRITERS and THIRTEEN DIRECT READERS in four files**, plus the places below that compute the player's position WITHOUT it.
+
+Writers:
+1. `player.js` `stepPlayerOn`, integrated from the heading: `off += v sin(psi) dt`;
+2. `player.js` `stepReverse`, the same backwards;
+3. `drive.js` `laneChange`, the exit stretch, re-based one lane;
+4. `drive.js` `laneChange`, the approach, re-based one lane, or the bay's separation;
+5. `contact.js` (line 149), pushed out of whatever the car is touching -- **which can push it further off its route.**
+
+The seams carry it unchanged.
+
+Readers:
+1. `drive.js` `driverPose` (line 287): THE player's pose. The renderer reads it at five call sites in `MapRoad.jsx`; `contact.js` reads it twice; `drive.js` once.
+2. `player.js` `assistSteer`: the lane assist's target.
+3. `player.js` `lost`: the narrow guard (10.64).
+4. `player.js` `onRoad`: the grass.
+5. `player.js`: the turn verdict, wide and cut, two lines.
+6. `drive.js` `laneChange`: its thresholds, two lines.
+7. `contact.js` line 48: whether a car struck from behind was in its lane.
+8. `contact.js` line 103: whether a car cut in on the player.
+9. `crossing.js` line 1420: a traffic driver deciding whether the player STRADDLES into its lane.
+
+**And the drift risk, found while counting: TWO PLACES ALREADY COMPUTE THE PLAYER'S POSITION A SECOND WAY.** `encounters.js` line 62 (what the player met, following, followed, overtaking) and `shaping.js` line 156 (where density shaping thinks the player is) pass the player through the traffic's `poseOf`. That function has no player branch: it builds the lateral offset from `weave`, `lc`, `pull` and `pass`, none of which the player has. **So those two read the route's centreline and drop `off` (and the heading) entirely** -- the two-implementations shape of CLAUDE.md item 2, already present, wrong by exactly `off` whenever it is not zero. Not measured; reported, not fixed.
+
+**Beyond `off`, the TRAFFIC IDENTIFIES THE PLAYER'S LANE BY ROUTE** (`inLaneOf`, the lane index, following and yielding), and `off` enters only at the straddle test. **A lost player is therefore, to the traffic, still in the latched lane.** Read, not run.
+
+### 2. Does the traffic share the representation, or only the player?
+
+**THE FRAME IS SHARED; THE STATE IS NOT.** Every actor is `(k, route, s)`, and its pose is the route's centreline plus a lateral offset (`crossing.js` `poseOf`, `poseOnGraph`): in that sense it is the engine's spine, and nothing in the engine has a free position. **But a traffic car's lateral offset is never stored.** It is recomputed at every pose as the sum of five closed forms, each bounded by construction:
+- the weave (`weaveAt`, `traffic.js`): a sine of fixed amplitude;
+- the wide line (`wideAt`): its amplitude times at most 1, the car's side to the centre line "and no further";
+- the lane change (`lateralOf`, `lanechange.js`): a blend from one lane's separation to zero, plus a weave-room overshoot;
+- a bus's bay (`pullOf`): the bay's own width;
+- going round a bus (`passOffset`): at most one lane.
+
+**A crashed traffic car stops where it hit and is not displaced** (`crossing.js` lines 2375, 3288). **THE EXAM CANDIDATE IS A TRAFFIC ACTOR**: `exam.js` says it "joins like anybody else". That evidence is thin, a comment and the absence of any `off` in the file, and it was not traced further.
+
+### 3. Does the free wheel explain why only the player shows the gap? Tested, not confirmed
+
+**Nothing found that lets a traffic car's offset grow:** all five terms above are bounded closed forms, and no traffic code integrates a lateral position. Unverified: whether any INPUT to those forms can be made large (a map's lane separations, a bay's width). The cases read are bounded by a lane.
+
+**Nothing bounds the player's.** Re-basing caps it only within the exit's same-direction lanes. The grass slows its growth and does not cap it. Contact push-out can increase it. **So the hypothesis holds on reading, sharpened:** the free wheel is why the player's offset CAN grow; that it is the only STORED, INTEGRATED lateral quantity in the engine is why it PERSISTS.
+
+**A CORRECTION TO 10.64 THAT FOLLOWS:** the examiner-side dependency recorded there (the wide-turn fault, leaving your lane, the creeping stop position, the sheet's Lane entries) **does not rest on this gap for the CANDIDATE**, because the candidate is a traffic actor whose offset is bounded. Its judgments are consistent with the model. What the bounded model limits is what the candidate CAN do: it can never really leave its lane. That is a question of expressiveness, not of honest judgment. The dependency holds for faults judged on the PLAYER's own driving. Recorded as found; the project lead's to weigh.
+
+### The estimate for fix (b), given these answers
+
+**Contained to the player's car, not the engine's spine.** Its parts:
+- **A locator from a pose to `(k, route, s, off)`:** it does not exist in the sim. `placement.js` `placeOf` goes the other way, and the editor's `nearestOnRoad` works on roads, not lanes. Inside a box several routes overlap, and choosing among them is the hard part.
+- **Re-basing on it, and an "on no lane" state.**
+- **The thirteen readers made to agree, and the two `poseOf` readers folded onto `driverPose`.**
+- **The grass judged physically:** a surface test exists, `sidewalks.js` `onRoadSurface`.
+- **Checks:** a locator held against independent geometry and sabotaged, and the derived set. That set was 53 checks and about 45 minutes per run for a `player.js` change.
+
+**3-6 days. THE NAMED RISK that could take it toward two weeks: what the TRAFFIC does about a player on no lane.** The traffic finds the player by route, so a player off every route is invisible to following and yielding. Only contact would still catch it. How the traffic should perceive a car on no lane is a design question, and it is where this grows.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
