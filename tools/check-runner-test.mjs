@@ -11,6 +11,16 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, exis
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { budgetFor, outcomeOf } from "./check-policy.mjs";
+import { affected, checks } from "./affected.mjs";
+
+assert.ok(checks().some((c) => c.name === "verify-check-runner"), "runner regression test must be discovered");
+for (const file of ["tools/check.mjs", "tools/affected.mjs", "tools/check-policy.mjs", "tools/check-runner-test.mjs", "tools/verify-check-runner.mjs"]) {
+  for (const direct of [false, true]) assert.ok(
+    affected([file], { direct }).some((c) => c.name === "verify-check-runner"),
+    `${file} must trigger verify-check-runner (direct=${direct})`,
+  );
+}
+console.log("PASS: suite discovery and automatic selection for all runner inputs");
 
 const TOOLS = dirname(fileURLToPath(import.meta.url));
 mkdirSync(join(TOOLS, "scratch"), { recursive: true });

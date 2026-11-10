@@ -1,0 +1,425 @@
+{
+  "baseline_runner_ref": "54b7db9",
+  "new_runner_ref": "211b476",
+  "command_arguments": [
+    "--all",
+    "--jobs",
+    "3"
+  ],
+  "checks_per_runner": 58,
+  "outcome_differences": [],
+  "baseline_wall_seconds": 6589.688,
+  "new_wall_seconds": 6580.979,
+  "shared_timeout": "verify-shaping at 1200 seconds; assertions incomplete; isolated follow-up required",
+  "metadata_restored_byte_for_byte": true,
+  "input_manifest_sha256": "b8dd6e089fada40a3c5633a918bfddd3895082d052f33c3f48f02640f8e7f1e1",
+  "capture_note": "Execution connection disconnected; final wrapper print raised BrokenPipeError after both complete result records were saved. All 58 new-runner logs have result footers. Result sets and input manifest independently verified.",
+  "results": [
+    {
+      "check": "verify-actuated",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 72,
+      "new_seconds": 93
+    },
+    {
+      "check": "verify-anticipation",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 453,
+      "new_seconds": 352
+    },
+    {
+      "check": "verify-bays",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 153,
+      "new_seconds": 248
+    },
+    {
+      "check": "verify-bench",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 268,
+      "new_seconds": 236
+    },
+    {
+      "check": "verify-briefs",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 135,
+      "new_seconds": 124
+    },
+    {
+      "check": "verify-busbays",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 784,
+      "new_seconds": 1086
+    },
+    {
+      "check": "verify-buses",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 189,
+      "new_seconds": 138
+    },
+    {
+      "check": "verify-chase",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 1,
+      "new_seconds": 1
+    },
+    {
+      "check": "verify-check-runner",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 7,
+      "new_seconds": 9
+    },
+    {
+      "check": "verify-checks",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 446,
+      "new_seconds": 431
+    },
+    {
+      "check": "verify-compliance",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 758,
+      "new_seconds": 635
+    },
+    {
+      "check": "verify-connect",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 20,
+      "new_seconds": 24
+    },
+    {
+      "check": "verify-contact",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 151,
+      "new_seconds": 137
+    },
+    {
+      "check": "verify-core",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 0,
+      "new_seconds": 0
+    },
+    {
+      "check": "verify-course",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 751,
+      "new_seconds": 761
+    },
+    {
+      "check": "verify-courtesy",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 750,
+      "new_seconds": 912
+    },
+    {
+      "check": "verify-crashes",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 251,
+      "new_seconds": 236
+    },
+    {
+      "check": "verify-crossing",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 201,
+      "new_seconds": 238
+    },
+    {
+      "check": "verify-drive",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 113,
+      "new_seconds": 125
+    },
+    {
+      "check": "verify-editor",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 19,
+      "new_seconds": 24
+    },
+    {
+      "check": "verify-encounters",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 49,
+      "new_seconds": 49
+    },
+    {
+      "check": "verify-exam",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 90,
+      "new_seconds": 77
+    },
+    {
+      "check": "verify-generate",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 787,
+      "new_seconds": 537
+    },
+    {
+      "check": "verify-graph",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 598,
+      "new_seconds": 1119
+    },
+    {
+      "check": "verify-greens",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 154,
+      "new_seconds": 106
+    },
+    {
+      "check": "verify-headway",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 468,
+      "new_seconds": 452
+    },
+    {
+      "check": "verify-keepright",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 501,
+      "new_seconds": 470
+    },
+    {
+      "check": "verify-lanecost",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 468,
+      "new_seconds": 576
+    },
+    {
+      "check": "verify-lanes",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 914,
+      "new_seconds": 605
+    },
+    {
+      "check": "verify-lookaway",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 519,
+      "new_seconds": 588
+    },
+    {
+      "check": "verify-loop",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 498,
+      "new_seconds": 681
+    },
+    {
+      "check": "verify-map",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 1,
+      "new_seconds": 1
+    },
+    {
+      "check": "verify-merge",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 435,
+      "new_seconds": 401
+    },
+    {
+      "check": "verify-mergecount",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 376,
+      "new_seconds": 283
+    },
+    {
+      "check": "verify-money",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 6,
+      "new_seconds": 5
+    },
+    {
+      "check": "verify-observation",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 519,
+      "new_seconds": 645
+    },
+    {
+      "check": "verify-paint",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 22,
+      "new_seconds": 19
+    },
+    {
+      "check": "verify-passing",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 1024,
+      "new_seconds": 567
+    },
+    {
+      "check": "verify-peds",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 1043,
+      "new_seconds": 1036
+    },
+    {
+      "check": "verify-perf",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 0,
+      "new_seconds": 0
+    },
+    {
+      "check": "verify-places",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 10,
+      "new_seconds": 8
+    },
+    {
+      "check": "verify-promotion",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 30,
+      "new_seconds": 40
+    },
+    {
+      "check": "verify-reaction",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 54,
+      "new_seconds": 40
+    },
+    {
+      "check": "verify-rivals",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 288,
+      "new_seconds": 255
+    },
+    {
+      "check": "verify-screens",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 12,
+      "new_seconds": 14
+    },
+    {
+      "check": "verify-shaping",
+      "baseline_status": "TIMEOUT",
+      "new_status": "TIMEOUT",
+      "baseline_seconds": 1200,
+      "new_seconds": 1200
+    },
+    {
+      "check": "verify-signal",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 249,
+      "new_seconds": 195
+    },
+    {
+      "check": "verify-signs",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 289,
+      "new_seconds": 266
+    },
+    {
+      "check": "verify-sim",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 1,
+      "new_seconds": 1
+    },
+    {
+      "check": "verify-skill",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 32,
+      "new_seconds": 36
+    },
+    {
+      "check": "verify-start",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 1143,
+      "new_seconds": 1149
+    },
+    {
+      "check": "verify-telling",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 140,
+      "new_seconds": 164
+    },
+    {
+      "check": "verify-trucks",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 492,
+      "new_seconds": 453
+    },
+    {
+      "check": "verify-voice",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 1,
+      "new_seconds": 1
+    },
+    {
+      "check": "verify-walkers",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 877,
+      "new_seconds": 1126
+    },
+    {
+      "check": "verify-waves",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 834,
+      "new_seconds": 668
+    },
+    {
+      "check": "verify-wheel",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 0,
+      "new_seconds": 0
+    },
+    {
+      "check": "verify-worker",
+      "baseline_status": "ok",
+      "new_status": "ok",
+      "baseline_seconds": 115,
+      "new_seconds": 98
+    }
+  ]
+}
