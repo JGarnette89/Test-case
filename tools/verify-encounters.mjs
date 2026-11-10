@@ -14,6 +14,8 @@
       coming on counts once for the stand, not once a tick; with nobody
       coming, none.
    5. NOT VACUOUS: on real traffic, driven, every counter moves.
+   6. FROM WHERE THE PLAYER IS: a player off their line and turned against
+      the road is measured from their own pose (10.66).
    ===================================================================== */
 import { worldFor } from "../src/sim/scene.js";
 import { step, poseOf, conflictOf } from "../src/sim/crossing.js";
@@ -23,6 +25,7 @@ import { goodStep } from "./lib/good-driver.mjs";
 import { placesOf, routeTo } from "../src/sim/route.js";
 import { noticeTick } from "../src/sim/session.js";
 import { DT } from "../src/sim/traffic.js";
+import { poseOnGraph } from "../src/sim/graph.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -125,6 +128,41 @@ console.log("\n5. NOT VACUOUS: driven on test map 1 at 120 cars, every counter m
   }
   const s = encounterSummary(st);
   check(s.metPerMin > 1 && st.following > 0 && st.followed > 0 && st.gaps > 0, `four minutes: met ${s.metPerMin}/min, following ${s.followingShare}%, followed ${s.followedShare}%, ${s.gapsPerMin} gaps/min -- none of them zero`);
+}
+
+console.log("\n6. FROM WHERE THE PLAYER IS, NOT WHERE THEIR ROUTE IS (DECISIONS 10.66): a player off their line");
+{
+  /* Every scene above has the player on their route's centreline (off 0), which is the one place the two ways of
+     computing their pose agreed -- the check's boundary, and why it passed while the traffic's poseOf dropped `off`.
+     Here the player is 1.7 m toward the next lane and 40 degrees off the road's heading. Where they are is restated
+     from the path (graph.js poseOnGraph) and the offset's own definition: right of the line, y down. */
+  const off0 = 1.7, s0 = 60;
+  const line = poseOnGraph(course, R.k, R.route, s0), h = (line.rot * Math.PI) / 180;
+  const other = poseOnGraph(course, R.k, R.other, s0);
+  /* Toward the other lane: the sign of its place across my line. */
+  const side = Math.sign(-(other.x - line.x) * Math.sin(h) + (other.y - line.y) * Math.cos(h)) || 1;
+  const off = side * off0;
+  const truth = { x: line.x - Math.sin(h) * off, y: line.y + Math.cos(h) * off };
+  /* A car in the other lane placed so that it is past 30 m from the centreline and inside 30 m of the player. */
+  let pick = null;
+  for (let d = 28; d < 31 && !pick; d += 0.01) {
+    const q = poseOnGraph(course, R.k, R.other, s0 + d);
+    const fromLine = Math.hypot(q.x - line.x, q.y - line.y), fromMe = Math.hypot(q.x - truth.x, q.y - truth.y);
+    if (fromLine > 30.05 && fromMe < 29.95) pick = { d, fromLine, fromMe };
+  }
+  check(!!pick, `a place in the next lane past 30 m from the route's line and within 30 m of the player exists (${pick ? `${pick.fromLine.toFixed(2)} m and ${pick.fromMe.toFixed(2)} m` : "none"})`);
+  if (pick) {
+    const c = car("edge", R.k, R.other, s0 + pick.d, 0);
+    const on = run({ ...player(R.k, R.route, s0, 0), off, psi: 0 }, [c], 5);
+    const centred = run(player(R.k, R.route, s0, 0), [c], 5);
+    check(on.met.has("edge") && !centred.met.has("edge"), `the player ${off0} m off their line meets it; the same player on the line does not (off line: ${on.met.has("edge")}, on it: ${centred.met.has("edge")})`);
+  }
+  /* And the heading: a car dead ahead of a player turned 40 degrees is not "beside" them by the route's heading.
+     Passing is judged along and across the player's own heading. */
+  const turned = { ...player(R.k, R.route, s0, 10), off: 0, psi: (side * 40 * Math.PI) / 180 };
+  const mp = poseOf(withDriver({ ...empty, actors: [] }, turned), turned);
+  const dh = ((((mp.rot - line.rot) % 360) + 540) % 360) - 180;
+  check(Math.abs(Math.abs(dh) - 40) < 0.01, `the traffic's pose of a player turned 40 degrees against the road is turned 40 degrees (${dh.toFixed(2)})`);
 }
 
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nall passed");

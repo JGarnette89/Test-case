@@ -30,6 +30,7 @@ import { poseAt } from "./intersection.js";
 import { CAR, DT } from "./traffic.js";
 import { placeOf, laneIndexOf, approachNeighbours } from "./placement.js";
 import { lenOf, STANDSTILL } from "./traffic.js";
+import { playerPoseOn } from "./pose.js";
 
 const LANE = 3.6;
 const LAUNCHED = 1.5;        // m/s: moving off, as crossing.js has it
@@ -282,9 +283,7 @@ export function stepDriver(me, input, world, dt = DT) {
 /* THE PLAYER'S POSE IN THE WORLD, with the height of the road under
    them: the path's pose at their distance along, offset by their line. */
 export function driverPose(me, course) {
-  const p = poseOnGraph(course, me.k, me.route, Math.min(me.s, course.at[me.k].layout.paths[me.route].length));
-  const h = (p.rot * Math.PI) / 180;
-  return { x: p.x - Math.sin(h) * me.off, y: p.y + Math.cos(h) * me.off, z: p.z ?? 0, heading: p.rot + (me.psi * 180) / Math.PI };
+  return playerPoseOn(course, me);   // the one place (pose.js); the traffic's poseOf reads it too
 }
 
 /* PUTTING THE PLAYER IN THE WORLD, CLEAR -- wherever they start. A start

@@ -39,6 +39,7 @@ import {
   radiusFor,
 } from "./course.js";
 import { onRightOf, oncoming, graphOf, edgesOfGraph, poseOnGraph, postedAt, postedOutAt, kindAt , exitAlong, lanePlacesOf } from "./graph.js";
+import { playerPoseOn } from "./pose.js";
 import { stepLights, LOOP } from "./actuated.js";
 import { HONK_AGAIN } from "./horn.js";
 import { askOf, askedOf, offerOf, courtesyAccel, mergeAskOf } from "./courtesy.js";
@@ -3104,6 +3105,14 @@ export function rearOf(world, actor) {
 }
 
 export function poseOf(world, actor) {
+  /* THE PLAYER'S POSE IS THE PLAYER'S (pose.js; DECISIONS 10.66): their line
+     and heading are their own, kept on them, not the weave and lane change
+     below. Without this case every reader here had them on their route's
+     centreline, pointing along it. */
+  if (actor.player && world.course.graph && actor.route != null) {
+    const q = playerPoseOn(world.course, actor), { length, width, height } = vehicleOf(actor);
+    return { x: q.x, y: q.y, z: q.z, rot: q.heading, length, width, height };
+  }
   /* On a map the pose has a height, from the road's own profile. */
   const at = (s) => (world.course.graph
     ? poseOnGraph(world.course, actor.k ?? 0, actor.route, s)
