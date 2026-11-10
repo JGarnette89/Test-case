@@ -10,7 +10,7 @@
   "outcome_differences": [],
   "baseline_wall_seconds": 6589.688,
   "new_wall_seconds": 6580.979,
-  "shared_timeout": "verify-shaping at 1200 seconds; assertions incomplete; isolated follow-up required",
+  "shared_timeout": "verify-shaping timed out under both full runs; subsequently passed under both runners in isolation",
   "metadata_restored_byte_for_byte": true,
   "input_manifest_sha256": "b8dd6e089fada40a3c5633a918bfddd3895082d052f33c3f48f02640f8e7f1e1",
   "capture_note": "Execution connection disconnected; final wrapper print raised BrokenPipeError after both complete result records were saved. All 58 new-runner logs have result footers. Result sets and input manifest independently verified.",
@@ -421,5 +421,130 @@
       "baseline_seconds": 115,
       "new_seconds": 98
     }
-  ]
+  ],
+  "merge_validation": {
+    "source_main": "660da96b0ab3cac1b1dc53fe3816263b02d1b467",
+    "verified_tree": "f95b62dbbabb6c1303b23ec1400f89adc8e4a526",
+    "shaping_arguments": [
+      "verify-shaping",
+      "--jobs",
+      "1",
+      "--timeout",
+      "2400"
+    ],
+    "integration_arguments": [
+      "verify-drive",
+      "verify-contact",
+      "verify-worker",
+      "verify-core",
+      "verify-screens",
+      "verify-check-runner",
+      "--jobs",
+      "3",
+      "--timeout",
+      "2400"
+    ],
+    "runs": [
+      {
+        "phase": "baseline-shaping",
+        "exit": 0,
+        "wall_seconds": 1079.2942073560116,
+        "results": [
+          [
+            "verify-shaping",
+            "ok",
+            1079
+          ]
+        ]
+      },
+      {
+        "phase": "new-shaping",
+        "exit": 0,
+        "wall_seconds": 1090.1292063969886,
+        "results": [
+          [
+            "verify-shaping",
+            "ok",
+            1090
+          ]
+        ]
+      },
+      {
+        "phase": "baseline-integration",
+        "exit": 0,
+        "wall_seconds": 199.30180444399593,
+        "results": [
+          [
+            "verify-check-runner",
+            "ok",
+            9
+          ],
+          [
+            "verify-worker",
+            "ok",
+            88
+          ],
+          [
+            "verify-screens",
+            "ok",
+            11
+          ],
+          [
+            "verify-core",
+            "ok",
+            0
+          ],
+          [
+            "verify-drive",
+            "ok",
+            176
+          ],
+          [
+            "verify-contact",
+            "ok",
+            199
+          ]
+        ]
+      },
+      {
+        "phase": "new-integration",
+        "exit": 0,
+        "wall_seconds": 152.72405908200017,
+        "results": [
+          [
+            "verify-check-runner",
+            "ok",
+            9
+          ],
+          [
+            "verify-drive",
+            "ok",
+            104
+          ],
+          [
+            "verify-worker",
+            "ok",
+            107
+          ],
+          [
+            "verify-core",
+            "SLOW",
+            0
+          ],
+          [
+            "verify-screens",
+            "ok",
+            15
+          ],
+          [
+            "verify-contact",
+            "ok",
+            153
+          ]
+        ]
+      }
+    ],
+    "outcome_differences": [],
+    "status_note": "The supplemental new-runner verify-core result is SLOW (successful assertions) versus baseline ok: its main-branch recorded duration is zero. Both exit successfully; no pass/fail/timeout differences."
+  }
 }
