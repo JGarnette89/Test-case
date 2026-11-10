@@ -4672,6 +4672,8 @@ SIMULATOR log they read as bad luck; together they are the pattern:
     this one crash: a mechanism resting on a single traced case is a
     hypothesis, not a finding, until it is counted over every case.
 
+21. **NOTHING VERIFIES THE THING THAT RUNS THE CHECKS (10 November; found by Codex, recorded here because the hole is in our system, DECISIONS 10.63).** A change to `tools/check.mjs` selects ZERO derived checks, because nothing imports the runner: the tool that runs our verification is not itself verified by it. Codex stopped at the gate rather than merging, which is the gate working. **THE GENERAL LESSON: we have been auditing what our checks ASSERT, and had not asked what verifies the thing that RUNS them.** The same question stands for everything else in the verification path that nothing imports -- the timing records, the dependency table, the seed handling. **If any of those can change without triggering a check, it is the same hole. Recorded as a question; nobody has gone looking.**
+
 **What follows, as practice:**
 - **An unexplained number is an instrument question first.** Before a
   surprising reading is a finding about the world, the instrument is
@@ -6448,6 +6450,27 @@ The project lead's instinct is separate: the exit ramp is a natural seam, each a
 **THE AGENT'S READ: SEPARATE-AND-LOADED IS CHEAP HERE, AND ITS PIECES EXIST** -- the rebuild, the second init, the edge trigger, the clear start, deterministic generation. New: a screen path to load another map, carrying the player's own state, holding (or rebuilding) the highway, and a load that does not read as a freeze on the phone. **Continuous is unchanged at four to six days. Not estimated in days, not decided: the project lead's call.**
 
 **Nothing built.**
+
+## 10.63 MISSION AREAS ARE AUTHORED, THE RAMP IS THE LOADING SCREEN, AND NOTHING VERIFIES THE RUNNER (the maintainer and the project lead, 10 November; A RECORD, NOTHING BUILT)
+
+### 1. The maintainer's rulings on the mission-area structure (answering 10.62)
+
+- **EACH MISSION AREA IS AUTHORED SPECIFICALLY, NOT RANDOMLY GENERATED.** His reason, verbatim: *"a random generated world won't necessarily force the player to play the way we want them to."* **Mission design needs intent, and a generator cannot supply it.** This goes past 10.62's consequence 3 (author each kind, generate the layout within it): the layout is authored too. The generators (`map/brief.js`, `map/generate.js`) remain tools an author may start from; they are not where a mission area comes from.
+- **A CONTINUOUS ROAD, MINIMISING ANY BREAK IN DRIVING, "maybe a hidden loading screen."**
+
+**THE ENGINEERING CONSEQUENCE (the project lead, put to him; not ruled):** he is asking for no VISIBLE break, not for true streaming, and that is a much smaller problem. **THE RAMP IS THE LOADING SCREEN:** begin loading the area when the player commits to the exit, and it is ready before they reach the end of the slip road. Hours rather than the four to six days of real streaming; the seam is diegetic; **the only constraint is ramp length, which we author.**
+
+What the record already holds that bears on it (10.62, read, desk): the world build is 0.4 s for a small map and 1.7 s for the loop on the desk, the phone slower by a factor not measured; the end of an off-ramp is already detected (`atEdge`); a world is a value, so the highway can be held. **Not established and the first number the ramp needs:** the build time of an authored area on the phone, against the time to drive a slip road at its speed. A build on the page's thread would also stall frames while it runs, which is a hitch, not a hidden load; on the worker it would not. Neither measured.
+
+**THE CONTENT-COST CONSEQUENCE (the project lead):** authored areas bound the mission count by authoring effort. **Missions with no off-highway portion -- racing, highway weaving, hauling along the road itself -- are nearly free, so they should be most of a first release, with authored areas as SET PIECES rather than the default.**
+
+### 2. Nothing verifies the runner (found by Codex; the hole is ours)
+
+**Codex stopped at the verification gate rather than merging checks item A, and reported why: a change to `tools/check.mjs` selects zero derived checks, because nothing imports the runner.** The project lead has directed Codex to run the full suite under both runners and compare, and to **register its runner test harness as a check**, so a future runner change triggers it. Codex's lane (`tools/`); nothing for this session.
+
+**THE GENERAL LESSON, entered in 10.23 as item 21:** we have been auditing what our checks assert, and had not asked what verifies the thing that runs them. **The open question, recorded and not chased:** the timing records (`tools/check-times.json`), the dependency table (`tools/affected.mjs`), the seed handling -- can any of them change without triggering a check? If so, the same hole. **Do not go looking now.**
+
+**A count to reconcile, the agent's note:** the brief speaks of "the eight instrument failures already in 10.23". 10.23 has twenty numbered items (the first six on 22 October, 7-12 on 27 October, 13-20 on 28 October); this one is the twenty-first. Recorded as counted, not argued.
 
 ## 11. Verification
 

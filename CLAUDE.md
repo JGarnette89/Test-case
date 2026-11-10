@@ -90,7 +90,9 @@ checks is HISTORY -- the reasoning still holds where it is about the law
 or the axes, and the code is in git. `verify-core` holds that nothing
 reaches for it.
 
-**THE FIRST GAME IS THE ENDLESS HIGHWAY (DECISIONS 10.60, 10 November): the cut is the world, not the features. The 8 km² city is deferred, not deleted; every system stays in scope and hangs off the highway as a spine. What pulls the player back is CONTENT, not resource pressure (10.62): missions from a giver at a stop, some with an off-highway portion in a generated area reached by an exit; stops differ in features; fuel is contextual. Whether an area is loaded or continuous is read in 10.62 and is the project lead's call.**
+**THE FIRST GAME IS THE ENDLESS HIGHWAY (DECISIONS 10.60, 10 November): the cut is the world, not the features. The 8 km² city is deferred, not deleted; every system stays in scope and hangs off the highway as a spine. What pulls the player back is CONTENT, not resource pressure (10.62): missions from a giver at a stop, some with an off-highway portion in a generated area reached by an exit; stops differ in features; fuel is contextual. Mission areas are AUTHORED, not generated (10.63: a generator cannot supply intent), on a continuous road with no visible break -- the ramp is the loading screen. Missions with no off-highway portion should be most of a first release.**
+
+**NOTHING VERIFIES THE CHECK RUNNER (10.63, 10.23 item 21): a change to `tools/check.mjs` selects zero checks. Codex is registering a harness. The same question stands, unchased, for the timing records, the dependency table and the seed handling.**
 
 **THREE AGENTS, THREE LANES (10.60): Codex works in `tools/` and never `src/`; this session owns `src/`; Gemini is parked. Codex has the checks plan's items A and B (B once A is verified and merged), so start neither, and expect `tools/check.mjs` to change under you. TWO DEFECTS IN THE PRODUCT, top of the order when there is room (10.61): IN FLIGHT 36, hard braking, and 42, the speed spread; pull-off points are the one piece of world still to build.**
 
