@@ -31,6 +31,9 @@ import { CAR, DT } from "./traffic.js";
 import { placeOf, laneIndexOf, approachNeighbours } from "./placement.js";
 import { lenOf, STANDSTILL } from "./traffic.js";
 import { playerPoseOn } from "./pose.js";
+import { locate } from "./locate.js";
+import { pavedAt } from "./surface.js";
+import { judgeTurn, yawRateFor, V_MAX, BACK_V } from "./player.js";
 
 const LANE = 3.6;
 const LAUNCHED = 1.5;        // m/s: moving off, as crossing.js has it
@@ -186,6 +189,12 @@ function laneChange(layout, me, path, course) {
    still time to change it, the handoff at the seam, and the fields the
    other drivers read (crossing.js: stopped when, committed yet). */
 export function stepDriver(me, input, world, dt = DT) {
+  if (!world.realPos) return stepOnRoute(me, input, world, dt);
+  if (me.noLane) return stepNoLane(me, input, world, dt);
+  return settle(stepOnRoute(me, input, world, dt), world);
+}
+
+function stepOnRoute(me, input, world, dt = DT) {
   const course = world.course;
   let { k, route } = me;
   let layout = course.at[k].layout;
@@ -202,7 +211,16 @@ export function stepDriver(me, input, world, dt = DT) {
   /* DAMAGE (player.js): the car pulls, and past the limit will not drive. */
   const d = me.damage ?? 0;
   const driven = d > 0 ? { ...input, pull: (me.pull ?? 1) * PULL * d, slider: d >= INOPERABLE ? Math.min(input.slider, -0.4) : input.slider } : input;
-  let next = stepPlayerOn(me, driven, geomOf(path, layout.legs[path.from], world.road?.lane ?? LANE), dt);
+  const geom = geomOf(path, layout.legs[path.from], world.road?.lane ?? LANE);
+  /* THE GRASS, with the real position on (DECISIONS 10.67): on the route's own road as it always
+     was, OR on any road's drawn surface -- pavement far from the route no longer drags. Not the
+     drawn surface alone: it does not cover every committed arc (29 of 2132 points in test map 1's
+     boxes lie off every ribbon, 10 November), and a car on its own turn is on the road. */
+  if (world.realPos) {
+    const onRoute = me.off >= geom.edges.left - 0.5 && me.off <= geom.edges.right + 0.5;
+    geom.paved = onRoute || pavedAt(course, playerPoseOn(course, me)) === true;
+  }
+  let next = stepPlayerOn(me, driven, geom, dt);
   if (d > 0) next = { ...next, v: Math.min(next.v, damagedTop(d)) };
   /* REVERSE (player.js): a fresh pull to the bottom from a standstill. A car that will not go goes neither way. */
   const revFrom = reversePull(me, input.slider, world.t);
@@ -278,6 +296,120 @@ export function stepDriver(me, input, world, dt = DT) {
   /* What they entered under (crossing.js `entryOf`), for who owed whom. */
   const entry = (me.k === next.k && me.s <= path.stopAt && next.s > path.stopAt) ? entryOf(world, next.k, path, stoppedAt) : next.entry;
   return { ...next, leg, atEdge, stoppedAt, going, accepted: going, yaw: (next.psi * 180) / Math.PI, brakePeak, lastStop, stops, ...(entry ? { entry } : {}) };
+}
+
+/* =====================================================================
+   THE CAR'S REAL POSITION (DECISIONS 10.64 (b), 10.65, 10.67), behind
+   `world.realPos`.
+
+   The car is kept against its route, and nothing asked which road it was
+   on. Three things here, and everything else is the stepping above,
+   unchanged to the bit for a car that stays within a lane of its line:
+
+   RE-LOCATED. More than a lane off its route's line -- the adjacent-lane
+   re-base (laneChange) has had its chance -- the car is asked of the
+   world (locate.js): the lane its centre is in and pointing along. Found,
+   it is re-based onto that lane WITH ITS POSE UNMOVED.
+
+   ON NO LANE. Not found, and past the narrow guard's own bound (player.js
+   `lost`), its route no longer says where it is. Its pose is then kept IN
+   THE WORLD (`at`: x, y, z, heading) and moved there by the speed and the
+   wheel alone -- no assist, no committed arc, and the grass by what is
+   under it -- and it is asked of the world again every tick until a lane
+   takes it.
+
+   WHAT THE TRAFFIC READS MEANWHILE IS NOT DECIDED HERE (10.66's named
+   risk, 10.67 piece 4). The traffic finds the player by `(k, route, s)`.
+   On no lane those are kept as HEAD keeps them: the route latched, `s`
+   carried along it by the speed along it, the seams crossed by the signal.
+   That is a ghost on the old lane, and it is what shipped before this.
+   How the traffic should perceive a car on no lane is the maintainer's.
+   ===================================================================== */
+export const RELOCATE_BEYOND = LANE;   // m off the route's line before the world is asked: a whole lane, so the adjacent re-base goes first -- flagged
+
+/* The name of a located lane this car takes: on an approach the route its signal means; past a
+   box a route in from the road it came by, making the movement it made, where there is one. */
+function nameFor(course, lane, me) {
+  const layout = course.at[lane.k].layout;
+  let route = null;
+  if (lane.part === "in") route = routeForSignal(layout, lane.leg, me.signal);
+  else {
+    const was = lane.k === me.k ? course.at[me.k].layout.paths[me.route] : null;
+    route = exitRouteInto(layout, lane.leg, was?.intent ?? "straight", was ? layout.legs[was.from]?.base ?? null : null) ?? exitRouteInto(layout, lane.leg);
+  }
+  return lane.names.find((c) => c.route === route) ?? lane.names.find((c) => c.k === me.k && c.route === me.route) ?? lane.names[0];
+}
+
+/* Onto the lane found, the pose unmoved. What the others read is reset as at a seam: past a box
+   the car is through it; on an approach it has yet to stop. */
+function rebase(me, c, world) {
+  const { at: _at, noLane: _n, ...rest } = me;
+  const out = c.part === "out";
+  return { ...rest, ...judgeTurn(me), k: c.k, route: c.route, s: c.s, off: c.off, psi: c.psi, yaw: (c.psi * 180) / Math.PI,
+    lost: false, laneAt: world.t, relocated: (me.relocated ?? 0) + 1, stoppedAt: null, going: out, accepted: out, atEdge: false };
+}
+
+/* After a tick on the route: re-located, or put on no lane, or left as it is. */
+function settle(next, world) {
+  if (Math.abs(next.off) <= RELOCATE_BEYOND) return next;
+  const course = world.course, pose = playerPoseOn(course, next);
+  const lane = locate(course, pose, { prefer: { k: next.k, route: next.route } });
+  if (lane) {
+    const c = nameFor(course, lane, next);
+    /* The lane it is already on, by another name, is no move at all. */
+    if (c.k === next.k && c.route === next.route) return next;
+    return rebase(next, c, world);
+  }
+  if (!next.lost) return next;
+  return { ...next, ...judgeTurn(next), noLane: true, at: pose, assist: 0 };
+}
+
+/* ONE TICK ON NO LANE: the pose moved in the world; the route's ghost carried as HEAD carries it. */
+function stepNoLane(me, input, world, dt) {
+  const course = world.course;
+  let { k, route } = me, layout = course.at[k].layout, path = layout.paths[route];
+  const d = me.damage ?? 0;
+  const slider = d >= INOPERABLE ? Math.min(input.slider, -0.4) : input.slider;
+  const wheel = input.steer + (d > 0 ? (me.pull ?? 1) * PULL * d : 0);
+  const paved = pavedAt(course, me.at) === true;
+  const revFrom = reversePull(me, input.slider, world.t);
+  const reversing = revFrom != null && world.t - revFrom >= REV_DWELL && (me.v ?? 0) <= 0.1 && d < INOPERABLE;
+  let a = accelFor(slider, me.v, 0) - (paved ? 0 : 1.5);
+  let v = Math.max(0, Math.min(paved ? V_MAX : V_MAX / 4, me.v + a * dt));
+  if (d > 0) v = Math.min(v, damagedTop(d));
+  let h = (me.at.heading * Math.PI) / 180, move = v;
+  if (reversing) { h -= yawRateFor(input.steer, BACK_V) * dt; move = -BACK_V; v = 0; a = 0; }
+  else h += yawRateFor(wheel, v) * dt;
+  const at = { x: me.at.x + move * Math.cos(h) * dt, y: me.at.y + move * Math.sin(h) * dt, z: me.at.z ?? 0, heading: (h * 180) / Math.PI };
+  /* THE GHOST (see above: not a decision): along the latched route by the speed along it. */
+  const rot0 = poseAt(path, Math.min(me.s, path.length)).rot;
+  let s = me.s + move * Math.cos(((at.heading - rot0) * Math.PI) / 180) * dt, leg = me.leg ?? 0, signal = me.signal;
+  if (s < 0) s = 0;
+  if (s >= path.length) {
+    const j = course.joins[`${k}|${path.to}`];
+    if (!j) s = path.length;
+    else {
+      const there = course.at[j.k].layout, nextRoute = routeForSignal(there, j.side, me.signal);
+      s -= path.length; k = j.k; route = nextRoute; layout = there; path = there.paths[nextRoute]; leg += 1;
+      if (me.signal && path.intent === me.signal) signal = null;
+    }
+  }
+  /* `off` and `psi` say where the car is against the ghost, for anybody who still reads them; the pose is `at`. */
+  const g = poseOnGraph(course, k, route, Math.min(s, path.length)), gh = (g.rot * Math.PI) / 180;
+  const off = -(at.x - g.x) * Math.sin(gh) + (at.y - g.y) * Math.cos(gh);
+  const psi = (normDeg(at.heading - g.rot) * Math.PI) / 180;
+  const moving = Math.abs(input.steer - (me.steer ?? input.steer)) > 0.001;
+  let next = { ...me, k, route, s, off, psi, v, a, at, leg, signal, grade: 0, lat: 0, assist: 0, lost: true, noLane: true, steer: input.steer, slider: input.slider,
+    handsOff: Math.abs(input.steer) > 0.05 || moving ? 0 : (me.handsOff ?? Infinity) + dt, revFrom, backing: reversing, yaw: (psi * 180) / Math.PI, atEdge: false,
+    noLaneFor: (me.noLaneFor ?? 0) + dt };
+  /* Asked of the world again: a lane that takes it ends this. */
+  const lane = locate(course, at);
+  if (lane) return rebase(next, nameFor(course, lane, next), world);
+  /* What the others read of the ghost, by crossing.js's own definitions (stepOnRoute's tail). */
+  const waitAt = path.stopAt - CAR.length / 2;
+  const stoppedAt = (k === me.k ? me.stoppedAt : null) ?? (v < AT_REST && Math.abs(s - waitAt) < 2.5 ? world.t : null);
+  const going = s > waitAt + 0.5 || (stoppedAt != null && v > LAUNCHED);
+  return { ...next, stoppedAt, going, accepted: going };
 }
 
 /* THE PLAYER'S POSE IN THE WORLD, with the height of the road under

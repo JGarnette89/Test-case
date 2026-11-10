@@ -142,6 +142,12 @@ export function afterContact(me, c, world) {
     for (let i = 0; i < 3; i++) {
       const mine = driverPose(out, world.course), sep = separation(mine, q);
       if (!sep) break;
+      /* On no lane (drive.js) the car's pose is its own, in the world: pushed out there. */
+      if (out.noLane && out.at) {
+        const d = sep.depth + MARGIN, f = (mine.heading * Math.PI) / 180, fn = Math.cos(f) * sep.nx + Math.sin(f) * sep.ny;
+        out = { ...out, at: { ...out.at, x: out.at.x + sep.nx * d, y: out.at.y + sep.ny * d }, v: fn < 0 ? (out.v ?? 0) * Math.sqrt(Math.max(0, 1 - fn * fn)) : out.v ?? 0 };
+        continue;
+      }
       const path = poseOnGraph(world.course, out.k, out.route, Math.min(out.s, world.course.at[out.k].layout.paths[out.route].length));
       const h = (path.rot * Math.PI) / 180, d = sep.depth + MARGIN, px = sep.nx * d, py = sep.ny * d;
       const len = world.course.at[out.k].layout.paths[out.route].length;

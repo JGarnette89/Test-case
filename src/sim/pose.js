@@ -19,6 +19,9 @@ import { poseOnGraph } from "./graph.js";
 /* { x, y, z, heading }: the path's pose at their distance along, moved
    across by their line, turned by their heading against the road's. */
 export function playerPoseOn(course, me) {
+  /* ON NO LANE (drive.js, DECISIONS 10.67): the car's pose is kept in the world itself, and
+     its route says only where the traffic last had it. */
+  if (me.noLane && me.at) return { x: me.at.x, y: me.at.y, z: me.at.z ?? 0, heading: me.at.heading };
   const p = poseOnGraph(course, me.k ?? 0, me.route, Math.min(me.s, course.at[me.k ?? 0].layout.paths[me.route].length));
   const h = (p.rot * Math.PI) / 180, off = me.off ?? 0;
   return { x: p.x - Math.sin(h) * off, y: p.y + Math.cos(h) * off, z: p.z ?? 0, heading: p.rot + ((me.psi ?? 0) * 180) / Math.PI };

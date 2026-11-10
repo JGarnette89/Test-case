@@ -297,7 +297,9 @@ export function stepPlayerOn(me, input, geom, dt) {
   const lost = me.off < geom.edges.left - LOST_BEYOND || me.off > geom.edges.right + LOST_BEYOND;
   /* Off the road the grass drags hard and the car crawls: it can always
      come back, and nothing else about being there is modelled yet. */
-  const onRoad = me.off >= geom.edges.left - 0.5 && me.off <= geom.edges.right + 0.5;
+  /* `geom.paved`, where the caller knows what is under the car (drive.js, the real position:
+     DECISIONS 10.67), is the answer; otherwise distance from the route, as it always was. */
+  const onRoad = geom.paved ?? (me.off >= geom.edges.left - 0.5 && me.off <= geom.edges.right + 0.5);
   const grade = geom.gradeAt ? geom.gradeAt(me.s) : 0;
   const inBox = !!geom.box && me.s >= geom.box[0] && me.s <= geom.box[1];
   let a = accelFor(input.slider, me.v, grade) - (onRoad ? 0 : 1.5);
@@ -342,14 +344,16 @@ export function stepPlayerOn(me, input, geom, dt) {
     if (Math.abs(off) > lane / 2 - HALF_W) {
       if (Math.sign(off) === -Math.sign(kappa)) turn.wide = true; else turn.cut = true;
     }
-  } else if (turn) {
-    const vClean = Math.sqrt(CLEAN * (turn.rMin === Infinity ? 10 : turn.rMin));
-    const verdict = turn.wide ? "wide" : turn.cut ? "cut" : turn.peak > CLEAN ? "rough" : turn.vPeak < 0.4 * vClean ? "slow" : "clean";
-    lastTurn = { ...turn, verdict, vClean };
-    turns = { ...(turns ?? {}), [verdict]: (turns?.[verdict] ?? 0) + 1 };
-    turn = null;
-  }
+  } else if (turn) ({ turn, lastTurn, turns } = judgeTurn({ turn, lastTurn, turns }));
   return { ...me, v, a, s, psi, off, grade, lat, steer: input.steer, slider: input.slider, assist, handsOff, turn, lastTurn, turns, lost };
+}
+/* A turn's record, judged and closed: as the car leaves the box, or leaves its route altogether (drive.js). */
+export function judgeTurn(me) {
+  const turn = me.turn;
+  if (!turn) return { turn: null, lastTurn: me.lastTurn ?? null, turns: me.turns ?? null };
+  const vClean = Math.sqrt(CLEAN * (turn.rMin === Infinity ? 10 : turn.rMin));
+  const verdict = turn.wide ? "wide" : turn.cut ? "cut" : turn.peak > CLEAN ? "rough" : turn.vPeak < 0.4 * vClean ? "slow" : "clean";
+  return { turn: null, lastTurn: { ...turn, verdict, vClean }, turns: { ...(me.turns ?? {}), [verdict]: (me.turns?.[verdict] ?? 0) + 1 } };
 }
 export const LOST_BEYOND = 3.6;   // m past the route's road edge: a lane's width of verge still belongs to it
 
