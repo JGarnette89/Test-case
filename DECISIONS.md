@@ -6600,6 +6600,43 @@ Readers:
 
 **3-6 days. THE NAMED RISK that could take it toward two weeks: what the TRAFFIC does about a player on no lane.** The traffic finds the player by route, so a player off every route is invisible to following and yielding. Only contact would still catch it. How the traffic should perceive a car on no lane is a design question, and it is where this grows.
 
+## 10.67 THE CAR'S REAL POSITION: THE DESIGN TO BE BUILT, AND THE PREDICTIONS, WRITTEN BEFORE BUILDING (10 November; NOTHING BUILT WHEN THIS WAS WRITTEN)
+
+Fix (b) of 10.64, on the scoping of 10.66. **Written before any code, so the predictions can be scored.** Scores are appended below as each piece lands.
+
+### The design, in four pieces, each reported as it lands
+
+**1. ONE POSE.** The player's pose has two implementations (`driverPose`; and the traffic's `poseOf`, which has no player case and drops `off` and the heading). One formula, in one place, read by both. `encounters.js` and `shaping.js` are the two readers 10.66 named; **found since by grep, three more that hand the player to `poseOf`: `placement.js` `nearIn` (the room round a placed car), `crossing.js` `poseOnce` (what a truck hides), and `overlapping`.** All five get the true pose by the one change.
+
+**2. A LOCATOR** (`src/sim/locate.js`): from a pose in the world to `(k, route, s, off, psi)` on the lane the car is physically in, or null. A path's heading is constant along each segment (`poseAt`), so the inverse is exact per segment. **A LANE IS ROAD OUTSIDE A BOX:** only a path's approach (s < stopAt) and exit stretch (s > clearAt) are lanes; in a box a car is on its committed route or on none. This is how the hard part 10.66 named (several routes overlapping in a box) is avoided rather than solved. A car is IN a lane when its centre is within half a lane of the centreline, on the same level, pointing along it rather than against it.
+
+**3. RE-LOCATION AND "ON NO LANE", BEHIND A SWITCH (`world.realPos`), default OFF.** Each tick, after the adjacent-lane re-base that exists:
+   - more than a lane off its route's line (the adjacent re-base had its chance), the car is located; **found, it is re-based with its pose unmoved**;
+   - not found and past `LOST_BEYOND` (the narrow guard's own test, unchanged), it is ON NO LANE: **its pose is then integrated in the world** (x, y, heading, from the speed and the wheel alone: no assist, no committed arc), `driverPose` returns that pose, and it is located again every tick until a lane takes it;
+   - **everywhere else the stepping is HEAD's, to the bit:** a car that never goes a lane off its line cannot tell the switch is on.
+   - **THE GRASS, with the switch on, is judged physically**: is there drawn road surface under the car's centre (`sidewalks.js` `onRoadSurface`, every road), not distance from the route.
+
+**4. THE CLIFF, NOT DECIDED HERE.** While on no lane the traffic still reads `(k, route, s)`. **Built as the least decision available: what HEAD already does** -- the latched route, `s` advancing by the speed along it -- and reported. Nothing about how the traffic perceives a car on no lane is designed in this work.
+
+**NOT IN THIS WORK:** the player overpowering the committed arc inside the box (10.65's steering model: this is its prerequisite, not it); lane verdicts re-derived from the located lane.
+
+### Predictions, each with its mechanism
+
+- **P1. Cars met per minute moves by under 2% on an ordinary drive.** Mechanism: on a lane `|off|` is at most half a lane (1.8 m; re-based past it), against a 30 m radius, so few cars sit in the 1.8 m shell. **The defect is real and latent: large only when the car is far off its route.** In the stagger (10.64, 45 km/h, hold) the two poses are apart by `|off|`, up to 34 m, at HEAD.
+- **P2. Overtook and overtaken move by at most a few counts in a long drive.** Mechanism: "beside" is 1.8 m across, and a car in the next lane is 3.6 m from the route's line; the player's own 1.8 m can carry that across the threshold only for a car in their own lane while they straddle.
+- **P3. A world whose player has `off` 0 and `psi` 0 is the same world tick for tick before and after piece 1.** Mechanism: the formula adds nothing at zero. With a real drive the traffic CAN differ, through `poseOnce` (what a truck hides) and `nearIn`: predicted rare, not predicted zero.
+- **P4. The locator returns the lane a traffic car is on, for every car outside a box, at its own `s` to within a centimetre.** Mechanism: the inverse is exact per segment. **Where it will not be unique:** routes from one leg share their approach, and routes into one leg share their exit stretch -- the same lane under several names. Predicted: the located route shares the car's lane (same `from` short of the line, same `to` past the box), not always the same route.
+- **P5. Stagger, 45 km/h, hold (10.64's run), switch on:** the car goes on no lane when the guard says lost; **from then its drawn pose moves in a straight line at its held heading** (HEAD: it does too on a straight stale path; the difference shows only where the stale path bends); the speed does NOT fall to a crawl where there is pavement under it, and does on grass. **I do not know which this run is over: the car ends 34 m off at HEAD; read after.**
+- **P6. Stagger, then steered back onto the road it ran off (a new run):** with the switch on the car is located onto the lane it reaches, `off` is under half a lane from then on, the assist returns, and no drag on the pavement. At HEAD the same inputs leave `off` large for good and the car crawling. **This is the fix; if this fails the piece has failed.**
+- **P7. Stagger, 32 km/h:** unchanged by the switch, tick for tick (never a lane off its line after the adjacent re-base... **uncertain**: in the box the wide run may pass a lane off the arc; if so it is located onto the exit lane it reaches, earlier than the adjacent re-base would).
+- **P8. THE GRASS PHYSICAL IS THE RISK TO verify-contact 9 AND 10, AND I PREDICT IT FAILS THEM.** Mechanism: the drawn surface INCLUDES the parking strip (`outer`, `load.js`); HEAD's grass test stops at the lanes. On 10 November lifting the drag there let a car push into a parked row at full throttle (10.64). A car nosed into a parked row stands on the strip: pavement. **If it fails, that is not tuned away: reported, with the carriageway-only variant measured beside it.**
+- **P9. Every existing check is unmoved with the switch off**, except through piece 1 (P3).
+- **P10. Cost:** the locator runs only when a lane off line or on no lane; the surface test every tick for one car. Under 1% of a step at 180 cars. Not measured on the phone.
+
+### What would make this two weeks (10.66), restated so it is recognised on sight
+
+The traffic's following and yielding find the player by route. **If a check or a measurement shows the traffic doing something to a car on no lane that needs a decision -- following a ghost, queueing behind where the player is not, driving through where the player is -- that is the cliff: stop, report, do not design it.**
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
