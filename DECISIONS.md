@@ -6363,6 +6363,41 @@ Reverse is available from any standstill, with nothing hit and no limit but how 
 
 **Nothing further this session unless he asks.**
 
+## 10.60 THE FIRST GAME IS THE ENDLESS HIGHWAY: THE CUT IS THE WORLD, NOT THE FEATURES (the maintainer, relayed by the project lead, 10 November; A SCOPE DECISION, NOTHING BUILT)
+
+**Supersedes nothing in the systems. It changes what gets built and when.**
+
+**THE DECISION:** a smaller game ships first, built on the endless highway, before the expansive version. His reasons: it is the most interesting part to him, everything else attaches to it, and it is the stronger product until the game is proven in general.
+
+**THE CUT IS THE WORLD, NOT THE FEATURES.** His correction to the project lead's proposal, and the sharper cut: the expense was the 8 km² city, its zones, buildings and trip generation, all authored content. **The systems survive because they hang off a spine rather than needing a metropolis.**
+
+| in scope | out of scope, DEFERRED NOT DELETED |
+|---|---|
+| the highway as the spine; pull-off points carrying jobs; several player vehicles, each with its own upgrade tree; damage and repair; weather with a forecast at the stop that the player prepares for; day and night; the five characters; examiner mode; the marking sheet; the county's story revealed in pieces over time | **the expansive city, and only that** |
+
+**THE SESSION SHAPE:** about thirty minutes. Leave a stop, go as deep as you can, return before the car gives out. Difficulty rises with distance. **Money and upgrades persist; the run does not.**
+
+- **Endlessness becomes the scoring axis rather than a content problem.**
+- **Accumulated damage is a run-ender that is not death**, which uses the contact work already built (10.54).
+
+**TWO DESIGN NOTES (the project lead):**
+
+- **WEATHER AS PREPARATION, NOT EFFECT.** A forecast read at the stop, tyres chosen before leaving, consequences lived with. Preparation is a kind of gameplay almost nothing in this genre has, and it suits the analog setting: a board chalked up at a truck stop, no app.
+- **SEPARATE UPGRADE TREES PER VEHICLE** mean money is always a choice and vehicle class is meaningful rather than cosmetic.
+
+**UNDECIDED, AND TO BE DECIDED DELIBERATELY RATHER THAN DISCOVERED: WHAT PULLS THE PLAYER BACK TO A STOP.** Damage is one pressure, fuel an obvious second and period-appropriate, cargo deadlines a third. It sets the rhythm of every session.
+
+### What the record already says that bears on it (the agent, read, not measured; nothing changed)
+
+- **The loop as it stands** (`test-loop`): one-way, three lanes, about 10.4 km round, four interchanges keeping the traffic fresh, the player joining from a slip road, density shaped around the player (10.17). **Its interchanges are not pull-off points:** there is nowhere to stop, nothing to stop at, and no exit that leads anywhere but back on. **Pull-offs are new content, and the one piece of world this cut keeps building.**
+- **"Difficulty rises with distance" has two instruments already:** the skill dial (`world.skill`) and the car count. Neither has ever been driven by distance.
+- **Weather, day and night, the upgrade trees and repair are design, not code:** DAY-NIGHT.md and VEHICLES-GARAGE.md. Mail and the wallet exist (10.54), and with no day in the game a "day" is minutes of driving.
+- **Open on the loop and unexplained, and now on the product's road:** IN FLIGHT 36, hard braking in free-flowing traffic, measured first on the endless highway (one window in 18); and the speed spread falling with the brake reaction on (10.46), not established.
+
+### Lanes, now that three agents work here (the project lead)
+
+**Codex works in `tools/` and never `src/`; this session owns `src/`. Gemini is parked.** Codex has the checks plan's item A: the runner's timeout flaw, its misreported limit, and keeping failure logs. **So this session does not start item A, and `tools/check.mjs` may change under it.** Item B, the seed sweep, is `tools/`-side too and has not been assigned: **the agent's flag, not a decision.**
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

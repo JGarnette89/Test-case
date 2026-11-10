@@ -90,6 +90,10 @@ checks is HISTORY -- the reasoning still holds where it is about the law
 or the axes, and the code is in git. `verify-core` holds that nothing
 reaches for it.
 
+**THE FIRST GAME IS THE ENDLESS HIGHWAY (DECISIONS 10.60, 10 November): the cut is the world, not the features. The 8 km² city is deferred, not deleted; every system stays in scope and hangs off the highway as a spine. Undecided, deliberately: what pulls the player back to a stop.**
+
+**THREE AGENTS, THREE LANES (10.60): Codex works in `tools/` and never `src/`; this session owns `src/`; Gemini is parked. Codex has the checks plan's item A, so do not start it, and expect `tools/check.mjs` to change under you.**
+
 **[HANDOFF-2026-11-06.md](HANDOFF-2026-11-06.md) IS WHERE THE LAST SESSION STOPPED -- READ IT FIRST: what shipped, what is next and in what order, and what waits on the maintainer. The checks plan is in TESTING.md and is not to be executed until the project lead has ruled on it.**
 
 **[HANDOFF-2026-10-28-evening.md](HANDOFF-2026-10-28-evening.md) is the session before that.** The repository's own checkout is on branch `lane-occupancy`, NOT `main`; its branches (38, 39, 40's switches, aggression phase 1), unmerged and pushed on 3 November, and a test tree left local, with their worktrees in the ignored `tools/scratch/kr/`; the agreed order and its reasons; what waits on Jay; what not to do. And section 9: Jay's new item -- one combined map, and features as a property of the world, not the screen (DECISIONS 10.35).
