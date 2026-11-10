@@ -6669,6 +6669,50 @@ The traffic finds the player by `(k, route, s)`. On no lane those are kept as HE
 
 **Both are HEAD's behavior and this work changes neither.** My first run of this measured something else: the standing player held the slider at the bottom, which is reverse, and backed 30 m toward the road. **The questions for the maintainer, none answered here:** is a car on no lane visible to the traffic at all; if so by what (its body in the plane, as a parked car or a wreck is?); does anybody yield to it or only avoid it; and what does the lane it left do about the ghost -- which today holds a queue. **Until that is ruled the switch stays off.**
 
+## 10.68 THE CLIFF, RULED: THE TRAFFIC PERCEIVES BY GEOMETRY, NOT BY LANE MEMBERSHIP (the maintainer, relayed by the project lead, 10 November; RULED, SCOPED BY READING, NOTHING BUILT)
+
+**Answers 10.67's cliff.** His words: *"real drivers use their eyes to see what's on the road, especially since drivers know other drivers won't drive predictably and their own driving may have to be irregular to compensate."*
+
+**THE RULING, three parts:**
+1. **A car on no lane is visible to the traffic and is avoided.**
+2. **Nobody yields right of way to it: it has none.**
+3. **The ghost goes. A car's presence in another driver's awareness follows its BODY, not its route.**
+
+**THE REASONING, which is the principle and not only the verdict (the project lead):** a model in which the traffic perceives only lane-assigned vehicles HAS NO HAZARDS IN IT, and hazards are what the game is about. A thing in the road that is not where the bookkeeping says a thing should be is the definition of one. **And it is the same principle as the sight and occlusion work** (sight.js, 10.47): what a driver knows about is what their eyes could reach, decided by where bodies are, not by what a table says. Perception by geometry, not by bookkeeping.
+
+**THE PROJECT LEAD'S SUGGESTION, TO WEIGH: keep the car indexed, by geometry instead of by route** -- insert a car on no lane into the neighbour index of whichever lanes its body physically overlaps, so the cost structure is unchanged and nothing becomes a spatial scan per driver per tick (10.33).
+
+### Weighed, by reading: IT WORKS FOR LANES, AND HAS THREE GAPS
+
+**Why it works, and more cheaply than it sounds.** The traffic's index (`crossing.js` `relevanceOf`) is built once a tick from each actor's `(k, route, s)` and nothing else. So nothing in the index has to change: **a STAND-IN actor whose `(k, route, s)` is chosen by geometry (the locator, 10.67) is indexed, followed and braked for by every rule that exists.** The work is one geometry query a tick for ONE car (microseconds, 10.67 P10), and no driver scans anything. The worker gets it for nothing: it writes the player in through `withDriver`, so stand-ins made there from a field on the player cross the boundary as the player does.
+
+**Avoided, by rules that exist:** a car ahead in my lane is followed and stopped for (`whatStops`, the share-lane branch); a car inside the region where two paths overlap is "a stopped car to stop short of" whoever had priority (the across-my-path branch, 8 October). **No right of way, at one site:** every yielding decision goes through one function, `blockedBy`; an actor flagged as having no right is never yielded to there.
+
+**THE THREE GAPS:**
+1. **A body is in more than one lane.** One actor is one route. A car across a line, or crossing a road, needs an entry per lane its body overlaps: several stand-ins, a handful at most. (Today's `straddles` case in `whatStops` is this, for the player only and only between lanes of one road, read from `off`.)
+2. **In a box there are no lanes** (10.67: "a lane is road outside a box"). A car on no lane inside an intersection would be invisible there unless the locator is extended to say which movements' paths through the box its body lies on -- every one of them, not a choice among them, so the hard part 10.67 avoided stays avoided. Up to a dozen stand-ins in a wide box.
+3. **A stand-in has a place along a lane but not a lane's direction.** A car across a lane or coming the wrong way down it is, to the following model, a car in front at some speed. The honest reading is a STOPPED thing at that place; a wrong-way car closing at speed will be braked for as if it stood still, which is less than a real driver would do and all the model can.
+
+**AND ONE COST THAT IS NOT IN THE SUGGESTION: THE GHOST GOING.** The player's own actor still has to be in the world (the page, shaping, encounters and the horn find it there) with no place in any lane. An actor with no route is not safe: 30 loops over the actors in `crossing.js` alone, most of which ask its path. So the actor stays, flagged, and the readers that find cars BY ROUTE skip it: a boolean on a neighbour already being visited (allowed by 10.33), at a number of sites to be counted before building -- `whatStops`' loop, `blockedBy`, the lane index, the lane change's neighbours, placement. **That count is the estimate's soft part.**
+
+### The plan, if approved: behind the same switch
+
+- `me.shadows`: each tick, the lanes (and, in a box, the paths) the player's body overlaps, from the locator at three points of the body. `withDriver` writes one stand-in per shadow: flagged as the player (so nothing steps it and the traffic's own contact test leaves it to `playerContact`, as now), no right of way, speed along the lane floored at zero, its pose the player's real one.
+- On no lane, the player's own actor is flagged and skipped by route readers. **The ghost is gone.**
+- On a lane, the actor is the car as now, and shadows are only the OTHER lanes its body is in -- which generalises `straddles` to the oncoming lane and to another road.
+- Checks: `ghost.mjs`' two scenes become a check with the expectation stated in it; the step time on and off at 180 cars (10.33: measure, do not agree).
+
+### Predictions, before building
+
+- **G1. Scene A (10.67): the car no longer stops for the ghost.** It passes the place at its own speed. Mechanism: nothing is on that lane.
+- **G2. Scene B: the car brakes and stops behind the player standing in its lane, and never touches them.** Mechanism: a stand-in on that lane at the player's place, read as a stopped leader 110 m ahead.
+- **G3. A player crossing a road at right angles in a gap a competent driver would not take is braked for hard, and sometimes struck.** Mechanism: the stand-in appears in a lane at the moment the body enters it; nobody anticipated it. **That is the hazard the ruling wants, not a defect -- but it will show as crashes in any check that counts them.**
+- **G4. Step time at 180 cars moves by under 1%.** Mechanism: at most a dozen extra actors, one query for one car.
+- **G5. With nobody off a lane the world is the same world, tick for tick**, switch on or off. Mechanism: no shadows, no flag. **Least sure of this where the player straddles a line: the stand-in and the existing `straddles` rule will both speak, and "the first of two equal pressures" may not be the same first.**
+- **G6. I EXPECT THE SITE COUNT FOR "SKIP THE FLAGGED ACTOR" TO BE WHERE THIS RUNS OVER**, and a missed site to show as a car still queueing behind nothing. Scene A is the test for it.
+
+**NOT IN THIS:** traffic steering AROUND a car on no lane (they stop for it, as for a wreck or a stopped car; going round is `passing.js`, built for buses only); a horn at it; fault for striking it.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
