@@ -6385,7 +6385,7 @@ Reverse is available from any standstill, with nothing hit and no limit but how 
 - **WEATHER AS PREPARATION, NOT EFFECT.** A forecast read at the stop, tyres chosen before leaving, consequences lived with. Preparation is a kind of gameplay almost nothing in this genre has, and it suits the analog setting: a board chalked up at a truck stop, no app.
 - **SEPARATE UPGRADE TREES PER VEHICLE** mean money is always a choice and vehicle class is meaningful rather than cosmetic.
 
-**UNDECIDED, AND TO BE DECIDED DELIBERATELY RATHER THAN DISCOVERED: WHAT PULLS THE PLAYER BACK TO A STOP.** Damage is one pressure, fuel an obvious second and period-appropriate, cargo deadlines a third. It sets the rhythm of every session.
+**~~UNDECIDED: WHAT PULLS THE PLAYER BACK TO A STOP.~~ RESOLVED BY 10.62: CONTENT, NOT RESOURCE PRESSURE** -- the next mission, the storyline, places to discover off the highway, with fuel a contextual pressure on a long haul rather than a constant one. The framing here, that damage, fuel or cargo deadlines would set the rhythm, is superseded (the project lead).
 
 ### What the record already says that bears on it (the agent, read, not measured; nothing changed)
 
@@ -6413,6 +6413,41 @@ Reverse is available from any standstill, with nothing hit and no limit but how 
 4. **"DIFFICULTY RISES WITH DISTANCE" IS A GAP: TWO LEVERS EXIST AND NEITHER IS CONNECTED TO ANYTHING.** The skill dial (`world.skill`, sim/skill.js, which redraws everybody live) and the car count both exist. Neither has ever been driven by distance. **Probably the cheapest route to the session shape the maintainer described: the project lead's note, not measured.** Unmeasured too: whether a redraw mid-run reads as the road getting harder or as everybody changing at once.
 
 **Nothing built. The light session stands.**
+
+## 10.62 WHAT PULLS THE PLAYER BACK IS CONTENT, AND MISSIONS LEAVE THE HIGHWAY (the maintainer, relayed by the project lead, 10 November; A DESIGN DECISION, NOTHING BUILT)
+
+**RESOLVES 10.60's open question, and supersedes the project lead's framing there that damage, fuel or cargo deadlines would set the session rhythm.**
+
+**HIS ANSWER: CONTENT, NOT RESOURCE PRESSURE.** The next mission, advancing a storyline, and the chance to discover new places off the highway.
+
+**THE STRUCTURE:**
+- **A mission giver at a stop gives a task.** Some missions have an **off-highway portion**: drive the highway, take an exit, do the job in a generated area, return to the highway.
+- **The off-ramp can be anywhere and lead to any kind of area we author**, because we are not bound to a static map.
+- **Not every mission has one.** Racing and highway weaving do not. Hauling a trailer might go to an area built for parking it.
+- **STOPS ARE HOME BASE, AND DIFFERENT STOPS HAVE DIFFERENT FEATURES**, explicitly to keep menus simple. His reference is an Ontario OnRoute: some have a body shop, some a truck stop with freight work, not all have everything.
+- **FUEL IS CONTEXTUAL.** A long haul forces you to manage it; on a short job you only want gas or minor repairs.
+
+### Consequences (the project lead, put to the maintainer; recorded as theirs, not ruled)
+
+1. **THE EXIT BECOMES GAMEPLAY.** Watching for your turn-off, reading signs, choosing a lane, and a real cost for missing it. That is the analog wayfinding already on record, and it gives lane choice and destination work a reason to exist for the PLAYER rather than only for the traffic.
+2. **DIFFERENT FEATURES AT DIFFERENT STOPS BUILD A MENTAL MAP WITHOUT AUTHORING A CITY.** The player's familiarity does the work geography usually does.
+3. **THE CAUTION: GENERATED AREAS DIE OF SAMENESS.** Hand-author each KIND of place (yard, quarry, depot, residential street) and generate the layout within it. Ten kinds reads as variety; one generator reads as wallpaper.
+4. **THE EXAMINER GAME'S EVENTUAL HOME IS A MISSION AREA.** Brenda needs residential streets, intersections and stop signs: a mission area with a particular character, reached by an exit. It fits without the city coming back.
+
+### The engineering question first: is an off-highway area SEPARATE AND LOADED, or CONTINUOUS? (the agent, read, and one desk timing; NOTHING BUILT)
+
+The project lead's instinct is separate: the exit ramp is a natural seam, each area only as big as the job, fifty of them free when you are not in one. Continuous is the streaming work costed at four to six days and parked. **What the engine does today, so the choice is made on it:**
+
+1. **A NEW WORLD MID-SESSION: THE MECHANISM EXISTS, THE PATH DOES NOT.** `MapRoad.jsx` `restart` already throws the whole world away and builds another (`sceneFor` -> `sim/scene.js` `worldFor`) while the screen runs, at every change of car count, mode or seed. The worker takes a second `init` on the same thread (`remote.js` `handle` ignores the state it had). **What does not exist:** the map is a prop fixed at mount (`mapData`, `startAt`), so there is no "load this other map now"; that is a small change in the screen.
+2. **WHAT SURVIVES A REBUILD TODAY: THE WALLET AND THE MAIL, NOTHING ON THE CAR.** They live on refs outside the world (`walletRef`, `mailRef`). The player is rebuilt from scratch (`playerOn` + `placePlayer`), so **damage, and anything else on `me`, is lost.** Carrying the player's own state across a seam is new, and small.
+3. **THE HIGHWAY'S TRAFFIC WHILE THE PLAYER IS ELSEWHERE: TODAY IT IS DISCARDED.** **But a world is a value** -- every step returns a new object -- and the worker already holds the world as built and returns to it (`rewind`, the bench's). **So the highway can be held and resumed exactly where it was, frozen, for the cost of keeping it in memory.** Not verified: whether any cache inside a world is mutated in place (`parking.js` notes its poses are shared); a resume check would have to show a held world steps identically to one never set down. **The choice is design, and nobody has made it:** frozen and resumed (the traffic you left), or rebuilt fresh on return (the loop is built to refresh its drivers anyway: most are new by minute 15).
+4. **THE SEAM IS ALREADY DETECTED.** The loop's off-ramps run to the map's edge, and driving off the end of a road sets `atEdge` (`drive.js`), which today prints "THE EDGE OF THE MAP -- restart". That is exactly the trigger an exit needs. Coming back, every on-ramp is already a place the player can be started clear (the loop's sections start on slip roads).
+5. **THE COST OF THE SEAM IS A LOAD, AND IT SCALES WITH THE CARS.** Desk, load and world with the player placed, one run each: Signs (7 roads, 41 cars) 0.4 s; the loop (133 cars) 1.7 s; test map 1 (121 cars) 1.7 s; the stand-in city (143 roads, 286 cars) 3.2 s. **The phone is slower by a factor not measured here** (a bench world, built heavier, takes 6-21 s on it: SIMULATOR.md, the bench's build-s). A job-sized area is near the Signs end; a held highway costs nothing to return to.
+6. **GENERATING AN AREA OF A KIND EXISTS IN PIECES:** `map/brief.js` makes a map from a brief and a seed, `map/generate.js` fills a district with streets and lots. Both are deterministic in the seed, so an exit can name its area by kind and seed. Neither knows any "kind" beyond what a brief asks for; the hand-authored kinds of consequence 3 are new content.
+
+**THE AGENT'S READ: SEPARATE-AND-LOADED IS CHEAP HERE, AND ITS PIECES EXIST** -- the rebuild, the second init, the edge trigger, the clear start, deterministic generation. New: a screen path to load another map, carrying the player's own state, holding (or rebuilding) the highway, and a load that does not read as a freeze on the phone. **Continuous is unchanged at four to six days. Not estimated in days, not decided: the project lead's call.**
+
+**Nothing built.**
 
 ## 11. Verification
 
