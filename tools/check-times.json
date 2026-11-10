@@ -17,7 +17,7 @@
  "verify-compose": 62,
  "verify-connect": 20,
  "verify-contact": 177,
- "verify-core": 0,
+ "verify-core": 0.101,
  "verify-course": 596,
  "verify-courtesy": 799,
  "verify-crashes": 283,
