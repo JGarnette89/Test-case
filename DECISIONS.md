@@ -6637,6 +6637,38 @@ Fix (b) of 10.64, on the scoping of 10.66. **Written before any code, so the pre
 
 The traffic's following and yielding find the player by route. **If a check or a measurement shows the traffic doing something to a car on no lane that needs a decision -- following a ghost, queueing behind where the player is not, driving through where the player is -- that is the cliff: stop, report, do not design it.**
 
+### SCORED, 10 November, as each piece landed (the predictions above were pushed first, commit `021a37a`)
+
+**BUILT: pieces 1, 2 and 3. Piece 4 is the cliff and is reported, not built. `world.realPos` is OFF by default; nothing a player sees has changed.**
+
+| | prediction | result |
+|---|---|---|
+| P1 | met per minute moves under 2% | **HELD, at exactly zero, and the zero was checked.** 30 driven minutes (test map 1 and the loop, 3 seeds each, 5 min): every count identical from either pose (99/99, 95/95, 82/82 cars; 15, 17, 19 on the loop). Zero is this project's warning sign, so the mechanism was confirmed live: in 3 minutes, **1 car-tick** where the two poses disagree on "within 30 m". **The metric the project has relied on was not corrupted, in this sample, by a good driver who holds a lane.** A player who strays more would differ more. |
+| P2 | overtakes move by a few counts at most | **HELD:** identical in all six runs. |
+| P3 | zero-offset world identical; a real drive rarely different | **HELD, more strongly than predicted:** the traffic was identical to HEAD (a sum over every car's place) in all six real drives. |
+| P4 | the locator inverts exactly; the same lane under several names | **HELD AFTER TWO FAILURES OF MINE.** (i) First run: poses out by up to 0.49 m at path vertices -- it took the smaller offset before the exact projection. (ii) **Not predicted: on a turn bay's taper the nearest lane is not the route's lane** (two centrelines less than a lane apart), and a bay that has not opened lies exactly on its neighbour. 96.7% of random places on test map 1 are located on the lane they were made on; the rest on a nearer one. |
+| P5 | stagger, 45, hold: straight line; crawl only on grass | **HELD AND UNINFORMATIVE:** that run ends on grass, so it is identical to HEAD to the printed digit. |
+| P6 | steered back, the car is located and the drag goes | **HELD -- ON THE THIRD SCENARIO, AND THE FIRST TWO TAUGHT MORE THAN THE THIRD.** (i) Steered back at once: never lost, even at HEAD. (ii) Steered back late **to the road the turn was for: HEAD RECOVERS TOO**, because the latched lane IS the road it returns to. **The latch only hurts when the car ends up on a different road from the one latched.** (iii) The turn abandoned for the road straight ahead: at HEAD the car reaches that road and stays lost, 66 m then 158 m "off", no assist, **held to 30 km/h on pavement asking for 45**, and hands off drives straight off the bending road. With the switch on: located at 11 s, offset 0.86 m falling to 0.00, assist back and holding the bend, 45 km/h, across the next seam normally. Two errors in my own scripted driver on the way (aimed along a chord across a bowed road; no throttle on the grass). |
+| P7 | 32 km/h unchanged by the switch | **HELD:** the same car on 480 of 480 ticks. |
+| P8 | the grass by drawn pavement FAILS verify-contact 9 and 10 | **FAILED, in the good direction: it passes with the switch forced on.** Checked that the mechanism was active in that run and it was: worst seconds to get clear at 45 degrees 13.4 -> 16.1, at 70 degrees 15.5 -> 7.4, at 90 degrees 43.7 -> 43.8; 0 s scraping in both. **Why I was wrong:** on 10 November the drag was lifted wherever the car was lost, grass included; here it is lifted only on drawn pavement. **Sample: 24 cases of one script and one city run. The 90-degree case is 43.8 s against a 45 s bar, the handoff's known near-miss, no better.** |
+| P9 | every check unmoved with the switch off | **see the run tallies below.** |
+| P10 | under 1% of a step | **HELD by three orders:** a tick of the player is 3-7 MICROseconds on a lane or on no lane, on test map 1 and the city (a step at 180 cars is milliseconds). On this machine, loaded; the index's one-off build and the phone are not measured. |
+
+**THE DESIGN CHANGED IN ONE PLACE WHILE BUILDING, FOUND BY MEASURING: the grass is NOT the drawn surface alone.** The drawn ribbons do not cover every committed arc: 29 of 2,132 points inside test map 1's boxes, and ramp gores on the loop, lie on no ribbon. A car on its own turn would have been dragged. So: on its route's own road as before, OR on any drawn pavement.
+
+**FOUND, NOT CAUSED AND NOT FIXED: THE PLAYER'S CAR STEPS SIDEWAYS IN A BOX.** On its route inside a box, off its arc, the pose jumps as the car passes each vertex of the arc -- the offset times the bend at that vertex: **209 mm in one tick at 45 km/h, 149 mm at 32, zero at 20, with the switch OFF.** A path's heading is constant along each segment, so the frame the car is kept in is kinked. It is visible stutter on exactly the maintainer's recipe, and it may be part of what he called a stagger. Not separated from the latch by anybody yet. The world-kept pose does not have it; the route's frame does.
+
+**THE CHECKS:** `verify-locate` (new: the inverse, brute-force nearest, no box, not across or against, the traffic's own cars) -- 7 sabotages, each failing its own line; one sabotage was too weak the first time (it removed one of two guards) and was redone. `verify-encounters` section 6 (a player off their line: every earlier scene had `off` 0, the one place the two poses agreed) -- 2 sabotages. `verify-drive` section 9 -- 9 sabotages; **two PASSED at first** (ignoring the kept pose; asking the world every tick), each then given the scene that holds it (past the end of the ghost's path; a bay's taper).
+
+### THE CLIFF, REACHED AND MEASURED, NOT DECIDED (`tools/measure/ghost.mjs`)
+
+The traffic finds the player by `(k, route, s)`. On no lane those are kept as HEAD keeps them. One traffic car per scene, test map 1, the switch on:
+
+- **A. THE GHOST IS QUEUED BEHIND.** The player stands on the grass 34 m from the road (where 10.64's run leaves them); their ghost stands on the latched lane. A car coming down that lane at 43 km/h **stops 6.5 m behind the ghost and stands** (8.4 s of the 20 measured, and still standing), 34.5 m from the player's car.
+- **B. THE CAR IS NOT SEEN.** The player stands in a lane, facing against it; their ghost is on another street 195 m away. A car coming down the lane they stand in **strikes them at 35 km/h** having never braked for them.
+
+**Both are HEAD's behavior and this work changes neither.** My first run of this measured something else: the standing player held the slider at the bottom, which is reverse, and backed 30 m toward the road. **The questions for the maintainer, none answered here:** is a car on no lane visible to the traffic at all; if so by what (its body in the plane, as a parked car or a wreck is?); does anybody yield to it or only avoid it; and what does the lane it left do about the ghost -- which today holds a queue. **Until that is ruled the switch stays off.**
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
