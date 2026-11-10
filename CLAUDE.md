@@ -92,7 +92,7 @@ reaches for it.
 
 **THE FIRST GAME IS THE ENDLESS HIGHWAY (DECISIONS 10.60, 10 November): the cut is the world, not the features. The 8 km² city is deferred, not deleted; every system stays in scope and hangs off the highway as a spine. Undecided, deliberately: what pulls the player back to a stop.**
 
-**THREE AGENTS, THREE LANES (10.60): Codex works in `tools/` and never `src/`; this session owns `src/`; Gemini is parked. Codex has the checks plan's item A, so do not start it, and expect `tools/check.mjs` to change under you.**
+**THREE AGENTS, THREE LANES (10.60): Codex works in `tools/` and never `src/`; this session owns `src/`; Gemini is parked. Codex has the checks plan's items A and B (B once A is verified and merged), so start neither, and expect `tools/check.mjs` to change under you. TWO DEFECTS IN THE PRODUCT, top of the order when there is room (10.61): IN FLIGHT 36, hard braking, and 42, the speed spread; pull-off points are the one piece of world still to build.**
 
 **[HANDOFF-2026-11-06.md](HANDOFF-2026-11-06.md) IS WHERE THE LAST SESSION STOPPED -- READ IT FIRST: what shipped, what is next and in what order, and what waits on the maintainer. The checks plan is in TESTING.md and is not to be executed until the project lead has ruled on it.**
 

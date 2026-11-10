@@ -6396,7 +6396,23 @@ Reverse is available from any standstill, with nothing hit and no limit but how 
 
 ### Lanes, now that three agents work here (the project lead)
 
-**Codex works in `tools/` and never `src/`; this session owns `src/`. Gemini is parked.** Codex has the checks plan's item A: the runner's timeout flaw, its misreported limit, and keeping failure logs. **So this session does not start item A, and `tools/check.mjs` may change under it.** Item B, the seed sweep, is `tools/`-side too and has not been assigned: **the agent's flag, not a decision.**
+**Codex works in `tools/` and never `src/`; this session owns `src/`. Gemini is parked.** Codex has the checks plan's item A: the runner's timeout flaw, its misreported limit, and keeping failure logs. **So this session does not start item A, and `tools/check.mjs` may change under it.** Item B, the seed sweep, is `tools/`-side too. **ASSIGNED TO CODEX (10.61), gated behind item A being verified and merged.**
+
+## 10.61 WHAT THE SCOPE DECISION DOES TO PRIORITIES (the project lead, 10 November; A RECORD, NOTHING BUILT)
+
+1. **CHECKS ITEM B IS CODEX'S, GATED BEHIND ITEM A BEING VERIFIED AND MERGED.** Both are `tools/`-side. This session starts neither.
+
+2. **TWO UNEXPLAINED RESULTS ARE NOW DEFECTS IN THE THING BEING SHIPPED, NOT CURIOSITIES IN A TEST VENUE.** Both were measured on the endless highway, and the endless highway is now the product (10.60):
+   - **IN FLIGHT 36, hard braking in free-flowing traffic:** one 4 s window in eighteen brakes past 3 m/s^2 with no lane change involved, untraced since 28 October.
+   - **IN FLIGHT 42, the speed spread falling with the brake reaction on:** median sd 12.3 to 10.0 km/h over five seeds, cause not established (10.46).
+
+   **They go to the TOP of the work order when there is room, ahead of the believable stop and ahead of body motion. NOT STARTED NOW:** usage is low and both are open-ended. Not in one change with each other unless a trace shows one cause.
+
+3. **PULL-OFF POINTS ARE THE ONE PIECE OF WORLD THIS CUT STILL HAS TO BUILD.** The scope decision cut the city because its expense was authored content. The loop's interchanges are not stopping places and there is nothing to stop at, so the stops the session shape starts and ends at are authored content that survives the cut. **To be visible as such, not assumed.** What a stop holds waits on what pulls the player back to one (10.60, undecided).
+
+4. **"DIFFICULTY RISES WITH DISTANCE" IS A GAP: TWO LEVERS EXIST AND NEITHER IS CONNECTED TO ANYTHING.** The skill dial (`world.skill`, sim/skill.js, which redraws everybody live) and the car count both exist. Neither has ever been driven by distance. **Probably the cheapest route to the session shape the maintainer described: the project lead's note, not measured.** Unmeasured too: whether a redraw mid-run reads as the road getting harder or as everybody changing at once.
+
+**Nothing built. The light session stands.**
 
 ## 11. Verification
 
