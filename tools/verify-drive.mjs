@@ -16,7 +16,7 @@
 import { seedGraph, step, poseOf, overlapping, DT, restAt } from "../src/sim/crossing.js";
 import { playerAt, playerOn, stepDriver, driverPose, withDriver, routeForSignal, aheadOf } from "../src/sim/drive.js";
 import { touching, holdAt, CLEAN, sliderFor, stopBand, accelFor } from "../src/sim/player.js";
-import { graphOf } from "../src/sim/graph.js";
+import { graphOf, poseOnGraph } from "../src/sim/graph.js";
 import { loadMap } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
@@ -404,6 +404,145 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   check(fast.lostTicks > 40, `45 km/h into the right runs the car more than a lane off its route's road (${fast.lostTicks} ticks lost, ${fast.offMax.toFixed(1)} m off)`);
   check(fast.pulledWhileLost === 0, `and out there the lane assist never steers for the route's lane (${fast.pulledWhileLost} ticks pulled)`);
   check(slow.lostTicks === 0 && Math.abs(slow.me.off) < 0.5 && slow.me.lastTurn?.verdict === "wide", `at 32 km/h it runs wide, is never lost, and the assist settles it in a lane (${slow.me.lastTurn?.verdict}, off ${slow.me.off.toFixed(2)} m)`);
+}
+
+/* 9. THE CAR'S REAL POSITION (DECISIONS 10.64 (b), 10.65, 10.67), behind
+   `world.realPos`. Section 8's guard stops the assist pulling; it does not
+   tell the car where it is. THE TURN ABANDONED, stated here: signal right at
+   the crossroads from the north, take it at 45 km/h so the car leaves the
+   road, and a second later steer for the road STRAIGHT AHEAD instead and
+   drive down it, asking for 45 km/h, then take the hands off. That road is
+   another street from the one the route is latched to.
+     With the switch off (HEAD) the car stays measured against the latched
+     lane: lost, tens of metres "off", held to the grass's quarter speed on
+     pavement. With it on, the car is located on the lane it reaches.
+   Where the car is, is asked of the road's own path here (poseOnGraph),
+   never of the car's `off`. */
+console.log("\n9. The car's real position: re-located onto the lane it is in, and on no lane when it is in none");
+{
+  const base = { ...seedGraph(1, 50, loaded, { every: 2 }), actors: [] };
+  const leg = "A-north|end#1", k = base.course.at.findIndex((s) => s.layout.legs[leg]);
+  const layout = base.course.at[k].layout, route = routeForSignal(layout, leg, "right"), path = layout.paths[route];
+  const aim = routeForSignal(layout, leg, null), ap = layout.paths[aim];
+  const course = base.course;
+  const nearestOn = (p) => { let sn = ap.clearAt + 1, dn = Infinity; for (let q = ap.clearAt + 1; q <= ap.length; q += 0.25) { const c = poseOnGraph(course, k, aim, q), d = Math.hypot(c.x - p.x, c.y - p.y); if (d < dn) { dn = d; sn = q; } } return { s: sn, d: dn }; };
+  const turnOf = (a, b) => ((a - b + 540) % 360) - 180;
+  const abandoned = (real, kmh = 45, steerBack = true) => {
+    const w0 = real ? { ...base, realPos: true } : base;
+    let me = { ...playerAt(w0, k, route), s: path.stopAt - 0.5, v: kmh / 3.6, signal: "right", going: true, accepted: true, off: 0 };
+    let acted = 0, world = withDriver(w0, me), out = null, settled = null, jump = 0, swing = 0, pulledOffLane = 0, noLaneTicks = 0;
+    const log = [];
+    let was = driverPose(me, course);
+    for (let i = 0; i < 20 * 24; i++) {
+      const t = i * DT, pz = driverPose(me, course);
+      if (me.lastTurn && out == null) out = t;
+      let steer = 0, slider = holdAt(me.v, me.grade ?? 0);
+      if (steerBack && out != null && t - out >= 1) {
+        const n = nearestOn(pz), tp = poseOnGraph(course, k, aim, Math.min(ap.length, n.s + 20));
+        const e = turnOf(pz.heading, (Math.atan2(tp.y - pz.y, tp.x - pz.x) * 180) / Math.PI);
+        if (n.d < 0.6 && Math.abs(e) < 6) settled ??= t;
+        steer = settled != null ? 0 : Math.max(-1, Math.min(1, -e / 20));
+        if (me.v < 12.5) slider = 0.8;
+      }
+      const before = me;
+      me = stepDriver(me, { steer, slider, assist: 1 }, world, DT);
+      world = withDriver(world, me);
+      const now = driverPose(me, course);
+      /* THE POSE NEVER JUMPS: a tick moves the car by its speed and turns it by what a wheel can, whatever
+         happened to its route in that tick. A tick's worth, and a centimetre and a degree for the arithmetic. */
+      /* ASKED ON THE TICKS THIS MACHINERY ACTS -- on no lane, entering it, leaving it, re-located. Not
+         everywhere: on its route inside a box, off its arc, the car's pose already steps as it passes each
+         vertex of the arc (the offset times the bend there: 209 mm in a tick at 45 km/h, 149 at 32, with the
+         switch off -- tools measured 10 November, DECISIONS 10.67). That is the route's frame, HEAD's, and
+         not this section's to assert away. */
+      if (me.noLane || before.noLane || (me.relocated ?? 0) !== (before.relocated ?? 0)) {
+        acted++;
+        jump = Math.max(jump, Math.hypot(now.x - was.x, now.y - was.y) - Math.max(before.v, me.v) * DT);
+        swing = Math.max(swing, Math.abs(turnOf(now.heading, was.heading)));
+      }
+      if (me.noLane) { noLaneTicks++; if (Math.abs(me.assist ?? 0) > 1e-9) pulledOffLane++; }
+      log.push(me);
+      was = now;
+    }
+    const end = driverPose(me, course), at = nearestOn(end);
+    return { me, end, at, acted, jump, swing, pulledOffLane, noLaneTicks, settled, log };
+  };
+  const on = abandoned(true), offSw = abandoned(false);
+  check(offSw.me.lost && Math.abs(offSw.me.off) > 50 && offSw.me.v * 3.6 < 31,
+    `switch off, the turn abandoned for the road straight ahead: still measured against the latched lane (lost ${offSw.me.lost}, ${Math.abs(offSw.me.off).toFixed(0)} m "off", ${(offSw.me.v * 3.6).toFixed(0)} km/h asked 45)`);
+  check(on.me.relocated >= 1 && !on.me.noLane && !on.me.lost && layout.paths[on.me.route]?.to === ap.to || (on.me.k !== k && on.me.relocated >= 1 && !on.me.noLane),
+    `switch on: located on the road it drove onto (re-located ${on.me.relocated ?? 0} time(s), on no lane ${!!on.me.noLane}, route ${on.me.route})`);
+  check(on.noLaneTicks > 40 && on.pulledOffLane === 0, `between the two it was on no lane (${on.noLaneTicks} ticks) and the assist never steered there (${on.pulledOffLane})`);
+  check(Math.abs(on.me.off) < 0.5 && on.me.v * 3.6 > 40, `and from then its offset is from the lane it is in, and pavement does not drag (off ${on.me.off.toFixed(2)} m, ${(on.me.v * 3.6).toFixed(0)} km/h asked 45)`);
+  /* Hands off since `settled`: the assist holds it on a road that bends. By the road's own path, not by `off`.
+     If it has gone on across the seam, it is on the next intersection's path, and the last pose on this one is asked. */
+  const lastHere = [...on.log].reverse().find((m) => m.k === k), lastPose = lastHere ? driverPose(lastHere, course) : null;
+  check(on.settled != null && lastPose && nearestOn(lastPose).d < 0.5, `hands off from ${on.settled?.toFixed(1)} s, it holds the bending road: ${lastPose ? nearestOn(lastPose).d.toFixed(2) : "-"} m from that lane's own line at the last of it`);
+  check(on.acted > 100 && on.jump < 0.01 && on.swing < 4, `on no lane, entering it and re-located out of it, its pose never jumps: over ${on.acted} ticks at most ${(on.jump * 1000).toFixed(1)} mm more than a tick's travel, ${on.swing.toFixed(2)} degrees in a tick`);
+  /* A car that never goes a lane off its line cannot tell the switch is on: 32 km/h, the mild run-wide. */
+  const mildOn = abandoned(true, 32, false), mildOff = abandoned(false, 32, false);
+  const sameTicks = mildOn.log.filter((m, i) => JSON.stringify(m) === JSON.stringify(mildOff.log[i])).length;
+  check(sameTicks === mildOn.log.length && mildOn.log.length === 480, `at 32 km/h, run wide and settled by the assist, the car is the same car tick for tick with the switch on (${sameTicks} of ${mildOn.log.length})`);
+  /* ...AND ON A TURN BAY'S TAPER, where the bay's line is nearer than the car's own lane's and the bay is not yet
+     a lane to be in (drive.js laneChange): a car drifted 0.9 m toward the opening bay stays the same car, tick for
+     tick. Asking the world before a whole lane off the line re-bases it onto the bay here. (Added because asking
+     every tick passed everything else: 10 November.) */
+  {
+    const kb = course.at.findIndex((sp) => sp.layout.paths["B-east|end#0/E-east|start#0"]), rb = "B-east|end#0/E-east|start#0";
+    const taper = (real) => {
+      const w0 = real ? { ...base, realPos: true } : base;
+      let me = { ...playerAt(w0, kb, rb), s: 60, v: 10, off: -0.9 }, world = withDriver(w0, me);
+      const log = [];
+      for (let i = 0; i < 80; i++) { me = stepDriver(me, { steer: 0, slider: holdAt(me.v, 0), assist: 0 }, world, DT); world = withDriver(world, me); log.push(JSON.stringify(me)); }
+      return { log, me };
+    };
+    const a = taper(true), b = taper(false);
+    const same = a.log.filter((x, i) => x === b.log[i]).length;
+    check(kb >= 0 && b.me.s > 95 && same === 80, `along a turn bay's taper, 0.9 m toward the bay, the car is the same car tick for tick with the switch on (${same} of 80, to ${b.me.s.toFixed(0)} m)`);
+  }
+  /* Left alone at 45: on no lane, on grass, it slows to a crawl in a straight line -- the grass is still grass. */
+  const alone = abandoned(true, 45, false), tail = alone.log.filter((m) => m.noLane);
+  const a0 = tail[0]?.at, a1 = tail[Math.floor(tail.length / 2)]?.at, a2 = tail[tail.length - 1]?.at;
+  const bow = a0 && a2 ? Math.abs((a2.x - a0.x) * (a1.y - a0.y) - (a2.y - a0.y) * (a1.x - a0.x)) / (Math.hypot(a2.x - a0.x, a2.y - a0.y) || 1) : Infinity;
+  check(tail.length > 100 && bow < 0.01 && alone.me.v < 1, `left alone at 45 it is on no lane, goes straight (${(bow * 1000).toFixed(1)} mm off a line over ${tail.length} ticks) and the grass stops it (${(alone.me.v * 3.6).toFixed(1)} km/h)`);
+
+  /* THE WRONG WAY DOWN A ROAD IS ON NO LANE, ON PAVEMENT. A car put on an oncoming lane's line, against it:
+     never located on that lane; full throttle for 8 s it passes 60 km/h (the grass's cap is a quarter of
+     120: 30); and the wheel turns it at the car's own yaw rate, clockwise for right (y is down). */
+  const w1 = { ...base, realPos: true };
+  const lane = poseOnGraph(course, k, route, 150);   // the approach, southbound; the car is put on it facing north
+  let wrong = { ...playerAt(w1, k, route), s: 150, v: 0, noLane: true, lost: true, at: { x: lane.x, y: lane.y, z: lane.z ?? 0, heading: lane.rot + 180 } };
+  let ww = withDriver(w1, wrong), everLocated = 0;
+  for (let i = 0; i < 160; i++) { wrong = stepDriver(wrong, { steer: 0, slider: 1, assist: 1 }, ww, DT); ww = withDriver(ww, wrong); if (!wrong.noLane) everLocated++; }
+  const went = Math.hypot(wrong.at.x - lane.x, wrong.at.y - lane.y);
+  check(everLocated === 0 && wrong.v * 3.6 > 60 && went > 60, `against the traffic on a lane's own line: on no lane throughout (${everLocated} ticks located), and pavement is pavement (${(wrong.v * 3.6).toFixed(0)} km/h after 8 s, ${went.toFixed(0)} m)`);
+  /* ...AND ON PAST THE END OF THE PATH ITS GHOST IS ON. The route's own terms (a distance along, an offset)
+     cannot say where a car is once it is beyond the path's end: only the pose kept in the world can. Driven on
+     north for 10 s more it leaves the top of that approach; every tick its pose moves by its speed, and the sum
+     is the distance gone. (Added because ignoring the kept pose passed everything above: 10 November.) */
+  {
+    let far = wrong, wf = ww, gone = 0, worst = 0, pastEnd = 0;
+    const from = driverPose(far, course);
+    let was = from;
+    for (let i = 0; i < 200; i++) {
+      far = stepDriver(far, { steer: 0, slider: holdAt(far.v, 0), assist: 1 }, wf, DT); wf = withDriver(wf, far);
+      const now = driverPose(far, course), d = Math.hypot(now.x - was.x, now.y - was.y);
+      gone += far.v * DT; worst = Math.max(worst, Math.abs(d - far.v * DT)); was = now;
+      if (far.noLane && far.s <= 0) pastEnd++;
+    }
+    const moved = Math.hypot(was.x - from.x, was.y - from.y);
+    check(pastEnd > 20 && worst < 0.001 && Math.abs(moved - gone) < 0.01, `driven on past the end of the path its ghost is on (${pastEnd} ticks beyond it), its pose still moves by its speed every tick: ${moved.toFixed(1)} m gone for ${gone.toFixed(1)} m driven, worst tick ${(worst * 1000).toFixed(2)} mm out`);
+  }
+  const h0 = wrong.at.heading, v0 = wrong.v;
+  for (let i = 0; i < 10; i++) { wrong = stepDriver(wrong, { steer: 0.2, slider: holdAt(wrong.v, 0), assist: 1 }, ww, DT); ww = withDriver(ww, wrong); }
+  const turned = turnOf(wrong.at.heading, h0), expect = (0.2 * (6.0 / v0) * 0.5 * 180) / Math.PI;   // a fifth of the grip-limited yaw (6 m/s^2 over the speed) for half a second
+  check(turned > 0 && Math.abs(turned - expect) < 0.15 * expect, `a fifth of the wheel to the right for half a second turns it ${turned.toFixed(2)} degrees clockwise (${expect.toFixed(2)} by the tyres' grip)`);
+  /* And turned round to face the way the lane goes, it is taken by that lane. */
+  let round = { ...wrong, v: 5, at: { x: lane.x, y: lane.y, z: lane.z ?? 0, heading: lane.rot + 10 } };
+  round = stepDriver(round, { steer: 0, slider: 0.5, assist: 1 }, withDriver(w1, round), DT);
+  const back = driverPose(round, course);
+  check(!round.noLane && round.k === k && layout.paths[round.route].from === path.from && Math.abs(round.off) < 0.3 && Math.hypot(back.x - lane.x, back.y - lane.y) < 0.5,
+    `the same place facing the lane's way is that lane (on no lane ${!!round.noLane}, off ${round.off.toFixed(2)} m, ${Math.hypot(back.x - lane.x, back.y - lane.y).toFixed(2)} m from where it was put)`);
 }
 
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
