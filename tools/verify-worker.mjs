@@ -25,6 +25,7 @@ import { handle, merge, changed } from "../src/sim/remote.js";
 import { step, DT } from "../src/sim/crossing.js";
 import { stepDriver, withDriver } from "../src/sim/drive.js";
 import { testCityReady } from "../src/map/samples.js";
+import { poseOnGraph } from "../src/sim/graph.js";
 import { benchScene, withOff } from "../src/iso/bench.js";
 import { newPace, paceFrame, paceReply, carryOf, OWED_CAP, pageMore, pageLeft } from "../src/sim/pace.js";
 
@@ -89,6 +90,60 @@ console.log("\n1. THE SAME WORLD, A THREAD AWAY");
   check(same, `${ticks} ticks driven both ways, the screen's copy and the worker's world the in-thread world every tick${firstDiff != null ? ` -- first differs at tick ${firstDiff}` : ""}`);
   check(hitsS === hitsM && hitsS > 0, `the player's contact judged the same: ${hitsS} in-thread, ${hitsM} through the worker (full throttle finds something)`);
   check(honked, "the test horn and the car count reached the worker's world as the screen writes them");
+}
+
+console.log("\n1b. THE SAME WORLD, A THREAD AWAY, WITH THE REAL POSITION ON AND THE PLAYER ON NO LANE (DECISIONS 10.68, 10.70)");
+{
+  /* Section 1 drives on its lane, where the switch on changes nothing, so it could not tell a worker that drops the
+     stand-ins from one that carries them. Here the car stands on no lane across a road for 20 s and then rolls on.
+     WHAT CROSSES IS THE TRAFFIC'S REACTION: withDriver writes the stand-ins on both ends from the player's own
+     record, so comparing them alone would compare a function with itself. The cars that brake for them are the worker's. */
+  const args = [3, 50, 1.1, true, 120, null, null, false];
+  const put = (w, m) => { const P = w.course.at[m.k].layout.paths[m.route], s = Math.min(m.s + 60, P.length - 5), g = poseOnGraph(w.course, m.k, m.route, s); return { ...m, s, v: 0, going: true, accepted: true, noLane: true, lost: true, at: { x: g.x, y: g.y, z: g.z ?? 0, heading: g.rot + 90 } }; };
+  const inputAt = (n) => (n < 400 ? { steer: 0, slider: -0.4, assist: 0 } : { steer: 0.1, slider: 0.5, assist: 0 });
+  let { world: sw, me: sme } = worldFor(...args);
+  let { world: mw, me: mme } = worldFor(...args);
+  let { world: cw, me: cme } = worldFor(...args);                      // the control: the same scene and switch, with the stand-ins stripped and nothing else changed
+  let { state, reply } = handle(null, { type: "init", args, seq: 1 });
+  mw = merge(mw, structuredClone(reply.dyn));
+  ({ state } = handle(state, { type: "set", key: "realPos", value: true }));
+  sw = { ...sw, realPos: true }; mw = { ...mw, realPos: true }; cw = { ...cw, realPos: true };
+  sme = put(sw, sme); mme = put(mw, mme); cme = put(cw, cme);
+  sw = withDriver(sw, sme); mw = withDriver(mw, mme); cw = withDriver(cw, cme);
+  let same = true, firstDiff = null, standTicks = 0, noLaneTicks = 0, held = 0, hitsS = 0, hitsM = 0, fieldsSame = true, fieldChecks = 0;
+  const N = 40 / DT;
+  for (let n = 0; n < N; n++) {
+    const inp = inputAt(n);
+    sme = stepDriver(sme, inp, sw, DT);
+    sw = step(withDriver(sw, sme));
+    { const c = playerContact(sw, sme); sw = c.world; if (c.hit) hitsS++; sme = afterContact(sme, c, sw).me; sw = withDriver(sw, sme); }
+    cme = { ...stepDriver(cme, inp, cw, DT), shadows: undefined };
+    cw = step(withDriver(cw, cme));
+    { const c = playerContact(cw, cme); cw = c.world; cme = { ...afterContact(cme, c, cw).me, shadows: undefined }; cw = withDriver(cw, cme); }
+    mme = stepDriver(mme, inp, mw, DT);
+    ({ state, reply } = handle(state, { type: "step", me: mme, seq: n + 2 }));
+    mw = merge(mw, structuredClone(reply.dyn));
+    if (reply.hit) hitsM++;
+    mme = afterContact(mme, { hit: reply.hit, ...structuredClone(reply.contact ?? {}) }, mw).me;
+    mw = withDriver(mw, mme);
+    state = { ...state, world: withDriver(state.world, mme) };
+    if (sme.noLane) noLaneTicks++;
+    if (sw.actors.some((a) => a.shadow)) standTicks++;
+    if (key(sw) !== key(mw) || key(state.world) !== key(sw)) { same = false; firstDiff ??= n; }
+    if (n % 15 === 0) {
+      const wk = new Map(state.world.actors.map((a) => [a.id, a]));
+      for (const a of mw.actors) { const b = wk.get(a.id); if (!b || canon(a) !== canon(b, "memo")) fieldsSame = false; }
+      fieldChecks++;
+    }
+  }
+  /* The control, exact: the same world, the same switch, the same player -- with the stand-ins and nothing else taken away. If the traffic is the same, the stand-ins changed nothing here and equality below means nothing. (An earlier control ran with the switch OFF, and it differed for other reasons too: the player moves differently, so it passed with no stand-ins at all.) */
+  const trafficKey = (w) => JSON.stringify(w.actors.filter((a) => !a.player).map((a) => [a.id, a.s, a.v]));
+  const differs = trafficKey(sw) !== trafficKey(cw);
+  check(standTicks > 300 && noLaneTicks > 300, `the case arose: the player was on no lane for ${noLaneTicks} of ${N} ticks and had stand-ins for ${standTicks}`);
+  check(differs, "...and they matter: the traffic with the stand-ins is not the traffic without them, everything else the same (otherwise equality below proves nothing)");
+  check(same, `${N} ticks, the screen's copy and the worker's world the in-thread world every tick, the traffic that braked for the stand-ins included${firstDiff != null ? ` -- first differs at tick ${firstDiff}` : ""}`);
+  check(fieldsSame && fieldChecks > 50, `and field by field at ${fieldChecks} ticks, all but private memory`);
+  check(hitsS === hitsM, `the player's contact judged the same: ${hitsS} in-thread, ${hitsM} through the worker`);
 }
 
 console.log("\n2. WHAT CROSSES IS DATA");
