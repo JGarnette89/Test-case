@@ -378,7 +378,19 @@ console.log("\n10. A DISTRICT'S CHARACTER: WHO DRIVES THERE");
   const seen0 = new Map();
   for (let i = 0; i < 2400; i++) { w0 = step(w0); for (const a of w0.actors) if (a.home && !seen0.has(a.id)) seen0.set(a.id, a); }
   const W0 = [...seen0.values()].filter((a) => a.home === "west");
-  check(W.length > 20 && W0.length > 20 && rolls(W) > 2 * rolls(W0), `people from the rolling-stop west choose to roll their stops: ${Math.round(rolls(W) * 100)}% of ${W.length}, against ${Math.round(rolls(W0) * 100)}% of ${W0.length} from the same district with no character (the tailgating east: ${Math.round(rolls(E) * 100)}% -- boldness is a share of choosing to roll, by the ruling)`);
+  /* AN ABSOLUTE INCREASE, NOT A MULTIPLE (the maintainer, 11 November, settling it after Codex's seed inventory). This line used to demand
+     `rolls(W) > 2 * rolls(W0)`. THE MULTIPLE WAS THE WRONG SHAPE FOR A PROPORTION WITH A BASE RATE AROUND 20%, and a reader who sees a bare
+     ">= +12" will want to put it back, so here is why it must not be: (1) 2x on a 24% control demands 48% -- nearly half of ALL drivers --
+     which the design never intended and which no character should produce; (2) a multiple is hostage to the control's own rate: the same
+     absolute effect passes or fails by where the control happens to sit (a control at 12% passes at 24%; one at 21% needs 42% and fails at
+     39%), so it was measuring the base rate as much as the character. Observed at Codex's two failing seeds: 21% -> 39% (1.86x, +18 points)
+     and 24% -> 41% (1.71x, +17 points), both failing the multiple and both clearly the character. THE BAR: at least +12 percentage points,
+     in every arm (this check's seed, and each of Codex's two). Set from the sample: with about 100 people in each group at a rate near 25%
+     the standard error of a difference of two proportions is about 6 points, so +12 is about two standard errors -- a character that does
+     nothing fails it about 98 times in 100 -- and the observed +17 and +18 clear it with margin. THE SAMPLE FLOOR IS ITS OWN LINE. */
+  check(W.length > 20 && W0.length > 20, `the case arose: ${W.length} people from the rolling-stop west and ${W0.length} from the same district with no character (floor 20 each, the check's own)`);
+  const lift = rolls(W) - rolls(W0);
+  check(lift >= 0.12, `people from the rolling-stop west choose to roll their stops: ${Math.round(rolls(W) * 100)}% of ${W.length}, against ${Math.round(rolls(W0) * 100)}% of ${W0.length} from the same district with no character: +${(lift * 100).toFixed(0)} points (the bar is +12; ${rolls(W0) > 0 ? (rolls(W) / rolls(W0)).toFixed(2) + "x" : "n/a"} as a multiple, which is not the bar) (the tailgating east: ${Math.round(rolls(E) * 100)}% -- boldness is a share of choosing to roll, by the ruling)`);
   check(gap(E) < 0.85 * gap(W), `people from the tailgating east follow closer: mean headway ${gap(E).toFixed(2)} s against ${gap(W).toFixed(2)} s from the west`);
 
   const bad = loadMap({ ...testCity0(), zones: [{ id: "z", kind: "residential", polygon: [P(0, 0), P(100, 0), P(100, 100)], character: "polite" }] });
