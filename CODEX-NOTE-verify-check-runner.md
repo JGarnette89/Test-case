@@ -1,51 +1,69 @@
-# verify-check-runner fails on origin/main (5a000f3) on Windows, and why
+# verify-check-runner: FIXED on main (11 November 2026). The cause, the layer, the fix.
 
-**Reproduced on a pristine detached worktree of `origin/main` at `5a000f3`. No merge involved.**
-Windows 11, Node v24.19.0. `node tools/verify-check-runner.mjs` exits 1.
+**Status: fixed in `tools/check-runner-test.mjs`, one import and one argument. `verify-check-runner` passes on
+Windows 11, Node v24.19.0.** Pull `main`.
 
-## What fails
+**This was an exception to the lane rule, not a change to it.** `tools/` is yours. The maintainer authorised the fix
+on 11 November on these grounds, any one of which being false would have made the answer no: the fix is known and
+tiny; `main` had been red all day and a red baseline taxes every measurement; you were blocked on a machine problem
+and not working; and nothing on either of your branches touches the runner or its test since `5a000f3` (read from
+the repo after a fetch), so there was no collision. His condition: establish which layer is wrong before fixing
+anything, and if it were the runner, leave `main` red and hand you the diagnosis.
 
-`tools/check-runner-test.mjs:119`:
+## The cause, measured
 
-    AssertionError [ERR_ASSERTION]: The input did not match the regular expression /TIMEOUT.*1200 s \(1,200 s cap\)/. Input: ''
+`tools/check-runner-test.mjs` line 116 spawned `node --import <clock> check.mjs verify-probe` with
+`clock = join(dir, "fast-clock.mjs")`, a bare Windows path (`C:\...\fast-clock.mjs`). `--import` takes a module
+specifier; on Windows a bare drive-letter path is read as the URL scheme `c:` and Node refuses it. The child never
+starts. Captured from the test's own child, on a clean tree at `57a3417`:
 
-`capped.stdout` is the empty string. Everything before it passes (all the PASS lines up to
-"changed hash and explicit timing refresh use the cap").
+    status: 1 | stdout bytes: 0
+    Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: Only URLs with a scheme in: file, data, and node are supported by the
+    default ESM loader. On Windows, absolute paths must be valid file:// URLs. Received protocol 'c:'
+        at throwIfUnsupportedURLScheme (node:internal/modules/esm/load:193:11)
+        at defaultLoadSync ... at ModuleLoader.getOrCreateModuleJob ...
 
-## MEASURED FOR THIS TEST'S OWN CHILD (added 11 November, after the first version of this note)
+Status 1 with empty stdout is why line 118 (`assert.equal(capped.status, 1)`) passed and line 119 (the `TIMEOUT`
+regular expression) found nothing.
 
-The first version said "checked directly", but what I had checked was Node's behaviour with a bare path of my own.
-I have now captured the test's own child, by copying `check-runner-test.mjs` and printing `capped.status`,
-`capped.stdout` and `capped.stderr` before the assertion, on a clean tree at `57a3417` (Windows 11, Node v24.19.0):
+## Which layer: the test's fixture, not the runner (the evidence)
 
-    child status: 1 | stdout bytes: 0 | stderr:
-    node:internal/modules/esm/load:193
-        throw new ERR_UNSUPPORTED_ESM_URL_SCHEME(parsed, schemes);
+1. The only use of `--import`, `NODE_OPTIONS` or `execArgv` anywhere in `tools/` (outside scratch) is the test's own
+   line 116. `check.mjs`, `check-policy.mjs` and `affected.mjs` never pass any of them. The runner launches each
+   check as `[process.execPath, [c.file]]`: the script is an argument, which works on Windows (53 checks ran through
+   it that day).
+2. The failing stack contains **no runner frame**. It is entirely Node's own loader at startup. The child dies at
+   preload, before `check.mjs` executes.
+3. Every assertion in the test before line 119 ran the runner on Windows without trouble; only the one that used
+   the preload failed.
 
-So the diagnosis below is **proven for that test**: the child never starts, stdout is empty, the status is 1 (which
-is why line 118's `assert.equal(capped.status, 1, ...)` passes), and line 119's regular expression finds nothing.
+## The fix
 
-## Root cause
+    import { fileURLToPath, pathToFileURL } from "node:url";
+    ...
+    ["--import", pathToFileURL(clock).href, join(dir, "check.mjs"), "verify-probe"]
 
-Line 116 spawns `node --import <clock> check.mjs verify-probe` with `clock = join(dir, "fast-clock.mjs")`,
-a bare Windows path (`C:\...\fast-clock.mjs`). Node on Windows refuses a bare drive-letter path for
-`--import`:
+with a comment saying why. Nothing in the runner was changed.
 
-    node:internal/modules/esm/load:193
-        throw new ERR_UNSUPPORTED_ESM_URL_SCHEME(parsed, schemes);
-    exit 1
+## Verified by reading the line, not the exit status
 
-So the child dies before the runner starts: stdout empty, exit status 1, error on stderr.
-Passing a file URL works (`--import file:///.../fc.mjs` ran).
+Before the fix the child never started. After it the runner's cap path runs for the first time on this machine, and
+the line the test was always asking for is printed:
 
-**Suggested fix:** `"--import", pathToFileURL(clock).href` (import `pathToFileURL` from `node:url`).
+    TIMEOUT verify-probe               0 s -- killed after 1200 s (1,200 s cap); assertions incomplete; log ...
 
-## The check also passes one of its own assertions for the wrong reason
-
-Line 118, `assert.equal(capped.status, 1, capped.stderr)`, is satisfied by the crash above, since a crash
-also exits 1. Once the import works, the status assertion would be the real one. Worth sabotaging
-after the fix: make the cap not apply and confirm line 118 or 119 fails.
+`node tools/verify-check-runner.mjs` exits 0. Sabotaged (runner exits 0 on a timeout; cap changed to 900 s): both
+fail the test, **but at earlier lines than the ones aimed at** (test line 77 through the `run()` helper, and the
+policy unit test), so **lines 118 and 119 are redundant with assertions before them and are not individually
+exercised by those mutations**. I did not find a mutation that isolates them; that is yours to judge.
 
 ## Not checked
 
-Whether it also fails on Linux/macOS (it should not: a bare POSIX path is accepted by `--import`).
+Linux and macOS (a bare POSIX path is accepted by `--import`, so it should be unaffected). The rest of the runner's
+behaviour under Windows beyond what this test covers.
+
+## Still open for you (from `CODEX-NOTE-run-artifacts-and-reasoned-skip.md`, not touched here)
+
+The runner reporting four states (pass, fail, cannot tell, skipped-with-named-reason); `check-hashes.json`,
+`check-history.jsonl` and `check-times.json` being rewritten into tracked files on every run; `verify-core`
+reporting SLOW against a recorded 0 s.
