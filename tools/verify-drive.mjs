@@ -17,6 +17,7 @@ import { seedGraph, step, poseOf, overlapping, DT, restAt, blockedBy } from "../
 import { playerAt, playerOn, stepDriver, driverPose, withDriver, routeForSignal, aheadOf } from "../src/sim/drive.js";
 import { touching, holdAt, CLEAN, sliderFor, stopBand, accelFor } from "../src/sim/player.js";
 import { graphOf, poseOnGraph } from "../src/sim/graph.js";
+import { lanesAt } from "../src/sim/locate.js";
 import { loadMap } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
@@ -630,6 +631,11 @@ console.log("\n10. The traffic sees a car on no lane where its body is: avoided,
   const onc = { ...playerAt(empty, k, r2l), s: 150, v: 10, off: -(0.5 + (layout.legs[leg].pos ?? layout.legs[leg].lane)) * 3.6 - 1.5 };
   const stepped = stepDriver(onc, { steer: 0, slider: holdAt(10, 0), assist: 0 }, withDriver(empty, onc), DT);
   const ww = withDriver(empty, stepped);
+  /* THE CASE HAS TO HAVE ARISEN, or "no stand-in" below passes for want of anything to shadow: the body is over a
+     lane that is not its own. (Checked 11 November: under the previous build this same scene writes a stand-in on it.) */
+  const under = lanesAt(course, driverPose(stepped, course), { reach: 3.6 / 2 + 0.9, aligned: false });
+  check(under.length >= 1 && under.every((l) => l.names[0].leg !== leg) && !stepped.noLane,
+    `the case arose: the body is over ${under.length} lane(s) that are not its own (${under.map((l) => l.names[0].leg).join(", ")}; its own is ${leg}) while the car is still on its own lane by route`);
   check(!stepped.noLane && !stepped.shadows && !ww.actors.some((a) => a.shadow || a.offLane) && ww.actors.filter((a) => a.player).length === 1,
     `1.5 m over the centre line, still on its own lane by route, it has no stand-in and is not flagged: the player is one actor, the existing rules' to judge`);
 }
