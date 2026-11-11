@@ -106,7 +106,7 @@ for (const cars of [60, 150, 300]) {
   let overlaps = 0, pastClose = 0, lost = 0, n = 0, longest = 0;
   const standing = new Map();
   const offered = new Set();
-  const ids = new Set(), maxStand = new Map(), probe = new Map();
+  const ids = new Set(), maxStand = new Map(), probe = new Map(), restTot = new Map(), minV20 = new Map(), reach = new Set();
   let longestId = null;
   for (let i = 0; i < 180 * 20; i++) {
     const before = w;
@@ -122,7 +122,14 @@ for (const cars of [60, 150, 300]) {
     for (const a of w.actors) {
       const L = w.course.at[a.k].layout, p = L.paths[a.route], to = L.legs[p.to];
       if (to?.accel && a.s + 2.25 > p.length - to.accelClose + 0.5) pastClose++;
-      if (to?.accel && a.s > p.clearAt) ids.add(a.id);
+      if (to?.accel && a.s > p.clearAt) {
+        ids.add(a.id);
+        /* JAY'S QUANTITY (11 November, DECISIONS 10.70): at or near rest where the lane runs out, per joiner; and the TOTAL time below 0.5 m/s, because
+           `longest` below is one CONTINUOUS stand and a car that creeps resets it. */
+        const toEnd = p.length - to.accelClose - a.s;
+        if (a.v < 0.5) restTot.set(a.id, (restTot.get(a.id) ?? 0) + 0.05);
+        if (toEnd <= 20) { minV20.set(a.id, Math.min(minV20.get(a.id) ?? Infinity, a.v)); if (toEnd <= 15) reach.add(a.id); }
+      }
       if (to?.accel && a.s > p.clearAt && a.v < 0.5) {
         const t = (standing.get(a.id) ?? 0) + 0.05; standing.set(a.id, t);
         if (t > longest) { longest = t; longestId = a.id; }
@@ -162,7 +169,11 @@ for (const cars of [60, 150, 300]) {
   check(pastClose === 0 && lost === 0, `  and nobody past the start of an acceleration lane's taper (${pastClose} car-ticks), nobody lost at a seam still in one (${lost})`);
   ran[ran.length - 1].longest = longest;
   { const over = [...maxStand.values()].filter((x) => x > 60).length, r = ran[ran.length - 1];
-    r.joiners = ids.size; r.over = over; r.diag = diagnose(probe, longestId, longest, over, ids.size, maxStand); }
+    r.joiners = ids.size; r.over = over;
+    r.nearRest = [...reach].filter((id) => (minV20.get(id) ?? Infinity) < 2).length;
+    const cont = [...maxStand.values()].sort((x, y) => x - y), tot = [...restTot.values()].sort((x, y) => x - y), at = (xs, f) => (xs.length ? xs[Math.min(xs.length - 1, Math.floor(f * xs.length))] : 0);
+    r.cont = { n: cont.length, p50: at(cont, 0.5), p90: at(cont, 0.9), p99: at(cont, 0.99), max: cont.length ? cont[cont.length - 1] : 0 };
+    r.tot = { over60: tot.filter((x) => x > 60).length, max: tot.length ? tot[tot.length - 1] : 0 }; r.diag = diagnose(probe, longestId, longest, over, ids.size, maxStand); }
 }
 
 console.log("\n3. IT IS A MERGE, AND THE DRIVER SHOWS IN IT");
@@ -181,7 +192,15 @@ check(offers.twoForOne === 0, `and no joining car is let in by two drivers at on
 
 console.log("\n4. NOBODY IS STRANDED");
 check(ran.every((r) => r.joiners >= 20), `the case arose: joiners that reached the end of their lane: ${ran.map((r) => `${r.joiners} at ${r.cars} cars`).join(", ")} (floor 20, the merges' own)`);
-check(ran.every((r) => r.longest <= 60), `no joiner stands at the end of its lane over a minute: longest ${ran.map((r) => `${r.longest.toFixed(0)} s at ${r.cars} cars`).join(", ")}; joiners over a minute ${ran.map((r) => `${r.over} of ${r.joiners} at ${r.cars}`).join(", ")}`);
+/* THE BARS ARE JAY'S RULING, DERIVED [D: from Jay's ruling, 11 November; DECISIONS 10.70], NOT MEASURED AND NOT HIS NUMBERS. Replaces `longest <= 60`, a
+   ceiling this check chose for itself. He: a full minute at the end of the merge lane is "something you'd see 1 in 10000 merges ... only from an
+   extremely inept driver". So (1) a joiner waiting a minute is ABSENT, by the continuous stand (the old quantity) and by the total time at rest (a
+   creeping car resets the continuous one); (2) at or near rest (under 2 m/s within 20 m of where the taper begins) is the inept tail only: UNDER 1%
+   of joiners, the 1% being the agent's reading of "extremely inept" widened because a sample of a few hundred cannot resolve one in ten thousand.
+   If the sim is right and these fail, the sim is wrong about Jay's motorway; if they fail on a motorway Jay says is right, the derivation is. */
+check(ran.every((r) => r.over === 0 && r.tot.over60 === 0), `[D: from Jay's ruling] no joiner waits a minute at the end of its lane, by one continuous stand or by total time at rest: continuous over a minute ${ran.map((r) => `${r.over} of ${r.joiners} at ${r.cars}`).join(", ")}; total at rest over a minute ${ran.map((r) => `${r.tot.over60} at ${r.cars}`).join(", ")}`);
+check(ran.every((r) => r.nearRest / Math.max(1, r.joiners) < 0.01), `[D: from Jay's ruling] reaching the end of the lane at or near rest is the inept tail only, under 1% of joiners: ${ran.map((r) => `${r.nearRest} of ${r.joiners} (${(100 * r.nearRest / Math.max(1, r.joiners)).toFixed(1)}%) at ${r.cars}`).join(", ")}`);
+for (const r of ran) console.log(`    [${r.cars} cars] DISTRIBUTION of continuous stands, ${r.cont.n} joiners stood at all: median ${r.cont.p50.toFixed(1)} s, p90 ${r.cont.p90.toFixed(1)} s, p99 ${r.cont.p99.toFixed(1)} s, max ${r.cont.max.toFixed(1)} s; longest total time at rest ${r.tot.max.toFixed(0)} s`);
 for (const r of ran) console.log(`    [${r.cars} cars] ${r.diag}`);
 {
   const on = [], off = [];
