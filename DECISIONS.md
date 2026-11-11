@@ -6713,6 +6713,28 @@ The traffic finds the player by `(k, route, s)`. On no lane those are kept as HE
 
 **NOT IN THIS:** traffic steering AROUND a car on no lane (they stop for it, as for a wreck or a stopped car; going round is `passing.js`, built for buses only); a horn at it; fault for striking it.
 
+## 10.69 FAULT FOR STRIKING A CAR ON NO LANE: FAULT FOLLOWS AVOIDABILITY, NOT POSITION (the maintainer, relayed by the project lead, 11 November; RULED, CHECKED BY READING, NOTHING BUILT)
+
+His words: *"if the player or another driver is off the road, and somebody crashes into it when it was avoidable the fault is on the second driver because they've failed to prevent an avoidable collision. if you can see and reasonably react to an obstacle and fail to do so that's on the driver."*
+
+**THE RULE: being off the road does not assign fault. Being able to see and react, and failing to, does.** The test is the same whoever is where.
+
+**IT GENERALISES AN EARLIER RULING, IT DOES NOT ADD ONE.** 29 September (5.x, and `peds.js`): fairness is owed to the player -- somebody steps out in front of them only where a response exists in time; an unavoidable collision "does not test anticipation and merely punishes". That was avoidability protecting the player from blame. This is the same test protecting whoever was struck, and blaming whoever could have stopped.
+
+**THE PROJECT LEAD'S INSTRUCTION: this reuses machinery rather than adding any -- avoidability is already computed by the fault system, visibility is the sightline model -- and to establish that both are reachable from where fault is decided before designing anything new. ESTABLISHED BY READING, AND IT IS HALF TRUE:**
+
+- **VISIBILITY IS REACHABLE.** Fault is decided in `contact.js` `playerContact`, with the world in hand. The trucks' boxes are kept on the world each tick (`world.tall`, `crossing.js` step) and `sight.js` `hiddenFrom(eye, pose, them, boxes)` works on poses, so "was the struck car hidden from the striker" can be asked there today, for the tick of contact. **Its limit is the sight model's own: only a truck hides anything** (buildings hide nothing yet, 10.42), so a car on the verge is in plain view unless a truck stands between.
+- **AVOIDABILITY IS NOT COMPUTED WHERE FAULT IS DECIDED. The claim does not hold as stated.** `playerContact` decides fault from three things, none of them whether anybody could have stopped: who owed whom in an intersection (`owedBy`), a car changing lane into the player (`cutIn`), and struck from behind (`rearStruck`). **The arithmetic does exist, once, elsewhere, and asked BEFORE an event rather than after one:** `peds.js` `playerCanRespond` -- react at the floor, brake as hard as the car can, stop short -- which decides whether somebody may step out in front of the player. (`canStopFor` in `crossing.js` is the comfortable version, for giving way to a bus.) The old engine's `avoidableFrom` went with cut C.
+- **AND ONE THING IN THE FAULT RULES CONTRADICTS THE RULING TODAY:** `rearStruck` returns "the player's doing" whenever the player is more than 0.9 m off their lane's line. That is position assigning fault.
+
+**WHAT IS ACTUALLY MISSING, and it is one quantity, not a system:** avoidability is a question about an EARLIER moment -- when the striker could first have seen the thing -- and fault is decided at the tick of contact, with only the present in hand. **The moment the obstacle became seeable to that driver is kept nowhere.** With it, the test is the one `playerCanRespond` already makes: from that moment, at the speed then, reaction plus the hardest stop against the room there was. Not designed here.
+
+**A REUSE THE RULING MAKES AVAILABLE, noted, not built:** once the traffic stops for a car on no lane (10.68), a traffic driver who strikes one that had been standing in plain view has, by the model's own rules, failed to do what a watching driver with room does -- they were looking away (`attention.js`) or misjudged. **For the traffic, "it was avoidable and they did not avoid it" is then something the sim has already decided by what the driver did, not a second calculation.**
+
+**THE CASE THAT DOES NOT EXIST:** "another driver off the road". A traffic car cannot be on no lane (10.66: its offset is bounded). A crashed one stands where it hit, in a lane.
+
+**CARRY ON WITH LANES ONLY (the project lead).** 10.68's plan without gap 2: **inside a box a car on no lane has no stand-in and, the ghost gone, is seen by nobody there.** Said here so it is recognised: with lanes only, a car on no lane in the middle of an intersection is invisible to the traffic, where today its ghost is at least somewhere.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
