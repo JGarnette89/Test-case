@@ -45,7 +45,7 @@ for (let i = 0; i < secs * 20; i++) {
   for (const x of lane) {
     const a = x.a;
     let j = J.get(a.id);
-    if (!j) { j = { restTicks: 0, cls: null, offered: 0, planTicks: 0, minV20: Infinity, minToEnd: Infinity }; J.set(a.id, j); }
+    if (!j) { j = { restTicks: 0, cls: null, offered: 0, run: 0, maxRun: 0, planTicks: 0, minV20: Infinity, minToEnd: Infinity }; J.set(a.id, j); }
     const toEnd = x.p.length - x.to.accelClose - a.s;
     if (toEnd < j.minToEnd) j.minToEnd = toEnd;
     if (toEnd <= 20 && a.v < j.minV20) j.minV20 = a.v;
@@ -59,8 +59,13 @@ for (let i = 0; i < secs * 20; i++) {
       j.planTicks++;
       const nb = mp.best.nb, k = kappaOf(a);
       const lead = nb.ahead ? clearBetween(nb.da, a, nb.ahead) : Infinity, lag = nb.behind ? clearBetween(nb.db, nb.behind, a) : Infinity;
+      /* POST-HOC REFINEMENT (11 November, flagged): the sim also requires every car beyond the first ahead to clear its own lead need (`nb.aheads`), and decides only
+         every LC_EVERY ticks (0.5 s), so a gap acceptable for one tick is not one it could take. `strict` adds the first; the longest CONTINUOUS acceptable run is the second. */
+      let strict = Math.min(lead / leadNeed(a, nb.ahead, k), lag / lagNeed(a, nb.behind, k)) >= 1;
+      if (strict) for (const { car, d } of nb.aheads ?? []) if (car !== nb.ahead && clearBetween(d, a, car) < leadNeed(a, car, k)) { strict = false; break; }
       if (Math.min(lead / leadNeed(a, nb.ahead, k), lag / lagNeed(a, nb.behind, k)) >= 1) j.offered++;
-    }
+      if (strict) { j.run++; if (j.run > j.maxRun) j.maxRun = j.run; } else j.run = 0;
+    } else j.run = 0;
   }
   if (heads > 0) { const q = standing / heads; qSum += q; qTicks++; if (q > qMax) qMax = q; }
 }
@@ -69,7 +74,7 @@ const near = (j) => j.minToEnd <= 15 && j.minV20 < 2;
 const tally = (g) => {
   const f = g.filter((j) => j.cls === "follower"), h = g.filter((j) => j.cls === "head");
   return { rested: g.length, followers: f.length, heads: h.length, shareFollowers: +(f.length / Math.max(1, g.length)).toFixed(3),
-    headsOfferedAndNotTaken: h.filter((j) => j.offered > 0).length, headsNoneAvailable: h.filter((j) => j.offered === 0 && j.planTicks > 0).length, headsNoPlan: h.filter((j) => j.planTicks === 0).length };
+    headsOfferedAndNotTaken: h.filter((j) => j.offered > 0).length, headsLongestStrictRun: { none: h.filter((j) => j.maxRun === 0).length, under05s: h.filter((j) => j.maxRun > 0 && j.maxRun * 0.05 < 0.5).length, from05to1s: h.filter((j) => j.maxRun * 0.05 >= 0.5 && j.maxRun * 0.05 < 1).length, from1to2s: h.filter((j) => j.maxRun * 0.05 >= 1 && j.maxRun * 0.05 < 2).length, atLeast2s: h.filter((j) => j.maxRun * 0.05 >= 2).length }, headsNoneAvailable: h.filter((j) => j.offered === 0 && j.planTicks > 0).length, headsNoPlan: h.filter((j) => j.planTicks === 0).length };
 };
 console.log(JSON.stringify({ env: { SCAN: process.env.SCAN ?? null, MODALL: process.env.MODALL ?? null }, cars, seed, secs, joinersTotal: J.size, all: tally(all), nearRestAtEnd: tally(all.filter(near)),
   queue: { meanJoinersStandingPerHead: +(qSum / Math.max(1, qTicks)).toFixed(2), max: +qMax.toFixed(1) } }));
