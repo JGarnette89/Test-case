@@ -208,7 +208,7 @@ function relevanceOf(world, list) {
     if (a.pass) idx.passers.push(n);
     if (a.player) idx.players.push(n);
     idx.maxRear = Math.max(idx.maxRear, a.rear ?? lenOf(a) / 2);
-    if (!p || a.offLane) continue;   // on no lane: in no lane's bucket (DECISIONS 10.68)
+    if (!p) continue;
     const plain = present && isPlain(a);
     if (present) {
       idx.plain[n] = plain ? 1 : 0;

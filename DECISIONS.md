@@ -6735,6 +6735,27 @@ His words: *"if the player or another driver is off the road, and somebody crash
 
 **CARRY ON WITH LANES ONLY (the project lead).** 10.68's plan without gap 2: **inside a box a car on no lane has no stand-in and, the ghost gone, is seen by nobody there.** Said here so it is recognised: with lanes only, a car on no lane in the middle of an intersection is invisible to the traffic, where today its ghost is at least somewhere.
 
+### 10.68 BUILT, LANES ONLY, AND SCORED (11 November; behind `world.realPos`, still OFF by default)
+
+**Built as planned, with one thing smaller than planned:** stand-ins (`drive.js` `shadowsOf`, written into the world by `withDriver`, so the worker gets them with the player), `noRight` at `blockedBy`, and the car on no lane flagged `offLane` and passed over. **G6, the site count I expected to run over, did not:** 11 sites, each a boolean on a neighbour already being visited -- `whatStops`' loop, `blockedBy`, four loops in `lanechange.js`, two in `placement.js`, `peds.js`, `buses.js`, and one more in `crossing.js`.
+
+| | prediction | result |
+|---|---|---|
+| G1 | the car no longer stops for the ghost | **HELD.** It drives past, never under 35 km/h, the player 34 m away. |
+| G2 | the car stops behind a player standing in its lane | **HELD ON ONE LANE, AND BETTER THAN PREDICTED ON TWO.** One lane each way: stops 2.0 m clear and stands, along the lane or across it. Two lanes: slows to 26 km/h and GOES ROUND by an ordinary lane change -- the lane-change rules that exist, reading the stand-in as a stopped car ahead. I had not thought of it. |
+| G3 | a player crossing in a gap is braked for hard and sometimes struck | **NOT MEASURED.** |
+| G4 | step time under 1% | **NOT MEASURED.** |
+| G5 | with nobody off a lane, the same world | **HELD ON THE HIGHWAY, FAILED IN TOWN, AND THE FAILURE IS THE FINDING BELOW.** The loop: identical traffic in all three 5-minute drives, no stand-in on any tick. Test map 1: a stand-in on 126-130 ticks of 6000 in each of three drives, and the traffic diverged. |
+| G6 | the skip-site count runs over | **FAILED, in the good direction**, above. |
+
+**THE FINDING, AND IT IS A DECISION I HAVE NOT MADE: AN ORDINARY DRIVER TOUCHING THE CENTRE LINE NOW MAKES ONCOMING TRAFFIC BRAKE.** A stand-in is made when the body reaches a lane of another carriageway -- the same threshold as the existing `straddles` rule (the body over its own lane's line at all). A good driver hugging the centre line (0.8 m left of their lane's line, nose 4-6 degrees left) or moving over early for a turn bay has a corner over it, so the oncoming lane is shown A STOPPED THING (10.68 gap 3: a stand-in has a place, not a direction) closing at their combined speed. **Measured, three 5-minute drives (`tools/measure/standin-drive.mjs`): in one, oncoming cars within 80 m braked past 3 m/s2 on 47 of 108 car-ticks while the stand-in stood (43.5%, against 1.6% the rest of that drive); in the other two nobody was oncoming at the time.** One drive in three, about a second of hard braking by somebody else per five minutes -- a small sample, and a new source of hard braking on a road where hard braking is already an open defect (IN FLIGHT 36). **A real driver does not stop for a car a hand's width over the line; they keep right.** The model cannot express that: the traffic's only responses to a thing in its lane are to follow it, stop for it or change lane.
+
+**THE CHOICES, the maintainer's and the project lead's:** (a) as built -- any touch of another carriageway's lane counts; (b) stand-ins only for a car ON NO LANE, which is the ruling's own words, leaving a car over the centre line on its own route unseen by the oncoming lane as it is at HEAD; (c) a depth of intrusion before the body counts, which is a number somebody has to choose. **I generalised past the ruling's scope when I made the on-lane case, and that generalisation is what produced this.** Not changed: it is behind the switch, and which of these is right is not mine.
+
+**THE CHECK: `verify-drive` section 10**, the two scenes of 10.67 with what each car should do stated in it, a one-lane scene along and across, 400 yielding places, a car weaving on its own side, a car over the centre line. **9 sabotages; 8 failed their own lines. THE NINTH PASSED AND THE LINE IT SABOTAGED IS GONE:** passing over the car on no lane in the traffic's index as well as where each driver reads its neighbours was redundant -- no check could tell, because the second makes the first invisible. One site now, not two.
+
+**NOT DONE, LANES ONLY (10.69):** in a box, a car on no lane has no stand-in and no ghost. **Not verified: the worker path with stand-ins (`verify-worker` runs with the switch off); the page (a stand-in is skipped in `MapRoad`'s draw loop, unseen); the horn at a stand-in; G3, G4.**
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
