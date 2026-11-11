@@ -12,7 +12,20 @@ Windows 11, Node v24.19.0. `node tools/verify-check-runner.mjs` exits 1.
 `capped.stdout` is the empty string. Everything before it passes (all the PASS lines up to
 "changed hash and explicit timing refresh use the cap").
 
-## Root cause (checked directly)
+## MEASURED FOR THIS TEST'S OWN CHILD (added 11 November, after the first version of this note)
+
+The first version said "checked directly", but what I had checked was Node's behaviour with a bare path of my own.
+I have now captured the test's own child, by copying `check-runner-test.mjs` and printing `capped.status`,
+`capped.stdout` and `capped.stderr` before the assertion, on a clean tree at `57a3417` (Windows 11, Node v24.19.0):
+
+    child status: 1 | stdout bytes: 0 | stderr:
+    node:internal/modules/esm/load:193
+        throw new ERR_UNSUPPORTED_ESM_URL_SCHEME(parsed, schemes);
+
+So the diagnosis below is **proven for that test**: the child never starts, stdout is empty, the status is 1 (which
+is why line 118's `assert.equal(capped.status, 1, ...)` passes), and line 119's regular expression finds nothing.
+
+## Root cause
 
 Line 116 spawns `node --import <clock> check.mjs verify-probe` with `clock = join(dir, "fast-clock.mjs")`,
 a bare Windows path (`C:\...\fast-clock.mjs`). Node on Windows refuses a bare drive-letter path for

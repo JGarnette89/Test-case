@@ -6896,6 +6896,46 @@ A chip "Real position: off/on" beside "Sim: page/worker" on `#/map` (shown when 
 
 **Sabotage of the new lines, read, anchors asserted unique `[M]`:** (A) no stop-leg car is ever seen: exposure line 2 fails with "0 distinct cars" and the behaviour line with "0 of the 0 cars that arrived"; (B) the player barely moves: line 1 fails "0 of 4", line 2 and the behaviour line follow; (C, FIRST ATTEMPT INVALID) removing the stop control changes the world so much that the player reaches the box in 0 of 4 passes and no car "arrives" by the check's own test, so all four failed and it isolated nothing; replaced by the real-code mutation above, which is the valid "cars arrive and do not stop" case and found the dead guard.
 
+### A LEAD, CAPTURED FOR WHOEVER CHASES IT: A THROUGH ROAD THAT DOES NOT DISCHARGE, AND MINOR ROADS THAT ARE STARVED (found 11 November by the exposure line of `verify-drive` section 5; NOT DIAGNOSED, NOT CHASED)
+
+**It is the first real lead the exposure work has produced.** The maintainer's framing: this is starvation and not ordinary congestion, in the same family as the phantom holds and the right-of-way work, and `[D: a HYPOTHESIS, NOT TESTED]` it may be what he has been feeling as an empty road: cars that exist but never arrive. A time course is not a diagnosis; the raw observations follow so nobody re-derives them.
+
+**Reproduce:** `QUEUE_PROBE=1 node tools/verify-drive.mjs` prints the observations below (the probe lives inside the check, behind the flag, so there is one implementation of the scene). **Where:** one node, the crossroads at (500, 500) in section 5's map: roads N, S, E, W, `lanes: 2`, legs 400 m; N and S end at a stop sign, E and W uncontrolled (the through road); demand `seedGraph(4 + pass, 50, map, { every: 0.7 })`, passes seeded 4, 5, 6, 7, the player entering at 13.9 m/s at the west end holding road speed and braking for the car ahead. **Which approach:** the west leg's inbound lane `W|end#1`, carrying routes `W|end#1/E|end#1` (straight) and `W|end#1/S|end#1` (right): a MIXED lane, right-turners and straight cars together.
+
+**RAW `[M]`, per 10 s, per pass (through = cars on W or E routes whose `s` passed `clearAt`; minor = N or S routes; "W at rest" = the maximum number of W-route cars with `v < 0.3` and not `going`; "player moving" = ticks with the player above 0.5 m/s):**
+
+| pass (seed) | 0-10 s | 10-20 | 20-30 | 30-40 | 40-50 | 50-60 |
+|---|---|---|---|---|---|---|
+| 0 (4) through / minor | 18 / 0 | 2 / 0 | 0 / 0 | 2 / 0 | 5 / 0 | 3 / 0 |
+| 0: player moving, W at rest | 200/200, 1 | 200/200, 5 | 148/200, 7 | **0/201**, 13 | **0/200**, 12 | 188/199, 12 |
+| 1 (5) through / minor | 18 / 1 | 2 / 0 | 0 / 0 | 0 / 0 | 2 / 0 | 2 / 0 |
+| 1: player moving, W at rest | 200/200, 11 | 171/200, 11 | 200/200, 13 | 171/201, 21 | **0/200**, 30 | **0/199**, 29 |
+| 2 (6) through / minor | 12 / 0 | 0 / 0 | 1 / 0 | 4 / 0 | 4 / 0 | 4 / 0 |
+| 2: player moving, W at rest | 200/200, 7 | 200/200, 12 | 200/200, 13 | 201/201, 15 | 44/200, 19 | **0/199**, 21 |
+| 3 (7) through / minor | 6 / 1 | 0 / 0 | 3 / 0 | 4 / 0 | 3 / 0 | 3 / 0 |
+| 3: player moving, W at rest | 200/200, 15 | 200/200, 18 | 200/200, 21 | 45/201, 13 | 162/200, 20 | 31/199, 30 |
+
+**The totals:** minor roads cleared **3 cars across all four 60 s passes**; the through road cleared 0-5 cars per 10 s after the first platoon (both directions, both lanes counted: below one lane's saturation discharge `[D: about 5 a 10 s, from a saturation flow near 0.5 a second; an assumption, not measured here]`). The player came through the box in **1 of 4** passes (pass 0), and even there it stood at rest 30-50 s before releasing, so the queue moves; in passes 1-3 it ended at rest at x = 430, 444, 433 (56-70 m short of the node centre, 500). **THE HEAD OF THE PLAYER'S LANE AT THE END `[M]`:** pass 1 -- three right-turners `W|end#1/S|end#1`, 4.9, 11.7 and 19.1 m ahead at **v = 0.12, 0.73, 1.4 m/s, `going: false`, `stoppedAt: false`** (through-road cars that never stopped, held by something); pass 2 -- straight-on cars at rest 24 and 30 m ahead, then a right-turner at 36.7 m, all `v = 0`, `going: false`; pass 3 -- a right-turner at 21.9 m at rest, straights at 28.3 and 34.8 m at rest. Pass 0, which got through, ends with its lead cars 122 m ahead moving at 12-17 m/s.
+
+**CANDIDATE CAUSES, with the reasoning `[D]`, none tested:**
+1. **Plain saturation.** `every: 0.7` may simply exceed what two lanes discharge, and under gap acceptance a minor road starves when the major road is saturated, which is correct behaviour. **Against it:** the through road is not discharging at a saturated rate either (0-5 cars a 10 s, both directions), and 12-30 cars at rest on one approach with a creeping right-turner at the head is not a saturated stream.
+2. **A phantom hold on the head of the mixed lane.** The cars at the head in pass 1 are right-turners that never stopped and are not moving. `crossing.js blockedBy` carries its own warning about this family: "a car stopped two hundred metres back is oncoming traffic by every test except the one that matters", and a through road deadlocked once before in this same scene's history ("35 cars queued behind each, four cars through in five minutes"). A stop-leg car sitting at rest at its line, or a stopped car in the box's approach, counted as a claimant, would hold a right-turn that conflicts with its path.
+3. **Mixed-lane spillback.** The curb lane carries right and straight together, so one held right-turner blocks every straight car behind it; a hold that should cost one movement costs the lane. Consistent with the straight cars at rest behind right-turners in passes 2 and 3.
+4. **A mutual hold between the through road and the stop legs** (the historical deadlock shape): the stop legs wait for a gap that the through road's own held right-turners never leave, and the right-turners wait on the stop legs.
+5. **The player.** It brakes for the car ahead and joins the queue, but pass 0's queue is already 13 cars at rest at 30-40 s and the minor roads clear 0 there, so the player alone does not explain it; **not excluded** as an amplifier (the traffic reads it as one of its own).
+
+**THE DISCRIMINATING MEASUREMENT NOT YET TAKEN:** at a stalled tick (say 45 s of pass 1), for each through-road car at rest or creeping, evaluate `blockedBy(me, them, ...)` against every other actor and print the first `them` that holds it: its id, route, `going`, `s`, `v`, and which rule branch returned true. That names the holder; the table above cannot. Also not captured: what is ahead of the three cars printed, and the stop-leg cars' own state while the through road is held.
+
+### THE CHECK-HONESTY PASS, ADDITIONS (11 November)
+
+**A CANDIDATE BECAME A MEASUREMENT.** The runner test's red (`verify-check-runner` on `main`) was a candidate cause when it was first noticed from the `--import` finding. **Measured for that test's own child `[M]`: status 1, 0 bytes of stdout, stderr `ERR_UNSUPPORTED_ESM_URL_SCHEME`** (the child never starts). `CODEX-NOTE-verify-check-runner.md` is updated, and its earlier "checked directly" is corrected to say what had and had not been checked.
+
+**A PATTERN, NOTED AND NOT LUCK:** twice in one day, forcing a check to say what it saw has incidentally explained something else: the `--import` path error met in the hook is the diagnosis of the runner's red, and the exposure line of `verify-drive` found a scene delivering one pass of four and a lead on queue starvation. A check that says what situations it met is also an instrument for things nobody asked it.
+
+**THE COMMENT NOW SAYS WHAT HAPPENS.** `verify-drive` section 5's comment claimed "four passes through" while the scene delivers one at the native seeds (11 November). It now states the exposure in the comment and in the touches line's message (the player reached the box in N of 4), so a reader is not misled by the same sentence twice.
+
+**MISPLACED, NOT MISSING (the maintainer's distinction, kept as the report's vocabulary):** stopping at a stop sign is guarded by `verify-signs` and not by the section-5 line that carried its name. That is a tidy-up and not a hole.
+
 ### OUTSTANDING, NOT ACCEPTED: `verify-check-runner` is red on `main`
 
 On `origin/main` at `5a000f3`, Windows 11, Node v24.19.0, **reproduced on a pristine detached worktree with no merge involved**: `check-runner-test.mjs:119` fails because the child's stdout is empty. Root cause, checked directly: line 116 passes `--import` a bare Windows path, which Node on Windows refuses (`ERR_UNSUPPORTED_ESM_URL_SCHEME`), so the child dies before the runner starts. Line 118's `status === 1` passes for the wrong reason, since a crash also exits 1. Suggested fix: `pathToFileURL(clock).href`. The full write-up is `CODEX-NOTE-verify-check-runner.md`. **It is Codex's work and Codex's lane and was not fixed here.** A red check on `main` is the condition this project has said repeatedly it cannot work in, because every later verification is measured against a broken baseline. It is tools-side, not simulation-side, so the world is sound, but it should not sit. It will show red in any derived run that reaches `tools/`.

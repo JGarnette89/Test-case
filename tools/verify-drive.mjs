@@ -170,7 +170,11 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
 
 /* 5. In traffic: the others treat the player as one of their own. */
 {
-  /* A crossroads with a two-way stop, the player on the through road holding 50 km/h: the stop legs wait for them, and nobody touches them. */
+  /* A crossroads with a two-way stop, the player on the through road holding 50 km/h: the stop legs wait for them, and nobody touches them.
+     WHAT THIS SCENE ACTUALLY DELIVERS, so the sentence above is not read alone (measured 11 November, DECISIONS 10.70): at demand
+     `every: 0.7` the through road backs up, and at the NATIVE seeds the player comes through the box in ONE of the four passes; in
+     the others it stands at rest 56-70 m short of the node behind a queue of through traffic. The counts printed below are the
+     exposure; the title of the check is not. `QUEUE_PROBE=1` prints the time course and the head of the queue for each pass. */
   const m = emptyMap("x"); const c = { x: 500, y: 500 };
   for (const [id, far] of [["N", { x: 500, y: 100 }], ["S", { x: 500, y: 900 }], ["E", { x: 900, y: 500 }], ["W", { x: 100, y: 500 }]]) m.roads.push(road({ id, lanes: 2, points: line(far, c), control: { start: "none", end: id === "N" || id === "S" ? "stop" : "none" } }));
   const xl = loadMap(m);
@@ -182,9 +186,11 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   let reached = 0;
   let w, me;
   /* Four passes through, each in a fresh world, the player entering at
-     road speed where the west road begins with nobody on top of them. */
+     road speed where the west road begins with nobody on top of them.
+     (They enter; they do not all arrive: see above.) */
   for (let pass = 0; pass < 4; pass++) {
     let reachedThis = false;
+    const probe = process.env.QUEUE_PROBE === "1" ? { buckets: {}, cleared: new Set(), t0: null } : null;
     w = seedGraph(4 + pass, 50, xl, { every: 0.7 });   // demand spread over twice the lanes now
     w = { ...w, actors: w.actors.filter((a) => !(a.route.startsWith("W|end#1") && a.s < 40)) };
     me = { ...startAt(w, "W|end"), v: 13.9 };
@@ -193,6 +199,19 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
     const r = drive(w, me, 60, (mm, ww) => { const g = gapAhead(mm, ww); return { steer: -(mm.off) * 0.3 - mm.psi * 3, slider: g < 12 ? -0.8 : g < 30 ? -0.2 : mm.v < 13.9 ? 0.5 : 0.05, signal: null }; }, (mm, ww) => {
       const mine = driverPose(mm, ww.course);
       if (Math.abs(mine.x - 500) < 40) reachedThis = true;
+      if (probe) {
+        probe.t0 ??= ww.t;
+        const bi = Math.floor((ww.t - probe.t0) / 10), bk = (probe.buckets[bi] ??= { throughCleared: 0, minorCleared: 0, playerMoving: 0, n: 0, wStill: 0 });
+        bk.n++; if (mm.v > 0.5) bk.playerMoving++;
+        let still = 0;
+        for (const a of ww.actors) {
+          if (a.player) continue;
+          const pa = ww.course.at[a.k].layout.paths[a.route];
+          if (a.s > pa.clearAt && !probe.cleared.has(a.id)) { probe.cleared.add(a.id); if (a.route.startsWith("W|") || a.route.startsWith("E|")) bk.throughCleared++; else bk.minorCleared++; }
+          if (a.route.startsWith("W|") && a.v < 0.3 && !a.going) still++;
+        }
+        bk.wStill = Math.max(bk.wStill, still);
+      }
       for (const a of ww.actors) {
         if (a.player) continue;
         const p = poseOf(ww, a);
@@ -208,6 +227,12 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
     });
     w = r.world; me = r.me;
     if (reachedThis) reached++;
+    if (probe) {
+      console.log(`QUEUE pass ${pass} (seed ${4 + pass}), per 10 s: ` + Object.entries(probe.buckets).map(([k, v]) => `${k * 10}-${k * 10 + 10}s through-cleared ${v.throughCleared}, minor-cleared ${v.minorCleared}, player moving ${v.playerMoving}/${v.n}, W cars at rest (max) ${v.wStill}`).join(" | "));
+      const lay = w.course.at[me.k].layout, from = lay.paths[me.route].from;
+      const ahead = w.actors.filter((a) => !a.player && a.k === me.k && w.course.at[a.k].layout.paths[a.route].from === from && a.s > me.s).sort((p, q) => p.s - q.s).slice(0, 3);
+      console.log(`QUEUE pass ${pass} end: player s ${me.s.toFixed(1)} v ${me.v.toFixed(2)} x ${driverPose(me, w.course).x.toFixed(0)}; ahead in its lane: ` + JSON.stringify(ahead.map((a) => ({ id: a.id, route: a.route, gap: +(a.s - me.s).toFixed(1), v: +a.v.toFixed(2), going: !!a.going, stoppedAt: a.stoppedAt != null, intent: lay.paths[a.route].intent }))));
+    }
   }
   /* THE FLOOR IS 1, NOT 4, AND WHY: the claim below cannot be tested with fewer than one pass in which the player is within
      reach of the box, and the scene does not provide four -- measured 11 November: in passes 1-3 the player stood at rest
@@ -216,7 +241,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
      itself a defect is NOT established here (DECISIONS 10.70). The message reports the true count. */
   check(reached >= 1, `the case arose (1): the player came through the box in ${reached} of 4 passes (the others were held short of it in a standing queue of through traffic)`);
   check(arrived.size >= 1, `the case arose (2): ${arrived.size} distinct car(s) on the stop legs came to within 12 m of their line while the player was within 40 m of the box, over four passes -- a zero here is exposure, not yielding`);
-  check(touches === 0, `four passes through a two-way stop on its through road, in traffic: nobody touched the player (${touches} car-ticks)`);
+  check(touches === 0, `four 60 s passes on the through road of a two-way stop, in traffic (the player reached the box in ${reached} of them): nobody touched the player (${touches} car-ticks)`);
   /* A WAITING GUARD, NOT A STOPPING GUARD (found 11 November, DECISIONS 10.70). In this scene the through road's queue
      blocks the stop-leg cars whether or not their drivers know the sign, so this line PASSES WITH NOBODY KNOWING A STOP
      SIGN: with `knownControl` (reading.js) returning "none" for a stop, 17 cars arrived, 8 sat at their line, 2,024
