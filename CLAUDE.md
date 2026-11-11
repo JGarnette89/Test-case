@@ -180,6 +180,24 @@ Eight things to know before your first change:
      exclusion beside it and three of its four "expected" failures were for
      a reason the old code never had), and read the lines, not the count.
      DECISIONS 10.70.
+   - **A number in the record that does not say whether it was seen.**
+     STANDING REQUIREMENT beside the exposure rule, the same defect one
+     level up: a check that cannot say whether the case arose and a record
+     that cannot say whether a number was observed both let absence pass
+     for evidence. **Every quantity in the record is marked `[M]`
+     measured -- a run PRINTED the value, and the record says which run --
+     or `[D: from ..., assuming ...]` derived -- we computed it, and it
+     carries what from and at what assumptions.** A derived number is not
+     forbidden, it is often all there is, but it is never quotable as
+     evidence without its provenance. **A third mark exists because a
+     printed number can still be wrong about the world: `[M, instrument
+     does not measure the named quantity]`** (the box defect's "21 cm" was
+     printed by `hypot(step, travel) - travel`, which adds a sideways step
+     to the travel in quadrature, and understated the step by about 28%).
+     Derived from measured is derived: the worst-case step hidden in a
+     turn allowance, 2.4 mm, is built from a measured 0.691 mm and an
+     unmutated assumption, and is `[D]`. An older entry with no mark means
+     UNAUDITED, not measured. The first audit is DECISIONS 10.70.
 
 4. **A CHECK HAS A BOUNDARY, AND IT IS INVISIBLE IN ITS OUTPUT.** The
    second recurring failure, three times in two days: `verify-turns`
