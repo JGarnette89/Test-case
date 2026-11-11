@@ -161,6 +161,25 @@ Eight things to know before your first change:
      `severity * PER_SEVERITY` and passed with `PER_SEVERITY` set to
      zero (15 October). State the expectation in the check itself, or as
      a property no wrong value can satisfy -- and sabotage the constant.
+   - **It does not record whether the case arose.** A negative assertion
+     ("no X happened") passes when nothing happened at all, so it cannot tell
+     "the behaviour was right" from "the situation never came up". THIS IS A
+     STANDING REQUIREMENT, NOT AN ITEM: **every negative assertion carries a
+     precondition that the situation occurred** -- asserted in the check, in
+     its own line, so that when the case is absent that line fails and the
+     negative one cannot go green alone -- **and a check that cannot show its
+     exposure is reported as "cannot tell", never as a pass.** Found twice
+     in one day by two agents with no shared context: on 11 November
+     `verify-drive`'s "no stand-in over the centre line" passed with the body
+     kept on its own lane (the case absent), and the maintainer relayed that
+     Codex's triage of 14 seed-fragile checks found 11 that could not tell
+     "wrong" from "never arose", four of them because an opportunity was
+     assumed. **And a sabotage proves nothing until you have read WHICH
+     assertion fired and why**: restore the real previous code, never a
+     cruder stand-in (a guard replaced by `if (false)` also removed an
+     exclusion beside it and three of its four "expected" failures were for
+     a reason the old code never had), and read the lines, not the count.
+     DECISIONS 10.70.
 
 4. **A CHECK HAS A BOUNDARY, AND IT IS INVISIBLE IN ITS OUTPUT.** The
    second recurring failure, three times in two days: `verify-turns`
