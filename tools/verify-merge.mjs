@@ -35,9 +35,29 @@ import { seedGraph, step, overlapping } from "../src/sim/crossing.js";
 import { knows } from "../src/core/driver.js";
 import { courteous } from "../src/sim/courtesy.js";
 import { strandTrial } from "./measure/stranded.mjs";
+import { mergePlan, kappaOf, leadNeed, lagNeed } from "../src/sim/lanechange.js";
+import { clearBetween } from "../src/sim/traffic.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
+/* WHAT A JOINER SEES WHILE IT STANDS, AND WHAT IT WOULD HAVE TAKEN (11 November, DECISIONS 10.70). `longest` below is a MAXIMUM over joiners: one
+   draw, and it hides how many joiners there were, how many stood over a minute, and what the through lane was doing. Everything here is the SIM'S
+   OWN: the plan and its neighbours from `mergePlan`, the gap wanted from `leadNeed` and `lagNeed` at the joiner's `kappaOf`, the gap offered from
+   `clearBetween` -- not a second statement of "the gap wanted". The RATIO is offered over needed, the worse of the two sides, clipped at 3.
+   THE CLASSIFICATION, fixed before anything was run, for a density where two or more joiners stood over a minute: HOLD (a gap on both sides at or
+   above the need was on offer for at least 5 s and the joiner did not go); DEMAND (not a hold; the ratio between 0.5 and 1 for most of the wait AND
+   the joiner timid, kappa 1.2 or more: a bolder driver would have gone); JAM (the through neighbours themselves standing, under 2 m/s, for most of
+   the wait); STARVATION (the ratio under 0.5 for most of the wait with the through traffic moving); else MIXED. ONE joiner over a minute is one draw
+   and is CANNOT TELL. */
+const quant = (xs, q) => { const a = xs.slice().sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(q * a.length))] : NaN; };
+function diagnose(probe, id, secs, over, joiners) {
+  const pr = probe.get(id);
+  if (!pr) return "no waiter";
+  const rs = pr.ratios, n = rs.length || 1, hs = pr.heads;
+  const low = rs.filter((x) => x < 0.5).length / n, mid = rs.filter((x) => x >= 0.5 && x < 1).length / n, holdS = rs.filter((x) => x >= 1).length * 0.05, jam = pr.jam / n;
+  const cls = over < 2 ? `CANNOT TELL: ${over} of ${joiners} joiners over a minute is one draw` : holdS >= 5 ? "HOLD" : mid > 0.5 && pr.kappa >= 1.2 ? "DEMAND" : jam > 0.5 ? "JAM" : low > 0.5 ? "STARVATION" : "MIXED";
+  return `longest waiter ${secs.toFixed(0)} s, kappa ${pr.kappa.toFixed(2)}, ${pr.stalled} stalled ticks (merge plan null on ${Math.round((100 * pr.planNull) / Math.max(1, pr.stalled))}%); offered/needed ratio p10 ${quant(rs, 0.1).toFixed(2)} p50 ${quant(rs, 0.5).toFixed(2)} p90 ${quant(rs, 0.9).toFixed(2)} (under 0.5 for ${Math.round(100 * low)}%, 0.5 to 1 for ${Math.round(100 * mid)}%, 1 or more for ${holdS.toFixed(1)} s); through neighbours both standing ${Math.round(100 * jam)}%; ${hs.length} through-car headways seen (median ${hs.length ? quant(hs, 0.5).toFixed(1) : "-"} s) => ${cls}`;
+}
 const med = (xs) => { const a = xs.slice().sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : NaN; };
 
 const raw = TEST_MAPS.find((m) => m.id === "test-loop").build();
@@ -76,6 +96,8 @@ for (const cars of [60, 150, 300]) {
   let overlaps = 0, pastClose = 0, lost = 0, n = 0, longest = 0;
   const standing = new Map();
   const offered = new Set();
+  const ids = new Set(), maxStand = new Map(), probe = new Map();
+  let longestId = null;
   for (let i = 0; i < 180 * 20; i++) {
     const before = w;
     w = step(w);
@@ -90,7 +112,26 @@ for (const cars of [60, 150, 300]) {
     for (const a of w.actors) {
       const L = w.course.at[a.k].layout, p = L.paths[a.route], to = L.legs[p.to];
       if (to?.accel && a.s + 2.25 > p.length - to.accelClose + 0.5) pastClose++;
-      if (to?.accel && a.s > p.clearAt && a.v < 0.5) { const t = (standing.get(a.id) ?? 0) + 0.05; standing.set(a.id, t); longest = Math.max(longest, t); } else standing.delete(a.id);
+      if (to?.accel && a.s > p.clearAt) ids.add(a.id);
+      if (to?.accel && a.s > p.clearAt && a.v < 0.5) {
+        const t = (standing.get(a.id) ?? 0) + 0.05; standing.set(a.id, t);
+        if (t > longest) { longest = t; longestId = a.id; }
+        maxStand.set(a.id, Math.max(maxStand.get(a.id) ?? 0, t));
+        let pr = probe.get(a.id);
+        if (!pr) { pr = { kappa: kappaOf(a), stalled: 0, planNull: 0, ratios: [], jam: 0, heads: [], lastAhead: undefined, tLast: null }; probe.set(a.id, pr); }
+        pr.stalled++;
+        const mp = mergePlan(w, a, L, p, to);
+        if (!mp) pr.planNull++;
+        else {
+          const nb = mp.best.nb;
+          const lead = nb.ahead ? clearBetween(nb.da, a, nb.ahead) : Infinity, lag = nb.behind ? clearBetween(nb.db, nb.behind, a) : Infinity;
+          pr.ratios.push(Math.min(3, lead / leadNeed(a, nb.ahead, pr.kappa), lag / lagNeed(a, nb.behind, pr.kappa)));
+          const near = [nb.ahead, nb.behind].filter(Boolean);
+          if (near.length && near.every((c) => (c.v ?? 0) < 2)) pr.jam++;
+          const ahead = nb.ahead?.id ?? null;
+          if (ahead !== pr.lastAhead) { if (pr.lastAhead !== undefined && pr.tLast != null) pr.heads.push(w.t - pr.tLast); pr.tLast = w.t; pr.lastAhead = ahead; }
+        }
+      } else standing.delete(a.id);
       if (a.courtesy && !a.courtesy.forPlayer && !offered.has(`${a.id}@${a.courtesy.since}`)) { offered.add(`${a.id}@${a.courtesy.since}`); offers.n++; if (!courteous(a)) offers.uncourteous++; }
       if (a.lc?.merge && a.lc.at === before.t) {
         const was = before.actors.find((x) => x.id === a.id), Lw = before.course.at[was.k].layout, pw = Lw.paths[was.route];
@@ -105,6 +146,8 @@ for (const cars of [60, 150, 300]) {
   check(overlaps === 0 && crashes === 0, `${cars} cars, three minutes: ${overlaps} overlapping car-ticks and ${crashes} crashes`);
   check(pastClose === 0 && lost === 0, `  and nobody past the start of an acceleration lane's taper (${pastClose} car-ticks), nobody lost at a seam still in one (${lost})`);
   ran[ran.length - 1].longest = longest;
+  { const over = [...maxStand.values()].filter((x) => x > 60).length, r = ran[ran.length - 1];
+    r.joiners = ids.size; r.over = over; r.diag = diagnose(probe, longestId, longest, over, ids.size); }
 }
 
 console.log("\n3. IT IS A MERGE, AND THE DRIVER SHOWS IN IT");
@@ -122,7 +165,9 @@ check(offers.n > 0 && offers.uncourteous === 0, `every one of them from a driver
 check(offers.twoForOne === 0, `and no joining car is let in by two drivers at once (${offers.twoForOne} car-ticks)`);
 
 console.log("\n4. NOBODY IS STRANDED");
-check(ran.every((r) => r.longest <= 60), `no joiner stands at the end of its lane over a minute: longest ${ran.map((r) => `${r.longest.toFixed(0)} s at ${r.cars} cars`).join(", ")}`);
+check(ran.every((r) => r.joiners >= 20), `the case arose: joiners that reached the end of their lane: ${ran.map((r) => `${r.joiners} at ${r.cars} cars`).join(", ")} (floor 20, the merges' own)`);
+check(ran.every((r) => r.longest <= 60), `no joiner stands at the end of its lane over a minute: longest ${ran.map((r) => `${r.longest.toFixed(0)} s at ${r.cars} cars`).join(", ")}; joiners over a minute ${ran.map((r) => `${r.over} of ${r.joiners} at ${r.cars}`).join(", ")}`);
+for (const r of ran) console.log(`    [${r.cars} cars] ${r.diag}`);
 {
   const on = [], off = [];
   for (const seed of [1, 2, 3, 4]) {
