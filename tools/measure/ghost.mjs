@@ -3,6 +3,7 @@
    somewhere else. Two made scenes on test map 1, one traffic car each, the real position on:
      A. THE GHOST IS QUEUED BEHIND: the player stands on the grass; their ghost stands on the lane the route is latched
         to. A car comes down that lane. Does it stop for nothing?
+     (C is B on a one-lane road, added with 10.68's build: nowhere to go round.)
      B. THE CAR IS NOT SEEN: the player stands in a lane, facing against it (on no lane), their ghost on another street.
         A car comes down the lane they are standing in. Does it brake before it reaches them?
    The player holds the slider at rest (a pull to the bottom from a standstill is reverse, player.js: the first run of
@@ -27,7 +28,7 @@ const south = routeForSignal(layout, leg, null);                                
 const west = Object.keys(layout.paths).find((r) => r === "A-B|start#0/A-west|end#0");   // the lane the stagger latches to (10.64)
 
 const run = (name, me, other, secs = 20) => {
-  let w = withDriver({ ...empty, actors: [other] }, me), minGap = Infinity, touched = null, vAtEnd = 0, stoodFor = 0, braked = 0;
+  let w = withDriver({ ...empty, actors: [other] }, me), minGap = Infinity, touched = null, vAtEnd = 0, stoodFor = 0, braked = 0, vMin = Infinity, changed = 0, lastRoute = other.route;
   for (let i = 0; i < secs / DT; i++) {
     me = stepDriver(me, { steer: 0, slider: 0, assist: 0 }, w, DT);
     w = step(withDriver(w, me));
@@ -36,11 +37,13 @@ const run = (name, me, other, secs = 20) => {
     const p = poseOf(w, o), m = driverPose(me, course), ghost = poseOnGraph(course, me.k, me.route, me.s);
     minGap = Math.min(minGap, Math.hypot(p.x - m.x, p.y - m.y));
     if ((o.a ?? 0) < -0.5) braked++;
+    vMin = Math.min(vMin, o.v ?? 0);
+    if (o.route !== lastRoute && (o.k ?? 0) === other.k) { changed++; lastRoute = o.route; }
     if ((o.v ?? 0) < 0.2) stoodFor += DT;
     vAtEnd = o.v ?? 0;
     const c = playerContact(w, me);
     if (c.hit && touched == null) touched = { t: i * DT, v: o.v ?? 0, closing: c.fresh[0]?.closing };
-    if (i === Math.round(secs / DT) - 1) console.log(`${name}\n   after ${secs} s: the car is ${Math.hypot(p.x - m.x, p.y - m.y).toFixed(1)} m from the player's car and ${Math.hypot(p.x - ghost.x, p.y - ghost.y).toFixed(1)} m from the ghost, doing ${(vAtEnd * 3.6).toFixed(0)} km/h; stood ${stoodFor.toFixed(1)} s; braking on ${braked} ticks; nearest it came to the car ${minGap.toFixed(1)} m; ${touched ? `STRUCK the player at ${touched.t.toFixed(1)} s doing ${(touched.v * 3.6).toFixed(0)} km/h` : "never touched the player"}`);
+    if (i === Math.round(secs / DT) - 1) console.log(`${name}\n   after ${secs} s: the car is ${Math.hypot(p.x - m.x, p.y - m.y).toFixed(1)} m from the player's car and ${Math.hypot(p.x - ghost.x, p.y - ghost.y).toFixed(1)} m from the ghost, doing ${(vAtEnd * 3.6).toFixed(0)} km/h; stood ${stoodFor.toFixed(1)} s; braking on ${braked} ticks; slowest ${(vMin * 3.6).toFixed(0)} km/h; changed lane ${changed} time(s); nearest it came to the car ${minGap.toFixed(1)} m; ${touched ? `STRUCK the player at ${touched.t.toFixed(1)} s doing ${(touched.v * 3.6).toFixed(0)} km/h` : "never touched the player"}`);
   }
 };
 
@@ -55,4 +58,15 @@ const run = (name, me, other, secs = 20) => {
   const at = poseOnGraph(course, k, south, 200);
   const me = { ...playerAt(empty, k, west), s: 300, v: 0, going: true, accepted: true, noLane: true, lost: true, at: { x: at.x, y: at.y, z: at.z ?? 0, heading: at.rot + 180 } };
   run("B. the player standing in the southbound lane, against it; a car comes down that lane at 43 km/h from 110 m back", me, car("b", k, south, 90, 12), 14);
+}
+/* C. As B, on a road with ONE lane each way: nowhere to go round. */
+{
+  let pick = null;
+  course.at.forEach((spot, kk) => { for (const [r, p] of Object.entries(spot.layout.paths)) { const lg = spot.layout.legs[p.from]; if (!pick && p.intent === "straight" && p.stopAt > 220 && (lg.across ?? lg.lanes) === 1 && !lg.oneWay) pick = { kk, r }; } });
+  if (!pick) console.log("C. no one-lane approach long enough on this map");
+  else {
+    const at = poseOnGraph(course, pick.kk, pick.r, 200);
+    const me = { ...playerAt(empty, k, west), s: 300, v: 0, going: true, accepted: true, noLane: true, lost: true, at: { x: at.x, y: at.y, z: at.z ?? 0, heading: at.rot + 180 } };
+    run(`C. the player standing against a ONE-lane road (${pick.r}); a car comes down it at 43 km/h from 110 m back`, me, car("c", pick.kk, pick.r, 90, 12), 20);
+  }
 }

@@ -31,7 +31,7 @@ import { CAR, DT } from "./traffic.js";
 import { placeOf, laneIndexOf, approachNeighbours } from "./placement.js";
 import { lenOf, STANDSTILL } from "./traffic.js";
 import { playerPoseOn } from "./pose.js";
-import { locate } from "./locate.js";
+import { locate, lanesAt } from "./locate.js";
 import { pavedAt } from "./surface.js";
 import { judgeTurn, yawRateFor, V_MAX, BACK_V } from "./player.js";
 
@@ -190,8 +190,65 @@ function laneChange(layout, me, path, course) {
    other drivers read (crossing.js: stopped when, committed yet). */
 export function stepDriver(me, input, world, dt = DT) {
   if (!world.realPos) return stepOnRoute(me, input, world, dt);
-  if (me.noLane) return stepNoLane(me, input, world, dt);
-  return settle(stepOnRoute(me, input, world, dt), world);
+  const next = me.noLane ? stepNoLane(me, input, world, dt) : settle(stepOnRoute(me, input, world, dt), world);
+  return { ...next, shadows: shadowsOf(world.course, next) ?? undefined };
+}
+
+/* =====================================================================
+   WHERE THE CAR'S BODY IS, FOR THE TRAFFIC (DECISIONS 10.68: the traffic
+   perceives by geometry, not by lane membership; a car's presence in
+   another driver's awareness follows its BODY, not its route).
+
+   The traffic finds everybody through an index built from each actor's
+   `(k, route, s)` (crossing.js relevanceOf). So the body is put into that
+   index where it physically is: one STAND-IN per lane the body overlaps,
+   at the body's place along that lane -- found by the locator at the
+   body's middle, front and rear, without asking which way it points. No
+   driver scans anything; this is one car's three queries a tick.
+
+   - ON NO LANE: every lane under the body. The car's own actor is flagged
+     `offLane` and the readers that find cars by route pass over it: THE
+     GHOST IS GONE.
+   - ON A LANE: only lanes of ANOTHER carriageway -- the oncoming lanes, a
+     road being crossed. Its own lane is its actor; the lanes beside it on
+     its own side are the lane change's and `straddles`' (crossing.js), as
+     they were, so a car that keeps to its own side of the road changes
+     nothing.
+   - A STAND-IN HAS A PLACE, NOT A DIRECTION: its speed is the car's speed
+     ALONG that lane, never less than nothing -- across a lane or against
+     it, it is a stopped thing there (10.68 gap 3).
+   - NOBODY YIELDS TO IT: `noRight` (crossing.js blockedBy). It is followed
+     and stopped for, as a car in front is.
+
+   LANES ONLY (10.69): inside a box there are no lanes and no stand-in.
+   ===================================================================== */
+const BODY_AT = 1.5;                         // m fore and aft of the middle where the body is asked about
+const BODY_REACH = LANE / 2 + 0.9;           // a lane's half-width and the car's: the body is over the line
+const laneIdOf = (course, c) => { const leg = course.at[c.k].layout.legs[c.leg]; return (c.part === "in" ? leg?.inLane?.id : leg?.outLane?.id) ?? `${c.k}|${c.part}|${c.leg}`; };
+export function shadowsOf(course, me) {
+  const pose = playerPoseOn(course, me), h = (pose.heading * Math.PI) / 180;
+  /* Its own lane, and its own side of its own road. */
+  let own = null;
+  if (!me.noLane) {
+    const p = course.at[me.k].layout.paths[me.route];
+    const part = me.s < p.stopAt ? "in" : me.s > p.clearAt ? "out" : null;
+    /* In a box on its route: seen through its route, as it always was. */
+    if (!part) return null;
+    own = laneIdOf(course, { k: me.k, part, leg: part === "in" ? p.from : p.to }).split("#")[0];
+    /* Nowhere near another carriageway: nothing to ask. Its lane's line is within a lane of it, and the nearest lane of another carriageway is not. */
+    if (Math.abs(me.off) < 0.5) return null;
+  }
+  const found = new Map();
+  for (const d of [0, BODY_AT, -BODY_AT]) {
+    const at = { x: pose.x + Math.cos(h) * d, y: pose.y + Math.sin(h) * d, z: pose.z, heading: pose.heading };
+    for (const lane of lanesAt(course, at, { reach: BODY_REACH, aligned: false })) {
+      const c = lane.names[0], id = laneIdOf(course, c);
+      if (own != null && id.split("#")[0] === own) continue;
+      /* The middle's place along the lane where the middle is over it; else the end's. */
+      if (!found.has(id)) found.set(id, { lane: id, k: c.k, route: c.route, s: c.s, v: Math.max(0, (me.v ?? 0) * Math.cos(c.psi)) });
+    }
+  }
+  return found.size ? [...found.values()] : null;
 }
 
 function stepOnRoute(me, input, world, dt = DT) {
@@ -286,7 +343,7 @@ function stepOnRoute(me, input, world, dt = DT) {
   const err = next.s - waitAt;
   /* Behind a car is not at a line: whoever is in front decides where
      you stop, and the line's verdict would be about their position. */
-  const infront = world.actors.find((a) => a.id !== me.id && (a.k ?? 0) === next.k && a.route && inLaneOf(layout, a, next.route) && a.s > next.s && a.s - next.s < CAR.length + 8);   // in my lane physically (occupancy.js)
+  const infront = world.actors.find((a) => a.id !== me.id && !a.shadow && (a.k ?? 0) === next.k && a.route && inLaneOf(layout, a, next.route) && a.s > next.s && a.s - next.s < CAR.length + 8);   // in my lane physically (occupancy.js)
   if (cameToRest && next.s < path.stopAt + 1 && err > -12 && !infront) {
     const verdict = brakePeak > HARSH_AT ? "harsh" : err > 0.3 ? "over" : err < -AT_LINE ? "short" : "clean";
     lastStop = { verdict, err, peak: brakePeak, at: world.t };
@@ -462,7 +519,15 @@ export function placePlayer(world, me) {
    see, replacing the last tick's copy. */
 export function withDriver(world, me) {
   const others = world.actors.filter((a) => !a.player);
-  return { ...world, actors: [...others, me] };
+  /* With the real position on: where the body is, for the traffic (shadowsOf).
+     The player's own actor stays first of the player's, so whoever looks for
+     "the player" finds the car and not a stand-in. */
+  if (!me.noLane && !me.shadows) return { ...world, actors: [...others, me] };
+  const real = playerPoseOn(world.course, me);
+  const stand = (me.shadows ?? []).map((sh, i) => ({ id: `${me.id}~${i}`, player: true, shadow: true, shadowOf: me.id, noRight: true, n: -1,
+    k: sh.k, route: sh.route, s: sh.s, v: sh.v, a: 0, off: 0, psi: 0, yaw: 0, noLane: true, at: real,
+    stoppedAt: null, going: sh.v > 1.5, accepted: sh.v > 1.5, signal: null, honkAt: me.honkAt ?? null }));
+  return { ...world, actors: [...others, me.noLane ? { ...me, offLane: true } : me, ...stand] };
 }
 
 /* What the player is about to do, for the screen to say so: the kind
@@ -574,7 +639,7 @@ export function headwayOf(me, world) {
   if (at) {
     const xs = laneIndexOf(world).get(at.lane) ?? [], half = lenOf(me) / 2;
     for (const e of xs) {
-      if (e.a.id === me.id || e.c <= at.c) continue;
+      if (e.a.id === me.id || e.a.shadowOf === me.id || e.c <= at.c) continue;
       const clear = e.c - at.c - half - lenOf(e.a) / 2;
       if (clear >= 0 && (!inLane || clear < inLane.clear)) inLane = { car: e.a, clear };
     }

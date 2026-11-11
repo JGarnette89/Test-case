@@ -228,7 +228,7 @@ function neighbours(world, me, legId, s, route = null) {
   const reach = reachAhead(me), aheads = [];
   const layout = world.course.at[me.k ?? 0].layout;
   for (const a of atNode(world, world.actors, me.k ?? 0)) {
-    if (a.id === me.id || (a.k ?? 0) !== (me.k ?? 0)) continue;
+    if (a.id === me.id || a.offLane || (a.k ?? 0) !== (me.k ?? 0)) continue;   // on no lane: seen by its stand-ins (DECISIONS 10.68)
     const from = layout.paths[a.route]?.from;
     /* In the target lane PHYSICALLY (occupancy.js): from that leg and, when the
        route moved onto is known, short of the split from it -- a car from the
@@ -555,7 +555,7 @@ function exitNeighbours(world, me, layout, toLeg, rem, route = null, sRoute = nu
      only where a car is not yet on this road. */
   const course = world.course, myAlong = exitAlong(course, me.k ?? 0, me.route, me.s);
   for (const a of atNode(world, world.actors, me.k ?? 0)) {
-    if (a.id === me.id) continue;
+    if (a.id === me.id || a.offLane) continue;
     const p = layout.paths[a.route];
     /* EVERYBODY bound for this lane, measured by distance remaining -- the
        ones still short of their line too. Excluding them (until 21 October)
@@ -591,7 +591,7 @@ function exitNeighbours(world, me, layout, toLeg, rem, route = null, sRoute = nu
   if (j) {
     const there = world.course.at[j.k].layout;
     for (const a of atNode(world, world.actors, j.k)) {
-      if (a.id === me.id || there.paths[a.route]?.from !== j.side) continue;
+      if (a.id === me.id || a.offLane || there.paths[a.route]?.from !== j.side) continue;
       const theirs = myAlong != null ? approachAlong(course, j.k, a.route, a.s) : null;
       const d = theirs != null ? theirs - myAlong : rem + a.s;
       if (d < da) { da = d; ahead = a; }
@@ -739,7 +739,7 @@ function gapTarget(world, out, layout, path, outLeg) {
   if (!toLeg || mine == null) return null;
   const cars = [];
   for (const a of atNode(world, world.actors, out.k ?? 0)) {
-    if (a.id === out.id || a.crash) continue;
+    if (a.id === out.id || a.crash || a.offLane) continue;
     const p = layout.paths[a.route];
     if (!p || a.s <= p.clearAt || !(p.to === toLeg || (changing(a.lc, world.t) && a.lc.fromTo === toLeg))) continue;
     const al = exitAlong(world.course, a.k ?? 0, a.route, a.s);

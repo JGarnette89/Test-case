@@ -208,7 +208,7 @@ function relevanceOf(world, list) {
     if (a.pass) idx.passers.push(n);
     if (a.player) idx.players.push(n);
     idx.maxRear = Math.max(idx.maxRear, a.rear ?? lenOf(a) / 2);
-    if (!p) continue;
+    if (!p || a.offLane) continue;   // on no lane: in no lane's bucket (DECISIONS 10.68)
     const plain = present && isPlain(a);
     if (present) {
       idx.plain[n] = plain ? 1 : 0;
@@ -962,6 +962,8 @@ export function blockedBy(me, them, layout, caution = me.caution, t = 0, live = 
      between them; what they may have to do is FOLLOW each other, which is
      `whatStops`'s business and is about the lane rather than the box. */
   if ((me.k ?? 0) !== (them.k ?? 0)) return false;
+  /* A car on no lane has no right of way, and neither has a stand-in for one (DECISIONS 10.68): it is avoided, not yielded to. */
+  if (them.offLane || them.noRight) return false;
   const hit = conflictOf(layout, me.route, them.route);
   if (!hit) return false;
 
@@ -1335,6 +1337,8 @@ export function whatStops(me, world) {
   const protrudes = (x, other) => tapered(x) || Math.abs(lateralOf(x.lc, world.t)) > room0 - (widthOf(x) + widthOf(other)) / 2;
   for (const them of visit) {
     if (them.id === me.id) continue;
+    /* A car on no lane is not where its route says (DECISIONS 10.68): it is seen where its body is, through its stand-ins -- which are nobody's own obstacle to the car they stand for. */
+    if (them.offLane || them.shadowOf === me.id) continue;
     /* GOING ROUND A STOPPED BUS (passing.js): out in the oncoming lane, the
        bus being passed is not in front of me -- and somebody passing
        toward me in MY lane is, as a stopped thing to stop short of: they
@@ -1821,7 +1825,7 @@ function signalPlans(course) {
 function loopDets(world, k) {
   const layout = world.course.at[k].layout, out = [];
   for (const a of atNode(world, world.actors, k)) {
-    if (a.crash || a.parked) continue;
+    if (a.crash || a.parked || a.offLane) continue;
     const p = layout.paths[a.route];
     if (!p) continue;
     out.push({ base: layout.legs[p.from]?.base, intent: p.intent, toLine: waitAt(p, a) - a.s, v: a.v ?? 0, player: !!a.player });

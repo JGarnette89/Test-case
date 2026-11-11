@@ -84,7 +84,7 @@ function gridOf(course, reach) {
 const normDeg = (d) => { d %= 360; if (d > 180) d -= 360; if (d < -180) d += 360; return d; };
 
 /* A pose against one segment of one path: { k, route, s, off, psi, part, leg } or null. */
-function onSegment(seg, pose, reach) {
+function onSegment(seg, pose, reach, aligned = true) {
   const { p, i } = seg, a = p.pts[i - 1], b = p.pts[i];
   const len = p.at[i] - p.at[i - 1];
   if (!(len > 0)) return null;
@@ -104,30 +104,29 @@ function onSegment(seg, pose, reach) {
   const z = (a.z ?? 0) + ((b.z ?? 0) - (a.z ?? 0)) * (t / len);
   if (Math.abs(z - (pose.z ?? 0)) > LEVEL) return null;
   const rot = (Math.atan2(uy, ux) * 180) / Math.PI, turn = normDeg(pose.heading - rot);
-  if (Math.abs(turn) > ALIGNED) return null;
+  if (aligned && Math.abs(turn) > ALIGNED) return null;
   return { k: seg.k, route: seg.route, s, off, psi: (turn * Math.PI) / 180, part, leg: part === "in" ? p.from : p.to, over };
 }
 
-/* THE LANE A POSE IS IN: { k, part, leg, off, names } -- the nearest lane
-   whose centreline the pose is within `reach` of and aligned with, and
-   under `names` every route that names it, each with its own distance
-   along ({ k, route, s, off, psi, part, leg }). Null on no lane. */
-export function locate(course, pose, { reach = LANE / 2, prefer = null } = {}) {
-  if (!course?.at) return null;
+/* EVERY LANE WITHIN `reach` OF A POINT, nearest first: [{ k, part, leg, off, names }].
+   `aligned: false` asks where a BODY is rather than where a car is driving -- a car
+   across a lane, or against it, is in that lane as a thing in the road (DECISIONS
+   10.68: perceived by geometry). */
+export function lanesAt(course, pose, { reach = LANE / 2, aligned = true } = {}) {
+  if (!course?.at) return [];
   const g = gridOf(course, reach);
   const segs = g.cells.get(keyOf(Math.floor(pose.x / CELL), Math.floor(pose.y / CELL)));
-  if (!segs) return null;
+  if (!segs) return [];
   /* The best per route (a vertex gives two segments of one route), then per lane. */
   const byRoute = new Map();
   for (const seg of segs) {
-    const c = onSegment(seg, pose, reach);
+    const c = onSegment(seg, pose, reach, aligned);
     if (!c) continue;
     const key = `${c.k}|${c.route}`, had = byRoute.get(key);
     /* The segment the point really projects onto, before one it is only near the end of:
        taking the smaller offset put a car up to WEDGE along from where it was. */
     if (!had || c.over < had.over - 1e-9 || (Math.abs(c.over - had.over) <= 1e-9 && Math.abs(c.off) < Math.abs(had.off))) byRoute.set(key, c);
   }
-  let best = null;
   const lanes = new Map();
   for (const c of byRoute.values()) {
     const key = `${c.k}|${c.part}|${c.leg}`;
@@ -136,13 +135,22 @@ export function locate(course, pose, { reach = LANE / 2, prefer = null } = {}) {
     lane.names.push(c);
     if (Math.abs(c.off) < Math.abs(lane.off)) lane.off = c.off;
   }
-  for (const lane of lanes.values()) if (!best || Math.abs(lane.off) < Math.abs(best.off) - 1e-9) best = lane;
+  return [...lanes.values()].sort((x, y) => Math.abs(x.off) - Math.abs(y.off));
+}
+
+/* THE LANE A POSE IS IN: { k, part, leg, off, names } -- the nearest lane
+   whose centreline the pose is within `reach` of and aligned with, and
+   under `names` every route that names it, each with its own distance
+   along ({ k, route, s, off, psi, part, leg }). Null on no lane. */
+export function locate(course, pose, { reach = LANE / 2, prefer = null } = {}) {
+  const lanes = lanesAt(course, pose, { reach });
+  let best = lanes[0] ?? null;
   /* TWO LANES ON ONE CENTRELINE: a turn bay lies on its neighbour until it
      opens (map/bays.js), so short of there the nearest lane is two lanes.
      The one the asker is already on (`prefer`: { k, route }) is the one
      they are in. */
   if (best && prefer) {
-    for (const lane of lanes.values()) {
+    for (const lane of lanes) {
       if (lane !== best && Math.abs(lane.off) <= Math.abs(best.off) + TIE && lane.names.some((c) => c.k === prefer.k && c.route === prefer.route)) { best = lane; break; }
     }
   }

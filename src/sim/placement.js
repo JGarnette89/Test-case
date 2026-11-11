@@ -46,7 +46,7 @@ export function laneIndexOf(world) {
   const put = (lane, c, a) => { let xs = idx.get(lane); if (!xs) idx.set(lane, (xs = [])); xs.push({ c, a }); };
   const course = world.course;
   for (const a of world.actors) {
-    if (a.parked) continue;
+    if (a.parked || a.offLane) continue;
     const at = placeOf(course, a.k ?? 0, a.route, a.s);
     if (!at) continue;
     put(at.lane, at.c, a);
@@ -75,7 +75,7 @@ export function neighboursAt(world, lane, c, me) {
      world -- LOD promoting one, or a check re-asking about a placed car --
      the index holds the car itself at its own place, and it read as its own
      follower at a negative gap (verify-promotion, 120 of 120). */
-  const self = (e) => e.a === me || (me.id != null && e.a.id === me.id);
+  const self = (e) => e.a === me || (me.id != null && (e.a.id === me.id || e.a.shadowOf === me.id));
   let i = lo, j = lo - 1;
   while (i < xs.length && self(xs[i])) i++;
   while (j >= 0 && self(xs[j])) j--;
@@ -104,7 +104,7 @@ export function approachNeighbours(world, me, actors = world.actors) {
   if (!mine) return { ahead: null, behind: null };
   let ahead = null, behind = null, da = Infinity, db = Infinity;
   for (const b of actors) {
-    if (b === me || b.id === me.id || b.parked || (b.k ?? 0) !== (me.k ?? 0)) continue;
+    if (b === me || b.id === me.id || b.parked || b.offLane || b.shadowOf === me.id || (b.k ?? 0) !== (me.k ?? 0)) continue;
     const p = L.paths[b.route];
     /* THE LANE, PHYSICALLY (occupancy.js; IN FLIGHT 38) -- not "the same leg for the whole path", which this was made to agree with on 22 October: a car past its split is on another road. */
     if (!p || !sharesLane(L, me, b)) continue;

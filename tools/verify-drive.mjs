@@ -13,7 +13,7 @@
    traffic treats the player as one of its own -- yielding, following,
    never driving through them.
    ===================================================================== */
-import { seedGraph, step, poseOf, overlapping, DT, restAt } from "../src/sim/crossing.js";
+import { seedGraph, step, poseOf, overlapping, DT, restAt, blockedBy } from "../src/sim/crossing.js";
 import { playerAt, playerOn, stepDriver, driverPose, withDriver, routeForSignal, aheadOf } from "../src/sim/drive.js";
 import { touching, holdAt, CLEAN, sliderFor, stopBand, accelFor } from "../src/sim/player.js";
 import { graphOf, poseOnGraph } from "../src/sim/graph.js";
@@ -484,21 +484,22 @@ console.log("\n9. The car's real position: re-located onto the lane it is in, an
   const sameTicks = mildOn.log.filter((m, i) => JSON.stringify(m) === JSON.stringify(mildOff.log[i])).length;
   check(sameTicks === mildOn.log.length && mildOn.log.length === 480, `at 32 km/h, run wide and settled by the assist, the car is the same car tick for tick with the switch on (${sameTicks} of ${mildOn.log.length})`);
   /* ...AND ON A TURN BAY'S TAPER, where the bay's line is nearer than the car's own lane's and the bay is not yet
-     a lane to be in (drive.js laneChange): a car drifted 0.9 m toward the opening bay stays the same car, tick for
+     a lane to be in (drive.js laneChange): a car drifted 0.7 m toward the opening bay stays the same car, tick for
      tick. Asking the world before a whole lane off the line re-bases it onto the bay here. (Added because asking
-     every tick passed everything else: 10 November.) */
+     every tick passed everything else: 10 November. 0.7 m and not 0.9: at 0.9 the body's edge is exactly on the
+     centre line, and whether it has a stand-in in the oncoming lane is a coin's edge -- 11 November.) */
   {
     const kb = course.at.findIndex((sp) => sp.layout.paths["B-east|end#0/E-east|start#0"]), rb = "B-east|end#0/E-east|start#0";
     const taper = (real) => {
       const w0 = real ? { ...base, realPos: true } : base;
-      let me = { ...playerAt(w0, kb, rb), s: 60, v: 10, off: -0.9 }, world = withDriver(w0, me);
+      let me = { ...playerAt(w0, kb, rb), s: 60, v: 10, off: -0.7 }, world = withDriver(w0, me);
       const log = [];
       for (let i = 0; i < 80; i++) { me = stepDriver(me, { steer: 0, slider: holdAt(me.v, 0), assist: 0 }, world, DT); world = withDriver(world, me); log.push(JSON.stringify(me)); }
       return { log, me };
     };
     const a = taper(true), b = taper(false);
     const same = a.log.filter((x, i) => x === b.log[i]).length;
-    check(kb >= 0 && b.me.s > 95 && same === 80, `along a turn bay's taper, 0.9 m toward the bay, the car is the same car tick for tick with the switch on (${same} of 80, to ${b.me.s.toFixed(0)} m)`);
+    check(kb >= 0 && b.me.s > 95 && same === 80, `along a turn bay's taper, 0.7 m toward the bay, the car is the same car tick for tick with the switch on (${same} of 80, to ${b.me.s.toFixed(0)} m)`);
   }
   /* Left alone at 45: on no lane, on grass, it slows to a crawl in a straight line -- the grass is still grass. */
   const alone = abandoned(true, 45, false), tail = alone.log.filter((m) => m.noLane);
@@ -543,6 +544,93 @@ console.log("\n9. The car's real position: re-located onto the lane it is in, an
   const back = driverPose(round, course);
   check(!round.noLane && round.k === k && layout.paths[round.route].from === path.from && Math.abs(round.off) < 0.3 && Math.hypot(back.x - lane.x, back.y - lane.y) < 0.5,
     `the same place facing the lane's way is that lane (on no lane ${!!round.noLane}, off ${round.off.toFixed(2)} m, ${Math.hypot(back.x - lane.x, back.y - lane.y).toFixed(2)} m from where it was put)`);
+}
+
+/* 10. THE TRAFFIC PERCEIVES BY GEOMETRY, NOT BY LANE MEMBERSHIP (DECISIONS 10.68, the maintainer's ruling):
+   a car on no lane is seen where its BODY is and avoided; nobody yields to it; and where its route says it
+   is, nothing is -- the ghost is gone. One traffic car per scene, on test map 1, the real position on. What
+   each car should do is stated here; the scenes at HEAD are DECISIONS 10.67 (a car stood behind the ghost
+   with the player 34 m away, and a car drove into a standing player at 35 km/h). LANES ONLY: nothing here
+   is in a box. */
+console.log("\n10. The traffic sees a car on no lane where its body is: avoided, not yielded to, and no ghost");
+{
+  let warm = seedGraph(1, 50, loaded, { every: 2 });
+  for (let i = 0; i < 200; i++) warm = step(warm);
+  const template = warm.actors.find((a) => !a.player && a.kind !== "truck" && a.kind !== "bus");
+  const empty = { ...warm, actors: [], every: 1e9, nextAt: 1e9, realPos: true }, course = empty.course;
+  const car = (id, k, route, s, v) => ({ ...template, id, k, route, s, v, lc: null, pass: null, crash: null, stoppedAt: null, going: false, accepted: false, want: null });
+  const leg = "A-north|end#1", k = course.at.findIndex((sp) => sp.layout.legs[leg]), layout = course.at[k].layout;
+  const west = "A-B|start#0/A-west|end#0";
+  const scene = (me, other, secs) => {
+    let w = withDriver({ ...empty, actors: [other] }, me), stood = 0, vMin = Infinity, nearest = Infinity, hit = false, o = other, shadows = 0;
+    for (let i = 0; i < secs / DT; i++) {
+      me = stepDriver(me, { steer: 0, slider: 0, assist: 0 }, w, DT);
+      w = step(withDriver(w, me));
+      shadows = Math.max(shadows, w.actors.filter((a) => a.shadow).length);
+      const now = w.actors.find((a) => a.id === other.id);
+      if (!now) break;
+      o = now;
+      const p = poseOf(w, o), m = driverPose(me, course);
+      nearest = Math.min(nearest, Math.hypot(p.x - m.x, p.y - m.y));
+      vMin = Math.min(vMin, o.v ?? 0);
+      if ((o.v ?? 0) < 0.2) stood += DT;
+      if (touching({ ...m, z: m.z ?? 0 }, { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot })) hit = true;
+    }
+    const p = poseOf(w, o), m = driverPose(me, course);
+    return { o, stood, vMin, nearest, hit, shadows, endGap: Math.hypot(p.x - m.x, p.y - m.y), w, me };
+  };
+  const offRoad = (at, kGhost, rGhost, sGhost) => ({ ...playerAt(empty, kGhost, rGhost), s: sGhost, v: 0, going: true, accepted: true, noLane: true, lost: true, at });
+
+  /* A. NO GHOST: the player on the grass 34 m from the road, their route still naming the westbound lane. */
+  const g = poseOnGraph(course, k, west, 227.6);
+  const A = scene(offRoad({ x: 372.4, y: 432.1, z: g.z ?? 0, heading: 117 }, k, west, 227.6), car("a", k, west, 227.6 - 90, 12), 20);
+  check(A.stood === 0 && A.vMin * 3.6 > 25 && (A.o.k !== k || A.o.s > 227.6 + 40) && A.shadows === 0,
+    `a car coming down the lane the player's route still names drives on past where the ghost was: never stands (${A.stood.toFixed(1)} s), never under ${(A.vMin * 3.6).toFixed(0)} km/h, ${A.shadows} stand-ins for a car on the grass`);
+
+  /* B. SEEN, TWO LANES: the player standing in the southbound lane, against it. The car in that lane must not touch them. */
+  const south = routeForSignal(layout, leg, null), sAt = poseOnGraph(course, k, south, 200);
+  const B = scene(offRoad({ x: sAt.x, y: sAt.y, z: sAt.z ?? 0, heading: sAt.rot + 180 }, k, west, 300), car("b", k, south, 90, 12), 16);
+  check(!B.hit && B.shadows >= 1 && B.nearest > 3.0, `a car coming down a lane the player stands in, against it, does not touch them: nearest ${B.nearest.toFixed(1)} m centre to centre, ${B.shadows} stand-in(s) (it ${B.stood > 1 ? "stopped" : "went round"})`);
+
+  /* C. SEEN, ONE LANE: nowhere to go round. It stops short and stands. */
+  let one = null;
+  course.at.forEach((spot, kk) => { for (const [r, p] of Object.entries(spot.layout.paths)) { const lg = spot.layout.legs[p.from]; if (!one && p.intent === "straight" && p.stopAt > 220 && (lg.across ?? lg.lanes) === 1 && !lg.oneWay) one = { kk, r }; } });
+  const cAt = poseOnGraph(course, one.kk, one.r, 200);
+  const C = scene(offRoad({ x: cAt.x, y: cAt.y, z: cAt.z ?? 0, heading: cAt.rot + 180 }, k, west, 300), car("c", one.kk, one.r, 90, 12), 20);
+  /* Stopped behind: bumper to bumper the gap is the centre distance less a car's length (4.5 m). */
+  check(!C.hit && C.stood > 3 && C.endGap - 4.5 > 0.5 && C.endGap - 4.5 < 8, `on a one-lane road it stops short of them and stands: ${(C.endGap - 4.5).toFixed(1)} m clear, stood ${C.stood.toFixed(1)} s, untouched`);
+  /* ...and ACROSS the lane, a body at right angles is as much in the road as one along it. */
+  const X = scene(offRoad({ x: cAt.x, y: cAt.y, z: cAt.z ?? 0, heading: cAt.rot + 90 }, k, west, 300), car("x", one.kk, one.r, 90, 12), 20);
+  check(!X.hit && X.stood > 3, `and a car standing ACROSS that lane is stopped for too (stood ${X.stood.toFixed(1)} s, ${(X.endGap).toFixed(1)} m off, untouched)`);
+
+  /* D. NO RIGHT OF WAY. Wherever a driver would give way to a car coming on a conflicting approach, they do not
+     give way to a stand-in in the same place, at the same speed: it is avoided, not yielded to. */
+  let pairs = 0, yielded = 0, toStandIn = 0;
+  course.at.forEach((spot, kk) => {
+    const L = spot.layout, rs = Object.keys(L.paths);
+    for (const r1 of rs) for (const r2 of rs) {
+      if (pairs >= 400 || L.paths[r1].from === L.paths[r2].from) continue;
+      const me = { ...car("m", kk, r1, L.paths[r1].stopAt - 3, 0), stoppedAt: 0 }, them = { ...car("t", kk, r2, L.paths[r2].stopAt - 12, 10), going: true, accepted: true };
+      if (!blockedBy(me, them, L, 1, 10)) continue;
+      pairs++; yielded++;
+      if (blockedBy(me, { ...them, player: true, shadow: true, noRight: true }, L, 1, 10)) toStandIn++;
+    }
+  });
+  check(pairs > 50 && toStandIn === 0, `of ${pairs} places where a driver at their line gives way to a car coming on, none gives way to a stand-in there (${toStandIn})`);
+
+  /* E. A CAR THAT KEEPS TO ITS OWN SIDE OF THE ROAD HAS NO STAND-INS, however it wanders in its lanes. */
+  const r2l = routeForSignal(layout, leg, null);
+  let me = { ...playerAt(empty, k, r2l), s: 60, v: 12 }, w = withDriver(empty, me), any = 0;
+  let driven = 0, offMax = 0;
+  for (let i = 0; i < 400; i++) { me = stepDriver(me, { steer: 0.05 * Math.sin(i / 14), slider: holdAt(12, 0), assist: 0 }, w, DT); w = withDriver(w, me); driven += me.v * DT; offMax = Math.max(offMax, Math.abs(me.off)); if (me.shadows || w.actors.some((a) => a.shadow || a.offLane)) any++; }
+  check(any === 0 && driven > 150 && offMax > 0.3, `weaving on its own side of the road for 20 s, lanes and shoulder (${driven.toFixed(0)} m, up to ${offMax.toFixed(1)} m off its lane's line), the player has no stand-in and is never flagged (${any} ticks)`);
+  /* ...and over the centre line it has one, in the oncoming lane, standing still to the traffic there. */
+  const onc = { ...playerAt(empty, k, r2l), s: 150, v: 10, off: -(0.5 + (layout.legs[leg].pos ?? layout.legs[leg].lane)) * 3.6 - 1.5 };
+  const stepped = stepDriver(onc, { steer: 0, slider: holdAt(10, 0), assist: 0 }, withDriver(empty, onc), DT);
+  const ww = withDriver(empty, stepped), stand = ww.actors.filter((a) => a.shadow);
+  const sp = stand.map((a) => course.at[a.k].layout.paths[a.route]).filter(Boolean);
+  check(!stepped.noLane && stand.length >= 1 && stand.every((a) => a.v === 0 && a.noRight) && sp.every((q) => q.from !== layout.paths[r2l].from),
+    `1.5 m over the centre line, still on its own lane by route, it has ${stand.length} stand-in(s) in the oncoming carriageway, at rest to the traffic there`);
 }
 
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }

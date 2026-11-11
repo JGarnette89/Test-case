@@ -18,6 +18,9 @@ const def = TEST_MAPS.find((m) => m.id === mapId);
 for (const seed of seedArg.split(",").map(Number)) {
   const raw = mapId === "test-1" ? null : def.build();
   let { loaded, world: w, me } = worldFor(seed, 50, 2.0, true, null, raw, raw?.sections?.[0]?.start ?? null, false);
+  /* REAL=1: the car's real position on (drive.js), with the traffic seeing the body (DECISIONS 10.67, 10.68). */
+  if (process.env.REAL === "1") w = { ...w, realPos: true };
+  let noLane = 0, shadowTicks = 0;
   const me0 = me, places = placesOf(w.course, loaded), sc = { me, args: [1], saveWallet: false };
   const mine = newEncounters(), line = newEncounters();
   let shell = 0, trip = 0, apart = 0, apartMax = 0, offMax = 0, n = 0;
@@ -30,6 +33,8 @@ for (const seed of seedArg.split(",").map(Number)) {
     w = step(withDriver(w, me));
     noticeTick(sc, prev, { me, world: w });
     sc.me = me;
+    if (me.noLane) noLane++;
+    if (me.shadows) shadowTicks++;
     encounterTick(mine, me, w);
     encounterTick(line, { ...me, off: 0, psi: 0 }, w);
     const a = driverPose(me, w.course), b = poseOf(w, me), d = Math.hypot(a.x - b.x, a.y - b.y);
@@ -40,7 +45,7 @@ for (const seed of seedArg.split(",").map(Number)) {
   const hash = w.actors.filter((a) => !a.player).reduce((h, a) => h + a.s * ((a.k ?? 0) + 1), 0).toFixed(6);
   const A = encounterSummary(mine), B = encounterSummary(line);
   const row = (s, e) => `met ${s.metPerMin}/min (${e.met.size} cars), following ${s.followingShare}%, followed ${s.followedShare}%, overtook ${e.overtook}, overtaken ${e.overtaken}, merges ${e.merges}`;
-  console.log(`seed ${seed} ${mapId} ${minArg} min, ${w.actors.length} cars. driverPose and the traffic's poseOf of the player: mean ${(apart / n).toFixed(3)} m apart, worst ${apartMax.toFixed(2)} m (|off| worst ${offMax.toFixed(2)} m); ${shell} car-ticks where the two disagree on within-30 m; traffic hash ${hash}, ${(w.crashes ?? []).length} crashes`);
+  console.log(`seed ${seed} ${mapId} ${minArg} min, ${w.actors.length} cars. driverPose and the traffic's poseOf of the player: mean ${(apart / n).toFixed(3)} m apart, worst ${apartMax.toFixed(2)} m (|off| worst ${offMax.toFixed(2)} m); ${shell} car-ticks where the two disagree on within-30 m; traffic hash ${hash}, on no lane ${noLane} ticks, a stand-in on ${shadowTicks} ticks, re-located ${me.relocated ?? 0}x, ${(w.crashes ?? []).length} crashes`);
   console.log(`   own pose:   ${row(A, mine)}`);
   console.log(`   centreline: ${row(B, line)}`);
 }

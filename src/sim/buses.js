@@ -166,7 +166,7 @@ export function mayPullOut(world, bus) {
   const mine = laneAt(world.course, bus);
   const half = lenOf(bus) / 2;
   for (const a of world.actors) {
-    if (a.id === bus.id || a.parked || inBay(a)) continue;
+    if (a.id === bus.id || a.parked || a.offLane || inBay(a)) continue;
     const theirs = laneAt(world.course, a);
     for (const my of mine) {
       const on = theirs.find((q) => q.lane === my.lane);

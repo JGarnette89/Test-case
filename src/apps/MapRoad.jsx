@@ -122,6 +122,7 @@ export function actorsOf(scene, carry) {
      and the player can hit (sim/parking.js). */
   const out = w.parked ? parkedPoses(w.course, w.parked).slice() : [];   // the cached poses are shared (parking.js): copy before adding
   for (const a of w.actors) {
+    if (a.shadow) continue;   // the player's body in a lane, for the traffic (drive.js shadowsOf): not a car to draw
     if (a.player) {
       const p = driverPose({ ...a, s: a.s + a.v * carry }, w.course);
       /* The player's lamps: the turn tap IS their signal, and the brake lamp follows the car slowing as theirs does. */

@@ -280,7 +280,7 @@ export function bandsAhead(world, k, path) {
 function carsFor(world, cw) {
   const out = [];
   for (const a of world.actors) {
-    if (a.parked) continue;
+    if (a.parked || a.offLane) continue;   // on no lane: on no crosswalk's lane (DECISIONS 10.68)
     const path = world.course.at[a.k ?? 0]?.layout?.paths?.[a.route];
     if (!path) continue;
     const e = bandsAhead(world, a.k ?? 0, path).find((x) => x.cw === cw);
