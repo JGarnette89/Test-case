@@ -52,7 +52,7 @@ export const MERGE = 30;       // m along the lane joined: a car this near makes
 /* A road's kind by its id (the course keeps its roads as a list): indexed once per course. */
 const kinds = new WeakMap();
 const kindOf = (course, id) => { let m = kinds.get(course); if (!m) { m = new Map((course.roads ?? []).map((r) => [r.id, r.kind])); kinds.set(course, m); } return m.get(id) ?? null; };
-export const newEncounters = () => ({ t: 0, met: new Set(), following: 0, followed: 0, gaps: 0, judging: null, overtook: 0, overtaken: 0, merges: 0, accelMerges: 0, mergeGaps: [], rel: new Map(), was: null, lane: null });
+export const newEncounters = () => ({ t: 0, met: new Set(), following: 0, followed: 0, gaps: 0, judging: null, stands: 0, standKey: null, overtook: 0, overtaken: 0, merges: 0, accelMerges: 0, mergeGaps: [], rel: new Map(), was: null, lane: null });
 
 export function encounterTick(st, me, world) {
   if (!me || !world?.course) return st;
@@ -140,6 +140,9 @@ export function encounterTick(st, me, world) {
   /* GAPS JUDGED: standing at the line while a car on a conflicting route comes on. Once per approach. */
   const atLine = (me.v ?? 0) < 0.5 && me.s <= path.stopAt + 0.5 && me.s > path.stopAt - 4;
   const key = `${k}|${path.from}|${Math.floor(st.t / 30)}`;
+  /* STANDS: the opportunity for a gap, counted by the same `atLine` and the same key as the judgement below, so an exposure line
+     says how often the player stood at a line without a second statement of what that means (DECISIONS 10.70). Measurement only. */
+  if (atLine && st.standKey !== key) { st.stands++; st.standKey = key; }
   if (atLine && st.judging !== key) {
     for (const a of world.actors) {
       if (a.player || (a.k ?? 0) !== k || (a.v ?? 0) < 1) continue;

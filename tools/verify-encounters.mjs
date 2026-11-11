@@ -127,7 +127,16 @@ console.log("\n5. NOT VACUOUS: driven on test map 1 at 120 cars, every counter m
     encounterTick(st, me, w);
   }
   const s = encounterSummary(st);
-  check(s.metPerMin > 1 && st.following > 0 && st.followed > 0 && st.gaps > 0, `four minutes: met ${s.metPerMin}/min, following ${s.followingShare}%, followed ${s.followedShare}%, ${s.gapsPerMin} gaps/min -- none of them zero`);
+  /* ONE CONJUNCTION BECAME FIVE LINES (11 November, DECISIONS 10.70): `metPerMin > 1 && following > 0 && followed > 0 && gaps > 0` said only
+     that something was zero. Codex's +11 failure read "zero gap encounters in four minutes, other categories nonzero" and nothing said
+     whether the player had stood at a line at all. `stands` is counted by encounters.js itself, with the predicate that judges a gap.
+     The constructed scene in section 4 is the DETECTOR's guard; a zero here with stands is "no crossing traffic came" or a miss that
+     section 4 would also show -- it is not a judgement about the detector. */
+  check(st.stands >= 1, `the case arose (gaps): the player stood at a stop line ${st.stands} time(s) in four minutes (a stand per approach per 30 s)`);
+  check(s.metPerMin > 1, `four minutes: met ${s.metPerMin}/min`);
+  check(st.following > 0, `...following ${s.followingShare}% of the time`);
+  check(st.followed > 0, `...followed ${s.followedShare}% of the time`);
+  check(st.gaps > 0, `...${st.gaps} gap(s) judged (${s.gapsPerMin}/min) at ${st.stands} stand(s)${st.gaps === 0 ? (st.stands === 0 ? ": no stand, so nothing to judge -- see the line above" : ": a zero with stands is no crossing car coming within range, not a statement about the detector") : ""}`);
 }
 
 console.log("\n6. FROM WHERE THE PLAYER IS, NOT WHERE THEIR ROUTE IS (DECISIONS 10.66): a player off their line");

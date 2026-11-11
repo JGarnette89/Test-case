@@ -6936,6 +6936,34 @@ A chip "Real position: off/on" beside "Sim: page/worker" on `#/map` (shown when 
 
 **MISPLACED, NOT MISSING (the maintainer's distinction, kept as the report's vocabulary):** stopping at a stop sign is guarded by `verify-signs` and not by the section-5 line that carried its name. That is a tidy-up and not a hole.
 
+### THE CHECK-HONESTY PASS, 2 OF 5: `verify-passing` (11 November)
+
+**The line:** `boldOnly > 0 && timidOnly === 0`, a positive and a negative in one conjunction, and nothing counting how often the question was asked. **Now four lines `[M]`:** (1) cars queued behind a standing bus were asked whether to pass N times; (2) at N of those moments somebody could go (both, bold only, timid only); (3) bold-only > 0; (4) timid-only === 0. The solid-line negative (`solid.passes === 0`) gets its own precondition, the moments asked on that road. Floors are the minimum at which each claim is testable (1), not numbers chosen to pass.
+
+**Exposure at each seed `[M]`, through the seed-shift hook (separate unmerged worktree; the hook's evidence shows the seeds shifted, 5 to 16 and 5 to 34):**
+
+| seed | asked | somebody could go | bold-only | timid-only | result |
+|---|---|---|---|---|---|
+| native | 63 | **2** | 2 | 0 | passes |
+| **+11** | 74 | **1** (both would go) | 0 | 0 | **FAILS** `boldOnly > 0`, as Codex found |
+| +29 | 40 | **6** | 5 | 0 | passes |
+
+**Sabotage, lines read `[M]`:** (a) the question never asked: exposure 1 and 2, bold-only and the solid exposure fail, and `timidOnly === 0` PASSES vacuously (which is why the exposure lines exist); (d) the solid road never queued: ONLY the solid exposure line fails, and `solid.passes === 0` passes with "0 of 0 moments"; (c) real code, caution reversed (`3 - caution`): exposure ok, bold-only and timid-only both fail. **(b) THE FIRST ATTEMPT WAS INVALID:** a constant 2 for the caution term made the gap needed so large that nobody could go, so it failed the exposure line too and isolated nothing (the same mistake as the stop-sign sabotage: the mutation was not checked for isolating what it was meant to). **Re-run with 1.05 (the bold driver's own need), caution ignored: ONLY the bold-only line fails, the exposure lines pass (35 asked, ONE moment where somebody could go, both).**
+
+**THE KEY FINDING: THAT READS EXACTLY LIKE THE +11 FAILURE** (74 asked, one moment, both would go, no bold-only). At that exposure the check CANNOT TELL a driver who ignores caution from a road that offered no choice. The failing line now says so, and does so only at fewer than 2 go-moments (verified: the +11 run prints it). The floor is not changed (a floor is a number somebody picks); the margin has eroded, though: the check's own 14 October comment recorded 12 passes and 7 bold-only moments against floors of 5 and 1, and the native run now shows 16 and **2**. Options, not taken: restore the 15-minute sample the comment mentions (about twice the runtime), or count episodes and not sampled ticks.
+
+**SCORED, TWO WAYS, AND THE LETTER'S FLAW:** by the definition locked beforehand (exposure floors met, behaviour line fails) this is a **REAL** failure: against P(real) = 0.10 it is a MISS. By judgement it is "cannot tell": the discriminator that was missing from the definition is whether a sabotage that CAUSES the defect reads differently from the failing seed, and here it does not. **The floor in the definition was one I set after locking it, and it was too weak.** The scoring is the maintainer's to settle; it is recorded here by the letter.
+
+### THE CHECK-HONESTY PASS, 3 OF 5: `verify-encounters` (11 November)
+
+**The line:** section 5's `metPerMin > 1 && following > 0 && followed > 0 && gaps > 0`. Sections 2-4 are paired by construction (each negative beside a positive in the same scene) and were left alone. **Five lines now `[M]`:** the player stood at a stop line N times; met per minute; following; followed; gaps judged (at N stands).
+
+**A `src/` CHANGE, MADE DELIBERATELY AND DECLARED:** `encounters.js` counts `stands` with the SAME `atLine` predicate and key that judge a gap. Reimplementing "at the line" in the check would have been a second implementation of one quantity, the defect class this pass exists to remove. It is measurement only (a counter and a summary field). **It reaches nine checks (contact, core, encounters, mergecount, money, passing, places, screens, shaping; 28 minutes serial), so it waits for the derived-set gate on the branch `exposure-pass` and is NOT on `main`.**
+
+**Exposure at each seed `[M]`:** native 2 stands, 2 gaps judged; **+11: the player stood at a stop line 0 times in four minutes** (the exposure line fails first, the gap line beside it with "no stand, so nothing to judge"); +29: 4 stands, 4 gaps. The hook's evidence: 1 to 12 and 1 to 30. **CLASSIFIED: AN EXPOSURE FAILURE, NOT A BEHAVIOURAL ONE. Against P(real) = 0.10: not real.**
+
+**Sabotage of the real code, lines read `[M]`:** (a) the detector broken: section 4's constructed scene fails (the detector's guard) AND the section-5 gap line fails with the exposure intact ("at 2 stand(s)"); (b) the player never at a line: the stands line fails, the gap line says "no stand", section 4 fails; (c) the counter disconnected, the detector intact: ONLY the stands line fails (so the counter is wired).
+
 ### THE LANE RULE IS SUPERSEDED (the maintainer, Jay, 11 November): OTHER AGENTS ARE SHELVED UNLESS HE ASKS, AND ONE AGENT OWNS THE WHOLE REPO, `tools/` INCLUDED
 
 **The rule it replaces:** `tools/` was Codex's and `src/` was the other agent's (10.60/10.61: "CHECKS ITEM B IS CODEX'S, GATED BEHIND ITEM A BEING VERIFIED AND MERGED. Both are `tools/`-side. This session starts neither."), restated on 11 November ("the rule stands") and crossed once under an explicit exception. **Superseded, not deleted:** the earlier statements stay where they are with a marker. The exception in the section below becomes an ordinary fix; **its condition, which was the part that mattered, stands and was met: establish which layer the bare path comes from, and fix there (it was the test's fixture; had it been the runner, the runner would have been fixed and not the test).**
