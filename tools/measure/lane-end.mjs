@@ -9,16 +9,23 @@ import { TEST_MAPS } from "../../src/map/samples.js";
 import { seedGraph, step } from "../../src/sim/crossing.js";
 import { mergePlan, kappaOf, leadNeed, lagNeed } from "../../src/sim/lanechange.js";
 import { clearBetween } from "../../src/sim/traffic.js";
+import { courteous } from "../../src/sim/courtesy.js";
+import { overlapping } from "../../src/sim/crossing.js";
 
+/* THRESHOLDS, MARKED (DECISIONS 10.70): `[invented]` every one: near rest under 2 m/s within 20 m of the taper's start, reached within 15 m; at rest under 0.5 m/s;
+   "braked" over 1 m/s^2; "below its desired speed" under 0.9 of it; the car behind within 80 m; no gap when offered/needed under 1 at the sim's own
+   (itself invented) demand. None is a claim Jay has ruled on. */
 const cars = +(process.env.CARS ?? 150), seed = +(process.env.SEED ?? 1), secs = +(process.env.SECS ?? 180);
 const loaded = loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build());
 let w = seedGraph(seed, 50, loaded, { every: 2.0, target: cars, posted: true });
 if (process.env.COURTESY === "0") w.courtesy = false;
 for (let i = 0; i < 1200; i++) w = step(w);
 const J = new Map();
+let overlapTicks = 0;
 for (let i = 0; i < secs * 20; i++) {
   const before = w;
   w = step(w);
+  if (i % 5 === 0) overlapTicks += overlapping(w).length;
   const prevV = new Map(before.actors.map((x) => [x.id, x.v])), offeredTo = new Map();
   for (const x of w.actors) if (x.courtesy && !x.courtesy.forPlayer && !x.courtesy.done) offeredTo.set(x.courtesy.for, (offeredTo.get(x.courtesy.for) ?? 0) + 1);
   for (const a of w.actors) {
@@ -26,7 +33,7 @@ for (let i = 0; i < secs * 20; i++) {
     if (!to?.accel || !(a.s > p.clearAt)) continue;
     const laneLen = p.length - to.accelClose - p.clearAt, run = a.s - p.clearAt, toEnd = p.length - to.accelClose - a.s;
     let j = J.get(a.id);
-    if (!j) { j = { id: a.id, kappa: kappaOf(a), laneLen, enterV: a.v, enterT: w.t, minV20: Infinity, minToEnd: Infinity, vAtEnd: null, merged: false, planAt: null, planRun: null, planV: null, planTicks: 0, noGapTicks: 0, offerTicks: 0, offerRun: null, behindBrake: 0, behindBelowV0: 0, behindSeen: 0, restTicks: 0, atRest: false }; J.set(a.id, j); }
+    if (!j) { j = { id: a.id, kappa: kappaOf(a), laneLen, enterV: a.v, enterT: w.t, minV20: Infinity, minToEnd: Infinity, vAtEnd: null, merged: false, planAt: null, planRun: null, planV: null, planTicks: 0, noGapTicks: 0, offerTicks: 0, offerRun: null, behindCourteous: 0, behindNone: 0, behindBrake: 0, behindBelowV0: 0, behindSeen: 0, restTicks: 0, atRest: false }; J.set(a.id, j); }
     if (toEnd < j.minToEnd) { j.minToEnd = toEnd; j.vAtEnd = a.v; }
     if (toEnd <= 20 && a.v < j.minV20) j.minV20 = a.v;
     if (a.v < 0.5) { j.restTicks++; j.atRest = true; }
@@ -36,7 +43,7 @@ for (let i = 0; i < secs * 20; i++) {
     if (mp) {
       if (j.planAt == null) { j.planAt = w.t; j.planRun = run; j.planV = a.v; }
       j.planTicks++;
-      { const b = mp.best.nb.behind; if (b && mp.best.nb.db < 80) { j.behindSeen++; const dv = ((b.v ?? 0) - (prevV.get(b.id) ?? b.v ?? 0)) / 0.05; if (dv < j.behindBrake) j.behindBrake = dv; if ((b.v ?? 0) < 0.9 * (b.v0 ?? b.v ?? 0)) j.behindBelowV0++; } }
+      { const b = mp.best.nb.behind; if (!b) j.behindNone++; else if (courteous(b)) j.behindCourteous++; if (b && mp.best.nb.db < 80) { j.behindSeen++; const dv = ((b.v ?? 0) - (prevV.get(b.id) ?? b.v ?? 0)) / 0.05; if (dv < j.behindBrake) j.behindBrake = dv; if ((b.v ?? 0) < 0.9 * (b.v0 ?? b.v ?? 0)) j.behindBelowV0++; } }
       const nb = mp.best.nb, k = j.kappa;
       const lead = nb.ahead ? clearBetween(nb.da, a, nb.ahead) : Infinity, lag = nb.behind ? clearBetween(nb.db, nb.behind, a) : Infinity;
       if (Math.min(lead / leadNeed(a, nb.ahead, k), lag / lagNeed(a, nb.behind, k)) < 1) j.noGapTicks++;
@@ -48,7 +55,9 @@ const reached = js.filter((j) => j.minToEnd <= 15), slow = js.filter((j) => j.mi
 const q = (xs, f) => { const a = xs.slice().sort((x, y) => x - y); return a.length ? +a[Math.min(a.length - 1, Math.floor(f * a.length))].toFixed(2) : null; };
 const planFrac = (g) => g.filter((j) => j.planRun != null).map((j) => j.planRun / j.laneLen);
 const yieldOf = (g) => ({ offeredShare: +(g.filter((j) => j.offerTicks > 0).length / Math.max(1, g.length)).toFixed(3), offerRunFrac: q(g.filter((j) => j.offerRun != null).map((j) => j.offerRun / j.laneLen), 0.5), behindBrakedOver1: +(g.filter((j) => j.behindBrake < -1).length / Math.max(1, g.length)).toFixed(3), behindBelowV0Share: +(g.filter((j) => j.behindSeen && j.behindBelowV0 / j.behindSeen > 0.5).length / Math.max(1, g.length)).toFixed(3) });
+const planTk = (g) => g.reduce((a, j) => a + j.planTicks, 0), cShare = (g) => +(g.reduce((a, j) => a + j.behindCourteous, 0) / Math.max(1, planTk(g))).toFixed(3), noneShare = (g) => +(g.reduce((a, j) => a + j.behindNone, 0) / Math.max(1, planTk(g))).toFixed(3);
 const out = {
+  env: { WIDEN: process.env.WIDEN ?? null, DECAY: process.env.DECAY ?? null }, safety: { overlapTicks, crashes: (w.crashes ?? []).length }, nearestBehindCourteous: { all: cShare(js), stalled: cShare(slow), noCarBehind: noneShare(js) },
   courtesy: process.env.COURTESY !== "0", all: yieldOf(js), stalledYield: yieldOf(slow), othersYield: yieldOf(js.filter((j) => !slow.includes(j))), waitsAtRest: { p50: q(dead.map((j) => j.restTicks * 0.05), 0.5), p90: q(dead.map((j) => j.restTicks * 0.05), 0.9), max: q(dead.map((j) => j.restTicks * 0.05), 1), over20: dead.filter((j) => j.restTicks * 0.05 > 20).length, over60: dead.filter((j) => j.restTicks * 0.05 > 60).length },
   cars, seed, secs, joiners: js.length, reachedEnd: reached.length, atRestNearEnd: slow.length, restedAtAll: dead.length,
   ratePerMin: +((slow.length * 60) / secs).toFixed(2), shareSlowOfJoiners: +(slow.length / Math.max(1, js.length)).toFixed(3),

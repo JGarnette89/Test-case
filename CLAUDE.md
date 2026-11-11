@@ -198,6 +198,18 @@ Eight things to know before your first change:
      turn allowance, 2.4 mm, is built from a measured 0.691 mm and an
      unmutated assumption, and is `[D]`. An older entry with no mark means
      UNAUDITED, not measured. The first audit is DECISIONS 10.70.
+     **AND THE SAME DEFECT ONE LEVEL UP, THE STANDARD ITSELF (the
+     maintainer, 11 November): any threshold that encodes what a real
+     driver does is marked `[Jay]`, with his words, or `[invented]`. No
+     third option.** Twice in an hour we set a bar for realism ourselves
+     and graded ourselves against it: a 60-second merge ceiling Jay says
+     should essentially never occur, and "planning half-way along the
+     lane is reasonable", which was an agent's and wrong. Both felt
+     authoritative because they were in the code. `[invented]` is not a
+     failure; it is a flag for the next time he can rule. The rule does
+     not cover sample floors and instrument parameters (`[instrument]`:
+     they claim nothing about drivers) or physical invariants (no two
+     cars overlap). Audit and the first marking: DECISIONS 10.70.
 
 4. **A CHECK HAS A BOUNDARY, AND IT IS INVISIBLE IN ITS OUTPUT.** The
    second recurring failure, three times in two days: `verify-turns`

@@ -38,6 +38,12 @@ import { strandTrial } from "./measure/stranded.mjs";
 import { mergePlan, kappaOf, leadNeed, lagNeed } from "../src/sim/lanechange.js";
 import { clearBetween } from "../src/sim/traffic.js";
 
+/* THRESHOLD AUDIT (11 November, DECISIONS 10.70; CLAUDE.md item 3): every number below that says what a real driver does is `[Jay]` with his words or
+   `[invented]`. `[instrument]` marks a floor or a parameter that claims nothing about drivers. THE ONLY `[Jay]` HERE: a full minute at the end of the merge
+   lane is absent ("waiting a full minute at the end of the merge lane is crazy, something you'd see 1 in 10000 merges I'd say and only from an
+   extremely inept driver"). `[invented]`: under 1% at or near rest; near rest (under 2 m/s within 20 m of the taper, reached within 15 m); standing
+   (under 0.5 m/s); the player's minute; 10 km/h; bold under 0.8 and timid over 1.2; the 20 s and 0.7 of the courtesy tail; every category and band
+   in `diagnose`. `[instrument]`: the floors (20 joiners, 12 trials, 4 tail waits, 20 merges, 10 and 5 counts). */
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
 /* WHAT A JOINER SEES WHILE IT STANDS, AND WHAT IT WOULD HAVE TAKEN (11 November, DECISIONS 10.70). `longest` below is a MAXIMUM over joiners: one
@@ -180,7 +186,7 @@ console.log("\n3. IT IS A MERGE, AND THE DRIVER SHOWS IN IT");
 check(ran.every((r) => r.n >= 20), `merges happen at every density: ${ran.map((r) => `${r.n} at ${r.cars} cars`).join(", ")}`);
 const k1 = merges.filter((m) => m.knows), k0 = merges.filter((m) => !m.knows);
 /* By a margin a person would see: 10 km/h. Asked only for "faster", the rule taken out still passed, 52 against 51 (sabotaged, 21 October). */
-check(k0.length >= 5 && med(k1.map((m) => m.v)) - med(k0.map((m) => m.v)) >= 10 / 3.6, `a driver who knows the lane is for getting up to speed joins at least 10 km/h faster than one who does not: ${(3.6 * med(k1.map((m) => m.v))).toFixed(0)} km/h (${k1.length}) against ${(3.6 * med(k0.map((m) => m.v))).toFixed(0)} km/h (${k0.length})`);
+check(k0.length >= 5 && med(k1.map((m) => m.v)) - med(k0.map((m) => m.v)) >= 10 / 3.6, `[invented: 10 km/h] a driver who knows the lane is for getting up to speed joins at least 10 km/h faster than one who does not: ${(3.6 * med(k1.map((m) => m.v))).toFixed(0)} km/h (${k1.length}) against ${(3.6 * med(k0.map((m) => m.v))).toFixed(0)} km/h (${k0.length})`);
 const bold = merges.filter((m) => m.caution < 0.8), timid = merges.filter((m) => m.caution > 1.2);
 check(bold.length >= 10 && timid.length >= 10 && med(bold.map((m) => m.along)) < med(timid.map((m) => m.along)), `bold drivers merge earlier along the lane than timid ones: ${med(bold.map((m) => m.along)).toFixed(0)} m (${bold.length}) against ${med(timid.map((m) => m.along)).toFixed(0)} m (${timid.length})`);
 check(offers.n > 0, `courtesy reaches the merge: ${offers.n} offers by through drivers to joining cars`);
@@ -198,8 +204,8 @@ check(ran.every((r) => r.joiners >= 20), `the case arose: joiners that reached t
    creeping car resets the continuous one); (2) at or near rest (under 2 m/s within 20 m of where the taper begins) is the inept tail only: UNDER 1%
    of joiners, the 1% being the agent's reading of "extremely inept" widened because a sample of a few hundred cannot resolve one in ten thousand.
    If the sim is right and these fail, the sim is wrong about Jay's motorway; if they fail on a motorway Jay says is right, the derivation is. */
-check(ran.every((r) => r.over === 0 && r.tot.over60 === 0), `[D: from Jay's ruling] no joiner waits a minute at the end of its lane, by one continuous stand or by total time at rest: continuous over a minute ${ran.map((r) => `${r.over} of ${r.joiners} at ${r.cars}`).join(", ")}; total at rest over a minute ${ran.map((r) => `${r.tot.over60} at ${r.cars}`).join(", ")}`);
-check(ran.every((r) => r.nearRest / Math.max(1, r.joiners) < 0.01), `[D: from Jay's ruling] reaching the end of the lane at or near rest is the inept tail only, under 1% of joiners: ${ran.map((r) => `${r.nearRest} of ${r.joiners} (${(100 * r.nearRest / Math.max(1, r.joiners)).toFixed(1)}%) at ${r.cars}`).join(", ")}`);
+check(ran.every((r) => r.over === 0 && r.tot.over60 === 0), `[Jay: a full minute; that total time at rest counts is invented] no joiner waits a minute at the end of its lane, by one continuous stand or by total time at rest: continuous over a minute ${ran.map((r) => `${r.over} of ${r.joiners} at ${r.cars}`).join(", ")}; total at rest over a minute ${ran.map((r) => `${r.tot.over60} at ${r.cars}`).join(", ")}`);
+check(ran.every((r) => r.nearRest / Math.max(1, r.joiners) < 0.01), `[invented: 1%, an agent's reading of Jay's 1 in 10000, extremely inept; near rest = under 2 m/s within 20 m] reaching the end of the lane at or near rest is the inept tail only, under 1% of joiners: ${ran.map((r) => `${r.nearRest} of ${r.joiners} (${(100 * r.nearRest / Math.max(1, r.joiners)).toFixed(1)}%) at ${r.cars}`).join(", ")}`);
 for (const r of ran) console.log(`    [${r.cars} cars] DISTRIBUTION of continuous stands, ${r.cont.n} joiners stood at all: median ${r.cont.p50.toFixed(1)} s, p90 ${r.cont.p90.toFixed(1)} s, p99 ${r.cont.p99.toFixed(1)} s, max ${r.cont.max.toFixed(1)} s; longest total time at rest ${r.tot.max.toFixed(0)} s`);
 for (const r of ran) console.log(`    [${r.cars} cars] ${r.diag}`);
 {
@@ -218,12 +224,12 @@ for (const r of ran) console.log(`    [${r.cars} cars] ${r.diag}`);
     }
   }
   console.log(`   the player stopped at the taper, signalling, 150 cars, ${on.length} trials: a takeable gap after ${on.map((t) => t.toFixed(0)).join(", ")} s; without courtesy ${off.map((t) => (isFinite(t) ? t.toFixed(0) : "never")).join(", ")}`);
-  check(on.length >= 12 && on.every((t) => t <= 60), `the player is never stranded: a gap a competent driver would take within a minute in every one of ${on.length} trials (worst ${Math.max(...on).toFixed(1)} s)`);
+  check(on.length >= 12 && on.every((t) => t <= 60), `[invented: the minute is this check's own; Jay calls a minute absurd for a car and has not ruled on the player] the player is never stranded: a gap a competent driver would take within a minute in every one of ${on.length} trials (worst ${Math.max(...on).toFixed(1)} s)`);
   /* PAIRED, NOT BY THE MEDIAN (22 October): half the moments have a gap there already, the same with courtesy or without, so a median of 2x failed on 6.2 s against 10.5 while the waits courtesy is for went 50 -> 11, 40 -> 6, 39 -> 9. Courtesy cannot make an existing gap sooner; it is for the tail. And not "no moment worse" either: an offerer slowing can put back a gap that was coming behind it anyway (24.2 s against 24.1, the same day). THE MINUTE ALONE DOES NOT GUARD THE MECHANISM on this sample: with the player's deadline removed it still held (worst 38 s; without courtesy at all, 50).
      RESTATED 22 OCTOBER, verdict "check wrong": it was the worst wait with courtesy against half the worst without -- one extreme trial against another out of sixteen. Anticipation (DECISIONS 10.20) changed how the AI traffic drives, so the warmed worlds and with them the sixteen situations were new ones, and it failed at 33 s against 53. The courtesy code was not the cause: the old courtesy run on the same situations gave the same waits trial for trial. Over 128 trials (stranded.mjs, seeds 1-8): the old code halves 33 of 51 tail waits, the new 20 of 38 (within chance of each other); and the old code's own seeds 5-8 halve only 11 of 25 -- the old pass was the sample. Now: THE TAIL'S TOTAL WAIT with courtesy over its total without, on four seeds -- measured 0.35 (old code), 0.49 (new; 0.51 and 0.48 on each half), 0.94 with the player's deadline removed; the line is 0.7, between them. And a weakness the tracing found, in old and new alike, recorded not fixed: for a player standing at the taper, courtesy fails in a third to a half of the long waits -- the driver asked is too close to brake from 25 m/s to the gap a car at rest needs, passes, and withdraws (SIMULATOR IN FLIGHT). */
   const tail = off.map((o, i) => [isFinite(o) ? o : 120, isFinite(on[i]) ? on[i] : 120]).filter(([o]) => o >= 20);
   const ratio = tail.reduce((t, [, w]) => t + w, 0) / Math.max(1, tail.reduce((t, [o]) => t + o, 0));
-  check(tail.length >= 4 && ratio <= 0.7, `and courtesy is what gives it: over the ${tail.length} waits of 20 s or more without it, the total with courtesy is ${ratio.toFixed(2)} of the total without (${tail.map(([o, w]) => `${o.toFixed(0)}->${w.toFixed(0)}`).join(", ")})`);
+  check(tail.length >= 4 && ratio <= 0.7, `[invented: 20 s, 0.7] and courtesy is what gives it: over the ${tail.length} waits of 20 s or more without it, the total with courtesy is ${ratio.toFixed(2)} of the total without (${tail.map(([o, w]) => `${o.toFixed(0)}->${w.toFixed(0)}`).join(", ")})`);
 }
 
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");
