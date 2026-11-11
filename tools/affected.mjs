@@ -43,6 +43,13 @@ function edges(file) {
     if (!existsSync(p)) for (const ext of [".js", ".mjs", ".jsx"]) if (existsSync(p + ext)) { p += ext; break; }
     if (existsSync(p) && statSync(p).isFile()) out.push(p);
   }
+  /* Subprocesses and dynamic file reads cannot be imported safely. Checks
+     declare these inputs explicitly; they participate in both selection modes. */
+  for (const m of src.matchAll(/^\s*\/\/ check-input:\s*(\.\.?\/\S+)\s*$/gm)) {
+    const p = resolve(dirname(file), m[1]);
+    if (!existsSync(p) || !statSync(p).isFile()) throw new Error(`missing check-input: ${m[1]} in ${rel(file)}`);
+    out.push(p);
+  }
   /* Data read by a check (a golden, a saved hash): any quoted *.json under tools/ or src/. */
   for (const m of src.matchAll(/["'`]([^"'`]*?([\w.-]+\.json))["'`]/g)) {
     for (const base of [dirname(file), ROOT, join(ROOT, "tools")]) {

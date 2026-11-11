@@ -9,25 +9,32 @@
      node tools/check.mjs verify-x ...    these
      --jobs N        how many at once (default: three quarters of the hardware
                      threads, capped by free memory at 0.75 GB a check)
-     --timeout S     the same timeout for every check, overriding the recorded ones
+     --timeout S     positive seconds, overriding all other timeout rules
+     --record-times  give selected checks the cap and refresh successful timings
+                      e.g. node tools/check.mjs verify-lanecost --record-times
 
-   A HANG FAILS, LOUDLY, BY NAME. Each check gets three times its last
-   recorded time (tools/check-times.json), never under 90 s nor over 20
-   minutes; past it the whole process tree is killed and the line reads
-   TIMEOUT with the check named and its log kept. A check with no record
-   gets the 20-minute cap. A hang therefore costs minutes and leaves a log,
-   rather than a session and nothing.
+   Changed or unhashed check files get the 1,200 s cap. Unchanged checks
+   get 3x their last successful runtime, bounded by 90 s and 1,200 s.
+   TIMEOUT means killed at that budget; FAIL means a nonzero exit or signal.
+   SLOW means assertions passed but runtime exceeded the matching record;
+   it exits successfully and refreshes that record, as every success does.
+   --record-times ignores the old budget; --timeout still takes precedence.
 
    NOTHING IS ORPHANED. Children are killed as a tree on a timeout, on
    Ctrl-C and on exit -- the old shell lanes kept launching checks after
    their wrapper was stopped, and two suites then shared their logs.
 
-   Logs: tools/scratch/check-logs/<name>.log. Exit 1 if anything failed
+   Logs: tools/scratch/check-logs/<name>.log is the latest completed run.
+   Timestamped originals survive reruns under tools/scratch/check-logs/runs/.
+   Scratch is git-ignored: retained locally, not committed or remotely backed up.
+   Exit 1 if anything failed
    or timed out. The last line is the count and the wall time -- a run
    that does not print it did not finish.
    ===================================================================== */
 import { spawn, execSync } from "node:child_process";
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, createWriteStream } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync, createWriteStream, copyFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { budgetFor, outcomeOf, passed } from "./check-policy.mjs";
 import { cpus, freemem } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,8 +42,10 @@ import { checks as allChecks, affected, changedFiles } from "./affected.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TIMES = join(ROOT, "tools", "check-times.json");
+const HASHES = join(ROOT, "tools", "check-hashes.json");
 const LOGS = join(ROOT, "tools", "scratch", "check-logs");
-mkdirSync(LOGS, { recursive: true });
+const RUN_LOGS = join(LOGS, "runs");
+mkdirSync(RUN_LOGS, { recursive: true });
 
 const args = process.argv.slice(2);
 const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
@@ -48,11 +57,17 @@ const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : nu
    So capped by free memory at 0.75 GB a check (the measured mean was 0.66),
    and never under 2. */
 const jobs = Number(opt("--jobs")) || Math.max(2, Math.min(Math.floor((cpus().length * 3) / 4), Math.floor(freemem() / 0.75e9)));
-const fixedTimeout = opt("--timeout") ? Number(opt("--timeout")) : null;
+const fixedTimeout = args.includes("--timeout") ? Number(opt("--timeout")) : null;
+if (fixedTimeout !== null && (!Number.isFinite(fixedTimeout) || fixedTimeout <= 0 || fixedTimeout * 1000 > 2147483647)) {
+  console.error("--timeout requires positive seconds within Node's timer range"); process.exit(2);
+}
+const recordTimes = args.includes("--record-times");
 const named = args.filter((a, i) => !a.startsWith("--") && !["--jobs", "--timeout"].includes(args[i - 1]));
 
 const times = existsSync(TIMES) ? JSON.parse(readFileSync(TIMES, "utf8")) : {};
+const hashes = existsSync(HASHES) ? JSON.parse(readFileSync(HASHES, "utf8")) : {};
 const every = allChecks();
+const digest = (c) => createHash("sha256").update(readFileSync(c.file)).digest("hex");
 const byName = new Map(every.map((c) => [c.name, c]));
 
 let list;
@@ -64,7 +79,6 @@ else {
   console.log(`${changed.length} changed file(s) -> ${list.length} check(s) can see them`);
 }
 const cmdOf = (c) => c.cmd ?? [process.execPath, [c.file]];
-const limitOf = (c) => fixedTimeout ?? (times[c.name] != null ? Math.min(1200, Math.max(90, 3 * times[c.name])) : 1200);
 
 /* Longest first, so the slowest never starts last. */
 list.sort((a, b) => (times[b.name] ?? 600) - (times[a.name] ?? 600));
@@ -83,22 +97,43 @@ const results = [];
 function runOne(c) {
   return new Promise((done) => {
     const [cmd, argv] = cmdOf(c);
-    const log = createWriteStream(join(LOGS, `${c.name}.log`));
+    const recorded = times[c.name], hash = digest(c), sameFile = hashes[c.name] === hash;
+    const budget = budgetFor({ recorded, sameFile, timeout: fixedTimeout, recordTimes });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const logPath = join(RUN_LOGS, `${c.name}-${stamp}-${randomUUID()}.log`);
+    const log = createWriteStream(logPath, { flags: "wx" });
+    let logError = null;
+    const flushed = new Promise((resolve, reject) => {
+      log.on("finish", resolve); log.on("error", (e) => { logError = e; reject(e); });
+    });
+    // Handle immediately; a storage failure must fail the runner, not lose output silently.
+    flushed.catch(() => {});
+    log.write(`check ${c.name}; started ${new Date().toISOString()}; limit ${budget.seconds} s (${budget.reason})\n`);
     const start = Date.now();
     const p = spawn(cmd, argv, { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     live.add(p);
-    p.stdout.pipe(log); p.stderr.pipe(log);
+    p.stdout.pipe(log, { end: false }); p.stderr.pipe(log, { end: false });
+    p.on("error", (e) => log.write(`spawn error: ${e.message}\n`));
     let timedOut = false;
-    const limit = limitOf(c);
+    const limit = budget.seconds;
     const timer = setTimeout(() => { timedOut = true; killTree(p); }, limit * 1000);
-    p.on("close", (code) => {
-      clearTimeout(timer); live.delete(p); log.end();
-      const secs = Math.round((Date.now() - start) / 1000);
-      const status = timedOut ? "TIMEOUT" : code === 0 ? "ok" : "FAIL";
-      if (status === "ok") times[c.name] = secs;
-      results.push({ name: c.name, status, secs });
-      const note = status === "TIMEOUT" ? `  -- killed after ${limit} s (${fixedTimeout ? "--timeout" : times[c.name] != null ? "3x its last time" : "no time recorded"}); log tools/scratch/check-logs/${c.name}.log` : status === "FAIL" ? `  -- log tools/scratch/check-logs/${c.name}.log` : "";
-      console.log(`  ${status.padEnd(7)} ${c.name.padEnd(22)} ${String(secs).padStart(5)} s${note}`);
+    p.on("close", async (code, signal) => {
+      clearTimeout(timer); live.delete(p);
+      const elapsed = (Date.now() - start) / 1000;
+      const secs = Math.round(elapsed);
+      let status = outcomeOf({ timedOut, code, seconds: elapsed, recorded, sameFile });
+      log.end(`\nresult ${status}; exit ${code}; signal ${signal ?? "none"}; elapsed ${elapsed.toFixed(3)} s\n`);
+      try {
+        await flushed;
+        if (logError) throw logError;
+        copyFileSync(logPath, join(LOGS, `${c.name}.log`));
+      } catch (e) { status = "FAIL"; console.error(`cannot retain ${c.name} log: ${e.message}`); }
+      if (passed(status)) { times[c.name] = Math.max(0.001, elapsed); hashes[c.name] = hash; }
+      results.push({ name: c.name, status, secs, log: logPath, limit, reason: budget.reason });
+      const note = status === "TIMEOUT" ? ` -- killed after ${limit} s (${budget.reason}); assertions incomplete`
+        : status === "SLOW" ? ` -- assertions passed; exceeded recorded ${recorded} s; timing refreshed`
+        : status === "FAIL" ? ` -- exit ${code}, signal ${signal ?? "none"}` : "";
+      console.log(`  ${status.padEnd(7)} ${c.name.padEnd(22)} ${String(secs).padStart(5)} s${note}; log ${logPath}`);
       done();
     });
   });
@@ -106,6 +141,7 @@ function runOne(c) {
 
 const queue = [...list];
 await Promise.all(Array.from({ length: Math.min(jobs, queue.length) }, async () => { while (queue.length) await runOne(queue.shift()); }));
+writeFileSync(HASHES, JSON.stringify(Object.fromEntries(Object.entries(hashes).sort()), null, 1) + "\n");
 writeFileSync(TIMES, JSON.stringify(Object.fromEntries(Object.entries(times).sort()), null, 1) + "\n");
 /* THE HISTORY: one line per run, committed, so "which checks have ever
    caught anything" is a query rather than a memory (14 October: there was
@@ -114,8 +150,8 @@ try {
   const head = execSync("git rev-parse --short HEAD", { cwd: ROOT, encoding: "utf8" }).trim();
   const dirty = execSync("git status --porcelain", { cwd: ROOT, encoding: "utf8" }).trim().length > 0;
   const mode = named.length ? "named" : args.includes("--all") ? "all" : args.includes("--legacy") ? "legacy" : args.includes("--direct") ? "direct" : "affected";
-  appendFileSync(join(ROOT, "tools", "check-history.jsonl"), JSON.stringify({ at: new Date().toISOString(), head, dirty, mode, results: results.map((r) => [r.name, r.status, r.secs]) }) + "\n");
+  appendFileSync(join(ROOT, "tools", "check-history.jsonl"), JSON.stringify({ at: new Date().toISOString(), head, dirty, mode, results: results.map((r) => [r.name, r.status, r.secs]), logs: results.map((r) => ({ name: r.name, path: r.log, limit: r.limit, reason: r.reason })) }) + "\n");
 } catch { /* no git, no history -- never a failed run for it */ }
-const bad = results.filter((r) => r.status !== "ok");
+const bad = results.filter((r) => !passed(r.status));
 console.log(`${results.length - bad.length} of ${results.length} passed${bad.length ? ` -- ${bad.map((r) => `${r.name} ${r.status}`).join(", ")}` : ""}; wall ${Math.round((Date.now() - t0) / 1000)} s, ${jobs} at once`);
 process.exit(bad.length ? 1 : 0);
