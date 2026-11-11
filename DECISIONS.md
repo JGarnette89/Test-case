@@ -6756,6 +6756,17 @@ His words: *"if the player or another driver is off the road, and somebody crash
 
 **NOT DONE, LANES ONLY (10.69):** in a box, a car on no lane has no stand-in and no ghost. **Not verified: the worker path with stand-ins (`verify-worker` runs with the switch off); the page (a stand-in is skipped in `MapRoad`'s draw loop, unseen); the horn at a stand-in; G3, G4.**
 
+### THE RUN TALLIES FOR THIS BRANCH (10.67, 10.68), and which run each was
+
+**Pieces 1-3 (the single pose, the locator, re-location and on no lane; the switch off), against the pre-work commit `9f45c20`: THE 54 CHECKS THE CHANGE CAN REACH, 53 PASSED AND ONE TIMED OUT -- AND THE TIMEOUT IS THE MACHINE'S.** 85 minutes of wall, three at once, nothing else running (11 November, tree `e96f1c8`).
+- **`verify-shaping` hit the runner's 20-minute cap, three runs out of three.** Run with no cap on the pre-work commit and on the branch, side by side, alone on the machine: **both pass, both in 1122 s.** Its record is 740 s on the usual machine; this container is a third slower and the cap is 1200. Not a regression. Its numbers moved where they should with the player's real pose: overtaken by the player 12.3 a minute against 12, and the shaped-against-unshaped ratio 3.04x against 3.01x, bar 1.45.
+- **AN EARLIER RUN OF THE SAME SET READ 49 OF 53 AND MOST OF THAT WAS MINE:** I ran sabotages, a forced-on comparison and diagnostics on top of it, on four cores, to a load of 15. `verify-keepright` (timeout) and `verify-editor` (a timing line, 60 ms against its bar) pass in the clean run. **`verify-mergecount` was real** (recorded above and fixed in the check).
+- **P9 SCORED: FAILED ONCE.** "Every existing check is unmoved with the switch off, except through piece 1" -- piece 1 broke `verify-mergecount`, whose own reference count was reading the pose piece 1 corrected. That is the exception I named, and I did not predict which check it would be.
+
+**The switch forced on, the 14 checks that drive the player, beside the same 14 with it off (pieces 1-3, before 10.68):** identical verdicts but for the one line of `verify-drive` that asserts the switch-off behavior. `verify-shaping` forced on was killed unfinished. **Not a suite run.**
+
+**10.68, lanes only: THE DERIVED RUN IS NOT IN THIS RECORD YET.** It was started twice; the first was killed by a restart of the session's machine. If no tally follows this paragraph, it did not finish: run `node tools/check.mjs` on the branch before merging.
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the
