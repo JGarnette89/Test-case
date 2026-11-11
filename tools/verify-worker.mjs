@@ -141,6 +141,10 @@ console.log("\n1b. THE SAME WORLD, A THREAD AWAY, WITH THE REAL POSITION ON AND 
   const differs = trafficKey(sw) !== trafficKey(cw);
   check(standTicks > 300 && noLaneTicks > 300, `the case arose: the player was on no lane for ${noLaneTicks} of ${N} ticks and had stand-ins for ${standTicks}`);
   check(differs, "...and they matter: the traffic with the stand-ins is not the traffic without them, everything else the same (otherwise equality below proves nothing)");
+  /* THE FLAG, PINNED (10.70): the worker's step never reads `world.realPos`, so nothing above would notice a worker world
+     that lacks it -- the latent two-places defect, kept from drifting by asserting the flag arrives. The day a reader is
+     gated on it, this is the line that says where it went missing. */
+  check(state.world.realPos === true && sw.realPos === true, "the worker's world carries the switch the page set (nothing in the worker's step reads it yet: a latent two-places defect, DECISIONS 10.70)");
   check(same, `${N} ticks, the screen's copy and the worker's world the in-thread world every tick, the traffic that braked for the stand-ins included${firstDiff != null ? ` -- first differs at tick ${firstDiff}` : ""}`);
   check(fieldsSame && fieldChecks > 50, `and field by field at ${fieldChecks} ticks, all but private memory`);
   check(hitsS === hitsM, `the player's contact judged the same: ${hitsS} in-thread, ${hitsM} through the worker`);

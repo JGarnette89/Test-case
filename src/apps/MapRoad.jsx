@@ -178,6 +178,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
      return-path fix can be measured against it. */
   const [simWorker, setSimWorker] = useState(false);
   const workerRef = useRef(false);
+  /* THE CAR'S REAL POSITION (DECISIONS 10.70): off by default, flipped from the debug chips. NEVER WITH THE SIM'S
+     WORKER, in either direction: the flag is read only by the player's own step, which runs here, and the worker's
+     world can silently lack it. The worker is not to be used with it until its step honours it (the maintainer's
+     ruling). Whichever is on holds the other chip off. */
+  const [realPos, setRealPos] = useState(false);
+  const realRef = useRef(false);
   /* THE WALLET (sim/money.js): loaded once, carried from scene to scene; a fare paid is written by the session. */
   const walletRef = useRef(null);
   const mailRef = useRef(null);
@@ -222,6 +228,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     scene.current?.remote?.stop();
     scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look, !sh, ck);
     if (skillRef.current) scene.current.world = { ...scene.current.world, skill: skillRef.current };
+    if (realRef.current && !workerRef.current) scene.current.world = { ...scene.current.world, realPos: true };
     picked.current = null;
     input.current.state.steer = 0; input.current.state.slider = 0; input.current.state.signal = null;
     cam.current = { ...newChase(), id: null };
@@ -264,8 +271,11 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const look = s.clean === true ? false : s.lookAwayOn === true;
       const sh = s.clean === true ? true : s.shapeOn !== false;
       const ck = s.checksOn === true;
-      if (s.simWorker === true && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look, sh, ck); return; }
-      if (kmh !== limit || m !== mode || n !== cars || look !== lookAway || sh !== shapeOn || ck !== checksOn) restart(seed, kmh, m, n, look, sh, ck);
+      /* A saved real position wins over a saved worker: the worker stays off and the page steps (10.70). */
+      const wantReal = s.realPos === true;
+      if (wantReal) { realRef.current = true; setRealPos(true); }
+      if (s.simWorker === true && !wantReal && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look, sh, ck); return; }
+      if (wantReal || kmh !== limit || m !== mode || n !== cars || look !== lookAway || sh !== shapeOn || ck !== checksOn) restart(seed, kmh, m, n, look, sh, ck);
       if (s.slider === "spring") input.current.state.spring = true;
       if (s.assist in ASSIST) { assistRef.current = s.assist; setAssist(s.assist); }
     });
@@ -763,9 +773,14 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             }}>Test horn</button>
           )}
           {(!clean || more) && (
-          <button className="btn" style={{ ...S.chip, borderColor: simWorker ? C.amber : "rgba(255,255,255,0.12)", color: simWorker ? C.white : DIM }}
-            title="where the simulation runs: on the page (the default) or in a Web Worker (being fixed; for measuring)"
-            onClick={() => { const on = !simWorker && typeof Worker !== "undefined"; workerRef.current = on; setSimWorker(on); setSetting("simWorker", on); restart(); }}>{simWorker ? "Sim: worker" : "Sim: page"}</button>
+          <button className="btn" disabled={!simWorker && realPos} style={{ ...S.chip, borderColor: simWorker ? C.amber : "rgba(255,255,255,0.12)", color: simWorker ? C.white : DIM, opacity: !simWorker && realPos ? 0.4 : 1 }}
+            title={!simWorker && realPos ? "held off while the car's real position is on: the worker's step does not honour it (DECISIONS 10.70)" : "where the simulation runs: on the page (the default) or in a Web Worker (being fixed; for measuring)"}
+            onClick={() => { if (!simWorker && realPos) return; const on = !simWorker && typeof Worker !== "undefined"; workerRef.current = on; setSimWorker(on); setSetting("simWorker", on); restart(); }}>{simWorker ? "Sim: worker" : "Sim: page"}</button>
+          )}
+          {(!clean || more) && (
+          <button className="btn" disabled={simWorker && !realPos} style={{ ...S.chip, borderColor: realPos ? C.amber : "rgba(255,255,255,0.12)", color: realPos ? C.white : DIM, opacity: simWorker && !realPos ? 0.4 : 1 }}
+            title={simWorker && !realPos ? "held off while the sim runs in the worker: the worker's step does not honour it (DECISIONS 10.70)" : "the car's real position: off by default. On, a car that leaves the road is placed where it is and the traffic sees its body (DECISIONS 10.64-10.70). Page only, never with the worker."}
+            onClick={() => { if (simWorker && !realPos) return; const on = !realPos; realRef.current = on; setRealPos(on); setSetting("realPos", on); restart(); }}>{realPos ? "Real position: on" : "Real position: off"}</button>
           )}
           {/* GO SOMEWHERE (sim/route.js): a place on the map, the route there drawn and said, and the voice when you arrive. */}
           {mode === "drive" && (

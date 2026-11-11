@@ -20,6 +20,7 @@ export const DEFAULTS = {
   carsByMap: {},
   assist: "gentle",     // lane-keeping assist (sim/player.js): "off" | "gentle" | "firm" -- the maintainer asked for it, so it starts on, lightly
   keepAwake: false,
+  realPos: false,       // the car's real position (sim/drive.js `world.realPos`, DECISIONS 10.64-10.70): OFF by default, flipped from the debug chips on #/map. Page-side only -- the worker's step does not honour it (10.70) -- so it and simWorker are never on together
   simWorker: false,     // the sim in a Web Worker: OFF by default since 15 October -- on the phone its answers cost 6-9x the step they carried (SIMULATOR.md); on, to measure the fix against    // keep the phone's screen on while testing (src/wake.js) -- the maintainer, 14 October
   shapeOn: true,        // density shaping where a map asks for it (sim/shaping.js, DECISIONS 10.17): off only to compare against, on one build
   clean: false,         // clean mode on #/map: no diagnostic readout, debug controls behind "More" -- for showing the game
