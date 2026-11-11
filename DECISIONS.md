@@ -6767,6 +6767,31 @@ His words: *"if the player or another driver is off the road, and somebody crash
 
 **10.68, lanes only: THE DERIVED RUN IS NOT IN THIS RECORD YET.** It was started twice; the first was killed by a restart of the session's machine. If no tally follows this paragraph, it did not finish: run `node tools/check.mjs` on the branch before merging.
 
+## 10.70 THE CENTRE-LINE QUESTION RULED: STAND-INS ONLY FOR A CAR ON NO LANE; AND WHAT THE SESSION FOUND ABOUT ITS OWN START (11 November; BUILT AND SCORED; THE DERIVED RUN NOT YET)
+
+**RULED (the maintainer, relayed by the project lead): option (b).** A stand-in is for a car on NO lane, which is the 10.68 ruling's own wording. A driver touching the centre line is still on a lane, only slightly over it, and real drivers do not brake because someone's tyre touched a line. **ONE RULE PER CASE:** the existing rules (the lane change's and `straddles`, crossing.js) keep a car over a line; the stand-in does not speak there too. The previous session's own least-sure prediction (G5, 10.68) was that both would speak where the player is over a line, and two mechanisms for one situation is this codebase's most frequent defect.
+
+**Built:** `shadowsOf` (drive.js) returns null unless `me.noLane`. The "own lane, own carriageway" branch that existed only to find the lanes BESIDE a car that was still on one is removed, not left as a second dormant mechanism.
+
+**Checked:** `verify-drive` section 10's last scene now asserts the opposite of what it asserted: 1.5 m over the centre line, still on its lane, the player is ONE actor, no stand-in, nothing flagged. **Sabotaged** by putting the old behaviour back (stand-ins on a lane too): 4 lines fail, the two scenes for this case (weaving; over the centre line) and the two "same car tick for tick with the switch on" scenes (44 of 480 and 0 of 80), which is right: an on-lane stand-in changes the traffic. Restored: passes (67 lines).
+
+**Prediction, written before the run, scored:** with (b), a good driver on random trips has no stand-in and the oncoming traffic brakes at its baseline. `tools/measure/standin-drive.mjs test-1 5 1`: **0 car-ticks with a stand-in; oncoming braking past 3 m/s2 on 1.9% of 13,397 car-ticks** (the 10.68 finding was 43.5% while the stand-in stood, 1.6% otherwise). **HELD. Sample: one five-minute drive, one map, one seed -- small, and the same sample that showed the finding.**
+
+**NOT DONE:** the derived run (below), the step cost at 180 cars, `verify-worker` with `realPos: true`, anything on a page. The 53/54 tally in 10.68 was taken on the old runner at the old base and is VOID until the derived run is re-done on the final tree.
+
+### OUTSTANDING, NOT ACCEPTED: `verify-check-runner` is red on `main`
+
+On `origin/main` at `5a000f3`, Windows 11, Node v24.19.0, **reproduced on a pristine detached worktree with no merge involved**: `check-runner-test.mjs:119` fails because the child's stdout is empty. Root cause, checked directly: line 116 passes `--import` a bare Windows path, which Node on Windows refuses (`ERR_UNSUPPORTED_ESM_URL_SCHEME`), so the child dies before the runner starts. Line 118's `status === 1` passes for the wrong reason, since a crash also exits 1. Suggested fix: `pathToFileURL(clock).href`. The full write-up is `CODEX-NOTE-verify-check-runner.md`. **It is Codex's work and Codex's lane and was not fixed here.** A red check on `main` is the condition this project has said repeatedly it cannot work in, because every later verification is measured against a broken baseline. It is tools-side, not simulation-side, so the world is sound, but it should not sit. It will show red in any derived run that reaches `tools/`.
+
+### A HANDOFF DEFECT, AND THE RULE THAT FOLLOWS
+
+The 11 November handoff lived only on the branch it described. A session started from `main` -- exactly the start it was written for -- could not find it, and was briefed to build what was already built. **A handoff that lives only on the branch it describes cannot be found by a session that starts from `main`. Future handoffs go on `main`.** This one travels to `main` with the branch.
+
+### Two practices this session earned
+
+- **Test the comfortable assumption in both directions.** `verify-check-runner` failed after a merge and the comfortable assumption was that the merge caused it. A pristine detached worktree of `origin/main` showed it did not: it was already failing.
+- **When choosing a model for a task, weigh capability against how much of the budget the task will spend WAITING rather than thinking** (the maintainer's observation; not a decision about any particular model). The previous session ran on a different, more capable model and got less done than its capability suggested, because much of the budget went on long check runs and polling. A task dominated by twenty-five-minute suite runs gains little from a stronger model; a task dominated by diagnosis gains a lot. His words: "when I suggest using a higher model, consider how limited the usage will be."
+
 ## 11. Verification
 
 **Any change to the conflict engine, trait system, scenario timings or the

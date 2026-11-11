@@ -209,11 +209,11 @@ export function stepDriver(me, input, world, dt = DT) {
    - ON NO LANE: every lane under the body. The car's own actor is flagged
      `offLane` and the readers that find cars by route pass over it: THE
      GHOST IS GONE.
-   - ON A LANE: only lanes of ANOTHER carriageway -- the oncoming lanes, a
-     road being crossed. Its own lane is its actor; the lanes beside it on
-     its own side are the lane change's and `straddles`' (crossing.js), as
-     they were, so a car that keeps to its own side of the road changes
-     nothing.
+   - ON A LANE: NO STAND-IN, however far over a line the body is. That is
+     the lane change's and `straddles`' (crossing.js), as it was -- one
+     rule per case (the maintainer, 11 November; the earlier build also gave
+     a stand-in over the centre line, and an ordinary driver touching it
+     made the oncoming traffic brake: DECISIONS 10.68).
    - A STAND-IN HAS A PLACE, NOT A DIRECTION: its speed is the car's speed
      ALONG that lane, never less than nothing -- across a lane or against
      it, it is a stopped thing there (10.68 gap 3).
@@ -226,24 +226,16 @@ const BODY_AT = 1.5;                         // m fore and aft of the middle whe
 const BODY_REACH = LANE / 2 + 0.9;           // a lane's half-width and the car's: the body is over the line
 const laneIdOf = (course, c) => { const leg = course.at[c.k].layout.legs[c.leg]; return (c.part === "in" ? leg?.inLane?.id : leg?.outLane?.id) ?? `${c.k}|${c.part}|${c.leg}`; };
 export function shadowsOf(course, me) {
+  /* ONE RULE PER CASE (the maintainer, 11 November): a car still on a lane, even with its body over
+     a line, is the existing rules' -- the lane change's and `straddles`' (crossing.js). A stand-in
+     is for a car on NO lane only. */
+  if (!me.noLane) return null;
   const pose = playerPoseOn(course, me), h = (pose.heading * Math.PI) / 180;
-  /* Its own lane, and its own side of its own road. */
-  let own = null;
-  if (!me.noLane) {
-    const p = course.at[me.k].layout.paths[me.route];
-    const part = me.s < p.stopAt ? "in" : me.s > p.clearAt ? "out" : null;
-    /* In a box on its route: seen through its route, as it always was. */
-    if (!part) return null;
-    own = laneIdOf(course, { k: me.k, part, leg: part === "in" ? p.from : p.to }).split("#")[0];
-    /* Nowhere near another carriageway: nothing to ask. Its lane's line is within a lane of it, and the nearest lane of another carriageway is not. */
-    if (Math.abs(me.off) < 0.5) return null;
-  }
   const found = new Map();
   for (const d of [0, BODY_AT, -BODY_AT]) {
     const at = { x: pose.x + Math.cos(h) * d, y: pose.y + Math.sin(h) * d, z: pose.z, heading: pose.heading };
     for (const lane of lanesAt(course, at, { reach: BODY_REACH, aligned: false })) {
       const c = lane.names[0], id = laneIdOf(course, c);
-      if (own != null && id.split("#")[0] === own) continue;
       /* The middle's place along the lane where the middle is over it; else the end's. */
       if (!found.has(id)) found.set(id, { lane: id, k: c.k, route: c.route, s: c.s, v: Math.max(0, (me.v ?? 0) * Math.cos(c.psi)) });
     }

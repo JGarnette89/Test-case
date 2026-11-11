@@ -487,7 +487,7 @@ console.log("\n9. The car's real position: re-located onto the lane it is in, an
      a lane to be in (drive.js laneChange): a car drifted 0.7 m toward the opening bay stays the same car, tick for
      tick. Asking the world before a whole lane off the line re-bases it onto the bay here. (Added because asking
      every tick passed everything else: 10 November. 0.7 m and not 0.9: at 0.9 the body's edge is exactly on the
-     centre line, and whether it has a stand-in in the oncoming lane is a coin's edge -- 11 November.) */
+     centre line, and whether the body is over a line is a coin's edge -- 11 November; it has no stand-in either way now.) */
   {
     const kb = course.at.findIndex((sp) => sp.layout.paths["B-east|end#0/E-east|start#0"]), rb = "B-east|end#0/E-east|start#0";
     const taper = (real) => {
@@ -624,13 +624,14 @@ console.log("\n10. The traffic sees a car on no lane where its body is: avoided,
   let driven = 0, offMax = 0;
   for (let i = 0; i < 400; i++) { me = stepDriver(me, { steer: 0.05 * Math.sin(i / 14), slider: holdAt(12, 0), assist: 0 }, w, DT); w = withDriver(w, me); driven += me.v * DT; offMax = Math.max(offMax, Math.abs(me.off)); if (me.shadows || w.actors.some((a) => a.shadow || a.offLane)) any++; }
   check(any === 0 && driven > 150 && offMax > 0.3, `weaving on its own side of the road for 20 s, lanes and shoulder (${driven.toFixed(0)} m, up to ${offMax.toFixed(1)} m off its lane's line), the player has no stand-in and is never flagged (${any} ticks)`);
-  /* ...and over the centre line it has one, in the oncoming lane, standing still to the traffic there. */
+  /* ...and over the centre line, still on its own lane, it has NONE: one rule per case (10.68, the maintainer,
+     11 November). A stand-in is for a car on no lane; a body over a line is the existing rules'. The earlier build
+     gave this case a stand-in too, and an ordinary driver touching the line made the oncoming traffic brake. */
   const onc = { ...playerAt(empty, k, r2l), s: 150, v: 10, off: -(0.5 + (layout.legs[leg].pos ?? layout.legs[leg].lane)) * 3.6 - 1.5 };
   const stepped = stepDriver(onc, { steer: 0, slider: holdAt(10, 0), assist: 0 }, withDriver(empty, onc), DT);
-  const ww = withDriver(empty, stepped), stand = ww.actors.filter((a) => a.shadow);
-  const sp = stand.map((a) => course.at[a.k].layout.paths[a.route]).filter(Boolean);
-  check(!stepped.noLane && stand.length >= 1 && stand.every((a) => a.v === 0 && a.noRight) && sp.every((q) => q.from !== layout.paths[r2l].from),
-    `1.5 m over the centre line, still on its own lane by route, it has ${stand.length} stand-in(s) in the oncoming carriageway, at rest to the traffic there`);
+  const ww = withDriver(empty, stepped);
+  check(!stepped.noLane && !stepped.shadows && !ww.actors.some((a) => a.shadow || a.offLane) && ww.actors.filter((a) => a.player).length === 1,
+    `1.5 m over the centre line, still on its own lane by route, it has no stand-in and is not flagged: the player is one actor, the existing rules' to judge`);
 }
 
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
