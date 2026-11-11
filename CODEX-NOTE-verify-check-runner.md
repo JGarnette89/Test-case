@@ -1,5 +1,7 @@
 # verify-check-runner: FIXED on main (11 November 2026). The cause, the layer, the fix.
 
+**Ownership change, 11 November: other agents are shelved and one agent owns the whole repo, `tools/` included. This was written as a handover to Codex and is kept as the record of the diagnosis; there is nobody to hand it to, and the fix it describes is on `main`. See DECISIONS 10.70.**
+
 **Status: fixed in `tools/check-runner-test.mjs`, one import and one argument. `verify-check-runner` passes on
 Windows 11, Node v24.19.0.** Pull `main`.
 

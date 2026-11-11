@@ -7,7 +7,7 @@ get right, and several of them are non-obvious.
 
 ## START HERE IF YOU ARE PICKING THIS UP COLD
 
-More than one agent works in this repository. Anything decided by argument
+More than one agent worked in this repository until 11 November 2026, when the maintainer shelved the others unless he asks for one and gave one agent the whole repo, `tools/` included (DECISIONS 10.70, "THE LANE RULE IS SUPERSEDED"; what that cost and bought is there). The rule below holds for any agent, one or several. Anything decided by argument
 and not written down is invisible to every tool that was not part of that
 argument, so the documentation is a CONTRACT rather than a diary.
 

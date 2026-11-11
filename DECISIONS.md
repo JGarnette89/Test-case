@@ -6402,7 +6402,7 @@ Reverse is available from any standstill, with nothing hit and no limit but how 
 
 ## 10.61 WHAT THE SCOPE DECISION DOES TO PRIORITIES (the project lead, 10 November; A RECORD, NOTHING BUILT)
 
-1. **CHECKS ITEM B IS CODEX'S, GATED BEHIND ITEM A BEING VERIFIED AND MERGED.** Both are `tools/`-side. This session starts neither.
+1. **[SUPERSEDED 11 NOVEMBER, 10.70: other agents are shelved; one agent owns the whole repo, `tools/` included.] CHECKS ITEM B IS CODEX'S, GATED BEHIND ITEM A BEING VERIFIED AND MERGED.** Both are `tools/`-side. This session starts neither.
 
 2. **TWO UNEXPLAINED RESULTS ARE NOW DEFECTS IN THE THING BEING SHIPPED, NOT CURIOSITIES IN A TEST VENUE.** Both were measured on the endless highway, and the endless highway is now the product (10.60):
    - **IN FLIGHT 36, hard braking in free-flowing traffic:** one 4 s window in eighteen brakes past 3 m/s^2 with no lane change involved, untraced since 28 October.
@@ -6471,7 +6471,7 @@ What the record already holds that bears on it (10.62, read, desk): the world bu
 
 ### 2. Nothing verifies the runner (found by Codex; the hole is ours)
 
-**Codex stopped at the verification gate rather than merging checks item A, and reported why: a change to `tools/check.mjs` selects zero derived checks, because nothing imports the runner.** The project lead has directed Codex to run the full suite under both runners and compare, and to **register its runner test harness as a check**, so a future runner change triggers it. Codex's lane (`tools/`); nothing for this session.
+**Codex stopped at the verification gate rather than merging checks item A, and reported why: a change to `tools/check.mjs` selects zero derived checks, because nothing imports the runner.** The project lead has directed Codex to run the full suite under both runners and compare, and to **register its runner test harness as a check**, so a future runner change triggers it. Codex's lane (`tools/`); nothing for this session. **[SUPERSEDED 11 NOVEMBER, 10.70: the lane rule is gone.]**
 
 **THE GENERAL LESSON, entered in 10.23 as item 21:** we have been auditing what our checks assert, and had not asked what verifies the thing that runs them. **The open question, recorded and not chased:** the timing records (`tools/check-times.json`), the dependency table (`tools/affected.mjs`), the seed handling -- can any of them change without triggering a check? If so, the same hole. **Do not go looking now.**
 
@@ -6936,9 +6936,48 @@ A chip "Real position: off/on" beside "Sim: page/worker" on `#/map` (shown when 
 
 **MISPLACED, NOT MISSING (the maintainer's distinction, kept as the report's vocabulary):** stopping at a stop sign is guarded by `verify-signs` and not by the section-5 line that carried its name. That is a tidy-up and not a hole.
 
+### THE LANE RULE IS SUPERSEDED (the maintainer, Jay, 11 November): OTHER AGENTS ARE SHELVED UNLESS HE ASKS, AND ONE AGENT OWNS THE WHOLE REPO, `tools/` INCLUDED
+
+**The rule it replaces:** `tools/` was Codex's and `src/` was the other agent's (10.60/10.61: "CHECKS ITEM B IS CODEX'S, GATED BEHIND ITEM A BEING VERIFIED AND MERGED. Both are `tools/`-side. This session starts neither."), restated on 11 November ("the rule stands") and crossed once under an explicit exception. **Superseded, not deleted:** the earlier statements stay where they are with a marker. The exception in the section below becomes an ordinary fix; **its condition, which was the part that mattered, stands and was met: establish which layer the bare path comes from, and fix there (it was the test's fixture; had it been the runner, the runner would have been fixed and not the test).**
+
+**WHAT IT COST, as the record shows it:**
+- **A red on `main` outlived the day because its owner was not working on it.** `verify-check-runner` failed on `main` from the merge stamped `2026-11-10 20:23Z` (`5a000f3`) until the fix on 11 November `[M: the served stamp and the commits]`; fixing it took a separate authorisation with a three-part justification, because the rule forbade the one-line fix by the agent who found it.
+- **An ordering dependency across the lane boundary.** The exposure pass (this lane) wanted the runner's four states and a reasoned skip (the other lane); the instruction was "do not touch that", so the pending box assertion sits in the record as a plan and not in the suite as a live skipped assertion `[M: 10.70]`. One change was split between two owners.
+- **Hand-overs written to a party who was not coming.** Two notes on 11 November were addressed to Codex; one was rewritten as a handover and superseded the same day, the other re-pointed as our work list `[M: the commits]`.
+- **Git cannot tell agents apart.** The seed-shift hook's commit (`9f4fa6d`) is authored under the maintainer's own git identity, as all agent work is `[M: git log]`; attribution lived only in notes and in what the maintainer relayed.
+- **The maintainer's own statement, not measured:** the coordination overhead was real.
+
+**WHAT IT BOUGHT, as the record shows it:**
+- **The triage document.** The seed inventory ran the whole suite at two seed offsets on frozen `5a000f3` and reported 14 distinct suspects, 17 failing outputs and 116 timestamped log receipts `[M: the report's header on the branch]`. It directly shaped the check-honesty pass and named the four checks and the `verify-contact` split.
+- **An independent gate.** Codex stopped at the verification gate rather than merging checks item A, and reported why: a change to `tools/check.mjs` selects zero derived checks, because nothing imports the runner `[M: DECISIONS, the checks plan]`. `[D]` A single owner might well have walked past it; that "might" is a judgement.
+- **The runner's improvements** (timing classification, limit reporting, log retention) arrived on `main` `[M: the merge]`.
+- **The instrument that classified `verify-drive` and `verify-passing`:** the seed-shift hook (reviewed below).
+- **Independent corroboration.** Two agents with no shared context found the same defect class within the hour: checks that cannot tell "wrong" from "never arose" `[M: this record, the standing requirement]`. One owner cannot produce that.
+
+**FOR WHOEVER CONSIDERS MULTIPLE AGENTS AGAIN, what would have made it cheaper `[D]`:** one owner for the runner AND the checks, so a reasoned skip and an exposure line are one change; per-agent attribution in the commit trailer, because the git identity cannot carry it; and hand-offs on `main` from the start.
+
+### THE SEED-SHIFT HOOK, REVIEWED AS CODE (the maintainer, 11 November: judgement as code, not as a convenience)
+
+**What it is `[D: read]`.** `tools/seed-shift.mjs`, 44 lines, on `codex/seed-inventory` (commit `9f4fa6d`, 10 November), preloaded with `--import`. It uses `node:module registerHooks` (a synchronous load hook): when `src/sim/crossing.js` loads, it matches exactly ONE `export function seedGraph(seed = 1, ... {` header by regular expression and inserts `seed = globalThis[Symbol.for("miskawin.seed-shift")](seed);` as the first statement. That global returns the seed unchanged for a shift of 0 and `(Number(seed) + shift) >>> 0` otherwise. It writes per-process, per-thread evidence JSON to `CHECK_SEED_EVIDENCE` at start, at the first call and at exit.
+
+**Sound, with the evidence:**
+- **It fails closed `[M]`.** On a tree where `seedGraph`'s signature no longer matches, the import is REFUSED with "seed-shift: expected one seedGraph definition ... " and does not run unshifted.
+- **The source is untouched `[D]`:** the rewrite is in memory, and its own test asserts a sha256 of `crossing.js` unchanged (that test cannot run on this machine; see below).
+- **Offset 0 is inert `[M]`:** a hooked run at offset 0 printed the same output as the native run, with 12 calls to `seedGraph` and `before == after`.
+- **It leaves a trail `[M]`:** at +11 the evidence read shift 11, 6 calls, first sample 5 to 16; at +29, 5 to 34.
+- **It lives outside `src/`, so the app bundle cannot carry it,** and its header says plainly what it does not cover.
+
+**Reservations:**
+1. **Windows `[M]`.** Its documented usage, its own proof test (`tools/seed-shift-test.mjs`) and the inventory driver (`tools/seed-inventory.py`) pass the hook as a bare path in `NODE_OPTIONS`. **The hook's own test fails on this machine with `ERR_UNSUPPORTED_ESM_URL_SCHEME`** (the bug already fixed in the runner's test), so its inventory must have run on a POSIX machine. The hook itself works with a `file:///` URL (this session used it).
+2. **`registerHooks` stability `[D: from memory, NOT verified here]`:** I believe it is a release-candidate API in the Node 22/23/24 lines. If it changes, the hook breaks loudly (an import error), which is acceptable.
+3. **Coverage `[D]`.** Only the seed passed to `seedGraph` is shifted. Map-generation seeds, any RNG outside `seedGraph`, and bundled copies are not (its header says so; Codex's report lists 11 checks that recorded no `seedGraph` call, relayed and not verified here). "Seed-robust" under this hook means robust to the world's seed and nothing wider.
+4. **`>>> 0` truncates a fractional seed when the shift is not 0 `[D]`:** minor; no fractional seed was seen.
+
+**RECOMMENDATION: ADOPT, on its merits, with the Windows fix, and attributed.** Cherry-pick only the hook and its test (not the 8,000-line results file), change the test and driver to file URLs, add a thin wrapper (`node tools/with-seed-shift.mjs <shift> <script>`) so nobody hand-builds `NODE_OPTIONS`, and credit it as written by the Codex agent (commit `9f4fa6d`; git shows the maintainer's identity as author). **Alternative considered and rejected:** our own seed option inside `seedGraph` would put test machinery in `src/` and the shipped bundle, and an environment variable read there fails in a browser. **Not done: it waits for the maintainer's go** (it brings code onto `main`; this review is its review). Until then the +11/+29 runs use it from a detached worktree of that branch, not merged.
+
 ### RESOLVED 11 NOVEMBER (was: OUTSTANDING, NOT ACCEPTED): `verify-check-runner` WAS RED ON `main`; FIXED IN THE TEST, UNDER AN EXCEPTION TO THE LANE RULE
 
-**THE EXCEPTION, AND ITS LIMITS (the maintainer, 11 November): the rule stands, `tools/` is Codex's and `src/` is mine; this crossed it once.** The grounds, any one of which being false would have made the answer no: the fix is known and tiny; `main` had been red all day and a red baseline taxes every measurement; Codex was blocked on a machine problem and not working; and nothing on either Codex branch touches the runner or its test since `5a000f3` `[M: read from the repo after a fetch]`, so there was no collision. **His condition: find out which layer is wrong before fixing anything; if it were the runner, leave `main` red and hand Codex the diagnosis ("I'd rather main stay red honestly than go green dishonestly").**
+**[SUPERSEDED THE SAME DAY, 10.70: the lane rule was dissolved, so this is an ordinary fix; the condition below stands and was met.] THE EXCEPTION, AND ITS LIMITS (the maintainer, 11 November): the rule stands, `tools/` is Codex's and `src/` is mine; this crossed it once.** The grounds, any one of which being false would have made the answer no: the fix is known and tiny; `main` had been red all day and a red baseline taxes every measurement; Codex was blocked on a machine problem and not working; and nothing on either Codex branch touches the runner or its test since `5a000f3` `[M: read from the repo after a fetch]`, so there was no collision. **His condition: find out which layer is wrong before fixing anything; if it were the runner, leave `main` red and hand Codex the diagnosis ("I'd rather main stay red honestly than go green dishonestly").**
 
 **WHICH LAYER, with the evidence `[M]`:** the test's fixture. The only use of `--import`, `NODE_OPTIONS` or `execArgv` in `tools/` is the test's line 116; the runner launches checks as `[process.execPath, [c.file]]` (a script argument, which works on Windows); the failing stack has no runner frame, only Node's own loader at startup (`Received protocol 'c:'`); and every assertion before line 119 ran the runner on Windows without trouble.
 
