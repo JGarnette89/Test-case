@@ -90,10 +90,15 @@ console.log("9. Nobody is trapped: there is no reverse");
      assertion stays strict (no case slower than the tow); the message says which of the two it is. Codex's +29 failure read "worst 93.4 s
      at 70 degrees" and nothing said how many cases. */
   const slowAt = (d) => escapes[d].filter((x) => x > TOW_AFTER).length;
+  /* THE MARGIN IS PRINTED, NOT TESTED (11 November, the maintainer: "make the margin visible so a future failure arrives with the context that it
+     was always close"). At the native seed the 90 degree worst is 43.7 s against the 45 s tow: 1.3 s, by construction, so a change that has nothing
+     to do with escaping can flip this line and be read as a regression. Nothing here widens the limit; the 10% is a DISPLAY threshold for the
+     word THIN and decides nothing. */
+  const marginNote = (d) => { if (!Number.isFinite(worst[d])) return ""; const mg = TOW_AFTER - worst[d]; return ` (${Math.abs(mg).toFixed(1)} s ${mg >= 0 ? "under" : "over"} the tow${mg >= 0 && mg < 0.1 * TOW_AFTER ? ", THIN: within 10% of the limit by construction, so a change unrelated to this claim can flip it" : ""})`; };
   const verdict = (d) => (slowAt(d) === 0 ? "clear" : slowAt(d) === 1 ? `CANNOT TELL: 1 of ${escapes[d].length} cases slow, one draw` : `REAL: ${slowAt(d)} of ${escapes[d].length} cases slow`);
   check(cases >= 12, `the case arose (escape): ${cases} nose-on cases (${Object.entries(escapes).map(([d, e]) => `${d}: ${e.length}`).join(", ")}; floor 12, the check's own)`);
   check(trapped === 0, `nobody trapped: ${trapped} of ${cases}`);
-  check(Object.keys(escapes).every((d) => slowAt(d) === 0), `every case clears within the tow (${TOW_AFTER} s): ${Object.keys(escapes).map((d) => `${d} degrees: worst ${worst[d].toFixed(1)} s, ${verdict(d)}`).join("; ")} (${(dead * DT).toFixed(0)} s of it with the car past going, scraping the row)`);
+  check(Object.keys(escapes).every((d) => slowAt(d) === 0), `every case clears within the tow (${TOW_AFTER} s): ${Object.keys(escapes).map((d) => `${d} degrees: worst ${worst[d].toFixed(1)} s${marginNote(d)}, ${verdict(d)}`).join("; ")} (${(dead * DT).toFixed(0)} s of it with the car past going, scraping the row)`);
 }
 
 console.log("9b. Reverse, an ordinary control (DECISIONS 10.57)");
@@ -136,12 +141,15 @@ console.log("9b. Reverse, an ordinary control (DECISIONS 10.57)");
     check(hit, `the case arose: ${kmh} km/h into the wreck, a contact, damage ${d.toFixed(2)} (the limit is ${INOPERABLE})`);
     if (d < INOPERABLE) check(s0 - s1 > 3 && moved > 4, `${kmh} km/h, damage ${d.toFixed(2)}: back ${(s0 - s1).toFixed(1)} m, then forward ${moved.toFixed(1)} m`);
     else {
-      /* THREE LINES FROM ONE CONJUNCTION (11 November). At +29 `moved` read 11.5 mm against a 10 mm tolerance while `s0 === s1` held and the car did
-         not go back at all; at native 1.8 mm and at +11 6.5 mm, monotone in the seed offset: a residual that grows with the seed number in an
-         empty world is a lead, and 1.5 mm over a tolerance of a centimetre is a tolerance edge and not an immobile car moving. The 10 mm is
+      /* THREE LINES FROM ONE CONJUNCTION (11 November). At +29 `moved` read 11.5 mm against a 10 mm tolerance while `s0 === s1` held and the
+         car did not go back at all; native 1.8 mm, +11 6.5 mm. THE MECHANISM, MEASURED (DECISIONS 10.70): the road, course and layout are
+         IDENTICAL at every seed and the world's seed does not reach the physics; it reaches the scene only through the wreck car's drawn
+         driver profile, and of its eight drawn fields only `weave` and `weavePhase` matter: a STANDING wreck sits at a seed-dependent lateral
+         offset (a 7.7 cm spread across the three seeds, static in time), and with `weave` set to 0 the residual is 0.00 mm at every seed.
+         So this is a tolerance edge on a scene that varies by construction, not a hidden seed path and not a determinism finding. The 10 mm is
          unchanged (never tune a number to make a check pass). */
       check(s0 === s1, `${kmh} km/h, past the limit (${d.toFixed(2)}): did not go back (${(s0 - s1).toFixed(4)} m)`);
-      check(moved < 0.01, `${kmh} km/h, past the limit: did not go forward -- moved ${(moved * 1000).toFixed(1)} mm against a tolerance of 10 mm${moved >= 0.01 && moved < 0.02 ? " -- CANNOT TELL: a residual within a centimetre of the tolerance, not an immobile car moving" : ""}`);
+      check(moved < 0.01, `${kmh} km/h, past the limit: did not go forward -- moved ${(moved * 1000).toFixed(1)} mm against a tolerance of 10 mm${moved >= 0.01 && moved < 0.02 ? " -- CANNOT TELL: a tolerance edge on a scene whose standing wreck sits at a seed-dependent lateral offset (its driver's drawn weave), not an immobile car moving" : ""}`);
       check(/will not go/.test(sc.said?.text ?? "") , `and the screen says so: "${sc.said?.text}"`);
       go(TOW_AFTER + 1, LIFT); const s2 = sc.me.s; go(3, BOTTOM); const backed = s2 - sc.me.s; go(1, LIFT); go(3, { steer: 0.5, slider: 1 });
       check(backed > 3 && sc.me.v > 2, `after the tow it goes both ways: back ${backed.toFixed(1)} m, then ${sc.me.v.toFixed(1)} m/s forward`);
