@@ -22,7 +22,7 @@ if (process.env.COURTESY === "0") w.courtesy = false;
 for (let i = 0; i < 1200; i++) w = step(w);
 const J = new Map();
 const M = [], watch = [];   // M: one record per merge begun; watch: the car behind, followed for 4 s after it [thresholds invented: 1 s, 3 m/s^2, 4 s]
-let overlapTicks = 0;
+let overlapTicks = 0, standSum = 0, standMax = 0, standTicks = 0;   // joiners standing (under 0.5 m/s) in an acceleration lane at once: a queue the length of the ramp is what Jay would see and the share at the END undercounts it
 for (let i = 0; i < secs * 20; i++) {
   const before = w;
   w = step(w);
@@ -30,6 +30,7 @@ for (let i = 0; i < secs * 20; i++) {
   const prevV = new Map(before.actors.map((x) => [x.id, x.v])), offeredTo = new Map();
   { const byId = new Map(w.actors.map((x) => [x.id, x])); for (let k = watch.length - 1; k >= 0; k--) { const m = watch[k], b = byId.get(m.behindId), pv = prevV.get(m.behindId); if (b && pv != null) { const dv = ((b.v ?? 0) - pv) / 0.05; if (dv < m.worstDecel) m.worstDecel = dv; } if (w.t - m.t >= 4 || !b) { watch.splice(k, 1); } } }
   for (const x of w.actors) if (x.courtesy && !x.courtesy.forPlayer && !x.courtesy.done) offeredTo.set(x.courtesy.for, (offeredTo.get(x.courtesy.for) ?? 0) + 1);
+  let standNow = 0;
   for (const a of w.actors) {
     if (a.lc?.merge && a.lc.at === before.t) { const j0 = J.get(a.id); if (j0 && j0.last && !j0.mAt) { j0.mAt = w.t; const rec = { t: w.t, lagT: j0.last.lagT, leadT: j0.last.leadT, worstDecel: 0, behindId: j0.last.behindId }; M.push(rec); if (rec.behindId != null) watch.push(rec); } }
     const L = w.course.at[a.k].layout, p = L.paths[a.route], to = L.legs[p.to];
@@ -39,7 +40,7 @@ for (let i = 0; i < secs * 20; i++) {
     if (!j) { j = { id: a.id, kappa: kappaOf(a), laneLen, enterV: a.v, enterT: w.t, minV20: Infinity, minToEnd: Infinity, vAtEnd: null, merged: false, planAt: null, planRun: null, planV: null, planTicks: 0, noGapTicks: 0, offerTicks: 0, offerRun: null, behindCourteous: 0, behindNone: 0, behindBrake: 0, behindBelowV0: 0, behindSeen: 0, restTicks: 0, atRest: false }; J.set(a.id, j); }
     if (toEnd < j.minToEnd) { j.minToEnd = toEnd; j.vAtEnd = a.v; }
     if (toEnd <= 20 && a.v < j.minV20) j.minV20 = a.v;
-    if (a.v < 0.5) { j.restTicks++; j.atRest = true; }
+    if (a.v < 0.5) { j.restTicks++; j.atRest = true; standNow++; }
     if (a.lc?.merge) j.merged = true;
     if (offeredTo.has(a.id)) { j.offerTicks++; if (j.offerRun == null) j.offerRun = run; }
     const mp = mergePlan(w, a, L, p, to);
@@ -53,7 +54,9 @@ for (let i = 0; i < secs * 20; i++) {
       if (Math.min(lead / leadNeed(a, nb.ahead, k), lag / lagNeed(a, nb.behind, k)) < 1) j.noGapTicks++;
     }
   }
+  standSum += standNow; standTicks++; if (standNow > standMax) standMax = standNow;
 }
+
 const js = [...J.values()];
 const reached = js.filter((j) => j.minToEnd <= 15), slow = js.filter((j) => j.minToEnd <= 15 && j.minV20 < 2), dead = js.filter((j) => j.atRest);
 const q = (xs, f) => { const a = xs.slice().sort((x, y) => x - y); return a.length ? +a[Math.min(a.length - 1, Math.floor(f * a.length))].toFixed(2) : null; };
@@ -64,8 +67,8 @@ const mq = (f) => { const a = M.map(f).filter((x) => Number.isFinite(x)).sort((x
 const mp5 = (f) => { const a = M.map(f).filter((x) => Number.isFinite(x)).sort((x, y) => x - y); return a.length ? +a[Math.floor(0.05 * a.length)].toFixed(2) : null; };
 const merges = { n: M.length, lagTimeP5: mp5((m) => m.lagT), lagTimeMedian: mq((m) => m.lagT), leadTimeMedian: mq((m) => m.leadT), under1s: +(M.filter((m) => m.lagT < 1).length / Math.max(1, M.length)).toFixed(3), under05s: +(M.filter((m) => m.lagT < 0.5).length / Math.max(1, M.length)).toFixed(3), behindBraked3: +(M.filter((m) => m.behindId != null && m.worstDecel < -3).length / Math.max(1, M.length)).toFixed(3), behindBraked5: +(M.filter((m) => m.behindId != null && m.worstDecel < -5).length / Math.max(1, M.length)).toFixed(3) };
 const out = {
-  merges,
-  env: { WIDEN: process.env.WIDEN ?? null, DECAY: process.env.DECAY ?? null, SCAN: process.env.SCAN ?? null, PRO: process.env.PRO ?? null }, safety: { overlapTicks, crashes: (w.crashes ?? []).length }, nearestBehindCourteous: { all: cShare(js), stalled: cShare(slow), noCarBehind: noneShare(js) },
+  merges, standing: { mean: +(standSum / Math.max(1, standTicks)).toFixed(2), max: standMax },
+  env: { WIDEN: process.env.WIDEN ?? null, DECAY: process.env.DECAY ?? null, SCAN: process.env.SCAN ?? null, PRO: process.env.PRO ?? null, DECAYS: process.env.DECAYS ?? null }, safety: { overlapTicks, crashes: (w.crashes ?? []).length }, nearestBehindCourteous: { all: cShare(js), stalled: cShare(slow), noCarBehind: noneShare(js) },
   courtesy: process.env.COURTESY !== "0", all: yieldOf(js), stalledYield: yieldOf(slow), othersYield: yieldOf(js.filter((j) => !slow.includes(j))), waitsAtRest: { p50: q(dead.map((j) => j.restTicks * 0.05), 0.5), p90: q(dead.map((j) => j.restTicks * 0.05), 0.9), max: q(dead.map((j) => j.restTicks * 0.05), 1), over20: dead.filter((j) => j.restTicks * 0.05 > 20).length, over60: dead.filter((j) => j.restTicks * 0.05 > 60).length },
   cars, seed, secs, joiners: js.length, reachedEnd: reached.length, atRestNearEnd: slow.length, restedAtAll: dead.length,
   ratePerMin: +((slow.length * 60) / secs).toFixed(2), shareSlowOfJoiners: +(slow.length / Math.max(1, js.length)).toFixed(3),
