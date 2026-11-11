@@ -431,7 +431,7 @@ console.log("\n9. The car's real position: re-located onto the lane it is in, an
   const abandoned = (real, kmh = 45, steerBack = true) => {
     const w0 = real ? { ...base, realPos: true } : base;
     let me = { ...playerAt(w0, k, route), s: path.stopAt - 0.5, v: kmh / 3.6, signal: "right", going: true, accepted: true, off: 0 };
-    let acted = 0, world = withDriver(w0, me), out = null, settled = null, jump = 0, swing = 0, pulledOffLane = 0, noLaneTicks = 0;
+    let acted = 0, world = withDriver(w0, me), out = null, settled = null, jump = 0, slip = 0, swing = 0, pulledOffLane = 0, noLaneTicks = 0;
     const log = [];
     let was = driverPose(me, course);
     for (let i = 0; i < 20 * 24; i++) {
@@ -458,7 +458,20 @@ console.log("\n9. The car's real position: re-located onto the lane it is in, an
          not this section's to assert away. */
       if (me.noLane || before.noLane || (me.relocated ?? 0) !== (before.relocated ?? 0)) {
         acted++;
-        jump = Math.max(jump, Math.hypot(now.x - was.x, now.y - was.y) - Math.max(before.v, me.v) * DT);
+        /* TWO NUMBERS, EACH IN ITS OWN DIRECTION (11 November). A car moves ALONG its heading, so in the frame of the
+           tick's mean heading (exact for a constant-yaw arc) the displacement across it is zero whatever the speed,
+           and the displacement along it is the tick's travel. `slip` is the first: a sideways step, in metres, linear
+           in the step and not diluted by travel. `jump` is the second: the error in the distance moved along.
+           The quantity this replaces was hypot(step, travel) - travel, which adds a sideways step to the travel in
+           quadrature: at 45 km/h a 0.1 m step read 9.6 mm and passed (measured by sabotage, 11 November). */
+        const dx = now.x - was.x, dy = now.y - was.y, hm = ((was.heading + turnOf(now.heading, was.heading) / 2) * Math.PI) / 180;
+        /* A car cannot move in a direction outside the sweep of headings it had in the tick, so the allowance is
+           the tick's travel times sin(half the turn) -- derived, not tuned. (Measured the first time: 7.50 mm on
+           every full-lock tick of the unmutated run, which is exactly 0.4125 m * sin(1.04 degrees): stepNoLane
+           turns first and moves along the NEW heading. A correct integrator reads 0 here, to the arithmetic.) */
+        const dist = Math.hypot(dx, dy), allow = dist * Math.sin((Math.abs(turnOf(now.heading, was.heading)) * Math.PI) / 360);
+        slip = Math.max(slip, Math.abs(-dx * Math.sin(hm) + dy * Math.cos(hm)) - allow);
+        jump = Math.max(jump, Math.abs(dx * Math.cos(hm) + dy * Math.sin(hm) - ((before.v + me.v) / 2) * DT));
         swing = Math.max(swing, Math.abs(turnOf(now.heading, was.heading)));
       }
       if (me.noLane) { noLaneTicks++; if (Math.abs(me.assist ?? 0) > 1e-9) pulledOffLane++; }
@@ -466,20 +479,28 @@ console.log("\n9. The car's real position: re-located onto the lane it is in, an
       was = now;
     }
     const end = driverPose(me, course), at = nearestOn(end);
-    return { me, end, at, acted, jump, swing, pulledOffLane, noLaneTicks, settled, log };
+    return { me, end, at, acted, jump, slip, swing, pulledOffLane, noLaneTicks, settled, log };
   };
   const on = abandoned(true), offSw = abandoned(false);
   check(offSw.me.lost && Math.abs(offSw.me.off) > 50 && offSw.me.v * 3.6 < 31,
     `switch off, the turn abandoned for the road straight ahead: still measured against the latched lane (lost ${offSw.me.lost}, ${Math.abs(offSw.me.off).toFixed(0)} m "off", ${(offSw.me.v * 3.6).toFixed(0)} km/h asked 45)`);
   check(on.me.relocated >= 1 && !on.me.noLane && !on.me.lost && layout.paths[on.me.route]?.to === ap.to || (on.me.k !== k && on.me.relocated >= 1 && !on.me.noLane),
     `switch on: located on the road it drove onto (re-located ${on.me.relocated ?? 0} time(s), on no lane ${!!on.me.noLane}, route ${on.me.route})`);
-  check(on.noLaneTicks > 40 && on.pulledOffLane === 0, `between the two it was on no lane (${on.noLaneTicks} ticks) and the assist never steered there (${on.pulledOffLane})`);
+  check(on.noLaneTicks > 40, `the case arose: between the two it was on no lane (${on.noLaneTicks} ticks)`);
+  /* A REPORTED-FIELD GUARD ONLY, AND IT CANNOT FAIL FROM BEHAVIOUR (found 11 November, DECISIONS 10.70). stepNoLane
+     and settle write `assist: 0` on exactly the ticks counted here, so no change to how the car steers can turn this
+     red: removing the narrow guard (player.js `inBox || lost`, the real bug) leaves it GREEN. It goes red only if
+     that constant is edited. The behaviour -- the lane assist never steers for a lane the car is not in -- is held
+     by section 8's "and out there the lane assist never steers for the route's lane", which did fail on that
+     mutation (79 ticks pulled). Kept for what it is; do not read it as covering that behaviour. */
+  check(on.pulledOffLane === 0, `REPORTED-FIELD GUARD ONLY (cannot fail from behaviour -- the behaviour is section 8's "the lane assist never steers for the route's lane"): on no lane the car reports no assist (${on.pulledOffLane} of ${on.noLaneTicks} ticks)`);
   check(Math.abs(on.me.off) < 0.5 && on.me.v * 3.6 > 40, `and from then its offset is from the lane it is in, and pavement does not drag (off ${on.me.off.toFixed(2)} m, ${(on.me.v * 3.6).toFixed(0)} km/h asked 45)`);
   /* Hands off since `settled`: the assist holds it on a road that bends. By the road's own path, not by `off`.
      If it has gone on across the seam, it is on the next intersection's path, and the last pose on this one is asked. */
   const lastHere = [...on.log].reverse().find((m) => m.k === k), lastPose = lastHere ? driverPose(lastHere, course) : null;
   check(on.settled != null && lastPose && nearestOn(lastPose).d < 0.5, `hands off from ${on.settled?.toFixed(1)} s, it holds the bending road: ${lastPose ? nearestOn(lastPose).d.toFixed(2) : "-"} m from that lane's own line at the last of it`);
-  check(on.acted > 100 && on.jump < 0.01 && on.swing < 4, `on no lane, entering it and re-located out of it, its pose never jumps: over ${on.acted} ticks at most ${(on.jump * 1000).toFixed(1)} mm more than a tick's travel, ${on.swing.toFixed(2)} degrees in a tick`);
+  check(on.acted > 100, `the case arose: on no lane, entering it and re-located out of it, the pose was asked on ${on.acted} ticks`);
+  check(on.slip < 0.001 && on.jump < 0.001 && on.swing < 4, `its pose never jumps: sideways beyond what the turn allows at most ${(on.slip * 1000).toFixed(3)} mm in a tick, and the distance moved along the heading within ${(on.jump * 1000).toFixed(3)} mm of the tick's travel (limit 1 mm each: the integrator is exact to about 0.1 mm), ${on.swing.toFixed(2)} degrees in a tick`);
   /* A car that never goes a lane off its line cannot tell the switch is on: 32 km/h, the mild run-wide. */
   const mildOn = abandoned(true, 32, false), mildOff = abandoned(false, 32, false);
   const sameTicks = mildOn.log.filter((m, i) => JSON.stringify(m) === JSON.stringify(mildOff.log[i])).length;
