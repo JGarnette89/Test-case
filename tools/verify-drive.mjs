@@ -175,10 +175,16 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   for (const [id, far] of [["N", { x: 500, y: 100 }], ["S", { x: 500, y: 900 }], ["E", { x: 900, y: 500 }], ["W", { x: 100, y: 500 }]]) m.roads.push(road({ id, lanes: 2, points: line(far, c), control: { start: "none", end: id === "N" || id === "S" ? "stop" : "none" } }));
   const xl = loadMap(m);
   let touches = 0, minorWaited = 0, followed = 0;
+  /* EXPOSURE, each its own line below (11 November, DECISIONS 10.70): `minorWaited` counts car-ticks, so a zero could not say
+     whether no car ever came to a stop line or cars came and did not wait. Distinct cars that came to their line while the
+     player was within reach, and distinct cars of those that sat at it; and the passes in which the player reached the box. */
+  const arrived = new Set(), waited = new Set();
+  let reached = 0;
   let w, me;
   /* Four passes through, each in a fresh world, the player entering at
      road speed where the west road begins with nobody on top of them. */
   for (let pass = 0; pass < 4; pass++) {
+    let reachedThis = false;
     w = seedGraph(4 + pass, 50, xl, { every: 0.7 });   // demand spread over twice the lanes now
     w = { ...w, actors: w.actors.filter((a) => !(a.route.startsWith("W|end#1") && a.s < 40)) };
     me = { ...startAt(w, "W|end"), v: 13.9 };
@@ -186,21 +192,38 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
     const gapAhead = (mm, ww) => Math.min(Infinity, ...ww.actors.filter((a) => !a.player && a.k === mm.k && ww.course.at[a.k].layout.paths[a.route].from === ww.course.at[mm.k].layout.paths[mm.route].from && a.s > mm.s).map((a) => a.s - mm.s - CAR.length));
     const r = drive(w, me, 60, (mm, ww) => { const g = gapAhead(mm, ww); return { steer: -(mm.off) * 0.3 - mm.psi * 3, slider: g < 12 ? -0.8 : g < 30 ? -0.2 : mm.v < 13.9 ? 0.5 : 0.05, signal: null }; }, (mm, ww) => {
       const mine = driverPose(mm, ww.course);
+      if (Math.abs(mine.x - 500) < 40) reachedThis = true;
       for (const a of ww.actors) {
         if (a.player) continue;
         const p = poseOf(ww, a);
         if (touching(mine, { x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot })) touches++;
         /* A stop-leg car at rest at its line while the player is within the box's reach: it waited. */
         const pa = ww.course.at[a.k].layout.paths[a.route];
-        if ((a.route.startsWith("N|") || a.route.startsWith("S|")) && a.v < 0.3 && Math.abs(a.s - restAt(pa, a)) < 2.5 && Math.abs(mine.x - 500) < 40) minorWaited++;
+        const stopLeg = a.route.startsWith("N|") || a.route.startsWith("S|"), inReach = Math.abs(mine.x - 500) < 40;
+        if (stopLeg && inReach && a.s <= restAt(pa, a) + 2.5 && restAt(pa, a) - a.s < 12) arrived.add(`${pass}:${a.id}`);
+        if (stopLeg && a.v < 0.3 && Math.abs(a.s - restAt(pa, a)) < 2.5 && inReach) { minorWaited++; waited.add(`${pass}:${a.id}`); }
         /* A car behind the player on the same lane, closer than its own headway would be at speed: it is following. */
         if (a.k === mm.k && pa.from === ww.course.at[mm.k].layout.paths[mm.route].from && a.s < mm.s && mm.s - a.s < 60 && a.v > 1) followed++;
       }
     });
     w = r.world; me = r.me;
+    if (reachedThis) reached++;
   }
+  /* THE FLOOR IS 1, NOT 4, AND WHY: the claim below cannot be tested with fewer than one pass in which the player is within
+     reach of the box, and the scene does not provide four -- measured 11 November: in passes 1-3 the player stood at rest
+     56-70 m short of the node for most of the 60 s, behind a standing queue on the through road (12-30 cars at rest; the
+     through road clearing 0-5 cars a 10 s; the minor roads clearing 3 cars in all four passes). Whether that congestion is
+     itself a defect is NOT established here (DECISIONS 10.70). The message reports the true count. */
+  check(reached >= 1, `the case arose (1): the player came through the box in ${reached} of 4 passes (the others were held short of it in a standing queue of through traffic)`);
+  check(arrived.size >= 1, `the case arose (2): ${arrived.size} distinct car(s) on the stop legs came to within 12 m of their line while the player was within 40 m of the box, over four passes -- a zero here is exposure, not yielding`);
   check(touches === 0, `four passes through a two-way stop on its through road, in traffic: nobody touched the player (${touches} car-ticks)`);
-  check(minorWaited > 20, `cars on the stop legs sat at their line while the player came through (${minorWaited} car-ticks)`);
+  /* A WAITING GUARD, NOT A STOPPING GUARD (found 11 November, DECISIONS 10.70). In this scene the through road's queue
+     blocks the stop-leg cars whether or not their drivers know the sign, so this line PASSES WITH NOBODY KNOWING A STOP
+     SIGN: with `knownControl` (reading.js) returning "none" for a stop, 17 cars arrived, 8 sat at their line, 2,024
+     car-ticks, all four section-5 lines ok -- while the player's own stop sections in this file failed. Whether drivers
+     STOP at a stop sign is held by verify-signs ("giving way costs less than stopping" failed under the same mutation,
+     28 yield-road crossings against 30 with stop signs). Kept for what it is: that cars on the stop legs wait. */
+  check(minorWaited > 20, `WAITING, not stopping (the through road's queue blocks them either way; stopping is verify-signs'): cars on the stop legs sat at their line while the player came through (${minorWaited} car-ticks, ${waited.size} of the ${arrived.size} cars that arrived sat at it)`);
   check(followed > 20, `and cars behind the player followed them (${followed} car-ticks)`);
   const overlapsAmongOthers = overlapping({ ...w, actors: w.actors.filter((a) => !a.player) }).length;
   check(overlapsAmongOthers === 0, "and the rest of the traffic is still not driving through itself");
