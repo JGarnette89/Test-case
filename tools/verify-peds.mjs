@@ -37,7 +37,7 @@ import { REACTION_FLOOR } from "../src/core/perception.js";
 import { walkedCrossroads, touching } from "./measure/peds.mjs";
 
 import { lookingAway } from "../src/sim/attention.js";
-import { DT, CAR } from "../src/sim/traffic.js";
+import { DT, CAR, stoppingRoom, MOST_BRAKE } from "../src/sim/traffic.js";
 import { setCrosswalk, splitRoad, addCrossing } from "../src/editor/model.js";
 
 let failed = 0;
@@ -351,14 +351,14 @@ console.log("\n6. FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (the mai
      waiting there behind the parked row. No response exists, so they must
      not step out until the player is past; a car of the traffic in the same
      spot gets no such grace. */
-  const probe = (asPlayer) => {
+  const probe = (asPlayer, gap = 7, blind = false) => {
     let pw = seedGraph(1, 50, L, { target: 0, posted: true, gapRate: 0, gapHeedless: 1 });
     const car0 = playerOn(pw.course, "a", "end");
     const path = pathOf(pw, car0);
     const cws = crosswalksOf(pw.course);
     const ahead = bandsAhead(pw, car0.k, path).filter((e) => e.cw.kind === "gap" && e.s > 120).sort((x, y) => x.s - y.s)[0];
-    const car = { ...car0, s: ahead.s - 1.5 - CAR.length / 2 - 7, v: 11, player: asPlayer, ...(asPlayer ? {} : { id: "npc-probe", n: 999, v0: 11 }) };
-    pw = { ...pw, actors: [car], peds: [{ id: "ped-probe", n: 0, cw: ahead.cw.i, from: 0, u: 0, state: "waiting", since: 0, manner: "heedless" }] };
+    const car = { ...car0, s: ahead.s - 1.5 - CAR.length / 2 - gap, v: 11, player: asPlayer, ...(asPlayer ? {} : { id: "npc-probe", n: 999, v0: 11 }) };
+    pw = { ...pw, ...(blind ? { ignorePeds: true } : {}), actors: [car], peds: [{ id: "ped-probe", n: 0, cw: ahead.cw.i, from: 0, u: 0, state: "waiting", since: 0, manner: "heedless" }] };
     let stepped = false, hit = false, me = car;
     for (let i = 0; i < 80; i++) {
       if (asPlayer) { me = stepDriver(me, { steer: 0, slider: holdAt(me.v, 0) }, pw, DT); pw = step(withDriver(pw, me)); if (pedAt(pw, driverPose(me, pw.course))) hit = true; }
@@ -369,8 +369,40 @@ console.log("\n6. FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (the mai
     return { stepped, hit };
   };
   const pl = probe(true), np = probe(false);
+  /* HOW FAR THE SCENE IS FROM THE FLIP (11 November, DECISIONS 10.70). The strike below is decided by about half a metre: the same scene
+     with the car's starting gap swept from 5 to 9 m strikes at every gap up to a threshold and at none beyond it, and the scene's 7 m is on
+     it. Measured through the seed-shift hook: native hit at 7 and miss at 7.5; +11 hit at 6.5 and miss at 7 (the failure Codex found);
+     +29 hit at 7 and miss at 7.5. The car cannot stop before the crossing in any of them, but the pedestrian, running, can clear its
+     path; whether the nose is far enough in when they arrive depends on a seed-dependent braking draw. So `np.hit` at 7 m is a knife-edge
+     asserted as a certainty. Swept here so a failure can say so; the constant is NOT changed (never tune a number to make a check pass). */
+  const sweep = [];
+  for (let g = 5; g <= 9; g += 0.5) sweep.push([g, probe(false, g).hit]);
+  const hits = sweep.filter(([, h]) => h).map(([g]) => g), misses = sweep.filter(([, h]) => !h).map(([g]) => g);
+  const outcomeAt = (g) => sweep.find(([x]) => x === g)?.[1];
+  /* A KNIFE-EDGE IS WHEN THE SCENE'S OWN GAP HAS A NEIGHBOUR WITHIN 0.5 m WITH THE OPPOSITE OUTCOME. (The first wording assumed strikes at the
+     small gaps and said "up to X m and none from Y m"; with a car that never brakes the order inverts -- the pedestrian has not reached its lane
+     yet -- and the sentence became nonsense. Listing the outcomes does not assume an order.) */
+  const edge = `strikes at ${hits.length ? hits.join(", ") + " m" : "no gap"}; none at ${misses.length ? misses.join(", ") + " m" : "no gap"} (swept 5 to 9 m)`;
+  const knife = outcomeAt(6.5) !== outcomeAt(7) || outcomeAt(7) !== outcomeAt(7.5);
   check(!pl.hit && (!pl.stepped || pl.stepped.carPast), `somebody heedless waiting behind the parked row 7 m ahead of the player at 40 km/h stays put until the player is past (${pl.stepped ? "stepped out once it was clear" : "never stepped out"}), and is not struck`);
-  check(np.stepped && np.hit, "the same person, the same place, a car of the traffic instead: they dart out and it strikes them");
+  check(!!np.stepped, `the case arose: the heedless pedestrian stepped out of the kerb (at ${np.stepped ? np.stepped.at.toFixed(2) : "-"} s) with a car of the traffic 7 m from the crossing at 11 m/s`);
+  check(np.hit, `the same person, the same place, a car of the traffic instead: they dart out and it strikes them (${edge})${!np.hit && knife ? " -- CANNOT TELL: a near miss decided by under a metre of braking; the car could not stop before the crossing, and the pedestrian cleared its path" : ""}`);
+  /* SCENE B (11 November, DECISIONS 10.70): THE SAME PERSON AND PLACE, WELL INSIDE THE AVOIDABLE RANGE, WHERE A STRIKE CAN ONLY BE THE
+     DRIVER'S FAILURE TO REACT. Scene A sits on a flip and honestly reports it; this one can actually answer the question, and is free
+     to fail. The avoidable range starts where a car at 11 m/s can stop at the most the traffic can brake, plus its reaction: derived from
+     the sim's own constants, not picked. In it, a car told to ignore people (`world.ignorePeds`, this file's controlled comparison)
+     must strike at some gaps -- or the pedestrian clears regardless and nothing was asked -- and a car that watches the road must strike
+     at none of the same gaps. Measured through the seed-shift hook at native, +11 and +29, identically: the blind control struck at 15 of
+     20 gaps (11.5 to 18.5 m), the reacting car at none, the pedestrian stepped out at every gap. THE FLOOR, from this sample: the strike
+     boundary in scene A moved by at most one 0.5 m step across those seeds, so the control must strike at 3 of the 20 gaps, two beyond
+     any one-step shift (observed 15). */
+  const gMin = stoppingRoom(11, MOST_BRAKE) + 11 * REACTION_FLOOR;
+  const rowsB = [];
+  for (let g = Math.ceil(gMin * 2) / 2; g <= gMin + 10.01; g += 0.5) { const react = probe(false, g, false), blind = probe(false, g, true); rowsB.push({ g, react, blind }); }
+  const steppedB = rowsB.filter((r) => r.react.stepped && r.blind.stepped).length, controlB = rowsB.filter((r) => r.blind.hit), reactB = rowsB.filter((r) => r.react.hit);
+  check(steppedB === rowsB.length, `the case arose (B1): the heedless pedestrian stepped out at ${steppedB} of ${rowsB.length} gaps from ${rowsB[0].g} to ${rowsB[rowsB.length - 1].g} m, the range where a car at 11 m/s can stop (from ${gMin.toFixed(1)} m)`);
+  check(controlB.length >= 3, `the case arose (B2): a car told to ignore people struck at ${controlB.length} of ${rowsB.length} of those gaps (${controlB.length ? controlB[0].g + " to " + controlB[controlB.length - 1].g + " m" : "none"}; floor 3: two beyond a one-step shift of the boundary)`);
+  check(reactB.length === 0, `and a car that watches the road, with room to stop, struck nobody at any of them (${reactB.length} struck, of the ${controlB.length} gaps where a blind one did)`);
   check(laps >= 2 && playerHits === 0, `eight minutes along a street of parked cars with people darting out, ${laps} runs end to end at 40 km/h: a player who responds in time never strikes anybody`);
   /* NOT A CHECK ANY MORE (29 September). This asserted the traffic on the
      same street DID strike somebody, and the strikes it counted turned out
