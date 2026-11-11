@@ -210,6 +210,16 @@ Eight things to know before your first change:
      not cover sample floors and instrument parameters (`[instrument]`:
      they claim nothing about drivers) or physical invariants (no two
      cars overlap). Audit and the first marking: DECISIONS 10.70.
+     **AND WHEN IN DOUBT, ASK WHETHER THE RESULT EVEN MAKES SENSE (Jay,
+     11 November): "if this checking is against a nonsensical standard
+     we are just wasting time, when in doubt seek clarification on if a
+     result even makes sense."** A check that passes at a quantity a driver
+     would call absurd is not a pass. The way to ask him is the BEHAVIOUR
+     DIGEST (DECISIONS 10.70): one page of the quantities a driver
+     recognises, in his units, at the density he plays, each marked `[M]`
+     or `[D]`, each bar shown with `[Jay]` or `[invented]`. Not built yet;
+     every probe written for merge work is asked whether its number belongs
+     in it, and the answer is in the record.
 
 4. **A CHECK HAS A BOUNDARY, AND IT IS INVISIBLE IN ITS OUTPUT.** The
    second recurring failure, three times in two days: `verify-turns`
