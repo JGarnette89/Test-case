@@ -6936,7 +6936,16 @@ A chip "Real position: off/on" beside "Sim: page/worker" on `#/map` (shown when 
 
 **MISPLACED, NOT MISSING (the maintainer's distinction, kept as the report's vocabulary):** stopping at a stop sign is guarded by `verify-signs` and not by the section-5 line that carried its name. That is a tidy-up and not a hole.
 
-### OUTSTANDING, NOT ACCEPTED: `verify-check-runner` is red on `main`
+### RESOLVED 11 NOVEMBER (was: OUTSTANDING, NOT ACCEPTED): `verify-check-runner` WAS RED ON `main`; FIXED IN THE TEST, UNDER AN EXCEPTION TO THE LANE RULE
+
+**THE EXCEPTION, AND ITS LIMITS (the maintainer, 11 November): the rule stands, `tools/` is Codex's and `src/` is mine; this crossed it once.** The grounds, any one of which being false would have made the answer no: the fix is known and tiny; `main` had been red all day and a red baseline taxes every measurement; Codex was blocked on a machine problem and not working; and nothing on either Codex branch touches the runner or its test since `5a000f3` `[M: read from the repo after a fetch]`, so there was no collision. **His condition: find out which layer is wrong before fixing anything; if it were the runner, leave `main` red and hand Codex the diagnosis ("I'd rather main stay red honestly than go green dishonestly").**
+
+**WHICH LAYER, with the evidence `[M]`:** the test's fixture. The only use of `--import`, `NODE_OPTIONS` or `execArgv` in `tools/` is the test's line 116; the runner launches checks as `[process.execPath, [c.file]]` (a script argument, which works on Windows); the failing stack has no runner frame, only Node's own loader at startup (`Received protocol 'c:'`); and every assertion before line 119 ran the runner on Windows without trouble.
+
+**THE FIX:** `pathToFileURL(clock).href` for the `--import` argument, with a comment saying why. Nothing in the runner changed. **VERIFIED BY READING THE LINE `[M]`:** `TIMEOUT verify-probe 0 s -- killed after 1200 s (1,200 s cap); assertions incomplete` is printed, and `verify-check-runner` exits 0. **Sabotaged, lines read:** the runner exiting 0 on a timeout fails at test line 77 (through `run()`), and a 900 s cap fails the policy unit test; **both fire BEFORE lines 118 and 119, so those two are redundant with earlier assertions and were not individually exercised.** `CODEX-NOTE-verify-check-runner.md` is rewritten as a handover: the cause stated as a measured fact (no longer a candidate), the layer, the fix, and what the verification does and does not show.
+
+**The original record of the red, kept as history:**
+
 
 On `origin/main` at `5a000f3`, Windows 11, Node v24.19.0, **reproduced on a pristine detached worktree with no merge involved**: `check-runner-test.mjs:119` fails because the child's stdout is empty. Root cause, checked directly: line 116 passes `--import` a bare Windows path, which Node on Windows refuses (`ERR_UNSUPPORTED_ESM_URL_SCHEME`), so the child dies before the runner starts. Line 118's `status === 1` passes for the wrong reason, since a crash also exits 1. Suggested fix: `pathToFileURL(clock).href`. The full write-up is `CODEX-NOTE-verify-check-runner.md`. **It is Codex's work and Codex's lane and was not fixed here.** A red check on `main` is the condition this project has said repeatedly it cannot work in, because every later verification is measured against a broken baseline. It is tools-side, not simulation-side, so the world is sound, but it should not sit. It will show red in any derived run that reaches `tools/`.
 

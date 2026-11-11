@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { budgetFor, outcomeOf } from "./check-policy.mjs";
 import { affected, checks } from "./affected.mjs";
 
@@ -113,7 +113,8 @@ writeFileSync(probe, 'console.log("cap fixture"); setInterval(() => {}, 1000);\n
 const clock = join(dir, "fast-clock.mjs");
 writeFileSync(clock, 'const real = globalThis.setTimeout; globalThis.setTimeout = (fn, ms, ...args) => real(fn, ms >= 90000 ? 100 : ms, ...args);\n');
 seed(1000);
-const capped = spawnSync(process.execPath, ["--import", clock, join(dir, "check.mjs"), "verify-probe"], { cwd: root, encoding: "utf8", timeout: 10000 });
+// `--import` takes a module specifier, and on Windows a bare drive-letter path is not one: it is read as the URL scheme "c:" and the child dies before the runner starts (11 November, DECISIONS 10.70). A file URL works everywhere.
+const capped = spawnSync(process.execPath, ["--import", pathToFileURL(clock).href, join(dir, "check.mjs"), "verify-probe"], { cwd: root, encoding: "utf8", timeout: 10000 });
 assert.ifError(capped.error);
 assert.equal(capped.status, 1, capped.stderr);
 assert.match(capped.stdout, /TIMEOUT.*1200 s \(1,200 s cap\)/);
