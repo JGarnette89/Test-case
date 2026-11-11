@@ -50,13 +50,23 @@ const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (
    the wait); STARVATION (the ratio under 0.5 for most of the wait with the through traffic moving); else MIXED. ONE joiner over a minute is one draw
    and is CANNOT TELL. */
 const quant = (xs, q) => { const a = xs.slice().sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(q * a.length))] : NaN; };
-function diagnose(probe, id, secs, over, joiners) {
+function diagnose(probe, id, secs, over, joiners, maxStand) {
   const pr = probe.get(id);
   if (!pr) return "no waiter";
   const rs = pr.ratios, n = rs.length || 1, hs = pr.heads;
   const low = rs.filter((x) => x < 0.5).length / n, mid = rs.filter((x) => x >= 0.5 && x < 1).length / n, holdS = rs.filter((x) => x >= 1).length * 0.05, jam = pr.jam / n;
-  const cls = over < 2 ? `CANNOT TELL: ${over} of ${joiners} joiners over a minute is one draw` : holdS >= 5 ? "HOLD" : mid > 0.5 && pr.kappa >= 1.2 ? "DEMAND" : jam > 0.5 ? "JAM" : low > 0.5 ? "STARVATION" : "MIXED";
-  return `longest waiter ${secs.toFixed(0)} s, kappa ${pr.kappa.toFixed(2)}, ${pr.stalled} stalled ticks (merge plan null on ${Math.round((100 * pr.planNull) / Math.max(1, pr.stalled))}%); offered/needed ratio p10 ${quant(rs, 0.1).toFixed(2)} p50 ${quant(rs, 0.5).toFixed(2)} p90 ${quant(rs, 0.9).toFixed(2)} (under 0.5 for ${Math.round(100 * low)}%, 0.5 to 1 for ${Math.round(100 * mid)}%, 1 or more for ${holdS.toFixed(1)} s); through neighbours both standing ${Math.round(100 * jam)}%; ${hs.length} through-car headways seen (median ${hs.length ? quant(hs, 0.5).toFixed(1) : "-"} s) => ${cls}`;
+  const normalS = pr.rNormal.filter((x) => x >= 1).length * 0.05, boldS = pr.rBold.filter((x) => x >= 1).length * 0.05;
+  const queuedBehind = pr.planNull / Math.max(1, pr.stalled) > 0.5;
+  /* THE CAUSE, read from the longest waiter: HOLD (a gap at its own demand on offer for 5 s or more and not taken); QUEUED BEHIND (no merge plan for
+     most of the wait: it was not asking); DEMAND (not a hold, but a NORMAL driver, kappa 1, would have found a gap for 5 s or more: the joiner's
+     own demand is what kept it); JAM (the through neighbours themselves standing); STARVATION (the stream offered this driver almost nothing, and a
+     normal driver would not have gone either); else MIXED. THE DEMAND TEST WAS REWRITTEN after the first runs (DECISIONS 10.70): it was "the ratio
+     at the joiner's own kappa between 0.5 and 1 for most of the wait and kappa 1.2 or more", which could not tell a timid joiner facing a bare
+     stream from a demanding one. */
+  const read = holdS >= 5 ? "HOLD" : queuedBehind ? "QUEUED BEHIND" : normalS >= 5 ? "DEMAND" : jam > 0.5 ? "JAM" : low > 0.5 ? "STARVATION" : "MIXED";
+  const cls = over < 2 ? `CANNOT TELL (gate: ${over} of ${joiners} joiners over a minute is one draw); read from this waiter alone: ${read}` : read;
+  const waits = [...maxStand.values()].sort((x, y) => x - y), wq = (q) => (waits.length ? waits[Math.min(waits.length - 1, Math.floor(q * waits.length))] : 0);
+  return `longest waiter ${secs.toFixed(0)} s, kappa ${pr.kappa.toFixed(2)}, ${pr.stalled} stalled ticks (merge plan null on ${Math.round((100 * pr.planNull) / Math.max(1, pr.stalled))}%); offered/needed at its own kappa p10 ${quant(rs, 0.1).toFixed(2)} p50 ${quant(rs, 0.5).toFixed(2)} p90 ${quant(rs, 0.9).toFixed(2)} (under 0.5 for ${Math.round(100 * low)}%, 0.5 to 1 for ${Math.round(100 * mid)}%, 1 or more for ${holdS.toFixed(1)} s); A NORMAL DRIVER (kappa 1) WOULD HAVE FOUND A GAP FOR ${normalS.toFixed(1)} s, A BOLD ONE (kappa 0.3) FOR ${boldS.toFixed(1)} s; through neighbours both standing ${Math.round(100 * jam)}%; ${hs.length} through-car headways seen (median ${hs.length ? quant(hs, 0.5).toFixed(1) : "-"} s); ALL JOINERS' WAITS: ${waits.length} stood at all, median ${wq(0.5).toFixed(1)} s, p90 ${wq(0.9).toFixed(1)} s, p99 ${wq(0.99).toFixed(1)} s, ${waits.filter((x) => x > 20).length} over 20 s, ${waits.filter((x) => x > 60).length} over 60 s => ${cls}`;
 }
 const med = (xs) => { const a = xs.slice().sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : NaN; };
 
@@ -118,7 +128,7 @@ for (const cars of [60, 150, 300]) {
         if (t > longest) { longest = t; longestId = a.id; }
         maxStand.set(a.id, Math.max(maxStand.get(a.id) ?? 0, t));
         let pr = probe.get(a.id);
-        if (!pr) { pr = { kappa: kappaOf(a), stalled: 0, planNull: 0, ratios: [], jam: 0, heads: [], lastAhead: undefined, tLast: null }; probe.set(a.id, pr); }
+        if (!pr) { pr = { kappa: kappaOf(a), stalled: 0, planNull: 0, ratios: [], rNormal: [], rBold: [], jam: 0, heads: [], lastAhead: undefined, tLast: null }; probe.set(a.id, pr); }
         pr.stalled++;
         const mp = mergePlan(w, a, L, p, to);
         if (!mp) pr.planNull++;
@@ -126,6 +136,11 @@ for (const cars of [60, 150, 300]) {
           const nb = mp.best.nb;
           const lead = nb.ahead ? clearBetween(nb.da, a, nb.ahead) : Infinity, lag = nb.behind ? clearBetween(nb.db, nb.behind, a) : Infinity;
           pr.ratios.push(Math.min(3, lead / leadNeed(a, nb.ahead, pr.kappa), lag / lagNeed(a, nb.behind, pr.kappa)));
+          /* THE SAME GAPS AT OTHER DRIVERS' DEMAND (added after the DEMAND sabotage failed to read as DEMAND: a ratio at the joiner's OWN kappa is
+             always low for a timid joiner and cannot tell a stream that offers little from a driver who asks for too much). WOULD A NORMAL OR A
+             BOLD DRIVER HAVE GONE? */
+          pr.rNormal.push(Math.min(3, lead / leadNeed(a, nb.ahead, 1.0), lag / lagNeed(a, nb.behind, 1.0)));
+          pr.rBold.push(Math.min(3, lead / leadNeed(a, nb.ahead, 0.3), lag / lagNeed(a, nb.behind, 0.3)));
           const near = [nb.ahead, nb.behind].filter(Boolean);
           if (near.length && near.every((c) => (c.v ?? 0) < 2)) pr.jam++;
           const ahead = nb.ahead?.id ?? null;
@@ -147,7 +162,7 @@ for (const cars of [60, 150, 300]) {
   check(pastClose === 0 && lost === 0, `  and nobody past the start of an acceleration lane's taper (${pastClose} car-ticks), nobody lost at a seam still in one (${lost})`);
   ran[ran.length - 1].longest = longest;
   { const over = [...maxStand.values()].filter((x) => x > 60).length, r = ran[ran.length - 1];
-    r.joiners = ids.size; r.over = over; r.diag = diagnose(probe, longestId, longest, over, ids.size); }
+    r.joiners = ids.size; r.over = over; r.diag = diagnose(probe, longestId, longest, over, ids.size, maxStand); }
 }
 
 console.log("\n3. IT IS A MERGE, AND THE DRIVER SHOWS IN IT");
