@@ -18,6 +18,7 @@ import { newEncounters, encounterTick, MERGE } from "../src/sim/encounters.js";
 import { goodStep } from "./lib/good-driver.mjs";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { DT } from "../src/sim/traffic.js";
+import { poseOnGraph } from "../src/sim/graph.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -52,7 +53,14 @@ console.log("\nMERGES JUDGED: EVERY LANE CHANGE NEAR A CAR, ON AN APPROACH OR AN
       if ((was.k ?? 0) !== (me.k ?? 0) || was.route === me.route || !p || !q) continue;
       if (me.s > p.stopAt && me.s < p.clearAt) continue;
       if (L.legs[q.to]?.accel && !L.legs[p.to]?.accel) continue;
-      const mp = poseOf(w, me), h = ((mp.rot ?? 0) * Math.PI) / 180, fx = Math.cos(h), fy = Math.sin(h);
+      /* IN LINE WITH THE LANE JOINED, NOT WITH THE CAR'S BODY (11 November, DECISIONS 10.67). At the tick a lane
+         change is filed the player's centre is ON the line between the two lanes -- that is what files it -- so
+         "in line with the player" by their own pose is half a lane from every car in the lane they joined, and
+         at an angle. This read the traffic's poseOf of the player, which until 10.67 had no player's case and
+         returned the route's centreline: the lane joined, by accident. With the player's real pose it counted
+         12 events where it had counted 15, and the counter (unchanged, 20) "missed" three. Stated now as what
+         it meant: the joined lane's own line at the player's distance along (graph.js poseOnGraph). */
+      const mp = poseOnGraph(w.course, me.k ?? 0, me.route, me.s), h = ((mp.rot ?? 0) * Math.PI) / 180, fx = Math.cos(h), fy = Math.sin(h);
       const near = w.actors.some((a) => {
         if (a.player) return false;
         const ap = poseOf(w, a), dx = ap.x - mp.x, dy = ap.y - mp.y;
