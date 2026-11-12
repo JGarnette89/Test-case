@@ -3017,6 +3017,9 @@ function warmed(w0, acrossIt) {
   const { past: _warm, fill: _fill, ...rebased } = w;
   return {
     ...rebased, t: 0, tick: 0, nextAt: Math.max(0, w.nextAt - shift),
+    /* ...and the crash list begins empty: each crash in it carries `t` on the warm-up's clock (74 s into a world whose clock reads 0), and a probe or a screen counting the list would count crashes from before the
+       world began. The wreck itself stays on the road, as an actor; only the log of the past is dropped, on the same principle as `past` above (verify-crashes section 5; DECISIONS 10.70). */
+    ...(w.crashes?.length ? { crashes: [] } : {}),
     /* ...and the lights: an actuated light's instants move back with it, and
        a coordinated one carries the shift on its own clock, so no light
        changes under the rebase (one went green to red with no amber, under

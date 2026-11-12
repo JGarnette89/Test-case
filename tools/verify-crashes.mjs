@@ -84,6 +84,20 @@ console.log("\n4. TRAFFIC THAT NEVER CRASHED STILL DOES NOT");
   check(cars.length === 0, `the default city, perception off, two minutes at 200 cars: ${cars.length} crashes between vehicles (${(w.crashes ?? []).length - cars.length} people struck, verify-peds' business)`);
 }
 
+console.log("\n5. A WORLD'S CRASH LIST BEGINS WITH ITS CLOCK (12 November, DECISIONS 10.70)");
+{
+  /* THE KNOWN CASE: the endless loop at 260 cars, seed 3, in the played configuration, has two cars crash DURING THE WARM-UP on the on-7 slip road (a queue of 17 stands behind them). `warmed` put the clock back
+     to zero and left the crash list as it was, so every probe counting `w.crashes` counted a crash from before its own window, with a time in the world's future, and the screen could open on a crash the
+     player never saw. The list begins empty; the wreck stays, as an actor. [instrument: the case is a measured one, found by describing each crash, tools/measure/warmup-crashes.mjs] */
+  const loop = loadMap(TEST_MAPS.find((t) => t.id === "test-loop").build());
+  let w = seedGraph(3, 50, loop, { target: 260, posted: true, brakeReaction: true, walkers: true, rivals: true });
+  const wrecks = w.actors.filter((x) => x.crash).length;
+  check((w.crashes ?? []).length === 0, `a world opens with no crash in its list, though the warm-up crashed two cars: ${(w.crashes ?? []).length} logged at t = ${w.t}`);
+  check(wrecks >= 2, `and the wreck is still on the road, as an actor: ${wrecks} crashed cars standing at t = 0`);
+  for (let i = 0; i < 5 / DT; i++) w = step(w);
+  check((w.crashes ?? []).every((c) => c.t >= 0 && c.t <= w.t + 1e-9), `and every crash logged lies inside the clock that is running: ${(w.crashes ?? []).length} logged, latest at ${(w.crashes ?? []).reduce((m, c) => Math.max(m, c.t), 0).toFixed(2)} s of ${w.t.toFixed(2)}`);
+}
+
 console.log(`\n${"=".repeat(70)}`);
 console.log(failed ? `${failed} FAILURE(S)` : "OK: contact is a crash that stops both cars, is logged, stands and is cleared; no two cars overlap unless it is a recorded crash; the player's contact crashes the other car; and traffic that never crashed still does not.");
 process.exit(failed ? 1 : 0);
