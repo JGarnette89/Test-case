@@ -31,6 +31,7 @@ import { Play, Pause, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { groundFor } from "../map/load.js";
 import { step, poseOf, carriedWorld, carriedPose, DT } from "../sim/crossing.js";
+import { newBody, beginBodyFrame, endBodyFrame, bodyOf } from "../iso/body.js";
 import { stepDriver, driverPose, carriedPlayer, withDriver, aheadOf, playerHonk, headwayOf, followTarget } from "../sim/drive.js";
 import { worldFor, playerContact, START } from "../sim/scene.js";
 import { remoteSim, merge } from "../sim/remote.js";
@@ -116,30 +117,33 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
    colour. */
 /* What the game notices and says, and where the player is going: sim/session.js. */
 
-export function actorsOf(scene, carry) {
-  const w = scene.world, wc = carriedWorld(w, carry);   // the world at the carried time, once a frame: a lane change's sideways motion is read there too (crossing.js carriedPose)
+/* `body`: the body-motion memory (iso/body.js newBody, with this frame's `dt` on it), or null for no body motion. */
+export function actorsOf(scene, carry, body = null) {
+  const w = scene.world, wc = carriedWorld(w, carry);
+  if (body) beginBodyFrame(body);   // the world at the carried time, once a frame: a lane change's sideways motion is read there too (crossing.js carriedPose)
   /* Parked cars first: they are part of the world the traffic drives past
      and the player can hit (sim/parking.js). */
   const out = w.parked ? parkedPoses(w.course, w.parked).slice() : [];   // the cached poses are shared (parking.js): copy before adding
   for (const a of w.actors) {
     if (a.shadow) continue;   // the player's body in a lane, for the traffic (drive.js shadowsOf): not a car to draw
     if (a.player) {
-      const p = driverPose(carriedPlayer(a, carry), w.course);
+      const p = driverPose(carriedPlayer(a, carry), w.course), bd = body ? bodyOf(body, w, a, carry, body.dt) : null;
       /* The player's lamps: the turn tap IS their signal, and the brake lamp follows the car slowing as theirs does. */
-      out.push({ id: a.id, n: -1, ...p, colour: "#f4f4f2", player: true, reversing: !!a.backing, blinker: a.signal ?? null, brakeLamp: (a.a ?? 0) < -0.6 || (a.v ?? 0) < 0.1, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null });
+      out.push({ id: a.id, n: -1, ...p, colour: "#f4f4f2", player: true, reversing: !!a.backing, blinker: a.signal ?? null, brakeLamp: (a.a ?? 0) < -0.6 || (a.v ?? 0) < 0.1, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null, ...(bd ? { body: bd } : {}) });
       continue;
     }
-    const p = carriedPose(wc, a, carry);
+    const p = carriedPose(wc, a, carry), bd = body ? bodyOf(body, w, a, carry, body.dt) : null;
     /* A CRASHED car flashes its hazards: orange and dark, twice a second,
        so a wreck is never just another stopped car. */
     const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;
-    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, look: a.look ?? null, blinker: a.blinker ?? null, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null, courtesy: !!(a.courtesy && !a.courtesy.done && a.courtesy.forPlayer), name: a.rival ?? null });
+    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, look: a.look ?? null, blinker: a.blinker ?? null, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null, courtesy: !!(a.courtesy && !a.courtesy.done && a.courtesy.forPlayer), name: a.rival ?? null, ...(bd ? { body: bd } : {}) });
   }
   /* PEOPLE ON FOOT (sim/peds.js): waiting at the curb or crossing. */
   for (const q of w.peds ?? []) out.push({ id: q.id, n: q.look ?? q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });
   /* And the people walking along (sim/walkers.js), drawn exactly as the
      ones who cross: nothing tells you which is which until one steps off. */
   for (const q of w.walkers ?? []) out.push({ id: q.id, n: q.look ?? q.n, ...walkerPose(w, q), ped: true });
+  if (body) endBodyFrame(body);
   return out;
 }
 
@@ -186,6 +190,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
      ruling). Whichever is on holds the other chip off. */
   const [realPos, setRealPos] = useState(false);
   const realRef = useRef(false);
+  /* BODY MOTION (iso/body.js, DECISIONS 10.70): the car leans, dives and squats. Off by default, a switch on the debug chips so it can be compared; page-side, no restart. */
+  const [bodyOn, setBodyOn] = useState(false);
+  const bodyRef = useRef(false), bodyMem = useRef(null);
   /* THE WALLET (sim/money.js): loaded once, carried from scene to scene; a fare paid is written by the session. */
   const walletRef = useRef(null);
   const mailRef = useRef(null);
@@ -275,6 +282,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const ck = s.checksOn === true;
       const mt = [2, 2.5, 3].includes(Number(s.mergeTol)) ? Number(s.mergeTol) : 0;
       /* A saved real position wins over a saved worker: the worker stays off and the page steps (10.70). */
+      if (s.bodyMotion === true) { bodyRef.current = true; setBodyOn(true); }
       const wantReal = s.realPos === true;
       if (wantReal) { realRef.current = true; setRealPos(true); }
       if (s.simWorker === true && !wantReal && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look, sh, ck); return; }
@@ -417,7 +425,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
 
       const tSim1 = performance.now();
       const carry = playing ? (sc.remote ? carryOf(sc.pace ?? newPace()) : owed.current) : 0;
-      const actors = actorsOf(sc, carry);
+      let bodyArg = null;
+      if (bodyRef.current) { bodyMem.current ??= newBody(); bodyArg = bodyMem.current; bodyArg.dt = dt; } else bodyMem.current = null;
+      const actors = actorsOf(sc, carry, bodyArg);
       const tPoses = performance.now();
 
       /* THE CAMERA. Driving: the chase camera (iso/chase.js), behind
@@ -862,6 +872,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             title="the most a merge asks for, in seconds of the traffic's speed (Jay: 'within that typical 2-3s gap' around a merge; DECISIONS 10.70): off by default; taps cycle off, 2, 2.5, 3"
             onClick={() => { const next = mergeTol === 0 ? 2 : mergeTol === 2 ? 2.5 : mergeTol === 2.5 ? 3 : 0; setSetting("mergeTol", next); restart(seed, limit, mode, cars, lookAway, shapeOn, checksOn, next); }}>
             {mergeTol ? `Merge tolerance: ${mergeTol} s` : "Merge tolerance: off"}</button>
+          <button className="btn" style={{ ...S.chip, borderColor: bodyOn ? C.amber : "rgba(255,255,255,0.12)", color: bodyOn ? C.white : DIM }}
+            title="body motion (iso/body.js, DECISIONS 10.70): cars lean into corners, dive under braking and squat under power -- the same system for every vehicle kind, over the top on purpose (Jay: easier to say 'too much'); off by default"
+            onClick={() => { const on = !bodyOn; bodyRef.current = on; setBodyOn(on); setSetting("bodyMotion", on); }}>
+            {bodyOn ? "Body motion: on" : "Body motion: off"}</button>
           {/* Only where the map asks to be shaped: off to read the same build unshaped (DECISIONS 10.17's comparison). A restart, as look-away is. */}
           {scene.current?.loaded?.traffic?.shape && (
             <button className="btn" style={{ ...S.chip, borderColor: shapeOn ? C.amber : "rgba(255,255,255,0.12)", color: shapeOn ? C.white : DIM }}

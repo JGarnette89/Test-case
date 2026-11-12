@@ -88,19 +88,43 @@ const PED_COLOURS = ["#3a6fd8", "#d85a3a", "#2e9a5a", "#9a4fd0", "#d8b43a"];
    as ONE flat array, x y z for corner 0, then 1, and so on: a box was
    nine objects, and every car is two boxes every frame. */
 const CORNER = [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0, -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1];
-function boxCorners(at, deg, grade, box, lift = 0) {
-  const a = (deg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
-  const pitch = Math.atan(grade), cp = Math.cos(pitch), sp = Math.sin(pitch);
-  const out = new Float64Array(24);
+function boxCorners(at, deg, grade, box, lift = 0, bm = null) {
+  const out = new Float64Array(24), T = frameOf(deg, grade, bm);
   for (let i = 0; i < 8; i++) {
     const u = CORNER[3 * i], v = CORNER[3 * i + 1], w = CORNER[3 * i + 2];
-    const fx = (u * box.l) / 2 - (box.back ?? 0), fy = (v * box.w) / 2, fz = lift + w * box.h;
-    /* pitch about the lateral axis: forward rises with the grade */
-    const px = fx * cp - fz * sp, pz = fx * sp + fz * cp;
-    out[3 * i] = at.x + px * c - fy * s; out[3 * i + 1] = at.y + px * s + fy * c; out[3 * i + 2] = at.z + pz;
+    placeInto(out, 3 * i, at, T, (u * box.l) / 2 - (box.back ?? 0), (v * box.w) / 2, lift + w * box.h);
   }
   return out;
 }
+/* THE BODY'S TRANSFORM, ONE FUNCTION (13 November, DECISIONS 10.70): a point in the body's own frame (forward, right, up from its base) to the world, through
+   a roll about the forward axis at the roll centre's height (right side down for a positive roll), then a pitch about the lateral axis (nose up positive: the
+   grade's, and the body's), then the heading. `bm` = { roll, pitch, pivot, drop }: `drop` lifts the whole body so its lowest corner rests on the road (the
+   wheels are on the ground and the body turns about the axle line; without it a pitched nose or a rolled side would sink into the road). With no `bm` the
+   arithmetic is the old pitch-and-heading one, exactly. Boxes and lamps both go through it, or a lamp would float off a body that leans. */
+function frameOf(deg, grade, bm) {
+  const a = (deg * Math.PI) / 180, pitch = Math.atan(grade) + (bm ? bm.pitch : 0);
+  return { c: Math.cos(a), s: Math.sin(a), cp: Math.cos(pitch), sp: Math.sin(pitch), cr: bm ? Math.cos(bm.roll) : 1, sr: bm ? Math.sin(bm.roll) : 0, pv: bm ? bm.pivot : 0, drop: bm ? bm.drop ?? 0 : 0, roll: !!bm };
+}
+function placeInto(out, o, at, T, fx, fy, fz) {
+  let ry = fy, rz = fz;
+  if (T.roll) { const dz = fz - T.pv; ry = fy * T.cr + dz * T.sr; rz = T.pv + dz * T.cr - fy * T.sr; }
+  const px = fx * T.cp - rz * T.sp, pz = fx * T.sp + rz * T.cp;
+  out[o] = at.x + px * T.c - ry * T.s; out[o + 1] = at.y + px * T.s + ry * T.c; out[o + 2] = at.z + pz + T.drop;
+}
+const BP = new Float64Array(3);
+/* One point of a body, for what is drawn ON it (lamps, the driver's head). */
+export function bodyPoint(at, deg, grade, bm, fx, fy, fz) { placeInto(BP, 0, at, frameOf(deg, grade, bm), fx, fy, fz); return { x: BP[0], y: BP[1], z: BP[2] }; }
+/* How far to lift a leaning body so that its lowest point rests on the road (the corners of the boxes given, lifted by `lifts`). */
+export function dropFor(at, deg, grade, bm, boxes) {
+  const T = frameOf(deg, grade, { ...bm, drop: 0 }), o = new Float64Array(3);
+  let low = 0;
+  for (const [box, lift] of boxes) for (let i = 0; i < 8; i++) {
+    placeInto(o, 0, at, T, (CORNER[3 * i] * box.l) / 2 - (box.back ?? 0), (CORNER[3 * i + 1] * box.w) / 2, lift + CORNER[3 * i + 2] * box.h);
+    low = Math.min(low, o[2] - at.z);
+  }
+  return -low;
+}
+export { boxCorners };
 /* Corner i of a box as a point, for the few places that want one. */
 const cornerOf = (b, i) => ({ x: b[3 * i], y: b[3 * i + 1], z: b[3 * i + 2] });
 /* Faces as corner indices, wound so the normal points outward. */
@@ -148,10 +172,10 @@ function paintBox(ctx, view, b, colour) {
    step from car to car so a queue does not blink in unison. `a` carries
    `brakeLamp` and `blinker` (sim/crossing.js); `L`, `W` the footprint,
    `rearZ`/`frontZ` the height of the top at each end. */
-function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t) {
+function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t, bm = null) {
   const h = (deg * Math.PI) / 180, fx = Math.cos(h), fy = Math.sin(h), rx = -fy, ry = fx;   // forward, and the right of travel
   const r = Math.max(2.2, 0.28 * k);
-  const spot = (along, across, z) => view.into(at.x + fx * along + rx * across, at.y + fy * along + ry * across, at.z + z, PT);
+  const T = frameOf(deg, 0, bm), spot = (along, across, z) => { placeInto(BP, 0, at, T, along, across, z); return view.into(BP[0], BP[1], BP[2], PT); };   // through the body's transform (one frame a car, no garbage a lamp), which with no body motion is the heading alone
   const dot = (p, rad, fill) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(p[0], p[1], rad, 0, 2 * Math.PI); ctx.fill(); };
   const back = -L / 2 + 0.35, front = L / 2 - 0.35, side = W / 2 - 0.3;
   /* Unrolled: an array literal and its destructuring per lamp, per car, per frame was garbage for nothing. */
@@ -873,9 +897,10 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
        windows along it, from the vehicle's own dimensions. */
     if (a.kind === "bus") {
       const L = a.length ?? 12.2, W = a.width ?? 2.6, H = a.height ?? 3.2;
-      const body = boxCorners(at, deg, 0, { l: L, w: W, h: H });
-      const glass = boxCorners(at, deg, 0, { l: L - 0.6, w: W + 0.04, h: 0.9 }, H - 1.4);
-      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, a.crashed ? colour : C.bus); if (!flat) paintBox(ctx, view, glass, "#2a3340"); if (!a.crashed) paintLamps(ctx, view, a, at, deg, L, W, H, H, k, scene.t ?? 0); } });
+      const bmx = a.body ? { ...a.body, drop: dropFor(at, deg, 0, a.body, [[{ l: L, w: W, h: H }, 0]]) } : null;
+      const body = boxCorners(at, deg, 0, { l: L, w: W, h: H }, 0, bmx);
+      const glass = boxCorners(at, deg, 0, { l: L - 0.6, w: W + 0.04, h: 0.9 }, H - 1.4, bmx);
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, a.crashed ? colour : C.bus); if (!flat) paintBox(ctx, view, glass, "#2a3340"); if (!a.crashed) paintLamps(ctx, view, a, at, deg, L, W, H, H, k, scene.t ?? 0, bmx); } });
       return;
     }
     if (a.kind === "truck") {
@@ -883,15 +908,17 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const cabL = 2.2, boxL = L - cabL - 0.2;
       const box = { l: boxL, w: W, h: H, back: (L - boxL) / 2 }, cab = { l: cabL, w: W - 0.1, h: H * 0.8, back: -(L - cabL) / 2 };
       const rad = (deg * Math.PI) / 180, along = (d) => ({ x: at.x + Math.cos(rad) * d, y: at.y + Math.sin(rad) * d, z: at.z });
-      const parts = [[boxCorners(at, deg, 0, box), "#e9e6df", along(-box.back)], [boxCorners(at, deg, 0, cab), colour, along(-cab.back)]]
+      const bmx = a.body ? { ...a.body, drop: dropFor(at, deg, 0, a.body, [[box, 0], [cab, 0]]) } : null;
+      const parts = [[boxCorners(at, deg, 0, box, 0, bmx), "#e9e6df", along(-box.back)], [boxCorners(at, deg, 0, cab, 0, bmx), colour, along(-cab.back)]]
         .sort((p, q) => depthOf(p[2].x, p[2].y, p[2].z) - depthOf(q[2].x, q[2].y, q[2].z));
-      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { for (const [c, col] of parts) paintBox(ctx, view, c, col); if (!a.crashed) paintLamps(ctx, view, a, at, deg, L, W, H, H * 0.8, k, scene.t ?? 0); } });
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { for (const [c, col] of parts) paintBox(ctx, view, c, col); if (!a.crashed) paintLamps(ctx, view, a, at, deg, L, W, H, H * 0.8, k, scene.t ?? 0, bmx); } });
       return;
     }
-    const body = boxCorners(at, deg, 0, BODY);
-    const cabin = boxCorners(at, deg, 0, CABIN, BODY.h);
+    const bmx = a.body ? { ...a.body, drop: dropFor(at, deg, 0, a.body, [[BODY, 0], [CABIN, BODY.h]]) } : null;
+    const body = boxCorners(at, deg, 0, BODY, 0, bmx);
+    const cabin = boxCorners(at, deg, 0, CABIN, BODY.h, bmx);
     /* Between the two tiers a car is its body alone: the cabin is a few pixels. */
-    items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, colour); if (!flat) paintBox(ctx, view, cabin, colour); if (!a.crashed) paintLamps(ctx, view, a, at, deg, a.length ?? BODY.l, a.width ?? BODY.w, BODY.h, BODY.h, k, scene.t ?? 0); } });
+    items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, colour); if (!flat) paintBox(ctx, view, cabin, colour); if (!a.crashed) paintLamps(ctx, view, a, at, deg, a.length ?? BODY.l, a.width ?? BODY.w, BODY.h, BODY.h, k, scene.t ?? 0, bmx); } });
   };
   for (const a of actors) {
     if (!onScreen(a.x, a.y, a.z ?? 0)) continue;
