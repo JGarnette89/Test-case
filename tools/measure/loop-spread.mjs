@@ -3,7 +3,9 @@
      sd of the speeds                      (the quantity the check reads);
      sd of the WANTED speeds (v0)          (what drivers want: the spread that is a feature);
      the mean shortfall v0 - v and the share of samples under 80% and under 60% of the wanted speed (traffic holding a car back: the spread that is a symptom);
-     the sd among the samples NOT held back (v >= 0.8 v0); and by lane (curb 0, middle 1, left 2): n, mean speed, mean wanted speed, sd.
+     the sd among the samples NOT held back (v >= 0.8 v0); and by lane (0 = the LEFT lane of travel, 1 = middle, 2 = the CURB lane: `verify-loop` section 1, "lane 0 to the left of travel"; an earlier version of this comment had it
+     the other way round): n, mean speed, mean wanted speed, sd; and the LANE OCCUPANCY SHARES (the maintainer's third hypothesis: a spread floor can fail with nobody held back, by the population bunching into fewer lanes),
+     for minute 14 to 15 and for the WHOLE RUN (every 5 s from 2 minutes on), so a drift in where cars sit is visible.
    Usage: node tools/measure/loop-spread.mjs   (run in the tree under test). Prints one JSON line. Asserts nothing. */
 import { loadMap } from "../../src/map/load.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
@@ -14,7 +16,8 @@ import { pathOf } from "../../src/sim/crossing.js";
 const loaded = loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build());
 const onLoop = (w, a) => { const p = pathOf(w, a), L = w.course.at[a.k ?? 0].layout; return /^loop-/.test(L.legs[p.from]?.road ?? "") && /^loop-/.test(L.legs[p.to]?.road ?? ""); };
 let w = seedGraph(1, 50, loaded, { target: 200, posted: true });
-while (w.t < 840) w = step(w);
+const whole = [0, 0, 0]; let tick = 0;
+while (w.t < 840) { w = step(w); if (w.t >= 120 && ++tick % 100 === 0) for (const a of w.actors) { if (!onLoop(w, a)) continue; const ln = +(String(pathOf(w, a).from).split("#")[1] ?? 0); if (ln >= 0 && ln <= 2) whole[ln]++; } }
 const S = [];
 for (let i = 0; i < 60 / DT; i++) {
   w = step(w);
@@ -25,4 +28,5 @@ const sd = (xs) => { const m = xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.le
 const mean = (xs) => +(xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length)).toFixed(1);
 const free = S.filter((s) => s.v >= 0.8 * s.v0);
 const lanes = {}; for (const l of [0, 1, 2]) { const g = S.filter((s) => s.lane === l); lanes[l] = { n: g.length, meanV: mean(g.map((s) => s.v)), meanWanted: mean(g.map((s) => s.v0)), sdV: sd(g.map((s) => s.v)) }; }
-console.log(JSON.stringify({ samples: S.length, sdSpeed: sd(S.map((s) => s.v)), sdWanted: sd(S.map((s) => s.v0)), meanShortfallKmh: mean(S.map((s) => s.v0 - s.v)), shareUnder80pcOfWanted: +(S.filter((s) => s.v < 0.8 * s.v0).length / Math.max(1, S.length)).toFixed(3), shareUnder60pcOfWanted: +(S.filter((s) => s.v < 0.6 * s.v0).length / Math.max(1, S.length)).toFixed(3), sdAmongNotHeldBack: sd(free.map((s) => s.v)), nNotHeldBack: free.length, lanes }));
+const shareOf = (xs) => { const t = xs.reduce((a, b) => a + b, 0) || 1; return xs.map((x) => +(x / t).toFixed(3)); };
+console.log(JSON.stringify({ laneShares_leftMiddleCurb: { minute14to15: shareOf([0, 1, 2].map((l) => S.filter((x) => x.lane === l).length)), wholeRun: shareOf(whole) }, samples: S.length, sdSpeed: sd(S.map((s) => s.v)), sdWanted: sd(S.map((s) => s.v0)), meanShortfallKmh: mean(S.map((s) => s.v0 - s.v)), shareUnder80pcOfWanted: +(S.filter((s) => s.v < 0.8 * s.v0).length / Math.max(1, S.length)).toFixed(3), shareUnder60pcOfWanted: +(S.filter((s) => s.v < 0.6 * s.v0).length / Math.max(1, S.length)).toFixed(3), sdAmongNotHeldBack: sd(free.map((s) => s.v)), nNotHeldBack: free.length, lanes }));
