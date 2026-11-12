@@ -15,7 +15,7 @@
    Pure. No React, no DOM.
    ===================================================================== */
 import { groundFor } from "../map/load.js";
-import { step, poseOf, seedGraph } from "../sim/crossing.js";
+import { step, poseOf, carriedWorld, carriedPose, seedGraph } from "../sim/crossing.js";
 import { merge } from "../sim/remote.js";
 import { newPace, paceFrame, paceReply, carryOf } from "../sim/pace.js";
 import { junctionsOf } from "../sim/graph.js";
@@ -112,12 +112,12 @@ export function benchStep(sc, owed) {
 export { DT };
 
 /* #/map's actorsOf (apps/MapRoad.jsx), without the player -- the same
-   poses, carried forward the same way. */
+   poses, carried forward the same way: THROUGH THE SAME `carriedWorld` / `carriedPose` (crossing.js), since a copy of the carried pose here would measure a game that no longer draws that way. */
 export function benchActors(sc, carry) {
-  const w = sc.world;
+  const w = sc.world, wc = carriedWorld(w, carry);
   const out = w.parked ? parkedPoses(w.course, w.parked).slice() : [];
   for (const a of w.actors) {
-    const p = poseOf(w, { ...a, s: Math.min(a.s + a.v * carry, w.course.at[a.k].layout.paths[a.route].length) });
+    const p = carriedPose(wc, a, carry);
     const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;
     out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, look: a.look ?? null, blinker: a.blinker ?? null, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null });
   }

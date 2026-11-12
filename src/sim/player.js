@@ -345,7 +345,8 @@ export function stepPlayerOn(me, input, geom, dt) {
       if (Math.sign(off) === -Math.sign(kappa)) turn.wide = true; else turn.cut = true;
     }
   } else if (turn) ({ turn, lastTurn, turns } = judgeTurn({ turn, lastTurn, turns }));
-  return { ...me, v, a, s, psi, off, grade, lat, steer: input.steer, slider: input.slider, assist, handsOff, turn, lastTurn, turns, lost };
+  /* `psiDot` is kept so the screen can carry the car between ticks the way the tick itself moves it (drive.js carriedPlayer). */
+  return { ...me, v, a, s, psi, psiDot, off, grade, lat, steer: input.steer, slider: input.slider, assist, handsOff, turn, lastTurn, turns, lost };
 }
 /* A turn's record, judged and closed: as the car leaves the box, or leaves its route altogether (drive.js). */
 export function judgeTurn(me) {

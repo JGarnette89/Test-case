@@ -31,7 +31,7 @@ import { Play, Pause, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { groundFor } from "../map/load.js";
 import { step, poseOf, carriedWorld, carriedPose, DT } from "../sim/crossing.js";
-import { stepDriver, driverPose, withDriver, aheadOf, playerHonk, headwayOf, followTarget } from "../sim/drive.js";
+import { stepDriver, driverPose, carriedPlayer, withDriver, aheadOf, playerHonk, headwayOf, followTarget } from "../sim/drive.js";
 import { worldFor, playerContact, START } from "../sim/scene.js";
 import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
@@ -124,7 +124,7 @@ export function actorsOf(scene, carry) {
   for (const a of w.actors) {
     if (a.shadow) continue;   // the player's body in a lane, for the traffic (drive.js shadowsOf): not a car to draw
     if (a.player) {
-      const p = driverPose({ ...a, s: a.s + a.v * carry }, w.course);
+      const p = driverPose(carriedPlayer(a, carry), w.course);
       /* The player's lamps: the turn tap IS their signal, and the brake lamp follows the car slowing as theirs does. */
       out.push({ id: a.id, n: -1, ...p, colour: "#f4f4f2", player: true, reversing: !!a.backing, blinker: a.signal ?? null, brakeLamp: (a.a ?? 0) < -0.6 || (a.v ?? 0) < 0.1, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null });
       continue;
@@ -439,7 +439,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       } else if (sc.me) {
         /* The camera follows the car where it is DRAWN, carried to this frame's moment
            as actorsOf carries it -- not the stepped pose, which moves in 20 Hz steps. */
-        const p = driverPose({ ...sc.me, s: sc.me.s + (sc.me.v ?? 0) * carry }, sc.world.course);
+        const p = driverPose(carriedPlayer(sc.me, carry), sc.world.course);
         cam.current = { ...chaseStep(cam.current, { ...p, v: sc.me.v }, dt, { rotate }), id: null };
         k = zoomFor(size.w, size.h, cam.current.lead) * zoom;
         rot = cam.current.rot;

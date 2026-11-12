@@ -466,6 +466,15 @@ function stepNoLane(me, input, world, dt) {
   return { ...next, stoppedAt, going, accepted: going };
 }
 
+/* THE PLAYER, CARRIED `carry` SECONDS PAST THE TICK, THE WAY THE TICK MOVES IT (player.js stepPlayerOn: psi += psiDot dt, s += v cos(psi) dt, off += v sin(psi) dt). The screen draws between ticks; it carried only `s`, so `off` and `psi`
+   were held still for 50 ms and then stepped, twenty times a second, on the car in the middle of the screen (up to 208 mm sideways and 0.8 degrees of heading a tick in a steered weave at 80 km/h; tools/measure/player-carry.mjs, 13 November,
+   DECISIONS 10.70). ONE IMPLEMENTATION: the same arithmetic as the tick, for a part of a tick, used by the picture and the camera that follows it. On no lane the pose is kept in the world (`at`) and is not carried, as before. */
+export function carriedPlayer(me, carry) {
+  if (!carry || me.noLane) return me;
+  const psi = me.psi + (me.psiDot ?? 0) * carry;
+  return { ...me, psi, s: me.s + me.v * Math.cos(psi) * carry, off: me.off + me.v * Math.sin(psi) * carry };
+}
+
 /* THE PLAYER'S POSE IN THE WORLD, with the height of the road under
    them: the path's pose at their distance along, offset by their line. */
 export function driverPose(me, course) {
