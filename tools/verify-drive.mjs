@@ -16,10 +16,10 @@
 import { seedGraph, step, poseOf, overlapping, DT, restAt, blockedBy } from "../src/sim/crossing.js";
 import { playerAt, playerOn, stepDriver, driverPose, withDriver, routeForSignal, aheadOf } from "../src/sim/drive.js";
 import { touching, holdAt, CLEAN, sliderFor, stopBand, accelFor } from "../src/sim/player.js";
-import { graphOf, poseOnGraph } from "../src/sim/graph.js";
+import { graphOf, poseOnGraph, approachAlong } from "../src/sim/graph.js";
 import { lanesAt } from "../src/sim/locate.js";
 import { loadMap } from "../src/map/load.js";
-import { testMap1 } from "../src/map/samples.js";
+import { testMap1, TEST_MAPS } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
 import { CAR, HARSH_AT, stoppingRoom, weaveRoom } from "../src/sim/traffic.js";
 
@@ -707,6 +707,45 @@ console.log("\n10. The traffic sees a car on no lane where its body is: avoided,
     `the case arose: the body is over ${under.length} lane(s) that are not its own (${under.map((l) => l.names[0].leg).join(", ")}; its own is ${leg}) while the car is still on its own lane by route`);
   check(!stepped.noLane && !stepped.shadows && !ww.actors.some((a) => a.shadow || a.offLane) && ww.actors.filter((a) => a.player).length === 1,
     `1.5 m over the centre line, still on its own lane by route, it has no stand-in and is not flagged: the player is one actor, the existing rules' to judge`);
+}
+
+console.log("\n10. A LANE CHANGE ON A BEND DOES NOT MOVE THE CAR (12 November, DECISIONS 10.70; Jay: \"on some close lane changes the player car will actually jump position and continue on\")");
+{
+  /* `s` is a distance along ONE lane and on a bend the lanes are not the same length, so re-basing onto the next lane at the same `s` put the car somewhere else: 3.3 m along and 0.6 m across after 63 degrees of the loop's
+     curves, 5.6 m after 100. It was reproduced headless with tools/measure/lane-jump.mjs (the section 9 instrument, asked on the tick the route changes): 750 mm sideways and 3142 mm along at 72 km/h on loop-7's approach.
+     The re-base is now level along the centreline (drive.js laneChange, graph.js approachSAt), as the exit stretch always was. Limits are the measured post-fix worst (2.1 mm sideways, 10.2 mm along, over 16 changes at
+     72 km/h) widened to 20 mm [instrument: a polyline's resolution; 150 times under the defect]. Asked for both directions and a bend of more than 20 degrees, so that the case arose. */
+  const loop = loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build());
+  const course = { ...seedGraph(1, 50, loop, { every: 2 }), actors: [] };
+  const turnOf2 = (a, b) => ((a - b + 540) % 360) - 180;
+  const asked = [];
+  for (let k = 0; k < course.course.at.length && asked.length < 8; k++) {
+    const layout = course.course.at[k].layout;
+    for (const [route, path] of Object.entries(layout.paths)) {
+      const leg = layout.legs[path.from];
+      if (!leg || path.intent !== "straight" || path.stopAt < 600 || !/^loop-7\|end#1/.test(route)) continue;
+      for (const dir of [-1, 1]) for (const s0 of [250, 450, 650, 850]) {
+        const neighbour = layout.legAt ? layout.legAt(leg.base, (leg.pos ?? leg.lane) + dir) : null;
+        if (!neighbour) continue;
+        let me = { ...playerAt(course.course, k, route), s: s0, v: 20, going: true, accepted: true, signal: null, off: 0 }, world = withDriver(course, me), was = driverPose(me, course.course), got = null;
+        for (let i = 0; i < 12 / DT && !got; i++) {
+          const before = me, wasRoute = me.route;
+          me = stepDriver(me, { steer: dir, slider: holdAt(me.v, me.grade ?? 0), assist: 0 }, world, DT); world = withDriver(world, me);
+          const now = driverPose(me, course.course);
+          if (me.route !== wasRoute && me.k === k) {
+            const dx = now.x - was.x, dy = now.y - was.y, hm = ((was.heading + turnOf2(now.heading, was.heading) / 2) * Math.PI) / 180, dist = Math.hypot(dx, dy), allow = dist * Math.sin((Math.abs(turnOf2(now.heading, was.heading)) * Math.PI) / 360);
+            const turned = Math.abs(turnOf2(driverPose({ ...me, s: me.s, off: 0 }, course.course).heading, driverPose({ ...me, s: 1, off: 0 }, course.course).heading));
+            got = { slip: Math.abs(-dx * Math.sin(hm) + dy * Math.cos(hm)) - allow, jump: Math.abs(dx * Math.cos(hm) + dy * Math.sin(hm) - ((before.v + me.v) / 2) * DT), turned, s: me.s };
+          }
+          was = now;
+        }
+        if (got) asked.push(got);
+      }
+    }
+  }
+  const bends = asked.filter((g) => g.turned > 20);
+  check(bends.length >= 4, `the case arose: ${asked.length} lane changes on loop-7's approach, ${bends.length} of them after more than 20 degrees of bend (${bends.map((g) => g.turned.toFixed(0) + "\u00b0").join(", ")})`);
+  check(bends.every((g) => g.slip < 0.02 && g.jump < 0.02), `[instrument: 20 mm] none of them moves the car: worst ${(1000 * Math.max(0, ...bends.map((g) => g.slip))).toFixed(1)} mm sideways and ${(1000 * Math.max(0, ...bends.map((g) => g.jump))).toFixed(1)} mm along the heading on the tick the route changes (the defect: up to 750 and 5500)`);
 }
 
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }

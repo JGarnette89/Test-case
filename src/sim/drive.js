@@ -25,7 +25,7 @@ import { inLaneOf } from "./occupancy.js";
 import { whatStops, poseOf, AT_LINE, entryOf } from "./crossing.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
-import { poseOnGraph, intentOf, normDeg, curbLegOf, exitRouteInto, exitAlong, exitSAt } from "./graph.js";
+import { poseOnGraph, intentOf, normDeg, curbLegOf, exitRouteInto, exitAlong, exitSAt, approachAlong, approachSAt } from "./graph.js";
 import { poseAt } from "./intersection.js";
 import { CAR, DT } from "./traffic.js";
 import { placeOf, laneIndexOf, approachNeighbours } from "./placement.js";
@@ -178,10 +178,15 @@ function laneChange(layout, me, path, course) {
   /* How far apart the two lanes really are here: a lane, except on a
      turn bay's taper -- and a bay not yet a whole lane out is not yet a
      lane to be in, so the car stays on its own until it is. */
-  const a = poseAt(path, me.s), b = poseAt(layout.paths[route], me.s);
+  /* LEVEL WITH THE CAR ALONG THE ROAD'S CENTRELINE (graph.js approachAlong / approachSAt: the approach half of what the exit stretch above has always done). `s` is a distance along ONE lane, and on a bend the lanes are not the
+     same length: the inner is shorter by a lane's width times the angle turned, so the same `s` on the next lane is a different place -- 3.3 m along and 0.6 m across after 63 degrees of bend, 5.6 m after 100 (the loop's own
+     curves), the car drawn jumping on the lane change (tools/measure/lane-jump.mjs, 12 November, DECISIONS 10.70). On a straight road the two agree and nothing changes. */
+  const al = approachAlong(course, me.k ?? 0, me.route, me.s), s2 = al != null ? approachSAt(course, me.k ?? 0, route, al) : null;
+  const level = s2 != null && Number.isFinite(s2) && s2 >= 0 && s2 <= layout.paths[route].stopAt ? s2 : me.s;
+  const a = poseAt(path, me.s), b = poseAt(layout.paths[route], level);
   const sep = Math.hypot(a.x - b.x, a.y - b.y);
   if ((leg.bay || layout.legs[newLeg].bay) && sep < 0.9 * lane) return me;
-  return { ...me, route, off: me.off - d * (leg.bay || layout.legs[newLeg].bay ? sep : lane) };
+  return { ...me, route, s: level, off: me.off - d * (leg.bay || layout.legs[newLeg].bay ? sep : lane) };
 }
 
 /* ONE TICK OF THE PLAYER, in the world as it is: the car model along

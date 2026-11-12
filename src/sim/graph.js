@@ -883,6 +883,13 @@ export function approachAlong(course, k, route, s) {
   if (!lane?.along) return null;
   return interp(lane.at, lane.along, p.laneIn.at0 + s);
 }
+/* And back, on an approach: the s on `route`'s approach at a centreline distance (the inverse of approachAlong, as exitSAt is of exitAlong). */
+export function approachSAt(course, k, route, along) {
+  const layout = course.at?.[k]?.layout, p = layout?.paths?.[route];
+  const lane = p && layout.legs[p.from]?.inLane;
+  if (!lane?.along) return null;
+  return interp(lane.along, lane.at, along) - p.laneIn.at0;
+}
 /* And back: the s on `route`'s exit stretch at a centreline distance. */
 export function exitSAt(course, k, route, along) {
   const layout = course.at?.[k]?.layout, p = layout?.paths?.[route];
