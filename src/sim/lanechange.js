@@ -471,17 +471,20 @@ export { reasonToStayOut };
    behind a timid joiner who needed 170, withdrawn four seconds later
    (22 October). */
 export const kappaOf = (out) => Math.max(0.3, Math.min(1.7, out.caution ?? 1));
-const shedOf = (dv, rate) => (dv > 0 ? (dv * dv) / (2 * rate) : 0);
-/* ...and ahead of them, before the car they would follow: the following distance plus the closing speed shed at their own comfortable braking (the car in front may not speed up), never under the floor of stopping behind it at their hardest. */
+/* THE CLOSING SPEED IS CHARGED ONCE, BY `wantedGap`'S OWN DYNAMIC TERM (the following model's: the gap a driver leaves grows with the speed they are closing at). Until 11 November an
+   explicit `shedOf` term, the distance to shed the closing speed at the brakes' rate, was added ON TOP of it (21 October, DECISIONS 10.15, to fix joiners standing on a near-empty highway), so the
+   same quantity was charged twice: a joiner at rest needed 249 m behind it against a stream at 100 km/h, of which 152 m was the following model's term and 76 m the shed term, and 173 m is what
+   the single charge asks (DECISIONS 10.70, `tools/measure/needgap-parts.mjs`). Two implementations of one quantity; the following model's is the one kept, so the room a lane change asks for is
+   the room the same driver would leave a car in front of them. Which of the two to keep is a judgement and `[invented]`; the other's size is in the record. The floor stays: never under the room to
+   stop behind the car at the hardest braking. Ahead of the joiner, the following distance of this car behind the car it would follow. */
 export function leadNeed(out, ahead, kappa = kappaOf(out)) {
   const va = ahead?.v ?? out.v;
   const stop = Math.max(0, (out.v * out.v - va * va) / (2 * vehicleOf(out).most));
-  return Math.max(1.5 + stop, kappa * (wantedGap(out, ahead ?? { v: out.v }) + shedOf(out.v - va, vehicleOf(out).brake)));
+  return Math.max(1.5 + stop, kappa * wantedGap(out, ahead ?? { v: out.v }));
 }
 export function lagNeed(out, behind, kappa = kappaOf(out)) {
-  const v0 = Math.max(out.v0 ?? out.v, 0.1), mineAccel = vehicleOf(out).accel * Math.max(0, 1 - (out.v / v0) ** 4);
   const stop = Math.max(0, ((behind?.v ?? 0) ** 2 - out.v * out.v) / (2 * vehicleOf(behind).most));
-  return Math.max(1.5 + stop, kappa * (wantedGap(behind ?? { v: 0 }, out) + shedOf((behind?.v ?? 0) - out.v, vehicleOf(behind).brake + mineAccel)));
+  return Math.max(1.5 + stop, kappa * wantedGap(behind ?? { v: 0 }, out));
 }
 function gapFor(out, nb, kappa, world = null) {
   /* At the FOLLOWER's hardest braking: a truck behind stops longer. */
