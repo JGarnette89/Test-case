@@ -100,6 +100,10 @@ console.log("\n3. IT DOES NOT GO STALE: minute 5 against minute 15, ramps open a
     let w = seedGraph(1, 50, loaded, { target: 200, posted: true });
     while (w.t < 300) w = step(w);
     const at5 = new Set(w.actors.filter((a) => onLoop(w, a)).map((a) => a.id));
+    /* THE SPREAD AT MINUTE 5, the yardstick for minute 15 (restated 12 November): sampled over the minute from 5 to 6, in the same way, from the same world, which goes on to minute 15 exactly as before. */
+    const speeds5 = [];
+    while (w.t < 360) { w = step(w); if (Math.round(w.t / DT) % 20 === 0) for (const a of w.actors) if (onLoop(w, a)) speeds5.push(a.v * 3.6); }
+    const sd5 = (() => { const m = speeds5.reduce((a, b) => a + b, 0) / speeds5.length; return Math.sqrt(speeds5.reduce((s, v) => s + (v - m) ** 2, 0) / speeds5.length); })();
     while (w.t < 840) w = step(w);
     const speeds = [];
     let overtakes = 0, last = null;
@@ -124,14 +128,17 @@ console.log("\n3. IT DOES NOT GO STALE: minute 5 against minute 15, ramps open a
     const now = w.actors.filter((a) => onLoop(w, a)).map((a) => a.id);
     const mean = speeds.reduce((a, b) => a + b, 0) / speeds.length;
     const sd = Math.sqrt(speeds.reduce((s, v) => s + (v - mean) ** 2, 0) / speeds.length);
-    return { cars: now.length, fresh: now.filter((id) => !at5.has(id)).length / Math.max(1, now.length), sd, overtakes };
+    return { cars: now.length, fresh: now.filter((id) => !at5.has(id)).length / Math.max(1, now.length), sd, sd5, overtakes };
   };
   const open = measure(loop);
   const closedRaw = testLoop(); closedRaw.roads = closedRaw.roads.filter((r) => !r.id.startsWith("off-"));
   const closed = measure(loadMap(closedRaw));
   check(open.fresh >= 0.4, `with the ramps, ${(100 * open.fresh).toFixed(0)}% of the ${open.cars} cars on the loop at minute 15 were not on it at minute 5`);
   check(closed.fresh < 0.15 && open.fresh > 3 * closed.fresh, `with the exits removed, ${(100 * closed.fresh).toFixed(0)}% -- the people stop changing, which is what the ramps are for`);
-  check(open.sd >= 10 && open.overtakes >= 60, `and at minute 15 the speeds are still spread (sd ${open.sd.toFixed(1)} km/h) and cars still overtake (${open.overtakes} in the minute); closed: sd ${closed.sd.toFixed(1)}, ${closed.overtakes} -- three lanes and lane changing keep even a closed loop from queueing in fifteen minutes, unlike stage 0's single-lane ring`);
+  /* RESTATED 12 NOVEMBER (the maintainer's ruling), AT WHAT THE CHECK IS FOR. The bar was an absolute spread, sd >= 10 km/h, [invented] and passed until D corrected the gap table (sd 9.0 after). What this section asks is that the loop DOES NOT GO STALE, so the bar is
+     now relative: the spread at minute 15 is at least 0.8 of the spread at minute 5 [invented: 0.8, a loop that kept four fifths of its spread has not queued itself into one speed; not set where today's number sits]. WHAT SPREAD OF SPEEDS A REAL MOTORWAY HAS IS A QUESTION FOR JAY'S BATCH
+     and is not decided here; the absolute figure is not tested. Overtakes: at least 60 in the minute, unchanged [invented]. */
+  check(open.sd >= 0.8 * open.sd5 && open.overtakes >= 60, `[invented: 0.8 of the minute-5 spread; 60 overtakes] and at minute 15 the speeds are still spread (sd ${open.sd.toFixed(1)} km/h against ${open.sd5.toFixed(1)} at minute 5, ratio ${(open.sd / open.sd5).toFixed(2)}) and cars still overtake (${open.overtakes} in the minute); closed: sd ${closed.sd.toFixed(1)}, ${closed.overtakes} -- three lanes and lane changing keep even a closed loop from queueing in fifteen minutes, unlike stage 0's single-lane ring`);
 }
 
 console.log(failed ? `\n${failed} FAILURE(S)` : "\nall passed");

@@ -128,12 +128,14 @@ function runOne(c) {
         if (logError) throw logError;
         copyFileSync(logPath, join(LOGS, `${c.name}.log`));
       } catch (e) { status = "FAIL"; console.error(`cannot retain ${c.name} log: ${e.message}`); }
+      /* KNOWN SHORTFALLS (tools/lib/shortfall.mjs): a check that reports a bar its world does not yet meet prints a line starting `SKIP`; it is not a pass and not a failure, so it is counted and listed here and in the summary. */
+      let skips = []; try { skips = readFileSync(logPath, "utf8").split("\n").filter((l) => /^\s*SKIP\b/.test(l)).map((l) => l.trim()); } catch { /* the log was already reported as unreadable above */ }
       if (passed(status)) { times[c.name] = Math.max(0.001, elapsed); hashes[c.name] = hash; }
-      results.push({ name: c.name, status, secs, log: logPath, limit, reason: budget.reason });
+      results.push({ name: c.name, status, secs, skips, log: logPath, limit, reason: budget.reason });
       const note = status === "TIMEOUT" ? ` -- killed after ${limit} s (${budget.reason}); assertions incomplete`
         : status === "SLOW" ? ` -- assertions passed; exceeded recorded ${recorded} s; timing refreshed`
         : status === "FAIL" ? ` -- exit ${code}, signal ${signal ?? "none"}` : "";
-      console.log(`  ${status.padEnd(7)} ${c.name.padEnd(22)} ${String(secs).padStart(5)} s${note}; log ${logPath}`);
+      console.log(`  ${status.padEnd(7)} ${c.name.padEnd(22)} ${String(secs).padStart(5)} s${note}${skips.length ? ` -- ${skips.length} known shortfall(s) skipped with reason` : ""}; log ${logPath}`);
       done();
     });
   });
@@ -153,5 +155,7 @@ try {
   appendFileSync(join(ROOT, "tools", "check-history.jsonl"), JSON.stringify({ at: new Date().toISOString(), head, dirty, mode, results: results.map((r) => [r.name, r.status, r.secs]), logs: results.map((r) => ({ name: r.name, path: r.log, limit: r.limit, reason: r.reason })) }) + "\n");
 } catch { /* no git, no history -- never a failed run for it */ }
 const bad = results.filter((r) => !passed(r.status));
-console.log(`${results.length - bad.length} of ${results.length} passed${bad.length ? ` -- ${bad.map((r) => `${r.name} ${r.status}`).join(", ")}` : ""}; wall ${Math.round((Date.now() - t0) / 1000)} s, ${jobs} at once`);
+const skipped = results.flatMap((r) => (r.skips ?? []).map((l) => [r.name, l]));
+if (skipped.length) { console.log(`\n${skipped.length} known shortfall(s) SKIPPED WITH REASON (not passes: the bar stands, the value is recorded and may not get worse):`); for (const [n, l] of skipped) console.log(`  ${n}: ${l}`); console.log(""); }
+console.log(`${results.length - bad.length} of ${results.length} passed${skipped.length ? `, ${skipped.length} shortfall(s) skipped with reason` : ""}${bad.length ? ` -- ${bad.map((r) => `${r.name} ${r.status}`).join(", ")}` : ""}; wall ${Math.round((Date.now() - t0) / 1000)} s, ${jobs} at once`);
 process.exit(bad.length ? 1 : 0);

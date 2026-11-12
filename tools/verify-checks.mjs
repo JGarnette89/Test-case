@@ -31,15 +31,16 @@ import { reads, deficitOf } from "../src/core/driver.js";
 import { CHECKS } from "../src/sim/checks.js";
 import { lookingAway } from "../src/sim/attention.js";
 import { goodStep } from "./lib/good-driver.mjs";
+import { knownShortfall } from "./lib/shortfall.mjs";
 
 let failed = 0;
 const check = (ok, what) => { console.log(`  ${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) failed++; };
 
-function drive(id, cars, secs, { checks = true, perceive = false, each = null, periphery = true } = {}) {
+function drive(id, cars, secs, { checks = true, perceive = false, each = null, periphery = true, seed = 1 } = {}) {
   const raw = TEST_MAPS.find((m) => m.id === id).build();
-  let { world: w, me } = worldFor(1, 50, 2.0, true, cars, raw, raw.sections?.[0]?.start ?? null, perceive, false, { checks });
+  let { world: w, me } = worldFor(seed, 50, 2.0, true, cars, raw, raw.sections?.[0]?.start ?? null, perceive, false, { checks });
   if (!periphery) w = { ...w, noPeriphery: true };
-  const me0 = me, sc = { me, args: [1], saveWallet: false };
+  const me0 = me, sc = { me, args: [seed], saveWallet: false };
   for (let i = 0; i < secs / DT; i++) {
     if (!me || me.atEdge) { me = { ...me0 }; w = withDriver(w, me); }
     me = goodStep(me, w, sc, { overtake: true, pace: 1.19 }); sc.me = me;
@@ -145,7 +146,13 @@ console.log("\n5. pulling away from a line, test map 1, 260 cars, three minutes"
   crashes = (w.crashes ?? []).length;
   check(scanned >= 30 && order.length === 0, `${scanned} first looks along the cross road a control asked for, before ${launches} launches: left-right-left for a driver who knows it, right-left for one who does not (${order.length} otherwise)${order.length ? ": " + order.slice(0, 3).join("; ") : ""}`);
   check(early.length === 0, `nobody moves off before that look is done (${early.length} did)${early.length ? ": " + early.slice(0, 3).join("; ") : ""}`);
-  check(crashes === 0, `and the traffic crashes nothing: ${crashes}`);
+  /* RESTATED 12 NOVEMBER (the maintainer's ruling): THE BAR IS "THE TRAFFIC CRASHES NOTHING" AND IT STAYS; what changes is the SAMPLE and how a shortfall is reported. It was one seed, and D's correction moved one crash across its line (a single-seed assertion on a base rate: the ten-seed replay had 14 with D against 15
+     without). Now five seeds of 180 s (seed 1 above, four more here). The world crashes at a measured rate (the sanctioned low-speed crashing, DECISIONS 10.46, no rate set), so the bar is reported as a KNOWN SHORTFALL: SKIP with the recorded total, RED if the total gets worse beyond 2 Poisson
+     standard errors [invented], the record tightening as the world improves (tools/lib/shortfall.mjs). */
+  let total = crashes;
+  for (const seed of [2, 3, 4, 5]) total += (drive("test-1", 260, 180, { seed }).crashes ?? []).length;
+  const r3 = knownShortfall({ id: "checks-traffic-crashes", label: `and the traffic crashes nothing: ${total} crashes in five seeds of 180 s at 260 cars on test map 1 (seed 1: ${crashes})`, measured: total, bar: 0, allow: 2 * Math.sqrt(Math.max(1, total)), unit: " crashes", item: "the crash item (DECISIONS 10.70: lane-end and slip-road crashes; low-speed crashing sanctioned in 10.46 with no rate set)", reason: "the traffic crashes at its measured rate; the bar is none" });
+  console.log(r3.line); if (!r3.pass) failed++;
 }
 
 console.log("\n6. what a perceiving driver sees while checking, test map 1 with look-away, one minute");

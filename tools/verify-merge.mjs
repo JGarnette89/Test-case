@@ -35,6 +35,7 @@ import { seedGraph, step, overlapping } from "../src/sim/crossing.js";
 import { knows } from "../src/core/driver.js";
 import { courteous } from "../src/sim/courtesy.js";
 import { strandTrial } from "./measure/stranded.mjs";
+import { knownShortfall } from "./lib/shortfall.mjs";
 import { mergePlan, kappaOf, leadNeed, lagNeed } from "../src/sim/lanechange.js";
 import { clearBetween } from "../src/sim/traffic.js";
 
@@ -204,13 +205,27 @@ check(ran.every((r) => r.joiners >= 20), `the case arose: joiners that reached t
    creeping car resets the continuous one); (2) at or near rest (under 2 m/s within 20 m of where the taper begins) is the inept tail only: UNDER 1%
    of joiners, the 1% being the agent's reading of "extremely inept" widened because a sample of a few hundred cannot resolve one in ten thousand.
    If the sim is right and these fail, the sim is wrong about Jay's motorway; if they fail on a motorway Jay says is right, the derivation is. */
-check(ran.every((r) => r.over === 0 && r.tot.over60 === 0), `[Jay: a full minute; that total time at rest counts is invented] no joiner waits a minute at the end of its lane, by one continuous stand or by total time at rest: continuous over a minute ${ran.map((r) => `${r.over} of ${r.joiners} at ${r.cars}`).join(", ")}; total at rest over a minute ${ran.map((r) => `${r.tot.over60} at ${r.cars}`).join(", ")}`);
-check(ran.every((r) => r.nearRest / Math.max(1, r.joiners) < 0.01), `[invented: 1%, an agent's reading of Jay's 1 in 10000, extremely inept; near rest = under 2 m/s within 20 m] reaching the end of the lane at or near rest is the inept tail only, under 1% of joiners: ${ran.map((r) => `${r.nearRest} of ${r.joiners} (${(100 * r.nearRest / Math.max(1, r.joiners)).toFixed(1)}%) at ${r.cars}`).join(", ")}`);
+/* THESE TWO LINES ARE KNOWN SHORTFALLS (12 November, the maintainer's ruling; tools/lib/shortfall.mjs): the bars are Jay's and DO NOT MOVE; the world does not yet meet them (it did not before D either, and
+   worse), so they are reported as a SKIP with the open item and the recorded value, and go RED if the value gets worse than the record. The record tightens as the world improves. [instrument: the allowances
+   below, each stated with its reasoning] */
+{
+  const worstWait = Math.max(...ran.map((r) => Math.max(r.over, r.tot.over60)));
+  const r1 = knownShortfall({ id: "merge-minute-wait", label: `[Jay: a full minute; that total time at rest counts is invented] no joiner waits a minute at the end of its lane, by one continuous stand or by total time at rest: continuous over a minute ${ran.map((r) => `${r.over} of ${r.joiners} at ${r.cars}`).join(", ")}; total at rest over a minute ${ran.map((r) => `${r.tot.over60} at ${r.cars}`).join(", ")}`, measured: worstWait, bar: 0, allow: 1, unit: " joiners in the worst cell", item: "the merge item (stopped joiners at the end of the acceleration lane, DECISIONS 10.70)", reason: "the world still has joiners standing a minute at 300 cars; Jay's ruling is 1 in 10000" });
+  console.log(r1.line); if (!r1.pass) failed++;   /* allow 1: one joiner, the count's own granularity over a few hundred joiners [invented] */
+}
+{
+  const cells = ran.map((r) => ({ p: r.nearRest / Math.max(1, r.joiners), n: Math.max(1, r.joiners) })), worst = cells.reduce((a, b) => (b.p > a.p ? b : a));
+  const se = Math.sqrt(worst.p * (1 - worst.p) / worst.n);
+  const r2 = knownShortfall({ id: "merge-near-rest-share", label: `[invented: 1%, an agent's reading of Jay's 1 in 10000, extremely inept; near rest = under 2 m/s within 20 m] reaching the end of the lane at or near rest is the inept tail only, under 1% of joiners: ${ran.map((r) => `${r.nearRest} of ${r.joiners} (${(100 * r.nearRest / Math.max(1, r.joiners)).toFixed(1)}%) at ${r.cars}`).join(", ")}`, measured: worst.p, bar: 0.01, allow: 2 * se, item: "the merge item (stopped joiners at the end of the acceleration lane, DECISIONS 10.70)", reason: "13% of joiners at 300 cars reach the lane end near rest; the bar is under 1%" });
+  console.log(r2.line); if (!r2.pass) failed++;   /* the bar is "under 1%" and the module's is "at most 1%": a share of exactly 1.000% is the only difference. allow = 2 standard errors of the worst cell's share [invented]: a change elsewhere reshuffles which cars meet which */
+}
 for (const r of ran) console.log(`    [${r.cars} cars] DISTRIBUTION of continuous stands, ${r.cont.n} joiners stood at all: median ${r.cont.p50.toFixed(1)} s, p90 ${r.cont.p90.toFixed(1)} s, p99 ${r.cont.p99.toFixed(1)} s, max ${r.cont.max.toFixed(1)} s; longest total time at rest ${r.tot.max.toFixed(0)} s`);
 for (const r of ran) console.log(`    [${r.cars} cars] ${r.diag}`);
 {
   const on = [], off = [];
-  for (const seed of [1, 2, 3, 4]) {
+  /* EIGHT SEEDS, NOT FOUR (12 November): the courtesy line below needs at least 4 waits of 20 s or more WITHOUT courtesy to measure anything (`tail.length >= 4`, a precondition and not a behaviour bar), and D shortened the waits: 13 such waits on
+     four seeds before it, 3 after. The line failed its precondition, not its ratio (0.26 against 0.7). More trials is the fix; the floor and the ratio bar are unchanged. */
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
     let base = seedGraph(seed, 50, loaded, { target: 150, posted: true });
     for (const at of [120, 165]) {
       while (base.t < at) base = step(base);

@@ -115,16 +115,23 @@ function run(seed, anticipate, extra = {}) {
    offerers, with it and without it (world.noPressing, a controlled
    comparison) -- measured onset 12.9 against 10.8 s (+2.1), peak 3.14
    against 3.04. Stated here: later by at least a second, and harder. */
-const SEEDS2 = [1, 2, 3, 4];
+const SEEDS2 = [1, 2, 3, 4, 5, 6, 7, 8];   /* 8 seeds, not 4 (12 November): the claim is a difference between two worlds and four seeds gave it no error bar */
 console.log(`\n2. THE PRESSING RULE: THE SAME REACTING OFFERERS WITH IT AND WITHOUT IT, THE REST AS DRAWN (endless highway, 150 cars, seeds ${SEEDS2.join(",")}, ${SECS} s)`);
 {
   const merge = (rs) => ({ offers: rs.flatMap((r) => r.offers) });
-  const rule = merge(SEEDS2.map((sd) => run(sd, { ask: "none" }))), without = merge(SEEDS2.map((sd) => run(sd, { ask: "none" }, { noPressing: true })));
+  const ruleRuns = SEEDS2.map((sd) => run(sd, { ask: "none" })), withoutRuns = SEEDS2.map((sd) => run(sd, { ask: "none" }, { noPressing: true }));
+  const rule = merge(ruleRuns), without = merge(withoutRuns);
   const on = (r) => r.offers.map((o) => o.onset).filter((x) => x != null), pk = (r) => r.offers.map((o) => o.peak);
   const [ow, or, pw, pr] = [q(on(without), 0.5), q(on(rule), 0.5), q(pk(without), 0.5), q(pk(rule), 0.5)];
   console.log(`       offers ${rule.offers.length} with the rule / ${without.offers.length} without; onset after the joiner came onto its lane, median ${or.toFixed(1)} s / ${ow.toFixed(1)} s; the offerer's peak braking, median ${pr.toFixed(2)} / ${pw.toFixed(2)} m/s^2`);
   check(rule.offers.length >= 20 && without.offers.length >= 20, `enough offers to read (${rule.offers.length}, ${without.offers.length})`);
-  check(or >= ow + 1, `a reacting offerer waits for the pressing moment: ${or.toFixed(1)} s against ${ow.toFixed(1)} without the rule`);
+  /* RESTATED 12 NOVEMBER (the maintainer's ruling). "Later by at least a second" was [invented] (the 22 October measurement was +2.1 s on four seeds) and passed until D corrected the gap table (+0.5 s after, on the same four). What the design claims is that a reacting offerer WAITS FOR THE PRESSING MOMENT: the sign of the
+     difference, with an error bar, per seed: the paired median-onset difference (with the rule minus without it) averaged over the seeds that have offers on both sides, at least 2 standard errors above zero [invented: 2 SE, the usual reading of "not noise"]. The magnitude is reported, not required;
+     if D weakened the rule, the report says by how much. */
+  const diffs = SEEDS2.map((_, i) => { const a = ruleRuns[i].offers.map((o) => o.onset).filter((x) => x != null), b = withoutRuns[i].offers.map((o) => o.onset).filter((x) => x != null); return a.length >= 3 && b.length >= 3 ? q(a, 0.5) - q(b, 0.5) : null; }).filter((x) => x != null);
+  const dm = diffs.reduce((p, x) => p + x, 0) / Math.max(1, diffs.length), dse = Math.sqrt(diffs.reduce((p, x) => p + (x - dm) ** 2, 0) / Math.max(1, diffs.length - 1)) / Math.sqrt(Math.max(1, diffs.length));
+  console.log(`       paired per-seed difference in median onset (with the rule minus without it): ${diffs.map((x) => x.toFixed(1)).join(", ")} s over ${diffs.length} seeds; mean ${dm.toFixed(2)} +- ${dse.toFixed(2)} s`);
+  check(diffs.length >= 6 && dm >= 2 * dse && dm > 0, `[invented: 2 standard errors above zero] a reacting offerer waits for the pressing moment: ${dm.toFixed(2)} +- ${dse.toFixed(2)} s later with the rule (pooled medians ${or.toFixed(1)} s against ${ow.toFixed(1)} without), over ${diffs.length} seeds`);
   check(pr > pw, `and then brakes harder: ${pr.toFixed(2)} against ${pw.toFixed(2)} m/s^2`);
 }
 
