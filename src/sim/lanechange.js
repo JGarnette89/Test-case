@@ -477,16 +477,27 @@ export const kappaOf = (out) => Math.max(0.3, Math.min(1.7, out.caution ?? 1));
    the single charge asks (DECISIONS 10.70, `tools/measure/needgap-parts.mjs`). Two implementations of one quantity; the following model's is the one kept, so the room a lane change asks for is
    the room the same driver would leave a car in front of them. Which of the two to keep is a judgement and `[invented]`; the other's size is in the record. The floor stays: never under the room to
    stop behind the car at the hardest braking. Ahead of the joiner, the following distance of this car behind the car it would follow. */
-export function leadNeed(out, ahead, kappa = kappaOf(out)) {
+/* THE MERGE TOLERANCE (`world.mergeTolerance`, seconds; null = off, the default; DECISIONS 10.70). Jay, 11 November: "tolerance for close driving (within that typical 2-3s gap) is higher here [around a merge] than
+   normal, it's just what has to happen to allow vehicles of different speeds to come together within a horizontally and vertically restricted space" and a joiner "is beginning to look for a smaller and smaller
+   acceptable gap as their drivable space concludes". `[Jay]` for the RANGE, 2 to 3 s; the point inside it is a feel judgement (`MERGE_TOLERANCES`, `[invented]`), a switch on the debug chips so he can A/B it. With it on, what
+   a MERGE asks for, ahead and behind, is at most this many seconds of the speed of the car the gap is measured against, however much the closing speed would otherwise ask for; the floor (the room for the car behind to stop
+   at its hardest braking) is never lowered, so a gap that cannot be survived is still refused. A lane change of choice is untouched: his calibration is about merges. This is the second half of one correction: the
+   first, charging the closing speed once, still leaves a joiner at rest needing 173 m (6.2 s). */
+export const MERGE_TOLERANCES = [2, 2.5, 3];
+export function leadNeed(out, ahead, kappa = kappaOf(out), tol = null) {
   const va = ahead?.v ?? out.v;
   const stop = Math.max(0, (out.v * out.v - va * va) / (2 * vehicleOf(out).most));
-  return Math.max(1.5 + stop, kappa * wantedGap(out, ahead ?? { v: out.v }));
+  let need = kappa * wantedGap(out, ahead ?? { v: out.v });
+  if (tol) need = Math.min(need, tol * Math.max(out.v ?? 0, 0));
+  return Math.max(1.5 + stop, need);
 }
-export function lagNeed(out, behind, kappa = kappaOf(out)) {
+export function lagNeed(out, behind, kappa = kappaOf(out), tol = null) {
   const stop = Math.max(0, ((behind?.v ?? 0) ** 2 - out.v * out.v) / (2 * vehicleOf(behind).most));
-  return Math.max(1.5 + stop, kappa * wantedGap(behind ?? { v: 0 }, out));
+  let need = kappa * wantedGap(behind ?? { v: 0 }, out);
+  if (tol) need = Math.min(need, tol * (behind?.v ?? 0));
+  return Math.max(1.5 + stop, need);
 }
-function gapFor(out, nb, kappa, world = null) {
+function gapFor(out, nb, kappa, world = null, merge = false) {
   /* At the FOLLOWER's hardest braking: a truck behind stops longer. */
   const stopIn = (v, vl, who) => Math.max(0, (v * v - vl * vl) / (2 * vehicleOf(who).most));
   const leadGap = nb.ahead ? clearBetween(nb.da, out, nb.ahead) : Infinity;
@@ -511,8 +522,9 @@ function gapFor(out, nb, kappa, world = null) {
   const shed = (dv, rate) => (dv > 0 ? (dv * dv) / (2 * rate) : 0);
   /* This driver's acceleration still available at this speed (the following model's own shape). */
   const v0 = Math.max(out.v0 ?? out.v, 0.1), mineAccel = vehicleOf(out).accel * Math.max(0, 1 - (out.v / v0) ** 4);
-  const needLead = leadNeed(out, nb.ahead, kappa);
-  const needLag = lagNeed(out, nb.behind, kappa);
+  const tol = merge ? world?.mergeTolerance ?? null : null;
+  const needLead = leadNeed(out, nb.ahead, kappa, tol);
+  const needLag = lagNeed(out, nb.behind, kappa, tol);
   /* The floor alone, for the car behind: whether it can stop behind this one at all. */
   const lagSurvivable = lagGap >= 1.5 + stopIn(nb.behind?.v ?? 0, out.v, nb.behind);
   /* A CAR THAT CANNOT MOVE UNTIL YOU DO IS NOT ONE YOU CUT OFF (28 October,
@@ -864,7 +876,7 @@ function attempt(world, out, path, best, T0) {
     const own = best.exit ? exitNeighbours(world, out, here, path.to, path.length - out.s, out.route, out.s) : neighbours(world, out, path.from, out.s, out.route);
     if (own.ahead && clearBetween(own.da, out, own.ahead) < Math.max(lenOf(out), Math.max(0, out.v - (own.ahead.v ?? 0)) * T0 * 0.5)) return out;
   }
-  const { leadGap, lagGap, leadOk, lagOk, lagSurvivable } = gapFor(out, nb, kappa, world);
+  const { leadGap, lagGap, leadOk, lagOk, lagSurvivable } = gapFor(out, nb, kappa, world, !!best.merge);
 
   /* THE BLIND-SPOT CHECK, AT THIS DRIVER'S OBSERVATION. Drawn once per
      manoeuvre from the driver's own seed, so a run replays exactly. */
@@ -904,7 +916,7 @@ function attempt(world, out, path, best, T0) {
   }
   if (!leadOk) return out;
   /* ...and every car beyond it that can demand room, each at its own lead need (above). */
-  for (const { car, d } of nb.aheads ?? []) if (car !== nb.ahead && clearBetween(d, out, car) < leadNeed(out, car, kappa)) return out;
+  for (const { car, d } of nb.aheads ?? []) if (car !== nb.ahead && clearBetween(d, out, car) < leadNeed(out, car, kappa, best.merge ? world.mergeTolerance ?? null : null)) return out;
   /* Every time a driver got this far with somebody in the blind spot is
      an occasion to look or not -- counted whether they went or not, so
      a miss RATE can be read (verify-lanes.mjs), not only the misses. */

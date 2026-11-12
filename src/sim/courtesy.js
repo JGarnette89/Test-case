@@ -139,7 +139,7 @@ export function mergeAskOf(world, a, layout, path, leg) {
    at the end of an acceleration lane is far short of what joining a stream
    at 100 km/h from rest needs -- measured, a player stopped there waited a
    median 16 s for a gap with courtesy and without (tools/measure/stranded.mjs). */
-const wantOf = (me, ask, pl) => (ask.exit && pl ? lagNeed(pl, me, pl.player ? 1 : undefined) : wantedGap(me, { v: ask.v }));
+const wantOf = (me, ask, pl, world = null) => (ask.exit && pl ? lagNeed(pl, me, pl.player ? 1 : undefined, world?.mergeTolerance ?? null) : wantedGap(me, { v: ask.v }));   // the merge tolerance (lanechange.js) reaches the offerer's gap too: one definition
 
 export function gapTo(world, me, ask, pl) {
   const fp = world.course.at[me.k ?? 0].layout.paths[me.route];
@@ -204,7 +204,7 @@ export function offerOf(world, me, ask, pl, noticed) {
        dropping back from level to a following gap at a comfortable rate
        takes about four and a half seconds at highway speed (measured,
        tools/measure/courtesy.mjs), longer than the wait itself. */
-    const open = was.open ?? (gapTo(world, me, ask, pl).d >= wantOf(me, ask, pl) ? world.t : null);
+    const open = was.open ?? (gapTo(world, me, ask, pl).d >= wantOf(me, ask, pl, world) ? world.t : null);
     /* ...and a gap that has not opened in the time the offerer's own plan
        needs to open it, and the standard on top, is not going to be taken.
        It was twice the standard, fixed -- written when courtesy dropped
@@ -218,7 +218,7 @@ export function offerOf(world, me, ask, pl, noticed) {
   if (!courteous(me) || world.t - ask.since < noticed) return null;
   const { d } = gapTo(world, me, ask, pl);
   /* Only a driver actually in the way: already a following gap back, there is nothing to give. */
-  if (d >= wantOf(me, ask, pl)) return null;
+  if (d >= wantOf(me, ask, pl, world)) return null;
   const closing = Math.max(0, (me.v ?? 0) - ask.v), b = me.brake ?? vehicleOf(me).brake;
   /* ANTICIPATION (core/driver.js `anticipates`, DECISIONS 10.20): the
      occasion is this ask. Anticipating, the offerer acts from when the ask
@@ -232,7 +232,7 @@ export function offerOf(world, me, ask, pl, noticed) {
   const ahead = anticipates(me, `ask:${ask.id}:${ask.k}:${ask.toLeg}`, world);
   /* `noPressing`: a check's controlled comparison -- the same reacting drivers without the pressing rule -- never a setting. */
   if (!ahead && ask.by != null && !world.noPressing) {
-    const gapLeft = Math.max(0, wantOf(me, ask, pl) - d), cv = (me.v ?? 0) - ask.v;
+    const gapLeft = Math.max(0, wantOf(me, ask, pl, world) - d), cv = (me.v ?? 0) - ask.v;
     /* Time over which braking at b drops back gapLeft more, closing at cv now: b T^2 / 2 = gapLeft + cv T. */
     const T = (cv + Math.sqrt(cv * cv + 2 * b * gapLeft)) / b;
     if (ask.by - world.t > T - noticed) return null;
@@ -259,7 +259,7 @@ export function offerOf(world, me, ask, pl, noticed) {
   }
   /* How long the plan takes to open the gap: `want - d` dropped back at its rate. */
   const p0 = courtesyPlan(world, me, ask, pl);
-  const needs = p0.open || !(p0.need > 0) ? 0 : Math.sqrt((2 * Math.max(0, wantOf(me, ask, pl) - p0.d)) / Math.min(p0.need, me.brake ?? vehicleOf(me).brake));
+  const needs = p0.open || !(p0.need > 0) ? 0 : Math.sqrt((2 * Math.max(0, wantOf(me, ask, pl, world) - p0.d)) / Math.min(p0.need, me.brake ?? vehicleOf(me).brake));
   return { since: world.t, leg: ask.toLeg, for: ask.id, forPlayer: !!ask.forPlayer, needs };
 }
 
@@ -276,7 +276,7 @@ export function offerOf(world, me, ask, pl, noticed) {
    (`noticeAfter`); the rate is what is left of the time. */
 export function courtesyPlan(world, me, ask, pl) {
   const { d } = gapTo(world, me, ask, pl);
-  const want = wantOf(me, ask, pl);
+  const want = wantOf(me, ask, pl, world);
   if (d >= want) return { open: true, d };
   /* NO DEADLINE -- the player signalling past the box, mid-road -- and nothing presses:
      they ease off gently from the moment they notice, at GENTLE of their

@@ -86,10 +86,10 @@ import { CARS, carsFor, carsMaxFor, cleanCarsFor } from "../map/cars.js";
    map, the player starts at the first edge `loadMap` finds
    (`map/edges.js` -- a plain module, not this one, so a headless check
    can ask the same question without Node trying to parse JSX). */
-export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, checks = false) {
+export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, checks = false, mergeTol = null) {
   /* The world is built in sim/scene.js, where the sim's worker builds the
      same one from the same arguments (sim/remote.js). */
-  const args = [seed, kmh, every, drive, cars, rawMap, startAt, lookAway, unshaped, { checks }];
+  const args = [seed, kmh, every, drive, cars, rawMap, startAt, lookAway, unshaped, { checks, mergeTolerance: mergeTol || null }];
   const { loaded, world, me } = worldFor(...args);
   const b = loaded.bounds;
   const ground = groundFor(loaded, { cell: 20 });
@@ -155,6 +155,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [lookAway, setLookAway] = useState(false);
   /* Drivers check mirrors and blind spots, and look along the cross road (sim/checks.js) -- built, not on by default, a switch so the maintainer can watch them (SIMULATOR IN FLIGHT 31). */
   const [checksOn, setChecksOn] = useState(false);
+  /* The merge tolerance (lanechange.js, DECISIONS 10.70): 0 = off; 2, 2.5 or 3 s. Off by default; on the debug chips so it can be A/B'd. */
+  const [mergeTol, setMergeTol] = useState(0);
   const [shapeOn, setShapeOn] = useState(true);
   /* THE TRAFFIC SKILL DIAL (sim/skill.js; SIMULATOR IN FLIGHT 34): where the population's ratings sit, -1 to +1, 0 as drawn.
      LIVE -- everybody on the map is redrawn at it -- and kept across a restart, never saved: a testing knob that came back
@@ -223,10 +225,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const mapId = scene.current.loaded.id;
   const carsMax = carsMaxFor(scene.current.loaded);
 
-  const restart = (s = seed, kmh = limit, m = mode, n = cars, look = lookAway, sh = shapeOn, ck = checksOn) => {
-    setSeed(s); setLimit(kmh); setMode(m); setCars(n); setLookAway(look); setShapeOn(sh); setChecksOn(ck);
+  const restart = (s = seed, kmh = limit, m = mode, n = cars, look = lookAway, sh = shapeOn, ck = checksOn, mt = mergeTol) => {
+    setSeed(s); setLimit(kmh); setMode(m); setCars(n); setLookAway(look); setShapeOn(sh); setChecksOn(ck); setMergeTol(mt);
     scene.current?.remote?.stop();
-    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look, !sh, ck);
+    scene.current = sceneFor(s, kmh, 2.0, m === "drive", n, mapData, startAt, look, !sh, ck, mt || null);
     if (skillRef.current) scene.current.world = { ...scene.current.world, skill: skillRef.current };
     if (realRef.current && !workerRef.current) scene.current.world = { ...scene.current.world, realPos: true };
     picked.current = null;
@@ -271,11 +273,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const look = s.clean === true ? false : s.lookAwayOn === true;
       const sh = s.clean === true ? true : s.shapeOn !== false;
       const ck = s.checksOn === true;
+      const mt = [2, 2.5, 3].includes(Number(s.mergeTol)) ? Number(s.mergeTol) : 0;
       /* A saved real position wins over a saved worker: the worker stays off and the page steps (10.70). */
       const wantReal = s.realPos === true;
       if (wantReal) { realRef.current = true; setRealPos(true); }
       if (s.simWorker === true && !wantReal && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look, sh, ck); return; }
-      if (wantReal || kmh !== limit || m !== mode || n !== cars || look !== lookAway || sh !== shapeOn || ck !== checksOn) restart(seed, kmh, m, n, look, sh, ck);
+      if (wantReal || kmh !== limit || m !== mode || n !== cars || look !== lookAway || sh !== shapeOn || ck !== checksOn || mt !== mergeTol) restart(seed, kmh, m, n, look, sh, ck, mt);
       if (s.slider === "spring") input.current.state.spring = true;
       if (s.assist in ASSIST) { assistRef.current = s.assist; setAssist(s.assist); }
     });
@@ -855,6 +858,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           <button className="btn" style={{ ...S.chip, borderColor: checksOn ? C.amber : "rgba(255,255,255,0.12)", color: checksOn ? C.white : DIM }}
             onClick={() => { setSetting("checksOn", !checksOn); restart(seed, limit, mode, cars, lookAway, shapeOn, !checksOn); }}>
             {checksOn ? "Drivers check mirrors: on" : "Drivers check mirrors: off"}</button>
+          <button className="btn" style={{ ...S.chip, borderColor: mergeTol ? C.amber : "rgba(255,255,255,0.12)", color: mergeTol ? C.white : DIM }}
+            title="the most a merge asks for, in seconds of the traffic's speed (Jay: 'within that typical 2-3s gap' around a merge; DECISIONS 10.70): off by default; taps cycle off, 2, 2.5, 3"
+            onClick={() => { const next = mergeTol === 0 ? 2 : mergeTol === 2 ? 2.5 : mergeTol === 2.5 ? 3 : 0; setSetting("mergeTol", next); restart(seed, limit, mode, cars, lookAway, shapeOn, checksOn, next); }}>
+            {mergeTol ? `Merge tolerance: ${mergeTol} s` : "Merge tolerance: off"}</button>
           {/* Only where the map asks to be shaped: off to read the same build unshaped (DECISIONS 10.17's comparison). A restart, as look-away is. */}
           {scene.current?.loaded?.traffic?.shape && (
             <button className="btn" style={{ ...S.chip, borderColor: shapeOn ? C.amber : "rgba(255,255,255,0.12)", color: shapeOn ? C.white : DIM }}
