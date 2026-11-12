@@ -66,6 +66,14 @@ behaviour under Windows beyond what this test covers.
 
 ## Still open for you (from `CODEX-NOTE-run-artifacts-and-reasoned-skip.md`, not touched here)
 
+**0. THE RUNNER DISCOVERS CHECKS FROM UNCOMMITTED CHANGES ONLY -- A DEFECT IN THE GATE, AND THE FIRST ON THIS LIST (13 November, the maintainer).** `node tools/check.mjs` derives "the checks the working tree's changes can break" from `git diff HEAD` plus staged plus untracked files (`changedFiles` in `tools/affected.mjs`). On work that is ALREADY COMMITTED, which is the case that matters most (verifying what is about to be merged), the diff against HEAD is empty: a bare run on two committed, ungated commits reported `3 changed file(s) -> 1 check(s) can see them` (the three were the runner's own history files) and would have passed having verified almost nothing; the 62 checks the commits could reach had to be named by hand (`node tools/affected.mjs <files changed since the base>` lists them, `node tools/check.mjs <names>` runs them). A GATE THAT QUIETLY PASSES BY DOING NOTHING IS THE FAILURE THE WEEK WAS SPENT REMOVING FROM THE CHECKS THEMSELVES, one level up in the tool that runs them, and it can make every other guarantee void, since a green gate is what every merge and every commit message leans on. NOT FIXED. WHAT A FIX HAS TO DO, stated so it is not re-derived: take a BASE (the merge target, `origin/main` by default, or `--since <ref>`) and derive from `git diff <base>...HEAD` as well as the working tree; say in the first line which base and how many files; and REFUSE TO PASS WHEN THE DERIVED SET IS NEARLY EMPTY AGAINST A NON-EMPTY DIFF TO THE BASE (or report it as "cannot tell", the third of the four states below). A check of the runner's own: a committed change to a src file must select the checks that import it.
+
+**1. (was the first item) The runner reporting four states (pass, fail, cannot tell, skipped-with-named-reason)** -- the SKIPPED-WITH-REASON state was BUILT on 12 November (`tools/lib/shortfall.mjs`, a `SKIP` line counted and listed by the runner, commit `8c64dbf`); "cannot tell" is not.
+
+Also still open: `check-hashes.json`, `check-history.jsonl` and `check-times.json` being rewritten into tracked files on every run; `verify-core` reporting SLOW against a recorded 0 s.
+
+(The original paragraph, kept as written:)
+
 The runner reporting four states (pass, fail, cannot tell, skipped-with-named-reason); `check-hashes.json`,
 `check-history.jsonl` and `check-times.json` being rewritten into tracked files on every run; `verify-core`
 reporting SLOW against a recorded 0 s.
