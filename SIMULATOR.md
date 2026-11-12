@@ -3057,8 +3057,8 @@ a slip road, with a car in that lane within 30 m).
 
 **THE DIAGNOSIS** (`tools/measure/highway-swim.mjs`, 120-300 cars). The
 expectation was a narrow speed spread and no overtaking. Measured, neither:
-desired speed 94-96 km/h at a spread of +/- 21 (twice a real motorway's
-10-12), surviving the following model (actual +/- 21-24); overtaking lane
+desired speed 94-96 km/h at a spread of +/- 21 (twice "a real motorway's
+10-12" -- **THAT FIGURE WAS THIS PROJECT'S, NOT JAY'S, AND IS RETIRED, 12 November: `[Jay]` "I'd like to see the speed variation increased up to 140 on the top and maybe around 85 on the low end, attached to suitably skilled drivers" (DECISIONS 10.70): the range is 85 to 140 km/h and speed preference should correlate with skill**), surviving the following model (actual +/- 21-24); overtaking lane
 changes 0.3-0.4 a car-minute; lanes sorted, about 104 / 97 / 70 km/h left to
 curb. The "sandwiched" player numbers were mostly the MEASURING DRIVER, which
 kept right and never overtook. Four harness faults were found on the way and
