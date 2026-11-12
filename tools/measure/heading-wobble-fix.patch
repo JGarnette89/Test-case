@@ -1,0 +1,89 @@
+diff --git a/src/sim/drive.js b/src/sim/drive.js
+index 7c419df..df66154 100644
+--- a/src/sim/drive.js
++++ b/src/sim/drive.js
+@@ -25,7 +25,7 @@ import { inLaneOf } from "./occupancy.js";
+ import { whatStops, poseOf, AT_LINE, entryOf } from "./crossing.js";
+ import { REACTION_FLOOR } from "../core/perception.js";
+ import { HARSH_AT, wantedGap, stoppingRoom } from "./traffic.js";
+-import { poseOnGraph, intentOf, normDeg, curbLegOf, exitRouteInto, exitAlong, exitSAt, approachAlong, approachSAt } from "./graph.js";
++import { poseOnGraph, intentOf, normDeg, curbLegOf, exitRouteInto, exitAlong, exitSAt, approachAlong, approachSAt, smoothHeadingAt } from "./graph.js";
+ import { poseAt } from "./intersection.js";
+ import { CAR, DT } from "./traffic.js";
+ import { placeOf, laneIndexOf, approachNeighbours } from "./placement.js";
+diff --git a/src/sim/graph.js b/src/sim/graph.js
+index dfc2c8c..c83de50 100644
+--- a/src/sim/graph.js
++++ b/src/sim/graph.js
+@@ -1124,4 +1124,18 @@ export function poseOnGraph(course, k, route, s) {
+   return { ...pose, z };
+ }
+ 
++/* THE PLAYER'S REFERENCE HEADING ON A PATH, A SMOOTH FUNCTION OF s (13 November, DECISIONS 10.70). A path is a polyline and `poseAt`'s heading is the heading of the SEGMENT, a staircase: the loop's roads are vertices every 5 m turning a uniform 0.48 degrees (an arc of about 600 m),
++   so the segment heading is up to 0.24 degrees either side of the tangent and steps 0.48 at every vertex. The player's heading is `rot + psi` and the camera turns with it, so that staircase was the car's own heading wobble, 0.355 degrees a tick at the 95th percentile
++   on a hands-off drive round a bend at 80 km/h (tools/measure/wobble.mjs). Here the heading is the direction of the chord between the path's POSITIONS HEADING_CHORD metres either side, which is continuous (0.004 degrees a tick, ninety times less). Positions are unchanged: no
++   vertex is added and no path is redrawn. It does not cross the box (the committed arc is the turn's own, as player.js `curvatureOf` has always kept it) and inside the box the segments' heading is kept. Near a path's end the chord is one-sided. ONE FUNCTION: the pose
++   (pose.js) and the car model's frame (drive.js `geomOf`) both read it, or `psi` would be measured against one heading and drawn against another. */
++export const HEADING_CHORD = 5;
++export function smoothHeadingAt(path, s, d = HEADING_CHORD) {
++  if (s >= path.stopAt && s <= path.clearAt) return poseAt(path, s).rot;
++  let s0 = Math.max(0, s - d), s1 = Math.min(path.length, s + d);
++  if (s < path.stopAt) s1 = Math.min(s1, path.stopAt); else s0 = Math.max(s0, path.clearAt);
++  if (s1 - s0 < 1) return poseAt(path, s).rot;
++  const a = poseAt(path, s0), b = poseAt(path, s1);
++  return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
++}
+ export { norm as normDeg, bearingOf };
+diff --git a/src/sim/pose.js b/src/sim/pose.js
+index 52956d8..d3f6df5 100644
+--- a/src/sim/pose.js
++++ b/src/sim/pose.js
+@@ -14,7 +14,7 @@
+    Imports only the graph, so the traffic can read it without reaching
+    for the player's own modules.
+    ===================================================================== */
+-import { poseOnGraph } from "./graph.js";
++import { poseOnGraph, smoothHeadingAt } from "./graph.js";
+ 
+ /* { x, y, z, heading }: the path's pose at their distance along, moved
+    across by their line, turned by their heading against the road's. */
+@@ -23,6 +23,8 @@ export function playerPoseOn(course, me) {
+      its route says only where the traffic last had it. */
+   if (me.noLane && me.at) return { x: me.at.x, y: me.at.y, z: me.at.z ?? 0, heading: me.at.heading };
+   const p = poseOnGraph(course, me.k ?? 0, me.route, Math.min(me.s, course.at[me.k ?? 0].layout.paths[me.route].length));
+-  const h = (p.rot * Math.PI) / 180, off = me.off ?? 0;
+-  return { x: p.x - Math.sin(h) * off, y: p.y + Math.cos(h) * off, z: p.z ?? 0, heading: p.rot + ((me.psi ?? 0) * 180) / Math.PI };
++  /* The heading the car is measured against is the path's SMOOTH one (graph.js smoothHeadingAt), the same function the car model reads, and the offset is taken across THE SAME heading: the segment's heading steps at a vertex and an offset taken across
++     it moves the car sideways by the offset times the step (the 1.4 mm a tick section 9 of verify-drive caught when only the heading was smoothed). The position ALONG the path is the path's own. */
++  const path = course.at[me.k ?? 0].layout.paths[me.route], hs = smoothHeadingAt(path, Math.min(me.s, path.length)), h = (p.rot * Math.PI) / 180, off = me.off ?? 0;
++  return { x: p.x - Math.sin(h) * off, y: p.y + Math.cos(h) * off, z: p.z ?? 0, heading: hs + ((me.psi ?? 0) * 180) / Math.PI };
+ }
+diff --git a/tools/verify-drive.mjs b/tools/verify-drive.mjs
+index 4e476d1..6e625a7 100644
+--- a/tools/verify-drive.mjs
++++ b/tools/verify-drive.mjs
+@@ -748,5 +748,24 @@ console.log("\n10. A LANE CHANGE ON A BEND DOES NOT MOVE THE CAR (12 November, D
+   check(bends.every((g) => g.slip < 0.02 && g.jump < 0.02), `[instrument: 20 mm] none of them moves the car: worst ${(1000 * Math.max(0, ...bends.map((g) => g.slip))).toFixed(1)} mm sideways and ${(1000 * Math.max(0, ...bends.map((g) => g.jump))).toFixed(1)} mm along the heading on the tick the route changes (the defect: up to 750 and 5500)`);
+ }
+ 
++console.log("\n11. THE PLAYER'S HEADING DOES NOT WOBBLE AT EVERY PATH VERTEX (13 November, DECISIONS 10.70)");
++{
++  /* A path is a polyline and `poseAt`'s heading is the SEGMENT's: on the loop a vertex every 5 m turning 0.48 degrees, a staircase 0.24 degrees either side of the tangent. The player's heading was `rot + psi`, so the staircase was the car's own heading
++     wobble (and the camera's, which turns with it): 0.355 degrees a tick at the 95th percentile on a hands-off drive round a bend at 80 km/h, rms 0.111 from a smooth reference (tools/measure/wobble.mjs). The heading is now the chord of the path's POSITIONS
++     (graph.js smoothHeadingAt), 0.004 and 0.013. THE REFERENCE HERE IS INDEPENDENT: the chord of positions 10 m either side, computed in this check and not by the code under test. Limits [instrument]: 0.05 degrees on each, from the measured 0.004 and
++     0.013, an order under the defect. */
++  const loop = loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build());
++  const wc = { ...seedGraph(1, 50, loop, { every: 2 }), actors: [] };
++  const route = Object.keys(wc.course.at[0].layout.paths).find((r) => /^loop-7\|end#1/.test(r)), path = wc.course.at[0].layout.paths[route], turnOf3 = (a, b) => ((a - b + 540) % 360) - 180;
++  const refAt = (s) => { const a = poseOnGraph(wc.course, 0, route, s - 10), b = poseOnGraph(wc.course, 0, route, s + 10); return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI; };
++  let me = { ...playerAt(wc.course, 0, route), s: 500, v: 80 / 3.6, going: true, accepted: true, signal: null, off: 0 }, world = withDriver(wc, me), s0 = me.s;
++  const dev = [];
++  for (let i = 0; i < 40 / DT && me.s < 1400; i++) { me = stepDriver(me, { steer: 0, slider: holdAt(me.v, me.grade ?? 0), assist: 1 }, world, DT); world = withDriver(world, me); dev.push(turnOf3(driverPose(me, wc.course).heading, refAt(me.s))); }
++  let vertices = 0; { let at = 0; for (let i = 1; i < path.pts.length - 1; i++) { at += Math.hypot(path.pts[i].x - path.pts[i - 1].x, path.pts[i].y - path.pts[i - 1].y); if (at > s0 && at < me.s && Math.abs(turnOf3((Math.atan2(path.pts[i + 1].y - path.pts[i].y, path.pts[i + 1].x - path.pts[i].x) * 180) / Math.PI, (Math.atan2(path.pts[i].y - path.pts[i - 1].y, path.pts[i].x - path.pts[i - 1].x) * 180) / Math.PI)) > 0.1) vertices++; } }
++  const rms = Math.sqrt(dev.reduce((a, b) => a + b * b, 0) / dev.length), steps = dev.slice(1).map((d, i) => Math.abs(d - dev[i])).sort((a, b) => a - b), p95 = steps[Math.floor(steps.length * 0.95)];
++  check(vertices >= 40 && dev.length >= 300, `the case arose: ${vertices} bending path vertices passed in ${dev.length} ticks of a hands-off drive round loop-7's bend`);
++  check(p95 < 0.05 && rms < 0.05, `[instrument: 0.05 degrees] the drawn heading against a smooth reference: tick-to-tick noise ${p95.toFixed(3)} degrees at the 95th percentile and rms ${rms.toFixed(3)} (the segment heading's staircase: 0.355 and 0.111)`);
++}
++
+ if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
+ console.log("\nOK: the signal picks the exit it means and only before the line, the box is committed to and the road is driven, the seam is seamless, the corner has to be earned, the stop marker holds still when held and slides when left late, and the traffic treats the player as its own.");
