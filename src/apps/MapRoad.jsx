@@ -30,7 +30,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Play, Pause, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { groundFor } from "../map/load.js";
-import { step, poseOf, DT } from "../sim/crossing.js";
+import { step, poseOf, carriedWorld, carriedPose, DT } from "../sim/crossing.js";
 import { stepDriver, driverPose, withDriver, aheadOf, playerHonk, headwayOf, followTarget } from "../sim/drive.js";
 import { worldFor, playerContact, START } from "../sim/scene.js";
 import { remoteSim, merge } from "../sim/remote.js";
@@ -117,7 +117,7 @@ export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, st
 /* What the game notices and says, and where the player is going: sim/session.js. */
 
 export function actorsOf(scene, carry) {
-  const w = scene.world;
+  const w = scene.world, wc = carriedWorld(w, carry);   // the world at the carried time, once a frame: a lane change's sideways motion is read there too (crossing.js carriedPose)
   /* Parked cars first: they are part of the world the traffic drives past
      and the player can hit (sim/parking.js). */
   const out = w.parked ? parkedPoses(w.course, w.parked).slice() : [];   // the cached poses are shared (parking.js): copy before adding
@@ -129,7 +129,7 @@ export function actorsOf(scene, carry) {
       out.push({ id: a.id, n: -1, ...p, colour: "#f4f4f2", player: true, reversing: !!a.backing, blinker: a.signal ?? null, brakeLamp: (a.a ?? 0) < -0.6 || (a.v ?? 0) < 0.1, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null });
       continue;
     }
-    const p = poseOf(w, { ...a, s: Math.min(a.s + a.v * carry, w.course.at[a.k].layout.paths[a.route].length) });
+    const p = carriedPose(wc, a, carry);
     /* A CRASHED car flashes its hazards: orange and dark, twice a second,
        so a wreck is never just another stopped car. */
     const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;

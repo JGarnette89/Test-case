@@ -3180,6 +3180,15 @@ export function poseOf(world, actor) {
   return { ...p, length, width, height, rot: p.rot + turn, x: p.x - Math.sin(a) * off, y: p.y + Math.cos(a) * off };
 }
 
+/* THE POSE THAT IS DRAWN, `carry` seconds after the tick the world is at (the screen draws between ticks: MapRoad `actorsOf`). Along the road the car is carried at the tick's speed; and the TIME-DEPENDENT part of
+   the pose -- a lane change's lateral offset and its turn (`lateralOf`, `lateralRate`, both of `world.t`) -- has to be read at the carried time too, or the car moves along the road at the frame rate and
+   SIDEWAYS IN 50 ms STEPS: every lane-changing car on the screen stepped sideways twenty times a second (found 13 November by reading `poseOf`, DECISIONS 10.70). `carriedWorld` is made ONCE a frame (a copy of the
+   world per car per frame would be garbage); `carriedPose` is the one implementation the screen and `verify-carry` share. */
+export const carriedWorld = (world, carry) => (carry ? { ...world, t: world.t + carry } : world);
+export function carriedPose(carried, a, carry) {
+  return poseOf(carried, { ...a, s: Math.min(a.s + a.v * carry, carried.course.at[a.k].layout.paths[a.route].length) });
+}
+
 /* HOW FAR OFF THEIR LINE A DRIVER IS, signed, to the right. The one
    place the steering axis becomes a distance, so the pose that is drawn,
    the pose that is checked for overlap and the deviation the marking
