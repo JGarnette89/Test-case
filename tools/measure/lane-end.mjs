@@ -10,7 +10,8 @@ import { seedGraph, step } from "../../src/sim/crossing.js";
 import { mergePlan, kappaOf, leadNeed, lagNeed } from "../../src/sim/lanechange.js";
 import { clearBetween } from "../../src/sim/traffic.js";
 import { courteous } from "../../src/sim/courtesy.js";
-import { overlapping } from "../../src/sim/crossing.js";
+import { overlapping, whatStops } from "../../src/sim/crossing.js";
+import { exitAlong } from "../../src/sim/graph.js";
 
 /* THRESHOLDS, MARKED (DECISIONS 10.70): `[invented]` every one: near rest under 2 m/s within 20 m of the taper's start, reached within 15 m; at rest under 0.5 m/s;
    "braked" over 1 m/s^2; "below its desired speed" under 0.9 of it; the car behind within 80 m; no gap when offered/needed under 1 at the sim's own
@@ -21,6 +22,19 @@ let w = seedGraph(seed, 50, loaded, { every: 2.0, target: cars, posted: true, ..
 if (process.env.COURTESY === "0") w.courtesy = false;
 for (let i = 0; i < 1200; i++) w = step(w);
 const J = new Map();
+/* THE CAUSE OF A HARD BRAKE, READ FROM THE SIM AT THE TICK IT BEGINS (DECISIONS 10.70; the maintainer's change: "we have measured a time window all night and called it a cost"). `whatStops(b, w).leader` is
+   the car the braking car is actually following. The brake is a MERGE'S ONLY if that leader is the joiner and the joiner is not itself braking hard (its own deceleration no worse than 1.5 m/s^2 [invented]): then
+   the follower brakes for the gap or the closing speed the merge made. Otherwise: JOINER BRAKING (the joiner is the leader but is braking itself, so the cause is upstream of the merge), OTHER CAR (it is
+   following somebody else), STOPPED OR WRECK (its leader is standing or is a recorded crash: a queue, a wreck), LINE (a stop line or a signal), NONE. A proximity in time is not a cause. */
+const causeOf = (world, b, m, byId, prevV) => {
+  let ld; try { ld = whatStops(b, world)?.leader; } catch (e) { return "error"; }
+  if (!ld) return "none";
+  if (ld.id === "line") return "line";
+  if (ld.crash) return "stoppedOrWreck";
+  if (ld.id === m.joinerId) { const j = byId.get(m.joinerId), jd = j ? ((j.v ?? 0) - (prevV.get(j.id) ?? j.v ?? 0)) / 0.05 : 0; return jd >= -1.5 ? "merge" : "joinerBraking"; }
+  if ((ld.v ?? 0) < 0.5) return "stoppedOrWreck";
+  return "otherCar";
+};
 /* IS THERE A WRECK (a recorded crash, standing in the lane until it is cleared) AHEAD OF THIS CAR, IN ITS OWN LANE, WITHIN 300 m? In the played world the sanctioned rear-end crashes (DECISIONS 10.46) leave wrecks that make the cars behind brake hard, which is the very quantity the hard-braking measure counts: events with one ahead are reported apart [invented: 300 m]. */
 const wreckAhead = (world, b) => {
   const L = world.course.at[b.k ?? 0]?.layout, p = L?.paths[b.route]; if (!p) return false;
@@ -36,12 +50,12 @@ for (let i = 0; i < secs * 20; i++) {
   w = step(w);
   if (i % 5 === 0) overlapTicks += overlapping(w).length;
   const prevV = new Map(before.actors.map((x) => [x.id, x.v])), offeredTo = new Map();
-  { const byId = new Map(w.actors.map((x) => [x.id, x])); for (let k = watch.length - 1; k >= 0; k--) { const m = watch[k], b = byId.get(m.behindId), pv = prevV.get(m.behindId); if (b && pv != null) { const dv = ((b.v ?? 0) - pv) / 0.05; if (dv < m.worstDecel) m.worstDecel = dv; if (dv < -5 && m.nearWreck == null) m.nearWreck = wreckAhead(w, b); } if (w.t - m.t >= 4 || !b) { watch.splice(k, 1); } } }
+  { const byId = new Map(w.actors.map((x) => [x.id, x])); for (let k = watch.length - 1; k >= 0; k--) { const m = watch[k], b = byId.get(m.behindId), pv = prevV.get(m.behindId); if (b && pv != null) { const dv = ((b.v ?? 0) - pv) / 0.05; if (dv < m.worstDecel) m.worstDecel = dv; if (dv < -3 && m.cause3 == null) m.cause3 = causeOf(w, b, m, byId, prevV); if (dv < -5 && m.nearWreck == null) { m.nearWreck = wreckAhead(w, b); m.cause5 = causeOf(w, b, m, byId, prevV); } } if (w.t - m.t >= 4 || !b) { watch.splice(k, 1); } } }
   for (const x of w.actors) if (x.courtesy && !x.courtesy.forPlayer && !x.courtesy.done) offeredTo.set(x.courtesy.for, (offeredTo.get(x.courtesy.for) ?? 0) + 1);
   let standNow = 0;
   for (const a of w.actors) {
     if (a.movedFor != null) movers.add(a.id);
-    if (a.lc?.merge && a.lc.at === before.t) { const j0 = J.get(a.id); if (j0 && j0.last && !j0.mAt) { j0.mAt = w.t; const rec = { t: w.t, joinerV: j0.last.joinerV, closing: j0.last.closing, lagT: j0.last.lagT, leadT: j0.last.leadT, worstDecel: 0, behindId: j0.last.behindId }; M.push(rec); if (rec.behindId != null) watch.push(rec); } }
+    if (a.lc?.merge && a.lc.at === before.t) { const j0 = J.get(a.id); if (j0 && j0.last && !j0.mAt) { j0.mAt = w.t; const rec = { t: w.t, joinerId: a.id, joinerV: j0.last.joinerV, closing: j0.last.closing, lagT: j0.last.lagT, leadT: j0.last.leadT, worstDecel: 0, behindId: j0.last.behindId }; M.push(rec); if (rec.behindId != null) watch.push(rec); } }
     const L = w.course.at[a.k].layout, p = L.paths[a.route], to = L.legs[p.to];
     if (!to?.accel || !(a.s > p.clearAt)) continue;
     const laneLen = p.length - to.accelClose - p.clearAt, run = a.s - p.clearAt, toEnd = p.length - to.accelClose - a.s;
@@ -77,7 +91,7 @@ const mp5 = (f) => { const a = M.map(f).filter((x) => Number.isFinite(x)).sort((
 const cl = M.map((m) => m.closing).filter((x) => x != null).sort((x, y) => x - y);   // closing speed at the merge: the car behind's speed minus the joiner's (m/s)
 /* THE HARD BRAKING SPLIT BY THE JOINER'S SPEED AT MERGE ONSET (11 November, DECISIONS 10.70): a car behind braking hard for a SLOW or STOPPED joiner forcing in is Jay's ruling working ("floor it into traffic ... causing a major disruption");
    braking for a joiner with speed that took a tight gap is what nothing in his account sanctions. Bins in km/h of the joiner's speed at the last plan before the merge begins [invented]: under 20, 20 to 40, 40 to 60, 60 and over. */
-const bins = [[0, 20], [20, 40], [40, 60], [60, 1e9]], splitOf = Object.fromEntries(bins.map(([lo, hi]) => { const g = M.filter((m) => m.joinerV != null && m.joinerV * 3.6 >= lo && m.joinerV * 3.6 < hi); return [`${lo}-${hi === 1e9 ? "+" : hi}`, { merges: g.length, over3: g.filter((m) => m.behindId != null && m.worstDecel < -3).length, over5: g.filter((m) => m.behindId != null && m.worstDecel < -5).length, over5NearWreck: g.filter((m) => m.behindId != null && m.worstDecel < -5 && m.nearWreck).length }]; }));
+const bins = [[0, 20], [20, 40], [40, 60], [60, 1e9]], splitOf = Object.fromEntries(bins.map(([lo, hi]) => { const g = M.filter((m) => m.joinerV != null && m.joinerV * 3.6 >= lo && m.joinerV * 3.6 < hi); return [`${lo}-${hi === 1e9 ? "+" : hi}`, { merges: g.length, over3: g.filter((m) => m.behindId != null && m.worstDecel < -3).length, over5: g.filter((m) => m.behindId != null && m.worstDecel < -5).length, over5NearWreck: g.filter((m) => m.behindId != null && m.worstDecel < -5 && m.nearWreck).length, over5ByCause: Object.fromEntries(["merge", "joinerBraking", "otherCar", "stoppedOrWreck", "line", "none", "error"].map((c) => [c, g.filter((m) => m.behindId != null && m.worstDecel < -5 && m.cause5 === c).length])), over3ByCause: Object.fromEntries(["merge", "joinerBraking", "otherCar", "stoppedOrWreck", "line", "none", "error"].map((c) => [c, g.filter((m) => m.behindId != null && m.worstDecel < -3 && m.cause3 === c).length])) }]; }));
 const merges = { speedSplit: splitOf, closingMedian: cl.length ? +cl[Math.floor(cl.length / 2)].toFixed(2) : null, closingP90: cl.length ? +cl[Math.floor(0.9 * cl.length)].toFixed(2) : null, closingOver10: +(cl.filter((x) => x > 10).length / Math.max(1, cl.length)).toFixed(3), n: M.length, lagTimeP5: mp5((m) => m.lagT), lagTimeMedian: mq((m) => m.lagT), leadTimeMedian: mq((m) => m.leadT), under1s: +(M.filter((m) => m.lagT < 1).length / Math.max(1, M.length)).toFixed(3), under05s: +(M.filter((m) => m.lagT < 0.5).length / Math.max(1, M.length)).toFixed(3), behindBraked3: +(M.filter((m) => m.behindId != null && m.worstDecel < -3).length / Math.max(1, M.length)).toFixed(3), behindBraked5: +(M.filter((m) => m.behindId != null && m.worstDecel < -5).length / Math.max(1, M.length)).toFixed(3) };
 const out = {
   moves: movers.size, merges, standing: { mean: +(standSum / Math.max(1, standTicks)).toFixed(2), max: standMax },
