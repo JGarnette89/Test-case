@@ -1,4 +1,6 @@
-/* WHERE THE 9 SECONDS COMES FROM (11 November, DECISIONS 10.70): the gap the car BEHIND needs from a joiner (lanechange.js lagNeed = max(floor, kappa * (wantedGap(behind, joiner) + shedOf(...)))), taken
+/* NOTE (11 November, after the fix): `lagNeed` now charges the closing speed ONCE, so the shed column below reads 0 and the totals are the "dynamic only" column (173 m at rest); the figures in the
+   DECISIONS record of the 9 s (249 m, 152 + 76) are the table BEFORE the fix, which this tool printed. Kept to show the decomposition.
+   WHERE THE 9 SECONDS COMES FROM (11 November, DECISIONS 10.70): the gap the car BEHIND needs from a joiner (lanechange.js lagNeed = max(floor, kappa * (wantedGap(behind, joiner) + shedOf(...)))), taken
    apart into the terms the sim adds, at the joiner's own speed, against a stream at 100 km/h, kappa 1. Prints what the SIM computes. The same closing speed is charged by wantedGap's dynamic term
    AND by shedOf: two implementations of one quantity. [invented]: every constant behind them. */
 import { lagNeed } from "../../src/sim/lanechange.js";
