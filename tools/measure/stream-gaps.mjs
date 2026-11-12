@@ -17,7 +17,7 @@ const loaded = loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build());
 let w = seedGraph(seed, 50, loaded, { every: 2.0, target: cars, posted: true });
 for (let i = 0; i < 1200; i++) w = step(w);
 
-const cross = new Map(), prevS = new Map(), times = new Map();   // per (node, lane): the crossing times
+const cross = new Map(), prevS = new Map(), times = new Map(), prevAl = new Map(), timesTaper = new Map(), tap = new Map(), alongside = [];   // PART 1b: the same through lane at the TAPER (where the acceleration lane ends), with everything that has joined it by then   // per (node, lane): the crossing times
 const J = new Map();
 for (let i = 0; i < secs * 20; i++) {
   w = step(w);
@@ -32,6 +32,14 @@ for (let i = 0; i < secs * 20; i++) {
       if (ps != null && ps < mark && a.s >= mark) { const t = w.t - (a.s - mark) / Math.max(a.v, 1); if (!times.has(key)) times.set(key, []); times.get(key).push(t); }
       prevS.set(a.id, a.s);
     }
+    // PART 1b: cars of that lane crossing the along-position of the taper's start (the end of the acceleration lane), whoever they are (including joiners that merged on the way)
+    if (accelHere && a.s > p.clearAt) {
+      const k1 = `${a.k}|${p.to}`;
+      if (!tap.has(k1)) { const r0 = Object.entries(L.paths).find(([, q0]) => q0.to === Object.keys(L.legs).find((id) => L.legs[id] === accelHere)); tap.set(k1, r0 ? exitAlong(w.course, a.k, r0[0], r0[1].length - accelHere.accelClose) : null); }
+      const A1 = tap.get(k1), al1 = exitAlong(w.course, a.k ?? 0, a.route, a.s), pa = prevAl.get(a.id);
+      if (A1 != null && al1 != null && pa != null && pa < A1 && al1 >= A1) { const t = w.t - (al1 - A1) / Math.max(a.v, 1); if (!timesTaper.has(k1)) timesTaper.set(k1, []); timesTaper.get(k1).push(t); }
+      if (al1 != null) prevAl.set(a.id, al1);
+    }
     if (HEADS && to?.accel && a.s > p.clearAt) lane.push({ a, L, p, to, al: exitAlong(w.course, a.k ?? 0, a.route, a.s) });
   }
   if (!HEADS) continue;
@@ -44,6 +52,13 @@ for (let i = 0; i < secs * 20; i++) {
     if (a.v < 0.5 && !j.rested) { j.rested = true; const ld = leadOf(x); j.cls = ld && ld.y.a.v < 0.5 && ld.gap < 40 ? "follower" : "head"; j.toEndAtRest = toEnd; }
   }
 }
+function stats(map) {
+  const hw = []; let span = 0;
+  for (const ts of map.values()) { ts.sort((x, y) => x - y); for (let i = 1; i < ts.length; i++) hw.push(ts[i] - ts[i - 1]); span += Math.max(0, (ts[ts.length - 1] ?? 0) - (ts[0] ?? 0)); }
+  const m = hw.reduce((x, y) => x + y, 0) / Math.max(1, hw.length), sd = Math.sqrt(hw.reduce((x, y) => x + (y - m) ** 2, 0) / Math.max(1, hw.length));
+  const sh = {}, pm = {}; for (const t of [0.5, 1, 2, 2.5, 3, 3.4, 5, 9]) { const n = hw.filter((h) => h >= t).length; sh[t] = +(n / Math.max(1, hw.length)).toFixed(3); pm[t] = +((n * 60) / Math.max(1, span)).toFixed(2); }
+  return { headways: hw.length, meanS: +m.toFixed(2), sdS: +sd.toFixed(2), cv: +(sd / Math.max(m, 1e-9)).toFixed(2), shareAtLeast: sh, perMinuteAtLeast: pm, flowPerLaneHour: +((hw.length * 3600) / Math.max(1, span)).toFixed(0), hw };
+}
 const q = (xs, f) => { const a = xs.slice().sort((x, y) => x - y); return a.length ? +a[Math.min(a.length - 1, Math.floor(f * a.length))].toFixed(2) : null; };
 const hw = []; let spanSecs = 0;
 for (const ts of times.values()) { ts.sort((x, y) => x - y); for (let i = 1; i < ts.length; i++) hw.push(ts[i] - ts[i - 1]); spanSecs += Math.max(0, (ts[ts.length - 1] ?? 0) - (ts[0] ?? 0)); }
@@ -52,6 +67,7 @@ const TH = [0.5, 1, 2, 2.5, 3, 3.4, 5, 9], share = {}, perMin = {};
 for (const t of TH) { const n = hw.filter((h) => h >= t).length; share[t] = +(n / Math.max(1, hw.length)).toFixed(3); perMin[t] = +((n * 60) / Math.max(1, spanSecs)).toFixed(2); }
 const out = { env: { TABLE: process.env.TABLE ?? null }, cars, seed, secs, lanes: times.size, headways: hw.length, meanS: +mean.toFixed(2), sdS: +sd.toFixed(2), cv: +(sd / Math.max(mean, 1e-9)).toFixed(2),
   p10: q(hw, 0.1), p50: q(hw, 0.5), p90: q(hw, 0.9), flowPerLaneHour: +((hw.length * 3600) / Math.max(1, spanSecs)).toFixed(0), shareAtLeast: share, perMinuteAtLeast: perMin };
+{ const t = stats(timesTaper); delete t.hw; out.atTaper = t; }
 if (HEADS) {
   const all = [...J.values()], heads = all.filter((j) => j.rested && j.cls === "head"), others = all.filter((j) => !j.rested);
   const med = (g, d) => q(g.map((j) => j.prof[d]).filter((x) => x != null), 0.5);
