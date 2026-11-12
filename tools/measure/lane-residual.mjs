@@ -61,9 +61,9 @@ for (let i = 0; i < secs * 20; i++) {
       const lead = nb.ahead ? clearBetween(nb.da, a, nb.ahead) : Infinity, lag = nb.behind ? clearBetween(nb.db, nb.behind, a) : Infinity;
       /* POST-HOC REFINEMENT (11 November, flagged): the sim also requires every car beyond the first ahead to clear its own lead need (`nb.aheads`), and decides only
          every LC_EVERY ticks (0.5 s), so a gap acceptable for one tick is not one it could take. `strict` adds the first; the longest CONTINUOUS acceptable run is the second. */
-      let strict = Math.min(lead / leadNeed(a, nb.ahead, k), lag / lagNeed(a, nb.behind, k)) >= 1;
-      if (strict) for (const { car, d } of nb.aheads ?? []) if (car !== nb.ahead && clearBetween(d, a, car) < leadNeed(a, car, k)) { strict = false; break; }
-      if (Math.min(lead / leadNeed(a, nb.ahead, k), lag / lagNeed(a, nb.behind, k)) >= 1) j.offered++;
+      let strict = Math.min(lead / leadNeed(a, nb.ahead, k, true), lag / lagNeed(a, nb.behind, k, true)) >= 1;
+      if (strict) for (const { car, d } of nb.aheads ?? []) if (car !== nb.ahead && clearBetween(d, a, car) < leadNeed(a, car, k, true)) { strict = false; break; }
+      if (Math.min(lead / leadNeed(a, nb.ahead, k, true), lag / lagNeed(a, nb.behind, k, true)) >= 1) j.offered++;
       if (strict) { j.run++; if (j.run > j.maxRun) j.maxRun = j.run; } else j.run = 0;
     } else j.run = 0;
   }
