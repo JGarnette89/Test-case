@@ -91,11 +91,24 @@ console.log("\n5. A WORLD'S CRASH LIST BEGINS WITH ITS CLOCK (12 November, DECIS
      player never saw. The list begins empty; the wreck stays, as an actor. [instrument: the case is a measured one, found by describing each crash, tools/measure/warmup-crashes.mjs] */
   const loop = loadMap(TEST_MAPS.find((t) => t.id === "test-loop").build());
   let w = seedGraph(3, 50, loop, { target: 260, posted: true, brakeReaction: true, walkers: true, rivals: true });
-  const wrecks = w.actors.filter((x) => x.crash).length;
   check((w.crashes ?? []).length === 0, `a world opens with no crash in its list, though the warm-up crashed two cars: ${(w.crashes ?? []).length} logged at t = ${w.t}`);
-  check(wrecks >= 2, `and the wreck is still on the road, as an actor: ${wrecks} crashed cars standing at t = 0`);
   for (let i = 0; i < 5 / DT; i++) w = step(w);
   check((w.crashes ?? []).every((c) => c.t >= 0 && c.t <= w.t + 1e-9), `and every crash logged lies inside the clock that is running: ${(w.crashes ?? []).length} logged, latest at ${(w.crashes ?? []).reduce((m, c) => Math.max(m, c.t), 0).toFixed(2)} s of ${w.t.toFixed(2)}`);
+}
+
+console.log("\n6. A WORLD OPENS CLEAR OF THE WARM-UP'S WRECKS (12 November, DECISIONS 10.70; the maintainer's call, flagged for Jay)");
+{
+  /* THE KNOWN CASES, measured by counting crashed cars standing at t = 0 (tools/measure/warmup-wrecks.mjs): on the loop at 300 cars, played, seeds 3, 8 and 17 each had two or more wrecks standing
+     when the clock started (8 of 50 seeds do); a player opened on a wreck and a queue they had nothing to do with. The warm-up runs the ordinary traffic for about 109 s, crashes included, and the
+     wrecks of the last 45 s used to stand into the world (and for longer than designed: `crash.t` was left on the warm-up's clock, so a wreck from the warm-up's 99th second stood until the run's 144th). The warm-up's
+     crashes are cleared when it ends -- towed, the same as CRASH_CLEAR does later -- so the queue behind them moves. A crash AFTER the clock starts is untouched (section 1), and people are not
+     cars: a struck person is stored apart (`peds`, state "struck") and the clearing filters `actors` only, so it is untouched BY CONSTRUCTION; NOT TESTED HERE, because no map or seed with a person lying at t = 0 is known (the loop has no crosswalks). [Jay: the call is the maintainer's, an artefact against content; the three seeds are measured cases] */
+  const loop = loadMap(TEST_MAPS.find((t) => t.id === "test-loop").build());
+  for (const seed of [3, 8, 17]) {
+    const w = seedGraph(seed, 50, loop, { target: 300, posted: true, brakeReaction: true, walkers: true, rivals: true });
+    const wrecks = w.actors.filter((x) => x.crash).length;
+    check(wrecks === 0, `loop seed ${seed} at 300 cars opens with no wreck standing: ${wrecks} crashed cars at t = 0 (each had two or more before)`);
+  }
 }
 
 console.log(`\n${"=".repeat(70)}`);

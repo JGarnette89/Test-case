@@ -3036,7 +3036,11 @@ function warmed(w0, acrossIt) {
        kept a start forty seconds in the future, so its car sat a whole
        lane off, in both lanes, until the clock caught up -- found as a
        3.6 m jump at a seam (SIMULATOR.md 1.1.13). */
-    actors: w.actors.map((a0) => rebaseLooks(a0, shift)).map((a) => ({
+    /* ...and the warm-up's WRECKS ARE TOWED: the warm-up runs the ordinary traffic for about 109 s, crashes included, and what was standing when the clock went back was what a player opened on (8 of 50 loop seeds
+       at 300 cars) -- a wreck and a queue they had nothing to do with, and a wreck from the warm-up's last seconds stood for its whole CRASH_CLEAR on a `crash.t` still on the warm-up's clock, so for longer than
+       designed. The maintainer's call, flagged for Jay: a clean start; an incident on purpose is content for later. A crash after the clock starts is untouched, and so are people (`peds`, stored apart).
+       verify-crashes section 6; DECISIONS 10.70. */
+    actors: w.actors.filter((a) => !a.crash).map((a0) => rebaseLooks(a0, shift)).map((a) => ({
       ...a, stoppedAt: back(a.stoppedAt), openedAt: back(a.openedAt),
       /* The lamp's onset is on that clock too (DECISIONS 10.46): left on it, a car braking as the warm-up ended came on in the future, unnoticed for as long as the lamp stayed on. */
       ...(a.lampOnset ? { lampOnset: { ...a.lampOnset, t: a.lampOnset.t - shift } } : {}),
