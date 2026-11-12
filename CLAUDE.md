@@ -2374,6 +2374,7 @@ invisible to the encroachment fault because it only ever watches priors — in
   times its recorded time and killed as a tree, nothing left running. The
   rule and the reasons are item 8 of the cold-start section; there is no
   hand-kept table to consult.
+- **A COMMIT MESSAGE STATES WHAT WAS TRUE WHEN IT WAS WRITTEN; THE RECORD STATES WHAT BECAME TRUE AFTERWARDS, AND THE RECORD IS THE AUTHORITY.** A commit marked UNGATED whose gate later passes keeps that word for good (nobody rewrites pushed history to keep it accurate); the result is written in DECISIONS keyed to the hash. A reader who finds only the message looks there (13 November, `2b76223`).
 - **A FEATURE IS NOT SHIPPED UNTIL IT IS PUSHED AND THE SERVED STAMP IS
   CHECKED.** The maintainer tests on GitHub Pages
   (https://jgarnette89.github.io/Test-case/), which deploys only on a push --
