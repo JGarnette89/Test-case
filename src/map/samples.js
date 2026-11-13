@@ -55,6 +55,7 @@ import { emptyMap, road } from "./format.js";
 import { fillZone, fillLots } from "./generate.js";
 import { loadMap } from "./load.js";
 import { trialCity } from "./trial.js";
+import { testHighway as testHighwayLong } from "./highway.js";
 
 /* A straight stroke, or a bowed one: `bow` metres sideways at the
    middle, so a road can bend without anybody computing an arc. */
@@ -445,5 +446,7 @@ export const TEST_MAPS = [
   { id: "test-buses", name: "Buses", blurb: "Curb stops and bays on a two-lane collector: a bus stops, people get off and on, the traffic waits behind it or passes the bay, and gives way to a bus pulling out -- if it knows to.", build: testBuses },
   { id: "test-1", name: "Test map 1", blurb: "The loop, the T, the crossroads, the five-way, the overpass and the big arterial.", build: testMap1 },
   { id: "test-highway", name: "Highway", blurb: "Six kilometres of three lanes each way, curving over low hills: two signalled crossroads timed as a green wave, a bridge, and trucks to pass.", build: testHighway },
+  /* The 403-style road (map/highway.js, built 21 October from the maintainer's 403 description and imported by nothing until 14 November, so never reachable): 15 km, a 4.5% climb of 100 m, a 4% downhill 90, gentle bends. A fixture, not `clean`, until the maintainer has driven it. */
+  { id: "test-highway-long", name: "Open highway (the 403)", blurb: "Fifteen kilometres that change character: a 2.4 km climb of 100 m, a downhill 90 km/h section, interchanges, trucks on the grade. Open at both ends.", build: testHighwayLong },
   { id: "test-loop", clean: true, name: "Endless highway", blurb: "A one-way loop of three lanes, about 10.4 km round, with four interchanges keeping the traffic fresh. You start on a slip road and join from an acceleration lane.", build: testLoop },
 ];
