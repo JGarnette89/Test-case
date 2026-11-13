@@ -132,7 +132,7 @@ const FACES = [[4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4,
 /* Scratch for paintBox, which is never re-entered: the faces that show,
    their keys and normals, and one projected point. */
 const FACE_I = [0, 0, 0, 0, 0], FACE_KEY = [0, 0, 0, 0, 0], FACE_N = new Float64Array(15), PT = [0, 0], PT2 = [0, 0];
-function paintBox(ctx, view, b, colour) {
+function paintBox(ctx, view, b, colour, edge = "rgba(0,0,0,0.55)") {
   const e = view.eye;
   let m = 0;
   for (let fi = 0; fi < FACES.length; fi++) {
@@ -156,8 +156,27 @@ function paintBox(ctx, view, b, colour) {
     ctx.closePath();
     ctx.fillStyle = shadeN(colour, FACE_N[3 * q], FACE_N[3 * q + 1], FACE_N[3 * q + 2]);
     ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,0.55)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = edge; ctx.lineWidth = 1; ctx.stroke();
   }
+}
+
+/* A VEHICLE'S SHADOW (13 November, DECISIONS 10.79): what makes a box sit ON the road instead of hovering over it. A flat quad on the ground under the
+   body, pushed a fraction of the way along the light's own horizontal direction (the same LIGHT the faces are shaded by, so the two cannot disagree about where
+   the sun is), a little larger than the footprint so it reads as a soft edge. Heading only, no roll or pitch: the wheels are on the ground and the shadow is the
+   ground's. One path, four projected points, a car. */
+const EDGE_VEHICLE = "rgba(0,0,0,0.30)";
+const SHADOW = { grow: 0.35, shift: 0.45, alpha: "rgba(0,0,0,0.30)" };
+const SH_DX = -LIGHT.x / LIGHT.z, SH_DY = -LIGHT.y / LIGHT.z;
+function paintShadow(ctx, view, at, deg, L, W) {
+  const a = (deg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a), hl = L / 2 + SHADOW.grow, hw = W / 2 + SHADOW.grow;
+  const ox = at.x + SH_DX * SHADOW.shift, oy = at.y + SH_DY * SHADOW.shift;
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const u = i === 0 || i === 3 ? -hl : hl, v = i < 2 ? -hw : hw;
+    view.into(ox + u * c - v * s, oy + u * s + v * c, at.z, PT);
+    i ? ctx.lineTo(PT[0], PT[1]) : ctx.moveTo(PT[0], PT[1]);
+  }
+  ctx.closePath(); ctx.fillStyle = SHADOW.alpha; ctx.fill();
 }
 
 /* A VEHICLE'S LAMPS, as map symbols (6 October, the maintainer: "world
@@ -899,7 +918,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const bmx = a.body ? { ...a.body, drop: dropFor(at, deg, 0, a.body, [[{ l: L, w: W, h: H }, 0]]) } : null;
       const body = boxCorners(at, deg, 0, { l: L, w: W, h: H }, 0, bmx);
       const glass = boxCorners(at, deg, 0, { l: L - 0.6, w: W + 0.04, h: 0.9 }, H - 1.4, bmx);
-      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, a.crashed ? colour : C.bus); if (!flat) paintBox(ctx, view, glass, "#2a3340"); if (!a.crashed) paintLamps(ctx, view, a, at, deg, L, W, H, H, k, scene.t ?? 0, bmx); } });
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintShadow(ctx, view, at, deg, L, W); paintBox(ctx, view, body, a.crashed ? colour : C.bus, EDGE_VEHICLE); if (!flat) paintBox(ctx, view, glass, "#2a3340"); if (!a.crashed) paintLamps(ctx, view, a, at, deg, L, W, H, H, k, scene.t ?? 0, bmx); } });
       return;
     }
     if (a.kind === "truck") {
@@ -910,14 +929,14 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       const bmx = a.body ? { ...a.body, drop: dropFor(at, deg, 0, a.body, [[box, 0], [cab, 0]]) } : null;
       const parts = [[boxCorners(at, deg, 0, box, 0, bmx), "#e9e6df", along(-box.back)], [boxCorners(at, deg, 0, cab, 0, bmx), colour, along(-cab.back)]]
         .sort((p, q) => depthOf(p[2].x, p[2].y, p[2].z) - depthOf(q[2].x, q[2].y, q[2].z));
-      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { for (const [c, col] of parts) paintBox(ctx, view, c, col); if (!a.crashed) paintLamps(ctx, view, a, at, deg, L, W, H, H * 0.8, k, scene.t ?? 0, bmx); } });
+      items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintShadow(ctx, view, at, deg, L, W); for (const [c, col] of parts) paintBox(ctx, view, c, col, EDGE_VEHICLE); if (!a.crashed) paintLamps(ctx, view, a, at, deg, L, W, H, H * 0.8, k, scene.t ?? 0, bmx); } });
       return;
     }
     const bmx = a.body ? { ...a.body, drop: dropFor(at, deg, 0, a.body, [[BODY, 0], [CABIN, BODY.h]]) } : null;
     const body = boxCorners(at, deg, 0, BODY, 0, bmx);
     const cabin = boxCorners(at, deg, 0, CABIN, BODY.h, bmx);
     /* Between the two tiers a car is its body alone: the cabin is a few pixels. */
-    items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintBox(ctx, view, body, colour); if (!flat) paintBox(ctx, view, cabin, colour); if (!a.crashed) paintLamps(ctx, view, a, at, deg, a.length ?? BODY.l, a.width ?? BODY.w, BODY.h, BODY.h, k, scene.t ?? 0, bmx); } });
+    items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "car", id: a.id ?? a.n, at }, paint: () => { paintShadow(ctx, view, at, deg, a.length ?? BODY.l, a.width ?? BODY.w); paintBox(ctx, view, body, colour, EDGE_VEHICLE); if (!flat) paintBox(ctx, view, cabin, colour, EDGE_VEHICLE); if (!a.crashed) paintLamps(ctx, view, a, at, deg, a.length ?? BODY.l, a.width ?? BODY.w, BODY.h, BODY.h, k, scene.t ?? 0, bmx); } });
   };
   for (const a of actors) {
     if (!onScreen(a.x, a.y, a.z ?? 0)) continue;
