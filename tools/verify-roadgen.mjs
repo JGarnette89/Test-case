@@ -1,5 +1,5 @@
 /* THE GENERATED HIGHWAY (14 November, DECISIONS 10.73): the road is a pure function of distance and a seed, bounded so it cannot cross itself, made of transitions, legible, and an ordinary map that loads and drives. The expectations are stated here, not read from roadgen.js's table (a check reading the code's constant cannot see it wrong); the drama floors are [invented] and mark the generator's purpose, not a measured truth -- the instrument for taste is the maintainer driving it. */
-import { roadgen, lineOf } from "../src/map/roadgen.js";
+import { roadgen, lineOf, sitesOf, ROAD } from "../src/map/roadgen.js";
 import { loadMap } from "../src/map/load.js";
 import { seedGraph, step } from "../src/sim/crossing.js";
 let bad = 0;
@@ -18,12 +18,12 @@ check(short.length >= 6 && prefixOk, `a 12 km road and a 20 km road share every 
 check(!sameRoad(roadgen({ SEED: 2 }).roads[0].points, A.roads[0].points) || !sameRoad(roadgen({ SEED: 2 }).roads[3].points, A.roads[3].points), "and a different seed gives a different road");
 
 console.log("2. THE HEADING IS BOUNDED, SO THE ROAD CANNOT CROSS ITSELF");
-for (const [name, o] of [["interchanges every 5 km", {}], ["none", { INTERCHANGE_EVERY: 0 }], ["seed 7", { SEED: 7 }], ["seed 31, 60 km", { SEED: 31, LENGTH: 60000 }]]) {
+for (const [name, o] of [["interchanges every 5 km", {}], ["none", { INTERCHANGES: 0 }], ["seed 7", { SEED: 7 }], ["seed 31, 60 km", { SEED: 31, LENGTH: 60000 }]]) {
   const g = lineOf(o); let maxH = 0, mono = true; for (let i = 1; i < g.pts.length; i++) { maxH = Math.max(maxH, Math.abs(g.pts[i].h)); if (g.pts[i].x <= g.pts[i - 1].x) mono = false; }
   check(maxH <= 70.01 * Math.PI / 180 && mono, `${name}: the heading never passes 70 degrees (${(maxH * 180 / Math.PI).toFixed(1)}) and x only increases over ${(g.pts.length * 4 / 1000).toFixed(0)} km`);
 }
 
-for (const [name, o] of [["with interchanges", {}], ["none", { INTERCHANGE_EVERY: 0 }], ["60 km", { LENGTH: 60000, SEED: 5 }]]) {
+for (const [name, o] of [["with interchanges", {}], ["none", { INTERCHANGES: 0 }], ["60 km", { LENGTH: 60000, SEED: 5 }]]) {
   const zs = lineOf(o).pts.map((p) => p.z), lo = Math.min(...zs), hi = Math.max(...zs);
   check(lo >= -25 && hi <= 150, `${name}: the road stays in a height band (${lo.toFixed(0)} to ${hi.toFixed(0)} m, within -25 to 150): it does not drift away downhill for ever`);
 }
@@ -33,7 +33,7 @@ check(hw(A).every((r) => { const a = +r.id.slice(3), p = at(a); return /^hw-\d+$
 check(A.roads.filter((r) => /^(on|off)-/.test(r.id)).every((r) => /^(on|off)-\d+$/.test(r.id)), "and every ramp is on-<metres> or off-<metres>");
 
 console.log("4. IT LOADS AS AN ORDINARY MAP");
-for (const [name, o] of [["with interchanges", {}], ["without", { INTERCHANGE_EVERY: 0 }]]) {
+for (const [name, o] of [["with interchanges", {}], ["without", { INTERCHANGES: 0 }]]) {
   const m = roadgen(o), L = loadMap(m), msgs = (L.warnings ?? []).map((w) => w.msg ?? w.message ?? JSON.stringify(w));
   check(L.ok === true, `${name}: loads, not refused`);
   check(!msgs.some((t) => /acceleration lane needs|dropped|refused|cannot/.test(t)), `${name}: no warning about an acceleration lane, a drop or a refusal (${msgs.filter((t) => !/joined road|bend of radius/.test(t)).length} others)`);
@@ -49,7 +49,7 @@ console.log("5. THE CALM AROUND AN INTERCHANGE: straight and level");
 
 console.log("6. DRAMA, AND LEGIBILITY AS A REQUIREMENT (floors are [invented]: the purpose, not a measurement)");
 {
-  const g = lineOf({ INTERCHANGE_EVERY: 0 }), p = g.pts, N = p.length;
+  const g = lineOf({ INTERCHANGES: 0 }), p = g.pts, N = p.length;
   const peak = Math.max(...p.map((q) => Math.abs(q.g)));
   check(peak <= 0.0775 && peak >= 0.05, `the steepest grade the player sees is ${(100 * peak).toFixed(1)}%: legible (at least 5%) and one the engine can hold at 100 km/h (at most 7.75%, player.js)`);
   /* a REVERSAL is the curvature passing through zero FAST: from one bend straight into the other, at least 2e-5 per metre of travel (an S-bend's 90 m swing between 1/700 m bends is 3e-5; a sweep easing out and another easing in the other way is 7e-6 and does not count) */
@@ -64,8 +64,18 @@ console.log("6. DRAMA, AND LEGIBILITY AS A REQUIREMENT (floors are [invented]: t
   check(flat < 0.35, `no tabletop: ${(100 * flat).toFixed(0)}% of the road is within half a percent of level (the loop is 70%, the 403 map 59%)`);
 }
 
+console.log("5b. THE INTERCHANGES ARE COMMON AND VARY (Jay, DECISIONS 10.74)");
+{ const S = sitesOf({ ...ROAD, LENGTH: 60000 }, 60000), kinds = new Set(S.map((s) => s.kind)), gaps = S.slice(1).map((s, i) => s.nodes[0].u - S[i].end), sd = (a) => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); };
+  check(S.length >= 15, `${S.length} interchanges in 60 km (at least 15: one every 4 km or closer): merging happens everywhere`);
+  check(kinds.size === 3, `all three kinds come (${[...kinds].join(", ")}): an exit and an entrance, an exit alone, an entrance alone`);
+  check(sd(gaps) > 600 && Math.max(...gaps) > 2 * Math.min(...gaps), `the open road between them varies (${Math.min(...gaps).toFixed(0)} to ${Math.max(...gaps).toFixed(0)} m, sd ${sd(gaps).toFixed(0)}): not a metronome`);
+  check(new Set(S.map((s) => Math.round(s.ramp / 50))).size >= 4 && new Set(S.map((s) => Math.round(s.ang / 5))).size >= 3, "ramp length and angle vary");
+  check(S.some((s) => s.left), "some exits leave on the left");
+  check(S.every((s) => s.ang >= 35), "no ramp is shallower than 35 degrees: below that it lies along the through lanes and the conflict table stops the road (measured)");
+  const far = lineOf({ LENGTH: 60000 }), a = far.nodes.map((n) => n.u).join(), b = lineOf({ LENGTH: 30000 }).nodes.map((n) => n.u).join();
+  check(a.startsWith(b.slice(0, b.lastIndexOf(","))), "the interchange sequence of a short road is the start of the long one's (distance only)"); }
 console.log("7. IT DRIVES");
-for (const [name, o] of [["with interchanges", {}], ["without", { INTERCHANGE_EVERY: 0 }]]) {
+for (const [name, o] of [["with interchanges", {}], ["interchanges, seed 2", { SEED: 2 }], ["interchanges, seed 3", { SEED: 3 }], ["without", { INTERCHANGES: 0 }]]) {
   let w; try { w = seedGraph(1, 50, loadMap(roadgen(o)), { target: 80, posted: true, brakeReaction: true }); for (let i = 0; i < 20 * 45; i++) w = step(w); } catch (e) { check(false, `${name}: threw ${e.message}`); continue; }
   const moving = w.actors.filter((a) => (a.v ?? 0) > 1).length;
   check(w.actors.length >= 60 && moving >= 0.9 * w.actors.length && !(w.crashes?.length), `${name}: ${w.actors.length} cars after 45 s, ${moving} moving, ${w.crashes?.length ?? 0} crashes`);

@@ -43,10 +43,9 @@
      exactly the shorter one's roads, so this static stretch is already
      the first window of an endless road rather than a throwaway.
 
-   INTERCHANGES ARE A SWITCH, NOT A DECISION. Whether ordinary highway has
-   junctions at all is the maintainer's open question (exits only where an
-   area needs one?), so INTERCHANGE_EVERY is a number: 0 is a road with
-   one entrance (to start on) and nothing else. Around each interchange the
+   INTERCHANGES ARE AMBIENT AND COMMON (Jay, DECISIONS 10.74): traffic merges
+   in and out and the player changes direction by them; INTERCHANGES: 0 is a
+   road with   one entrance (to start on) and nothing else. Around each interchange the
    road is held straight and level (a CALM zone, blended in and out):
    junction clearing does not know about slope, and a slip road on a curve
    crossed the through curb lane (the old loop's finding), so the drama
@@ -93,13 +92,17 @@ export const ROAD = {
   EASE_VC_MIN: 160, EASE_VC_MAX: 320,                   // m: where the grade changes without changing sign
   Z_LOW: 4, Z_HIGH: 70,                                 // m (before exaggeration): the road is steered back toward this band
 
-  /* ---- interchanges (a switch; see the header) ------------------------ */
-  INTERCHANGE_EVERY: 5000,  // m between an exit and the next exit; 0 = none (one entrance only, to start on)
-  FIRST_EXIT: 900,          // m
-  EXIT_TO_ENTRANCE: 700,    // m
+  /* ---- interchanges: AMBIENT and common (Jay, 14 November: DECISIONS 10.74) -- traffic merges in and out and the player turns around by them; they are one of the most repeated things he will see, so spacing, kind, geometry and side VARY. Placed by construction in calm zones: a feature never overlaps one. */
+  INTERCHANGES: 1,          // 0 = none (one entrance only, to start on); 1 = ambient interchanges
+  FIRST_EXIT: 900,          // m: the first interchange (always a full one: the road starts from its entrance)
+  OPEN_MIN: 1100, OPEN_MAX: 4200, OPEN_SKEW: 1.4,   // m of road between one interchange's calm and the next's: the stretch the drama lives in (the draw is rng^SKEW, so most are short and a few long)
+  W_FULL: 0.45, W_EXIT: 0.25, W_ENTRANCE: 0.30,     // exit then entrance / an exit alone / an entrance alone
+  EXIT_TO_ENTRANCE_MIN: 450, EXIT_TO_ENTRANCE_MAX: 1100,   // m
   ACCEL: 350,               // m of acceleration lane
-  CALM_BEFORE: 350, CALM_AFTER: 700, CALM_BLEND: 250,   // m held straight and level around an interchange, and how fast it is blended away
-  RAMP: 400, RAMP_ANGLE: 35,
+  CALM_BEFORE: 350, CALM_AFTER: 600, CALM_BLEND: 250,   // m held straight and level around an interchange, and how fast it is blended away
+  EXIT_AFTER: 250, ENTRANCE_BEFORE: 150,                // m of calm past a lone exit / before a lone entrance
+  RAMP_MIN: 300, RAMP_MAX: 600, ANGLE_MIN: 35, ANGLE_MAX: 50,   // m and degrees of a ramp, drawn per interchange. NOT BELOW ~35: at 28 the ramp lies along the through lanes for so long the conflict table holds a third of the road (measured, DECISIONS 10.74)
+  LEFT_EXIT: 0.12,          // share of exits that leave on the LEFT (the exit-only lane is then the fast lane)
   LANES: 3, LIMIT: 100, TRUCKS: 0.12,
 };
 
@@ -214,19 +217,24 @@ function gradeAt(plan, v) {
 /* ---------------------------------------------------------------------
    The interchanges and the calm around them.
    --------------------------------------------------------------------- */
-/* The interchanges depend on DISTANCE ONLY, never on where this stretch happens to end (`to`: how far to generate them, the plan wants them past the end): otherwise a longer road would not begin with the shorter one, because a calm zone beyond the end of the short road changes the bends before it. */
-export function interchangesOf(C, to = C.LENGTH) {
-  const nodes = [];   // { u, kind: "exit" | "entrance" }
-  if (C.INTERCHANGE_EVERY > 0) for (let x = C.FIRST_EXIT; x < to; x += C.INTERCHANGE_EVERY) nodes.push({ u: x, kind: "exit", x }, { u: x + C.EXIT_TO_ENTRANCE, kind: "entrance", x });
-  else nodes.push({ u: C.FIRST_EXIT, kind: "entrance", x: C.FIRST_EXIT });
-  return nodes;
+/* The interchanges depend on DISTANCE ONLY, never on where this stretch happens to end (`to`: how far to generate them, the plan wants them past the end): otherwise a longer road would not begin with the shorter one, because a calm zone beyond the end of the short road changes the bends before it. Each site draws a fixed number of random values, so the sequence is the same however far it runs. */
+export function sitesOf(C, to = C.LENGTH) {
+  if (!(C.INTERCHANGES > 0)) return [{ i: 0, kind: "entrance", nodes: [{ u: C.FIRST_EXIT, kind: "entrance" }], zone: [C.FIRST_EXIT - C.ENTRANCE_BEFORE, C.FIRST_EXIT + C.ACCEL + C.CALM_AFTER], end: C.FIRST_EXIT + C.ACCEL + C.CALM_AFTER, ramp: C.RAMP_MIN, ang: 35, left: false }];
+  const r = rng(C.SEED * 1000003 + 977), lerp = (a, b, t) => a + (b - a) * t, sites = [];
+  for (let u = Math.round(C.FIRST_EXIT / C.STEP) * C.STEP, i = 0; u < to; i++) {
+    const q = (v) => Math.round(v / C.STEP) * C.STEP, t = r(), gap = q(lerp(C.EXIT_TO_ENTRANCE_MIN, C.EXIT_TO_ENTRANCE_MAX, r())), ramp = lerp(C.RAMP_MIN, C.RAMP_MAX, r()), ang = lerp(C.ANGLE_MIN, C.ANGLE_MAX, r()), left = r() < C.LEFT_EXIT, open = lerp(C.OPEN_MIN, C.OPEN_MAX, Math.pow(r(), C.OPEN_SKEW));
+    const kind = i === 0 ? "full" : t < C.W_FULL ? "full" : t < C.W_FULL + C.W_EXIT ? "exit" : "entrance";
+    const e = { u, kind: "exit" }, n = { u: u + gap, kind: "entrance" };
+    const nodes = kind === "full" ? [e, n] : kind === "exit" ? [e] : [{ u, kind: "entrance" }];
+    const last = nodes[nodes.length - 1];
+    const zone = [kind === "entrance" ? u - C.ENTRANCE_BEFORE : u - C.CALM_BEFORE, kind === "exit" ? u + C.EXIT_AFTER : last.u + C.ACCEL + C.CALM_AFTER];
+    sites.push({ i, kind, nodes, zone, end: zone[1], ramp, ang, left: kind !== "entrance" && left });
+    u = q(zone[1] + C.CALM_BEFORE + open);
+  }
+  return sites;
 }
-const calmZones = (C, nodes) => {
-  const out = [];
-  if (C.INTERCHANGE_EVERY > 0) for (let i = 0; i < nodes.length; i += 2) out.push([nodes[i].u - C.CALM_BEFORE, nodes[i + 1].u + C.ACCEL + C.CALM_AFTER]);
-  else out.push([nodes[0].u - C.CALM_BEFORE, nodes[0].u + C.ACCEL + C.CALM_AFTER]);
-  return out;
-};
+export const interchangesOf = (C, to = C.LENGTH) => sitesOf(C, to).flatMap((s) => s.nodes.map((n) => ({ ...n, x: n.u, site: s })));
+const calmZones = (C, nodes) => [...new Map(nodes.map((n) => [n.site.i, n.site.zone])).values()];
 const calmAt = (zones, blend, v) => { let m = 1; for (const [a, b] of zones) { const d = v < a ? a - v : v > b ? v - b : 0; m = Math.min(m, smooth(d / blend)); } return m; };
 
 /* ---------------------------------------------------------------------
@@ -234,7 +242,7 @@ const calmAt = (zones, blend, v) => { let m = 1; for (const [a, b] of zones) { c
    --------------------------------------------------------------------- */
 export function lineOf(overrides = {}) {
   const C = { ...ROAD, ...overrides };
-  const allNodes = interchangesOf(C, C.LENGTH + 4000), zones = calmZones(C, allNodes), nodes = allNodes.filter((n) => n.x + C.EXIT_TO_ENTRANCE + 900 < C.LENGTH), plan = planOf(C, zones), prof = profileOf(C, zones);
+  const allNodes = interchangesOf(C, C.LENGTH + 4000), zones = calmZones(C, allNodes), nodes = allNodes.filter((n) => n.site.end + 900 < C.LENGTH), plan = planOf(C, zones), prof = profileOf(C, zones);
   const pts = []; let x = 0, y = 0, z = 0, h = 0;
   for (let u = 0; u <= C.LENGTH + 1e-9; u += C.STEP) {
     const m = calmAt(zones, C.CALM_BLEND, u);
@@ -272,14 +280,14 @@ export function roadgen(overrides = {}) {
     spans.push({ a, b, id: `hw-${a}`, speed: Math.min(C.LIMIT, kmax > 0 ? speedFor(C, 1 / kmax) : C.LIMIT), line, extra, endNode });
   }
   for (const s of spans) m.roads.push(road({ id: s.id, kind: "highway", lanes: C.LANES, speed: s.speed, oneWay: true, points: s.line, ...s.extra }));
-  const ANG = C.RAMP_ANGLE * DEG, right = (hh, d) => ({ x: Math.cos(hh) * d, y: Math.sin(hh) * d }), ramps = [];
+  const right = (hh, d) => ({ x: Math.cos(hh) * d, y: Math.sin(hh) * d }), ramps = [];
   for (const n of nodes) {
-    const p = P(n.u), z = r2(p.z), line = [];
-    if (n.kind === "exit") { const d = right(p.h + ANG, C.RAMP); for (let i = 0; i <= 40; i++) line.push({ x: r2(p.x + (d.x * i) / 40), y: r2(p.y + (d.y * i) / 40), z }); m.roads.push(road({ id: `off-${n.u}`, kind: "arterial", lanes: 1, oneWay: true, speed: 60, points: line })); }
-    else { const d = right(p.h - ANG, C.RAMP); for (let i = 0; i <= 40; i++) line.push({ x: r2(p.x - d.x + (d.x * i) / 40), y: r2(p.y - d.y + (d.y * i) / 40), z }); m.roads.push(road({ id: `on-${n.u}`, kind: "arterial", lanes: 1, oneWay: true, speed: 80, points: line })); ramps.push({ id: `on-${n.u}`, u: n.u }); }
+    const p = P(n.u), z = r2(p.z), line = [], S = n.site, ANG = S.ang * DEG, R = S.ramp;
+    if (n.kind === "exit") { const d = right(p.h + (S.left ? -ANG : ANG), R); for (let i = 0; i <= 40; i++) line.push({ x: r2(p.x + (d.x * i) / 40), y: r2(p.y + (d.y * i) / 40), z }); m.roads.push(road({ id: `off-${n.u}`, kind: "arterial", lanes: 1, oneWay: true, speed: 60, points: line })); }
+    else { const d = right(p.h - ANG, R); for (let i = 0; i <= 40; i++) line.push({ x: r2(p.x - d.x + (d.x * i) / 40), y: r2(p.y - d.y + (d.y * i) / 40), z }); m.roads.push(road({ id: `on-${n.u}`, kind: "arterial", lanes: 1, oneWay: true, speed: 80, points: line })); ramps.push({ id: `on-${n.u}`, u: n.u }); }
   }
-  /* The exit-only lane at each exit: the curb lane may only leave there. */
-  for (const s of spans) if (s.endNode) { const rd = m.roads.find((q) => q.id === s.id); rd.turns = { end: Array.from({ length: C.LANES }, (_, j) => (j === C.LANES - 1 ? ["right"] : ["straight"])) }; }
+  /* The exit-only lane at each exit: the lane on its side may only leave there. */
+  for (const s of spans) if (s.endNode) { const rd = m.roads.find((q) => q.id === s.id), L = s.endNode.site.left; rd.turns = { end: Array.from({ length: C.LANES }, (_, j) => (j === (L ? 0 : C.LANES - 1) ? [L ? "left" : "right"] : ["straight"])) }; }
   /* Sections: the start, and the most dramatic of each kind the road has, each joined from the entrance before it. */
   const entranceBefore = (u) => ramps.filter((q) => q.u + C.ACCEL < u).pop() ?? ramps[0];
   const look = (u) => { const p = P(u); return { x: r2(p.x + Math.cos(p.h + Math.PI / 2) * 100), y: r2(p.y + Math.sin(p.h + Math.PI / 2) * 100) }; };
@@ -295,4 +303,4 @@ export function roadgen(overrides = {}) {
 }
 export const testHighwayGen = () => roadgen();
 /* The same road with no interchange but the entrance to start on: all of it is the road, none of it calm. */
-export const testHighwayGenOpen = () => roadgen({ ID: "test-highway-gen-open", NAME: "The generated highway, no interchanges", INTERCHANGE_EVERY: 0 });
+export const testHighwayGenOpen = () => roadgen({ ID: "test-highway-gen-open", NAME: "The generated highway, no interchanges", INTERCHANGES: 0 });
