@@ -203,8 +203,8 @@ console.log("\n7. WIRING");
   check((draw.match(/paintLamps\(ctx, view, a, at, deg, [^;]*?, bmx\)/g) ?? []).length === 3 && (draw.match(/function paintLamps\(.*bm = null\)/g) ?? []).length === 1, "every lamp call (car, truck, bus) passes the body to paintLamps");
   check(/resolveBody\(a\.kind, modsOf\(a\)\)/.test(fs.readFileSync(new URL("../src/iso/body.js", import.meta.url), "utf8")), "bodyOf reads its parameters ONLY through resolveBody (one function answers what a car's body parameters are)");
   check(/const T = frameOf\(deg, 0, bm\), spot = /.test(draw), "and the lamps' position goes through that body transform (frameOf, placeInto), not a copy of the heading arithmetic");
-  check(!/bodyMotion: true/.test(settings) && /bodyMotion: false/.test(settings), "it ships OFF (settings.js bodyMotion: false), a switch on the debug chips");
+  check(/bodyMotion: true/.test(settings) && !/bodyMotion: false/.test(settings), "it ships ON (settings.js bodyMotion: true, Jay's phone look 13 November), and the debug chip still switches it off");
 }
 
-console.log(failed ? `\n${failed} FAILURE(S)` : "\nOK: every vehicle has a row, the spring behaves, the directions are right, a bend rolls the body the right way and smoothly, the drawing leans without sinking or leaving the lamps behind, and the screen draws everybody through the one function, off by default.");
+console.log(failed ? `\n${failed} FAILURE(S)` : "\nOK: every vehicle has a row, the spring behaves, the directions are right, a bend rolls the body the right way and smoothly, the drawing leans without sinking or leaving the lamps behind, and the screen draws everybody through the one function, on by default.");
 process.exit(failed ? 1 : 0);

@@ -191,8 +191,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [realPos, setRealPos] = useState(false);
   const realRef = useRef(false);
   /* BODY MOTION (iso/body.js, DECISIONS 10.70): the car leans, dives and squats. Off by default, a switch on the debug chips so it can be compared; page-side, no restart. */
-  const [bodyOn, setBodyOn] = useState(false);
-  const bodyRef = useRef(false), bodyMem = useRef(null);
+  const [bodyOn, setBodyOn] = useState(true);
+  const bodyRef = useRef(true), bodyMem = useRef(null);
   /* THE WALLET (sim/money.js): loaded once, carried from scene to scene; a fare paid is written by the session. */
   const walletRef = useRef(null);
   const mailRef = useRef(null);
@@ -282,7 +282,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const ck = s.checksOn === true;
       const mt = [2, 2.5, 3].includes(Number(s.mergeTol)) ? Number(s.mergeTol) : 0;
       /* A saved real position wins over a saved worker: the worker stays off and the page steps (10.70). */
-      if (s.bodyMotion === true) { bodyRef.current = true; setBodyOn(true); }
+      if (s.bodyMotion === false) { bodyRef.current = false; setBodyOn(false); }   // on by default; a saved off stands
       const wantReal = s.realPos === true;
       if (wantReal) { realRef.current = true; setRealPos(true); }
       if (s.simWorker === true && !wantReal && typeof Worker !== "undefined") { workerRef.current = true; setSimWorker(true); scene.current?.remote?.stop(); restart(seed, kmh, m, n, look, sh, ck); return; }
