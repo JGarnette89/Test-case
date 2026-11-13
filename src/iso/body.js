@@ -5,7 +5,9 @@
    motorcycle even -- we are just tuning the feel of one vehicle, and we'll need to reiterate on all of it later"). So this is ONE SYSTEM EVERY
    VEHICLE INHERITS, with a TABLE of constants per vehicle kind (`BODY`): a truck leans further and slower than a car, and a motorcycle -- when the
    roster has one -- is a row with a roll gain several times a car's, not a different system. A motorcycle that does not lean looks broken, which
-   retires "a sprite set has no pitch" for good.
+   retires "a sprite set has no pitch" for good. (And the sprite direction itself was DROPPED on 13 November, Jay: stacked sprites tilt only by
+   sliding layers and sort as layers, and asset art multiplies by vehicle x heading x damage x tilt; cars are PROCEDURAL GEOMETRY, a kind being a row of
+   numbers. So this table is the central artefact, not an accommodation, and nothing here is shaped to stay sprite-compatible.)
 
    RENDERER-ONLY. No simulation state and nothing crossing the worker: per-car memory keyed by id lives in `newBody()`, held by the screen beside
    `drawn.current`, reset when an id's world clock runs backwards and dropped when an id is no longer drawn. THE INPUTS, from what the page already holds:
@@ -41,6 +43,29 @@ export const BODY = {
 const DEG = Math.PI / 180;
 export const rowOf = (kind) => BODY[kind ?? "car"] ?? BODY.car;
 
+/* THE TWO-STAGE RESOLVE (Jay, 13 November: upgrades must be able to modify body motion; a sporty car should read as more "planted" than a commuter car).
+   `resolveBody(kind, modifiers)` is THE ONE FUNCTION THAT ANSWERS "WHAT ARE THIS CAR'S BODY PARAMETERS": the kind's base row, then the modifiers fitted, which
+   are multipliers { hz, zeta, gain } (all optional, 1 when absent) on the spring's frequency, its damping and its amplitude. Strictly a data path for now: there
+   is no upgrade system, `modsOf` finds no modifier on any car, and the resolve returns the base row itself (no copy, no garbage a car a frame).
+   WHAT "PLANTED" MAY MEAN, A DESIGN CONSTRAINT FROM THE FINDING BEHIND IT (the maintainer, 13 November): since the position fixes Jay can get closer to other cars, so the
+   body's movement is a distance cue, and an upgrade that REDUCED motion would quietly degrade the player's spatial judgement. PLANTED MEANS TIGHTER, NOT SMALLER: higher
+   damping and a faster natural frequency (the same peak delivered and resolved sooner), amplitude largely left alone. A real sports car still rolls; it stops rolling
+   sooner. So `hz` and `zeta` are the levers an upgrade pulls, and `gain` is floored at AMPLITUDE_FLOOR so no stack of modifiers can remove the cue. [the maintainer:
+   the constraint; the floor's 0.85, the ceiling on damping and on frequency are invented / instrument]. */
+export const AMPLITUDE_FLOOR = 0.85, ZETA_CEILING = 1.0, HZ_CEILING = 5;   // [invented] / [instrument: 2 pi hz dt stays under 2 at the 0.05 s step]
+const NO_MODS = Object.freeze([]);
+export const modsOf = (a) => a.bodyMods ?? NO_MODS;   // WHERE the fitted modifiers come from: nothing fits any yet
+export function resolveBody(kind, modifiers = NO_MODS) {
+  const base = rowOf(kind);
+  if (!modifiers.length) return base;
+  let hz = 1, zeta = 1, gain = 1;
+  for (const m of modifiers) { hz *= m.hz ?? 1; zeta *= m.zeta ?? 1; gain *= m.gain ?? 1; }
+  gain = Math.max(AMPLITUDE_FLOOR, gain);
+  return { ...base, roll: base.roll * gain, pitch: base.pitch * gain,
+    rollHz: Math.min(HZ_CEILING, base.rollHz * hz), pitchHz: Math.min(HZ_CEILING, base.pitchHz * hz),
+    rollZeta: Math.min(ZETA_CEILING, base.rollZeta * zeta), pitchZeta: Math.min(ZETA_CEILING, base.pitchZeta * zeta) };
+}
+
 /* What the spring is driven towards, in radians: a right turn (positive lateral acceleration) is roll < 0, braking (negative) is pitch < 0. */
 export function targetsOf(row, aLat, aLong) {
   const cl = (x, m) => Math.max(-m, Math.min(m, x));
@@ -75,7 +100,7 @@ export function chordCurvature(course, a, s = a.s, half = CURVATURE_CHORD_HALF) 
    turning against the road) are taken ONCE per tick; the lane change's analytic term is read at the carried time; the spring runs at the frame rate. */
 export function bodyOf(body, world, a, carry, dt) {
   if (a.crash || a.crashed || a.parked) return null;
-  const row = rowOf(a.kind), id = a.id;
+  const row = resolveBody(a.kind, modsOf(a)), id = a.id;
   body.seen.add(id);
   let m = body.cars.get(id);
   if (m && world.t < m.t - 1e-9) m = null;   // the world was restarted: the id is somebody else

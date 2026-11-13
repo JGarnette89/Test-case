@@ -12,15 +12,14 @@
    overpass: a deck piece, a car under it, a car on it, the ground under
    all three. verify-paint.mjs sweeps it at every rotation.
 
-   CODE-DRAWN BOXES AT 32 HEADINGS, NOT SPRITES. Stage 0 draws a car as
-   two boxes so the visual direction can be judged without an art
-   pipeline -- and the heading is quantised to 32 steps on purpose, so
-   what is on screen is what a 32-heading sprite set will give and not
-   something smoother that sprites could never match. The boxes are drawn
-   LEVEL by default for the same reason: a sprite set has no pitch, so a
-   car on a hill will be a level sprite at the road's height, and that is
-   what has to be judged. The tilt toggle exists to show what pitching
-   would buy if the level look reads wrong.
+   CODE-DRAWN BOXES, AND THE SPRITE PREMISE IS RETIRED (13 November, Jay: wary of sprite stacking, on depth at different levels, speeds and angles).
+   A car is two boxes the code builds, and that is now the direction and not a stand-in: PROCEDURAL GEOMETRY, a vehicle kind being dimensions, colours
+   and proportions in a table. Asset art multiplies (vehicle types x headings x damage states x tilt) and every item on the roster makes it worse;
+   procedural geometry multiplies by nothing. Stacked sprites tilt only by sliding layers, which fails at real angles (a leaning motorcycle, a car on
+   a crest), and sort as layers. The two lines this paragraph used to carry, that the heading is quantised to 32 steps to match "what a 32-heading
+   sprite set will give" and that cars are drawn level because "a sprite set has no pitch", were written for a premise that no longer exists. The
+   heading is STILL quantised (see `quantise`): that is now a loss of smoothness with no reason behind it, left as it is until somebody decides
+   (DECISIONS 10.70). Cars are level on the stage-0 roads unless the tilt toggle is on; the map screen's cars lean and dive through body motion (body.js).
    ===================================================================== */
 import { viewOf } from "./project.js";
 import { lightAt, arrowAt, movementLight } from "../sim/signal.js";
@@ -868,8 +867,8 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
   const actorItem = (a, px, py) => {
     counts.cars++;
     const at = { x: a.x, y: a.y, z: a.z ?? 0 };
-    /* Quantised RELATIVE TO THE VIEW: a sprite set has 32 headings as
-       seen from the camera, so the step is taken in the rotated frame. */
+    /* Quantised RELATIVE TO THE VIEW, to 32 steps. This was for a 32-heading sprite set, a premise retired on 13 November; for a box the code builds it
+       is only a loss of smoothness (an 11.25 degree snap), and it also hides the path polyline's sub-degree heading staircase. Kept, not decided. */
     const deg = quantise(a.heading + rotDeg) - rotDeg;
     /* Far: a person is under a pixel -- except somebody struck, who is a
        dot that flashes, so it is never missed. A car is one dot. */

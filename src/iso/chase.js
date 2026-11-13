@@ -19,9 +19,10 @@
    renderer draws today is a box the code builds, which rotates for
    free, so a rotating view costs nothing now; what it costs later is
    that scenery cannot be a single-view isometric sprite -- it has to
-   be rotation-tolerant (faces on a box, several views, or a billboard)
-   -- and car sprites are indexed by their heading relative to the
-   view, which is what a 32-heading set already is. Four or eight
+   be rotation-tolerant (faces on a box, several views, or a billboard).
+   (The car sprites this paragraph once counted on, indexed by heading
+   relative to the view, are a RETIRED premise: cars are procedural
+   geometry, DECISIONS 10.70, 13 November.) Four or eight
    snapped rotations would have needed the same scenery views and added
    a jolt at every turn; not rotating is what was just judged undrivable.
    The rotation is eased and rate-limited, never instantaneous; a fixed

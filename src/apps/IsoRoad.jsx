@@ -7,7 +7,7 @@
    with free-drawn curves and real elevation look right, and does the
    draw order survive an overpass. Everything else is deliberately
    absent: no editor, no map format, no city, no player controls, no
-   sprites.
+   art assets (cars are boxes the code builds, and that is the direction).
 
    Canvas, not SVG (SIMULATOR.md 5.2). The sim steps at its fixed 20 Hz
    from an accumulator, as the SVG screens do; the canvas repaints at the
@@ -278,7 +278,7 @@ export default function IsoRoad() {
             ...S.chip,
             borderColor: tilt ? C.blue : "rgba(255,255,255,0.12)",
             color: tilt ? C.white : DIM,
-          }} onClick={() => setTilt((t) => !t)}>{tilt ? "Cars tilt with the road" : "Cars level (as sprites would be)"}</button>
+          }} onClick={() => setTilt((t) => !t)}>{tilt ? "Cars tilt with the road" : "Cars level"}</button>
           <span style={S.label}>Limit</span>
           {LIMITS.map((kmh) => (
             <button key={kmh} className="btn" style={{
@@ -327,10 +327,10 @@ export default function IsoRoad() {
           and a car beyond the crest must be hidden by the crest.
           <br />
           <b>What it deliberately does not do.</b> Cars are code-drawn
-          boxes at 32 headings, not sprites — so what you see of the
-          heading steps is what a 32-heading sprite set will give. They
-          are drawn <i>level</i> by default because sprites have no
-          pitch; the tilt button shows what pitching would add. No
+          boxes, not sprites (the sprite direction was dropped on
+          13 November: procedural geometry, a table per vehicle kind). They
+          are drawn <i>level</i> by default here; the tilt button shows
+          what pitching the box with the road adds. No
           intersection between the two roads, no player controls, no map,
           no editor, no textures, no shadows, no scenery. The projection
           angle and the hill's height are chosen to look right, not

@@ -22,7 +22,7 @@ import { seedGraph, step, DT } from "../src/sim/crossing.js";
 import { VEHICLES } from "../src/sim/traffic.js";
 import { poseOnGraph } from "../src/sim/graph.js";
 import { lateralOf } from "../src/sim/lanechange.js";
-import { BODY, targetsOf, springStep, newBody, beginBodyFrame, endBodyFrame, bodyOf, rowOf } from "../src/iso/body.js";
+import { BODY, targetsOf, springStep, newBody, beginBodyFrame, endBodyFrame, bodyOf, rowOf, resolveBody } from "../src/iso/body.js";
 import { boxCorners, bodyPoint, dropFor } from "../src/iso/draw.js";
 
 let failed = 0;
@@ -49,6 +49,22 @@ console.log("\n2. THE SPRING IS A SPRING");
     check(Math.abs(r.x - 1) < 0.02 && r.peak < 1.45 && r.tSettle < 3.5, `${kind}: a step reaches its target (${r.x.toFixed(3)}), overshoots by under 45% (${((r.peak - 1) * 100).toFixed(0)}%) and settles within 5% by ${r.tSettle.toFixed(2)} s`);
   }
   check(run(BODY.truck.rollHz, BODY.truck.rollZeta).t90 > run(BODY.car.rollHz, BODY.car.rollZeta).t90 && run(BODY.bus.rollHz, BODY.bus.rollZeta).t90 > run(BODY.car.rollHz, BODY.car.rollZeta).t90, "the heavier vehicles are slower to lean: a truck and a bus take longer than a car to reach 90%");
+}
+
+console.log("\n2b. THE RESOLVE: ONE FUNCTION, A BASE ROW THEN THE MODIFIERS FITTED, AND PLANTED MEANS TIGHTER, NOT SMALLER");
+{
+  const step = (row) => { let x = 0, v = 0, peak = 0, settle = 0; for (let i = 0; i < 6 / FDT; i++) { [x, v] = springStep(x, v, 1, row.rollHz, row.rollZeta, FDT); peak = Math.max(peak, x); if (Math.abs(x - 1) > 0.05) settle = i * FDT; } return { peak, settle }; };
+  check(Object.keys(VEHICLES).every((k) => resolveBody(k, []) === BODY[k] && resolveBody(k) === BODY[k]), "with no modifiers (there is no upgrade system) the resolve returns the kind's base row itself: nothing copied, nothing changed");
+  const planted = [{ hz: 1.5, zeta: 1.4 }];
+  const r = Object.keys(VEHICLES).map((k) => ({ k, base: BODY[k], res: resolveBody(k, planted), b: step(BODY[k]), p: step(resolveBody(k, planted)) }));
+  check(r.every((x) => x.p.settle < 0.75 * x.b.settle && x.p.peak <= x.b.peak + 1e-9), `[the maintainer: tighter, not smaller] a planted modifier (frequency x1.5, damping x1.4) settles at least a quarter sooner and overshoots no more, for every kind (${r.map((x) => `${x.k} ${x.b.settle.toFixed(2)} s to ${x.p.settle.toFixed(2)} s`).join("; ")})`);
+  check(r.every((x) => { const a = targetsOf(x.base, 3, -4), b = targetsOf(x.res, 3, -4); return Math.abs(a.roll - b.roll) < 1e-12 && Math.abs(a.pitch - b.pitch) < 1e-12; }), "and the PEAK INFORMATION IS UNTOUCHED: the angle a given acceleration settles to is the same, so the distance cue is delivered whole and resolved sooner");
+  const crush = resolveBody("car", [{ gain: 0.05 }, { gain: 0.5 }]);
+  check(crush.roll >= 0.8 * BODY.car.roll && crush.pitch >= 0.8 * BODY.car.pitch, `no stack of modifiers can remove the cue: gains of 0.05 and 0.5 leave ${(100 * crush.roll / BODY.car.roll).toFixed(0)}% of the car's roll (an amplitude floor, at least 80%)`);
+  const ab = resolveBody("truck", [{ hz: 1.2 }, { zeta: 1.1 }]), ba = resolveBody("truck", [{ zeta: 1.1 }, { hz: 1.2 }]), both = resolveBody("truck", [{ hz: 1.2, zeta: 1.1 }]);
+  check(JSON.stringify(ab) === JSON.stringify(ba) && JSON.stringify(ab) === JSON.stringify(both), "modifiers compose: the order they are fitted in, or whether they come as one or two, does not matter");
+  const wild = resolveBody("car", [{ hz: 50, zeta: 50 }]);
+  check(wild.rollHz <= 5 && wild.rollZeta <= 1 && 2 * Math.PI * wild.rollHz * 0.05 < 2, "and frequency and damping are bounded, so no modifier can make the spring unstable at the frame step");
 }
 
 console.log("\n3. DIRECTIONS");
@@ -108,6 +124,10 @@ console.log("\n4. ON REAL TRAFFIC: THE SIGN, AND SMOOTHNESS AT THE FRAME RATE");
     const settle = (kind) => { const m = newBody(); let b = null; for (let i = 0; i < 4 * 60; i++) { beginBodyFrame(m); b = bodyOf(m, { ...ww, t: ww.t }, { ...cand.a, kind, psi: undefined }, 0, FDT); endBodyFrame(m); } return b.roll; };
     const r = { car: settle("car"), truck: settle("truck"), bus: settle("bus") };
     const want = (k) => Math.max(-BODY[k].maxRoll, Math.min(BODY[k].maxRoll, -BODY[k].roll * aInd)) * DEG;
+    /* AND THROUGH bodyOf, a planted car (fitted modifiers on the actor) reaches its lean sooner than an unmodified one in the same bend: the seam is wired, not only the function */
+    const at03 = (mods) => { const m = newBody(); let b = null; for (let i = 0; i < 18; i++) { beginBodyFrame(m); b = bodyOf(m, { ...ww, t: ww.t }, { ...cand.a, kind: "car", psi: undefined, ...(mods ? { bodyMods: mods } : {}) }, 0, FDT); endBodyFrame(m); } return Math.abs(b.roll); };
+    const tgt03 = Math.min(BODY.car.maxRoll, BODY.car.roll * Math.abs(aInd)) * DEG, err03 = (mods) => Math.abs(at03(mods) - tgt03);
+    check(err03([{ hz: 1.5, zeta: 1.4 }]) < 0.5 * err03(null), `fitted on the car (a.bodyMods), a planted modifier is within ${(err03([{ hz: 1.5, zeta: 1.4 }]) / DEG).toFixed(2)} degrees of its steady lean after 0.3 s against ${(err03(null) / DEG).toFixed(2)} for the unmodified car: the seam is wired through bodyOf`);
     check(Math.abs(aInd) > 1 && ["car", "truck", "bus"].every((k) => Math.abs(r[k] - want(k)) < 0.25 * Math.abs(want(k))) && Math.abs(r.truck) > 1.2 * Math.abs(r.car) && Math.abs(r.bus) > 1.2 * Math.abs(r.car), `one car in a bend of ${aInd.toFixed(2)} m/s^2 settles to ${(r.car / DEG).toFixed(1)} degrees as a car, ${(r.truck / DEG).toFixed(1)} as a truck and ${(r.bus / DEG).toFixed(1)} as a bus (each within 25% of its row's gain times the independent lateral acceleration; the heavier ones lean further)`);
   }
   const lcR = lcXY / Math.sqrt(lcXX * lcYY || 1);
@@ -170,6 +190,7 @@ console.log("\n7. WIRING");
   check((src.match(/bodyOf\(body, w, a, carry, body\.dt\)/g) ?? []).length === 2, "MapRoad's actorsOf draws BOTH the player and the traffic through bodyOf (one function for everybody)");
   check(/export function actorsOf\(scene, carry, body = null\)/.test(src) && /beginBodyFrame\(body\)/.test(src) && /endBodyFrame\(body\)/.test(src), "and brackets the frame, so a car no longer drawn is forgotten");
   check((draw.match(/paintLamps\(ctx, view, a, at, deg, [^;]*?, bmx\)/g) ?? []).length === 3 && (draw.match(/function paintLamps\(.*bm = null\)/g) ?? []).length === 1, "every lamp call (car, truck, bus) passes the body to paintLamps");
+  check(/resolveBody\(a\.kind, modsOf\(a\)\)/.test(fs.readFileSync(new URL("../src/iso/body.js", import.meta.url), "utf8")), "bodyOf reads its parameters ONLY through resolveBody (one function answers what a car's body parameters are)");
   check(/const T = frameOf\(deg, 0, bm\), spot = /.test(draw), "and the lamps' position goes through that body transform (frameOf, placeInto), not a copy of the heading arithmetic");
   check(!/bodyMotion: true/.test(settings) && /bodyMotion: false/.test(settings), "it ships OFF (settings.js bodyMotion: false), a switch on the debug chips");
 }
