@@ -213,12 +213,24 @@ export const clearBetween = (d, back, front) => d - lenOf(back) / 2 - (front?.re
    100 km/h road and a player at the limit had nobody to pass and was
    passed by everybody (tools/measure/highway-swim.mjs). On a highway the
    same confidence axis sets the speed about a centre just over the limit,
-   with a real motorway's spread. HIGHWAY_CENTRE and HIGHWAY_SLOPE are
+   with a real motorway's spread (SUPERSEDED 14 November: the range below, DECISIONS 10.71). HIGHWAY_CENTRE and the range are
    flagged design constants, the maintainer's to move: a typical driver at
    1.05 of the limit, the boldest at 1.22, the most timid at 0.88. */
-export const HIGHWAY_CENTRE = 1.05, HIGHWAY_SLOPE = 0.17;
-export const wantedOnHighway = (roadSpeed, caution) => roadSpeed * (HIGHWAY_CENTRE - HIGHWAY_SLOPE * (caution - 1));
-export const wantedFor = (a, roadSpeed, caution, kind = null) => Math.min(kind === "highway" ? wantedOnHighway(roadSpeed, caution) : wantedSpeed(roadSpeed, caution), roadSpeed * vehicleOf(a).cap);
+export const HIGHWAY_CENTRE = 1.05;
+/* THE HIGHWAY'S SPEED RANGE, THE MAINTAINER'S RULING (14 November, DECISIONS 10.71): 85 to 140 km/h on a 100 km/h road `[Jay]`, with CONFIDENCE setting how
+   fast and COMPLIANCE the second factor for the fast tail -- the fast tail is confident AND non-compliant, both needed. A confident compliant driver drives the
+   limit BRISKLY (HIGHWAY_BRISK, a flagged design constant, [invented]); only a non-compliant one goes on to HIGHWAY_TOP; a timid one goes down to HIGHWAY_TIMID
+   whatever their compliance. SKILL IS NOT IN IT: speed is confidence and compliance and nothing else, which is what makes a fast driver who also brakes and
+   observes badly a population the draw produces rather than one to invent. Boldness is 1 - caution (0..1), `lax` the compliance deficit (0..1). */
+export const HIGHWAY_TIMID = 0.85, HIGHWAY_BRISK = 1.10, HIGHWAY_TOP = 1.40;
+export const wantedOnHighway = (roadSpeed, caution, lax = 0) => {
+  if (caution >= 1) return roadSpeed * (HIGHWAY_CENTRE - (HIGHWAY_CENTRE - HIGHWAY_TIMID) * (caution - 1));
+  const bold = 1 - caution;
+  return roadSpeed * (HIGHWAY_CENTRE + bold * (HIGHWAY_BRISK - HIGHWAY_CENTRE + (HIGHWAY_TOP - HIGHWAY_BRISK) * lax));
+};
+/* The compliance deficit a driver carries (core/driver.js deficitOf), 0 for something without ratings (a bare vehicle row). */
+const laxOf = (a) => deficitOf(a?.ratings, "compliance").deficit;
+export const wantedFor = (a, roadSpeed, caution, kind = null) => Math.min(kind === "highway" ? wantedOnHighway(roadSpeed, caution, laxOf(a)) : wantedSpeed(roadSpeed, caution), roadSpeed * vehicleOf(a).cap);
 
 /* =====================================================================
    Setting up
@@ -311,7 +323,7 @@ export function driver(road, seed, n, ratings = null, town = null, kind = "car",
   const who = ratings ? { ratings, weakOn: lackingIn({ ratings }), stuck: stuckFor(rng(seed * 15485863 + n + 7)) } : composeDriver(seed * 7919 + n, town, level);
   const r = rng(seed * 104729 + n + 1);
   const caution = cautionOf(who.ratings);
-  const vehicle = { kind };
+  const vehicle = { kind, ratings: who.ratings };
   const v0 = wantedFor(vehicle, road.speed, caution, road.kind);
 
   /* WHO ROLLS A STOP -- and since the knowledge/compliance split (R2-DESIGN
