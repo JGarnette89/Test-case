@@ -29,6 +29,7 @@ export const OFF = {
   sight: "sight blocking (trucks see-through)",
   sidewalks: "sidewalks (drawn)",
   buildings: "buildings (drawn)",
+  body: "body motion (leans, dives; iso/body.js)",   // drawn only: the bench is the whole game, body motion included, so what it costs is a row of the split like every other thing
 };
 
 const maps = new Map();

@@ -33,7 +33,7 @@ const JUMP_LIMIT = 4, HF_LIMIT = 0.02;
 
 console.log("\n1. A ROW FOR EVERY VEHICLE, ORDERED AS JAY AND PHYSICS SAY");
 {
-  const kinds = Object.keys(VEHICLES), fields = ["roll", "pitch", "rollHz", "pitchHz", "rollZeta", "pitchZeta", "maxRoll", "maxPitch", "pivot"];
+  const kinds = Object.keys(VEHICLES), fields = ["slope", "roll", "pitch", "rollHz", "pitchHz", "rollZeta", "pitchZeta", "maxRoll", "maxPitch", "pivot"];
   check(kinds.every((k) => BODY[k] && fields.every((f) => Number.isFinite(BODY[k][f]) && BODY[k][f] > 0)), `every vehicle kind in the sim (${kinds.join(", ")}) has a body row with every field positive and finite`);
   check(Object.keys(VEHICLES).every((k) => rowOf(k) === BODY[k]), "`rowOf` gives every kind ITS OWN row (a truck is not drawn with a car's spring)");
   check(rowOf("something-new") === BODY.car, "and a kind nobody wrote a row for falls back to the car's, not to nothing");
@@ -74,6 +74,9 @@ console.log("\n3. DIRECTIONS");
   check(b.pitch < 0 && g.pitch > 0 && Math.abs(b.pitch + targetsOf(c, 0, 4).pitch) < 1e-12, "braking dips the nose (pitch < 0), power lifts it (pitch > 0), equally");
   check(Math.abs(big.roll) <= c.maxRoll * DEG + 1e-12 && Math.abs(big.pitch) <= c.maxPitch * DEG + 1e-12 && Math.abs(big.roll) > 0, "and a clamp holds whatever the acceleration");
   check(r.pitch === 0 && b.roll === 0, "a turn does not dive and braking does not lean: the two axes are independent");
+  const up = targetsOf(c, 0, 0, 0.06), down = targetsOf(c, 0, 0, -0.06), both = targetsOf(c, 0, -4, 0.06);
+  check(up.pitch > 0 && down.pitch < 0 && Math.abs(up.pitch + down.pitch) < 1e-12 && up.roll === 0, "THE ROAD'S GRADIENT: uphill lifts the nose, downhill dips it, equally, and does not lean the body");
+  check(Math.abs(both.pitch - (targetsOf(c, 0, -4, 0).pitch + up.pitch)) < 1e-12, "and it adds to the dive and squat (braking uphill is the sum of the two)");
 }
 
 console.log("\n4. ON REAL TRAFFIC: THE SIGN, AND SMOOTHNESS AT THE FRAME RATE");
@@ -129,6 +132,14 @@ console.log("\n4. ON REAL TRAFFIC: THE SIGN, AND SMOOTHNESS AT THE FRAME RATE");
     const tgt03 = Math.min(BODY.car.maxRoll, BODY.car.roll * Math.abs(aInd)) * DEG, err03 = (mods) => Math.abs(at03(mods) - tgt03);
     check(err03([{ hz: 1.5, zeta: 1.4 }]) < 0.5 * err03(null), `fitted on the car (a.bodyMods), a planted modifier is within ${(err03([{ hz: 1.5, zeta: 1.4 }]) / DEG).toFixed(2)} degrees of its steady lean after 0.3 s against ${(err03(null) / DEG).toFixed(2)} for the unmodified car: the seam is wired through bodyOf`);
     check(Math.abs(aInd) > 1 && ["car", "truck", "bus"].every((k) => Math.abs(r[k] - want(k)) < 0.25 * Math.abs(want(k))) && Math.abs(r.truck) > 1.2 * Math.abs(r.car) && Math.abs(r.bus) > 1.2 * Math.abs(r.car), `one car in a bend of ${aInd.toFixed(2)} m/s^2 settles to ${(r.car / DEG).toFixed(1)} degrees as a car, ${(r.truck / DEG).toFixed(1)} as a truck and ${(r.bus / DEG).toFixed(1)} as a bus (each within 25% of its row's gain times the independent lateral acceleration; the heavier ones lean further)`);
+  }
+  /* THE ROAD'S GRADIENT ON A REAL HILL (the test highway: low hills): a car on a sustained slope, read independently from the path's heights 9 m either side, settles to `slope` times the road's own angle, the nose up on the climb and down on the descent */
+  {
+    const hw = seedGraph(1, 50, loadMap(TEST_MAPS.find((m) => m.id === "test-highway").build()), { target: 120, posted: true }), gInd = (a) => { const L = hw.course.at[a.k ?? 0].layout.paths[a.route].length, s = Math.min(L - 9, Math.max(9, a.s)); return ((poseOnGraph(hw.course, a.k ?? 0, a.route, s + 9).z ?? 0) - (poseOnGraph(hw.course, a.k ?? 0, a.route, s - 9).z ?? 0)) / 18; };
+    const cars = hw.actors.filter((a) => !a.player && !a.crash && !a.lc).map((a) => ({ a, g: gInd(a) })), climb = cars.filter((c) => c.g > 0.012).sort((x, y) => y.g - x.g)[0], drop = cars.filter((c) => c.g < -0.012).sort((x, y) => x.g - y.g)[0];
+    const pitchOf = (c) => { const m = newBody(); let b = null; for (let i = 0; i < 4 * 60; i++) { beginBodyFrame(m); b = bodyOf(m, hw, { ...c.a, psi: undefined }, 0, FDT); endBodyFrame(m); } return b.pitch; };
+    const pc = climb ? pitchOf(climb) : NaN, pd = drop ? pitchOf(drop) : NaN, wantC = climb ? BODY.car.slope * Math.atan(climb.g) : NaN, wantD = drop ? BODY.car.slope * Math.atan(drop.g) : NaN;
+    check(!!climb && !!drop && pc > 0 && pd < 0 && Math.abs(pc - wantC) < 0.2 * Math.abs(wantC) && Math.abs(pd - wantD) < 0.2 * Math.abs(wantD), `on the test highway's hills a car on a ${climb ? (100 * climb.g).toFixed(1) : "?"}% climb settles to ${(pc / DEG).toFixed(2)} degrees nose-up and one on a ${drop ? (100 * -drop.g).toFixed(1) : "?"}% descent to ${(pd / DEG).toFixed(2)} nose-down (each within 20% of the table's slope times the road's own angle, the height read independently)`);
   }
   const lcR = lcXY / Math.sqrt(lcXX * lcYY || 1);
   check(lcN >= 300 && lcR < -0.3, `in a lane change on a straight the roll is opposite to the move's lateral acceleration: correlation ${lcR.toFixed(2)} over ${lcN} frames (zero would be no lean, +1 a lean the wrong way)`);

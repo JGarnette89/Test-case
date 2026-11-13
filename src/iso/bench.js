@@ -24,6 +24,7 @@ import { pedPose } from "../sim/peds.js";
 import { walkerPose } from "../sim/walkers.js";
 import { DT } from "../sim/traffic.js";
 import { sidewalksOf } from "../map/sidewalks.js";
+import { newBody, beginBodyFrame, endBodyFrame, bodyOf } from "./body.js";
 import { terrain } from "./road.js";
 import { deviceLines, stallLines, HITCH, SIM_RATE_MIN, SIM_STALL } from "./perf.js";
 import { drawFrame } from "./draw.js";
@@ -113,16 +114,18 @@ export { DT };
 
 /* #/map's actorsOf (apps/MapRoad.jsx), without the player -- the same
    poses, carried forward the same way: THROUGH THE SAME `carriedWorld` / `carriedPose` (crossing.js), since a copy of the carried pose here would measure a game that no longer draws that way. */
-export function benchActors(sc, carry) {
+export function benchActors(sc, carry, body = null) {
   const w = sc.world, wc = carriedWorld(w, carry);
+  if (body) beginBodyFrame(body);
   const out = w.parked ? parkedPoses(w.course, w.parked).slice() : [];
   for (const a of w.actors) {
-    const p = carriedPose(wc, a, carry);
+    const p = carriedPose(wc, a, carry), bd = body ? bodyOf(body, w, a, carry, body.dt) : null;
     const colour = a.crash ? (Math.floor(w.t * 2) % 2 ? "#ff8a1e" : "#5a2a08") : a.colour;
-    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, look: a.look ?? null, blinker: a.blinker ?? null, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null });
+    out.push({ id: a.id, n: a.n ?? 0, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, colour, crashed: !!a.crash, kind: a.kind, length: p.length, width: p.width, height: p.height, brakeLamp: !!a.brakeLamp, look: a.look ?? null, blinker: a.blinker ?? null, honkAt: a.honkAt ?? null, honkTo: a.honkTo ?? null, ...(bd ? { body: bd } : {}) });
   }
   for (const q of w.peds ?? []) out.push({ id: q.id, n: q.look ?? q.n, ...pedPose(w, q), ped: true, struck: q.state === "struck" });
   for (const q of w.walkers ?? []) out.push({ id: q.id, n: q.look ?? q.n, ...walkerPose(w, q), ped: true });
+  if (body) endBodyFrame(body);
   return out;
 }
 
@@ -204,7 +207,7 @@ export function benchSteps() {
    is run, pass or fail -- the differences are the point. The switches
    that keep the world come first, so they ride the baseline's world
    and only the five that change the traffic build one. */
-const KEEPS_WORLD = ["sight", "sidewalks", "buildings"];
+const KEEPS_WORLD = ["sight", "sidewalks", "buildings", "body"];
 export function categorySteps(fleet) {
   const no = (key) => ({ fleet, label: `no ${key}`, off: { [key]: true }, without: key });
   return withLoad([
@@ -291,7 +294,7 @@ export function benchReport({ device, canvas, ramp, split, loaded }) {
     L.push(`WHERE THE BUDGET GOES, at ${all.fleet} cars: each kind of thing switched off in turn, and what that saved`);
     L.push("without                 count gone        fps  p95   worst hitch  step p50 (saved)   draw p50 (saved)   things");
     const ms = (r, key) => r.split?.[key]?.p50 ?? 0;
-    const COUNT = { trucks: "trucks", buses: "buses", walkers: "walkers", crossers: "crossing", parked: "parked", sight: "sight", sidewalks: "sidewalks", buildings: "buildings" };
+    const COUNT = { trucks: "trucks", buses: "buses", walkers: "walkers", crossers: "crossing", parked: "parked", sight: "sight", sidewalks: "sidewalks", buildings: "buildings", body: "body" };
     for (const r of split.results) {
       const key = r.without, c = key ? COUNT[key] : null;
       const gone = c ? `${all[c]} -> ${r[c]}` : r.label === "wide view" ? "(further out)" : r.label === "soak" ? `(${r.hold ?? SOAK} s of play)` : "(baseline)";
@@ -390,7 +393,10 @@ export function benchFrame(st, dtMs, ctx, size) {
   const drawnT = st.sc.world.t + st.owed;
   const back = st.lastDrawnT != null && drawnT < st.lastDrawnT - 1e-9;
   st.lastDrawnT = drawnT;
-  const actors = benchActors(st.sc, st.owed);
+  /* BODY MOTION IS PART OF THE WHOLE GAME HERE (iso/body.js; DECISIONS 10.70): drawn unless the split switches it off, so its cost shows as a row of the split. */
+  let bodyArg = null;
+  if (!st.sc.off?.body) { st.body ??= newBody(); bodyArg = st.body; bodyArg.dt = dtMs / 1000; } else st.body = null;
+  const actors = benchActors(st.sc, st.owed, bodyArg);
   const t2 = clock();
   const { cam, k } = benchCamera(st.cam, st.sc, actors, st.view, size, dtMs / 1000);
   st.cam = cam;
@@ -398,7 +404,7 @@ export function benchFrame(st, dtMs, ctx, size) {
   const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam, rot: 0, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + st.owed, lights: sc.world.lights });
   const t3 = clock();
   /* The counts walk every parked car: twice a second, not every frame. */
-  if (++st.frames % 30 === 0) st.counts = benchCounts(sc);
+  if (++st.frames % 30 === 0) st.counts = { ...benchCounts(sc), body: actors.reduce((n, a) => n + (a.body ? 1 : 0), 0) };
   /* A frame that ran no tick spent no time on the sim: zero, so it is not counted as a step. */
   if (loading && ctx.fillText) {
     ctx.save(); ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, size.h / 2 - 22, size.w, 44);

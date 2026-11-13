@@ -34,11 +34,12 @@ export const CURVATURE_CHORD_HALF = 9;
 /* PER VEHICLE KIND (sim/traffic.js VEHICLES has car, truck, bus: a kind with no row here is a bug, held by verify-body). Angles in DEGREES per m/s^2 of
    acceleration at steady state; `hz` and `zeta` the spring's natural frequency and damping ratio; `max` the clamp in degrees; `pivot` the roll centre's
    height in metres above the ground (the maintainer's call: about axle height, where a car really rolls, and well below the body's centre, so a side
-   does not sink into the road). */
+   does not sink into the road); `slope` how much of the ROAD'S GRADIENT the body shows (a multiplier on the road's own pitch: Jay's 403 downhill, the sense
+   of slope; deliberately far over 1 like the rest (the test highway's low hills are 1.5 to 1.7% grade, one degree of real pitch, which would not be seen), [invented] and in the table, and not touched by modifiers: a road's slope is not a suspension setting). */
 export const BODY = {
-  car: { roll: 3.5, pitch: 2.0, rollHz: 2.0, pitchHz: 2.2, rollZeta: 0.45, pitchZeta: 0.5, maxRoll: 14, maxPitch: 10, pivot: 0.35 },
-  truck: { roll: 5.0, pitch: 1.6, rollHz: 1.2, pitchHz: 1.4, rollZeta: 0.35, pitchZeta: 0.35, maxRoll: 16, maxPitch: 8, pivot: 0.7 },
-  bus: { roll: 5.5, pitch: 2.0, rollHz: 1.0, pitchHz: 1.2, rollZeta: 0.3, pitchZeta: 0.3, maxRoll: 16, maxPitch: 9, pivot: 0.6 },
+  car: { slope: 4.0, roll: 3.5, pitch: 2.0, rollHz: 2.0, pitchHz: 2.2, rollZeta: 0.45, pitchZeta: 0.5, maxRoll: 14, maxPitch: 10, pivot: 0.35 },
+  truck: { slope: 3.0, roll: 5.0, pitch: 1.6, rollHz: 1.2, pitchHz: 1.4, rollZeta: 0.35, pitchZeta: 0.35, maxRoll: 16, maxPitch: 8, pivot: 0.7 },
+  bus: { slope: 3.0, roll: 5.5, pitch: 2.0, rollHz: 1.0, pitchHz: 1.2, rollZeta: 0.3, pitchZeta: 0.3, maxRoll: 16, maxPitch: 9, pivot: 0.6 },
 };
 const DEG = Math.PI / 180;
 export const rowOf = (kind) => BODY[kind ?? "car"] ?? BODY.car;
@@ -66,10 +67,11 @@ export function resolveBody(kind, modifiers = NO_MODS) {
     rollZeta: Math.min(ZETA_CEILING, base.rollZeta * zeta), pitchZeta: Math.min(ZETA_CEILING, base.pitchZeta * zeta) };
 }
 
-/* What the spring is driven towards, in radians: a right turn (positive lateral acceleration) is roll < 0, braking (negative) is pitch < 0. */
-export function targetsOf(row, aLat, aLong) {
+/* What the spring is driven towards, in radians: a right turn (positive lateral acceleration) is roll < 0, braking (negative) is pitch < 0, and the road's
+   GRADIENT (rise over run, uphill positive) tips the nose with it: uphill nose up, downhill nose down, `slope` times the road's own angle, on top of the dive and squat. */
+export function targetsOf(row, aLat, aLong, grade = 0) {
   const cl = (x, m) => Math.max(-m, Math.min(m, x));
-  return { roll: cl(-row.roll * aLat, row.maxRoll) * DEG, pitch: cl(row.pitch * aLong, row.maxPitch) * DEG };
+  return { roll: cl(-row.roll * aLat, row.maxRoll) * DEG, pitch: cl(row.pitch * aLong, row.maxPitch) * DEG + Math.atan(grade) * row.slope };
 }
 
 /* One step of a damped spring towards a target (semi-implicit Euler: stable for 2 pi hz dt well under 2, and the frame step is clamped by the caller). */
@@ -95,6 +97,15 @@ export function chordCurvature(course, a, s = a.s, half = CURVATURE_CHORD_HALF) 
   return (d * DEG) / (s1 - s0);
 }
 
+/* The road's gradient (rise over run, uphill positive) over the same centred chord as the curvature: the height a little ahead against a little behind. */
+export function chordGrade(course, a, s = a.s, half = CURVATURE_CHORD_HALF) {
+  const L = course.at[a.k ?? 0].layout.paths[a.route]?.length;
+  if (!(L > 0)) return 0;
+  const s0 = Math.max(0, s - half), s1 = Math.min(L, s + half);
+  if (s1 - s0 < 2) return 0;
+  return ((poseOnGraph(course, a.k ?? 0, a.route, s1).z ?? 0) - (poseOnGraph(course, a.k ?? 0, a.route, s0).z ?? 0)) / (s1 - s0);
+}
+
 /* THE BODY OF ONE CAR THIS FRAME: { roll, pitch, pivot } in radians and metres, or null for a car that has no business leaning (a wreck). `world` is the
    world at its tick, `carry` the seconds since, `dt` the frame's step, `body` the memory. The tick-rate inputs (the speed change, the curvature, the player's
    turning against the road) are taken ONCE per tick; the lane change's analytic term is read at the carried time; the spring runs at the frame rate. */
@@ -105,7 +116,7 @@ export function bodyOf(body, world, a, carry, dt) {
   let m = body.cars.get(id);
   if (m && world.t < m.t - 1e-9) m = null;   // the world was restarted: the id is somebody else
   if (!m) {
-    m = { t: world.t - 1, v: a.v ?? 0, psi: a.psi ?? 0, aLong: 0, kappa: 0, psiRate: 0, roll: 0, rollRate: 0, pitch: 0, pitchRate: 0, fresh: true };
+    m = { t: world.t - 1, v: a.v ?? 0, psi: a.psi ?? 0, aLong: 0, kappa: 0, grade: 0, psiRate: 0, roll: 0, rollRate: 0, pitch: 0, pitchRate: 0, fresh: true };
     body.cars.set(id, m);
   }
   if (world.t !== m.t) {
@@ -116,13 +127,14 @@ export function bodyOf(body, world, a, carry, dt) {
     } else { m.aLong = 0; m.psiRate = 0; }
     m.v = a.v ?? 0; m.psi = a.psi ?? 0; m.t = world.t; m.fresh = false;
     m.kappa = a.route != null ? chordCurvature(world.course, a) : 0;
+    m.grade = a.route != null ? chordGrade(world.course, a) : 0;
   }
   const v = a.v ?? 0, tt = world.t + carry;
   /* RIGHT POSITIVE: the road's turn, and the car's own lateral movement against it (a lane change's second derivative; the player's rate of turning against the road, v times psi's rate). */
   const h = 0.05;
   const lc2 = a.lc ? (lateralOf(a.lc, tt + h) - 2 * lateralOf(a.lc, tt) + lateralOf(a.lc, tt - h)) / (h * h) : 0;
   const aLat = v * v * m.kappa + lc2 + (a.player ? v * m.psiRate : 0);
-  const tg = targetsOf(row, aLat, m.aLong);
+  const tg = targetsOf(row, aLat, m.aLong, m.grade);
   if (dt >= 0.25) { m.roll = tg.roll; m.rollRate = 0; m.pitch = tg.pitch; m.pitchRate = 0; }   // a long gap (a backgrounded tab): snap, do not integrate
   else if (dt > 0) {
     const step = Math.min(dt, 0.05);

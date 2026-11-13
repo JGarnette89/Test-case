@@ -79,7 +79,7 @@ ok(ramp.results.find((r) => r.probe)?.probe === true, "the first step is the DOM
 console.log("\n2. each switch takes away its own thing and leaves the rest");
 const split = run(categorySteps(100), { stopOnFail: false });
 const base = split.results.find((r) => r.label === "everything");
-const COUNT = { trucks: "trucks", buses: "buses", walkers: "walkers", crossers: "crossing", parked: "parked", sidewalks: "sidewalks", buildings: "buildings" };
+const COUNT = { trucks: "trucks", buses: "buses", walkers: "walkers", crossers: "crossing", parked: "parked", sidewalks: "sidewalks", buildings: "buildings", body: "body" };   // body: cars drawn leaning (iso/body.js), a count of the actors the frame gave a body
 for (const key of Object.keys(OFF)) {
   const r = split.results.find((x) => x.without === key);
   if (key === "sight") { ok(r.sight === "off" && base.sight === "on", `no sight: trucks see-through on the world the step reads (${base.sight} -> ${r.sight})`); continue; }
@@ -94,7 +94,7 @@ for (const key of Object.keys(OFF)) {
    baseline's world on instead ran later in a world that grows busier, and
    on the phone read as drawing making the sim slower (6 October). */
 const same = (r) => ["moving", "trucks", "buses", "walkers", "crossing", "parked"].every((k) => r[k] === base[k]);
-for (const label of ["no sidewalks", "no buildings", "wide view"]) {
+for (const label of ["no sidewalks", "no buildings", "no body", "wide view"]) {
   const r = split.results.find((x) => x.label === label);
   ok(same(r), `${label}: the sim ends exactly where the baseline's did (${r.crossing} crossing, ${r.walkers} walking, ${r.moving} moving against ${base.crossing}, ${base.walkers}, ${base.moving})`);
 }
