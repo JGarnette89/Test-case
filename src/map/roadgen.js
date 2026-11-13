@@ -1,0 +1,298 @@
+/* =====================================================================
+   THE GENERATED HIGHWAY (14 November; DECISIONS 10.73). The road only: a
+   pure function of distance along it and a seed, emitted as an ordinary
+   map for today's `loadMap`, so the maintainer can drive it before any of
+   the machinery that would stream it exists. THE REASON FOR THE ORDER: the
+   403 map (`highway.js`) failed on its PARAMETERS, not on being finite --
+   4 to 7 degrees a km, 59% of it within half a percent of level -- so a
+   dull road generated ahead of him for ever would be the same
+   disappointment with more engineering under it. His taste is the
+   instrument and it cannot be applied to a description.
+
+   WHAT THE EYE READS IS CHANGE, NOT HOLD (DECISIONS 10.72): a steady lean
+   adapts away, and a lap of the old loop had four transitions. So the
+   generator is built out of TRANSITIONS: curvature is eased in linear ramps
+   (a clothoid), a bend can REVERSE straight through zero (an S-bend, the
+   strongest roll cue there is), grade changes over a short VERTICAL CURVE
+   (a crest that registers is one whose vertical curve is short enough to
+   unload the car), and rollers string crests close together.
+
+   LEGIBILITY IS A REQUIREMENT HERE, NOT A LATER ADJUSTMENT (the
+   maintainer's over-the-top ruling applied to terrain): Jay called a
+   correctly sized 4.5% hill imperceptible. The projection draws a rise as
+   1.15 m of screen for each metre, against 0.5 of ground travel, so a 4.5%
+   grade changes a road's slope on screen by about a tenth. So the profile
+   is multiplied by VERTICAL_EXAGGERATION as it is emitted. THE LIMIT ON
+   THAT IS THE PLAYER'S ENGINE, not taste: a car holds 100 km/h up to about
+   7.5% (player.js `resistance`), past which the screen says it cannot,
+   so the numbers below keep the exaggerated peak under that. A bigger
+   exaggeration than the engine allows belongs in the renderer (a draw-only
+   scale), which is a separate, structural piece of work.
+
+   EVERYTHING THAT SHAPES THE ROAD IS A NAMED NUMBER IN `ROAD`, ONE TABLE,
+   so a taste loop is "more of that, less of this" and numbers change, not
+   code. `roadgen(overrides)` takes any of them.
+
+   TWO CONSTRAINTS FROM THE DESIGN, HELD BY `verify-roadgen`:
+   - THE HEADING IS BOUNDED (HEADING_MAX, under 90 degrees from the
+     direction of travel at the start), so x only ever increases and the
+     road can never cross itself -- the loader would read a crossing as an
+     intersection or an overpass.
+   - IDS COME FROM DISTANCE from the start (`hw-<metres>`, `on-<metres>`),
+     and the whole road is a function of u: a longer road begins with
+     exactly the shorter one's roads, so this static stretch is already
+     the first window of an endless road rather than a throwaway.
+
+   INTERCHANGES ARE A SWITCH, NOT A DECISION. Whether ordinary highway has
+   junctions at all is the maintainer's open question (exits only where an
+   area needs one?), so INTERCHANGE_EVERY is a number: 0 is a road with
+   one entrance (to start on) and nothing else. Around each interchange the
+   road is held straight and level (a CALM zone, blended in and out):
+   junction clearing does not know about slope, and a slip road on a curve
+   crossed the through curb lane (the old loop's finding), so the drama
+   lives between the interchanges.
+   ===================================================================== */
+import { emptyMap, road } from "./format.js";
+import { rng } from "../core/rng.js";
+import { radiusFor } from "../sim/course.js";
+
+export const ROAD = {
+  ID: "test-highway-gen", NAME: "The generated highway -- a road made of transitions: eased bends, S-bends, crests that register, rollers",   // which map this is (a variant changes these)
+  SEED: 1,
+  LENGTH: 20000,            // m: the static stretch Jay drives
+  STEP: 4,                  // m between points
+  SPAN_MAX: 2500,           // m: a road (between nodes) is split at least this often; ids are the distance of its start
+
+  /* ---- plan: what the road does sideways ------------------------------ */
+  HEADING_MAX: 70,          // degrees either side of the start heading, never exceeded: the road cannot cross itself
+  HEADING_PULL: 25,         // degrees: past this a feature turns back toward the centre line rather than choosing at random
+  W_STRAIGHT: 0.18, W_SWEEP: 0.30, W_SBEND: 0.30, W_CHAIN: 0.14, W_TIGHT: 0.08,   // how often each feature comes
+  STRAIGHT_MIN: 200, STRAIGHT_MAX: 700,                 // m
+  SWEEP_R_MIN: 500, SWEEP_R_MAX: 1300,                  // m radius
+  SWEEP_TURN_MIN: 25, SWEEP_TURN_MAX: 70,               // degrees a sweep turns the road by
+  TIGHT_R_MIN: 280, TIGHT_R_MAX: 450,                   // m: a bend that wants a lower posted speed
+  TIGHT_TURN_MIN: 35, TIGHT_TURN_MAX: 80,
+  SBEND_R_MIN: 450, SBEND_R_MAX: 1000,                  // m radius of each half
+  SBEND_TURN_MIN: 18, SBEND_TURN_MAX: 45,               // degrees each half turns
+  CHAIN_LEGS_MIN: 3, CHAIN_LEGS_MAX: 5,                 // alternating bends in a chicane
+  CHAIN_R_MIN: 450, CHAIN_R_MAX: 800, CHAIN_TURN_MIN: 12, CHAIN_TURN_MAX: 28,
+  TRANSITION_LEN: 180,      // m: curvature eased in from straight to a bend (linear in curvature: a clothoid)
+  REVERSE_LEN: 90,          // m: curvature swung straight through zero from one bend to the other -- SHORT, because the roll flipping quickly is the cue
+  REVERSE_LEN_CHAIN: 70,
+
+  /* ---- profile: what the road does up and down ------------------------ */
+  VERTICAL_EXAGGERATION: 1.5,   // the profile is multiplied by this on the way out (see the header): the peak below is BEFORE it
+  GRADE_MIN: 0.02, GRADE_MAX: 0.050,                    // rise over run of a climb or a descent
+  PLATEAU_MIN: 500, PLATEAU_MAX: 1800,                  // m a grade holds
+  W_CLIMB: 0.26, W_DESCENT: 0.26, W_ROLLERS: 0.38, W_LEVEL: 0.10,
+  LEVEL_MIN: 150, LEVEL_MAX: 400,                       // m
+  ROLLER_WAVE_MIN: 180, ROLLER_WAVE_MAX: 320,           // m wavelength
+  ROLLER_GRADE: 0.040, ROLLER_BASE_MAX: 0.010,          // grade amplitude: crest after crest, over a base grade of at most this (their sum, times the exaggeration, must stay under what the engine holds: 7.75%)
+  ROLLER_COUNT_MIN: 3, ROLLER_COUNT_MAX: 6,
+  CREST_VC_MIN: 70, CREST_VC_MAX: 160,                  // m: the vertical curve at a crest or a sag -- SHORT is a crest that registers
+  EASE_VC_MIN: 160, EASE_VC_MAX: 320,                   // m: where the grade changes without changing sign
+  Z_LOW: 4, Z_HIGH: 70,                                 // m (before exaggeration): the road is steered back toward this band
+
+  /* ---- interchanges (a switch; see the header) ------------------------ */
+  INTERCHANGE_EVERY: 5000,  // m between an exit and the next exit; 0 = none (one entrance only, to start on)
+  FIRST_EXIT: 900,          // m
+  EXIT_TO_ENTRANCE: 700,    // m
+  ACCEL: 350,               // m of acceleration lane
+  CALM_BEFORE: 350, CALM_AFTER: 700, CALM_BLEND: 250,   // m held straight and level around an interchange, and how fast it is blended away
+  RAMP: 400, RAMP_ANGLE: 35,
+  LANES: 3, LIMIT: 100, TRUCKS: 0.12,
+};
+
+const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+const between = (r, a, b) => a + (b - a) * r();
+const pick = (r, weights) => { const ks = Object.keys(weights), tot = ks.reduce((s, k) => s + weights[k], 0); let x = r() * tot; for (const k of ks) { x -= weights[k]; if (x <= 0) return k; } return ks[ks.length - 1]; };
+const DEG = Math.PI / 180;
+
+/* ---------------------------------------------------------------------
+   The plan: curvature as a list of linear segments, built feature by
+   feature from index 0 (so a longer road begins with the shorter one).
+   --------------------------------------------------------------------- */
+function planOf(C, zones) {
+  const segs = [];   // { u0, u1, k0, k1 }
+  const features = [];   // { kind, u0, u1 } for the sections and the report
+  let u = 0, h = 0, i = 0;
+  const lim = C.HEADING_MAX * DEG;
+  /* A feature is a list of [length, k0, k1] parts. It is ACCEPTED only if the heading stays inside the bound the whole way through it (the peak, not just the end), tried with each sign: that is what keeps the road from ever crossing itself. */
+  /* checked every 10 m INSIDE each part: a reversal passes through zero curvature mid-part, where the heading peaks, so the ends of a part are not enough */
+  const within = (parts, s) => { let hh = h; for (const [len, k0, k1] of parts) { const n = Math.max(1, Math.ceil(len / 10)); for (let j = 1; j <= n; j++) { const a = (j - 1) / n, b = j / n; hh += s * (k0 + (k1 - k0) * (a + b) / 2) * (len / n); if (Math.abs(hh) > lim) return false; } } return true; };
+  const commit = (parts, s) => { for (const [len, k0, k1] of parts) { segs.push({ u0: u, u1: u + len, k0: s * k0, k1: s * k1 }); h += s * ((k0 + k1) / 2) * len; u += len; } };
+  /* A feature never overlaps a calm zone (or its blend): the zone's flattening would change what the feature turns the road by and the heading bound would be a lie. It is replaced by a straight to the zone's end. */
+  const hit = (len) => zones.find(([a, b]) => u + len > a - C.CALM_BLEND && u < b + C.CALM_BLEND);
+  const pass = (len) => { const z = hit(len); if (!z) return false; commit([[Math.max(1, z[1] + C.CALM_BLEND - u), 0, 0]], 1); return true; };
+  const place = (r, parts) => {
+    if (pass(parts.reduce((n, p) => n + p[0], 0))) return true;
+    const first = Math.abs(h) / DEG > C.HEADING_PULL ? -Math.sign(h) : r() < 0.5 ? -1 : 1;
+    for (const s of [first, -first]) if (within(parts, s)) { commit(parts, s); return true; }
+    return false;
+  };
+  while (u < C.LENGTH + 2000) {
+    const r = rng(C.SEED * 1000003 + i * 7919 + 11); i++;
+    const kind = pick(r, { straight: C.W_STRAIGHT, sweep: C.W_SWEEP, sbend: C.W_SBEND, chain: C.W_CHAIN, tight: C.W_TIGHT });
+    const u0 = u;
+    if (kind === "straight") { const len = between(r, C.STRAIGHT_MIN, C.STRAIGHT_MAX); if (!pass(len)) commit([[len, 0, 0]], 1); }
+    else if (kind === "sweep" || kind === "tight") {
+      const R = kind === "sweep" ? between(r, C.SWEEP_R_MIN, C.SWEEP_R_MAX) : between(r, C.TIGHT_R_MIN, C.TIGHT_R_MAX);
+      const turn = (kind === "sweep" ? between(r, C.SWEEP_TURN_MIN, C.SWEEP_TURN_MAX) : between(r, C.TIGHT_TURN_MIN, C.TIGHT_TURN_MAX)) * DEG;
+      const k = 1 / R, arc = Math.max(0, turn * R - C.TRANSITION_LEN);
+      if (!place(r, [[C.TRANSITION_LEN, 0, k], [arc, k, k], [C.TRANSITION_LEN, k, 0]])) commit([[200, 0, 0]], 1);
+    } else if (kind === "sbend") {
+      const R1 = between(r, C.SBEND_R_MIN, C.SBEND_R_MAX), R2 = between(r, C.SBEND_R_MIN, C.SBEND_R_MAX);
+      const t1 = between(r, C.SBEND_TURN_MIN, C.SBEND_TURN_MAX) * DEG, t2 = between(r, C.SBEND_TURN_MIN, C.SBEND_TURN_MAX) * DEG;
+      const k1 = 1 / R1, k2 = -1 / R2, e = (C.TRANSITION_LEN + C.REVERSE_LEN) / 2;
+      if (!place(r, [[C.TRANSITION_LEN, 0, k1], [Math.max(0, t1 * R1 - e), k1, k1], [C.REVERSE_LEN, k1, k2], [Math.max(0, t2 * R2 - e), k2, k2], [C.TRANSITION_LEN, k2, 0]])) commit([[200, 0, 0]], 1);
+    } else {
+      const legs = Math.round(between(r, C.CHAIN_LEGS_MIN, C.CHAIN_LEGS_MAX)), parts = [];
+      let s = 1, prev = 0;
+      for (let j = 0; j < legs; j++) {
+        const R = between(r, C.CHAIN_R_MIN, C.CHAIN_R_MAX), t = between(r, C.CHAIN_TURN_MIN, C.CHAIN_TURN_MAX) * DEG, k = s / R;
+        const lead = j === 0 ? C.TRANSITION_LEN : C.REVERSE_LEN_CHAIN;
+        parts.push([lead, prev, k], [Math.max(0, t * R - lead / 2 - C.REVERSE_LEN_CHAIN / 2), k, k]); prev = k; s = -s;
+      }
+      parts.push([C.TRANSITION_LEN, prev, 0]);
+      if (!place(r, parts)) commit([[200, 0, 0]], 1);
+    }
+    features.push({ kind, u0, u1: u });
+  }
+  return { segs, features };
+}
+function curvatureAt(plan, v) {
+  const S = plan.segs; let lo = 0, hi = S.length - 1;
+  if (v <= S[0].u0) return S[0].k0;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (S[mid].u0 <= v) lo = mid; else hi = mid - 1; }
+  const s = S[lo]; if (v >= s.u1) return s.k1;
+  return s.k0 + ((s.k1 - s.k0) * (v - s.u0)) / (s.u1 - s.u0 || 1);
+}
+
+/* ---------------------------------------------------------------------
+   The profile: grade as plateaus (a held grade, or rollers) joined by
+   linear grade ramps (parabolic vertical curves). A crest or a sag is a
+   sign change across a SHORT ramp.
+   --------------------------------------------------------------------- */
+function profileOf(C, zones) {
+  const segs = [];   // { u0, u1, g0, g1, A, wave }  grade = ramp g0->g1 (A = 0) or plateau g0 + A sin(2 pi (v - u0) / wave)
+  const features = [];
+  let u = 0, z = 0, g = 0, i = 0;
+  /* the height a segment ACTUALLY adds: the calm zones flatten the grade where they lie, so steering on the unflattened profile let the road drift 250 m below where it was steered to stay */
+  const area = (s) => { let a = 0; const n = Math.max(1, Math.ceil((s.u1 - s.u0) / 8)), d = (s.u1 - s.u0) / n; for (let j = 0; j < n; j++) { const v = s.u0 + (j + 0.5) * d, t = (v - s.u0) / (s.u1 - s.u0 || 1); a += (s.g0 + (s.g1 - s.g0) * t + (s.A ? s.A * Math.sin((2 * Math.PI * (v - s.u0)) / s.wave) : 0)) * calmAt(zones, C.CALM_BLEND, v) * d; } return a; };
+  const add = (s) => { segs.push(s); z += area(s); u = s.u1; g = s.g1; };
+  while (u < C.LENGTH + 2000) {
+    const r = rng(C.SEED * 1000003 + i * 104729 + 29); i++;
+    let w = { climb: C.W_CLIMB, descent: C.W_DESCENT, rollers: C.W_ROLLERS, level: C.W_LEVEL };
+    if (z > C.Z_HIGH) w = { climb: 0, descent: 1, rollers: 0.2, level: 0 }; else if (z < C.Z_LOW) w = { climb: 1, descent: 0, rollers: 0.2, level: 0 };
+    let kind = pick(r, w);
+    let target, len, A = 0, wave = 0;
+    if (kind === "climb") { target = between(r, C.GRADE_MIN, C.GRADE_MAX); len = between(r, C.PLATEAU_MIN, C.PLATEAU_MAX); }
+    else if (kind === "descent") { target = -between(r, C.GRADE_MIN, C.GRADE_MAX); len = between(r, C.PLATEAU_MIN, C.PLATEAU_MAX); }
+    else if (kind === "level") { target = 0; len = between(r, C.LEVEL_MIN, C.LEVEL_MAX); }
+    else { target = (z > C.Z_HIGH ? -1 : z < C.Z_LOW ? 1 : r() < 0.5 ? -1 : 1) * between(r, 0, C.ROLLER_BASE_MAX); A = C.ROLLER_GRADE; wave = between(r, C.ROLLER_WAVE_MIN, C.ROLLER_WAVE_MAX); len = wave * Math.round(between(r, C.ROLLER_COUNT_MIN, C.ROLLER_COUNT_MAX)); }
+    /* a plateau never carries the road past the band it is steered within: it is cut short, or turned round if there is no room */
+    if (kind === "climb" || kind === "descent") { const room = kind === "climb" ? C.Z_HIGH - z : z - C.Z_LOW; if (room < Math.abs(target) * C.PLATEAU_MIN * 0.4) { target = -target; len = Math.min(len, (kind === "climb" ? z - C.Z_LOW : C.Z_HIGH - z) / Math.abs(target) || len); } else len = Math.min(len, room / Math.abs(target)); }
+    /* the vertical curve into it: a change of sign is a crest or a sag and is SHORT */
+    const flips = Math.sign(g) * Math.sign(target) < 0, vc = flips ? between(r, C.CREST_VC_MIN, C.CREST_VC_MAX) : between(r, C.EASE_VC_MIN, C.EASE_VC_MAX);
+    const rampFrom = u;
+    add({ u0: u, u1: u + vc, g0: g, g1: target, A: 0, wave: 0 });
+    if (flips) features.push({ kind: g > 0 ? "crest" : "sag", u0: rampFrom, u1: u, dg: Math.abs(target - segs[segs.length - 1].g0), vc });
+    add({ u0: u, u1: u + len, g0: target, g1: target, A, wave });
+    if (kind === "rollers") features.push({ kind: "rollers", u0: u - len, u1: u, wave, A });
+  }
+  return { segs, features };
+}
+function gradeAt(plan, v) {
+  const S = plan.segs; let lo = 0, hi = S.length - 1;
+  if (v <= S[0].u0) return S[0].g0;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (S[mid].u0 <= v) lo = mid; else hi = mid - 1; }
+  const s = S[lo]; if (v >= s.u1) return s.g1;
+  const t = (v - s.u0) / (s.u1 - s.u0 || 1);
+  return s.g0 + (s.g1 - s.g0) * t + (s.A ? s.A * Math.sin((2 * Math.PI * (v - s.u0)) / s.wave) : 0);
+}
+
+/* ---------------------------------------------------------------------
+   The interchanges and the calm around them.
+   --------------------------------------------------------------------- */
+/* The interchanges depend on DISTANCE ONLY, never on where this stretch happens to end (`to`: how far to generate them, the plan wants them past the end): otherwise a longer road would not begin with the shorter one, because a calm zone beyond the end of the short road changes the bends before it. */
+export function interchangesOf(C, to = C.LENGTH) {
+  const nodes = [];   // { u, kind: "exit" | "entrance" }
+  if (C.INTERCHANGE_EVERY > 0) for (let x = C.FIRST_EXIT; x < to; x += C.INTERCHANGE_EVERY) nodes.push({ u: x, kind: "exit", x }, { u: x + C.EXIT_TO_ENTRANCE, kind: "entrance", x });
+  else nodes.push({ u: C.FIRST_EXIT, kind: "entrance", x: C.FIRST_EXIT });
+  return nodes;
+}
+const calmZones = (C, nodes) => {
+  const out = [];
+  if (C.INTERCHANGE_EVERY > 0) for (let i = 0; i < nodes.length; i += 2) out.push([nodes[i].u - C.CALM_BEFORE, nodes[i + 1].u + C.ACCEL + C.CALM_AFTER]);
+  else out.push([nodes[0].u - C.CALM_BEFORE, nodes[0].u + C.ACCEL + C.CALM_AFTER]);
+  return out;
+};
+const calmAt = (zones, blend, v) => { let m = 1; for (const [a, b] of zones) { const d = v < a ? a - v : v > b ? v - b : 0; m = Math.min(m, smooth(d / blend)); } return m; };
+
+/* ---------------------------------------------------------------------
+   The centreline: integrated from u = 0, heading east, at STEP.
+   --------------------------------------------------------------------- */
+export function lineOf(overrides = {}) {
+  const C = { ...ROAD, ...overrides };
+  const allNodes = interchangesOf(C, C.LENGTH + 4000), zones = calmZones(C, allNodes), nodes = allNodes.filter((n) => n.x + C.EXIT_TO_ENTRANCE + 900 < C.LENGTH), plan = planOf(C, zones), prof = profileOf(C, zones);
+  const pts = []; let x = 0, y = 0, z = 0, h = 0;
+  for (let u = 0; u <= C.LENGTH + 1e-9; u += C.STEP) {
+    const m = calmAt(zones, C.CALM_BLEND, u);
+    pts.push({ u, x, y, z, h, k: curvatureAt(plan, u) * m, g: gradeAt(prof, u) * m * C.VERTICAL_EXAGGERATION });
+    h += pts[pts.length - 1].k * C.STEP; x += Math.cos(h) * C.STEP; y += Math.sin(h) * C.STEP; z += pts[pts.length - 1].g * C.STEP;
+  }
+  return { C, plan, prof, nodes, zones, pts };
+}
+
+/* ---------------------------------------------------------------------
+   The map.
+   --------------------------------------------------------------------- */
+const r2 = (v) => Math.round(v * 10000) / 10000;
+const speedFor = (C, minR) => { let best = 40; for (let v = 40; v <= C.LIMIT; v += 5) if (radiusFor(v / 3.6) <= minR * 0.85) best = v; return best; };
+
+export function roadgen(overrides = {}) {
+  const gen = lineOf(overrides), { C, pts, nodes } = gen;
+  const P = (u) => pts[Math.min(pts.length - 1, Math.round(u / C.STEP))];
+  const m = emptyMap(C.ID, C.NAME);
+  m.traffic = { trucks: C.TRUCKS };
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  m.bounds = { x: Math.min(...xs) - 800, y: Math.min(...ys) - 800, w: Math.max(...xs) - Math.min(...xs) + 1600, h: Math.max(...ys) - Math.min(...ys) + 1600 };
+  /* A road is the stretch between two breaks: the interchange nodes and every SPAN_MAX; its id is the distance of its start. */
+  const breaks = [...new Set([0, C.LENGTH, ...nodes.map((n) => n.u), ...Array.from({ length: Math.floor(C.LENGTH / C.SPAN_MAX) }, (_, j) => (j + 1) * C.SPAN_MAX)])].filter((v) => v >= 0 && v <= C.LENGTH).sort((a, b) => a - b).filter((v) => nodes.some((n) => n.u === v) || v === 0 || v === C.LENGTH || !nodes.some((n) => n.kind === "entrance" && v > n.u && v < n.u + 2 * (C.ACCEL + 150)));   // no break soon after an entrance: its acceleration lane needs the road after it
+  const spans = [];
+  for (let j = 0; j + 1 < breaks.length; j++) {
+    const a = breaks[j], b = breaks[j + 1];
+    const line = [];
+    for (let u = a; u < b; u += C.STEP) { const p = P(u); line.push({ x: r2(p.x), y: r2(p.y), z: r2(p.z) }); }
+    const e = P(b); line.push({ x: r2(e.x), y: r2(e.y), z: r2(e.z) });
+    let kmax = 0; for (let u = a; u <= b; u += C.STEP) kmax = Math.max(kmax, Math.abs(P(u).k));
+    const startNode = nodes.find((n) => n.u === a && n.kind === "entrance"), endNode = nodes.find((n) => n.u === b && n.kind === "exit");
+    const extra = {};
+    if (startNode) extra.accel = { start: { from: `on-${a}`, length: C.ACCEL } };
+    spans.push({ a, b, id: `hw-${a}`, speed: Math.min(C.LIMIT, kmax > 0 ? speedFor(C, 1 / kmax) : C.LIMIT), line, extra, endNode });
+  }
+  for (const s of spans) m.roads.push(road({ id: s.id, kind: "highway", lanes: C.LANES, speed: s.speed, oneWay: true, points: s.line, ...s.extra }));
+  const ANG = C.RAMP_ANGLE * DEG, right = (hh, d) => ({ x: Math.cos(hh) * d, y: Math.sin(hh) * d }), ramps = [];
+  for (const n of nodes) {
+    const p = P(n.u), z = r2(p.z), line = [];
+    if (n.kind === "exit") { const d = right(p.h + ANG, C.RAMP); for (let i = 0; i <= 40; i++) line.push({ x: r2(p.x + (d.x * i) / 40), y: r2(p.y + (d.y * i) / 40), z }); m.roads.push(road({ id: `off-${n.u}`, kind: "arterial", lanes: 1, oneWay: true, speed: 60, points: line })); }
+    else { const d = right(p.h - ANG, C.RAMP); for (let i = 0; i <= 40; i++) line.push({ x: r2(p.x - d.x + (d.x * i) / 40), y: r2(p.y - d.y + (d.y * i) / 40), z }); m.roads.push(road({ id: `on-${n.u}`, kind: "arterial", lanes: 1, oneWay: true, speed: 80, points: line })); ramps.push({ id: `on-${n.u}`, u: n.u }); }
+  }
+  /* The exit-only lane at each exit: the curb lane may only leave there. */
+  for (const s of spans) if (s.endNode) { const rd = m.roads.find((q) => q.id === s.id); rd.turns = { end: Array.from({ length: C.LANES }, (_, j) => (j === C.LANES - 1 ? ["right"] : ["straight"])) }; }
+  /* Sections: the start, and the most dramatic of each kind the road has, each joined from the entrance before it. */
+  const entranceBefore = (u) => ramps.filter((q) => q.u + C.ACCEL < u).pop() ?? ramps[0];
+  const look = (u) => { const p = P(u); return { x: r2(p.x + Math.cos(p.h + Math.PI / 2) * 100), y: r2(p.y + Math.sin(p.h + Math.PI / 2) * 100) }; };
+  const vAcc = (f) => (27.8 * 27.8 * f.dg) / f.vc;   // m/s^2 of vertical acceleration at 100 km/h
+  const crest = gen.prof.features.filter((f) => f.kind === "crest" && f.u1 < C.LENGTH).sort((a, b) => vAcc(b) - vAcc(a))[0];
+  const roller = gen.prof.features.filter((f) => f.kind === "rollers" && f.u1 < C.LENGTH)[0];
+  const sbend = gen.plan.features.filter((f) => f.kind === "sbend" && f.u1 < C.LENGTH)[0];
+  m.sections = [{ id: "start", name: "join from the slip road", look: look(ramps[0].u + 300), start: { road: ramps[0].id, end: "end" }, judge: "You start standing on a slip road. Join the highway, then drive: what does the road do?" }];
+  if (crest) m.sections.push({ id: "crest", name: "the sharpest crest", look: look((crest.u0 + crest.u1) / 2), start: { road: entranceBefore(crest.u0).id, end: "end" }, judge: `Over the crest at ${(crest.u0 / 1000).toFixed(1)} km the grade changes ${(100 * crest.dg).toFixed(0)} points in ${crest.vc.toFixed(0)} m. Does the nose go over, and does it register?` });
+  if (roller) m.sections.push({ id: "rollers", name: "rollers", look: look((roller.u0 + roller.u1) / 2), start: { road: entranceBefore(roller.u0).id, end: "end" }, judge: `Crest after crest from ${(roller.u0 / 1000).toFixed(1)} km: does it read as speed?` });
+  if (sbend) m.sections.push({ id: "sbend", name: "an S-bend", look: look((sbend.u0 + sbend.u1) / 2), start: { road: entranceBefore(sbend.u0).id, end: "end" }, judge: `An S-bend at ${(sbend.u0 / 1000).toFixed(1)} km: the lean swings from one side to the other. Does that read?` });
+  return m;
+}
+export const testHighwayGen = () => roadgen();
+/* The same road with no interchange but the entrance to start on: all of it is the road, none of it calm. */
+export const testHighwayGenOpen = () => roadgen({ ID: "test-highway-gen-open", NAME: "The generated highway, no interchanges", INTERCHANGE_EVERY: 0 });

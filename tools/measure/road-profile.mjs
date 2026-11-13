@@ -1,7 +1,8 @@
-/* WHAT A MAP'S ROAD REALLY IS (14 Nov): elevation and curvature read straight from the map's own centreline points, no drive. Usage: node tools/measure/road-profile.mjs <loop|hw6|hw15> */
+/* WHAT A MAP'S ROAD REALLY IS (14 Nov): elevation and curvature read straight from the map's own centreline points, no drive. Usage: node tools/measure/road-profile.mjs <loop|hw6|hw15|gen> */
 import { testLoop, testHighway as hw6 } from "../../src/map/samples.js";
 import { testHighway as hw15 } from "../../src/map/highway.js";
-const which = process.argv[2] ?? "loop", m = { loop: testLoop, hw6, hw15 }[which]();
+import { testHighwayGen as gen } from "../../src/map/roadgen.js";
+const which = process.argv[2] ?? "loop", m = { loop: testLoop, hw6, hw15, gen }[which]();
 const pref = which === "loop" ? /^loop-/ : which === "hw6" ? /^hw-/ : /^hw|^road|^main|^loop|^highway/;
 let roads = m.roads.filter((r) => (r.kind === "highway" || /hw|loop/.test(r.id)) && !/^(on|off)-/.test(r.id));
 if (!roads.length) roads = m.roads;

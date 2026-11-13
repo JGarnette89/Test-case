@@ -56,6 +56,7 @@ import { fillZone, fillLots } from "./generate.js";
 import { loadMap } from "./load.js";
 import { trialCity } from "./trial.js";
 import { testHighway as testHighwayLong } from "./highway.js";
+import { testHighwayGen, testHighwayGenOpen } from "./roadgen.js";
 
 /* A straight stroke, or a bowed one: `bow` metres sideways at the
    middle, so a road can bend without anybody computing an arc. */
@@ -448,5 +449,8 @@ export const TEST_MAPS = [
   { id: "test-highway", name: "Highway", blurb: "Six kilometres of three lanes each way, curving over low hills: two signalled crossroads timed as a green wave, a bridge, and trucks to pass.", build: testHighway },
   /* The 403-style road (map/highway.js, built 21 October from the maintainer's 403 description and imported by nothing until 14 November, so never reachable): 15 km, a 4.5% climb of 100 m, a 4% downhill 90, gentle bends. A fixture, not `clean`, until the maintainer has driven it. */
   { id: "test-highway-long", name: "Open highway (the 403)", blurb: "Fifteen kilometres that change character: a 2.4 km climb of 100 m, a downhill 90 km/h section, interchanges, trucks on the grade. Open at both ends.", build: testHighwayLong },
+  /* The generated highway (map/roadgen.js, DECISIONS 10.73): a road made of transitions, for the maintainer to drive and say "more of that, less of this". Fixtures until he has. */
+  { id: "test-highway-gen", name: "Generated highway", blurb: "Twenty kilometres built from eased bends, S-bends, crests that register and rollers, with an interchange every five kilometres held straight and level.", build: testHighwayGen },
+  { id: "test-highway-gen-open", name: "Generated highway, no interchanges", blurb: "The same road with no interchange but the entrance you start on: all of it is the road.", build: testHighwayGenOpen },
   { id: "test-loop", clean: true, name: "Endless highway", blurb: "A one-way loop of three lanes, about 10.4 km round, with four interchanges keeping the traffic fresh. You start on a slip road and join from an acceleration lane.", build: testLoop },
 ];
