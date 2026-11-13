@@ -51,7 +51,8 @@
    crossed the through curb lane (the old loop's finding), so the drama
    lives between the interchanges.
    ===================================================================== */
-import { emptyMap, road } from "./format.js";
+import { emptyMap, road, LANE } from "./format.js";
+import { interchangeOf, IX } from "./interchange.js";
 import { rng } from "../core/rng.js";
 import { radiusFor } from "../sim/course.js";
 
@@ -95,14 +96,14 @@ export const ROAD = {
   /* ---- interchanges: AMBIENT and common (Jay, 14 November: DECISIONS 10.74) -- traffic merges in and out and the player turns around by them; they are one of the most repeated things he will see, so spacing, kind, geometry and side VARY. Placed by construction in calm zones: a feature never overlaps one. */
   INTERCHANGES: 1,          // 0 = none (one entrance only, to start on); 1 = ambient interchanges
   FIRST_EXIT: 900,          // m: the first interchange (always a full one: the road starts from its entrance)
-  OPEN_MIN: 1100, OPEN_MAX: 4200, OPEN_SKEW: 1.4,   // m of road between one interchange's calm and the next's: the stretch the drama lives in (the draw is rng^SKEW, so most are short and a few long)
-  W_FULL: 0.45, W_EXIT: 0.25, W_ENTRANCE: 0.30,     // exit then entrance / an exit alone / an entrance alone
+  OPEN_MIN: 1400, OPEN_MAX: 4600, OPEN_SKEW: 1.4,   // m of road between one interchange's calm and the next's: the stretch the drama lives in (the draw is rng^SKEW, so most are short and a few long)
+  W_FULL: 0.30, W_EXIT: 0.30, W_ENTRANCE: 0.40,     // exit then entrance / an exit alone / an entrance alone
   EXIT_TO_ENTRANCE_MIN: 450, EXIT_TO_ENTRANCE_MAX: 1100,   // m
   ACCEL: 350,               // m of acceleration lane
-  CALM_BEFORE: 350, CALM_AFTER: 600, CALM_BLEND: 250,   // m held straight and level around an interchange, and how fast it is blended away
+  CALM_BEFORE: 350, CALM_AFTER: 250, CALM_BLEND: 250,   // m held straight and level around an interchange, and how fast it is blended away
   EXIT_AFTER: 250, ENTRANCE_BEFORE: 150,                // m of calm past a lone exit / before a lone entrance
   RAMP_MIN: 300, RAMP_MAX: 600, ANGLE_MIN: 35, ANGLE_MAX: 50,   // m and degrees of a ramp, drawn per interchange. NOT BELOW ~35: at 28 the ramp lies along the through lanes for so long the conflict table holds a third of the road (measured, DECISIONS 10.74)
-  LEFT_EXIT: 0.12,          // share of exits that leave on the LEFT (the exit-only lane is then the fast lane)
+  /* The FULL interchanges are their own artefact, with their own table: interchange.js `IX`. The lone exits and entrances above are plain slip roads, on either carriageway (a left exit would run into the median now that the road is divided). */
   LANES: 3, LIMIT: 100, TRUCKS: 0.12,
 };
 
@@ -217,19 +218,25 @@ function gradeAt(plan, v) {
 /* ---------------------------------------------------------------------
    The interchanges and the calm around them.
    --------------------------------------------------------------------- */
-/* The interchanges depend on DISTANCE ONLY, never on where this stretch happens to end (`to`: how far to generate them, the plan wants them past the end): otherwise a longer road would not begin with the shorter one, because a calm zone beyond the end of the short road changes the bends before it. Each site draws a fixed number of random values, so the sequence is the same however far it runs. */
+/* The interchanges depend on DISTANCE ONLY, never on where this stretch happens to end (`to`: how far to generate them, the plan wants them past the end): otherwise a longer road would not begin with the shorter one, because a calm zone beyond the end of the short road changes the bends before it. Each site draws a fixed number of random values, so the sequence is the same however far it runs. THE ROAD IS DIVIDED: carriageway A (the one the player starts on) and B, the oncoming one, a median to its left. A FULL interchange is a diamond (interchange.js) centred on its crossroad `c`; a lone exit or entrance is a slip road on one carriageway or the other. */
 export function sitesOf(C, to = C.LENGTH) {
-  if (!(C.INTERCHANGES > 0)) return [{ i: 0, kind: "entrance", nodes: [{ u: C.FIRST_EXIT, kind: "entrance" }], zone: [C.FIRST_EXIT - C.ENTRANCE_BEFORE, C.FIRST_EXIT + C.ACCEL + C.CALM_AFTER], end: C.FIRST_EXIT + C.ACCEL + C.CALM_AFTER, ramp: C.RAMP_MIN, ang: 35, left: false }];
-  const r = rng(C.SEED * 1000003 + 977), lerp = (a, b, t) => a + (b - a) * t, sites = [];
-  for (let u = Math.round(C.FIRST_EXIT / C.STEP) * C.STEP, i = 0; u < to; i++) {
-    const q = (v) => Math.round(v / C.STEP) * C.STEP, t = r(), gap = q(lerp(C.EXIT_TO_ENTRANCE_MIN, C.EXIT_TO_ENTRANCE_MAX, r())), ramp = lerp(C.RAMP_MIN, C.RAMP_MAX, r()), ang = lerp(C.ANGLE_MIN, C.ANGLE_MAX, r()), left = r() < C.LEFT_EXIT, open = lerp(C.OPEN_MIN, C.OPEN_MAX, Math.pow(r(), C.OPEN_SKEW));
+  const half = (C.LANES * LANE) / 2, q = (v) => Math.round(v / C.STEP) * C.STEP;
+  if (!(C.INTERCHANGES > 0)) { const u = q(C.FIRST_EXIT); return [{ i: 0, kind: "entrance", carriage: "A", nodes: [{ u, kind: "entrance", carriage: "A" }], zone: [u - C.ENTRANCE_BEFORE, u + C.ACCEL + C.CALM_AFTER], end: u + C.ACCEL + C.CALM_AFTER, ramp: C.RAMP_MIN, ang: 35 }]; }
+  const r = rng(C.SEED * 1000003 + 977), lerp = (a2, b2, t) => a2 + (b2 - a2) * t, sites = [];
+  for (let z0 = q(C.FIRST_EXIT), i = 0; z0 < to; i++) {
+    const t = r(), ramp = lerp(C.RAMP_MIN, C.RAMP_MAX, r()), ang = lerp(C.ANGLE_MIN, C.ANGLE_MAX, r()), onB = r() < 0.5, open = lerp(C.OPEN_MIN, C.OPEN_MAX, Math.pow(r(), C.OPEN_SKEW));
     const kind = i === 0 ? "full" : t < C.W_FULL ? "full" : t < C.W_FULL + C.W_EXIT ? "exit" : "entrance";
-    const e = { u, kind: "exit" }, n = { u: u + gap, kind: "entrance" };
-    const nodes = kind === "full" ? [e, n] : kind === "exit" ? [e] : [{ u, kind: "entrance" }];
-    const last = nodes[nodes.length - 1];
-    const zone = [kind === "entrance" ? u - C.ENTRANCE_BEFORE : u - C.CALM_BEFORE, kind === "exit" ? u + C.EXIT_AFTER : last.u + C.ACCEL + C.CALM_AFTER];
-    sites.push({ i, kind, nodes, zone, end: zone[1], ramp, ang, left: kind !== "entrance" && left });
-    u = q(zone[1] + C.CALM_BEFORE + open);
+    let site;
+    if (kind === "full") {
+      const ix = interchangeOf(C.SEED, i, half), ZH = Math.max(ix.dOff, ix.dOn) + C.ACCEL + C.CALM_AFTER, c = z0 + ZH;
+      site = { i, kind, c, ix, nodes: [{ u: c - ix.dOff, kind: "exit", carriage: "A" }, { u: c + ix.dOn, kind: "entrance", carriage: "A" }, { u: c + ix.dOff, kind: "exit", carriage: "B" }, { u: c - ix.dOn, kind: "entrance", carriage: "B" }], zone: [z0, c + ZH], end: c + ZH };
+    } else {
+      const carriage = onB ? "B" : "A", span = kind === "exit" ? (onB ? [C.EXIT_AFTER, C.CALM_BEFORE] : [C.CALM_BEFORE, C.EXIT_AFTER]) : (onB ? [C.ACCEL + C.CALM_AFTER, C.ENTRANCE_BEFORE] : [C.ENTRANCE_BEFORE, C.ACCEL + C.CALM_AFTER]);
+      const u = z0 + span[0];
+      site = { i, kind, carriage, nodes: [{ u, kind, carriage }], zone: [z0, u + span[1]], end: u + span[1], ramp, ang };
+    }
+    sites.push(site);
+    z0 = q(site.end + open);
   }
   return sites;
 }
@@ -259,43 +266,76 @@ const r2 = (v) => Math.round(v * 10000) / 10000;
 const speedFor = (C, minR) => { let best = 40; for (let v = 40; v <= C.LIMIT; v += 5) if (radiusFor(v / 3.6) <= minR * 0.85) best = v; return best; };
 
 export function roadgen(overrides = {}) {
-  const gen = lineOf(overrides), { C, pts, nodes } = gen;
+  const gen = lineOf(overrides), { C, pts, nodes } = gen, DEGR = Math.PI / 180;
+  const D = C.LANES * LANE + IX.MEDIAN;   // m from carriageway A's centre line to B's
   const P = (u) => pts[Math.min(pts.length - 1, Math.round(u / C.STEP))];
+  /* The two carriageways. A is the generated line; B is A moved D to its left, going the other way. Where A bends, B's bend is a little wider or tighter, so its posted speed is read from its own curvature. */
+  const nrm = (p) => ({ x: -Math.sin(p.h), y: Math.cos(p.h) });
+  const Q = (car, u) => { const p = P(u); if (car === "A") return { x: p.x, y: p.y, z: p.z, h: p.h, k: p.k }; const n = nrm(p); return { x: p.x - n.x * D, y: p.y - n.y * D, z: p.z, h: p.h + Math.PI, k: p.k / (1 + p.k * D) }; };
   const m = emptyMap(C.ID, C.NAME);
   m.traffic = { trucks: C.TRUCKS };
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   m.bounds = { x: Math.min(...xs) - 800, y: Math.min(...ys) - 800, w: Math.max(...xs) - Math.min(...xs) + 1600, h: Math.max(...ys) - Math.min(...ys) + 1600 };
-  /* A road is the stretch between two breaks: the interchange nodes and every SPAN_MAX; its id is the distance of its start. */
-  const breaks = [...new Set([0, C.LENGTH, ...nodes.map((n) => n.u), ...Array.from({ length: Math.floor(C.LENGTH / C.SPAN_MAX) }, (_, j) => (j + 1) * C.SPAN_MAX)])].filter((v) => v >= 0 && v <= C.LENGTH).sort((a, b) => a - b).filter((v) => nodes.some((n) => n.u === v) || v === 0 || v === C.LENGTH || !nodes.some((n) => n.kind === "entrance" && v > n.u && v < n.u + 2 * (C.ACCEL + 150)));   // no break soon after an entrance: its acceleration lane needs the road after it
-  const spans = [];
-  for (let j = 0; j + 1 < breaks.length; j++) {
-    const a = breaks[j], b = breaks[j + 1];
-    const line = [];
-    for (let u = a; u < b; u += C.STEP) { const p = P(u); line.push({ x: r2(p.x), y: r2(p.y), z: r2(p.z) }); }
-    const e = P(b); line.push({ x: r2(e.x), y: r2(e.y), z: r2(e.z) });
-    let kmax = 0; for (let u = a; u <= b; u += C.STEP) kmax = Math.max(kmax, Math.abs(P(u).k));
-    const startNode = nodes.find((n) => n.u === a && n.kind === "entrance"), endNode = nodes.find((n) => n.u === b && n.kind === "exit");
-    const extra = {};
-    if (startNode) extra.accel = { start: { from: `on-${a}`, length: C.ACCEL } };
-    spans.push({ a, b, id: `hw-${a}`, speed: Math.min(C.LIMIT, kmax > 0 ? speedFor(C, 1 / kmax) : C.LIMIT), line, extra, endNode });
+  /* A road is the stretch between two breaks: ITS OWN carriageway's interchange nodes and every SPAN_MAX; its id is the distance of its start. No break soon after an entrance on A (its acceleration lane needs the road after it), nor soon BEFORE one on B (B runs the other way). */
+  const guard = 2 * (C.ACCEL + 150), spans = [];
+  for (const car of ["A", "B"]) {
+    const mine = nodes.filter((n) => n.carriage === car), inGuard = (v) => mine.some((n) => n.kind === "entrance" && (car === "A" ? v > n.u && v < n.u + guard : v < n.u && v > n.u - guard));
+    const breaks = [...new Set([0, C.LENGTH, ...mine.map((n) => n.u), ...Array.from({ length: Math.floor(C.LENGTH / C.SPAN_MAX) }, (_, j) => (j + 1) * C.SPAN_MAX)])].filter((v) => v >= 0 && v <= C.LENGTH).sort((a2, b2) => a2 - b2).filter((v) => mine.some((n) => n.u === v) || v === 0 || v === C.LENGTH || !inGuard(v));
+    for (let j = 0; j + 1 < breaks.length; j++) {
+      const a2 = breaks[j], b2 = breaks[j + 1], line = [], us = [];
+      for (let u = a2; u < b2; u += C.STEP) us.push(u); us.push(b2);
+      for (const u of car === "A" ? us : us.slice().reverse()) { const e = Q(car, u); line.push({ x: r2(e.x), y: r2(e.y), z: r2(e.z) }); }
+      let kmax = 0; for (const u of us) kmax = Math.max(kmax, Math.abs(Q(car, u).k));
+      const startNode = mine.find((n) => n.kind === "entrance" && n.u === (car === "A" ? a2 : b2)), endNode = mine.find((n) => n.kind === "exit" && n.u === (car === "A" ? b2 : a2));
+      const extra = {};
+      if (startNode) extra.accel = { start: { from: `${car === "A" ? "on" : "onb"}-${startNode.u}`, length: C.ACCEL } };
+      spans.push({ car, a: a2, b: b2, id: `${car === "A" ? "hw" : "hb"}-${a2}`, speed: Math.min(C.LIMIT, kmax > 0 ? speedFor(C, 1 / kmax) : C.LIMIT), line, extra, endNode });
+    }
   }
-  for (const s of spans) m.roads.push(road({ id: s.id, kind: "highway", lanes: C.LANES, speed: s.speed, oneWay: true, points: s.line, ...s.extra }));
-  const right = (hh, d) => ({ x: Math.cos(hh) * d, y: Math.sin(hh) * d }), ramps = [];
+  for (const s2 of spans) m.roads.push(road({ id: s2.id, kind: "highway", lanes: C.LANES, speed: s2.speed, oneWay: true, points: s2.line, ...s2.extra }));
+  const ramps = [], rampId = (n) => `${n.kind === "exit" ? "off" : "on"}${n.carriage === "B" ? "b" : ""}-${n.u}`;
+  /* LONE slip roads: a straight stub at the site's angle, to nowhere (traffic leaves and joins there). */
   for (const n of nodes) {
-    const p = P(n.u), z = r2(p.z), line = [], S = n.site, ANG = S.ang * DEG, R = S.ramp;
-    if (n.kind === "exit") { const d = right(p.h + (S.left ? -ANG : ANG), R); for (let i = 0; i <= 40; i++) line.push({ x: r2(p.x + (d.x * i) / 40), y: r2(p.y + (d.y * i) / 40), z }); m.roads.push(road({ id: `off-${n.u}`, kind: "arterial", lanes: 1, oneWay: true, speed: 60, points: line })); }
-    else { const d = right(p.h - ANG, R); for (let i = 0; i <= 40; i++) line.push({ x: r2(p.x - d.x + (d.x * i) / 40), y: r2(p.y - d.y + (d.y * i) / 40), z }); m.roads.push(road({ id: `on-${n.u}`, kind: "arterial", lanes: 1, oneWay: true, speed: 80, points: line })); ramps.push({ id: `on-${n.u}`, u: n.u }); }
+    const S = n.site; if (S.kind === "full") continue;
+    const e = Q(n.carriage, n.u), z = r2(e.z), ANG = S.ang * DEGR, R = S.ramp, line = [];
+    if (n.kind === "exit") { const dx = Math.cos(e.h + ANG) * R, dy = Math.sin(e.h + ANG) * R; for (let i = 0; i <= 40; i++) line.push({ x: r2(e.x + (dx * i) / 40), y: r2(e.y + (dy * i) / 40), z }); m.roads.push(road({ id: rampId(n), kind: "highway", lanes: 1, oneWay: true, speed: 60, points: line })); }
+    else { const dx = Math.cos(e.h - ANG) * R, dy = Math.sin(e.h - ANG) * R; for (let i = 0; i <= 40; i++) line.push({ x: r2(e.x - dx + (dx * i) / 40), y: r2(e.y - dy + (dy * i) / 40), z }); m.roads.push(road({ id: rampId(n), kind: "highway", lanes: 1, oneWay: true, speed: 80, points: line })); if (n.carriage === "A") ramps.push({ id: rampId(n), u: n.u }); }
+  }
+  /* FULL interchanges: the diamond of interchange.js, placed on the straight level road. The oncoming side is the same drawing turned 180 degrees about the middle of the median. */
+  const fulls = [];
+  for (const S of nodes.filter((n) => n.site.kind === "full").map((n) => n.site).filter((v, i, a2) => a2.indexOf(v) === i)) {
+    const o = P(S.c), t = { x: Math.cos(o.h), y: Math.sin(o.h) }, nn = nrm(o), ix = S.ix, zc = o.z;
+    const W = (sv, vv, zz) => ({ x: r2(o.x + t.x * sv + nn.x * vv), y: r2(o.y + t.y * sv + nn.y * vv), z: r2(zc + zz) });
+    const side = (flip) => (q2) => (flip ? W(-q2.s, -D - q2.v, q2.z) : W(q2.s, q2.v, q2.z));
+    const kmin = (arr) => { let best = Infinity; for (let i = 2; i + 2 < arr.length; i++) { const a2 = arr[i - 2], b2 = arr[i], c2 = arr[i + 2], ab = Math.hypot(b2.x - a2.x, b2.y - a2.y), bc = Math.hypot(c2.x - b2.x, c2.y - b2.y), ca = Math.hypot(a2.x - c2.x, a2.y - c2.y), ar = Math.abs((b2.x - a2.x) * (c2.y - a2.y) - (c2.x - a2.x) * (b2.y - a2.y)); if (ar > 1e-9) best = Math.min(best, (ab * bc * ca) / (2 * ar)); } return 1 / best; };
+    for (const car of ["A", "B"]) {
+      const f = side(car === "B"), uOff = car === "A" ? S.c - ix.dOff : S.c + ix.dOff, uOn = car === "A" ? S.c + ix.dOn : S.c - ix.dOn;
+      const off = ix.off.pts.map(f), on = ix.on.pts.map(f), sp = (arr) => Math.min(IX.RAMP_MAX_SPEED, speedFor(C, 1 / kmin(arr)));
+      const suf = car === "B" ? "b" : "";
+      m.roads.push(road({ id: `off${suf}-${uOff}`, kind: "highway", lanes: 1, oneWay: true, speed: sp(off), points: off, control: { start: "none", end: "stop" } }));
+      m.roads.push(road({ id: `on${suf}-${uOn}`, kind: "highway", lanes: 1, oneWay: true, speed: sp(on), points: on }));
+      if (car === "A") ramps.push({ id: `on-${uOn}`, u: uOn });
+    }
+    /* The crossroad over both carriageways, level at the deck, split at its two terminals. */
+    const vS = ix.vT, vN = -D - ix.vT, cr = (v0, v1) => { const out = [], n = Math.max(2, Math.ceil(Math.abs(v1 - v0) / 20)); for (let i = 0; i <= n; i++) out.push(W(0, v0 + ((v1 - v0) * i) / n, IX.DECK)); return out; };
+    const stop = IX.TERMINAL_CONTROL === "stop";
+    m.roads.push(road({ id: `xs-${S.c}`, kind: "service", lanes: 1, oneWay: false, speed: IX.CROSS_SPEED, points: cr(vS + IX.CROSS_OVERRUN, vS), ...(stop ? { control: { start: "none", end: "stop" } } : {}) }));
+    m.roads.push(road({ id: `xm-${S.c}`, kind: "service", lanes: 1, oneWay: false, speed: IX.CROSS_SPEED, points: cr(vS, vN), ...(stop ? { control: { start: "stop", end: "stop" } } : {}) }));
+    m.roads.push(road({ id: `xn-${S.c}`, kind: "service", lanes: 1, oneWay: false, speed: IX.CROSS_SPEED, points: cr(vN, vN - IX.CROSS_OVERRUN), ...(stop ? { control: { start: "stop", end: "none" } } : {}) }));
+    fulls.push(S);
   }
   /* The exit-only lane at each exit: the lane on its side may only leave there. */
-  for (const s of spans) if (s.endNode) { const rd = m.roads.find((q) => q.id === s.id), L = s.endNode.site.left; rd.turns = { end: Array.from({ length: C.LANES }, (_, j) => (j === (L ? 0 : C.LANES - 1) ? [L ? "left" : "right"] : ["straight"])) }; }
-  /* Sections: the start, and the most dramatic of each kind the road has, each joined from the entrance before it. */
-  const entranceBefore = (u) => ramps.filter((q) => q.u + C.ACCEL < u).pop() ?? ramps[0];
+  for (const s2 of spans) if (s2.endNode) { const rd = m.roads.find((q2) => q2.id === s2.id); rd.turns = { end: Array.from({ length: C.LANES }, (_, j) => (j === C.LANES - 1 ? ["right"] : ["straight"])) }; }
+  /* Sections: the start, an interchange, and the most dramatic of each kind the road has, each joined from the entrance before it. */
+  const entranceBefore = (u) => ramps.filter((q2) => q2.u + C.ACCEL < u).pop() ?? ramps[0];
   const look = (u) => { const p = P(u); return { x: r2(p.x + Math.cos(p.h + Math.PI / 2) * 100), y: r2(p.y + Math.sin(p.h + Math.PI / 2) * 100) }; };
   const vAcc = (f) => (27.8 * 27.8 * f.dg) / f.vc;   // m/s^2 of vertical acceleration at 100 km/h
-  const crest = gen.prof.features.filter((f) => f.kind === "crest" && f.u1 < C.LENGTH).sort((a, b) => vAcc(b) - vAcc(a))[0];
+  const crest = gen.prof.features.filter((f) => f.kind === "crest" && f.u1 < C.LENGTH).sort((a2, b2) => vAcc(b2) - vAcc(a2))[0];
   const roller = gen.prof.features.filter((f) => f.kind === "rollers" && f.u1 < C.LENGTH)[0];
   const sbend = gen.plan.features.filter((f) => f.kind === "sbend" && f.u1 < C.LENGTH)[0];
   m.sections = [{ id: "start", name: "join from the slip road", look: look(ramps[0].u + 300), start: { road: ramps[0].id, end: "end" }, judge: "You start standing on a slip road. Join the highway, then drive: what does the road do?" }];
+  const fx = fulls[1] ?? fulls[0];
+  if (fx) m.sections.push({ id: "interchange", name: "an interchange", look: look(fx.c), start: { road: entranceBefore(fx.c - fx.ix.dOff - 600).id, end: "end" }, judge: `A diamond at ${(fx.c / 1000).toFixed(1)} km: ${fx.ix.off.kind} off, ${fx.ix.on.kind} on. Leave, cross over, join the other way: is it a section of driving you chose, or one you were put through?` });
   if (crest) m.sections.push({ id: "crest", name: "the sharpest crest", look: look((crest.u0 + crest.u1) / 2), start: { road: entranceBefore(crest.u0).id, end: "end" }, judge: `Over the crest at ${(crest.u0 / 1000).toFixed(1)} km the grade changes ${(100 * crest.dg).toFixed(0)} points in ${crest.vc.toFixed(0)} m. Does the nose go over, and does it register?` });
   if (roller) m.sections.push({ id: "rollers", name: "rollers", look: look((roller.u0 + roller.u1) / 2), start: { road: entranceBefore(roller.u0).id, end: "end" }, judge: `Crest after crest from ${(roller.u0 / 1000).toFixed(1)} km: does it read as speed?` });
   if (sbend) m.sections.push({ id: "sbend", name: "an S-bend", look: look((sbend.u0 + sbend.u1) / 2), start: { road: entranceBefore(sbend.u0).id, end: "end" }, judge: `An S-bend at ${(sbend.u0 / 1000).toFixed(1)} km: the lean swings from one side to the other. Does that read?` });
