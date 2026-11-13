@@ -1,17 +1,10 @@
 {
-  "merge-minute-wait": {
-    "recorded": 2,
-    "bar": 0,
-    "item": "the merge item (stopped joiners at the end of the acceleration lane, DECISIONS 10.70)",
-    "reason": "the world still has joiners standing a minute at 300 cars; Jay's ruling is 1 in 10000",
-    "recordedAt": "2026-11-12"
-  },
   "merge-near-rest-share": {
-    "recorded": 0.1330049261083744,
+    "recorded": 0.030612244897959183,
     "bar": 0.01,
     "item": "the merge item (stopped joiners at the end of the acceleration lane, DECISIONS 10.70)",
     "reason": "13% of joiners at 300 cars reach the lane end near rest; the bar is under 1%",
-    "recordedAt": "2026-11-12"
+    "recordedAt": "2026-11-13"
   },
   "checks-traffic-crashes": {
     "recorded": 3,

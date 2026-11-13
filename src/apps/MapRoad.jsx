@@ -56,6 +56,7 @@ import { perfMeter, taskProbe, heapProbe } from "../iso/perf.js";
 import { encounterSummary } from "../sim/encounters.js";
 import { loadSettings, setSetting, settings } from "../settings.js";
 import { ASSIST } from "../sim/player.js";
+import { DEFAULT_MERGE_TOLERANCE } from "../sim/lanechange.js";
 
 const LIMITS = [40, 50, 60];
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
@@ -87,7 +88,7 @@ import { CARS, carsFor, carsMaxFor, cleanCarsFor } from "../map/cars.js";
    map, the player starts at the first edge `loadMap` finds
    (`map/edges.js` -- a plain module, not this one, so a headless check
    can ask the same question without Node trying to parse JSX). */
-export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, checks = false, mergeTol = null) {
+export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, checks = false, mergeTol = DEFAULT_MERGE_TOLERANCE) {
   /* The world is built in sim/scene.js, where the sim's worker builds the
      same one from the same arguments (sim/remote.js). */
   const args = [seed, kmh, every, drive, cars, rawMap, startAt, lookAway, unshaped, { checks, mergeTolerance: mergeTol || null }];
@@ -159,8 +160,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const [lookAway, setLookAway] = useState(false);
   /* Drivers check mirrors and blind spots, and look along the cross road (sim/checks.js) -- built, not on by default, a switch so the maintainer can watch them (SIMULATOR IN FLIGHT 31). */
   const [checksOn, setChecksOn] = useState(false);
-  /* The merge tolerance (lanechange.js, DECISIONS 10.70): 0 = off; 2, 2.5 or 3 s. Off by default; on the debug chips so it can be A/B'd. */
-  const [mergeTol, setMergeTol] = useState(0);
+  /* The merge tolerance (lanechange.js, DECISIONS 10.70, 10.80): 0 = off; 2, 2.5 or 3 s. 2.5 by default (Jay's confirmation, 13 November); on the debug chips so it can be A/B'd. */
+  const [mergeTol, setMergeTol] = useState(DEFAULT_MERGE_TOLERANCE);
   const [shapeOn, setShapeOn] = useState(true);
   /* THE TRAFFIC SKILL DIAL (sim/skill.js; SIMULATOR IN FLIGHT 34): where the population's ratings sit, -1 to +1, 0 as drawn.
      LIVE -- everybody on the map is redrawn at it -- and kept across a restart, never saved: a testing knob that came back
@@ -280,7 +281,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const look = s.clean === true ? false : s.lookAwayOn === true;
       const sh = s.clean === true ? true : s.shapeOn !== false;
       const ck = s.checksOn === true;
-      const mt = [2, 2.5, 3].includes(Number(s.mergeTol)) ? Number(s.mergeTol) : 0;
+      const mt = [0, 2, 2.5, 3].includes(Number(s.mergeTol)) && s.mergeTol != null ? Number(s.mergeTol) : DEFAULT_MERGE_TOLERANCE;
       /* A saved real position wins over a saved worker: the worker stays off and the page steps (10.70). */
       if (s.bodyMotion === false) { bodyRef.current = false; setBodyOn(false); }   // on by default; a saved off stands
       const wantReal = s.realPos === true;

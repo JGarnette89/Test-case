@@ -12,6 +12,7 @@ import { testMap1 } from "../map/samples.js";
 import { firstEdge } from "../map/edges.js";
 import { carsFor } from "../map/cars.js";
 import { seedGraph } from "./crossing.js";
+import { DEFAULT_MERGE_TOLERANCE } from "./lanechange.js";
 import { playerOn, placePlayer } from "./drive.js";
 export { playerContact } from "./contact.js";
 
@@ -19,7 +20,7 @@ export const START = { road: "A-north", end: "end" };   // the player begins at 
 
 /* The loaded map, the seeded world and -- when driving -- the player,
    placed clear (drive.js `placePlayer`). Deterministic in its arguments. */
-export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, { checks = false, brakeReaction = true, mergeTolerance = null } = {}) {
+export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, { checks = false, brakeReaction = true, mergeTolerance = DEFAULT_MERGE_TOLERANCE } = {}) {
   const loaded = loadMap(rawMap ?? testMap1());
   if (cars == null) cars = carsFor(loaded);
   if (!loaded.ok) throw new Error(`${rawMap ? "map" : "test map"}: ${loaded.error}`);

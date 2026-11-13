@@ -45,7 +45,7 @@ import { HONK_AGAIN } from "./horn.js";
 import { askOf, askedOf, offerOf, courtesyAccel, mergeAskOf } from "./courtesy.js";
 import { rivalDue, asRival } from "./rivals.js";
 import { controlUnder, movementLight } from "./signal.js";
-import { laneStep, lateralOf, lateralRate, changing, LC_SPEED, laneEndRoom, changeRoom, CHANGE_FROM } from "./lanechange.js";
+import { laneStep, lateralOf, lateralRate, changing, LC_SPEED, laneEndRoom, changeRoom, CHANGE_FROM, DEFAULT_MERGE_TOLERANCE } from "./lanechange.js";
 import { cornerAccel, speedBy, fits } from "./corner.js";
 export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
@@ -2921,7 +2921,7 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, brakeReaction = false, mergeTolerance = null } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, brakeReaction = false, mergeTolerance = DEFAULT_MERGE_TOLERANCE } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */

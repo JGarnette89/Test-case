@@ -477,13 +477,15 @@ export const kappaOf = (out) => Math.max(0.3, Math.min(1.7, out.caution ?? 1));
    the single charge asks (DECISIONS 10.70, `tools/measure/needgap-parts.mjs`). Two implementations of one quantity; the following model's is the one kept, so the room a lane change asks for is
    the room the same driver would leave a car in front of them. Which of the two to keep is a judgement and `[invented]`; the other's size is in the record. The floor stays: never under the room to
    stop behind the car at the hardest braking. Ahead of the joiner, the following distance of this car behind the car it would follow. */
-/* THE MERGE TOLERANCE (`world.mergeTolerance`, seconds; null = off, the default; DECISIONS 10.70). Jay, 11 November: "tolerance for close driving (within that typical 2-3s gap) is higher here [around a merge] than
+/* THE MERGE TOLERANCE (`world.mergeTolerance`, seconds; null = off, an explicit choice; the default is DEFAULT_MERGE_TOLERANCE, 2.5 s; DECISIONS 10.70, 10.80). Jay, 11 November: "tolerance for close driving (within that typical 2-3s gap) is higher here [around a merge] than
    normal, it's just what has to happen to allow vehicles of different speeds to come together within a horizontally and vertically restricted space" and a joiner "is beginning to look for a smaller and smaller
    acceptable gap as their drivable space concludes". `[Jay]` for the RANGE, 2 to 3 s; the point inside it is a feel judgement (`MERGE_TOLERANCES`, `[invented]`), a switch on the debug chips so he can A/B it. With it on, what
    a MERGE asks for, ahead and behind, is at most this many seconds of the speed of the car the gap is measured against, however much the closing speed would otherwise ask for; the floor (the room for the car behind to stop
    at its hardest braking) is never lowered, so a gap that cannot be survived is still refused. A lane change of choice is untouched: his calibration is about merges. This is the second half of one correction: the
    first, charging the closing speed once, still leaves a joiner at rest needing 173 m (6.2 s). */
 export const MERGE_TOLERANCES = [2, 2.5, 3];
+/* THE DEFAULT (13 November, `[Jay]`: "2.5s seemed to have whatever effect it needed, no further changes there"): a world carries 2.5 s unless it is built with `mergeTolerance: null`, which is OFF and stays expressible for a comparison. */
+export const DEFAULT_MERGE_TOLERANCE = 2.5;
 export function leadNeed(out, ahead, kappa = kappaOf(out), tol = null) {
   const va = ahead?.v ?? out.v;
   const stop = Math.max(0, (out.v * out.v - va * va) / (2 * vehicleOf(out).most));

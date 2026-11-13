@@ -18,6 +18,7 @@ import { leadNeed, lagNeed, MERGE_TOLERANCES } from "../src/sim/lanechange.js";
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { seedGraph } from "../src/sim/crossing.js";
+import { worldFor } from "../src/sim/scene.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -28,9 +29,13 @@ console.log("1. OFF IS THE DEFAULT");
   const off = lagNeed(rest, behind, 1);
   check(Math.abs(off - 173) < 2, `a joiner at rest needs ${off.toFixed(0)} m behind it with the switch off (the closing speed charged once: 173 m; 249 m when it was charged twice)`);
   const loaded = loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build());
-  const w0 = seedGraph(1, 50, loaded, { target: 20, posted: true }), w1 = seedGraph(1, 50, loaded, { target: 20, posted: true, mergeTolerance: 2.5 });
-  check(!("mergeTolerance" in w0), "a world made without the switch has no such field: byte-identical to before");
+  const w0 = seedGraph(1, 50, loaded, { target: 20, posted: true, mergeTolerance: null }), w1 = seedGraph(1, 50, loaded, { target: 20, posted: true, mergeTolerance: 2.5 }), wd = seedGraph(1, 50, loaded, { target: 20, posted: true });
+  check(!("mergeTolerance" in w0), "a world made with the switch explicitly OFF (null) has no such field: byte-identical to the world before the switch existed");
   check(w1.mergeTolerance === 2.5, "a world made with it carries it, for the page and for the worker, which receives the world");
+  /* THE DEFAULT, stated here as the literal Jay confirmed (13 November, "2.5s ... no further changes there") and not read from the module's constant, which a check cannot use to catch that constant being wrong. */
+  check(wd.mergeTolerance === 2.5, "a world made with no mention of it carries 2.5 s: the default is Jay's confirmed figure, and null (off) stays expressible for a comparison");
+  const wf = worldFor(1, 50, 2.0, false, 20).world;
+  check(wf.mergeTolerance === 2.5, "and the played world (worldFor, the page's and the worker's) carries it by default too");
 }
 console.log("\n2. ON, A MERGE ASKS FOR AT MOST THE TOLERANCE");
 {
