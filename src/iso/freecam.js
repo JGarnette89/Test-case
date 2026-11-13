@@ -1,3 +1,4 @@
+import { lensOf } from "./project.js";
 /* =====================================================================
    THE FREE CAMERA (the maintainer, 28 September: "a free roam camera ...
    being able to scroll the map would improve the editor and testing").
@@ -28,7 +29,7 @@ export function groundAt(cam, canvas, px, py) {
   const k = cam.k, a = ((cam.rot ?? 0) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
   /* viewOf: sx = w/2 + (u - v) k, sy = h*CENTRE_Y + z*LIFT*k + ((u + v)/2 - z*LIFT) k
      so on the camera's own level (u + v)/2 = (sy - h*CENTRE_Y) / k. */
-  const du = (px - canvas.w / 2) / k, sum = (2 * (py - canvas.h * CENTRE_Y)) / k;
+  const du = (px - canvas.w / 2) / k, sum = (py - canvas.h * CENTRE_Y) / (k * lensOf(cam.elev ?? 30).g);
   const u = (sum + du) / 2, v = (sum - du) / 2;
   /* (u, v) is the turned offset; turn it back. */
   return { x: cam.x + u * c + v * s, y: cam.y - u * s + v * c };
@@ -62,10 +63,10 @@ export function pinchFree(start, canvas, a, b) {
 }
 
 /* The zoom that fits a rectangle of the world (bounds) in the canvas. */
-export function fitK(bounds, canvas) {
+export function fitK(bounds, canvas, elev = 30) {
   /* A w x h rectangle spans (w + h) on screen across and (w + h)/2 down. */
   const across = (bounds.w + bounds.h) || 1;
-  return clampK(Math.min(canvas.w / across, canvas.h / (across / 2)) * 0.95);
+  return clampK(Math.min(canvas.w / across, canvas.h / (across * lensOf(elev).g)) * 0.95);
 }
 
 /* The world a map actually covers: its roads and buildings, not its

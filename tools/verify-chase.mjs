@@ -153,5 +153,57 @@ const norm = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
   check(eight > FREE_K.min, `and the eight square kilometres fit a phone whole, at ${eight.toFixed(3)} px/m, above the zoom's floor of ${FREE_K.min}`);
 }
 
+/* THE ELEVATION (DECISIONS 10.86): one parameter through project, freecam and chase.
+   The expectations are stated here, not read from lensOf: the line of sight is
+   FOUND numerically from where two points land, and the key must be the projection
+   onto it; the ground under a pixel round-trips at every step; the fit and the
+   car-on-screen limit hold at every step; and 30 is the picture it always was. */
+{
+  console.log("\nthe elevation");
+  const canvas = { w: 412, h: 760 };
+  for (const elev of [30, 25, 20, 15]) {
+    for (const rot of [0, 37, 90, -135]) {
+      const cam = { x: 5, y: -3, z: 0 };
+      const view = viewOf(6, cam, rot, canvas, { elev });
+      const r = (rot * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
+      /* In the rotated frame the line of sight is (1, 1, b), b found so py stands still: py is linear in z. */
+      const o = { x: 5, y: -3 }, up = (z) => view.P(o.x, o.y, z)[1], mv = view.P(o.x + (c + s), o.y + (-s + c), 0)[1] - view.P(o.x, o.y, 0)[1];
+      const b = -mv / (up(1) - up(0));
+      let worst = 0;
+      for (const [x, y, z] of [[10, 20, 0], [-7, 3, 4], [40, -22, 9], [0, 0, 12]]) {
+        const [ax, ay] = view.P(x, y, z), [bx, by] = view.P(x + (c + s) * 3, y + (-s + c) * 3, z + 3 * b);
+        worst = Math.max(worst, Math.abs(ax - bx), Math.abs(ay - by));
+        /* the key is the projection onto that direction (ground axes in the rotated frame) */
+        const dx = x - cam.x, dy = y - cam.y, u = dx * c - dy * s, v = dx * s + dy * c;
+        if (Math.abs(view.key(x, y, z) - (u + v + z * b)) > 1e-9) worst = Infinity;
+      }
+      check(worst < 1e-6, `elev ${elev} rot ${rot}: a point stepped along the numerically found line of sight lands on the same pixel and the key is its projection (b ${b.toFixed(4)})`);
+    }
+    /* the ground under a pixel is where the renderer drew it, at this elevation */
+    let w = 0;
+    for (const rot of [0, 30, 137]) for (const k of [0.5, 5]) {
+      const cam = { x: 700, y: 450, z: 0, k, rot, elev };
+      const v = viewOf(k, cam, rot, canvas);
+      for (const [x, y] of [[712.5, 431], [650, 520]]) { const [sx, sy] = v.P(x, y, 0), g = groundAt(cam, canvas, sx, sy); w = Math.max(w, Math.hypot(g.x - x, g.y - y)); }
+    }
+    check(w < 1e-6, `elev ${elev}: the ground under a pixel is where it was drawn (worst ${w.toExponential(1)} m)`);
+    /* the whole city fits a phone */
+    const ext = { x: 0, y: 0, w: 2830, h: 2830 }, k = fitK(ext, canvas, elev), vf = viewOf(k, { x: 1415, y: 1415, z: 0 }, 0, canvas, { elev });
+    const cs = [[0, 0], [2830, 0], [2830, 2830], [0, 2830]].map(([x, y]) => vf.P(x, y, 0));
+    check(cs.every(([px, py]) => px >= -1 && px <= canvas.w + 1 && py >= -1 && py <= canvas.h + 1), `elev ${elev}: eight square kilometres fit the phone whole`);
+    /* the car, `lead` metres ahead of the camera along the screen's up, stays above 0.92 h */
+    for (const lead of [LEAD_MIN, LEAD_MAX]) {
+      const k2 = zoomFor(395, 560, lead, 0.55, elev), vv = viewOf(k2, { x: 0, y: 0, z: 0 }, 0, { w: 395, h: 560 }, { elev });
+      const [, py] = vv.P(-lead / Math.SQRT2, -lead / Math.SQRT2, 0);
+      check(py <= 0.92 * 560 + 1e-6, `elev ${elev}: with lead ${lead.toFixed(1)} m the car sits on screen (y ${py.toFixed(0)} of 560)`);
+    }
+  }
+  /* 30 is today's picture: a literal, from the old formulas */
+  const v30 = viewOf(5, { x: 1, y: 2, z: 3 }, 20, canvas), a = (20 * Math.PI) / 180, cc = Math.cos(a), ss = Math.sin(a);
+  const dx = 9 - 1, dy = 4 - 2, u = dx * cc - dy * ss, v = dx * ss + dy * cc, L = Math.cos(Math.PI / 6);
+  const [px, py] = v30.P(9, 4, 2);
+  check(Math.abs(px - (canvas.w / 2 + (u - v) * 5)) < 1e-9 && Math.abs(py - (canvas.h * 0.55 + 3 * L * 5 + ((u + v) / 2 - 2 * L) * 5)) < 1e-9 && Math.abs(v30.key(9, 4, 2) - (u + v + 2 / L)) < 1e-9, "elev 30 is exactly the 2:1 picture's own formulas");
+}
+
 if (failed) { console.log(`\n${failed} FAILED`); process.exit(1); }
 console.log("\nOK: the chase camera leads with speed, eases, turns the short way, keeps the car on screen, and the rotated view agrees with itself.");

@@ -45,7 +45,7 @@ import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
 import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption, drawNav, drawReceipt, drawHeadway, drawDriverCard, CARD_W, CARD_H } from "../iso/hud.js";
-import { viewOf } from "../iso/project.js";
+import { viewOf, ELEVATIONS } from "../iso/project.js";
 import { AXES, soundnessOf, LACKING_AT, COMPETENT_AT, CONFIDENT_ENOUGH } from "../core/driver.js";
 import { offerFare, accept } from "../sim/jobs.js";
 import { loadWallet } from "../sim/money.js";
@@ -193,6 +193,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const realRef = useRef(false);
   /* BODY MOTION (iso/body.js, DECISIONS 10.70): the car leans, dives and squats. Off by default, a switch on the debug chips so it can be compared; page-side, no restart. */
   const [bodyOn, setBodyOn] = useState(true);
+  /* The camera's elevation (DECISIONS 10.86): a view setting, no restart. Below 30 the draw order is knowingly wrong for vehicles near each other -- for judging feel. */
+  const [elev, setElev] = useState(30);
+  const elevRef = useRef(30);
   const bodyRef = useRef(true), bodyMem = useRef(null);
   /* THE WALLET (sim/money.js): loaded once, carried from scene to scene; a fare paid is written by the session. */
   const walletRef = useRef(null);
@@ -283,6 +286,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const ck = s.checksOn === true;
       const mt = [0, 2, 2.5, 3].includes(Number(s.mergeTol)) && s.mergeTol != null ? Number(s.mergeTol) : DEFAULT_MERGE_TOLERANCE;
       /* A saved real position wins over a saved worker: the worker stays off and the page steps (10.70). */
+      if (ELEVATIONS.includes(Number(s.elev)) && Number(s.elev) !== 30) { elevRef.current = Number(s.elev); setElev(Number(s.elev)); }
       if (s.bodyMotion === false) { bodyRef.current = false; setBodyOn(false); }   // on by default; a saved off stands
       const wantReal = s.realPos === true;
       if (wantReal) { realRef.current = true; setRealPos(true); }
@@ -452,7 +456,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
            as actorsOf carries it -- not the stepped pose, which moves in 20 Hz steps. */
         const p = driverPose(carriedPlayer(sc.me, carry), sc.world.course);
         cam.current = { ...chaseStep(cam.current, { ...p, v: sc.me.v }, dt, { rotate }), id: null };
-        k = zoomFor(size.w, size.h, cam.current.lead) * zoom;
+        k = zoomFor(size.w, size.h, cam.current.lead, 0.55, elevRef.current) * zoom;
         rot = cam.current.rot;
       } else {
         let want = PLACES[follow] ?? { x: sc.centre.x, y: sc.centre.y, z: 0 };
@@ -471,6 +475,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       }
       lastView.current = { x: cam.current.x, y: cam.current.y, z: cam.current.z ?? 0, k, rot };
       const tDraw0 = performance.now();
+      cam.current.elev = elevRef.current; if (free.current) free.current.elev = elevRef.current;
       const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + carry, lights: sc.world.lights, route: sc.me ? sc.routePts : null, dest: sc.me && sc.dest ? { x: sc.dest.x, y: sc.dest.y, z: 0 } : null });
 
       /* THE DRIVER LOOKED AT: a ring round the car and its card (iso/hud.js drawDriverCard) -- the followed car's when none is picked. */
@@ -700,7 +705,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const wholeMap = () => {
     const ext = extentOf(scene.current.loaded), c = canvasRef.current, box = { w: c?.clientWidth ?? 400, h: c?.clientHeight ?? 700 };
     enterFree();
-    free.current = { x: ext.x + ext.w / 2, y: ext.y + ext.h / 2, z: 0, k: fitK(ext, box), rot: 0 };
+    free.current = { x: ext.x + ext.w / 2, y: ext.y + ext.h / 2, z: 0, k: fitK(ext, box, elevRef.current), rot: 0, elev: elevRef.current };
   };
 
   return (
@@ -873,6 +878,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             title="the most a merge asks for, in seconds of the traffic's speed (Jay: 'within that typical 2-3s gap' around a merge; DECISIONS 10.70): off by default; taps cycle off, 2, 2.5, 3"
             onClick={() => { const next = mergeTol === 0 ? 2 : mergeTol === 2 ? 2.5 : mergeTol === 2.5 ? 3 : 0; setSetting("mergeTol", next); restart(seed, limit, mode, cars, lookAway, shapeOn, checksOn, next); }}>
             {mergeTol ? `Merge tolerance: ${mergeTol} s` : "Merge tolerance: off"}</button>
+          <button className="btn" style={{ ...S.chip, borderColor: elev !== 30 ? C.amber : "rgba(255,255,255,0.12)", color: elev !== 30 ? C.white : DIM }}
+            title="camera elevation (DECISIONS 10.86): 30 is the picture as it has always been; lower is a flatter, more chase-like view. BELOW 30 THE DRAW ORDER IS KNOWINGLY WRONG for vehicles near each other (a car can paint over a truck it is behind) and the 32-heading snap reads worse -- these steps are for judging feel, not for playing. Taps cycle 30, 25, 20, 15."
+            onClick={() => { const next = ELEVATIONS[(ELEVATIONS.indexOf(elev) + 1) % ELEVATIONS.length]; elevRef.current = next; setElev(next); setSetting("elev", next); }}>
+            {elev === 30 ? "Camera: 30 deg" : `Camera: ${elev} deg (feel only, sort is wrong)`}</button>
           <button className="btn" style={{ ...S.chip, borderColor: bodyOn ? C.amber : "rgba(255,255,255,0.12)", color: bodyOn ? C.white : DIM }}
             title="body motion (iso/body.js, DECISIONS 10.70): cars lean into corners, dive under braking and squat under power -- the same system for every vehicle kind, over the top on purpose (Jay: easier to say 'too much'); off by default"
             onClick={() => { const on = !bodyOn; bodyRef.current = on; setBodyOn(on); setSetting("bodyMotion", on); }}>

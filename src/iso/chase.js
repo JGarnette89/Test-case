@@ -1,3 +1,4 @@
+import { lensOf } from "./project.js";
 /* =====================================================================
    THE CHASE CAMERA: behind the car, looking down the road ahead.
 
@@ -76,10 +77,10 @@ export function chaseStep(cam, car, dt, { rotate = true } = {}) {
    the bottom of the screen: on a wide, short canvas the height is the
    limit, on a phone held upright the width is. `w`, `h` in CSS pixels;
    `centreY` where the camera's point sits, as a share of the height. */
-export function zoomFor(w, h, lead, centreY = 0.55) {
+export function zoomFor(w, h, lead, centreY = 0.55, elev = 30) {
   const byWidth = w / (34 + lead * 0.9);
   /* The car is 0.707 k lead below the centre (screen-down is a metre of
      world diagonal per 0.707 pixel-metres); keep it above 0.92 h. */
-  const byHeight = ((0.92 - centreY) * h) / (0.707 * Math.max(1, lead));
+  const byHeight = ((0.92 - centreY) * h) / (lensOf(elev).gk * Math.max(1, lead));
   return Math.min(byWidth, byHeight);
 }

@@ -45,13 +45,36 @@ export const TOWARD_EYE = { x: 1, y: 1, z: 1 / LIFT };
 
 export const depthOf = (x, y, z) => x + y + z / LIFT;
 
+/* THE ELEVATION IS A PARAMETER (DECISIONS 10.86). The 2:1 look is the
+   case g = 0.5, h = LIFT; the general view keeps the horizontal scale
+   (px = (u - v) k) and sets the ground's vertical squash g = sin(elev)
+   and the height's lift h = cos(elev), so elev = 30 is today's picture
+   exactly. The line of sight is where px and py both stand still:
+   (a, a, b) with 2 g a = h b, so the depth key is u + v + z * tz with
+   tz = 2 g / h = 2 tan(elev) (1/LIFT at 30), and the same tz is the
+   eye's z for which faces of a box show.
+
+   THE SORT IS ONLY EXACT FOR A BOX AT ONE KEY WHERE DRAWABLES DO NOT
+   OVERLAP IN DEPTH; the lower the elevation the longer a vehicle's
+   footprint is on screen against its height, and the more pairs a
+   single key per vehicle orders wrongly. That is expected and is not
+   fixed here: the lower steps are for judging feel. 30 is the default
+   and is returned as the exact constants so nothing moves at it. */
+export const ELEVATIONS = [30, 25, 20, 15];
+export function lensOf(elev = 30) {
+  if (elev === 30) return { elev: 30, g: 0.5, h: LIFT, tz: 1 / LIFT, gk: 0.707 };
+  const a = (elev * Math.PI) / 180, g = Math.sin(a), h = Math.cos(a);
+  return { elev, g, h, tz: (2 * g) / h, gk: Math.SQRT2 * g };
+}
+
 /* A projector for one frame: pixels per metre and where the camera's
    world point lands on the canvas. Returned as a function rather than a
    class because it is called tens of thousands of times a frame. */
-export function projector(k, cam, canvas) {
+export function projector(k, cam, canvas, elev = 30) {
+  const { g, h } = lensOf(elev);
   const cx = canvas.w / 2 - (cam.x - cam.y) * k;
-  const cy = canvas.h * 0.55 - ((cam.x + cam.y) / 2 - cam.z * LIFT) * k;
-  return (x, y, z) => [cx + (x - y) * k, cy + ((x + y) / 2 - z * LIFT) * k];
+  const cy = canvas.h * 0.55 - ((cam.x + cam.y) * g - cam.z * h) * k;
+  return (x, y, z) => [cx + (x - y) * k, cy + ((x + y) * g - z * h) * k];
 }
 
 /* THE VIEW, WITH A ROTATION: the world turned by `rot` degrees about
@@ -63,23 +86,24 @@ export function projector(k, cam, canvas) {
    coordinates -- the line of sight is fixed to the screen, not to the
    world), and which faces of a box show (`eye`, the line of sight
    turned back into the world's frame). All three come from here. */
-export function viewOf(k, cam, rot, canvas, { centreY = 0.55 } = {}) {
+export function viewOf(k, cam, rot, canvas, { centreY = 0.55, elev = cam.elev ?? 30 } = {}) {
+  const { g, h, tz } = lensOf(elev);
   const a = ((rot ?? 0) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
-  const cx = canvas.w / 2, cy = canvas.h * centreY + cam.z * LIFT * k;
+  const cx = canvas.w / 2, cy = canvas.h * centreY + cam.z * h * k;
   /* NO ARRAY BUT THE ONE RETURNED. These run for every cell, segment and
      sidewalk piece in the city every frame, on screen or not, and an
      intermediate [u, v] apiece was most of the 13 MB of garbage a frame
      made at street zoom (tools/measure/draw-alloc.mjs). Same arithmetic,
      in the same order, so not one pixel or key moves. */
   const cx0 = cam.x, cy0 = cam.y, W = canvas.w, H = canvas.h;
-  const P = (x, y, z) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; return [cx + (u - v) * k, cy + ((u + v) / 2 - z * LIFT) * k]; };
-  const into = (x, y, z, o) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; o[0] = cx + (u - v) * k; o[1] = cy + ((u + v) / 2 - z * LIFT) * k; return o; };
+  const P = (x, y, z) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; return [cx + (u - v) * k, cy + ((u + v) * g - z * h) * k]; };
+  const into = (x, y, z, o) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; o[0] = cx + (u - v) * k; o[1] = cy + ((u + v) * g - z * h) * k; return o; };
   /* P carries `into`, so a helper handed only P can write into scratch. */
   P.into = into;
   return {
     rot: rot ?? 0, k,
     P,
-    key: (x, y, z) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; return u + v + z / LIFT; },
+    key: (x, y, z) => { const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c; return u + v + z * tz; },
     /* P written into `o` rather than a new array, for the hot paths that
        use the point at once (a box's faces). */
     into,
@@ -87,11 +111,12 @@ export function viewOf(k, cam, rot, canvas, { centreY = 0.55 } = {}) {
        without building P's array. */
     onScreen: (x, y, z, m) => {
       const dx = x - cx0, dy = y - cy0, u = dx * c - dy * s, v = dx * s + dy * c;
-      const px = cx + (u - v) * k, py = cy + ((u + v) / 2 - z * LIFT) * k;
+      const px = cx + (u - v) * k, py = cy + ((u + v) * g - z * h) * k;
       return px > -m && px < W + m && py > -m && py < H + m;
     },
     /* The direction toward the eye, in world coordinates: (1, 1, 1/LIFT)
        in the rotated frame, turned back. */
-    eye: { x: c + s, y: -s + c, z: 1 / LIFT },
+    eye: { x: c + s, y: -s + c, z: tz },
+    elev,
   };
 }
