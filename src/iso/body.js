@@ -41,6 +41,11 @@ export const BODY = {
   truck: { slope: 3.0, roll: 5.0, pitch: 1.6, rollHz: 1.2, pitchHz: 1.4, rollZeta: 0.35, pitchZeta: 0.35, maxRoll: 16, maxPitch: 8, pivot: 0.7 },
   bus: { slope: 3.0, roll: 5.5, pitch: 2.0, rollHz: 1.0, pitchHz: 1.2, rollZeta: 0.3, pitchZeta: 0.3, maxRoll: 16, maxPitch: 9, pivot: 0.6 },
 };
+/* RELIEF SHADING (iso/relief.js, DECISIONS 10.87), in this table because Jay dials it with the rest: a SIGNAL, NOT PHYSICS. `gain` multiplies the surface's
+   gradient before it is lit (a real 9% grade is 5 degrees, about 1% brightness: the physical value deletes the feature; 0 turns it off), `lateral` the share of
+   the light from the viewer's right, `up` its height, `amt` the share of brightness kept in shade, `floor` and `ceil` the clamp on the multiplier so nothing goes
+   black or blows out. [invented; pitched strong so Jay has somewhere to come down from] */
+export const RELIEF = { gain: 9, lateral: 0.35, up: 0.8, amt: 0.45, floor: 0.6, ceil: 1.3 };
 const DEG = Math.PI / 180;
 export const rowOf = (kind) => BODY[kind ?? "car"] ?? BODY.car;
 

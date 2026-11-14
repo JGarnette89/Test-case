@@ -22,6 +22,7 @@
    (DECISIONS 10.70). Cars are level on the stage-0 roads unless the tilt toggle is on; the map screen's cars lean and dive through body motion (body.js).
    ===================================================================== */
 import { viewOf } from "./project.js";
+import { reliefLight, reliefFactor } from "./relief.js";
 import { lightAt, arrowAt, movementLight } from "../sim/signal.js";
 import { HONK_FOR } from "../sim/horn.js";
 import { CHECKS } from "../sim/checks.js";
@@ -46,14 +47,14 @@ const cross = (a, b) => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z
 
 /* A colour shaded by how a face meets the light. `amt` is the share of
    full brightness kept in shadow. */
-function shade(hex, n, amt = 0.55) { return shadeN(hex, n.x, n.y, n.z, amt); }
+function shade(hex, n, amt = 0.55, mul = 1) { return shadeN(hex, n.x, n.y, n.z, amt, mul); }
 /* The same, from a normal's components: no vector, no array, only the
    string the canvas is handed. Every face of every box goes through it.
    The arithmetic is norm() then dot() written out, in the same order. */
 const HEX = new Map();
-function shadeN(hex, nx, ny, nz, amt = 0.55) {
+function shadeN(hex, nx, ny, nz, amt = 0.55, mul = 1) {
   const l = Math.hypot(nx, ny, nz) || 1;
-  const lit = amt + (1 - amt) * Math.max(0, (nx / l) * LIGHT.x + (ny / l) * LIGHT.y + (nz / l) * LIGHT.z);
+  const lit = (amt + (1 - amt) * Math.max(0, (nx / l) * LIGHT.x + (ny / l) * LIGHT.y + (nz / l) * LIGHT.z)) * mul;
   let v = HEX.get(hex);
   if (v === undefined) HEX.set(hex, (v = parseInt(hex.slice(1), 16)));
   return `rgb(${Math.round(((v >> 16) & 255) * lit)},${Math.round(((v >> 8) & 255) * lit)},${Math.round((v & 255) * lit)})`;
@@ -479,6 +480,19 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      holds at every zoom. Never a zoom cap: seeing the whole city is the
      point. */
   const far = k < LOD_K, flat = k < FLAT_K;
+  /* RELIEF (relief.js, DECISIONS 10.87): the brightness multiplier of a surface from its own gradient, lit from the viewer's side. Not in the flat tier. */
+  const RL = flat ? null : reliefLight(view.rot);
+  const relief = (n) => (RL && n.z !== 0 ? reliefFactor(-n.x / n.z, -n.y / n.z, RL) : 1);
+  /* The same for a polygon, from Newell's normal (any winding, any number of corners), with no object made. */
+  const reliefOfPoly = (poly) => {
+    if (!RL) return 1;
+    let nx = 0, ny = 0, nz = 0;
+    for (let i = 0, m = poly.length; i < m; i++) {
+      const p = poly[i], q = poly[(i + 1) % m], pz = p.z ?? 0, qz = q.z ?? 0;
+      nx += (p.y - q.y) * (pz + qz); ny += (pz - qz) * (p.x + q.x); nz += (p.x - q.x) * (p.y + q.y);
+    }
+    return nz === 0 ? 1 : reliefFactor(-nx / nz, -ny / nz, RL);
+  };
   if (flat && terrain.length) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const c of terrain) for (const q of c) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
@@ -507,7 +521,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     const zc = (a.z + b.z + c.z + d.z) / 4;
     const tone = mix(C.grass, "#9fb86a", Math.min(1, zc / 14));
     counts.cells++;
-    items.push({ layer: 0, key, tag: audit && { kind: "cell", poly: [a, b, c, d] }, paint: () => { quad(ctx, P, a, b, c, d); ctx.fillStyle = shade(tone, n, 0.35); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.5; ctx.stroke(); } });
+    items.push({ layer: 0, key, tag: audit && { kind: "cell", poly: [a, b, c, d] }, paint: () => { quad(ctx, P, a, b, c, d); ctx.fillStyle = shade(tone, n, 0.35, relief(n)); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.5; ctx.stroke(); } });
   };
   for (const cell of terrain) {
     const a = cell[0], b = cell[1], c = cell[2], d = cell[3];   // not destructured: that is an iterator per cell in the city, on screen or not
@@ -549,14 +563,15 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
      one piece a sidewalk. */
   /* A sidewalk piece on screen -- its own function so the closure's
      scope is built only for the pieces that are drawn (segment, below). */
-  const sidewalkFill = shade(C.sidewalk, { x: 0, y: 0, z: 1 }, 0.4);
+  const UP = { x: 0, y: 0, z: 1 };
+  const sidewalkFill = shade(C.sidewalk, UP, 0.4);
   const sidewalkItem = (w, i0, poly) => {
     counts.segments++;
     items.push({ layer: 0, key: maxKey(poly) + 0.005, tag: audit && { kind: "sidewalk", id: `${w.id}@${i0}`, poly }, paint: () => {
       ctx.beginPath();
       for (let j = 0; j < poly.length; j++) { const q = poly[j]; view.into(q.x, q.y, q.z, PT); if (j) ctx.lineTo(PT[0], PT[1]); else ctx.moveTo(PT[0], PT[1]); }
       ctx.closePath();
-      ctx.fillStyle = sidewalkFill; ctx.fill();
+      ctx.fillStyle = RL ? shade(C.sidewalk, UP, 0.4, reliefOfPoly(poly)) : sidewalkFill; ctx.fill();
       if (!flat) { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke(); }
     } });
   };
@@ -613,7 +628,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     };
     const fill = (p, q, r, s) => {
       quad(ctx, P, p, q, r, s);
-      ctx.fillStyle = shade(C.asphalt, n, 0.45); ctx.fill();
+      ctx.fillStyle = shade(C.asphalt, n, 0.45, relief(n)); ctx.fill();
       if (!flat) { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke(); }   // hide the hairline between pieces
     };
     if (!deck) {
@@ -716,7 +731,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       ctx.beginPath();
       for (let i = 0; i < j.surface.length; i++) { const p = j.surface[i]; view.into(p.x, p.y, p.z ?? 0, PT); if (i === 0) ctx.moveTo(PT[0], PT[1]); else ctx.lineTo(PT[0], PT[1]); }
       ctx.closePath();
-      ctx.fillStyle = shade(C.asphalt, { x: 0, y: 0, z: 1 }, 0.45); ctx.fill();
+      ctx.fillStyle = shade(C.asphalt, UP, 0.45, reliefOfPoly(j.surface)); ctx.fill();
       ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.6; ctx.stroke();
       ctx.lineCap = "butt";
       if (!flat) for (const l of j.lines) {
