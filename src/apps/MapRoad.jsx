@@ -193,6 +193,9 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   const realRef = useRef(false);
   /* BODY MOTION (iso/body.js, DECISIONS 10.70): the car leans, dives and squats. Off by default, a switch on the debug chips so it can be compared; page-side, no restart. */
   const [bodyOn, setBodyOn] = useState(true);
+  /* THE POP-UP LINES (Jay's and A.U.T.O.'s), OFF BY DEFAULT since 14 November [Jay]; a chip turns them back on. Only the drawing is gated: the voice, its limiter and every detector are as they were. */
+  const [captionsOn, setCaptionsOn] = useState(false);
+  const captionsRef = useRef(false);
   /* The camera's elevation (DECISIONS 10.86): a view setting, no restart. Below 30 the draw order is knowingly wrong for vehicles near each other -- for judging feel. */
   const [elev, setElev] = useState(30);
   const elevRef = useRef(30);
@@ -287,6 +290,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const mt = [0, 2, 2.5, 3].includes(Number(s.mergeTol)) && s.mergeTol != null ? Number(s.mergeTol) : DEFAULT_MERGE_TOLERANCE;
       /* A saved real position wins over a saved worker: the worker stays off and the page steps (10.70). */
       if (ELEVATIONS.includes(Number(s.elev)) && Number(s.elev) !== 30) { elevRef.current = Number(s.elev); setElev(Number(s.elev)); }
+      if (s.captions === true) { captionsRef.current = true; setCaptionsOn(true); }   // off by default; a saved on stands
       if (s.bodyMotion === false) { bodyRef.current = false; setBodyOn(false); }   // on by default; a saved off stands
       const wantReal = s.realPos === true;
       if (wantReal) { realRef.current = true; setRealPos(true); }
@@ -598,7 +602,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         drawWheelBar(ctx, size, inp.steer);
         drawSignals(ctx, size, input.current.state.signal, now);
         drawHorn(ctx, size, sc.me?.honkAt != null && sc.world.t - sc.me.honkAt < HONK_FOR);
-        drawCaption(ctx, size, sc.said, now / 1000);
+        drawCaption(ctx, size, captionsRef.current ? sc.said : null, now / 1000);
         drawNav(ctx, size, sc.navText);
         drawNav(ctx, size, sc.jobText, { y: 54, colour: "#ffd34d" });
         drawReceipt(ctx, size, sc.receipt, now / 1000);
@@ -882,6 +886,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             title="camera elevation (DECISIONS 10.86): 30 is the picture as it has always been; lower is a flatter, more chase-like view. BELOW 30 THE DRAW ORDER IS KNOWINGLY WRONG for vehicles near each other (a car can paint over a truck it is behind) and the 32-heading snap reads worse -- these steps are for judging feel, not for playing. Taps cycle 30, 25, 20, 15."
             onClick={() => { const next = ELEVATIONS[(ELEVATIONS.indexOf(elev) + 1) % ELEVATIONS.length]; elevRef.current = next; setElev(next); setSetting("elev", next); }}>
             {elev === 30 ? "Camera: 30 deg" : `Camera: ${elev} deg (feel only, sort is wrong)`}</button>
+          <button className="btn" style={{ ...S.chip, borderColor: captionsOn ? C.amber : "rgba(255,255,255,0.12)", color: captionsOn ? C.white : DIM }}
+            title="the pop-up lines, Jay's and A.U.T.O.'s: off by default (Jay, 14 November); the voice still speaks, only the drawing is gated"
+            onClick={() => { const on = !captionsOn; captionsRef.current = on; setCaptionsOn(on); setSetting("captions", on); }}>
+            {captionsOn ? "Captions: on" : "Captions: off"}</button>
           <button className="btn" style={{ ...S.chip, borderColor: bodyOn ? C.amber : "rgba(255,255,255,0.12)", color: bodyOn ? C.white : DIM }}
             title="body motion (iso/body.js, DECISIONS 10.70): cars lean into corners, dive under braking and squat under power -- the same system for every vehicle kind, over the top on purpose (Jay: easier to say 'too much'); off by default"
             onClick={() => { const on = !bodyOn; bodyRef.current = on; setBodyOn(on); setSetting("bodyMotion", on); }}>
