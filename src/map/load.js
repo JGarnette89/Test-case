@@ -591,8 +591,10 @@ export function loadMap(map) {
   const cars = Number(map.traffic?.cars);
   /* ...and how sorted its cars are where they first appear (sim/crossing.js `sortedEntry`, DECISIONS 10.91): the share, 0 to 1, already in the lane their speed asks for. Absent, 0: a draw across the lanes, as it always was. */
   const sorted = Number(map.traffic?.spawnSort);
-  const traffic = Number.isFinite(tr) || map.traffic?.shape === true || cars > 0 || sorted > 0
-    ? { ...(sorted > 0 ? { spawnSort: Math.min(1, sorted) } : {}), ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}), ...(cars > 0 ? { cars: Math.round(cars) } : {}) }
+  /* ...and the most its dial offers (map/cars.js `carsMaxFor`): a map the phone cannot afford at the general ceiling says so itself. */
+  const carsMax = Number(map.traffic?.carsMax);
+  const traffic = Number.isFinite(tr) || map.traffic?.shape === true || cars > 0 || sorted > 0 || carsMax > 0
+    ? { ...(carsMax > 0 ? { carsMax: Math.round(carsMax) } : {}), ...(sorted > 0 ? { spawnSort: Math.min(1, sorted) } : {}), ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}), ...(cars > 0 ? { cars: Math.round(cars) } : {}) }
     : null;
   return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, stops, laneKm, warnings, ...(traffic ? { traffic } : {}) };
 }

@@ -19,7 +19,8 @@
    ===================================================================== */
 export const CARS = { min: 10, max: 300, step: 10, start: 120 };
 export const DENSITY = 120 / 28.5;
-export const CARS_CEILING = 600;
+/* THE MOST ANY MAP'S DIAL OFFERS: 360, test map 1's own top (3 x its density), which the phone has played. It was 600, "what the desk machine runs with room left for the phone, flagged until the phone is measured at city scale", and it never was: Jay set 500 on the generated highway on 14 November and his page crashed and reloaded (DECISIONS 10.92). The one crash is at 500; 260 ran. Every recorded phone figure (150 steady, 180 best on the bench) predates body motion, shadows and relief shading, so this stays an over-correction until a measurement on his device raises it. */
+export const CARS_CEILING = 360;
 const round10 = (n) => Math.round(n / 10) * 10;
 /* A MAP MAY SAY ITS OWN (load.js `traffic.cars`, 3 November): the trial
    city's 211 lane-km gave 900 by the formula -- over this dial's own top of
@@ -37,4 +38,8 @@ export const cleanCarsFor = (loaded) => {
   const own = carsFor(loaded);
   return own < SMALL_BELOW ? own : Math.max(CARS.min, Math.min(carsMaxFor(loaded), CLEAN_CARS));
 };
-export const carsMaxFor = (loaded) => Math.min(CARS_CEILING, Math.max(CARS.max, round10(3 * DENSITY * (loaded?.laneKm ?? 28.5))));
+/* ...and a map may offer LESS (load.js `traffic.carsMax`): the generated highways, whose shaped count is cheap and whose top is what their window can hold (roadgen.js CARS_MAX). Never more than the ceiling. */
+export const carsMaxFor = (loaded) => {
+  const general = Math.min(CARS_CEILING, Math.max(CARS.max, round10(3 * DENSITY * (loaded?.laneKm ?? 28.5))));
+  return loaded?.traffic?.carsMax > 0 ? Math.max(CARS.min, Math.min(general, loaded.traffic.carsMax)) : general;
+};

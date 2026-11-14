@@ -1,8 +1,11 @@
 /* THE GENERATED HIGHWAY (14 November, DECISIONS 10.73): the road is a pure function of distance and a seed, bounded so it cannot cross itself, made of transitions, legible, and an ordinary map that loads and drives. The expectations are stated here, not read from roadgen.js's table (a check reading the code's constant cannot see it wrong); the drama floors are [invented] and mark the generator's purpose, not a measured truth -- the instrument for taste is the maintainer driving it. */
-import { roadgen, lineOf, sitesOf, ROAD } from "../src/map/roadgen.js";
+import { roadgen, lineOf, sitesOf, ROAD, testHighwayGenWide } from "../src/map/roadgen.js";
 import { IX, ARCHETYPES, interchangeOf } from "../src/map/interchange.js";
 import { loadMap } from "../src/map/load.js";
 import { seedGraph, step } from "../src/sim/crossing.js";
+import { TEST_MAPS } from "../src/map/samples.js";
+import { carsFor, carsMaxFor } from "../src/map/cars.js";
+import { drive } from "./lib/shape-drive.mjs";
 let bad = 0;
 const check = (ok, what) => { console.log(`  ${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) bad++; };
 const hw = (m) => m.roads.filter((r) => /^hw-/.test(r.id));
@@ -116,6 +119,20 @@ for (const [name, o] of [["with interchanges", {}], ["interchanges, seed 2", { S
   let w; try { w = seedGraph(1, 50, loadMap(roadgen(o)), { target: 80, posted: true, brakeReaction: true }); for (let i = 0; i < 20 * 45; i++) w = step(w); } catch (e) { check(false, `${name}: threw ${e.message}`); continue; }
   const moving = w.actors.filter((a) => (a.v ?? 0) > 1).length;
   check(w.actors.length >= 60 && moving >= 0.9 * w.actors.length && !(w.crashes?.length), `${name}: ${w.actors.length} cars after 45 s, ${moving} moving, ${w.crashes?.length ?? 0} crashes`);
+}
+console.log("8. THE PLAYER'S TRAFFIC IS SHAPED, AND THE COUNT IS ONE HIS PHONE CAN SURVIVE (Jay, 14 November: 500 cars on the generated highway, an empty-feeling road, and his page crashed)");
+{
+  /* Expectations are literals stated here, never read from the table: 100 by default and 160 at the most, over-corrected on purpose until the phone is measured (DECISIONS 10.92); no map's dial offers over 360, test map 1's own top, which the phone has played. */
+  const wide = testHighwayGenWide();   // the map as shipped
+  for (const [name, m] of [["the generated highway", roadgen()], ["with no interchange", roadgen({ INTERCHANGES: 0 })], ["five lanes at 110", wide]]) {
+    const L = loadMap(m);
+    check(L.traffic?.shape === true, `${name} asks for density shaping (the cars spent where the player is, sim/shaping.js)`);
+    check(carsFor(L) === 100 && carsMaxFor(L) === 160, `${name}: the dial starts at ${carsFor(L)} and tops out at ${carsMaxFor(L)} (100 and 160)`);
+  }
+  const over = TEST_MAPS.map((t) => [t.id, carsMaxFor(loadMap(t.build()))]).filter(([, mx]) => mx > 360);
+  check(over.length === 0, `no map's dial offers more than 360 cars${over.length ? `: ${over.map(([i, mx]) => `${i} ${mx}`).join(", ")}` : ` (${TEST_MAPS.length} maps)`}`);
+  const out = drive({ raw: wide, cars: 100, seed: 1, secs: 60, shape: true });
+  check(out.shaped === true && out.placed >= 20 && out.crashes === 0, `a shaped minute on the five-lane road at 100 cars: shaping runs (${out.placed} placed, ${out.retired} retired), ${out.crashes} crashes`);
 }
 console.log(bad ? `\nFAILED: ${bad}` : "\nOK: a function of distance, bounded, made of transitions, legible, and it loads and drives.");
 process.exit(bad ? 1 : 0);

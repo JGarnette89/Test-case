@@ -106,7 +106,10 @@ export const ROAD = {
   /* The FULL interchanges are their own artefact, with their own table: interchange.js `IX`. The lone exits and entrances above are plain slip roads, on either carriageway (a left exit would run into the median now that the road is divided). */
   LANES: 3, LIMIT: 100, TRUCKS: 0.12,
   SPAWN_SORT: 0.8,          // the share of drivers already in the lane their speed asks for where they first appear (DECISIONS 10.91). 0.8 is a feel value bounded by the measurement: held share 13.7% at 0, 12.4% at 0.5, 8.4% at 0.8, 8.0% at 1.0 (two seeds), so 0.8 takes nearly all the gain and keeps one driver in five where a uniform draw put them (slow cars in fast lanes)
-  CARS: 0,                  // 0 = the density rule (test map 1's cars per lane-km); a number = this many
+  /* DENSITY SHAPING IS ON, AND THE COUNT IS WHAT THE PLAYER'S WINDOW HOLDS (Jay, 14 November: at 260 and then 500 cars "very little traffic moving in my direction ... the same empty feeling road", and at 500 his phone's page crashed). The count was global: 500 cars over 80 carriageway-km, 88% of them more than 2 km from him (tools/measure/density-where.mjs), and neither generated road asked for shaping (sim/shaping.js, DECISIONS 10.17), which spends the cars where the player is. Shaped, 100 cars put as many within sight (14.5 within 400 m) as 500 unshaped (16.8) at 3.8 ms a tick against 19.5. DEFAULT 100; THE DIAL'S TOP 160: 6.1 ms, the cost of the loop at 160 (6.8) which the phone has run; every recorded phone figure (150 steady, 180 best) predates body motion, shadows and relief shading, so these are over-corrected on purpose until the phone itself is measured. DECISIONS 10.92. */
+  SHAPE: true,
+  CARS: 100,                // 0 = the density rule (test map 1's cars per lane-km); a number = this many
+  CARS_MAX: 160,            // the most the dial offers on this road (map/cars.js carsMaxFor)
 };
 
 const smooth = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -275,7 +278,7 @@ export function roadgen(overrides = {}) {
   const nrm = (p) => ({ x: -Math.sin(p.h), y: Math.cos(p.h) });
   const Q = (car, u) => { const p = P(u); if (car === "A") return { x: p.x, y: p.y, z: p.z, h: p.h, k: p.k }; const n = nrm(p); return { x: p.x - n.x * D, y: p.y - n.y * D, z: p.z, h: p.h + Math.PI, k: p.k / (1 + p.k * D) }; };
   const m = emptyMap(C.ID, C.NAME);
-  m.traffic = { trucks: C.TRUCKS, ...(C.CARS > 0 ? { cars: C.CARS } : {}), ...(C.SPAWN_SORT > 0 ? { spawnSort: C.SPAWN_SORT } : {}) };   // CARS: the map says its own count (load.js `traffic.cars`) where the density rule would give a road more than the dial allows
+  m.traffic = { trucks: C.TRUCKS, ...(C.CARS > 0 ? { cars: C.CARS } : {}), ...(C.CARS_MAX > 0 ? { carsMax: C.CARS_MAX } : {}), ...(C.SHAPE ? { shape: true } : {}), ...(C.SPAWN_SORT > 0 ? { spawnSort: C.SPAWN_SORT } : {}) };   // CARS: the map says its own count (load.js `traffic.cars`) where the density rule would give a road more than the dial allows
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   m.bounds = { x: Math.min(...xs) - 800, y: Math.min(...ys) - 800, w: Math.max(...xs) - Math.min(...xs) + 1600, h: Math.max(...ys) - Math.min(...ys) + 1600 };
   /* A road is the stretch between two breaks: ITS OWN carriageway's interchange nodes and every SPAN_MAX; its id is the distance of its start. No break soon after an entrance on A (its acceleration lane needs the road after it), nor soon BEFORE one on B (B runs the other way). */
@@ -348,7 +351,6 @@ export const testHighwayGen = () => roadgen();
 export const testHighwayGenOpen = () => roadgen({ ID: "test-highway-gen-open", NAME: "The generated highway, no interchanges", INTERCHANGES: 0 });
 /* THE HIGH-SPEED WIDE ROAD (Jay, 14 November: "five lanes each way and a high posted limit"; then "the limit is higher, 110 and the speediest speeders get faster as a result"). Two table entries, no generator change: LANES and LIMIT are the same table the road is made from. */
 export const testHighwayGenWide = () => roadgen({ ID: "test-highway-gen-wide", NAME: "The generated highway, five lanes each way at 110", LANES: 5, LIMIT: 110,
-  /* 600 is the density dial's own ceiling (map/cars.js CARS_CEILING) and 21 ms a tick on an idle machine. The density rule would give 890 here: 35 ms, and above the control that governs it. 600 is 2.8 cars per lane-km, against the 4.2 of the other maps: the road will feel emptier per lane. */
-  CARS: 600,
+  /* Its count is the table's (100, shaped): the 600 it had was set on desktop numbers, never measured on the phone, and crashed it at 500 (DECISIONS 10.92). */
   /* A limit is only posted where the road allows it (`speedFor`: the radius a speed needs, with 15% in hand): 110 needs 750 m, so the bends are drawn gentler or most of the road would post 85 to 95 and the limit would be a label. The tight bend stays tight, relatively: it is what posts lower. */
   SWEEP_R_MIN: 800, SWEEP_R_MAX: 1800, SBEND_R_MIN: 750, SBEND_R_MAX: 1400, CHAIN_R_MIN: 750, CHAIN_R_MAX: 1100, TIGHT_R_MIN: 450, TIGHT_R_MAX: 650 });
