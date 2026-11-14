@@ -18,7 +18,7 @@
 
    Pure. No React, no canvas, no colour.
    ===================================================================== */
-import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS, ZONES, CHARACTERS, PARK_W, SIGN_KINDS, SIGN_BACK_MAX, STOP_KINDS, BAY, bayShape } from "./format.js";
+import { KINDS, CHUNK, LANE, SAMPLE, CONTROLS, PROP_KINDS, ZONES, CHARACTERS, PARK_W, SIGN_KINDS, SIGN_BACK_MAX, STOP_KINDS, BAY, bayShape, MAX_LANES } from "./format.js";
 import { ribbonOf } from "../iso/road.js";
 import { hasBays, baySurfaceOf, baysAt } from "./bays.js";
 import { hasAccel, accelAt, accelSurface } from "./accel.js";
@@ -218,7 +218,9 @@ export function loadMap(map) {
     if (points.length < 2) { warn("degenerate", `road ${id}: fewer than two distinct points; dropped`); continue; }
     const raw = resample(points);
     if (raw.length < MIN_ROAD) { warn("too-short", `road ${id}: ${raw.length.toFixed(1)} m is shorter than a car; dropped`, raw.pts[0]); continue; }
-    const lanes = Math.max(1, Math.min(4, Math.round(r.lanes ?? KINDS[kind].lanes)));
+    const asked = Math.round(r.lanes ?? KINDS[kind].lanes);
+    const lanes = Math.max(1, Math.min(MAX_LANES, asked));
+    if (asked > MAX_LANES) warn("lanes-capped", `road ${id}: ${asked} lanes each way asked for, ${MAX_LANES} is the most a road carries; drawn with ${MAX_LANES}`);
     const oneWay = !!r.oneWay;
     const width = lanes * LANE * (oneWay ? 1 : 2);
     let speed = Number(r.speed) > 0 ? Number(r.speed) : KINDS[kind].speed;

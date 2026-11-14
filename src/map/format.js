@@ -31,6 +31,8 @@ export const SAMPLE = 5;           // metres between centreline samples after no
    go, nothing to pass, a car ahead is a wall -- and metric realism was
    demoted when the project was reframed: only a quiet residential
    street is one lane each way. */
+/* THE MOST LANES A ROAD CARRIES EACH WAY, ONE PLACE (14 November). It was a 4 typed into the loader and another into the editor, and a road drawn with five LOST ONE WITHOUT A WORD: the generated "five lanes each way" highway loaded as four and the carriageway was laid out for five. Jay asked for five. */
+export const MAX_LANES = 5;
 export const KINDS = {
   residential: { speed: 40, lanes: 1, parking: "parallel" },
   collector:   { speed: 50, lanes: 2, parking: "none" },

@@ -46,7 +46,7 @@ import {
 import { C, FONT_D, FONT_U } from "../theme.js";
 import { readJSON, writeJSON } from "../storage.js";
 import { CLEARANCE_MIN } from "../map/load.js";
-import { KINDS, CONTROLS, ZONES, PROP_KINDS, CHARACTERS } from "../map/format.js";
+import { KINDS, CONTROLS, ZONES, PROP_KINDS, CHARACTERS, MAX_LANES } from "../map/format.js";
 import { testMap1, testCity0 } from "../map/samples.js";
 import { fillZone, clearZone, BLOCKS, fillLots, clearLots, LOTS } from "../map/generate.js";
 import {
@@ -1051,7 +1051,7 @@ function RoadPanel({ road, end, approaches, signs, onSignBack, onNoLeft, onCross
             {Object.keys(KINDS).map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
         </Field>
-        <Field label="Lanes / dir"><input type="number" min={1} max={4} style={inputStyle} value={road.lanes} onChange={(e) => onChange({ lanes: Math.max(1, Math.min(4, Number(e.target.value) || 1)) })} /></Field>
+        <Field label="Lanes / dir"><input type="number" min={1} max={MAX_LANES} style={inputStyle} value={road.lanes} onChange={(e) => onChange({ lanes: Math.max(1, Math.min(MAX_LANES, Number(e.target.value) || 1)) })} /></Field>
         <Field label="Speed (km/h)"><input type="number" min={10} max={110} step={5} style={inputStyle} value={road.speed} onChange={(e) => onChange({ speed: Number(e.target.value) || road.speed })} /></Field>
         <Field label="Parking">
           <select style={inputStyle} value={road.parking} onChange={(e) => onChange({ parking: e.target.value })}>
