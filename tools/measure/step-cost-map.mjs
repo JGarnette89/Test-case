@@ -2,7 +2,9 @@
    Usage: node tools/measure/step-cost-map.mjs <mapId> <cars,cars,...> */
 import { loadMap } from "../../src/map/load.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
-import { playedGraph, step } from "../../src/sim/crossing.js";
+import { seedGraph, step } from "../../src/sim/crossing.js";
+/* THE PLAYED WORLD, stated here so this script stands on its own: what worldFor (scene.js) turns on. */
+const playedGraph = (seed, kmh, loaded, o = {}) => seedGraph(seed, kmh, loaded, { posted: true, walkers: true, rivals: true, brakeReaction: true, ...o });
 const [id, carsArg] = process.argv.slice(2);
 const L = loadMap(TEST_MAPS.find((m) => m.id === id).build());
 for (const cars of carsArg.split(",").map(Number)) {

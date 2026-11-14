@@ -526,7 +526,7 @@ console.log("\n15. HOW MANY CARS A MAP GETS: ITS OWN ROAD, AT ONE DENSITY");
     const got = Object.entries(want).map(([id, n]) => { const c = cleanCarsFor(loadMap(TEST_MAPS.find((m) => m.id === id).build())); return [id, n, c]; });
     check(got.every(([, n, c]) => n === c), `Clean mode's count: a map built small keeps its own, the others 180 (${got.map(([id, , c]) => `${id} ${c}`).join(", ")})`);
     check(cleanMaps(TEST_MAPS).map((m) => m.id).join() === "city,test-loop", `Clean mode offers the city and the endless highway, and no fixture (${cleanMaps(TEST_MAPS).map((m) => m.name).join(", ")})`);
-    check(TEST_MAPS.length === 11, "and every test map is still there behind it (eleven since 14 November: the 403-style open highway and the two generated highways were registered)");
+    check(TEST_MAPS.length === 12, "and every test map is still there behind it (twelve since 14 November: the 403-style open highway and the two generated highways were registered, then the five-lane 110 road)");
   }
   check(carsFor(t1) === 120, `test map 1 keeps the 120 it always had (${t1.laneKm.toFixed(1)} lane-km)`);
   const per = (l) => carsFor(l) / l.laneKm;

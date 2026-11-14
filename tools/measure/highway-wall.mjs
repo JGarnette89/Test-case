@@ -5,7 +5,9 @@
 import { loadMap } from "../../src/map/load.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
 import { carsFor } from "../../src/map/cars.js";
-import { playedGraph, step } from "../../src/sim/crossing.js";
+import { seedGraph, step } from "../../src/sim/crossing.js";
+/* THE PLAYED WORLD, stated here so this script stands on its own: what worldFor (scene.js) turns on. */
+const playedGraph = (seed, kmh, loaded, o = {}) => seedGraph(seed, kmh, loaded, { posted: true, walkers: true, rivals: true, brakeReaction: true, ...o });
 const [ids = "test-loop,test-highway-gen", secsArg = "180", seedArg = "1"] = process.argv.slice(2);
 const kmh = (x) => x * 3.6, stat = (xs) => { const n = xs.length || 1, m = xs.reduce((s, x) => s + x, 0) / n; return { mean: m, sd: Math.sqrt(xs.reduce((s, x) => s + (x - m) ** 2, 0) / n) }; };
 const pct = (xs, f) => { const s = xs.slice().sort((a, b) => a - b); return s[Math.floor(f * (s.length - 1))] ?? NaN; };

@@ -3,7 +3,9 @@
    Usage: node tools/measure/highway-jam.mjs [mapId=test-highway-gen-wide] [cars=890] [seed=1] [seconds=300] */
 import { loadMap } from "../../src/map/load.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
-import { playedGraph, step, poseOf } from "../../src/sim/crossing.js";
+import { seedGraph, step, poseOf } from "../../src/sim/crossing.js";
+/* THE PLAYED WORLD, stated here so this script stands on its own: what worldFor (scene.js) turns on. */
+const playedGraph = (seed, kmh, loaded, o = {}) => seedGraph(seed, kmh, loaded, { posted: true, walkers: true, rivals: true, brakeReaction: true, ...o });
 const [id = "test-highway-gen-wide", carsArg = "890", seedArg = "1", secsArg = "300"] = process.argv.slice(2);
 const raw = TEST_MAPS.find((m) => m.id === id).build(), L = loadMap(raw);
 const lim = new Map(raw.roads.map((r) => [r.id, r.speed ?? 100]));
