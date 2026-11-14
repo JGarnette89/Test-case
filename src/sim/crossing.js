@@ -2334,6 +2334,8 @@ export function step(world) {
       /* Where it is put: the limit the step would give it there (exitLimit). */
       settle: (car) => exitLimit(world, car),
       wantAt: (n, kind, k, side) => wantFor(world, { n, kind }, k, side),
+      /* The lane its speed asks for (spawn sorting, `spawnLaneIndex`), where the map asks for it: cars only, as at an edge. */
+      laneIndex: world.spawnSort > 0 ? (n, k, route, count) => spawnLaneIndex(world, world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null }, n, k, route, count) : null,
       poseOf,
       /* What the placed car would ask of its pedal on its first tick: the leader and the bend. */
       wantsAccel: (w2, car) => Math.min(decide(car, whatStops(car, w2)), w2.course.graph && w2.corners !== false ? cornerAccel(car, pathOf(w2, car)) : Infinity),
@@ -2671,18 +2673,22 @@ function wantedRanks(world, road) {
   if (!q) { q = Array.from({ length: 200 }, (_, i) => driver(road, 7919, i + 1, null, null, "car", world.skill ?? 0).v0).sort((a, b) => a - b); m.set(key, q); }
   return q;
 }
-function sortedEntry(world, where, n, base) {
-  const L = world.course.at[where.k].layout, b = L.legs[where.side]?.base;
-  const lanes = Object.keys(L.legs).filter((id) => L.legs[id].base === b && L.legs[id].lane != null && !L.legs[id].bay).sort((x, y) => L.legs[x].pos - L.legs[y].pos);
-  if (lanes.length < 2) return where;
-  const route = L.routesFrom(where.side)[0]; if (!route) return where;
-  const road = roadAt(world, base, where.k, route), q = wantedRanks(world, road);
+/* THE LANE INDEX (0 = inner) THIS CAR'S SPEED ASKS FOR, among `count` lanes, mixed with a uniform draw (above). ONE definition, read by the edge arrival (`sortedEntry`) and by the car density shaping places beside the player (shaping.js, `laneIndex`): the shaped road is where nearly every car the player meets comes from (364 placed in a 240 s drive), and it drew a uniformly random lane (shaping.js) until 14 November, a second route around the first fix (DECISIONS 10.93). */
+export function spawnLaneIndex(world, base, n, k, route, count) {
+  const road = roadAt(world, base, k, route), q = wantedRanks(world, road);
   const mine = driver(road, world.seed, n, null, null, "car", world.skill ?? 0).v0;
   let lo = 0, hi = q.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (q[mid] < mine) lo = mid + 1; else hi = mid; }
   const rank = lo / q.length, S = Math.min(1, world.spawnSort), u = rng(world.seed * 5557 + n * 13 + 7)();
   /* One draw: below S the driver is where their speed asks (0 = inner lane, the fastest); above it the same draw, rescaled, is the uniform one. */
   const at = u < S ? 1 - rank : (u - S) / (1 - S);
-  return { ...where, side: lanes[Math.min(lanes.length - 1, Math.floor(at * lanes.length))] };
+  return Math.min(count - 1, Math.floor(at * count));
+}
+function sortedEntry(world, where, n, base) {
+  const L = world.course.at[where.k].layout, b = L.legs[where.side]?.base;
+  const lanes = Object.keys(L.legs).filter((id) => L.legs[id].base === b && L.legs[id].lane != null && !L.legs[id].bay).sort((x, y) => L.legs[x].pos - L.legs[y].pos);
+  if (lanes.length < 2) return where;
+  const route = L.routesFrom(where.side)[0]; if (!route) return where;
+  return { ...where, side: lanes[spawnLaneIndex(world, base, n, where.k, route, lanes.length)] };
 }
 
 /* A CAR, BUILT ONCE (22 October): who drives, at the limit of the road

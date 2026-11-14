@@ -144,7 +144,7 @@ const far = (poseOf, w, a, from) => { const p = poseOf(w, a); return Math.hypot(
    retire gone, and at most one car placed. `make(n, k, route, want, kind)`
    is the arrival's construction (crossing.js carFor); `want(n, kind, k,
    side)` the arrival's choice of route; `poseOf` where an actor is. */
-export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, poseOf, kindOf, wantsAccel, brakeOf }) {
+export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, poseOf, kindOf, wantsAccel, brakeOf, laneIndex = null }) {
   const win = windowOf(world, next);
   if (!win) return { next, win: null, retired: 0, placed: null };
   /* ON THE CLOCK THE CARS ARE AT. `next` is the actors one tick on, so their
@@ -177,7 +177,13 @@ export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, pos
   const lanes = [...win.ahead.keys(), win.road].flatMap((r) => win.g.lanes.get(r) ?? []).filter((l) => !win.g.special.has(l));
   const wn = w;
   for (let tries = 0; tries < 4; tries++) {
-    const lane = lanes[Math.floor(r() * lanes.length) % lanes.length];
+    let lane = lanes[Math.floor(r() * lanes.length) % lanes.length];
+    /* THE LANE ITS SPEED ASKS FOR, on the road that draw chose (spawn sorting, crossing.js `spawnLaneIndex`): the uniform lane stands where the map does not ask or the car is not a car. The draw above is still taken, so no other stream moves. */
+    if (laneIndex && kindOf(n0) === "car") {
+      const sibs = (win.g.lanes.get(roadOf(lane)) ?? []).filter((l) => !win.g.special.has(l)).sort((x, y) => Number(String(x).split("#")[1]) - Number(String(y).split("#")[1]));
+      const any = (win.g.approach.get(lane) ?? [])[0] ?? (win.g.exit.get(lane) ?? [])[0];
+      if (sibs.length > 1 && any) lane = sibs[laneIndex(n0, any.k, any.route, sibs.length)];
+    }
     const len = win.g.len.get(roadOf(lane)) ?? 0;
     const c = r() * len;
     const by = aheadBy(win, lane, c);

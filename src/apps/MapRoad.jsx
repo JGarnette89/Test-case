@@ -33,7 +33,7 @@ import { groundFor } from "../map/load.js";
 import { step, poseOf, carriedWorld, carriedPose, DT } from "../sim/crossing.js";
 import { newBody, beginBodyFrame, endBodyFrame, bodyOf } from "../iso/body.js";
 import { stepDriver, driverPose, carriedPlayer, withDriver, aheadOf, playerHonk, headwayOf, followTarget } from "../sim/drive.js";
-import { worldFor, playerContact, START } from "../sim/scene.js";
+import { worldFor, playerContact, START, PREROLL } from "../sim/scene.js";
 import { remoteSim, merge } from "../sim/remote.js";
 import { RIVALS } from "../sim/rivals.js";
 import { placesOf, routeTo } from "../sim/route.js";
@@ -91,7 +91,7 @@ import { CARS, carsFor, carsMaxFor, cleanCarsFor } from "../map/cars.js";
 export function sceneFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, checks = false, mergeTol = DEFAULT_MERGE_TOLERANCE) {
   /* The world is built in sim/scene.js, where the sim's worker builds the
      same one from the same arguments (sim/remote.js). */
-  const args = [seed, kmh, every, drive, cars, rawMap, startAt, lookAway, unshaped, { checks, mergeTolerance: mergeTol || null }];
+  const args = [seed, kmh, every, drive, cars, rawMap, startAt, lookAway, unshaped, { checks, mergeTolerance: mergeTol || null, preroll: PREROLL }];
   const { loaded, world, me } = worldFor(...args);
   const b = loaded.bounds;
   const ground = groundFor(loaded, { cell: 20 });

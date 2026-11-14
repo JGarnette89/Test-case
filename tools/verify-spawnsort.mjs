@@ -18,6 +18,10 @@
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { seedGraph, step } from "../src/sim/crossing.js";
+import { worldFor } from "../src/sim/scene.js";
+import { withDriver } from "../src/sim/drive.js";
+import { DT } from "../src/sim/traffic.js";
+import { goodStep } from "./lib/good-driver.mjs";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -85,6 +89,32 @@ console.log("\n4. IT IS NOT A PERFECT SORT");
   const slow = c.slice(0, third), fast = c.slice(2 * third);
   const slowInner = slow.filter((r) => r.pos === 0).length / slow.length, fastOuter = fast.filter((r) => r.pos === r.lanes - 1).length / fast.length;
   check(slowInner >= 0.1 && fastOuter >= 0.1, `at 0.5, ${(100 * slowInner).toFixed(0)}% of the slowest third start in the inner lane and ${(100 * fastOuter).toFixed(0)}% of the fastest in the curb lane (each at least 10%)`);
+}
+console.log("\n5. THE SHAPED ROAD IS SORTED TOO (DECISIONS 10.93: shaping drew a uniformly random lane for every car it placed, a second route around the first fix, and on a shaped road those are nearly all the cars the player meets)");
+{
+  const placedOf = (spawnSort, seed) => {
+    let { world: w, me } = worldFor(seed, 50, 2.0, true, null, TEST_MAPS.find((m) => m.id === "test-highway-gen").build(), null, false);
+    w = { ...w, spawnSort };
+    const sc = { me, args: [1], saveWallet: false }, seen = new Set(w.actors.map((a) => a.id)), rows = [];
+    for (let n = 0; n < 150 / DT; n++) {
+      me = goodStep(me, w, sc, { overtake: true, pace: 1.19 }); sc.me = me;
+      w = step(withDriver(w, me));
+      for (const a of w.actors) {
+        if (seen.has(a.id) || a.player) continue; seen.add(a.id);
+        if (a.placed == null) continue;   // a car shaping put there, not one that arrived at an edge
+        const lay = w.course.at[a.k ?? 0].layout, p = lay.paths[a.route], leg = lay.legs[p?.from];
+        if (leg && (leg.across ?? leg.lanes ?? 1) >= 3 && leg.lane != null && (a.kind ?? "car") === "car") rows.push({ v0: a.v0, pos: leg.pos ?? leg.lane });
+      }
+    }
+    return rows;
+  };
+  const pool = (sp) => SEEDS.flatMap((sd) => placedOf(sp, sd));
+  const off = pool(0), on = pool(0.8);
+  const rOff = rho(off), rOn = rho(on);
+  console.log(`   ${off.length} / ${on.length} cars placed by shaping (strength 0 / 0.8, three seeds)`);
+  check(off.length >= 100 && on.length >= 100, `enough placed cars to say anything (${off.length} and ${on.length}, at least 100 each)`);
+  check(Math.abs(rOff) < 0.15, `strength 0: shaping's placed cars, rho ${rOff.toFixed(2)} (|rho| < 0.15: unrelated, as it was)`);
+  check(rOn < -0.3, `strength 0.8, as the generated highway ships: rho ${rOn.toFixed(2)} (below -0.3: the placed cars follow their wanted speed)`);
 }
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");
 process.exit(failed ? 1 : 0);

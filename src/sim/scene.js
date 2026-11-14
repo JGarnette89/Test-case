@@ -11,16 +11,19 @@ import { loadMap } from "../map/load.js";
 import { testMap1 } from "../map/samples.js";
 import { firstEdge } from "../map/edges.js";
 import { carsFor } from "../map/cars.js";
-import { seedGraph } from "./crossing.js";
+import { seedGraph, step } from "./crossing.js";
+import { DT } from "./traffic.js";
 import { DEFAULT_MERGE_TOLERANCE } from "./lanechange.js";
-import { playerOn, placePlayer } from "./drive.js";
+import { playerOn, placePlayer, withDriver } from "./drive.js";
 export { playerContact } from "./contact.js";
 
+/* HOW MANY SECONDS OF THE SHAPED WORLD THE SCREEN RUNS BEFORE THE PLAYER HAS THE WHEEL (`preroll`, below): 15, a flagged design constant. At 10 s the window is 70 to 80% filled (68 to 81 of about 99 cars within 1.5 km), at 20 s 98%; the world build is already 4.6 s on the generated highways on the desk and 20 s of pre-roll adds 1.0 to 1.2 s (25%), 10 s adds 0.46: 15 takes about 90 to 95% of the fill for about 0.8 s (tools/measure/lane-speeds.mjs, DECISIONS 10.93). Never the phone's measurement; to be raised or cut by it. */
+export const PREROLL = 15;
 export const START = { road: "A-north", end: "end" };   // the player begins at the map's north edge, driving down to the crossroads
 
 /* The loaded map, the seeded world and -- when driving -- the player,
    placed clear (drive.js `placePlayer`). Deterministic in its arguments. */
-export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, { checks = false, brakeReaction = true, mergeTolerance = DEFAULT_MERGE_TOLERANCE } = {}) {
+export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, startAt = null, lookAway = false, unshaped = false, { checks = false, brakeReaction = true, mergeTolerance = DEFAULT_MERGE_TOLERANCE, preroll = 0 } = {}) {
   const loaded = loadMap(rawMap ?? testMap1());
   if (cars == null) cars = carsFor(loaded);
   if (!loaded.ok) throw new Error(`${rawMap ? "map" : "test map"}: ${loaded.error}`);
@@ -51,6 +54,8 @@ export function worldFor(seed, kmh, every, drive, cars = null, rawMap = null, st
     if (!me) throw new Error("nowhere to start driving from on this map");
     /* Clear of every car, and of every car able to reach a car standing there (drive.js `placePlayer`). */
     world = placePlayer(world, me);
+    /* THE WINDOW FILLED BEFORE THE PLAYER HAS THE WHEEL (Jay, 14 November: "it took about a minute of driving before the road filled"). Shaping places one car a tick and starts only once a player is on the map, so the world opens with a handful of cars within 1.5 km of him (5 to 8 of 101) and has 68 to 81 after 10 s and 89 to 99 after 20 (tools/measure/lane-speeds.mjs): `preroll` seconds of the shaped world are run with the player standing, so what he opens is the filled road. Only the screen asks (`sceneFor`): every check that builds a world through here keeps the one it always had. */
+    if (preroll > 0 && world.shape) for (let i = 0, n = Math.round(preroll / DT); i < n; i++) world = step(withDriver(world, me));
   }
   return { loaded, world, me };
 }

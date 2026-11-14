@@ -40,11 +40,14 @@ for (let n = 0; n < +secsArg / DT; n++) {
     }
   }
 }
+const rank = (xs) => { const idx = xs.map((x, i) => [x, i]).sort((a, b) => a[0] - b[0]); const r = new Array(xs.length); let i = 0; while (i < idx.length) { let j = i; while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++; for (let k = i; k <= j; k++) r[idx[k][1]] = (i + j) / 2; i = j + 1; } return r; };
+const spearman = (a, b) => { const x = rank(a), y = rank(b), n = x.length, mx = x.reduce((s2, v) => s2 + v, 0) / n, my = y.reduce((s2, v) => s2 + v, 0) / n; let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; } return sxy / Math.sqrt(sxx * syy || 1); };
 const q = (xs, f) => { const s = xs.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(f * s.length))]; };
 console.log(`${id}, ${carsArg ?? "the map's own count"} cars, seed ${seedArg}: the player's top speed is ${(V_MAX * 3.6).toFixed(1)} km/h (V_MAX)`);
 for (const l of timeline) console.log("  " + l);
 console.log(`  from ${warmArg} s on, the cars within 1.5 km on his carriageway, by lane (0 = inner), car-seconds, WANTED p10/50/90, ACHIEVED p10/50/90, share who WANT more than the player's top:`);
-let all0 = [], all1 = [];
-for (const [pos, r] of [...lanes.entries()].sort((a, b) => a[0] - b[0])) { all0 = all0.concat(r.v0); all1 = all1.concat(r.v); console.log(`    lane ${pos}: ${r.v.length} car-seconds; wanted ${q(r.v0, .1).toFixed(0)}/${q(r.v0, .5).toFixed(0)}/${q(r.v0, .9).toFixed(0)}; achieved ${q(r.v, .1).toFixed(0)}/${q(r.v, .5).toFixed(0)}/${q(r.v, .9).toFixed(0)} km/h; ${(100 * r.v0.filter((x) => x > V_MAX * 3.6).length / r.v0.length).toFixed(0)}% want more than ${(V_MAX * 3.6).toFixed(0)}`); }
+let all0 = [], all1 = [], allPos = [];
+for (const [pos, r] of [...lanes.entries()].sort((a, b) => a[0] - b[0])) { all0 = all0.concat(r.v0); all1 = all1.concat(r.v); allPos = allPos.concat(r.v0.map(() => pos)); console.log(`    lane ${pos}: ${r.v.length} car-seconds; wanted ${q(r.v0, .1).toFixed(0)}/${q(r.v0, .5).toFixed(0)}/${q(r.v0, .9).toFixed(0)}; achieved ${q(r.v, .1).toFixed(0)}/${q(r.v, .5).toFixed(0)}/${q(r.v, .9).toFixed(0)} km/h; ${(100 * r.v0.filter((x) => x > V_MAX * 3.6).length / r.v0.length).toFixed(0)}% want more than ${(V_MAX * 3.6).toFixed(0)}`); }
 console.log(`    ALL: wanted ${q(all0, .1).toFixed(0)}/${q(all0, .5).toFixed(0)}/${q(all0, .9).toFixed(0)}; achieved ${q(all1, .1).toFixed(0)}/${q(all1, .5).toFixed(0)}/${q(all1, .9).toFixed(0)}; ${(100 * all0.filter((x) => x > V_MAX * 3.6).length / all0.length).toFixed(0)}% want more than the player's top`);
+console.log(`  Spearman(wanted speed, lane position) over the window's cars: ${spearman(all0, allPos).toFixed(2)} (negative = the fast ones are in the inner lanes; 0 = unsorted)`);
 console.log(`  the player: mean speed ${(3.6 * vSum / Math.max(1, playerSecs)).toFixed(0)} km/h; within 60 m behind a slower car in his own lane ${(100 * stuck / Math.max(1, playerSecs)).toFixed(0)}% of the time`);
