@@ -5,6 +5,7 @@
 
      node tools/check.mjs                 the checks the working tree's changes can break (tools/affected.mjs)
      node tools/check.mjs --direct        while iterating: only the checks that import a changed file themselves, and screens and core
+     node tools/check.mjs --base REF      diff against REF instead of the merge-base with origin/main
      node tools/check.mjs --all           every check
      node tools/check.mjs verify-x ...    these
      --jobs N        how many at once (default: three quarters of the hardware
@@ -38,7 +39,7 @@ import { budgetFor, outcomeOf, passed } from "./check-policy.mjs";
 import { cpus, freemem } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checks as allChecks, affected, changedFiles } from "./affected.mjs";
+import { checks as allChecks, affected, changedFiles, baseRef, cannotTell, NOISE } from "./affected.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TIMES = join(ROOT, "tools", "check-times.json");
@@ -62,7 +63,7 @@ if (fixedTimeout !== null && (!Number.isFinite(fixedTimeout) || fixedTimeout <= 
   console.error("--timeout requires positive seconds within Node's timer range"); process.exit(2);
 }
 const recordTimes = args.includes("--record-times");
-const named = args.filter((a, i) => !a.startsWith("--") && !["--jobs", "--timeout"].includes(args[i - 1]));
+const named = args.filter((a, i) => !a.startsWith("--") && !["--jobs", "--timeout", "--base"].includes(args[i - 1]));
 
 const times = existsSync(TIMES) ? JSON.parse(readFileSync(TIMES, "utf8")) : {};
 const hashes = existsSync(HASHES) ? JSON.parse(readFileSync(HASHES, "utf8")) : {};
@@ -74,9 +75,13 @@ let list;
 if (named.length) list = named.map((n) => byName.get(n) ?? (() => { console.error(`no such check: ${n}`); process.exit(2); })());
 else if (args.includes("--all")) list = every;
 else {
-  const changed = changedFiles();
+  let changed, b;
+  try { b = baseRef(opt("--base")); changed = changedFiles(opt("--base")); } catch (e) { console.error(`CANNOT TELL: ${e.message}`); process.exit(3); }
   list = affected(changed, { direct: args.includes("--direct") });
-  console.log(`${changed.length} changed file(s) -> ${list.length} check(s) can see them`);
+  const real = changed.filter((f) => !NOISE.test(f));
+  console.log(`base ${b.ref} (${b.sha}): ${real.length} changed file(s) -> ${list.length} check(s) can see them`);
+  const n = cannotTell(changed, list);
+  if (n) { console.error(`CANNOT TELL: ${n} code files changed against ${b.ref} but only ${list.length} check(s) selected. Run --all, or name the checks.`); process.exit(3); }
 }
 const cmdOf = (c) => c.cmd ?? [process.execPath, [c.file]];
 

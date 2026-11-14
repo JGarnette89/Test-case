@@ -72,9 +72,36 @@ export function checks() {
   return [...list(join(ROOT, "tools"), false), ...list(join(ROOT, "tools", "legacy"), true)];
 }
 
-export function changedFiles(base = "HEAD") {
-  const run = (c) => { try { return execSync(c, { cwd: ROOT, encoding: "utf8" }).split(/\r?\n/).filter(Boolean); } catch { return []; } };
-  return [...new Set([...run(`git diff --name-only ${base}`), ...run("git diff --name-only --cached"), ...run("git ls-files --others --exclude-standard")])];
+/* THE BASE (14 November). The runner used to diff against HEAD, so on a
+   COMMITTED branch about to merge the "changes" were only whatever was
+   uncommitted -- once, one check out of sixty-two. The default base is now
+   the merge-base with origin/main: everything this branch adds, committed
+   or not, plus the working tree and untracked files. A base that does not
+   resolve is an error, never an empty diff. */
+export function baseRef(base) {
+  const sh = (c) => execSync(c, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  if (base) { try { return { ref: base, sha: sh(`git rev-parse --short ${base}`) }; } catch { throw new Error(`base ${base} does not resolve`); } }
+  try { const mb = sh("git merge-base origin/main HEAD"); return { ref: "merge-base(origin/main, HEAD)", sha: mb.slice(0, 7), full: mb }; }
+  catch { throw new Error("origin/main does not resolve; pass --base <ref> or --all"); }
+}
+
+export function changedFiles(base) {
+  const b = baseRef(base);
+  const at = b.full ?? b.ref;
+  const run = (c) => execSync(c, { cwd: ROOT, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
+  return [...new Set([...run(`git diff --name-only ${at}`), ...run("git diff --name-only --cached"), ...run("git ls-files --others --exclude-standard")])];
+}
+
+/* Files every run rewrites: they say nothing about what changed. */
+export const NOISE = /^tools\/(check-(times|hashes)\.json|check-history\.jsonl|scratch\/)/;
+
+/* CANNOT TELL. A code diff of CODE_MIN files or more that selects fewer than
+   SET_MIN checks is a derivation that has lost the thread, not a small
+   change: refuse it and say so, rather than pass on one check of sixty-two. */
+export const CODE_MIN = 3, SET_MIN = 3;
+export function cannotTell(changed, list) {
+  const code = changed.filter((f) => !NOISE.test(f) && /\.(mjs|js|jsx|json)$/.test(f));
+  return code.length >= CODE_MIN && list.length < SET_MIN ? code.length : 0;
 }
 
 /* `direct`: only the checks that import a changed file THEMSELVES -- the
@@ -96,7 +123,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const args = process.argv.slice(2);
   const json = args.includes("--json");
   const bi = args.indexOf("--base"), wi = args.indexOf("--why");
-  const base = bi >= 0 ? args[bi + 1] : "HEAD";
+  const base = bi >= 0 ? args[bi + 1] : undefined;
   const why = wi >= 0 ? args[wi + 1] : null;
   const files = args.filter((a, i) => !a.startsWith("--") && i !== bi + 1 && i !== wi + 1 || (bi < 0 && wi < 0 && !a.startsWith("--")));
   const named = args.filter((a, i) => !a.startsWith("--") && (bi < 0 || i !== bi + 1) && (wi < 0 || i !== wi + 1));
