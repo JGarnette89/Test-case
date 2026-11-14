@@ -105,6 +105,7 @@ export const ROAD = {
   RAMP_MIN: 300, RAMP_MAX: 600, ANGLE_MIN: 35, ANGLE_MAX: 50,   // m and degrees of a ramp, drawn per interchange. NOT BELOW ~35: at 28 the ramp lies along the through lanes for so long the conflict table holds a third of the road (measured, DECISIONS 10.74)
   /* The FULL interchanges are their own artefact, with their own table: interchange.js `IX`. The lone exits and entrances above are plain slip roads, on either carriageway (a left exit would run into the median now that the road is divided). */
   LANES: 3, LIMIT: 100, TRUCKS: 0.12,
+  SPAWN_SORT: 0.8,          // the share of drivers already in the lane their speed asks for where they first appear (DECISIONS 10.91). 0.8 is a feel value bounded by the measurement: held share 13.7% at 0, 12.4% at 0.5, 8.4% at 0.8, 8.0% at 1.0 (two seeds), so 0.8 takes nearly all the gain and keeps one driver in five where a uniform draw put them (slow cars in fast lanes)
   CARS: 0,                  // 0 = the density rule (test map 1's cars per lane-km); a number = this many
 };
 
@@ -274,7 +275,7 @@ export function roadgen(overrides = {}) {
   const nrm = (p) => ({ x: -Math.sin(p.h), y: Math.cos(p.h) });
   const Q = (car, u) => { const p = P(u); if (car === "A") return { x: p.x, y: p.y, z: p.z, h: p.h, k: p.k }; const n = nrm(p); return { x: p.x - n.x * D, y: p.y - n.y * D, z: p.z, h: p.h + Math.PI, k: p.k / (1 + p.k * D) }; };
   const m = emptyMap(C.ID, C.NAME);
-  m.traffic = { trucks: C.TRUCKS, ...(C.CARS > 0 ? { cars: C.CARS } : {}) };   // CARS: the map says its own count (load.js `traffic.cars`) where the density rule would give a road more than the dial allows
+  m.traffic = { trucks: C.TRUCKS, ...(C.CARS > 0 ? { cars: C.CARS } : {}), ...(C.SPAWN_SORT > 0 ? { spawnSort: C.SPAWN_SORT } : {}) };   // CARS: the map says its own count (load.js `traffic.cars`) where the density rule would give a road more than the dial allows
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   m.bounds = { x: Math.min(...xs) - 800, y: Math.min(...ys) - 800, w: Math.max(...xs) - Math.min(...xs) + 1600, h: Math.max(...ys) - Math.min(...ys) + 1600 };
   /* A road is the stretch between two breaks: ITS OWN carriageway's interchange nodes and every SPAN_MAX; its id is the distance of its start. No break soon after an entrance on A (its acceleration lane needs the road after it), nor soon BEFORE one on B (B runs the other way). */

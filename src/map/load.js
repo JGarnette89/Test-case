@@ -589,8 +589,10 @@ export function loadMap(map) {
      `carsFor`): a map too big for the density formula to give a count the
      phone can run says so itself. Absent, the formula. */
   const cars = Number(map.traffic?.cars);
-  const traffic = Number.isFinite(tr) || map.traffic?.shape === true || cars > 0
-    ? { ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}), ...(cars > 0 ? { cars: Math.round(cars) } : {}) }
+  /* ...and how sorted its cars are where they first appear (sim/crossing.js `sortedEntry`, DECISIONS 10.91): the share, 0 to 1, already in the lane their speed asks for. Absent, 0: a draw across the lanes, as it always was. */
+  const sorted = Number(map.traffic?.spawnSort);
+  const traffic = Number.isFinite(tr) || map.traffic?.shape === true || cars > 0 || sorted > 0
+    ? { ...(sorted > 0 ? { spawnSort: Math.min(1, sorted) } : {}), ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}), ...(cars > 0 ? { cars: Math.round(cars) } : {}) }
     : null;
   return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, stops, laneKm, warnings, ...(traffic ? { traffic } : {}) };
 }

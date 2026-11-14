@@ -2650,6 +2650,7 @@ function arriving(world, n) {
       if (other) where = { ...where, side: other };
     }
   }
+  if (lanesMove && kind === "car" && world.spawnSort > 0) where = sortedEntry(world, where, n, base);
   const chosen = lanesMove ? wantFor(world, { n, kind }, where.k, where.side) : { route: drawn, want: null };
   const route = chosen.route;
   /* A car enters the world already driving to the limit of the road it
@@ -2661,14 +2662,41 @@ function arriving(world, n) {
   return carFor(world, n, where.k, route, chosen.want, kind, base, arriveIn);
 }
 
+/* SPAWN SORTING (14 November, DECISIONS 10.91). A car that appears ten kilometres down a motorway has, in the world's own terms, been driving for a while, so it should look like a car that has already found its lane. Placing it by a draw across the lanes asserts that every driver on the road just arrived: measured, the wanted speed of a car and the lane it first appears in are unrelated on the generated highways (Spearman about 0), and the road then sorts only as fast as lane changing can undo it, which on a busy road is hardly at all.
+   `spawnSort` is the SHARE OF DRIVERS WHO HAVE ALREADY FOUND THEIR LANE: that share take the lane their rank among drivers asks for (fast to the inner lane), and the rest are where the uniform draw put them. A mixture and not a blend of the two lanes (a blend can never put a slow car in the inner lane at 0.5, which the first version of this could not do): 0 is the draw as it was, 1 is a perfectly sorted queue, which real motorways are not -- slow cars sit in fast lanes -- so the strength is a table value (map `traffic.spawnSort`). The rank is against the model's OWN drivers at the limit of the road entered (200, drawn once per course and limit), never against a typed mean and spread. Cars only: a truck keeps the lane it had (the lane preference of a truck is a separate step), and a bus keeps the curb. It draws from its own stream. */
+const spawnRanks = new WeakMap();
+function wantedRanks(world, road) {
+  let m = spawnRanks.get(world.course); if (!m) spawnRanks.set(world.course, (m = new Map()));
+  const key = `${road.kind}|${Math.round(road.speed * 10)}`; let q = m.get(key);
+  if (!q) { q = Array.from({ length: 200 }, (_, i) => driver(road, 7919, i + 1, null, null, "car", world.skill ?? 0).v0).sort((a, b) => a - b); m.set(key, q); }
+  return q;
+}
+function sortedEntry(world, where, n, base) {
+  const L = world.course.at[where.k].layout, b = L.legs[where.side]?.base;
+  const lanes = Object.keys(L.legs).filter((id) => L.legs[id].base === b && L.legs[id].lane != null && !L.legs[id].bay).sort((x, y) => L.legs[x].pos - L.legs[y].pos);
+  if (lanes.length < 2) return where;
+  const route = L.routesFrom(where.side)[0]; if (!route) return where;
+  const road = roadAt(world, base, where.k, route), q = wantedRanks(world, road);
+  const mine = driver(road, world.seed, n, null, null, "car", world.skill ?? 0).v0;
+  let lo = 0, hi = q.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (q[mid] < mine) lo = mid + 1; else hi = mid; }
+  const rank = lo / q.length, S = Math.min(1, world.spawnSort), u = rng(world.seed * 5557 + n * 13 + 7)();
+  /* One draw: below S the driver is where their speed asks (0 = inner lane, the fastest); above it the same draw, rescaled, is the uniform one. */
+  const at = u < S ? 1 - rank : (u - S) / (1 - S);
+  return { ...where, side: lanes[Math.min(lanes.length - 1, Math.floor(at * lanes.length))] };
+}
+
 /* A CAR, BUILT ONCE (22 October): who drives, at the limit of the road
    they are on, at node k on `route` -- for an arrival at an edge and for a
    car placed into the stream around the player (shaping.js) alike, so the
    two can never draw different people. `base` is the road as traffic
    perceives it; `arriveIn` the arrival's own next interval. */
-export function carFor(world, n, k, route, want, kind, base = (world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null }), arriveIn = world.every) {
+/* THE ROAD A CAR DRIVES, AS ITS DRIVER IS DRAWN FOR IT: the posted limit and kind where the map posts them, else the world's. ONE definition, read by `carFor` and by the spawn sort (below), which must rank a driver against the road they will actually be drawn for. */
+const roadAt = (world, base, k, route) => {
   const posted = world.road.posted ? postedAt(world.course, k, route) : null;
-  const road = posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6), kind: kindAt(world.course, k, route) };
+  return posted == null ? base : { ...base, speed: posted, kmh: Math.round(posted * 3.6), kind: kindAt(world.course, k, route) };
+};
+export function carFor(world, n, k, route, want, kind, base = (world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null }), arriveIn = world.every) {
+  const road = roadAt(world, base, k, route);
   /* THE RIVALS (rivals.js): an absent one is the next car to arrive -- their profile, through the same `driver`. */
   const rival = rivalDue(world, world.actors, kind);
   const who = driver(road, world.seed, n, rival?.ratings ?? null, null, kind, world.skill ?? 0);
@@ -2921,9 +2949,11 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, brakeReaction = false, mergeTolerance = DEFAULT_MERGE_TOLERANCE } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, brakeReaction = false, mergeTolerance = DEFAULT_MERGE_TOLERANCE, spawnSort: spawnSortAsked = null } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
+  /* How sorted a car's first lane is (spawn sorting, above): asked for, else the map's own (map/load.js `traffic`), else 0 -- the draw as it always was. */
+  const spawnSort = spawnSortAsked ?? loaded?.traffic?.spawnSort ?? 0;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
   /* `turn`: how a corner tighter than a car's lock is driven (graph.js TURN_LOCK, SIMULATOR IN FLIGHT 22) -- "tangent", today's, unless a measurement asks. */
   const course = graphOf(loaded, { lane: 3.6, control, progression, turn });
@@ -2951,7 +2981,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, brakeReaction, ...(mergeTolerance ? { mergeTolerance } : {}), ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, brakeReaction, ...(spawnSort > 0 ? { spawnSort } : {}), ...(mergeTolerance ? { mergeTolerance } : {}), ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   /* `actuated: false`: every light on its clock, as before the loops (actuated.js) -- for comparing against. */

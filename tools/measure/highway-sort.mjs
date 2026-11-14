@@ -12,12 +12,12 @@ import { carsFor } from "../../src/map/cars.js";
 import { seedGraph, step } from "../../src/sim/crossing.js";
 /* THE PLAYED WORLD, stated here so this script stands on its own: what worldFor (scene.js) turns on. */
 const playedGraph = (seed, kmh, loaded, o = {}) => seedGraph(seed, kmh, loaded, { posted: true, walkers: true, rivals: true, brakeReaction: true, ...o });
-const [id, carsArg, seedArg = "1", secsArg = "300"] = process.argv.slice(2);
+const [id, carsArg, seedArg = "1", secsArg = "300", spawnSort] = process.argv.slice(2);
 const loaded = loadMap(TEST_MAPS.find((m) => m.id === id).build()), cars = carsArg ? +carsArg : carsFor(loaded);
 const rank = (xs) => { const idx = xs.map((x, i) => [x, i]).sort((a, b) => a[0] - b[0]); const r = new Array(xs.length); let i = 0; while (i < idx.length) { let j = i; while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++; for (let k = i; k <= j; k++) r[idx[k][1]] = (i + j) / 2; i = j + 1; } return r; };
 const pearson = (a, b) => { const n = a.length, ma = a.reduce((s, x) => s + x, 0) / n, mb = b.reduce((s, x) => s + x, 0) / n; let sab = 0, saa = 0, sbb = 0; for (let i = 0; i < n; i++) { sab += (a[i] - ma) * (b[i] - mb); saa += (a[i] - ma) ** 2; sbb += (b[i] - mb) ** 2; } return sab / Math.sqrt(saa * sbb || 1); };
 const spearman = (a, b) => (a.length < 10 ? NaN : pearson(rank(a), rank(b)));
-let w = playedGraph(+seedArg, 50, loaded, { every: 2.0, target: cars });
+let w = playedGraph(+seedArg, 50, loaded, { every: 2.0, target: cars, ...(spawnSort != null ? { spawnSort: +spawnSort } : {}) });
 for (let i = 0; i < 3600; i++) w = step(w);
 const win = [], lcs = { discretionary: 0, keepRight: 0, turn: 0 }; let heldSecs = 0, carSecs = 0, cur = { v0: [], pos: [] };
 const all = { v0: [], pos: [] };
@@ -41,7 +41,7 @@ for (let i = 0; i < +secsArg * 20; i++) {
   if (i % 1200 === 1199) { win.push(cur); cur = { v0: [], pos: [] }; }
 }
 const mins = carSecs / 60;
-console.log(`${id}, ${cars} cars, seed ${seedArg}: ${carSecs} through car-seconds on multi-lane road`);
+console.log(`${id}, ${cars} cars, seed ${seedArg}${spawnSort != null ? `, spawnSort ${spawnSort}` : ""}: ${carSecs} through car-seconds on multi-lane road`);
 console.log(`  Spearman(wanted speed, lane position) by 60 s window: ${win.map((x) => spearman(x.v0, x.pos).toFixed(2)).join("  ")}   (negative = fast drivers in the inner lanes; 0 = unsorted)   overall ${spearman(all.v0, all.pos).toFixed(2)}`);
 const order = all.v0.map((v, i) => [v, all.pos[i]]).sort((a, b) => a[0] - b[0]), third = Math.floor(order.length / 3);
 const mean = (xs) => (xs.reduce((s, x) => s + x[1], 0) / Math.max(1, xs.length)).toFixed(2);
