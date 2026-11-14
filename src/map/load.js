@@ -228,8 +228,9 @@ export function loadMap(map) {
     const allowed = radiusFor(speed / 3.6);
     if (bend.radius < allowed) {
       const posted = Math.max(10, speedForRadius(bend.radius));
-      warn("bend-too-tight", `road ${id}: a bend of radius ${bend.radius.toFixed(0)} m at ${bend.s.toFixed(0)} m needs ${allowed.toFixed(0)} m at ${speed} km/h; posted speed lowered to ${posted}`, raw.pts[Math.round(bend.s / raw.step)], { from: speed, to: posted });
-      speed = posted;
+      /* On a map whose bends are the drivers' business the speed stays, and the warning says what the bend asks. */
+      warn("bend-too-tight", `road ${id}: a bend of radius ${bend.radius.toFixed(0)} m at ${bend.s.toFixed(0)} m needs ${allowed.toFixed(0)} m at ${speed} km/h; ${map.traffic?.bends === "driver" && lanes >= 2 ? "posted speed kept (the drivers' business)" : `posted speed lowered to ${posted}`}`, raw.pts[Math.round(bend.s / raw.step)], { from: speed, to: posted });
+      if (!(map.traffic?.bends === "driver" && lanes >= 2)) speed = posted;   // a multi-lane carriageway on a map whose bends are the drivers' business keeps its speed; a ramp does not
     }
     const moved = clampGrade(raw.pts, raw.at);
     if (moved > 0.01) warn("grade-clamped", `road ${id}: a slope steeper than ${Math.round(MAX_GRADE * 100)}% was flattened by up to ${moved.toFixed(2)} m`);
@@ -593,8 +594,10 @@ export function loadMap(map) {
   const sorted = Number(map.traffic?.spawnSort);
   /* ...and the most its dial offers (map/cars.js `carsMaxFor`): a map the phone cannot afford at the general ceiling says so itself. */
   const carsMax = Number(map.traffic?.carsMax);
-  const traffic = Number.isFinite(tr) || map.traffic?.shape === true || cars > 0 || sorted > 0 || carsMax > 0
-    ? { ...(carsMax > 0 ? { carsMax: Math.round(carsMax) } : {}), ...(sorted > 0 ? { spawnSort: Math.min(1, sorted) } : {}), ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}), ...(cars > 0 ? { cars: Math.round(cars) } : {}) }
+  /* ...and whose business a bend is: "driver" (sim/corner.js, DECISIONS 10.96): the road's posted speed is then not lowered to the bend, and the cars' own speeds and skills decide what the bend asks of them. */
+  const bends = map.traffic?.bends === "driver" ? "driver" : null;
+  const traffic = Number.isFinite(tr) || map.traffic?.shape === true || cars > 0 || sorted > 0 || carsMax > 0 || bends
+    ? { ...(bends ? { bends } : {}), ...(carsMax > 0 ? { carsMax: Math.round(carsMax) } : {}), ...(sorted > 0 ? { spawnSort: Math.min(1, sorted) } : {}), ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}), ...(cars > 0 ? { cars: Math.round(cars) } : {}) }
     : null;
   return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, stops, laneKm, warnings, ...(traffic ? { traffic } : {}) };
 }

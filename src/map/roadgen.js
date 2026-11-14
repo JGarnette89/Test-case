@@ -108,6 +108,7 @@ export const ROAD = {
   SPAWN_SORT: 0.8,          // the share of drivers already in the lane their speed asks for where they first appear (DECISIONS 10.91). 0.8 is a feel value bounded by the measurement: held share 13.7% at 0, 12.4% at 0.5, 8.4% at 0.8, 8.0% at 1.0 (two seeds), so 0.8 takes nearly all the gain and keeps one driver in five where a uniform draw put them (slow cars in fast lanes)
   /* DENSITY SHAPING IS ON, AND THE COUNT IS WHAT THE PLAYER'S WINDOW HOLDS (Jay, 14 November: at 260 and then 500 cars "very little traffic moving in my direction ... the same empty feeling road", and at 500 his phone's page crashed). The count was global: 500 cars over 80 carriageway-km, 88% of them more than 2 km from him (tools/measure/density-where.mjs), and neither generated road asked for shaping (sim/shaping.js, DECISIONS 10.17), which spends the cars where the player is. Shaped, 100 cars put as many within sight (14.5 within 400 m) as 500 unshaped (16.8) at 3.8 ms a tick against 19.5. DEFAULT 100; THE DIAL'S TOP 160: 6.1 ms, the cost of the loop at 160 (6.8) which the phone has run; every recorded phone figure (150 steady, 180 best) predates body motion, shadows and relief shading, so these are over-corrected on purpose until the phone itself is measured. DECISIONS 10.92. */
   SHAPE: true,
+  BENDS: null,              // "driver": a bend is the drivers' business (DECISIONS 10.96); null: the road's, a posted speed lowered to the bend
   CARS: 100,                // 0 = the density rule (test map 1's cars per lane-km); a number = this many
   CARS_MAX: 160,            // the most the dial offers on this road (map/cars.js carsMaxFor)
 };
@@ -268,7 +269,10 @@ export function lineOf(overrides = {}) {
    The map.
    --------------------------------------------------------------------- */
 const r2 = (v) => Math.round(v * 10000) / 10000;
-const speedFor = (C, minR) => { let best = 40; for (let v = 40; v <= C.LIMIT; v += 5) if (radiusFor(v / 3.6) <= minR * 0.85) best = v; return best; };
+/* WHERE THE BENDS ARE THE DRIVERS' BUSINESS (`BENDS: "driver"`, DECISIONS 10.96) a bend does not lower the posted speed: the cars' own speeds and skills decide what it asks of them (sim/corner.js). */
+const speedForBend = (C, minR) => { let best = 40; for (let v = 40; v <= C.LIMIT; v += 5) if (radiusFor(v / 3.6) <= minR * 0.85) best = v; return best; };
+/* The carriageway's: the bend's business is the drivers' where the map says so. A RAMP keeps its bend-lowered advisory speed either way (`speedForBend`). */
+const speedFor = (C, minR) => (C.BENDS === "driver" ? C.LIMIT : speedForBend(C, minR));
 
 export function roadgen(overrides = {}) {
   const gen = lineOf(overrides), { C, pts, nodes } = gen, DEGR = Math.PI / 180;
@@ -278,7 +282,7 @@ export function roadgen(overrides = {}) {
   const nrm = (p) => ({ x: -Math.sin(p.h), y: Math.cos(p.h) });
   const Q = (car, u) => { const p = P(u); if (car === "A") return { x: p.x, y: p.y, z: p.z, h: p.h, k: p.k }; const n = nrm(p); return { x: p.x - n.x * D, y: p.y - n.y * D, z: p.z, h: p.h + Math.PI, k: p.k / (1 + p.k * D) }; };
   const m = emptyMap(C.ID, C.NAME);
-  m.traffic = { trucks: C.TRUCKS, ...(C.CARS > 0 ? { cars: C.CARS } : {}), ...(C.CARS_MAX > 0 ? { carsMax: C.CARS_MAX } : {}), ...(C.SHAPE ? { shape: true } : {}), ...(C.SPAWN_SORT > 0 ? { spawnSort: C.SPAWN_SORT } : {}) };   // CARS: the map says its own count (load.js `traffic.cars`) where the density rule would give a road more than the dial allows
+  m.traffic = { trucks: C.TRUCKS, ...(C.BENDS ? { bends: C.BENDS } : {}), ...(C.CARS > 0 ? { cars: C.CARS } : {}), ...(C.CARS_MAX > 0 ? { carsMax: C.CARS_MAX } : {}), ...(C.SHAPE ? { shape: true } : {}), ...(C.SPAWN_SORT > 0 ? { spawnSort: C.SPAWN_SORT } : {}) };   // CARS: the map says its own count (load.js `traffic.cars`) where the density rule would give a road more than the dial allows
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
   m.bounds = { x: Math.min(...xs) - 800, y: Math.min(...ys) - 800, w: Math.max(...xs) - Math.min(...xs) + 1600, h: Math.max(...ys) - Math.min(...ys) + 1600 };
   /* A road is the stretch between two breaks: ITS OWN carriageway's interchange nodes and every SPAN_MAX; its id is the distance of its start. No break soon after an entrance on A (its acceleration lane needs the road after it), nor soon BEFORE one on B (B runs the other way). */
@@ -315,7 +319,7 @@ export function roadgen(overrides = {}) {
     const kmin = (arr) => { let best = Infinity; for (let i = 2; i + 2 < arr.length; i++) { const a2 = arr[i - 2], b2 = arr[i], c2 = arr[i + 2], ab = Math.hypot(b2.x - a2.x, b2.y - a2.y), bc = Math.hypot(c2.x - b2.x, c2.y - b2.y), ca = Math.hypot(a2.x - c2.x, a2.y - c2.y), ar = Math.abs((b2.x - a2.x) * (c2.y - a2.y) - (c2.x - a2.x) * (b2.y - a2.y)); if (ar > 1e-9) best = Math.min(best, (ab * bc * ca) / (2 * ar)); } return 1 / best; };
     for (const car of ["A", "B"]) {
       const f = side(car === "B"), uOff = car === "A" ? S.c - ix.dOff : S.c + ix.dOff, uOn = car === "A" ? S.c + ix.dOn : S.c - ix.dOn;
-      const off = ix.off.pts.map(f), on = ix.on.pts.map(f), sp = (arr) => Math.min(IX.RAMP_MAX_SPEED, speedFor(C, 1 / kmin(arr)));
+      const off = ix.off.pts.map(f), on = ix.on.pts.map(f), sp = (arr) => Math.min(IX.RAMP_MAX_SPEED, speedForBend(C, 1 / kmin(arr)));
       const suf = car === "B" ? "b" : "";
       m.roads.push(road({ id: `off${suf}-${uOff}`, kind: "highway", lanes: 1, oneWay: true, speed: sp(off), points: off, control: { start: "none", end: "stop" } }));
       m.roads.push(road({ id: `on${suf}-${uOn}`, kind: "highway", lanes: 1, oneWay: true, speed: sp(on), points: on }));

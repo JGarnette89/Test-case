@@ -46,7 +46,7 @@ import { askOf, askedOf, offerOf, courtesyAccel, mergeAskOf } from "./courtesy.j
 import { rivalDue, asRival } from "./rivals.js";
 import { controlUnder, movementLight } from "./signal.js";
 import { laneStep, lateralOf, lateralRate, changing, LC_SPEED, laneEndRoom, changeRoom, CHANGE_FROM, DEFAULT_MERGE_TOLERANCE } from "./lanechange.js";
-import { cornerAccel, speedBy, fits } from "./corner.js";
+import { cornerAccel, speedBy, fits, curvatureAt, lateralCapability, onTheOpenRoad } from "./corner.js";
 export { fits };
 import { stepPeds, heldAhead, strikes, strikePed, pedPose, crosswalksOf } from "./peds.js";
 import { seedWalkers, stepWalkers } from "./walkers.js";
@@ -1917,7 +1917,7 @@ export function step(world) {
          model. The real `view` still decides right of way below. */
       /* MEETING A GAP (lanechange.js gapTarget): a joiner holding the speed that brings it level with the gap it picked -- through the same following model, its wanted speed set to that one. Only on its acceleration lane. */
       const meeting = raw.mergeV != null && layoutOf(world, raw).legs[pathOf(world, raw).to]?.accel ? decide({ ...me, v0: Math.max(0.1, raw.mergeV) }, view) : Infinity;
-      const a = Math.min(told, meeting, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me)) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world), offer && !offer.done ? courtesyAccel(world, me, mineAsk.ask, mineAsk.who) : Infinity);
+      const a = Math.min(told, meeting, world.course.graph && world.corners !== false ? cornerAccel(me, pathOf(world, me), world) : Infinity, raw.dual ? -raw.dual : Infinity, yieldAccel(me, world), offer && !offer.done ? courtesyAccel(world, me, mineAsk.ask, mineAsk.who) : Infinity);
       const v = Math.max(0, me.v + a * DT);
       const s = me.s + v * DT;
       const mine = pathOf(world, me);
@@ -2338,7 +2338,7 @@ export function step(world) {
       laneIndex: world.spawnSort > 0 ? (n, k, route, count) => spawnLaneIndex(world, world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null }, n, k, route, count) : null,
       poseOf,
       /* What the placed car would ask of its pedal on its first tick: the leader and the bend. */
-      wantsAccel: (w2, car) => Math.min(decide(car, whatStops(car, w2)), w2.course.graph && w2.corners !== false ? cornerAccel(car, pathOf(w2, car)) : Infinity),
+      wantsAccel: (w2, car) => Math.min(decide(car, whatStops(car, w2)), w2.course.graph && w2.corners !== false ? cornerAccel(car, pathOf(w2, car), w2) : Infinity),
       brakeOf: (car) => car.brake ?? vehicleOf(car).brake,
       kindOf: (n) => ((world.trucks ?? 0) > 0 && rng(world.seed * 7717 + n + 5)() < world.trucks ? "truck" : "car"),
     });
@@ -2383,6 +2383,24 @@ export function step(world) {
     }
     byKCache.delete(next);
     crashes = [...(crashes ?? []), ...hits.filter((c) => c.fresh).map((c) => ({ t: world.t + DT, a: c.a, b: c.b, at: c.at }))].slice(-50);
+  }
+  /* A DRIVER WHO ASKED MORE OF A BEND THAN THEY, THEIR CAR AND THE ROAD HAD (DECISIONS 10.96, Jay's model: push your skill, your car or the conditions, two of the three, never all three; people do anyway, and that is when they crash). Only where the map says its bends are the drivers' business (`world.bends`, map `traffic.bends`), and then only on the ROAD part of a path (an intersection's own arc has its rule, corner.js): the sideways acceleration the car asks, v^2 k, against `lateralCapability`. Over it, the car stops where it is, as every crash here does, logged against "road". No rate is aimed at: the population's own speeds and skills decide how many. */
+  if (world.bends === "driver" && world.course.graph) {
+    const at = { ...world, t: world.t + DT, actors: next };
+    let lost = null;
+    for (let i = 0; i < next.length; i++) {
+      const a = next[i];
+      if (a.player || a.crash || a.parked || a.v < 5) continue;
+      const p = pathOf(world, a); if (!p || !onTheOpenRoad(p, a.s)) continue;
+      /* A MULTI-LANE CARRIAGEWAY ONLY: a ramp is a designed road with its own advisory speed and curves of 100 to 200 m radius. */
+      const lay = layoutOf(world, a), leg = lay.legs[a.s < p.stopAt ? p.from : p.to];
+      if (!leg || (leg.across ?? leg.lanes ?? 1) < 2) continue;
+      if (a.v * a.v * curvatureAt(p, a.s) <= lateralCapability(a, world.grip ?? 1)) continue;
+      const pose = poseOf(at, a), here = { x: pose.x, y: pose.y };
+      next[i] = { ...a, v: 0, a: 0, crash: { t: world.t + DT, with: "road", at: here } };
+      (lost ??= []).push({ t: world.t + DT, a: a.id, b: "road", at: here });
+    }
+    if (lost) { byKCache.delete(next); crashes = [...(crashes ?? []), ...lost].slice(-50); }
   }
 
   /* WHO IS PARKED NOW: the cars that pulled in, and not the one that
@@ -2955,11 +2973,13 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, brakeReaction = false, mergeTolerance = DEFAULT_MERGE_TOLERANCE, spawnSort: spawnSortAsked = null } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, brakeReaction = false, mergeTolerance = DEFAULT_MERGE_TOLERANCE, spawnSort: spawnSortAsked = null, bends: bendsAsked = null } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* How sorted a car's first lane is (spawn sorting, above): asked for, else the map's own (map/load.js `traffic`), else 0 -- the draw as it always was. */
   const spawnSort = spawnSortAsked ?? loaded?.traffic?.spawnSort ?? 0;
+  /* Whose business a bend is (DECISIONS 10.96): "driver" -- the sideways acceleration a car asks, against what it has to give (corner.js) -- asked for, else the map's own, else the road's (a posted speed no car passes, and nothing to lose). */
+  const bends = bendsAsked ?? loaded?.traffic?.bends ?? null;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
   /* `turn`: how a corner tighter than a car's lock is driven (graph.js TURN_LOCK, SIMULATOR IN FLIGHT 22) -- "tangent", today's, unless a measurement asks. */
   const course = graphOf(loaded, { lane: 3.6, control, progression, turn });
@@ -2987,7 +3007,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, brakeReaction, ...(spawnSort > 0 ? { spawnSort } : {}), ...(mergeTolerance ? { mergeTolerance } : {}), ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, brakeReaction, ...(spawnSort > 0 ? { spawnSort } : {}), ...(bends ? { bends } : {}), ...(mergeTolerance ? { mergeTolerance } : {}), ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   /* `actuated: false`: every light on its clock, as before the loops (actuated.js) -- for comparing against. */
