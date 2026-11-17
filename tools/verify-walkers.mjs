@@ -100,7 +100,7 @@ console.log("3. walkers touch no car -- only the people who cross do (section 4)
   const { loaded } = maps.find((m) => m.id === "city");
   /* Nobody crossing, in both: what is left to differ is the walkers. */
   const quiet = { every: 2.0, target: 120, posted: true, gapRate: 0, pedEvery: Infinity };
-  let a = playedGraph(4, 50, loaded, quiet);
+  let a = playedGraph(4, 50, loaded, { ...quiet, walkers: false });   // the control arm says so: the played default turns walkers on
   let b = playedGraph(4, 50, loaded, { ...quiet, walkers: true });
   ok(!a.walkers && b.walkers?.length > 0, `walkers are asked for (${b.walkers?.length ?? 0} with, none without)`);
   const key = (w) => JSON.stringify(w.actors.map((x) => [x.id, x.k, x.route, x.s.toFixed(6), x.v.toFixed(6)]));

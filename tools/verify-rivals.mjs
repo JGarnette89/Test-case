@@ -119,7 +119,7 @@ const city = loadMap(testCityReady());
   check(R.Mason.lc > crowdLc, `Mason changes lane more than the traffic (${R.Mason.lc} against ${crowdLc})`);
 }
 {
-  let w = playedGraph(2, 50, city, { target: 150, posted: true });
+  let w = playedGraph(2, 50, city, { target: 150, posted: true, rivals: false });   // the control arm says so: the played default turns rivals on
   for (let i = 0; i < 60 / DT; i++) w = step(w);
   check(!w.actors.some((a) => a.rival), "a world without rivals has none");
 }
