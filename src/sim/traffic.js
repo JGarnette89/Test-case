@@ -633,8 +633,17 @@ export const stoppingRoom = (v, b = BRAKE) => (v * v) / (2 * b);
    correcting, losing it, and correcting again. Faster than that reads as
    a fault in the renderer rather than in the driver. */
 export const WEAVE_OVER = 55;
-export const weaveAt = (me, s) =>
-  (me.weave ?? 0) * Math.sin(((s + (me.weavePhase ?? 0)) / WEAVE_OVER) * 2 * Math.PI);
+/* THE WEAVE BELONGS TO A CAR IN MOTION (17 Nov 2026; DECISIONS 10.70 "a defect, not a modelling oddity", the stationary weave; backlog item 8). `weaveAt` was a spatial wave with no speed term, so a car at rest wore
+   whatever value the wave had where it happened to stop, and a car creeping forward at a few centimetres a second swung sideways with its position along the road. Two changes, as 10.70 said, in one place:
+   (1) the wave is scaled by speed: full at WEAVE_FULL and above, nothing at rest (so a creeping car does not swing); (2) a car at rest sits at its PARKED OFFSET, drawn once and constant (half the car's
+   weave amplitude times the cosine of its own phase: no new random draw, so no other draw in any world moves), blended with the wave by the same speed factor so there is no step. An actor with no speed
+   (`v` absent: a pose asked of a bare path, say) is read as moving, as it always was. WEAVE_FULL is [invented]: 3 m/s is about 11 km/h, a walking-to-crawling pace under which a driver is not correcting a line. */
+export const WEAVE_FULL = 3;
+export const parkOffsetOf = (me) => (me.weave ?? 0) * 0.5 * Math.cos(((me.weavePhase ?? 0) / WEAVE_OVER) * 2 * Math.PI);
+export const weaveAt = (me, s) => {
+  const f = me.v == null ? 1 : Math.min(1, Math.max(0, me.v / WEAVE_FULL));
+  return f * (me.weave ?? 0) * Math.sin(((s + (me.weavePhase ?? 0)) / WEAVE_OVER) * 2 * Math.PI) + (1 - f) * parkOffsetOf(me);
+};
 
 export function wantedGap(me, leader) {
   const closing = me.v - leader.v;
