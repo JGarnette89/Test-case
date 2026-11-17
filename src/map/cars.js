@@ -19,7 +19,7 @@
    ===================================================================== */
 export const CARS = { min: 10, max: 300, step: 10, start: 120 };
 export const DENSITY = 120 / 28.5;
-/* THE MOST ANY MAP'S DIAL OFFERS: 360, test map 1's own top (3 x its density), which the phone has played. It was 600, "what the desk machine runs with room left for the phone, flagged until the phone is measured at city scale", and it never was: Jay set 500 on the generated highway on 14 November and his page crashed and reloaded (DECISIONS 10.92). The one crash is at 500; 260 ran. Every recorded phone figure (150 steady, 180 best on the bench) predates body motion, shadows and relief shading, so this stays an over-correction until a measurement on his device raises it. */
+/* THE MOST ANY MAP'S DIAL OFFERS: 360, test map 1's own top (3 x its density), which the phone has played. It was 600, "what the desk machine runs with room left for the phone, flagged until the phone is measured at city scale", and it never was: Jay set 500 on the CITY map on 14 November as a deliberate stress test and his page crashed and reloaded (DECISIONS 10.92 recorded it as the generated highway; corrected 17 November, 10.107: it was the city, the dial cranked far past what he plays, so it is a stress result and not a failure in normal play). The one crash is at 500; 260 ran. Every recorded phone figure (150 steady, 180 best on the bench) predates body motion, shadows and relief shading, so this stays an over-correction until a measurement on his device raises it. */
 export const CARS_CEILING = 360;
 const round10 = (n) => Math.round(n / 10) * 10;
 /* A MAP MAY SAY ITS OWN (load.js `traffic.cars`, 3 November): the trial

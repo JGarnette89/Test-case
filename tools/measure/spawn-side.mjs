@@ -38,31 +38,26 @@ const one = (seed, pace, on, cars = null) => {
   return { curve, behindBirths, aheadBirths, edged: !!me.atEdge, seen: seen.size, passes, crashes: (w.crashes ?? []).length, cars: carsSum / Math.max(1, ticks) };
 };
 /* BUG FOUND 17 NOV, THE ARMS TEST'S FIRST RUN: `!!on` on the string "off" is TRUE, so the "off" arm ran the rule (off and on read identical, 36.0 per seed 41 28 39), and the assertion compared against the same wrong value so it passed -- the arm-forcing failure again, inside the fix for it. Fixed here; the "late" arm (27.3, 5.5 a minute) was right and equals the first harness's ON exactly, so the discrepancy is WHETHER THE PRE-ROLL RAN UNDER THE RULE (5.5 unruled pre-roll, 7.2 to 8.2 ruled). A true off arm on this road is still to re-run.
-/* THE ARMS, VERIFIED BY SOMETHING OTHER THAN THE FLAG (17 Nov, the lead): each arm is built through an explicit boolean-or-string-named arm (no truthiness of a name), and the arm is ASSERTED from an observable in the world:
-   cars shaping places BEHIND the player. Rule off places none (insertion is ahead only); rule on places many. An arm that did not take throws before anything is printed. "late" = an unruled pre-roll, the rule on afterwards.
-   Then, per arm, cars seen within 150 m and passes by each minute of a 330 s run (the road ends at about minute 6, so 5.5 min is the valid stretch), four seeds.
-   Usage: node tools/measure/spawn-side.mjs 330 arms2 */
+/* THE ARMS, VERIFIED BY AN OBSERVABLE IN THE WORLD (the standing practice, 17 Nov: an arm is proved by something the world does, never by the variable that set it): rule off must place NO car behind the player, rule on at
+   least 20, or this throws before printing. The arms are built in before the pre-roll. Per seed, per arm: distinct cars within 150 m cumulative at each minute, and passes; then the ON-minus-OFF difference PAIRED BY SEED, with its
+   standard error (seeds are the same worlds in both arms up to the rule), over the whole run and over the steady window (minute 3 to the last whole minute). Per-seed values are printed and kept.
+   MAP picks the road (default the generated five-lane road), SEEDS the count (default 8). The generated road ends at about minute 6, so run it at 330 s; the loop has no end.
+   Usage: [MAP=test-loop SEEDS=6] node tools/measure/spawn-side.mjs 330 arms2 */
 if (process.argv[3] === "arms2") {
-  const seeds = [1, 2, 3, 4], mins = Math.floor(secs / 60), out = {};
-  for (const arm of ["off", "on", "late"]) {
+  const seeds = Array.from({ length: Number(process.env.SEEDS ?? 8) }, (_, i) => i + 1), mins = Math.floor(secs / 60), out = {};
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length, se = (a) => Math.sqrt(a.reduce((x, y) => x + (y - mean(a)) ** 2, 0) / (a.length - 1)) / Math.sqrt(a.length);
+  for (const arm of ["off", "on"]) {
     const rows = seeds.map((sd) => one(sd, 1.0, arm, null)); out[arm] = rows;
     const bb = rows.reduce((t, r) => t + r.behindBirths, 0), ab = rows.reduce((t, r) => t + r.aheadBirths, 0);
     if (arm === "off" && bb !== 0) throw new Error(`the OFF arm placed ${bb} cars behind the player: the arm did not take`);
     if (arm === "on" && bb < 20) throw new Error(`the ON arm placed only ${bb} cars behind the player: the arm did not take`);
-    const cum = (i, k) => rows.reduce((t, r) => t + (r.curve[i]?.[k] ?? 0), 0) / rows.length;
-    console.log(`arm ${arm.padEnd(4)}: placed behind ${bb}, ahead ${ab} (4 seeds; ${rows.filter((r) => r.edged).length} reached the road's end) · cumulative cars within 150 m by minute ${Array.from({ length: mins - 1 }, (_, i) => cum(i, "seen").toFixed(1)).join(", ")} · passes ${Array.from({ length: mins - 1 }, (_, i) => cum(i, "passes").toFixed(1)).join(", ")} · at 5.5 min ${(rows.reduce((t, r) => t + r.seen, 0) / rows.length).toFixed(1)} seen`);
+    console.log(`arm ${arm.padEnd(3)} on ${MAP}: placed behind ${bb}, ahead ${ab}; ${rows.filter((r) => r.edged).length} of ${seeds.length} reached the road's end (arm verified by the placements)`);
   }
-  /* independent: the worlds themselves differ between off and on (same seed), at what tick -- not read off the flag */
-  process.exit(0);
-}
-/* THE THREE ARMS ON THE GENERATED ROAD (the discrepancy between the first harness and the later ones): off and on built that way from the start, and "late" (the first harness's ON: an unruled pre-roll, the rule after).
-   Prediction stated before it ran: off about 4.4 a minute at 5 min (the curve's 22 over 5 min), on about 7.2, and late between them (the first harness read 5.5).
-   Usage: node tools/measure/spawn-side.mjs 300 arms */
-if (process.argv[3] === "arms") {
-  const mins = secs / 60;
-  for (const arm of ["off", "on", "late"]) {
-    const rows = [1, 2, 3].map((sd) => one(sd, 1.0, arm, null)), m = (k) => rows.reduce((t, r) => t + r[k], 0) / rows.length;
-    console.log(`arm ${arm.padEnd(4)}: distinct cars within 150 m by the end of ${secs} s: ${m("seen").toFixed(1)} (${(m("seen") / mins).toFixed(1)} a minute) · passes ${(m("passes") / mins).toFixed(1)} a minute · per seed ${rows.map((r) => r.seen).join(" ")}`);
+  const last = mins - 2;   // the last whole minute's index in `curve`
+  for (const [label, f] of [["whole run (cars seen by the last minute)", (r, k) => r.curve[last][k]], [`steady window (minute 3 to ${mins - 1})`, (r, k) => r.curve[last][k] - r.curve[2][k]]]) for (const k of ["seen", "passes"]) {
+    const off = out.off.map((r) => f(r, k)), on = out.on.map((r) => f(r, k)), d = on.map((x, i) => x - off[i]);
+    console.log(`${label}, ${k}: OFF ${mean(off).toFixed(1)} +/- ${se(off).toFixed(1)}, ON ${mean(on).toFixed(1)} +/- ${se(on).toFixed(1)}; ON minus OFF paired by seed ${mean(d).toFixed(1)} +/- ${se(d).toFixed(1)} (${(100 * mean(d) / Math.max(1e-9, mean(off))).toFixed(0)}% of OFF; ${Math.abs(mean(d) / se(d)).toFixed(1)} standard errors)`);
+    console.log(`    per seed OFF ${off.map((x) => x.toFixed(0)).join(" ")} | ON ${on.map((x) => x.toFixed(0)).join(" ")}`);
   }
   process.exit(0);
 }
