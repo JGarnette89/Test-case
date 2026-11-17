@@ -11,7 +11,8 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, exis
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { budgetFor, outcomeOf } from "./check-policy.mjs";
-import { affected, checks } from "./affected.mjs";
+import { affected, checks, baseRef, changedFiles, cannotTell, NOISE } from "./affected.mjs";
+import { execSync } from "node:child_process";
 
 assert.ok(checks().some((c) => c.name === "verify-check-runner"), "runner regression test must be discovered");
 for (const file of ["tools/check.mjs", "tools/affected.mjs", "tools/check-policy.mjs", "tools/check-runner-test.mjs", "tools/verify-check-runner.mjs"]) {
@@ -130,5 +131,24 @@ console.log(`PASS: timeout retained after reruns: ${timeoutPath}`);
 for (const value of ["0", "-1", "NaN", "Infinity"]) {
   const invalid = run(["--timeout", value], 2);
   assert.match(invalid.stderr, /--timeout requires positive seconds/);
+}
+/* THE BASE AND THE REFUSAL (14 November; guarded 17 November, the lead's item: "verified rather than believed" -- nothing in the suite held either). Expectations are stated here, never read from the module:
+   (1) the default base is the merge-base with origin/main and it resolves; a base that does not resolve THROWS, never an empty diff;
+   (2) COMMITTED work is discovered: against the repository's first commit every file differs, so the selection is nearly the whole suite (at least 60 checks) -- a runner that diffed only the working tree, as the first one did, would select almost none;
+   (3) the refusal: 30 code files selecting 1 check is refused (it returns the 30); 30 selecting 5, and 1 selecting 1, are not; files the runner rewrites each run (check-times.json and the like) are not counted as code.
+   Sabotage (17 Nov): cannotTell made to return 0 fails (3); the diff made against HEAD only fails (2). */
+{
+  const b = baseRef();
+  assert.match(b.ref, /merge-base\(origin\/main, HEAD\)/); assert.ok(b.full && b.full.length >= 40, "the default base resolves to a commit");
+  assert.throws(() => baseRef("no-such-ref-zzz"), /does not resolve/);
+  const root0 = execSync("git rev-list --max-parents=0 HEAD", { encoding: "utf8", cwd: dirname(fileURLToPath(import.meta.url)) }).trim().split(/\s+/)[0];
+  const l = affected(changedFiles(root0));
+  assert.ok(l.length >= 60, `against the first commit the whole suite is selected, got ${l.length}`);
+  const fake = Array.from({ length: 30 }, (_, i) => `src/sim/fake${i}.js`);
+  assert.equal(cannotTell(fake, [{ name: "x" }]), 30, "30 code files selecting 1 check must be refused");
+  assert.equal(cannotTell(fake, Array(5).fill({})), 0); assert.equal(cannotTell(fake.slice(0, 1), [{}]), 0);
+  assert.equal(cannotTell(["tools/check-times.json", "tools/check-hashes.json", "tools/check-history.jsonl", "tools/scratch/x.json"], []), 0, "files every run rewrites are not code");
+  assert.ok(NOISE.test("tools/check-times.json"));
+  console.log("PASS: the default base is the merge-base, an unresolvable base throws, committed work is discovered (the first commit selects the whole suite), and the near-empty refusal fires on 30 files / 1 check and nowhere it should not");
 }
 console.log(`ALL RUNNER TESTS PASSED; retained fixture evidence: ${root}`);
