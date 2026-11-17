@@ -12,5 +12,12 @@
     "item": "the crash item (DECISIONS 10.70: lane-end and slip-road crashes; low-speed crashing sanctioned in 10.46 with no rate set)",
     "reason": "the traffic crashes at its measured rate; the bar is none",
     "recordedAt": "2026-11-12"
+  },
+  "merge-courtesy-ratio": {
+    "recorded": 0.9315612587839873,
+    "bar": 0.7,
+    "item": "the courtesy ratio's statistic (DECISIONS 10.119: three blocks of sixteen seeds span 0.67 to 1.01 in the bare world)",
+    "reason": "on sixteen seeds the ratio is about 0.7 in the bare world by luck of the draw and about 0.93 with rivals in it; the bar cannot be held in either",
+    "recordedAt": "2026-11-17"
   }
 }

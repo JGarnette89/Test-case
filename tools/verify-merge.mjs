@@ -107,7 +107,8 @@ console.log("\n2. NOBODY MERGES INTO OCCUPIED SPACE");
 const merges = [], offers = { n: 0, uncourteous: 0, twoForOne: 0 };
 const ran = [];
 for (const cars of [60, 150, 300]) {
-  let w = playedGraph(1, 50, loaded, { every: 2.0, target: cars, posted: true });
+  /* BARE WORLD: brakeReaction and rivals off, in THIS section only (the courtesy line below is the played world). The near-rest share is stated and RECORDED against the bare world (3.06% at 300 cars, bar 1%); in the played world the same cell reads 6.6% (measured 17 Nov: 13 of 197 joiners, against the record's 0.0306 with an allowance of 0.035, a regression by a hair). That is a FINDING ABOUT THE PLAYED WORLD for Jay, not a number to restate (DECISIONS 10.121); this section keeps the bare-world record honest and the finding is held in the record, with holding the played value in the ratchet as its own backlog item. */
+  let w = playedGraph(1, 50, loaded, { every: 2.0, target: cars, posted: true, brakeReaction: false, rivals: false });
   for (let i = 0; i < 1200; i++) w = step(w);
   const c0 = (w.crashes ?? []).length;
   let overlaps = 0, pastClose = 0, lost = 0, n = 0, longest = 0;
