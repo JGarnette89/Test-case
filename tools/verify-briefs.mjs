@@ -17,7 +17,7 @@
 import { mapFromBrief, typeOfNode } from "../src/map/brief.js";
 import { loadMap } from "../src/map/load.js";
 import { graphOf } from "../src/sim/graph.js";
-import { seedGraph, step } from "../src/sim/crossing.js";
+import { playedGraph, step } from "../src/sim/crossing.js";
 import { playerOn } from "../src/sim/drive.js";
 import { DT } from "../src/sim/traffic.js";
 
@@ -64,7 +64,7 @@ for (const c of CASES) {
 console.log("3. each map drives: no graph error, no vehicle touching, every section opens");
 for (const { c, m, L } of built) {
   const g = graphOf(L);
-  let w = seedGraph(1, 50, L, { every: 2.0, target: 80, posted: true });
+  let w = playedGraph(1, 50, L, { every: 2.0, target: 80, posted: true });
   for (let i = 0; i < 60 / DT; i++) w = step(w);
   const veh = (w.crashes ?? []).filter((q) => !String(q.a).startsWith("ped") && !String(q.b).startsWith("ped")).length;
   const starts = m.sections.filter((s) => s.start);

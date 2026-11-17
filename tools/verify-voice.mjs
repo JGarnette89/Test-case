@@ -18,7 +18,7 @@
 import { exitAlong, exitSAt } from "../src/sim/graph.js";
 import { loadMap } from "../src/map/load.js";
 import { testMap1, testLoop } from "../src/map/samples.js";
-import { seedGraph, step } from "../src/sim/crossing.js";
+import { playedGraph, step } from "../src/sim/crossing.js";
 import { playerOn } from "../src/sim/drive.js";
 import { movementLight } from "../src/sim/signal.js";
 import { DT } from "../src/sim/traffic.js";
@@ -93,7 +93,7 @@ console.log("\n2. THE LINES");
 console.log("\n3. THE DETECTORS, ON THEIR SITUATIONS AND THEIR OPPOSITES");
 {
   const L1 = loadMap(testMap1());
-  const w0 = { ...seedGraph(1, 50, L1, { target: 0 }), actors: [], every: 1e9, nextAt: 1e9 };
+  const w0 = { ...playedGraph(1, 50, L1, { target: 0 }), actors: [], every: 1e9, nextAt: 1e9 };
   const lay = (me) => w0.course.at[me.k].layout, pth = (me) => lay(me).paths[me.route];
   const ev = (prev, now, st) => detect(prev, now, st ?? newEventState());
   const fires = (r, id) => r.events.some((e) => e.id === id);
@@ -109,7 +109,7 @@ console.log("\n3. THE DETECTORS, ON THEIR SITUATIONS AND THEIR OPPOSITES");
   check(!fires(ev(p2, n2), "rolledStop"), "and a stop made first is not");
 
   /* The signal at the end of A-north: find a red, then a green, for straight on -- on the clock, since with nobody about an actuated light rests. */
-  const wc = { ...seedGraph(1, 50, L1, { target: 0, actuated: false }), actors: [], every: 1e9, nextAt: 1e9 };
+  const wc = { ...playedGraph(1, 50, L1, { target: 0, actuated: false }), actors: [], every: 1e9, nextAt: 1e9 };
   const atSig = playerOn(wc.course, "A-north", "end");
   const baseOf = lay(atSig).legs[pth(atSig).from].base, L = lay(atSig);
   let wr = wc, wg = null;
@@ -215,7 +215,7 @@ console.log("\n3. THE DETECTORS, ON THEIR SITUATIONS AND THEIR OPPOSITES");
      move out of it into the curb lane, at the same place on the road. */
   {
     const H = loadMap(testLoop());
-    let wh = { ...seedGraph(1, 50, H, { target: 0, posted: true }), actors: [], every: 1e9, nextAt: 1e9 };
+    let wh = { ...playedGraph(1, 50, H, { target: 0, posted: true }), actors: [], every: 1e9, nextAt: 1e9 };
     const ramp = playerOn(wh.course, "on-1", "end");
     const Lr = wh.course.at[ramp.k].layout, out = Object.keys(Lr.paths).find((r) => Lr.paths[r].from === Lr.paths[ramp.route].from);
     const acc = Lr.legs[Lr.paths[out].to];

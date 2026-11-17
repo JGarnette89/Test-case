@@ -8,7 +8,7 @@
 import { Worker } from "node:worker_threads";
 import { loadMap } from "../../src/map/load.js";
 import { testMap1 } from "../../src/map/samples.js";
-import { seedGraph, step } from "../../src/sim/crossing.js";
+import { playedGraph, step } from "../../src/sim/crossing.js";
 import { changing, LC_EVERY, KEEP_RIGHT_FAULT } from "../../src/sim/lanechange.js";
 import { CAR, wantedGap } from "../../src/sim/traffic.js";
 import { noticing } from "../../src/sim/marking.js";
@@ -49,7 +49,7 @@ export function runOne(mode, seed) {
   let flagged = 0, cruising = 0, noReason = 0;
   const disagree = {}, delays = [], marks = { sound: 0, weak: 0, other: 0 };
   const occ = { sound: { n: 0, marked: 0 }, weak: { n: 0, marked: 0 } }, open = new Map();
-    let w = seedGraph(seed, 50, loaded, { target: CARS, posted: true, keepRight: mode !== "off" });
+    let w = playedGraph(seed, 50, loaded, { target: CARS, posted: true, keepRight: mode !== "off" });
     /* Knowledge as DRAWN, recorded before any stripping, so a mark can
        be put down to the driver it belongs to. */
     const drawnKd = new Map();

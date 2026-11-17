@@ -24,7 +24,7 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, noticeAfter, patienceOf, pathOf, waitAt, whatStops, HONK_AFTER, HONK_TOPS } from "../src/sim/crossing.js";
+import { playedGraph, step, noticeAfter, patienceOf, pathOf, waitAt, whatStops, HONK_AFTER, HONK_TOPS } from "../src/sim/crossing.js";
 import { LOOP } from "../src/sim/actuated.js";
 import { HONK_FOR } from "../src/sim/horn.js";
 import { playerOn, withDriver, playerHonk } from "../src/sim/drive.js";
@@ -76,7 +76,7 @@ console.log("\n3. IN THE SIM: test map 1, two seeds, five minutes at 120 cars");
   const starts = { sharp: [], poor: [] };
   let honks = 0, atErrors = 0, timidHonks = 0, crashes = 0;
   for (const seed of [1, 2]) {
-    let w = seedGraph(seed, 50, loaded, { every: 2.0, target: 120, posted: true });
+    let w = playedGraph(seed, 50, loaded, { every: 2.0, target: 120, posted: true });
     const greenAt = new Map();
     for (let i = 0; i < 300 / DT; i++) {
       const before = new Map(w.actors.map((a) => [a.id, a])), wb = w;
@@ -129,7 +129,7 @@ console.log("\n4. THE PLAYER IS HONKED AT WHEREVER THEY IMPEDE OR ENDANGER SOMEB
     return { honks, hardest, w };
   };
   const test1 = loadMap(TEST_MAPS.find((m) => m.id === "test-1").build());
-  const fresh = (loaded) => seedGraph(3, 50, loaded, { every: 1e9, target: 0, posted: true });
+  const fresh = (loaded) => playedGraph(3, 50, loaded, { every: 1e9, target: 0, posted: true });
   /* a. At a signal, a few metres short of the line: honked once the green has gone unused, never at the red. */
   for (const back of [3, 6]) {
     let w = fresh(test1);
@@ -223,7 +223,7 @@ console.log("\n6. THE PLAYER'S HORN: the car behind the car behind can get the t
   const test1 = loadMap(TEST_MAPS.find((m) => m.id === "test-1").build());
   const mk = (w, n, k, route, s, extra = {}) => ({ ...driver(w.road, 3, n), n, k, route, s, v: 0, leg: 0, stoppedAt: 0, going: false, accepted: false, openFor: 0, openedAt: null, waited: 0, delayed: false, ...extra });
   const trial = (back, honk, midCaution = 1.6) => {
-    let w = seedGraph(3, 50, test1, { every: 1e9, target: 0, posted: true });
+    let w = playedGraph(3, 50, test1, { every: 1e9, target: 0, posted: true });
     const me0 = playerOn(w.course, "A-north", "end"), L = w.course.at[me0.k].layout, path = L.paths[me0.route];
     const line = waitAt(path, me0);
     /* The head car does not notice for a long time (a registration delay of 8 s), and the one between, if any, would never honk (timid). */

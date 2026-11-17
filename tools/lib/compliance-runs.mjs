@@ -10,7 +10,7 @@ import { Worker } from "node:worker_threads";
 import { loadMap } from "../../src/map/load.js";
 import { emptyMap, road } from "../../src/map/format.js";
 import { TEST_MAPS } from "../../src/map/samples.js";
-import { seedGraph, step, pathOf, layoutOf, DT, restAt, whatStops } from "../../src/sim/crossing.js";
+import { playedGraph, step, pathOf, layoutOf, DT, restAt, whatStops } from "../../src/sim/crossing.js";
 import { movementLight } from "../../src/sim/signal.js";
 import { crosswalksOf } from "../../src/sim/peds.js";
 import { CAR, STANDSTILL } from "../../src/sim/traffic.js";
@@ -51,7 +51,7 @@ export function runOne(mapName, cars, seed) {
   const map = mapNamed(mapName), onClock = mapName === "lit";
   const tally = {}, byDriver = new Map();
   const bump = (g, key) => { tally[g] = tally[g] ?? {}; tally[g][key] = (tally[g][key] ?? 0) + 1; };
-  let w = seedGraph(seed, 50, map, { target: cars, posted: true, trucks: 0, actuated: !onClock });
+  let w = playedGraph(seed, 50, map, { target: cars, posted: true, trucks: 0, actuated: !onClock });
   const open = new Map();
   for (let i = 0; i < 300 / DT; i++) {
     w = step(w);

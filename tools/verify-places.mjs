@@ -16,7 +16,7 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { testCityReady } from "../src/map/samples.js";
-import { seedGraph, step } from "../src/sim/crossing.js";
+import { playedGraph, step } from "../src/sim/crossing.js";
 import { playerOn, stepDriver, stopFor, withDriver, routeForSignal } from "../src/sim/drive.js";
 import { placesOf, routeTo, alongTo, PLACE_REACH, ARRIVED_WITHIN } from "../src/sim/route.js";
 import { noticeTick } from "../src/sim/session.js";
@@ -29,7 +29,7 @@ let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
 
 const L = loadMap(testCityReady());
-const w0 = { ...seedGraph(1, 50, L, { target: 0, posted: true }), actors: [], every: 1e9, nextAt: 1e9 };
+const w0 = { ...playedGraph(1, 50, L, { target: 0, posted: true }), actors: [], every: 1e9, nextAt: 1e9 };
 const course = w0.course;
 const places = placesOf(course, L);
 const baseOf = (k, leg) => course.at[k].layout.legs[leg]?.base ?? leg;

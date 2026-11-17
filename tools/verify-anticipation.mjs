@@ -33,7 +33,7 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step } from "../src/sim/crossing.js";
+import { playedGraph, step } from "../src/sim/crossing.js";
 import { DT } from "../src/sim/traffic.js";
 import { anticipates, soundnessOf } from "../src/core/driver.js";
 
@@ -76,7 +76,7 @@ console.log("\n1. THE LAW: THE CHANCE OF ANTICIPATING IS THE OBSERVATION SOUNDNE
 const map = loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build());
 const SECS = 180;
 function run(seed, anticipate, extra = {}) {
-  let w = seedGraph(seed, 50, map, { every: 2.0, target: 150, posted: true });
+  let w = playedGraph(seed, 50, map, { every: 2.0, target: 150, posted: true });
   if (anticipate) w = { ...w, anticipate, ...extra };
   for (let i = 0; i < 60 / DT; i++) w = step(w);
   const entered = new Map(), offers = new Map(), planned = new Set();

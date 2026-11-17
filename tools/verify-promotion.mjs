@@ -24,7 +24,7 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, whatStops, pathOf, poseOf, carFor } from "../src/sim/crossing.js";
+import { playedGraph, step, whatStops, pathOf, poseOf, carFor } from "../src/sim/crossing.js";
 import { decide, vehicleOf } from "../src/sim/traffic.js";
 import { cornerAccel } from "../src/sim/corner.js";
 import { admissible, placeOf, laneIndexOf } from "../src/sim/placement.js";
@@ -32,7 +32,7 @@ import { admissible, placeOf, laneIndexOf } from "../src/sim/placement.js";
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
 const loaded = loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build());
-let w = seedGraph(1, 50, loaded, { every: 2.0, target: 160, posted: true });
+let w = playedGraph(1, 50, loaded, { every: 2.0, target: 160, posted: true });
 for (let i = 0; i < 1200; i++) w = step(w);
 /* The model the car will drive by, as the step hands it to shaping. */
 const opts = {

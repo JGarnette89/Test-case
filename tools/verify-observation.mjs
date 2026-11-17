@@ -22,7 +22,7 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, seenBy, overlapping, pathOf, layoutOf, PERCEIVE } from "../src/sim/crossing.js";
+import { playedGraph, step, seenBy, overlapping, pathOf, layoutOf, PERCEIVE } from "../src/sim/crossing.js";
 import { DT, stoppingRoom } from "../src/sim/traffic.js";
 import { knownControl, signReach, SIGN_LEGIBLE } from "../src/sim/reading.js";
 import { lookingAway, LOOK_EVERY } from "../src/sim/attention.js";
@@ -48,7 +48,7 @@ console.log("\n1. GLANCES AWAY: HOW LONG, HOW OFTEN, AND NOT ALL AT ONCE");
 
 console.log("\n2. WHAT A DRIVER WHO LOOKED AWAY STILL BELIEVES");
 {
-  let w = seedGraph(3, 50, t1, { target: 150, posted: true, perceive: true });
+  let w = playedGraph(3, 50, t1, { target: 150, posted: true, perceive: true });
   for (let i = 0; i < 400; i++) w = step(w);
   let looking = 0, lookingOk = 0;
   const steady = [], changed = [];
@@ -97,7 +97,7 @@ console.log("\n3. LOOKING AWAY, BLIND AND WITH THE EDGE OF THE EYE: EVERY CRASH 
   for (const [name, loaded, cars, secs] of [["test map 1", t1, 150, 120], ["the city", city, 250, 90]]) {
     const n = {};
     for (const mode of ["off", "blind", "on"]) {
-      let w = seedGraph(3, 50, loaded, { target: cars, posted: true, perceive: mode !== "off" });
+      let w = playedGraph(3, 50, loaded, { target: cars, posted: true, perceive: mode !== "off" });
       /* The old glance: blind and taken at any moment (DECISIONS 10.19, its first two parts both off). */
       if (mode === "blind") w = { ...w, noPeriphery: true, glanceAnyTime: true };
       for (let i = 0; i < secs / DT; i++) {
@@ -132,7 +132,7 @@ console.log("\n4. SIGNS ON A CLEAR ROAD ARE NEVER MISSED -- AND WHY");
   const longest = PERCEIVE.floor + PERCEIVE.span * (1 + PERCEIVE.jitter);
   let shortest = Infinity, where = "";
   for (const [name, loaded] of [["test map 1", t1], ["the city", city]]) {
-    const w = seedGraph(1, 50, loaded, { target: 10, posted: true });
+    const w = playedGraph(1, 50, loaded, { target: 10, posted: true });
     for (const spot of w.course.at) {
       const L = spot.layout;
       for (const path of Object.values(L.paths)) {
@@ -151,7 +151,7 @@ console.log("\n4. SIGNS ON A CLEAR ROAD ARE NEVER MISSED -- AND WHY");
      once trucks and the sign difficulty moved its traffic (30 September).
      The sample grows; the floor stays. */
   for (const [loaded, cars] of [[t1, 150], [city, 250]]) for (const seed of [5, 6]) {
-    let w = seedGraph(seed, 50, loaded, { target: cars, posted: true, perceive: true });
+    let w = playedGraph(seed, 50, loaded, { target: cars, posted: true, perceive: true });
     const readAt = new Map();
     for (let i = 0; i < 120 / DT; i++) {
       const before = new Map(w.actors.map((a) => [a.id, a]));
@@ -180,7 +180,7 @@ console.log("\n4. SIGNS ON A CLEAR ROAD ARE NEVER MISSED -- AND WHY");
 
 console.log("\n5. LOCALS, AND THE PERFECT READER");
 {
-  const w = seedGraph(1, 50, city, { target: 50, posted: true, perceive: true });
+  const w = playedGraph(1, 50, city, { target: 50, posted: true, perceive: true });
   let spot = null;
   for (const s of w.course.at) for (const [id, leg] of Object.entries(s.layout.legs)) if (!spot && leg.zone && s.layout.place.control[id] === "stop") spot = { id, leg, L: s.layout };
   const path = Object.values(spot.L.paths).find((p) => p.from === spot.id);

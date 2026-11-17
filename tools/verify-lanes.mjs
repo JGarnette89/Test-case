@@ -31,7 +31,7 @@
 import { Session } from "node:inspector/promises";
 import { loadMap } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
-import { seedGraph, step, overlapping, poseOf } from "../src/sim/crossing.js";
+import { playedGraph, step, overlapping, poseOf } from "../src/sim/crossing.js";
 import { lateralOf, changing, LC_TIME, LC_EVERY, RETURN_AFTER, KEEP_RIGHT_FAULT } from "../src/sim/lanechange.js";
 import { weaveRoom, DT, CAR, wantedGap } from "../src/sim/traffic.js";
 import { noticing } from "../src/sim/marking.js";
@@ -44,8 +44,8 @@ const mean = (xs) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : Na
 
 /* Run a world and record every lane change as it starts and as it ends. */
 function watch(seed, target, secs) {
-  let w = seedGraph(seed, 50, loaded, { target, posted: true });
-  /* WARM-UP IS ALREADY IN PROGRESS: seedGraph runs the world for a while
+  let w = playedGraph(seed, 50, loaded, { target, posted: true });
+  /* WARM-UP IS ALREADY IN PROGRESS: playedGraph runs the world for a while
      before handing it back (crossing.js `warmed`), so some actors arrive
      here already mid-lane-change, and a few will already have aborted --
      3 to 4 of them a run, measured. Those aborts have no `starts` entry,
@@ -212,7 +212,7 @@ const starts = runs.flatMap((r) => r.starts), drivers = runs.flatMap((r) => r.dr
      must name checks: false or both sides are on and the comparison is void. */
   const TURN_DROP = 0.14, TURN_FLOOR = 0.5;
   const onRuns = [3, 5, 9].map((seed) => {
-    let w = seedGraph(seed, 50, loaded, { target: 200, posted: true, checks: true });
+    let w = playedGraph(seed, 50, loaded, { target: 200, posted: true, checks: true });
     const seen = new Map();
     for (let i = 0; i < 150 * 20; i++) { w = step(w); for (const a of w.actors) seen.set(a.id, a); }
     return [...seen.values()];

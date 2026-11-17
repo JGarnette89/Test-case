@@ -2,7 +2,7 @@
 import { roadgen, lineOf, sitesOf, ROAD, testHighwayGenWide } from "../src/map/roadgen.js";
 import { IX, ARCHETYPES, interchangeOf } from "../src/map/interchange.js";
 import { loadMap } from "../src/map/load.js";
-import { seedGraph, step } from "../src/sim/crossing.js";
+import { playedGraph, step } from "../src/sim/crossing.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { carsFor, carsMaxFor } from "../src/map/cars.js";
 import { drive } from "./lib/shape-drive.mjs";
@@ -116,7 +116,7 @@ console.log("5b. THE INTERCHANGES ARE COMMON AND VARY (Jay, DECISIONS 10.74)");
   check(a.startsWith(b.slice(0, b.lastIndexOf(","))), "the interchange sequence of a short road is the start of the long one's (distance only)"); }
 console.log("7. IT DRIVES");
 for (const [name, o] of [["with interchanges", {}], ["interchanges, seed 2", { SEED: 2 }], ["interchanges, seed 3", { SEED: 3 }], ["without", { INTERCHANGES: 0 }]]) {
-  let w; try { w = seedGraph(1, 50, loadMap(roadgen(o)), { target: 80, posted: true, brakeReaction: true }); for (let i = 0; i < 20 * 45; i++) w = step(w); } catch (e) { check(false, `${name}: threw ${e.message}`); continue; }
+  let w; try { w = playedGraph(1, 50, loadMap(roadgen(o)), { target: 80, posted: true, brakeReaction: true }); for (let i = 0; i < 20 * 45; i++) w = step(w); } catch (e) { check(false, `${name}: threw ${e.message}`); continue; }
   const moving = w.actors.filter((a) => (a.v ?? 0) > 1).length;
   check(w.actors.length >= 60 && moving >= 0.9 * w.actors.length && !(w.crashes?.length), `${name}: ${w.actors.length} cars after 45 s, ${moving} moving, ${w.crashes?.length ?? 0} crashes`);
 }

@@ -34,7 +34,7 @@ import { loadMap } from "../src/map/load.js";
 import { emptyMap, road } from "../src/map/format.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { SIGN_KINDS } from "../src/map/format.js";
-import { seedGraph, step, pathOf, layoutOf, DT, restAt, whatStops } from "../src/sim/crossing.js";
+import { playedGraph, step, pathOf, layoutOf, DT, restAt, whatStops } from "../src/sim/crossing.js";
 import { movementLight } from "../src/sim/signal.js";
 import { crosswalksOf } from "../src/sim/peds.js";
 import { CAR, driver, STANDSTILL } from "../src/sim/traffic.js";
@@ -167,7 +167,7 @@ console.log("\n4. A SIGN'S OWN DIFFICULTY IS AUTHORED DIFFICULTY");
   const signs = base.roads.flatMap((r) => ["start", "end"].filter((e) => r.control?.[e] === "stop").map((e) => ({ kind: "stop", road: r.id, end: e, difficulty: 0.9 })));
   const hard = { ...base, signs };
   const rolls = (m) => {
-    let w = seedGraph(3, 50, loadMap(m), { target: 150, posted: true, trucks: 0 });
+    let w = playedGraph(3, 50, loadMap(m), { target: 150, posted: true, trucks: 0 });
     let n = 0, of = 0;
     const open = new Map();
     for (let i = 0; i < 240 / DT; i++) {

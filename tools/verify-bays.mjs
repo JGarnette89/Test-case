@@ -35,7 +35,7 @@ import { testMap1 } from "../src/map/samples.js";
 import { graphOf } from "../src/sim/graph.js";
 import { offsetsOf, baysAt, taperFor } from "../src/map/bays.js";
 import { defaultTurns } from "../src/sim/lanes.js";
-import { seedGraph, step, overlapping } from "../src/sim/crossing.js";
+import { playedGraph, step, overlapping } from "../src/sim/crossing.js";
 import { LC_TIME } from "../src/sim/lanechange.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
 
@@ -122,7 +122,7 @@ console.log("\n2. A BAY IS FOR ITS TURN");
 
 console.log("\n3. IN TRAFFIC, AT 300 CARS");
 {
-  let w = seedGraph(3, 50, loaded, { target: 300, posted: true });
+  let w = playedGraph(3, 50, loaded, { target: 300, posted: true });
   const L = w.course.at[kE].layout;
   let overlaps = 0, early = 0, earlyEg = null, overtakeIn = 0, bayEntries = 0, leftsE = 0, leftsNotBay = 0;
   const seenLc = new Set(), counted = new Set();

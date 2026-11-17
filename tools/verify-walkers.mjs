@@ -22,7 +22,7 @@ import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { sidewalksOf, onRoadSurface, WALKED } from "../src/map/sidewalks.js";
 import { seedWalkers, stepWalkers, walkerPose, walkNetOf } from "../src/sim/walkers.js";
-import { seedGraph, step } from "../src/sim/crossing.js";
+import { playedGraph, step } from "../src/sim/crossing.js";
 import { pedPose, DART } from "../src/sim/peds.js";
 import { DT } from "../src/sim/traffic.js";
 
@@ -100,8 +100,8 @@ console.log("3. walkers touch no car -- only the people who cross do (section 4)
   const { loaded } = maps.find((m) => m.id === "city");
   /* Nobody crossing, in both: what is left to differ is the walkers. */
   const quiet = { every: 2.0, target: 120, posted: true, gapRate: 0, pedEvery: Infinity };
-  let a = seedGraph(4, 50, loaded, quiet);
-  let b = seedGraph(4, 50, loaded, { ...quiet, walkers: true });
+  let a = playedGraph(4, 50, loaded, quiet);
+  let b = playedGraph(4, 50, loaded, { ...quiet, walkers: true });
   ok(!a.walkers && b.walkers?.length > 0, `walkers are asked for (${b.walkers?.length ?? 0} with, none without)`);
   const key = (w) => JSON.stringify(w.actors.map((x) => [x.id, x.k, x.route, x.s.toFixed(6), x.v.toFixed(6)]));
   let same = key(a) === key(b), ticks = 0;
@@ -115,7 +115,7 @@ console.log("4. the people who cross come from the people walking, and go back t
    version run on the city alone passed with the crosswalk path broken. */
 for (const mapId of ["city", "test-peds"]) {
   const { loaded } = maps.find((m) => m.id === mapId);
-  let w = seedGraph(3, 50, loaded, { every: 2.0, target: 120, posted: true, walkers: true });
+  let w = playedGraph(3, 50, loaded, { every: 2.0, target: 120, posted: true, walkers: true });
   const net = walkNetOf(loaded);
   const edges = [];
   net.edge.forEach((e, i) => e.forEach((on, end) => on && edges.push(walkerPose(w, { state: "walking", w: i, s: end ? net.walks[i].length : 0, dir: 1 }))));

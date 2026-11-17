@@ -23,7 +23,7 @@ import { overlapping } from "../src/sim/crossing.js";
 import { testMap1 } from "../src/map/samples.js";
 import { loadMap } from "../src/map/load.js";
 import { LANE, CONTROLS, emptyMap, road, stage0Map } from "../src/map/format.js";
-import { seedGraph, step } from "../src/sim/crossing.js";
+import { playedGraph, step } from "../src/sim/crossing.js";
 import { playerOn, withDriver, driverPose, stepDriver } from "../src/sim/drive.js";
 import { DT } from "../src/sim/traffic.js";
 import { firstEdge } from "../src/map/edges.js";
@@ -203,7 +203,7 @@ console.log("\n7. \"DRIVE IT\" IS THE REAL PIPELINE, RUN HEADLESSLY");
   /* verify-screens.mjs renders Editor.jsx's INITIAL state under SSR --
      it cannot click "Drive it", the same boundary CLAUDE.md item 4
      names for every check that only sees a screen at t=0. So this runs
-     MapRoad.sceneFor's own sequence directly: loadMap, seedGraph,
+     MapRoad.sceneFor's own sequence directly: loadMap, playedGraph,
      firstEdge, playerOn, withDriver, a few ticks of step -- on a map
      drawn through the editor's own operations, not hand-authored, which
      is the case #/map's own hardcoded START can never exercise. */
@@ -218,7 +218,7 @@ console.log("\n7. \"DRIVE IT\" IS THE REAL PIPELINE, RUN HEADLESSLY");
   check(loaded.ok, "the editor-drawn map loads");
   const start = firstEdge(loaded);
   check(!!start, `an open end is found to start from (${start && `${start.road}|${start.end}`})`);
-  let world = seedGraph(3, 50, loaded, { target: 30, posted: true });
+  let world = playedGraph(3, 50, loaded, { target: 30, posted: true });
   const me0 = playerOn(world.course, start.road, start.end);
   check(!!me0, "playerOn finds a curb leg at that end and returns a driver");
   world = withDriver(world, me0);
@@ -264,7 +264,7 @@ console.log("\n7. \"DRIVE IT\" IS THE REAL PIPELINE, RUN HEADLESSLY");
   for (const [name, raw] of [["one road drawn", (() => { let d, id; ({ map: d, id } = addRoad(newDraft())); d = addPoint(d, id, { x: 0, y: 0 }); return addPoint(d, id, { x: 300, y: 50 }); })()], ["stage0Map()", stage0Map()]]) {
     const L = loadMap(raw);
     const st = firstEdge(L);
-    let w = seedGraph(3, 50, L, { target: 10, posted: true });
+    let w = playedGraph(3, 50, L, { target: 10, posted: true });
     const p0 = st && playerOn(w.course, st.road, st.end, { through: !!st.through });
     check(!!st?.through && !!p0, `${name}: no intersection anywhere, and there is still somewhere to start (${st && `${st.road}|${st.end}, through`})`);
     if (!p0) continue;
@@ -408,7 +408,7 @@ console.log("\n11. A BIG ARTERIAL DRAWN ENTIRELY THROUGH THE EDITOR'S OWN APPROA
     "and its signal runs a protected left on every approach, from the arrows ticked");
   const lefts = Object.values(node.layout.paths).filter((p) => p.intent === "left");
   check(lefts.length > 0 && lefts.every((p) => node.layout.legs[p.from].bay === "left"), `every left is made from a left bay (${lefts.length} paths)`);
-  let w = seedGraph(3, 60, v.loaded, { target: 60, posted: true });
+  let w = playedGraph(3, 60, v.loaded, { target: 60, posted: true });
   let overlaps = 0;
   for (let i = 0; i < 20 * 60; i++) { w = step(w); if (i % 5 === 0) overlaps += overlapping(w).length; }
   check(overlaps === 0, `a minute of traffic through it at 60 cars: ${overlaps} overlapping car-ticks`);
@@ -595,7 +595,7 @@ console.log("\n16. BUILDINGS: PLACED BY HAND, FACING THEIR STREET, AND NEVER ON 
 
   /* And Drive it hands them to the renderer with the road still drivable. */
   const L = loadMap(m);
-  let w = seedGraph(3, 50, L, { target: 10, posted: true });
+  let w = playedGraph(3, 50, L, { target: 10, posted: true });
   const st = firstEdge(L), p0 = playerOn(w.course, st.road, st.end, { through: !!st.through });
   check(!!p0 && L.props.length === 2, "a map with buildings still drives");
 }
@@ -702,7 +702,7 @@ console.log("\n19. AN INTERSECTION'S CONTROLS IN ONE TAP, AND BUS STOPS PLACED B
   check(bay.stops[0]?.kind === "bay" && !bay.warnings.some((w) => w.code.startsWith("stop")), "made a bay, the loader keeps it as a bay with nothing to warn about");
   check(deleteStop(s1, sid).stops.length === 0 && addStop(t.map, { x: 100, y: 80 }).id === null, "deleted, it is gone; tapped far from any road, none is placed");
   /* And it drives: the editor's own Drive it pipeline, with buses on. */
-  let w = seedGraph(1, 50, validateDraft(setStopKind(s1, sid, "bay")).loaded, { every: 2.0, target: 30, posted: true, buses: 0.3 });
+  let w = playedGraph(1, 50, validateDraft(setStopKind(s1, sid, "bay")).loaded, { every: 2.0, target: 30, posted: true, buses: 0.3 });
   for (let i = 0; i < 120 / DT; i++) w = step(w);
   check((w.crashes ?? []).filter((q) => !String(q.a).startsWith("ped") && !String(q.b).startsWith("ped")).length === 0, `two minutes of traffic on the drawn T with its stop and bay, nothing touching (${w.actors.length} on the road)`);
 }

@@ -10,7 +10,7 @@
 import { Session } from "node:inspector/promises";
 import { loadMap } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
-import { seedGraph, step, overlapping, poseOf } from "../src/sim/crossing.js";
+import { playedGraph, step, overlapping, poseOf } from "../src/sim/crossing.js";
 import { lateralOf, changing, LC_TIME, LC_EVERY, RETURN_AFTER, KEEP_RIGHT_FAULT } from "../src/sim/lanechange.js";
 import { weaveRoom, DT, CAR, wantedGap } from "../src/sim/traffic.js";
 import { noticing } from "../src/sim/marking.js";
@@ -28,7 +28,7 @@ const mean = (xs) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : Na
    index off, as section 6 has always measured. A sample counts if any frame
    on its stack is lanechange.js's. */
 async function ownCost(target, noIndex = true, seed = 3) {
-  let w = { ...seedGraph(seed, 50, loaded, { target, posted: true, laneChanges: true, keepRight: true }), noIndex };
+  let w = { ...playedGraph(seed, 50, loaded, { target, posted: true, laneChanges: true, keepRight: true }), noIndex };
   for (let i = 0; i < 200; i++) w = step(w);
   const session = new Session(); session.connect();
   await session.post("Profiler.enable"); await session.post("Profiler.setSamplingInterval", { interval: 100 }); await session.post("Profiler.start");
@@ -67,7 +67,7 @@ async function ownCost(target, noIndex = true, seed = 3) {
      meant; and the index gets its own assertion below: it must never make
      lane changing cost MORE milliseconds than scanning everybody did. */
   const tick = (target, laneChanges, seed, keepRight = true, noIndex = true) => {
-    let w = { ...seedGraph(seed, 50, loaded, { target, posted: true, laneChanges, keepRight }), noIndex };
+    let w = { ...playedGraph(seed, 50, loaded, { target, posted: true, laneChanges, keepRight }), noIndex };
     const ts = [];
     /* Fifteen seconds of ticks: a median step time settles long before a minute (14 October: 60 s a call was 800 s of this check). */
     for (let i = 0; i < 20 * 15; i++) { const a = performance.now(); w = step(w); ts.push(performance.now() - a); }

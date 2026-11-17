@@ -34,7 +34,7 @@ import { pedPose } from "../src/sim/peds.js";
 import { walkerPose } from "../src/sim/walkers.js";
 import { sidewalksOf } from "../src/map/sidewalks.js";
 import { junctionsOf } from "../src/sim/graph.js";
-import { seedGraph, step, poseOf } from "../src/sim/crossing.js";
+import { playedGraph, step, poseOf } from "../src/sim/crossing.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -100,7 +100,7 @@ const summarise = (name, scene, canvas, cams) => {
 /* 1. The test map: junctions, two-lane roads, the overpass. */
 {
   const loaded = loadMap(testMap1());
-  let world = seedGraph(3, 50, loaded, { every: 1.2, walkers: true });
+  let world = playedGraph(3, 50, loaded, { every: 1.2, walkers: true });
   for (let i = 0; i < 20 * 60; i++) world = step(world);
   /* People walking the sidewalks stand on a surface too (map/sidewalks.js). */
   const walking = (world.walkers ?? []).map((q) => ({ id: q.id, ...walkerPose(world, q), ped: true, n: q.n }));
@@ -170,7 +170,7 @@ const summarise = (name, scene, canvas, cams) => {
   const canvas = { w: 412, h: 760 };
   for (const [name, raw, peds] of [["test map 1", testMap1(), false], ["the Pedestrians map", testPeds(), true]]) {
     const loaded = loadMap(raw);
-    let world = seedGraph(3, 50, loaded, { target: 60, posted: true });
+    let world = playedGraph(3, 50, loaded, { target: 60, posted: true });
     for (let i = 0; i < 20 * 60; i++) world = step(world);
     const actors = [
       ...world.actors.map((a) => { const p = poseOf(world, a); return { id: a.id, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, n: a.n }; }),

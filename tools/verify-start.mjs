@@ -28,7 +28,7 @@ import { mapFromBrief } from "../src/map/brief.js";
 import { BENCH_BRIEF } from "../src/iso/bench.js";
 import { carsFor } from "../src/map/cars.js";
 import { firstEdge } from "../src/map/edges.js";
-import { seedGraph, step, poseOf } from "../src/sim/crossing.js";
+import { playedGraph, step, poseOf } from "../src/sim/crossing.js";
 import { edgesOfGraph } from "../src/sim/graph.js";
 import { playerOn, placePlayer, withDriver, driverPose, START_NEAR } from "../src/sim/drive.js";
 import { cornersOf, boxesOverlap } from "../src/sim/intersection.js";
@@ -56,7 +56,7 @@ for (const { id, raw } of maps) {
   for (const sec of loaded.sections ?? []) if (sec.start) want.set(`section ${sec.id}`, sec.start);
   const fe = firstEdge(loaded); if (fe) want.set("the editor's default start", fe);
   for (const seed of SEEDS) {
-    let w0 = seedGraph(seed, 50, loaded, { every: 2.0, target: carsFor(loaded), posted: true, walkers: true });
+    let w0 = playedGraph(seed, 50, loaded, { every: 2.0, target: carsFor(loaded), posted: true, walkers: true });
     if (seed === SEEDS[0]) for (const e of edgesOfGraph(w0.course)) { const leg = w0.course.at[e.k].layout.legs[e.side]; if (leg?.curb && !leg.bay) want.set(`edge ${leg.road}|${leg.end}`, { road: leg.road, end: leg.end }); }
     for (const [name, start] of want) {
       const me0 = playerOn(w0.course, start.road, start.end, { through: !!start.through });

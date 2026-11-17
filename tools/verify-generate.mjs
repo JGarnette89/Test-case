@@ -25,7 +25,7 @@ import { emptyMap, road } from "../src/map/format.js";
 import { fillZone, clearZone, BLOCKS, SNAP, alignWithin, fillLots, clearLots, LOTS } from "../src/map/generate.js";
 import { standsOn } from "../src/map/load.js";
 import { graphOf } from "../src/sim/graph.js";
-import { seedGraph, step, overlapping, districtStreetsOf, districtShare, whatStops, pathOf } from "../src/sim/crossing.js";
+import { playedGraph, step, overlapping, districtStreetsOf, districtShare, whatStops, pathOf } from "../src/sim/crossing.js";
 import { testMap1 } from "../src/map/samples.js";
 import { composeDriver, SKILLS, WEAK_AXES, WEAK_RANGE, SOUND_RANGE, WEAK_DEVIATION, SOUND_DEVIATION, CONFIDENT_ENOUGH, lackingIn } from "../src/core/driver.js";
 import { rng } from "../src/core/rng.js";
@@ -115,7 +115,7 @@ const L = loadMap(city);
   check(L.ok, `the stand-in city loads (${L.nodes.length} intersections, ${L.roads.length} road pieces)`);
   const G = graphOf(L);
   check(G.errors.length === 0, `the graph raises no authoring error (${G.errors.map((e) => e.code).join(", ") || "none"})`);
-  let w = seedGraph(1, 60, L, { target: 200, posted: true });
+  let w = playedGraph(1, 60, L, { target: 200, posted: true });
   let over = 0, launchedHeld = 0;
   for (let i = 0; i < 2400; i++) {
     const before = w;
@@ -218,7 +218,7 @@ console.log("\n7. A MAP WITH NO OPEN END");
   m.roads.push(road({ id: "a", points: [P(0, 0), P(300, 0)] }), road({ id: "b", points: [P(300, 0), P(300, 300)] }), road({ id: "c", points: [P(300, 300), P(0, 300)] }), road({ id: "d", points: [P(0, 300), P(0, 0)] }));
   const lc = loadMap(m);
   let w = null, threw = null;
-  try { w = seedGraph(1, 50, lc, { target: 50, posted: true }); for (let i = 0; i < 200; i++) w = step(w); } catch (e) { threw = e.message; }
+  try { w = playedGraph(1, 50, lc, { target: 50, posted: true }); for (let i = 0; i < 200; i++) w = step(w); } catch (e) { threw = e.message; }
   check(!threw && w.actors.length === 0, `a closed square of roads: no throw, and nobody arrives, since there is nowhere to arrive from (${threw ?? `${w.actors.length} cars`})`);
 }
 
@@ -268,7 +268,7 @@ console.log("\n8. BUILDINGS ALONG THE FRONTAGES");
   const once = fillLots(city, "west").map;
   check(JSON.stringify(fillLots(once, "west").map) === JSON.stringify(once) && JSON.stringify(clearLots(clearLots(m, "west"), "east").props) === JSON.stringify(city.props ?? []),
     "placing a district's buildings again with nothing around it changed changes nothing, and clearing gives back exactly what was there");
-  let w = seedGraph(1, 60, lm, { target: 200, posted: true }), over = 0;
+  let w = playedGraph(1, 60, lm, { target: 200, posted: true }), over = 0;
   for (let i = 0; i < 1200; i++) { w = step(w); if (i % 10 === 0) over += overlapping(w).length; }
   check(over === 0 && w.actors.length > 150, `and the city with its buildings still drives: a minute at 200 cars, ${over} overlaps`);
 }
@@ -283,7 +283,7 @@ console.log("\n9. TRAFFIC FROM INSIDE THE CITY: PULLING OUT, PULLING IN");
      pull-outs to watch: the warm-up now fills a world before its first
      frame, and one seeded at 150 opened full and offered only the
      turnover (28 on this seed). */
-  let w = { ...seedGraph(1, 60, lc, { target: 100, posted: true }), target: 150 };
+  let w = { ...playedGraph(1, 60, lc, { target: 100, posted: true }), target: 150 };
   check(districtStreetsOf(w.course).length > 50 && districtShare(w.course) === 1, `a closed city: ${districtStreetsOf(w.course).length} curb lanes on district streets, and every arrival comes from them`);
   let over = 0, appeared = 0, badAppear = 0, pulledIn = 0, vanishedMoving = 0, launchedHeld = 0;
   let prev = new Map(w.actors.map((a) => [a.id, a]));
@@ -311,7 +311,7 @@ console.log("\n9. TRAFFIC FROM INSIDE THE CITY: PULLING OUT, PULLING IN");
   check(over === 0, `and nobody drove through anybody (${over} overlaps)`);
 
   /* A map with no districts is untouched by any of it. */
-  const t1 = seedGraph(1, 50, loadMap(testMap1()), { target: 60, posted: true });
+  const t1 = playedGraph(1, 50, loadMap(testMap1()), { target: 60, posted: true });
   check(districtStreetsOf(t1.course).length === 0 && districtShare(t1.course) === 0, "the test map has no districts, so nobody pulls out or in there");
 }
 
@@ -353,7 +353,7 @@ console.log("\n10. A DISTRICT'S CHARACTER: WHO DRIVES THERE");
      on the dispositions the sim acts on -- who rolls stops, what gap they
      keep -- for the cars that pulled out of each. */
   const closed = { ...city, roads: city.roads.filter((r) => !r.id.startsWith("out-")), zones: city.zones.map((z) => ({ ...z, character: z.id === "west" ? "rolling-stops" : "tailgaters" })) };
-  let w = seedGraph(2, 60, loadMap(closed), { target: 150, posted: true });
+  let w = playedGraph(2, 60, loadMap(closed), { target: 150, posted: true });
   const seen = new Map();
   for (let i = 0; i < 2400; i++) { w = step(w); for (const a of w.actors) if (a.home && !seen.has(a.id)) seen.set(a.id, a); }
   const from = (z) => [...seen.values()].filter((a) => a.home === z);
@@ -374,7 +374,7 @@ console.log("\n10. A DISTRICT'S CHARACTER: WHO DRIVES THERE");
      weight took their profile's weak slot; that was the draw, not the
      ruling. The same map and seed with the west ordinary is the control. */
   const plain = { ...closed, zones: closed.zones.map((z) => (z.id === "west" ? { ...z, character: undefined } : z)) };
-  let w0 = seedGraph(2, 60, loadMap(plain), { target: 150, posted: true });
+  let w0 = playedGraph(2, 60, loadMap(plain), { target: 150, posted: true });
   const seen0 = new Map();
   for (let i = 0; i < 2400; i++) { w0 = step(w0); for (const a of w0.actors) if (a.home && !seen0.has(a.id)) seen0.set(a.id, a); }
   const W0 = [...seen0.values()].filter((a) => a.home === "west");
@@ -406,7 +406,7 @@ console.log("\n11. THE NEIGHBOUR INDEX CHANGES NOTHING BUT THE COST");
      on the city and on the test map (signals, bays, a five-way, an
      overpass). */
   const same = (loaded, cars, ticks, warm = 0) => {
-    let w0 = seedGraph(3, 60, loaded, { target: cars, posted: true });
+    let w0 = playedGraph(3, 60, loaded, { target: cars, posted: true });
     for (let i = 0; i < warm; i++) w0 = step(w0);
     let a = w0, b = { ...w0, noIndex: true };
     for (let i = 0; i < ticks; i++) {
@@ -421,7 +421,7 @@ console.log("\n11. THE NEIGHBOUR INDEX CHANGES NOTHING BUT THE COST");
   /* Warmed two minutes first: the loop fills only by its ramps, and from empty a minute held 111 cars -- not the long, full nodes this is for. */
   const hw = same(loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build()), 300, 1200, 2400);
   check(hw.ok, `and a minute of the endless highway at ${hw.cars} cars, where each driver reads only the cars of its own lane that could be the one it brakes for: identical${hw.ok ? "" : ` -- diverged at tick ${hw.at}`}`);
-  const time = (loaded, cars, noIndex) => { let w = { ...seedGraph(3, 60, loaded, { target: cars, posted: true }), noIndex }; const t0 = performance.now(); for (let i = 0; i < 200; i++) w = step(w); return (performance.now() - t0) / 200; };
+  const time = (loaded, cars, noIndex) => { let w = { ...playedGraph(3, 60, loaded, { target: cars, posted: true }), noIndex }; const t0 = performance.now(); for (let i = 0; i < 200; i++) w = step(w); return (performance.now() - t0) / 200; };
   const slow = time(L, 300, true), fast = time(L, 300, false);
   check(fast < slow / 3, `and it is what makes a city affordable: ${fast.toFixed(2)} ms a step at 300 cars against ${slow.toFixed(2)} ms scanning everybody`);
 }
@@ -432,7 +432,7 @@ console.log("\n12. PARKED CARS: A STRIP, SLOTS, AND THE SAME PEOPLE ALL DAY");
   for (const z of ["west", "east"]) m = fillLots(m, z).map;
   const closed = { ...m, roads: m.roads.filter((r) => !r.id.startsWith("out-")) };
   const lc = loadMap(closed);
-  let w = seedGraph(4, 60, lc, { target: 120, posted: true });
+  let w = playedGraph(4, 60, lc, { target: 120, posted: true });
   const P0 = parkingOf(w.course);
   const lanes = w.course.lanes;
   /* Where the slots are: beside the curb lane, on the drawn surface, off
@@ -475,7 +475,7 @@ console.log("\n12. PARKED CARS: A STRIP, SLOTS, AND THE SAME PEOPLE ALL DAY");
      between parked cars and parked cars hide them (sim/peds.js), so with
      people about the parked cars rightly change what drivers see. The
      cars themselves still change nothing. */
-  let a = seedGraph(1, 50, t1, { target: 80, posted: true, gapRate: 0 }), b = { ...a, parked: undefined };
+  let a = playedGraph(1, 50, t1, { target: 80, posted: true, gapRate: 0 }), b = { ...a, parked: undefined };
   let same = true;
   for (let i = 0; i < 1200 && same; i++) { a = step(a); b = step(b); same = JSON.stringify(a.actors) === JSON.stringify(b.actors); }
   check(same && Object.keys(a.parked ?? {}).length > 0, `on the test map (${Object.keys(a.parked ?? {}).length} parked, no districts) with nobody on foot the traffic is identical with the parked cars and without`);
@@ -498,7 +498,7 @@ console.log("\n13. THE TEST MAPS: EVERY SECTION OPENS, TO WATCH AND TO DRIVE");
   for (const t of TEST_MAPS) {
     const lm = loadMap(t.build());
     if (!lm.ok) { bad.push(`${t.id}: does not load`); continue; }
-    const w = seedGraph(1, 50, lm, { every: 2, target: 40, posted: true });
+    const w = playedGraph(1, 50, lm, { every: 2, target: 40, posted: true });
     const b = lm.roads.flatMap((r) => r.pts);
     const [x0, x1, y0, y1] = [Math.min(...b.map((q) => q.x)), Math.max(...b.map((q) => q.x)), Math.min(...b.map((q) => q.y)), Math.max(...b.map((q) => q.y))];
     for (const sec of lm.sections) {
@@ -533,7 +533,7 @@ console.log("\n15. HOW MANY CARS A MAP GETS: ITS OWN ROAD, AT ONE DENSITY");
   check(carsFor(cy) >= 280 && Math.abs(per(cy) - per(t1)) / per(t1) < 0.05, `the city gets ${carsFor(cy)} over its ${cy.laneKm.toFixed(1)} lane-km -- the same density, ${per(cy).toFixed(1)} against ${per(t1).toFixed(1)} per lane-km`);
   check(carsMaxFor(cy) > carsFor(cy) && carsMaxFor(t1) >= 300, `and the dial goes above the default on both (city up to ${carsMaxFor(cy)}, test map 1 up to ${carsMaxFor(t1)})`);
   /* Asking is not getting: the city has to actually fill to it. */
-  let w = seedGraph(1, 50, cy, { every: 2, target: carsFor(cy), posted: true });
+  let w = playedGraph(1, 50, cy, { every: 2, target: carsFor(cy), posted: true });
   let low = Infinity;
   for (let i = 0; i < 60 / DT; i++) { w = step(w); if (i > 20 / DT) low = Math.min(low, w.actors.length); }
   check(low >= 0.95 * carsFor(cy), `and it fills: after twenty seconds the city never has fewer than ${low} moving cars of ${carsFor(cy)}`);

@@ -4,7 +4,7 @@
    minutes at 180 cars, a driver who never lifts. */
 import { emptyMap, road } from "../src/map/format.js";
 import { loadMap } from "../src/map/load.js";
-import { seedGraph, step, poseOf, carFor } from "../src/sim/crossing.js";
+import { playedGraph, step, poseOf, carFor } from "../src/sim/crossing.js";
 import { driver, DT } from "../src/sim/traffic.js";
 import { playerAt, playerOn, withDriver, stepDriver, driverPose } from "../src/sim/drive.js";
 import { worldFor } from "../src/sim/scene.js";
@@ -158,7 +158,7 @@ console.log("9b. Reverse, an ordinary control (DECISIONS 10.57)");
   /* Across the seam, not an invisible wall at the end of a path: on a road with a road behind it, with no jump.
      Found by sabotage: this first chose a path at the map's edge, and passed with the wall in place. */
   {
-    const w1 = seedGraph(1, 50, loadMap(TEST_MAPS.find((x) => x.id === "test-1").build()), { every: 1e9, target: 0, posted: true });
+    const w1 = playedGraph(1, 50, loadMap(TEST_MAPS.find((x) => x.id === "test-1").build()), { every: 1e9, target: 0, posted: true });
     let k0 = -1, r0 = null;
     for (const j of Object.values(w1.course.joins)) { const L0 = w1.course.at[j.k].layout, r = Object.keys(L0.paths).find((x) => L0.paths[x].from === j.side && L0.paths[x].intent === "straight"); if (r) { k0 = j.k; r0 = r; break; } }
     let m = { ...playerAt(w1.course, k0, r0), s: 2, off: 0, v: 0, a: 0 }, w = withDriver({ ...w1, actors: [] }, m), jump = 0, crossed = false;

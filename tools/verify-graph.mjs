@@ -18,7 +18,7 @@
    ===================================================================== */
 import { layoutFor, rightOf, OPPOSITE, SIDES, INTENTS, exitFor } from "../src/sim/intersection.js";
 import { onRightOf, oncoming, intentOf, graphOf, laneSpanOnGraph, laneForTurn, postedAt, ONCOMING_TOL, HAIRPIN } from "../src/sim/graph.js";
-import { seedGraph, step, overlapping, delayed, poseOf, edgesOf } from "../src/sim/crossing.js";
+import { playedGraph, step, overlapping, delayed, poseOf, edgesOf } from "../src/sim/crossing.js";
 import { laneSpan } from "../src/sim/course.js";
 import { CAR, DT, HARSH_AT } from "../src/sim/traffic.js";
 import { loadMap } from "../src/map/load.js";
@@ -91,9 +91,9 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
 /* 3. Traffic through the map crossroads: an all-way and a two-way stop, four minutes each, nobody through anybody. */
 {
   const map = crossroads(300);
-  const all = runFor(seedGraph(3, 50, map, { control: { "*": "stop" } }), 240);
+  const all = runFor(playedGraph(3, 50, map, { control: { "*": "stop" } }), 240);
   check(all.overlaps === 0 && all.w.spawned > 200, `all-way stop on a map crossroads, four minutes: ${all.w.spawned} cars, ${all.overlaps} overlapping car-ticks`);
-  const two = runFor(seedGraph(5, 50, map, { control: { "N|end": "stop", "S|end": "stop", "E|end": "none", "W|end": "none" } }), 240);
+  const two = runFor(playedGraph(5, 50, map, { control: { "N|end": "stop", "S|end": "stop", "E|end": "none", "W|end": "none" } }), 240);
   /* Control overrides are by road end; every lane of the leg takes it. */
   check(Object.values(two.w.course.at[0].layout.legs).every((l) => l.control === (l.base.startsWith("N|") || l.base.startsWith("S|") ? "stop" : "none")), "a control override by road end applies to every lane of that end");
   check(two.overlaps === 0 && two.w.spawned > 200, `two-way stop, four minutes: ${two.w.spawned} cars, ${two.overlaps} overlapping car-ticks`);
@@ -127,7 +127,7 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   const side = ids.find((i) => i.startsWith("side"));
   const [l, r] = ids.filter((i) => i !== side);
   check(oncoming(node.layout, l, r) && !oncoming(node.layout, side, l) && !oncoming(node.layout, side, r), "the two halves of the through road are oncoming to each other and the side road is oncoming to neither");
-  const rt = runFor(seedGraph(9, 50, t), 240);
+  const rt = runFor(playedGraph(9, 50, t), 240);
   check(rt.overlaps === 0 && rt.w.spawned > 150, `four minutes at the T: ${rt.w.spawned} cars, ${rt.overlaps} overlapping car-ticks`);
 
   const five = emptyMap("five");
@@ -158,7 +158,7 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   check(decided + opposite === total && opposite === 1, `every pair of legs is settled: ${decided} by the right-hand rule, ${opposite} oncoming (only 0/180 is within ${ONCOMING_TOL} degrees of straight across; 45 and 135 face 270 at 135 degrees)`);
   const kinds = Object.values(nf.paths).map((p) => p.intent);
   check(kinds.includes("left") && kinds.includes("right") && kinds.includes("straight"), "its turns are lefts, rights and straights by the angle turned");
-  const rf = runFor(seedGraph(13, 40, f), 240);
+  const rf = runFor(playedGraph(13, 40, f), 240);
   check(rf.overlaps === 0 && rf.w.spawned > 150, `four minutes at the five-way, all-way stop: ${rf.w.spawned} cars, ${rf.overlaps} overlapping car-ticks`);
 }
 
@@ -188,7 +188,7 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   const g2 = graphOf(loadMap(m2));
   const kA = g2.at.findIndex((s) => s.layout.legs["AB|start#1"]), kB = g2.at.findIndex((s) => s.layout.legs["AB|end#1"]);
   check(kA >= 0 && kB >= 0 && g2.joins[`${kA}|AB|start#1`]?.side === "AB|end#1" && g2.joins[`${kB}|AB|end#0`]?.side === "AB|start#0", "each lane of a road between two nodes joins to the same lane at the other end");
-  const two = runFor(seedGraph(21, 50, map, { control: { "*": "stop" } }), 180);
+  const two = runFor(playedGraph(21, 50, map, { control: { "*": "stop" } }), 180);
   const lanesUsed = new Set(two.w.actors.map((a) => two.w.course.at[a.k].layout.legs[two.w.course.at[a.k].layout.paths[a.route].from].lane));
   check(two.overlaps === 0 && two.w.spawned > 150 && lanesUsed.size === 2, `three minutes of traffic in both lanes at an all-way stop: ${two.w.spawned} cars, ${two.overlaps} overlapping car-ticks, lanes in use ${[...lanesUsed].sort().join(" and ")}`);
 }
@@ -203,7 +203,7 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   check(g.links.length === 5 && g.at.filter((s) => s.through).length === 4, `four roads join the loop's nodes and B-east joins B to E, and the overpass is lanes with nothing on them, two each way (${g.links.length} links, ${g.at.filter((s) => s.through).length} through lanes)`);
   let legsMax = 0, seamJumps = 0, minSeamGap = Infinity, levelsCrossed = 0;
   const last = new Map();
-  const two = runFor(seedGraph(7, 50, l), 300, (w) => {
+  const two = runFor(playedGraph(7, 50, l), 300, (w) => {
     for (const a of w.actors) {
       legsMax = Math.max(legsMax, a.leg ?? 0);
       const p = poseOf(w, a), prev = last.get(a.id);
@@ -247,7 +247,7 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
   const l = loadMap(stage0Map());
   const g = graphOf(l);
   check(g.at.length === 4 && g.at.every((s) => s.through) && g.links.length === 0, "stage 0 is four through lanes (one each way on two roads) and no intersection");
-  const r = runFor(seedGraph(2, 60, l), 120);
+  const r = runFor(playedGraph(2, 60, l), 120);
   const stopped = r.w.actors.filter((a) => a.v < 0.5).length;
   check(r.overlaps === 0 && r.w.spawned > 60 && stopped === 0, `two minutes: ${r.w.spawned} cars, ${r.overlaps} overlapping car-ticks, nobody stopped on a road with no line`);
   const span = laneSpanOnGraph(g, 0, Object.keys(g.at[0].layout.paths)[0], 100);
@@ -307,7 +307,7 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
      every light that road's cars reach, and the change leaks to the
      roads whose sign did not change (8 October: 3 of 6 moved). */
   const drive = (posted) => {
-    let w = seedGraph(3, fastest, l, { every: 1.1, posted, progression: false, actuated: false });
+    let w = playedGraph(3, fastest, l, { every: 1.1, posted, progression: false, actuated: false });
     for (let i = 0; i < 1200; i++) w = step(w);
     const by = {}, cars = new Map();
     for (const a of w.actors) {
@@ -383,9 +383,9 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
 {
   const loaded = loadMap(testMap1());
   const held = (w, secs) => { let sum = 0, n = 0, lo = Infinity; for (let i = 0; i < secs * 20; i++) { w = step(w); if (i > 20) { sum += w.actors.length; n++; lo = Math.min(lo, w.actors.length); } } return { w, mean: sum / n, lo }; };
-  const at120 = held(seedGraph(3, 50, loaded, { target: 120 }), 60);
+  const at120 = held(playedGraph(3, 50, loaded, { target: 120 }), 60);
   check(at120.w.actors.length >= 114 && at120.lo >= 108 && at120.mean <= 121, `a target of 120 holds 120: ${at120.mean.toFixed(1)} on average over a minute, never below ${at120.lo}`);
-  const old = held(seedGraph(3, 50, loaded, { every: 2.0 }), 60);
+  const old = held(playedGraph(3, 50, loaded, { every: 2.0 }), 60);
   check(old.mean < 40, `and it is the target doing it: the rate the screen used to run carries ${old.mean.toFixed(0)}`);
   let w = { ...at120.w, target: 40 };
   let arrivedWhileOver = 0, drained = null;
@@ -459,7 +459,7 @@ const runFor = (w, seconds, hook) => { let overlaps = 0; for (let i = 0; i < sec
        arrives hot -- with the 6% trucks in, the no-slowing control read
        39.6% against 45.9%, diluted by vehicles the grip figure is not
        for. A truck's own cornering limit is not modelled yet. */
-    let w = seedGraph(4, 50, loaded, { target: 120, posted: true, corners, trucks: 0 });
+    let w = playedGraph(4, 50, loaded, { target: 120, posted: true, corners, trucks: 0 });
     const entries = [];
     let cornerHarsh = { poor: 0, sound: 0 };
     for (let i = 0; i < 20 * 180; i++) {

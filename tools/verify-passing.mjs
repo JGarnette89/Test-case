@@ -9,7 +9,7 @@
 import { loadMap } from "../src/map/load.js";
 import { testBuses, testMap1 } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
-import { seedGraph, step, poseOf } from "../src/sim/crossing.js";
+import { playedGraph, step, poseOf } from "../src/sim/crossing.js";
 import { laneSpanOnGraph } from "../src/sim/graph.js";
 import { stopsOf, DWELL, MIN_DWELL, MAX_DWELL, inBay, laneAt } from "../src/sim/buses.js";
 import { planPass } from "../src/sim/passing.js";
@@ -41,7 +41,7 @@ console.log("7. going round a bus at a curb stop, on a broken centre line or non
   const run = (L, passing, seeds) => {
     let passes = 0, carCrashes = 0, behind = 0, bold = 0, moments = 0, bothGo = 0;
     for (const seed of seeds) {
-      let v = seedGraph(seed, 50, L, { every: 2.0, target: 90, posted: true, buses: 0.3, passing });
+      let v = playedGraph(seed, 50, L, { every: 2.0, target: 90, posted: true, buses: 0.3, passing });
       const seen = new Set();
       /* Seven and a half minutes a run (14 October): fifteen gave 26 passes and 18 bold-only moments against floors of 5 and 1; this gives 12 and 7. */
       for (let k = 0; k < (7.5 * 60) / DT; k++) {

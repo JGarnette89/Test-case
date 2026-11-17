@@ -33,7 +33,7 @@
 import { loadMap } from "../src/map/load.js";
 import { testBuses, testMap1 } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
-import { seedGraph, step, poseOf } from "../src/sim/crossing.js";
+import { playedGraph, step, poseOf } from "../src/sim/crossing.js";
 import { laneSpanOnGraph } from "../src/sim/graph.js";
 import { stopsOf, DWELL, MIN_DWELL, MAX_DWELL, inBay, laneAt } from "../src/sim/buses.js";
 import { planPass } from "../src/sim/passing.js";
@@ -67,7 +67,7 @@ console.log("1. a stop is a place beside a road, serving one direction");
 
 console.log("2. every bus stands at every stop it passes in its lane, and nothing else stops there");
 const loaded = loadMap(testBuses());
-let w = seedGraph(3, 50, loaded, { every: 2.0, target: 40, posted: true, buses: 0.3 });
+let w = playedGraph(3, 50, loaded, { every: 2.0, target: 40, posted: true, buses: 0.3 });
 const stops = [...stopsOf(w.course)].flatMap(([lane, list]) => list.map((s) => ({ ...s, lane })));
 const MINS = 15;
 const track = new Map();   // bus id|stop id -> { before, passed, stood, door }
@@ -115,8 +115,8 @@ ok(contacts === 0, `and no vehicle touched another (${contacts})`);
 console.log("4. a map without stops has no buses and is the world it was");
 {
   const L1 = loadMap(testMap1());
-  let a = seedGraph(4, 50, L1, { every: 2.0, target: 80, posted: true, buses: 0 });
-  let b = seedGraph(4, 50, L1, { every: 2.0, target: 80, posted: true });
+  let a = playedGraph(4, 50, L1, { every: 2.0, target: 80, posted: true, buses: 0 });
+  let b = playedGraph(4, 50, L1, { every: 2.0, target: 80, posted: true });
   const key = (x) => JSON.stringify(x.actors.map((q) => [q.id, q.kind, q.s.toFixed(6), q.v.toFixed(6)]));
   let same = key(a) === key(b), any = false;
   for (let i = 0; i < 60 / DT && same; i++) { a = step(a); b = step(b); same = key(a) === key(b); any ||= b.actors.some((q) => q.kind === "bus"); }
@@ -125,7 +125,7 @@ console.log("4. a map without stops has no buses and is the world it was");
 
 console.log("5. people wait at a stop, get on at the door of a bus standing there, and get off at it");
 {
-  let v = seedGraph(3, 50, loadMap(testBuses()), { every: 2.0, target: 40, posted: true, buses: 0.3, walkers: true });
+  let v = playedGraph(3, 50, loadMap(testBuses()), { every: 2.0, target: 40, posted: true, buses: 0.3, walkers: true });
   const net = walkNetOf(v.course.map);
   const doorOf = new Map(net.stops.map((q) => [q.id, q.door]));
   /* A bus with its doors open at a stop, and where that door is. */
