@@ -17,9 +17,12 @@ const secs = Number(process.argv[2] ?? 300), MAP = process.env.MAP ?? "test-high
 const roadOf = (l) => String(l).split("#")[0];
 const signed = (win, lane, c) => { const r = roadOf(lane); if (r === win.road) return c - win.at.c; const da = win.ahead.get(r); if (da != null) return da + c; const db = win.behind.get(r); if (db != null) return -(db + ((win.g.len.get(r) ?? 0) - c)); return null; };
 const one = (seed, pace, on, cars = null) => {
-  let { world: w, me } = worldFor(seed, 50, 2.0, true, cars, raw(), raw().sections?.[0]?.start ?? null, false, false, { preroll: 15 });
+  /* THE ARM, SET BEFORE THE PRE-ROLL (found 17 Nov): the earlier harness set `spawnSide` AFTER worldFor, so on the generated road -- whose table now carries the rule -- the 15-30 s pre-roll that builds the player's starting population ran under the rule in BOTH arms, and the OFF arm was switched off only afterwards. "off" and "on" put the arm in the map before the world is built (and the world is asserted to carry it); "late" is the old way (an unruled pre-roll, the rule switched on after). */
+  const rawMap = raw(); const pre = on === "late" ? false : !!on; if (rawMap.traffic) rawMap.traffic = { ...rawMap.traffic, ...(on === "late" || !on ? { spawnSide: false } : { spawnSide: true }) };
+  let { world: w, me } = worldFor(seed, 50, 2.0, true, cars, rawMap, rawMap.sections?.[0]?.start ?? null, false, false, { preroll: 15 });
+  if (typeof on === "string" && !!w.spawnSide !== pre) throw new Error(`arm ${on} did not take: world.spawnSide ${w.spawnSide}`);
   /* The generated highway carries the rule itself now (roadgen SPAWN_SIDE), so OFF has to be said: an absent override ran the rule in both arms (found 17 Nov, the first count measure read OFF and ON identical). */
-  w = { ...w, spawnSide: !!on };
+  w = { ...w, spawnSide: on === "late" ? true : !!on };
   const sc = { me, args: [1], saveWallet: false }, last = new Map(), seen = new Set(); let passes = 0, crashes = 0, carsSum = 0, ticks = 0; const curve = [];
   for (let n = 0; n < secs / DT; n++) {
     me = goodStep(me, w, sc, { overtake: true, pace }); sc.me = me; w = step(withDriver(w, me));
@@ -33,6 +36,17 @@ const one = (seed, pace, on, cars = null) => {
   }
   return { curve, edged: !!me.atEdge, seen: seen.size, passes, crashes: (w.crashes ?? []).length, cars: carsSum / Math.max(1, ticks) };
 };
+/* THE THREE ARMS ON THE GENERATED ROAD (the discrepancy between the first harness and the later ones): off and on built that way from the start, and "late" (the first harness's ON: an unruled pre-roll, the rule after).
+   Prediction stated before it ran: off about 4.4 a minute at 5 min (the curve's 22 over 5 min), on about 7.2, and late between them (the first harness read 5.5).
+   Usage: node tools/measure/spawn-side.mjs 300 arms */
+if (process.argv[3] === "arms") {
+  const mins = secs / 60;
+  for (const arm of ["off", "on", "late"]) {
+    const rows = [1, 2, 3].map((sd) => one(sd, 1.0, arm, null)), m = (k) => rows.reduce((t, r) => t + r[k], 0) / rows.length;
+    console.log(`arm ${arm.padEnd(4)}: distinct cars within 150 m by the end of ${secs} s: ${m("seen").toFixed(1)} (${(m("seen") / mins).toFixed(1)} a minute) · passes ${(m("passes") / mins).toFixed(1)} a minute · per seed ${rows.map((r) => r.seen).join(" ")}`);
+  }
+  process.exit(0);
+}
 /* THE STEADY RATE (found 17 Nov: the 360 s curve jumps at minute 3, in both arms -- the handover's early minutes are not the road's steady traffic -- so a slope from minute 2 overstates it). Minutes 4 to the end of a longer run, four seeds.
    Usage: node tools/measure/spawn-side.mjs 540 steady */
 if (process.argv[3] === "steady") {
