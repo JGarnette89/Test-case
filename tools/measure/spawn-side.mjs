@@ -23,9 +23,10 @@ const one = (seed, pace, on, cars = null) => {
   if (typeof on === "string" && !!w.spawnSide !== pre) throw new Error(`arm ${on} did not take: world.spawnSide ${w.spawnSide}`);
   /* The generated highway carries the rule itself now (roadgen SPAWN_SIDE), so OFF has to be said: an absent override ran the rule in both arms (found 17 Nov, the first count measure read OFF and ON identical). */
   w = { ...w, spawnSide: on === "late" ? true : ruled };
-  const sc = { me, args: [1], saveWallet: false }, last = new Map(), seen = new Set(); let passes = 0, crashes = 0, carsSum = 0, ticks = 0; const curve = [];
+  const sc = { me, args: [1], saveWallet: false }, last = new Map(), seen = new Set(); let passes = 0, crashes = 0, carsSum = 0, ticks = 0; const curve = [], born = new Set(w.actors.map((a) => a.id)); let behindBirths = 0, aheadBirths = 0;
   for (let n = 0; n < secs / DT; n++) {
     me = goodStep(me, w, sc, { overtake: true, pace }); sc.me = me; w = step(withDriver(w, me));
+    { const win0 = windowOf(w, w.actors); for (const a of w.actors) { if (born.has(a.id)) continue; born.add(a.id); if (a.player || a.placed == null || !win0) continue; const at0 = placeOf(w.course, a.k ?? 0, a.route, a.s); const d0 = at0 ? signed(win0, at0.lane, at0.c) : null; if (d0 != null) { if (d0 < 0) behindBirths++; else aheadBirths++; } } }
     if (n > 0 && n % Math.round(60 / DT) === 0) curve.push({ seen: seen.size, passes });
     if (n % 5) continue;
     const win = windowOf(w, w.actors); if (!win) continue;
@@ -34,9 +35,26 @@ const one = (seed, pace, on, cars = null) => {
       if (Math.abs(d) < 150) seen.add(a.id);
       const p = last.get(a.id); if (p != null && p * d < 0 && Math.abs(d) < 150 && Math.abs(p) < 150) passes++; last.set(a.id, d); }
   }
-  return { curve, edged: !!me.atEdge, seen: seen.size, passes, crashes: (w.crashes ?? []).length, cars: carsSum / Math.max(1, ticks) };
+  return { curve, behindBirths, aheadBirths, edged: !!me.atEdge, seen: seen.size, passes, crashes: (w.crashes ?? []).length, cars: carsSum / Math.max(1, ticks) };
 };
 /* BUG FOUND 17 NOV, THE ARMS TEST'S FIRST RUN: `!!on` on the string "off" is TRUE, so the "off" arm ran the rule (off and on read identical, 36.0 per seed 41 28 39), and the assertion compared against the same wrong value so it passed -- the arm-forcing failure again, inside the fix for it. Fixed here; the "late" arm (27.3, 5.5 a minute) was right and equals the first harness's ON exactly, so the discrepancy is WHETHER THE PRE-ROLL RAN UNDER THE RULE (5.5 unruled pre-roll, 7.2 to 8.2 ruled). A true off arm on this road is still to re-run.
+/* THE ARMS, VERIFIED BY SOMETHING OTHER THAN THE FLAG (17 Nov, the lead): each arm is built through an explicit boolean-or-string-named arm (no truthiness of a name), and the arm is ASSERTED from an observable in the world:
+   cars shaping places BEHIND the player. Rule off places none (insertion is ahead only); rule on places many. An arm that did not take throws before anything is printed. "late" = an unruled pre-roll, the rule on afterwards.
+   Then, per arm, cars seen within 150 m and passes by each minute of a 330 s run (the road ends at about minute 6, so 5.5 min is the valid stretch), four seeds.
+   Usage: node tools/measure/spawn-side.mjs 330 arms2 */
+if (process.argv[3] === "arms2") {
+  const seeds = [1, 2, 3, 4], mins = Math.floor(secs / 60), out = {};
+  for (const arm of ["off", "on", "late"]) {
+    const rows = seeds.map((sd) => one(sd, 1.0, arm, null)); out[arm] = rows;
+    const bb = rows.reduce((t, r) => t + r.behindBirths, 0), ab = rows.reduce((t, r) => t + r.aheadBirths, 0);
+    if (arm === "off" && bb !== 0) throw new Error(`the OFF arm placed ${bb} cars behind the player: the arm did not take`);
+    if (arm === "on" && bb < 20) throw new Error(`the ON arm placed only ${bb} cars behind the player: the arm did not take`);
+    const cum = (i, k) => rows.reduce((t, r) => t + (r.curve[i]?.[k] ?? 0), 0) / rows.length;
+    console.log(`arm ${arm.padEnd(4)}: placed behind ${bb}, ahead ${ab} (4 seeds; ${rows.filter((r) => r.edged).length} reached the road's end) · cumulative cars within 150 m by minute ${Array.from({ length: mins - 1 }, (_, i) => cum(i, "seen").toFixed(1)).join(", ")} · passes ${Array.from({ length: mins - 1 }, (_, i) => cum(i, "passes").toFixed(1)).join(", ")} · at 5.5 min ${(rows.reduce((t, r) => t + r.seen, 0) / rows.length).toFixed(1)} seen`);
+  }
+  /* independent: the worlds themselves differ between off and on (same seed), at what tick -- not read off the flag */
+  process.exit(0);
+}
 /* THE THREE ARMS ON THE GENERATED ROAD (the discrepancy between the first harness and the later ones): off and on built that way from the start, and "late" (the first harness's ON: an unruled pre-roll, the rule after).
    Prediction stated before it ran: off about 4.4 a minute at 5 min (the curve's 22 over 5 min), on about 7.2, and late between them (the first harness read 5.5).
    Usage: node tools/measure/spawn-side.mjs 300 arms */
