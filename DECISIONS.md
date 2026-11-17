@@ -8528,3 +8528,17 @@ survivable at all.
 Jay asked for a frames-a-second counter, top-left, in clean mode too, and reported a truck's tail lights drawn on top of the box. **The meter** (`makeFrameMeter` in `iso/hud.js`) shows fps, the worst frame and the count of frames over 50 ms in the last second, and the sim step's median: a median hides the stutter "up and down" describes (a steady 60 with an odd 200 ms frame reads fine on an average), and fps beside step tells a render problem (fps down, step flat) from a sim one. It is drawn outside clean mode's guard; the source check is a grep, so a person still has to see it in clean mode. **The lamps**: `paintLamps` was handed each vehicle's roof height as its lamp height, harmless for a 0.75 m car and wrong for a truck (3.4 m) or a bus (3.2 m), whose lamps (and blinkers) now sit at `LAMP_Z` = 1.0 m; the check wedge keeps the cab height. Cars are unchanged. `verify-framemeter` holds both; sabotaged (lamps at the roof) it fails truck 3.40 m and bus 3.20 m. Gate: the 12 checks the change reaches, 12 of 12, run alone.
 
 Also recorded: the played-world conversion stash is backed up at `origin/wip/played-world-DO-NOT-MERGE` (bf673f8), built on c405c30 and eleven commits behind `main`, with `crossing.js` changed since: it WILL conflict, so rebase it deliberately rather than popping it, and its temporary `PLAYED_OFF` switch must never reach `main`.
+
+### 10.100 The pre-roll's head start: measured, Jay's diagnosis confirmed, the fix not yet chosen (17 November 2026)
+
+**Jay's diagnosis** (the 15 s pre-roll runs the traffic down the road while his start stays put, so he begins behind the population) **is right, and the measurement says more than he did.** `tools/measure/preroll-gap.mjs` bins cars by signed distance along the lanes the player can reach (shaping's own window geometry), on `test-highway-gen`, four seeds, cars per 100 m and median speed relative to the player:
+
+| moment | behind 600 m | 0-300 m ahead | 300-1500 m ahead (relative speed) |
+|---|---|---|---|
+| start, no pre-roll | 0 | 2.4 / 0 | 0.7, 0 |
+| start, after the 15 s pre-roll | **0** | **0** | 3.6 and 6.5, **receding at +80 to +91 km/h** |
+| 60 s into the drive | 2.1, 2.4, 1.8 | 0.5 | 6.4 and 6.9, at **-6 to -8 km/h** |
+
+So the pre-roll does fill the window (verify-preroll's count, 70+), but with a population that is all ahead, all far, and all moving away from a car at rest; the drive Jay knows a minute in has cars behind him, and ahead of him at about his own speed. It is relative velocity, not count, that differs, and a standing start on a fast road cannot give it however the cars are placed: anything placed around a stationary car at 100 km/h is gone in seconds. The same bins with **no standing pre-roll, the player driving from t = 0**, are co-moving by 15 to 30 s (relative speed -14 to +27 km/h, cars behind from 15 s: 3.8 per 100 m within 100 m).
+
+The fix that follows from this is a pre-roll with the player MOVING (a pacer at the posted speed), the wheel handed over at traffic speed, not at rest. That changes how a drive on a shaped map begins, which is Jay's to say, so it is not built; the standing pre-roll stays until he chooses. The other option is a map with road behind the start so traffic can arrive from behind a standing car.
