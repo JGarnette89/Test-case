@@ -6,7 +6,8 @@
      2. IT COSTS NOBODY A CRASH: no crash in the pre-roll on any of 8 seeds on each of the three shaped maps, and the player is never hit (a player standing still for fifteen seconds is a car cars could run into).
      3. IT CHANGES NOTHING ELSEWHERE: on a map that does not ask for shaping, and with `preroll` 0, the world is the world it was, car for car -- so every check that builds one through `worldFor` is unmoved.
      4. THE SCREEN ASKS FOR IT, and the worker builds the same world: `sceneFor` passes `preroll: PREROLL` in the args the worker is given (read from the source, because the screen is JSX and cannot be loaded here), and PREROLL is between 10 and 20 seconds.
-   Sabotage: the pre-roll made a no-op fails 1; the screen's `preroll` removed fails 4. Usage: node tools/verify-preroll.mjs
+        5. THE START IS A MOVING ONE: after the pre-roll the player is moving at at least 90% of the stream's median speed (on every shaped map, six seeds), and on the five-lane road at least 10% of the moving cars are slower than him (the standing start had none).
+   Sabotage: the pre-roll made a no-op fails 1; the screen's `preroll` removed fails 4; the player left standing (no starting speed, no pacer) fails 5. Usage: node tools/verify-preroll.mjs
    ===================================================================== */
 import { readFileSync } from "node:fs";
 import { TEST_MAPS } from "../src/map/samples.js";
@@ -42,7 +43,17 @@ console.log("\n4. THE SCREEN ASKS FOR IT");
 {
   const src = readFileSync(new URL("../src/apps/MapRoad.jsx", import.meta.url), "utf8");
   check(/preroll:\s*PREROLL/.test(src), "sceneFor passes `preroll: PREROLL` in the args (the same args the worker is given)");
-  check(PREROLL >= 10 && PREROLL <= 20, `PREROLL is ${PREROLL} s (between 10 and 20: 70-80% of the fill at 10, and about a second of launch time at 20)`);
+  check(PREROLL >= 10 && PREROLL <= 20, `PREROLL is ${PREROLL} s (between 10 and 20: 70-80% of the fill at 10; it is the MINIMUM now -- a start on a ramp runs on to the stream, to at most three times this)`);
+}
+console.log("\n5. THE MOVING START (Jay, 17 Nov 2026: the player plays as intended at once, not after a game of catch up; a car faster than him for good effectively does not exist)");
+for (const id of ["test-highway-gen-wide", "test-highway-gen", "test-loop"]) {
+  let slowest = Infinity, share = Infinity, minV = Infinity;
+  for (let seed = 1; seed <= 6; seed++) {
+    const { world, me } = make(id, seed, 15), others = world.actors.filter((a) => !a.player && !a.parked && (a.v ?? 0) > 1), vs = others.map((a) => a.v).sort((x, y) => x - y);
+    slowest = Math.min(slowest, me.v / vs[vs.length >> 1]); share = Math.min(share, others.filter((a) => a.v < me.v).length / others.length); minV = Math.min(minV, me.v);
+  }
+  check(minV > 15 && slowest >= 0.9, `${id}: after the pre-roll the player is MOVING (at least ${minV.toFixed(1)} m/s over 6 seeds; stood at 0 before) at no less than ${(100 * slowest).toFixed(0)}% of the traffic's median speed (at least 90%)`);
+  if (id === "test-highway-gen-wide") check(share >= 0.1, `${id}: at least ${(100 * share).toFixed(0)}% of the moving cars are slower than him at the handover (at least 10%; it was 0% from rest, and 73 of 96 cars ahead were out of reach)`);
 }
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");
 process.exit(failed ? 1 : 0);

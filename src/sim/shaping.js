@@ -116,6 +116,18 @@ export function windowOf(world, actors) {
   return { pl, at, road, g, lims, ahead, behind };
 }
 
+/* How far behind the player (>= 0) a place is, or null if it is not behind within BEHIND. */
+function behindBy(win, lane, c) {
+  const r = roadOf(lane);
+  if (r === win.road) return c < win.at.c && win.at.c - c <= win.lims.behind ? win.at.c - c : null;
+  const d = win.behind.get(r);
+  if (d == null) return null;
+  const by = d + ((win.g.len.get(r) ?? 0) - c);
+  return by <= win.lims.behind ? by : null;
+}
+/* How much faster than the player a car must want to go to be behind him with probability 73% (and 50% at his own speed): 2.5 m/s (9 km/h), a flagged design constant -- wide enough that a 110 km/h player has fast cars on both sides of him, narrow enough that 140 is nearly always behind. */
+export const SIDE_SPREAD = 2.5;
+
 /* How far ahead of the player (>= 0) a place is, or null if it is not ahead within AHEAD. */
 function aheadBy(win, lane, c) {
   const r = roadOf(lane);
@@ -144,7 +156,7 @@ const far = (poseOf, w, a, from) => { const p = poseOf(w, a); return Math.hypot(
    retire gone, and at most one car placed. `make(n, k, route, want, kind)`
    is the arrival's construction (crossing.js carFor); `want(n, kind, k,
    side)` the arrival's choice of route; `poseOf` where an actor is. */
-export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, poseOf, kindOf, wantsAccel, brakeOf, laneIndex = null }) {
+export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, poseOf, kindOf, wantsAccel, brakeOf, laneIndex = null, side = false }) {
   const win = windowOf(world, next);
   if (!win) return { next, win: null, retired: 0, placed: null };
   /* ON THE CLOCK THE CARS ARE AT. `next` is the actors one tick on, so their
@@ -174,7 +186,9 @@ export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, pos
   /* Insert: one car a tick while under the target. */
   if (world.target == null || next.length >= world.target) return { next, win, retired, placed: null };
   const r = rng(world.seed * 6151 + (world.tick ?? 0) * 7 + 3);
-  const lanes = [...win.ahead.keys(), win.road].flatMap((r) => win.g.lanes.get(r) ?? []).filter((l) => !win.g.special.has(l));
+  /* FAST CARS BEHIND, SLOW CARS AHEAD (`side`, DECISIONS 10.102): with the rule on, a car may also be placed behind the player (out of sight, SIGHT to BEHIND metres back), and which side a car takes is decided by its wanted speed against the player's. */
+  const lanes = [...new Set([...win.ahead.keys(), win.road, ...(side ? win.behind.keys() : [])])].flatMap((r) => win.g.lanes.get(r) ?? []).filter((l) => !win.g.special.has(l));
+  const canBehind = side && (win.behind.size > 0 || win.at.c >= SIGHT);
   const wn = w;
   for (let tries = 0; tries < 4; tries++) {
     let lane = lanes[Math.floor(r() * lanes.length) % lanes.length];
@@ -186,8 +200,9 @@ export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, pos
     }
     const len = win.g.len.get(roadOf(lane)) ?? 0;
     const c = r() * len;
-    const by = aheadBy(win, lane, c);
-    if (by == null || by < SIGHT) continue;
+    const by = aheadBy(win, lane, c), bh = canBehind ? behindBy(win, lane, c) : null;
+    const where = by != null && by >= SIGHT ? "ahead" : bh != null && bh >= SIGHT ? "behind" : null;
+    if (!where) continue;
     /* Where on a path that is: an approach well short of its line, or an exit well past its box. */
     let spot = null;
     for (const ap of win.g.approach.get(lane) ?? []) {
@@ -217,6 +232,11 @@ export function shape(world, next, { n: n0, make, settle = (c) => c, wantAt, pos
        anyway. Reverted; DECISIONS 10.17.) */
     const lead = room.ahead;
     const v = lead && lead.clear < 3 * (car.v0 * 2 + 10) ? Math.min(car.v0, lead.car.v ?? 0) : car.v0;
+    /* The side its speed asks for: the share behind is a logistic in how much faster than the player it wants to go, so a tendency and not a line (SIDE_SPREAD). Where there is no road behind the player (a start at the road's beginning) nothing is refused on this account, or the stream would lose its fast end. */
+    if (canBehind) {
+      const pBehind = 1 / (1 + Math.exp(-(car.v0 - (win.pl.v ?? 0)) / SIDE_SPREAD));
+      if ((where === "behind") !== (r() < pBehind)) continue;
+    }
     car = { ...car, v, placed: world.t };   // when shaping put them here: a car that arrived at an edge carries none
     /* Out of sight, and ADMISSIBLE (placement.js): on a lane, at a speed its
        road allows, clear of every headway in its lane and its queue, clear in

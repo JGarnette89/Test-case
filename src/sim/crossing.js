@@ -2335,6 +2335,7 @@ export function step(world) {
       settle: (car) => exitLimit(world, car),
       wantAt: (n, kind, k, side) => wantFor(world, { n, kind }, k, side),
       /* The lane its speed asks for (spawn sorting, `spawnLaneIndex`), where the map asks for it: cars only, as at an edge. */
+      side: !!world.spawnSide,
       laneIndex: world.spawnSort > 0 ? (n, k, route, count) => spawnLaneIndex(world, world.road.perceive?.who === "all" ? world.road : { ...world.road, perceive: null }, n, k, route, count) : null,
       poseOf,
       /* What the placed car would ask of its pedal on its first tick: the leader and the bend. */
@@ -2973,11 +2974,13 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
    and picking a way out at every node (graph.js). `control` overrides
    the map's per-leg controls -- `{ "*": "stop" }` makes every node an
    all-way stop -- and is a convenience for checks and screens. */
-export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, brakeReaction = false, mergeTolerance = DEFAULT_MERGE_TOLERANCE, spawnSort: spawnSortAsked = null, bends: bendsAsked = null } = {}) {
+export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = null, perceive = false, posted = false, target = null, laneChanges = true, corners = true, keepRight = true, pedRisk = null, gapRate = null, gapHeedless = null, pedEvery = null, trucks: trucksAsked = null, buses = BUS_SHARE, walkers = false, passing = true, progression = true, actuated = true, rivals = false, turn = "tangent", checks = false, brakeReaction = false, mergeTolerance = DEFAULT_MERGE_TOLERANCE, spawnSide: spawnSideAsked = null, spawnSort: spawnSortAsked = null, bends: bendsAsked = null } = {}) {
   /* The truck share: asked for, else the map's own (map/load.js `traffic`), else TRUCK_SHARE. */
   const trucks = trucksAsked ?? loaded?.traffic?.trucks ?? TRUCK_SHARE;
   /* How sorted a car's first lane is (spawn sorting, above): asked for, else the map's own (map/load.js `traffic`), else 0 -- the draw as it always was. */
   const spawnSort = spawnSortAsked ?? loaded?.traffic?.spawnSort ?? 0;
+  /* Fast cars behind the player, slow ahead (shaping.js `side`, DECISIONS 10.102): asked for, else the map's own, else off. */
+  const spawnSide = spawnSideAsked ?? loaded?.traffic?.spawnSide ?? false;
   /* Whose business a bend is (DECISIONS 10.96): "driver" -- the sideways acceleration a car asks, against what it has to give (corner.js) -- asked for, else the map's own, else the road's (a posted speed no car passes, and nothing to lose). */
   const bends = bendsAsked ?? loaded?.traffic?.bends ?? null;
   /* `progression: false`: every light on one shared cycle, as before green waves (progression.js) -- for comparing against. */
@@ -3007,7 +3010,7 @@ export function seedGraph(seed = 1, kmh = 50, loaded, { every = 1.1, control = n
     kmh: posted ? Math.round(fastest * 3.6) : kmh, speed, lane: 3.6, posted: !!posted,
     perceive: !perceive ? null : perceive === true ? { ...PERCEIVE, who: "all" } : PERCEIVE,
   };
-  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, brakeReaction, ...(spawnSort > 0 ? { spawnSort } : {}), ...(bends ? { bends } : {}), ...(mergeTolerance ? { mergeTolerance } : {}), ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
+  const w = { t: 0, tick: 0, seed, road, course, layout, every, target, laneChanges, corners, keepRight, trucks, buses, brakeReaction, ...(spawnSort > 0 ? { spawnSort } : {}), ...(spawnSide ? { spawnSide: true } : {}), ...(bends ? { bends } : {}), ...(mergeTolerance ? { mergeTolerance } : {}), ...(passing ? {} : { passing: false }), ...(rivals ? { rivals: true } : {}), /* THE CANDIDATE'S CHECKS (checks.js): OFF unless asked for -- built, not on (SIMULATOR IN FLIGHT 31), and a world without them is today's, tick for tick. */ ...(checks ? { checks: true } : {}), spawned: 0, nextAt: 0, actors: [],
     /* People on foot: how many take risks, and how often mid-block (peds.js); from the start, warm-up included. */
     ...(pedRisk ? { pedRisk } : {}), ...(gapRate != null ? { gapRate } : {}), ...(gapHeedless != null ? { gapHeedless } : {}), ...(pedEvery != null ? { pedEvery } : {}) };
   /* `actuated: false`: every light on its clock, as before the loops (actuated.js) -- for comparing against. */

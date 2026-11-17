@@ -592,12 +592,14 @@ export function loadMap(map) {
   const cars = Number(map.traffic?.cars);
   /* ...and how sorted its cars are where they first appear (sim/crossing.js `sortedEntry`, DECISIONS 10.91): the share, 0 to 1, already in the lane their speed asks for. Absent, 0: a draw across the lanes, as it always was. */
   const sorted = Number(map.traffic?.spawnSort);
+  /* ...and whether a shaped road puts fast cars behind the player and slow ones ahead (sim/shaping.js `side`, DECISIONS 10.102). */
+  const sideRule = map.traffic?.spawnSide === true;
   /* ...and the most its dial offers (map/cars.js `carsMaxFor`): a map the phone cannot afford at the general ceiling says so itself. */
   const carsMax = Number(map.traffic?.carsMax);
   /* ...and whose business a bend is: "driver" (sim/corner.js, DECISIONS 10.96): the road's posted speed is then not lowered to the bend, and the cars' own speeds and skills decide what the bend asks of them. */
   const bends = map.traffic?.bends === "driver" ? "driver" : null;
-  const traffic = Number.isFinite(tr) || map.traffic?.shape === true || cars > 0 || sorted > 0 || carsMax > 0 || bends
-    ? { ...(bends ? { bends } : {}), ...(carsMax > 0 ? { carsMax: Math.round(carsMax) } : {}), ...(sorted > 0 ? { spawnSort: Math.min(1, sorted) } : {}), ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}), ...(cars > 0 ? { cars: Math.round(cars) } : {}) }
+  const traffic = Number.isFinite(tr) || map.traffic?.shape === true || cars > 0 || sorted > 0 || sideRule || carsMax > 0 || bends
+    ? { ...(bends ? { bends } : {}), ...(carsMax > 0 ? { carsMax: Math.round(carsMax) } : {}), ...(sorted > 0 ? { spawnSort: Math.min(1, sorted) } : {}), ...(sideRule ? { spawnSide: true } : {}), ...(Number.isFinite(tr) ? { trucks: Math.max(0, Math.min(0.5, tr)) } : {}), ...(map.traffic?.shape === true ? { shape: true } : {}), ...(cars > 0 ? { cars: Math.round(cars) } : {}) }
     : null;
   return { ok: true, id: map.id, name: map.name, bounds, roads, nodes, crossings, chunks, props, zones, sections, signs, stops, laneKm, warnings, ...(traffic ? { traffic } : {}) };
 }
