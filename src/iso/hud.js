@@ -304,3 +304,43 @@ export function drawDriverCard(ctx, x, y, d, { axes, soundnessOf, lacking, compe
     ctx.fillText(a === "confidence" ? (v < middle - 0.05 ? `timid ${v.toFixed(2)}` : v > middle + 0.05 ? `bold ${v.toFixed(2)}` : v.toFixed(2)) : v.toFixed(2), x + CARD_W - 4, ry + 1);
   });
 }
+
+/* THE FRAME METER (17 Nov 2026, Jay's instrument): frames a second, the worst frame and how many were long, and the sim step's median, over the last
+   second, drawn top-left in clean mode too. A median hides stutter: a steady 60 with an odd 200 ms frame reads fine on an average and feels terrible,
+   so the worst and the count of long frames are the point. Fps and step side by side tell a render problem (fps down, step flat) from a sim one
+   (step up). Plain numbers in two arrays; nothing here touches React, and the text is rebuilt four times a second, not every frame. */
+export const LONG_FRAME_MS = 50;
+export function makeFrameMeter(windowMs = 1000) {
+  const frames = [], steps = [];   // [at, ms]
+  let text = "", builtAt = -Infinity, last = null;
+  const trim = (a, now) => { while (a.length && a[0][0] < now - windowMs) a.shift(); };
+  return {
+    /** A frame arrived at `now` (the rAF timestamp). */
+    frame(now) { if (last != null) frames.push([now, now - last]); last = now; trim(frames, now); },
+    /** A sim step took `ms`. */
+    step(now, ms) { steps.push([now, ms]); trim(steps, now); },
+    stats(now) {
+      trim(frames, now); trim(steps, now);
+      const ds = frames.map((f) => f[1]);
+      const span = frames.length ? now - (frames[0][0] - frames[0][1]) : 0;
+      const fps = span > 0 ? (frames.length * 1000) / span : 0;
+      const sm = steps.map((s) => s[1]).sort((a, b) => a - b);
+      return { fps, worst: ds.length ? Math.max(...ds) : 0, long: ds.filter((d) => d > LONG_FRAME_MS).length, step: sm.length ? sm[sm.length >> 1] : null, n: ds.length };
+    },
+    text(now) {
+      if (now - builtAt >= 250) {
+        const s = this.stats(now);
+        text = s.n ? `${Math.round(s.fps)} fps · worst ${Math.round(s.worst)} ms · ${s.long} long · step ${s.step == null ? "-" : s.step.toFixed(1)} ms` : "";
+        builtAt = now;
+      }
+      return text;
+    },
+  };
+}
+export function drawFrameMeter(ctx, text, x = 8, y = 4) {
+  if (!text) return;
+  ctx.font = "600 11px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+  const w = ctx.measureText ? ctx.measureText(text).width + 10 : 200;
+  ctx.fillStyle = "rgba(14,16,20,0.6)"; ctx.fillRect(x, y, w, 16);
+  ctx.fillStyle = "#e6e8ec"; ctx.fillText(text, x + 5, y + 2);
+}

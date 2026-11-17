@@ -44,7 +44,7 @@ import { parkedPoses } from "../sim/parking.js";
 import { controls } from "../iso/controls.js";
 import { drawFrame } from "../iso/draw.js";
 import { terrain } from "../iso/road.js";
-import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption, drawNav, drawReceipt, drawHeadway, drawDriverCard, CARD_W, CARD_H } from "../iso/hud.js";
+import { drawSlider, drawWheelBar, drawSignals, drawReadout, drawCorner, drawStop, drawHorn, drawCaption, drawNav, makeFrameMeter, drawFrameMeter, drawReceipt, drawHeadway, drawDriverCard, CARD_W, CARD_H } from "../iso/hud.js";
 import { viewOf, ELEVATIONS } from "../iso/project.js";
 import { AXES, soundnessOf, LACKING_AT, COMPETENT_AT, CONFIDENT_ENOUGH } from "../core/driver.js";
 import { offerFare, accept } from "../sim/jobs.js";
@@ -308,6 +308,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     if (!canvas) return undefined;
     const ctx = canvas.getContext("2d");
     let fpsAt = performance.now();
+    const frameMeter = makeFrameMeter();
 
     const fit = () => {
       const dpr = Math.min(DPR_CAP, window.devicePixelRatio || 1);
@@ -329,6 +330,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     window.addEventListener("keyup", onKey);
 
     const tick = (now) => {
+      frameMeter.frame(now);
       const f0 = performance.now();
       const size = fit();
       const dt = last.current ? Math.min(0.25, Math.max(0, (now - last.current) / 1000)) : 0;
@@ -420,6 +422,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
           heap.current?.step("after", performance.now());
           sc.world = w;
           clockTick(sc.clock ??= newSimClock(), performance.now(), w.t, { stepMs: performance.now() - t0 });
+          frameMeter.step(performance.now(), performance.now() - t0);
           /* Contact (sim/contact.js): an event and a response, never the end of the drive. */
           if (sc.me) {
             const c = playerContact(w, sc.me);
@@ -611,8 +614,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         if (!cleanRef.current) drawReadout(ctx, readout.current, 8, size.h - 44, { up: true, maxW: size.w - 80 });
         if (flash.current > 0) { ctx.fillStyle = `rgba(224,87,79,${0.35 * flash.current})`; ctx.fillRect(0, 0, size.w, size.h); flash.current = Math.max(0, flash.current - dt * 2); }
       } else {
-        if (!cleanRef.current) drawReadout(ctx, readout.current, 8, 6, { maxW: size.w - 16 });
+        if (!cleanRef.current) drawReadout(ctx, readout.current, 8, 22, { maxW: size.w - 16 });
       }
+      /* THE FRAME METER, outside the clean-mode guard on purpose: clean mode hides the instruments and this is the one Jay asked to keep. */
+      drawFrameMeter(ctx, frameMeter.text(now));
       /* Our own frame callback's time: a slow page shows here, a slow browser does not. */
       /* EVERY PART OF THE FRAME, each with its own p95 (pace.js frameParts): the sim's step when it ran on this
          frame, the poses, the camera, the draw -- its list, sort, paint and overlays -- and the HUD after it. */

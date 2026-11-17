@@ -191,15 +191,19 @@ function paintShadow(ctx, view, at, deg, L, W) {
    step from car to car so a queue does not blink in unison. `a` carries
    `brakeLamp` and `blinker` (sim/crossing.js); `L`, `W` the footprint,
    `rearZ`/`frontZ` the height of the top at each end. */
-function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t, bm = null) {
+export const LAMP_Z = 1.0;
+export function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t, bm = null) {
   const h = (deg * Math.PI) / 180, fx = Math.cos(h), fy = Math.sin(h), rx = -fy, ry = fx;   // forward, and the right of travel
   const r = Math.max(2.2, 0.28 * k);
   const T = frameOf(deg, 0, bm), spot = (along, across, z) => { placeInto(BP, 0, at, T, along, across, z); return view.into(BP[0], BP[1], BP[2], PT); };   // through the body's transform (one frame a car, no garbage a lamp), which with no body motion is the heading alone
   const dot = (p, rad, fill) => { ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(p[0], p[1], rad, 0, 2 * Math.PI); ctx.fill(); };
   const back = -L / 2 + 0.35, front = L / 2 - 0.35, side = W / 2 - 0.3;
+  /* LAMPS SIT LOW (17 Nov 2026, Jay: a truck's tail lights were on top of the box): the caller's heights are the TOPS of the vehicle (the cabin's roof is
+     where the driver's eye is, for the check wedge below), and a lamp on a truck or a bus is about a metre up whatever the roof is. A car's body is lower than that. */
+  const lampRear = Math.min(rearZ, LAMP_Z), lampFront = Math.min(frontZ, LAMP_Z);
   /* Unrolled: an array literal and its destructuring per lamp, per car, per frame was garbage for nothing. */
   for (let sgn = -1; sgn <= 1; sgn += 2) {
-    const p = spot(back, sgn * side, rearZ);
+    const p = spot(back, sgn * side, lampRear);
     if (a.brakeLamp) { dot(p, r * 2.1, "rgba(255,40,30,0.35)"); dot(p, r, "#ff2a1e"); }
     else dot(p, r * 0.8, "#5c1714");
     if (a.reversing) { dot(p, r * 1.9, "rgba(255,255,255,0.4)"); dot(p, r, "#ffffff"); }
@@ -223,9 +227,9 @@ function paintLamps(ctx, view, a, at, deg, L, W, rearZ, frontZ, k, t, bm = null)
   }
   if (a.blinker && Math.floor((t + ((a.n ?? 0) % 7) * 0.09) * 3) % 2 === 0) {
     const sgn = a.blinker === "right" ? 1 : -1;
-    let p = spot(front, sgn * (W / 2 - 0.15), frontZ);
+    let p = spot(front, sgn * (W / 2 - 0.15), lampFront);
     dot(p, r * 1.9, "rgba(255,176,32,0.4)"); dot(p, r, "#ffb020");
-    p = spot(back, sgn * (W / 2 - 0.15), rearZ);
+    p = spot(back, sgn * (W / 2 - 0.15), lampRear);
     dot(p, r * 1.9, "rgba(255,176,32,0.4)"); dot(p, r, "#ffb020");
   }
 }

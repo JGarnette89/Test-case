@@ -8522,3 +8522,9 @@ survivable at all.
 - **Merging, roundabout generation, cyclists, international mode.** Each
   needs a domain ruling before it needs code.
 - **`MergeRush`** is an unwired prototype. Do not wire it in.
+
+### 10.99 The frame meter and lamp heights (17 November 2026)
+
+Jay asked for a frames-a-second counter, top-left, in clean mode too, and reported a truck's tail lights drawn on top of the box. **The meter** (`makeFrameMeter` in `iso/hud.js`) shows fps, the worst frame and the count of frames over 50 ms in the last second, and the sim step's median: a median hides the stutter "up and down" describes (a steady 60 with an odd 200 ms frame reads fine on an average), and fps beside step tells a render problem (fps down, step flat) from a sim one. It is drawn outside clean mode's guard; the source check is a grep, so a person still has to see it in clean mode. **The lamps**: `paintLamps` was handed each vehicle's roof height as its lamp height, harmless for a 0.75 m car and wrong for a truck (3.4 m) or a bus (3.2 m), whose lamps (and blinkers) now sit at `LAMP_Z` = 1.0 m; the check wedge keeps the cab height. Cars are unchanged. `verify-framemeter` holds both; sabotaged (lamps at the roof) it fails truck 3.40 m and bus 3.20 m. Gate: the 12 checks the change reaches, 12 of 12, run alone.
+
+Also recorded: the played-world conversion stash is backed up at `origin/wip/played-world-DO-NOT-MERGE` (bf673f8), built on c405c30 and eleven commits behind `main`, with `crossing.js` changed since: it WILL conflict, so rebase it deliberately rather than popping it, and its temporary `PLAYED_OFF` switch must never reach `main`.
