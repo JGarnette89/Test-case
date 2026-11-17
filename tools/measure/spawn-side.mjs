@@ -18,11 +18,11 @@ const roadOf = (l) => String(l).split("#")[0];
 const signed = (win, lane, c) => { const r = roadOf(lane); if (r === win.road) return c - win.at.c; const da = win.ahead.get(r); if (da != null) return da + c; const db = win.behind.get(r); if (db != null) return -(db + ((win.g.len.get(r) ?? 0) - c)); return null; };
 const one = (seed, pace, on, cars = null) => {
   /* THE ARM, SET BEFORE THE PRE-ROLL (found 17 Nov): the earlier harness set `spawnSide` AFTER worldFor, so on the generated road -- whose table now carries the rule -- the 15-30 s pre-roll that builds the player's starting population ran under the rule in BOTH arms, and the OFF arm was switched off only afterwards. "off" and "on" put the arm in the map before the world is built (and the world is asserted to carry it); "late" is the old way (an unruled pre-roll, the rule switched on after). */
-  const rawMap = raw(); const pre = on === "late" ? false : !!on; if (rawMap.traffic) rawMap.traffic = { ...rawMap.traffic, ...(on === "late" || !on ? { spawnSide: false } : { spawnSide: true }) };
+  const rawMap = raw(); const ruled = on === true || on === "on", pre = ruled; if (rawMap.traffic) rawMap.traffic = { ...rawMap.traffic, ...(ruled ? { spawnSide: true } : { spawnSide: false }) };
   let { world: w, me } = worldFor(seed, 50, 2.0, true, cars, rawMap, rawMap.sections?.[0]?.start ?? null, false, false, { preroll: 15 });
   if (typeof on === "string" && !!w.spawnSide !== pre) throw new Error(`arm ${on} did not take: world.spawnSide ${w.spawnSide}`);
   /* The generated highway carries the rule itself now (roadgen SPAWN_SIDE), so OFF has to be said: an absent override ran the rule in both arms (found 17 Nov, the first count measure read OFF and ON identical). */
-  w = { ...w, spawnSide: on === "late" ? true : !!on };
+  w = { ...w, spawnSide: on === "late" ? true : ruled };
   const sc = { me, args: [1], saveWallet: false }, last = new Map(), seen = new Set(); let passes = 0, crashes = 0, carsSum = 0, ticks = 0; const curve = [];
   for (let n = 0; n < secs / DT; n++) {
     me = goodStep(me, w, sc, { overtake: true, pace }); sc.me = me; w = step(withDriver(w, me));
@@ -36,6 +36,7 @@ const one = (seed, pace, on, cars = null) => {
   }
   return { curve, edged: !!me.atEdge, seen: seen.size, passes, crashes: (w.crashes ?? []).length, cars: carsSum / Math.max(1, ticks) };
 };
+/* BUG FOUND 17 NOV, THE ARMS TEST'S FIRST RUN: `!!on` on the string "off" is TRUE, so the "off" arm ran the rule (off and on read identical, 36.0 per seed 41 28 39), and the assertion compared against the same wrong value so it passed -- the arm-forcing failure again, inside the fix for it. Fixed here; the "late" arm (27.3, 5.5 a minute) was right and equals the first harness's ON exactly, so the discrepancy is WHETHER THE PRE-ROLL RAN UNDER THE RULE (5.5 unruled pre-roll, 7.2 to 8.2 ruled). A true off arm on this road is still to re-run.
 /* THE THREE ARMS ON THE GENERATED ROAD (the discrepancy between the first harness and the later ones): off and on built that way from the start, and "late" (the first harness's ON: an unruled pre-roll, the rule after).
    Prediction stated before it ran: off about 4.4 a minute at 5 min (the curve's 22 over 5 min), on about 7.2, and late between them (the first harness read 5.5).
    Usage: node tools/measure/spawn-side.mjs 300 arms */
