@@ -2969,6 +2969,22 @@ export function seedCourse(seed = 1, kmh = 50, { every = 1.1, control = ALL_WAY,
   return warmed(w, acrossIt);
 }
 
+/* THE PLAYED WORLD (14 November; the default for checks, 17 November, DECISIONS 10.115). `seedGraph`'s own defaults are the
+   world as it was before each feature existed -- no walkers, no rivals, no
+   brake reaction, one speed for the map -- kept so the recorded
+   measurements still reproduce. The world a person drives is `worldFor`
+   (scene.js): all four ON. A check that built the other one was passing
+   against a world nobody plays: 37 of 52 did. So a check builds the
+   played world through `playedGraph`, and the burden sits on the exception:
+   a check that deliberately wants the bare world imports `seedGraph`, and one
+   that switches a single mechanism off says which, and each says why on a
+   `// BARE WORLD:` line (verify-played.mjs holds that). Any option still
+   overrides, so a check asking for `walkers: false` gets it. */
+export const PLAYED = { posted: true, walkers: true, rivals: true, brakeReaction: true };
+export function playedGraph(seed, kmh, loaded, opts = {}) {
+  return seedGraph(seed, kmh, loaded, { ...PLAYED, ...opts });
+}
+
 /* THE SAME WORLD ON A MAP: every node an intersection at its own
    bearings, every road a link, traffic entering at every dangling end
    and picking a way out at every node (graph.js). `control` overrides

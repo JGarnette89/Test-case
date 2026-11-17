@@ -34,10 +34,13 @@ import { emptyMap, road } from "../src/map/format.js";
 import { graphOf } from "../src/sim/graph.js";
 import { signalFor, lightAt, arrowAt, movementLight, controlUnder, GREEN_FOR, PHASE_TOL } from "../src/sim/signal.js";
 import { testMap1 } from "../src/map/samples.js";
-import { seedGraph, step, run, overlapping, openTo, whatStops } from "../src/sim/crossing.js";
+import { playedGraph, step, run, overlapping, openTo, whatStops } from "../src/sim/crossing.js";
 import { CAR, HARSH_AT, stoppingRoom } from "../src/sim/traffic.js";
 import { cornerAccel } from "../src/sim/corner.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
+
+// BARE WORLD: brakeReaction off. [brakeReaction] the bar was stated against a world where cars do not brake for a conflict they are about to cause; brake reaction is a sanctioned mechanism (DECISIONS 10.46: low-speed crashing is sanctioned, no rate set) and makes touches recorded events, which this check asserts do not happen. Classified by arm in DECISIONS 10.115; nothing restated.
+const playedWithout = (seed, kmh, loaded, opts = {}) => playedGraph(seed, kmh, loaded, { brakeReaction: false, ...opts });
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -153,7 +156,7 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
      that followed, two metres short of the line. Made sticky, it is 23
      with corners off and about 50 with them on, most of that poor
      brakers braking late for a turn, which is the braking axis. */
-  let w = seedGraph(4, 50, loaded, { every: 1.6 });
+  let w = playedWithout(4, 50, loaded, { every: 1.6 });
   const launches = [], delayedAtRed = new Set();
   let harsh = 0, ticks = 0, rightsOnRed = 0, stoppedFirst = 0, wentThenBraked = 0;
   const forCorner = [];
@@ -192,7 +195,7 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
      traffic too, where it does, and it must be seen there. */
   let lightR = 0, lightStopped = 0, lightWrong = 0;
   for (const seed of [7, 9]) {
-    let lw = seedGraph(seed, 50, loaded, { every: 3.5 });
+    let lw = playedWithout(seed, 50, loaded, { every: 3.5 });
     for (let i = 0; i < 20 * 300; i++) {
       const before = new Map(lw.actors.map((a) => [a.id, a]));
       lw = step(lw);
@@ -218,9 +221,9 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
      where it happened (28 September): a waiting car inside the other
      road's exit lane, and 135-degree hairpins curling back into their own
      queue. The world's crash log counts them all. */
-  const r = run(seedGraph(7, 50, loaded, { every: 1.2 }), 20 * 240);
+  const r = run(playedWithout(7, 50, loaded, { every: 1.2 }), 20 * 240);
   check(overlapping(r).length === 0 && (r.crashes ?? []).length === 0 && r.spawned > 200, `four minutes at a signalised crossroads: ${r.spawned} cars, ${(r.crashes ?? []).length} crashes in all`);
-  const five = run(seedGraph(9, 50, mapOf(FIVE), { every: 1.4 }), 20 * 240);
+  const five = run(playedWithout(9, 50, mapOf(FIVE), { every: 1.4 }), 20 * 240);
   check(overlapping(five).length === 0 && (five.crashes ?? []).length === 0 && five.spawned > 150, `four minutes at a signalised five-way: ${five.spawned} cars, ${(five.crashes ?? []).length} crashes in all`);
 }
 
@@ -237,7 +240,7 @@ for (const [name, L] of [["crossroads", graphOf(mapOf(CROSS), { lane: 3.6 }).at[
 {
   const loaded = mapOf(CROSS);
   /* On the clock: the comparison sets the time to a green and a red. What drives a light is actuated.js's business (verify-actuated); what a red DOES is this. */
-  const base = seedGraph(11, 50, loaded, { every: 60, actuated: false });
+  const base = playedWithout(11, 50, loaded, { every: 60, actuated: false });
   const L = base.course.at[0].layout;
   const sig = L.signal;
   const route = Object.keys(L.paths).find((r) => L.paths[r].from.startsWith("N|") && L.paths[r].intent === "straight");

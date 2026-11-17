@@ -26,7 +26,7 @@ import { signalFor } from "../src/sim/signal.js";
 import { stepLights, detect, LOOP, MIN_GREEN, PASSAGE } from "../src/sim/actuated.js";
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, pathOf } from "../src/sim/crossing.js";
+import { playedGraph, step, pathOf } from "../src/sim/crossing.js";
 import { lightAt, movementLight } from "../src/sim/signal.js";
 import { DT } from "../src/sim/traffic.js";
 
@@ -149,7 +149,7 @@ console.log("\n6. IN THE SIM: test map 1, actuated against the clock, three seed
 {
   const loaded = loadMap(TEST_MAPS.find((m) => m.id === "test-1").build());
   const run1 = (actuated, seed) => {
-    let w = seedGraph(seed, 50, loaded, { every: 2.0, target: 40, posted: true, actuated });
+    let w = playedGraph(seed, 50, loaded, { every: 2.0, target: 40, posted: true, actuated });
     let both = 0, redRuns = 0, standing = 0, crossings = 0, jumps = 0;
     const was = {};
     for (let i = 0; i < 300 / DT; i++) {

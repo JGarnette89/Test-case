@@ -13,7 +13,7 @@
    traffic treats the player as one of its own -- yielding, following,
    never driving through them.
    ===================================================================== */
-import { seedGraph, step, poseOf, overlapping, DT, restAt, blockedBy } from "../src/sim/crossing.js";
+import { playedGraph, step, poseOf, overlapping, DT, restAt, blockedBy } from "../src/sim/crossing.js";
 import { playerAt, playerOn, stepDriver, driverPose, withDriver, routeForSignal, aheadOf } from "../src/sim/drive.js";
 import { touching, holdAt, CLEAN, sliderFor, stopBand, accelFor } from "../src/sim/player.js";
 import { graphOf, poseOnGraph, approachAlong } from "../src/sim/graph.js";
@@ -87,7 +87,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
 
 /* 2. The signal can be changed before the line and not after; it is spent by the turn. */
 {
-  const w0 = empty(seedGraph(1, 50, loaded, { every: 2 }));
+  const w0 = empty(playedGraph(1, 50, loaded, { every: 2 }));
   let me = startAt(w0, "A-north|end");
   const path0 = w0.course.at[me.k].layout.paths[me.route];
   /* Drive at the line in the curb lane with the signal off, then left, then right, then off again, all
@@ -117,7 +117,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
 
 /* 3. The box is committed to; the road is driven. */
 {
-  const w0 = empty(seedGraph(1, 50, loaded, { every: 2 }));
+  const w0 = empty(playedGraph(1, 50, loaded, { every: 2 }));
   const me0 = startAt(w0, "A-north|end");
   /* A right turn with the wheel dead straight: through the box the car
      follows the arc -- its line stays on the lane. */
@@ -147,7 +147,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
 
 /* 4. The seam hands the car on without a jump, the loop can be driven round, and the edge ends the road. */
 {
-  const w0 = empty(seedGraph(1, 50, loaded, { every: 2 }));
+  const w0 = empty(playedGraph(1, 50, loaded, { every: 2 }));
   let jumps = 0, prev = null, legs = 0;
   /* The loop A-B-D-C-A is clockwise on the screen: arriving from the
      north the first turn is a left, east along A-B -- from the lane
@@ -191,7 +191,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
   for (let pass = 0; pass < 4; pass++) {
     let reachedThis = false;
     const probe = process.env.QUEUE_PROBE === "1" ? { buckets: {}, cleared: new Set(), t0: null } : null;
-    w = seedGraph(4 + pass, 50, xl, { every: 0.7 });   // demand spread over twice the lanes now
+    w = playedGraph(4 + pass, 50, xl, { every: 0.7 });   // demand spread over twice the lanes now
     w = { ...w, actors: w.actors.filter((a) => !(a.route.startsWith("W|end#1") && a.s < 40)) };
     me = { ...startAt(w, "W|end"), v: 13.9 };
     /* A driver who holds 50 and, like anybody, brakes for the car ahead in their lane. */
@@ -264,7 +264,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
    the curb-lane right's 9.3 m unasked. Swept in tools/measure/turn.mjs;
    the properties any right model would have are checked here. */
 {
-  const w0 = { ...seedGraph(1, 50, loaded, { every: 2 }), actors: [] };
+  const w0 = { ...playedGraph(1, 50, loaded, { every: 2 }), actors: [] };
   const RANK = { slow: 0, clean: 0, rough: 1, wide: 2, cut: 2 };
   const through = (leg, sig, kmh) => {
     const k = w0.course.at.findIndex((s) => s.layout.legs[leg]);
@@ -333,7 +333,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
 
   /* In the world: a two-way stop on the map, empty, the player coming
      down the stopping leg at 50 km/h. */
-  const w0 = empty(seedGraph(1, 50, loaded, { every: 2 }));
+  const w0 = empty(playedGraph(1, 50, loaded, { every: 2 }));
   const legId = curbOf("B-north|end");
   const k = w0.course.at.findIndex((s) => s.layout.legs[legId]);
   const layout = w0.course.at[k].layout, route = routeForSignal(layout, legId, null), path = layout.paths[route];
@@ -434,7 +434,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
    right the car ends up more than a lane off the road; at 32 it does not,
    and still settles in a lane. */
 {
-  const w0 = { ...seedGraph(1, 50, loaded, { every: 2 }), actors: [] };
+  const w0 = { ...playedGraph(1, 50, loaded, { every: 2 }), actors: [] };
   const run = (kmh) => {
     const leg = "A-north|end#1", k = w0.course.at.findIndex((s) => s.layout.legs[leg]);
     const layout = w0.course.at[k].layout, route = routeForSignal(layout, leg, "right"), path = layout.paths[route];
@@ -469,7 +469,7 @@ const empty = (w) => ({ ...w, actors: [], every: 1e9, nextAt: 1e9 });   // the s
    never of the car's `off`. */
 console.log("\n9. The car's real position: re-located onto the lane it is in, and on no lane when it is in none");
 {
-  const base = { ...seedGraph(1, 50, loaded, { every: 2 }), actors: [] };
+  const base = { ...playedGraph(1, 50, loaded, { every: 2 }), actors: [] };
   const leg = "A-north|end#1", k = base.course.at.findIndex((s) => s.layout.legs[leg]);
   const layout = base.course.at[k].layout, route = routeForSignal(layout, leg, "right"), path = layout.paths[route];
   const aim = routeForSignal(layout, leg, null), ap = layout.paths[aim];
@@ -624,7 +624,7 @@ console.log("\n9. The car's real position: re-located onto the lane it is in, an
    is in a box. */
 console.log("\n10. The traffic sees a car on no lane where its body is: avoided, not yielded to, and no ghost");
 {
-  let warm = seedGraph(1, 50, loaded, { every: 2 });
+  let warm = playedGraph(1, 50, loaded, { every: 2 });
   for (let i = 0; i < 200; i++) warm = step(warm);
   const template = warm.actors.find((a) => !a.player && a.kind !== "truck" && a.kind !== "bus");
   const empty = { ...warm, actors: [], every: 1e9, nextAt: 1e9, realPos: true }, course = empty.course;
@@ -716,7 +716,7 @@ console.log("\n10. A LANE CHANGE ON A BEND DOES NOT MOVE THE CAR (12 November, D
      The re-base is now level along the centreline (drive.js laneChange, graph.js approachSAt), as the exit stretch always was. Limits are the measured post-fix worst (2.1 mm sideways, 10.2 mm along, over 16 changes at
      72 km/h) widened to 20 mm [instrument: a polyline's resolution; 150 times under the defect]. Asked for both directions and a bend of more than 20 degrees, so that the case arose. */
   const loop = loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build());
-  const course = { ...seedGraph(1, 50, loop, { every: 2 }), actors: [] };
+  const course = { ...playedGraph(1, 50, loop, { every: 2 }), actors: [] };
   const turnOf2 = (a, b) => ((a - b + 540) % 360) - 180;
   const asked = [];
   for (let k = 0; k < course.course.at.length && asked.length < 8; k++) {

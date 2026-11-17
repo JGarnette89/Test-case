@@ -21,9 +21,12 @@ import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { mapFromBrief } from "../src/map/brief.js";
 import { graphOf } from "../src/sim/graph.js";
-import { seedGraph, step } from "../src/sim/crossing.js";
+import { playedGraph, step } from "../src/sim/crossing.js";
 import { lightAt, GREEN_FOR, PHASE_TOL } from "../src/sim/signal.js";
 import { BENCH_BRIEF } from "../src/iso/bench.js";
+
+// BARE WORLD: brakeReaction off. [brakeReaction] the bar was stated against a world where cars do not brake for a conflict they are about to cause; brake reaction is a sanctioned mechanism (DECISIONS 10.46: low-speed crashing is sanctioned, no rate set) and makes touches recorded events, which this check asserts do not happen. Classified by arm in DECISIONS 10.115; nothing restated.
+const playedWithout = (seed, kmh, loaded, opts = {}) => playedGraph(seed, kmh, loaded, { brakeReaction: false, ...opts });
 
 let failed = 0;
 const ok = (c, msg) => { console.log(`${c ? " ok " : " FAIL"} ${msg}`); if (!c) failed++; };
@@ -87,7 +90,7 @@ function platoon(loaded, g, progression, seed, actuated = false) {
   const tree = g.waves.tree;
   const upstream = new Map(tree.map((e) => [e.to, e]));
   const signals = new Set(g.at.map((a, k) => (a.layout?.signal ? k : -1)).filter((k) => k >= 0));
-  let w = seedGraph(seed, 50, loaded, { every: 2.0, target: 120, posted: true, progression, actuated });
+  let w = playedWithout(seed, 50, loaded, { every: 2.0, target: 120, posted: true, progression, actuated });
   const left = new Map(), rider = new Map(), minV = new Map();
   let through = 0, stopped = 0, crashes = 0;
   for (let i = 0; i < 8 * 60 * 20; i++) {

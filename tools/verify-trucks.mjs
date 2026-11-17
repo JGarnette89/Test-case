@@ -25,7 +25,7 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, pathOf, layoutOf, poseOf, overlapping, strayOf, whatStops, rearOf, DT, TRUCK_SHARE, UNDUE_AT } from "../src/sim/crossing.js";
+import { playedGraph, step, pathOf, layoutOf, poseOf, overlapping, strayOf, whatStops, rearOf, DT, TRUCK_SHARE, UNDUE_AT } from "../src/sim/crossing.js";
 import { tallerThanEye, boxOf, eyeOf, blocked } from "../src/sim/sight.js";
 import { emptyMap, road } from "../src/map/format.js";
 import { joinedTo } from "../src/sim/course.js";
@@ -46,7 +46,7 @@ console.log("\n1. THE TABLE");
     "a car's row is the constants every car was built on, so a world of cars is the world it was");
   check(t.length > c.length && t.width > c.width && t.accel < c.accel && t.brake < c.brake && t.most < c.most && t.cap === 1,
     `a truck is ${t.length} x ${t.width} m, pulls away at ${t.accel} m/s2 against ${c.accel}, plans on ${t.brake} and stops at most at ${t.most} against ${c.brake} and ${c.most}, and keeps to the limit`);
-  let w = seedGraph(3, 50, city, { target: 150, posted: true, trucks: 0 });
+  let w = playedGraph(3, 50, city, { target: 150, posted: true, trucks: 0 });
   let any = 0;
   for (let i = 0; i < 60 / DT; i++) { w = step(w); if (w.actors.some((a) => a.kind === "truck")) any++; }
   check(any === 0, "with the share at zero, no truck ever appears");
@@ -58,7 +58,7 @@ console.log("\n2. IN TRAFFIC");
   let arrivals = 0, trucks = 0, overLimit = 0, truckTicks = 0, silent = 0, redRun = 0;
   const truckCrashes = [];
   for (const seed of [3, 5]) {
-    let w = seedGraph(seed, 50, city, { target: 200, posted: true });
+    let w = playedGraph(seed, 50, city, { target: 200, posted: true });
     const seen = new Set(), from = new Map(), over = new Set();
     for (let i = 0; i < 300 / DT; i++) {
       w = step(w);
@@ -145,7 +145,7 @@ const sec7 = (() => {
 
 console.log("\n3. A LONG VEHICLE SPANS ITS PATH");
 {
-  let w = seedGraph(3, 50, city, { target: 200, posted: true, trucks: 0.3 });
+  let w = playedGraph(3, 50, city, { target: 200, posted: true, trucks: 0.3 });
   let worst = 0, turning = 0;
   for (let i = 0; i < 180 / DT; i++) {
     w = step(w);
@@ -190,7 +190,7 @@ console.log("\n4. ITS SIZE IS SOLID");
 console.log("\n5. THE AMBER AT ITS OWN BRAKING");
 {
   let L = null;
-  for (const at of seedGraph(1, 50, city, { target: 0, posted: true }).course.at) if (at.layout.signal) { L = at.layout; break; }
+  for (const at of playedGraph(1, 50, city, { target: 0, posted: true }).course.at) if (at.layout.signal) { L = at.layout; break; }
   const sig = L.signal, base = Object.values(L.legs).map((g) => g.base).find(Boolean);
   let t = 0;
   while (t < 300 && movementLight(sig, base, "straight", t) !== "amber") t += 0.05;
@@ -208,7 +208,7 @@ console.log("\n6. THE NEXT LINE, SEEN ACROSS THE SEAM -- SET UP RATHER THAN WAIT
      way past it, under a red that lasts. Waiting for traffic to produce it
      again is luck -- the fix itself moved the city off that occasion. */
   /* On the clock (`actuated: false`): the scenario picks a red that lasts by time, which an actuated light would not hold. */
-  let w = seedGraph(1, 50, city, { target: 0, posted: true, trucks: 0, actuated: false });
+  let w = playedGraph(1, 50, city, { target: 0, posted: true, trucks: 0, actuated: false });
   const course = w.course;
   let best = null;
   for (let k0 = 0; k0 < course.at.length; k0++) {
@@ -269,7 +269,7 @@ console.log("\n8. A TRUCK HIDES WHAT IS BEHIND IT -- AND A DRIVER KNOWS WHAT IT 
   const m = emptyMap("x");
   m.bounds = { x: 0, y: 0, w: 600, h: 600 };
   for (const [id, a] of [["w", { x: 0, y: 300, z: 0 }], ["e", { x: 600, y: 300, z: 0 }], ["n", { x: 300, y: 0, z: 0 }], ["s", { x: 300, y: 600, z: 0 }]]) m.roads.push(road({ id, points: [a, { x: 300, y: 300, z: 0 }], control: { start: "none", end: "none" } }));
-  const base = seedGraph(1, 50, loadMap(m), { target: 0, posted: true, trucks: 0 });
+  const base = playedGraph(1, 50, loadMap(m), { target: 0, posted: true, trucks: 0 });
   const L = base.course.at[0].layout;
   const straightFrom = (road) => Object.keys(L.paths).find((r) => L.legs[L.paths[r].from]?.road === road && L.paths[r].intent === "straight");
   const at = (road, id, stoppedAt, caution = 1) => {
@@ -344,7 +344,7 @@ console.log("\n8. A TRUCK HIDES WHAT IS BEHIND IT -- AND A DRIVER KNOWS WHAT IT 
 
   /* (d) In traffic: the city at 15% trucks, opaque against see-through. */
   const city15 = (opaque, seed = 3) => {
-    let w = { ...seedGraph(seed, 50, city, { target: 200, posted: true, trucks: 0.15 }), seeThrough: !opaque };
+    let w = { ...playedGraph(seed, 50, city, { target: 200, posted: true, trucks: 0.15 }), seeThrough: !opaque };
     let crossings = 0, longest = 0, still = new Map(), phantom = { bold: 0, timid: 0, boldN: 0, timidN: 0 };
     const perMin = [];
     for (let i = 0; i < 300 / DT; i++) {

@@ -45,6 +45,7 @@
 
    Usage: node tools/verify-lookaway.mjs
    ===================================================================== */
+// BARE WORLD: the subject is the drivers' glances (perception), measured on the maintainer's own repro (test map 1, 260 cars) with the world he saw; the played mechanisms are held off so the crash counts it compares belong to the glance rule alone (DECISIONS 10.19).
 import { worldFor } from "../src/sim/scene.js";
 import { step, seenBy, pathOf, whatStops } from "../src/sim/crossing.js";
 import { lookingAway } from "../src/sim/attention.js";

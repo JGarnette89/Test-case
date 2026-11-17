@@ -20,7 +20,7 @@ import { loadMap } from "../src/map/load.js";
 import { emptyMap, road } from "../src/map/format.js";
 import { testLoop } from "../src/map/samples.js";
 import { graphOf, edgesOfGraph } from "../src/sim/graph.js";
-import { seedGraph, step, pathOf, overlapping } from "../src/sim/crossing.js";
+import { playedGraph, step, pathOf, overlapping } from "../src/sim/crossing.js";
 import { playerOn } from "../src/sim/drive.js";
 import { DT } from "../src/sim/traffic.js";
 
@@ -67,7 +67,7 @@ console.log("\n1. A ONE-WAY ROAD IS DRIVEN ONE WAY");
   check(lines.length === 1 && off < 0.01 && inside, `its one lane line lies between its two lanes (${off.toFixed(3)} m from midway) and inside the surface, half-width ${half.toFixed(1)} m`);
   const hw = loadMap(testLoop()).roads.find((r) => r.id === "loop-0");
   check(hw.laneLines.length === hw.lanes - 1 && hw.laneLines.every((ln) => Math.hypot(ln[50].x - hw.pts[50].x, ln[50].y - hw.pts[50].y) < hw.width / 2), `the highway carries ${hw.laneLines.length} lane lines for its ${hw.lanes} lanes, every one on the surface`);
-  let w = seedGraph(1, 50, L, { target: 60 });
+  let w = playedGraph(1, 50, L, { target: 60 });
   let wrong = 0, over = 0;
   for (let i = 0; i < 120 / DT; i++) {
     w = step(w);
@@ -87,7 +87,7 @@ const loop = loadMap(testLoop());
   const edges = edgesOfGraph(g);
   check(edges.length === 4 && edges.every((x) => x.side.startsWith("on-")), `traffic enters only up the four on-ramps (${edges.map((x) => x.side.split("|")[0]).join(", ")})`);
   check(loop.sections.every((sec) => sec.start.road.startsWith("on-") && playerOn(g, sec.start.road, sec.start.end)), "every section starts the player on a slip road, standing, to merge");
-  let w = seedGraph(1, 50, loop, { target: 200, posted: true });
+  let w = playedGraph(1, 50, loop, { target: 200, posted: true });
   let over = 0;
   for (let i = 0; i < 300 / DT; i++) { w = step(w); if (i % 20 === 0) over += overlapping(w).length; }
   check(over === 0 && (w.crashes ?? []).filter((c) => !String(c.a).startsWith("ped-")).length === 0, `five minutes at 200 cars: no overlap (${over}), no crash`);
@@ -97,7 +97,7 @@ console.log("\n3. IT DOES NOT GO STALE: minute 5 against minute 15, ramps open a
 {
   const onLoop = (w, a) => { const p = pathOf(w, a), L = w.course.at[a.k ?? 0].layout; return /^loop-/.test(L.legs[p.from]?.road ?? "") && /^loop-/.test(L.legs[p.to]?.road ?? ""); };
   const measure = (loaded) => {
-    let w = seedGraph(1, 50, loaded, { target: 200, posted: true });
+    let w = playedGraph(1, 50, loaded, { target: 200, posted: true });
     while (w.t < 300) w = step(w);
     const at5 = new Set(w.actors.filter((a) => onLoop(w, a)).map((a) => a.id));
     /* THE SPREAD AT MINUTE 5, the yardstick for minute 15 (restated 12 November): sampled over the minute from 5 to 6, in the same way, from the same world, which goes on to minute 15 exactly as before. */

@@ -21,7 +21,7 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { testLoop } from "../src/map/samples.js";
-import { seedGraph, step, whatStops, overlapping, noticeAfter } from "../src/sim/crossing.js";
+import { playedGraph, step, whatStops, overlapping, noticeAfter } from "../src/sim/crossing.js";
 import { playerOn, withDriver } from "../src/sim/drive.js";
 import { DT, decide, wantedGap, clearBetween } from "../src/sim/traffic.js";
 import { courteous, COURTESY_FOR } from "../src/sim/courtesy.js";
@@ -62,7 +62,7 @@ const warmAt = (seed, at) => {
   const kept = warmed.get(seed) ?? new Map();
   warmed.set(seed, kept);
   const from = Math.max(-1, ...[...kept.keys()].filter((t) => t <= at));
-  let w = from < 0 ? seedGraph(seed, 50, loop, { target: 200, posted: true }) : kept.get(from);
+  let w = from < 0 ? playedGraph(seed, 50, loop, { target: 200, posted: true }) : kept.get(from);
   while (w.t < at) w = step(w);
   kept.set(at, w);
   return w;
@@ -141,7 +141,7 @@ console.log("\n5. WITH NOBODY ASKING, NOTHING MOVES");
      verify-merge counts the offers. */
   const raw = testLoop();
   for (const r of raw.roads) { delete r.accel; if (r.id.startsWith("on-")) r.control = { start: "none", end: "yield" }; }
-  let a = seedGraph(2, 50, loadMap(raw), { target: 120, posted: true }), b = { ...a, courtesy: false };
+  let a = playedGraph(2, 50, loadMap(raw), { target: 120, posted: true }), b = { ...a, courtesy: false };
   let same = true;
   for (let i = 0; i < 60 / DT && same; i++) {
     a = step(a); b = step(b);

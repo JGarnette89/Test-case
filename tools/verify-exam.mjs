@@ -17,7 +17,7 @@
 import { loadMap } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
-import { seedGraph, step, pathOf } from "../src/sim/crossing.js";
+import { playedGraph, step, pathOf } from "../src/sim/crossing.js";
 import { candidateOn, candidateOf, direct, interventionOf, withIntervention, pickProfile, DUAL_AT, CANDIDATE } from "../src/sim/exam.js";
 import { cornerOf } from "../src/sim/corner.js";
 import { HARSH_AT, DT } from "../src/sim/traffic.js";
@@ -28,7 +28,7 @@ let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
 
 const test1 = loadMap(testMap1());
-const onTest = (seed = 1, profile = "sound") => candidateOn(seedGraph(seed, 50, test1, { target: 60, posted: true }), { profile, road: "A-north", end: "end" });
+const onTest = (seed = 1, profile = "sound") => candidateOn(playedGraph(seed, 50, test1, { target: 60, posted: true }), { profile, road: "A-north", end: "end" });
 
 /* Step until `stop(me, world)` or the candidate leaves; record the intent
    of the path they were on at each leg. */
@@ -71,7 +71,7 @@ console.log("\n3. TOO LATE TO SLOW FOR THE CORNER IS NOT TAKEN, BY THE CORNER'S 
   m.roads.push(road({ id: "e", kind: "collector", points: [{ x: 400, y: 0 }, { x: 800, y: 0 }] }));
   m.roads.push(road({ id: "s", kind: "collector", points: [{ x: 400, y: 0 }, { x: 400, y: 300 }], control: { start: "stop", end: "none" } }));
   const tee = loadMap(m);
-  const fresh = () => candidateOn(seedGraph(2, 50, tee, { target: 0, posted: true }), { profile: "sound", road: "w", end: "end" });
+  const fresh = () => candidateOn(playedGraph(2, 50, tee, { target: 0, posted: true }), { profile: "sound", road: "w", end: "end" });
   const w0 = fresh();
   const me0 = candidateOf(w0);
   const lay = w0.course.at[me0.k].layout;

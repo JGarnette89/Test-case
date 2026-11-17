@@ -2,7 +2,7 @@
    file when it was split, not copied, so there is one statement of the map, the world, and a tick as the screen runs it. */
 import { emptyMap, road } from "../../src/map/format.js";
 import { loadMap } from "../../src/map/load.js";
-import { seedGraph, step, poseOf, carFor } from "../../src/sim/crossing.js";
+import { playedGraph, step, poseOf, carFor } from "../../src/sim/crossing.js";
 import { driver, DT } from "../../src/sim/traffic.js";
 import { playerAt, playerOn, withDriver, stepDriver, driverPose } from "../../src/sim/drive.js";
 import { worldFor } from "../../src/sim/scene.js";
@@ -25,7 +25,7 @@ export const m = emptyMap("contact");
 m.bounds = { x: 0, y: 0, w: 4000, h: 400 };
 m.roads.push(road({ id: "w", kind: "collector", lanes: 1, speed: 90, points: [P(0, 200), P(3000, 200)] }), road({ id: "e", kind: "collector", lanes: 1, speed: 90, points: [P(3000, 200), P(4000, 200)] }));
 export const loaded = loadMap(m);
-export const base = seedGraph(1, 50, loaded, { every: 1e9, target: 0, posted: true, trucks: 0, laneChanges: false, keepRight: false, brakeReaction: true });
+export const base = playedGraph(1, 50, loaded, { every: 1e9, target: 0, posted: true, trucks: 0, laneChanges: false, keepRight: false, brakeReaction: true });
 export const L = base.course.at[0].layout;
 export const route = Object.keys(L.paths).find((r) => L.legs[L.paths[r].from]?.road === "w" && L.paths[r].intent === "straight");
 export const carAt = (w, id, s, v = 0, n = 7) => ({ ...carFor(w, n, 0, route, null, "car"), id, n, s, v, v0: Math.max(v, 1) });

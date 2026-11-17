@@ -22,7 +22,7 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { testCityReady } from "../src/map/samples.js";
-import { seedGraph, step, pathOf, patienceOf, overlapping } from "../src/sim/crossing.js";
+import { playedGraph, step, pathOf, patienceOf, overlapping } from "../src/sim/crossing.js";
 import { postedAt } from "../src/sim/graph.js";
 import { DT, STOP_SHORT, driver, lenOf } from "../src/sim/traffic.js";
 import { RIVALS } from "../src/sim/rivals.js";
@@ -55,7 +55,7 @@ const city = loadMap(testCityReady());
   const stats = new Map();   // id -> { free: [v/limit], gap: [headway s], lc, s0, stops: [short m] }
   const stat = (k, a) => stats.get(k) ?? stats.set(k, { free: [], gap: [], lc: 0, stops: [], rival: a.rival ?? null }).get(k);
   for (const seed of [2, 3]) {
-  let w = seedGraph(seed, 50, city, { target: 150, posted: true, rivals: true });
+  let w = playedGraph(seed, 50, city, { target: 150, posted: true, rivals: true });
   const key = (a) => (a.rival ? a.id : `${seed}:${a.id}`);
   const prevLc = new Map(), prevV = new Map();
   for (let i = 0; i < 600 / DT; i++) {
@@ -119,7 +119,7 @@ const city = loadMap(testCityReady());
   check(R.Mason.lc > crowdLc, `Mason changes lane more than the traffic (${R.Mason.lc} against ${crowdLc})`);
 }
 {
-  let w = seedGraph(2, 50, city, { target: 150, posted: true });
+  let w = playedGraph(2, 50, city, { target: 150, posted: true, rivals: false });   // BARE WORLD: the control arm says so (the played default turns rivals on)
   for (let i = 0; i < 60 / DT; i++) w = step(w);
   check(!w.actors.some((a) => a.rival), "a world without rivals has none");
 }

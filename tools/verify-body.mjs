@@ -18,12 +18,15 @@
 import fs from "node:fs";
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, DT } from "../src/sim/crossing.js";
+import { playedGraph, step, DT } from "../src/sim/crossing.js";
 import { VEHICLES } from "../src/sim/traffic.js";
 import { poseOnGraph } from "../src/sim/graph.js";
 import { lateralOf } from "../src/sim/lanechange.js";
 import { BODY, targetsOf, springStep, newBody, beginBodyFrame, endBodyFrame, bodyOf, rowOf, resolveBody } from "../src/iso/body.js";
 import { boxCorners, bodyPoint, dropFor } from "../src/iso/draw.js";
+
+// BARE WORLD: brakeReaction off. [brakeReaction] the bar was stated against a world where cars do not brake for a conflict they are about to cause; brake reaction is a sanctioned mechanism (DECISIONS 10.46: low-speed crashing is sanctioned, no rate set) and makes touches recorded events, which this check asserts do not happen. Classified by arm in DECISIONS 10.115; nothing restated.
+const playedWithout = (seed, kmh, loaded, opts = {}) => playedGraph(seed, kmh, loaded, { brakeReaction: false, ...opts });
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -81,7 +84,7 @@ console.log("\n3. DIRECTIONS");
 
 console.log("\n4. ON REAL TRAFFIC: THE SIGN, AND SMOOTHNESS AT THE FRAME RATE");
 {
-  let w = seedGraph(1, 50, loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build()), { target: 200, posted: true });
+  let w = playedWithout(1, 50, loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build()), { target: 200, posted: true });
   const snaps = [w]; for (let i = 0; i < 40 / DT; i++) { w = step(w); snaps.push(w); }
   const mem = newBody(), series = new Map(), turnOf = (a, b) => ((a - b + 540) % 360) - 180;
   /* the bend, read INDEPENDENTLY of body.js: the turn between the chord of the path's positions 9 m behind and the chord 9 m ahead, per metre (a right turn positive) */
@@ -135,7 +138,7 @@ console.log("\n4. ON REAL TRAFFIC: THE SIGN, AND SMOOTHNESS AT THE FRAME RATE");
   }
   /* THE ROAD'S GRADIENT ON A REAL HILL (the test highway: low hills): a car on a sustained slope, read independently from the path's heights 9 m either side, settles to `slope` times the road's own angle, the nose up on the climb and down on the descent */
   {
-    const hw = seedGraph(1, 50, loadMap(TEST_MAPS.find((m) => m.id === "test-highway").build()), { target: 120, posted: true }), gInd = (a) => { const L = hw.course.at[a.k ?? 0].layout.paths[a.route].length, s = Math.min(L - 9, Math.max(9, a.s)); return ((poseOnGraph(hw.course, a.k ?? 0, a.route, s + 9).z ?? 0) - (poseOnGraph(hw.course, a.k ?? 0, a.route, s - 9).z ?? 0)) / 18; };
+    const hw = playedWithout(1, 50, loadMap(TEST_MAPS.find((m) => m.id === "test-highway").build()), { target: 120, posted: true }), gInd = (a) => { const L = hw.course.at[a.k ?? 0].layout.paths[a.route].length, s = Math.min(L - 9, Math.max(9, a.s)); return ((poseOnGraph(hw.course, a.k ?? 0, a.route, s + 9).z ?? 0) - (poseOnGraph(hw.course, a.k ?? 0, a.route, s - 9).z ?? 0)) / 18; };
     const cars = hw.actors.filter((a) => !a.player && !a.crash && !a.lc).map((a) => ({ a, g: gInd(a) })), climb = cars.filter((c) => c.g > 0.012).sort((x, y) => y.g - x.g)[0], drop = cars.filter((c) => c.g < -0.012).sort((x, y) => x.g - y.g)[0];
     const pitchOf = (c) => { const m = newBody(); let b = null; for (let i = 0; i < 4 * 60; i++) { beginBodyFrame(m); b = bodyOf(m, hw, { ...c.a, psi: undefined }, 0, FDT); endBodyFrame(m); } return b.pitch; };
     const pc = climb ? pitchOf(climb) : NaN, pd = drop ? pitchOf(drop) : NaN, wantC = climb ? BODY.car.slope * Math.atan(climb.g) : NaN, wantD = drop ? BODY.car.slope * Math.atan(drop.g) : NaN;

@@ -31,7 +31,7 @@
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { graphOf } from "../src/sim/graph.js";
-import { seedGraph, step, overlapping } from "../src/sim/crossing.js";
+import { playedGraph, step, overlapping } from "../src/sim/crossing.js";
 import { knows } from "../src/core/driver.js";
 import { courteous } from "../src/sim/courtesy.js";
 import { strandTrial } from "./measure/stranded.mjs";
@@ -98,7 +98,7 @@ console.log("\n1. THE MAP SAYS WHICH ENTRY");
   for (const r of asYield.roads) { delete r.accel; if (r.id.startsWith("on-")) r.control = { start: "none", end: "yield" }; }
   const ly = loadMap(asYield), gy = graphOf(ly, { lane: 3.6 });
   const yields = gy.at.flatMap((s) => Object.values(s.layout.legs).filter((l) => l.road.startsWith("on-") && l.control === "yield")).length;
-  let w = seedGraph(1, 50, ly, { every: 2.0, target: 60, posted: true });
+  let w = playedGraph(1, 50, ly, { every: 2.0, target: 60, posted: true });
   for (let i = 0; i < 600; i++) w = step(w);
   check(gy.errors.length === 0 && yields === 4 && !gy.at.some((s) => Object.values(s.layout.legs).some((l) => l.accel)) && (w.crashes ?? []).length === 0, `the same map with yield signs instead loads (${yields} yield-controlled slip roads, no acceleration lanes) and drives -- both entries exist, and the map says which`);
 }
@@ -107,7 +107,7 @@ console.log("\n2. NOBODY MERGES INTO OCCUPIED SPACE");
 const merges = [], offers = { n: 0, uncourteous: 0, twoForOne: 0 };
 const ran = [];
 for (const cars of [60, 150, 300]) {
-  let w = seedGraph(1, 50, loaded, { every: 2.0, target: cars, posted: true });
+  let w = playedGraph(1, 50, loaded, { every: 2.0, target: cars, posted: true });
   for (let i = 0; i < 1200; i++) w = step(w);
   const c0 = (w.crashes ?? []).length;
   let overlaps = 0, pastClose = 0, lost = 0, n = 0, longest = 0;
@@ -230,7 +230,7 @@ for (const r of ran) console.log(`    [${r.cars} cars] ${r.diag}`);
      helped 4: 0.67, a pass by 0.03. THE BAR IS UNCHANGED (0.7, still an agent's invention), the sample size was fixed before the sixteen-seed result was seen, and the margin is thin: the honest reading is that the
      ratio is about 0.7 and eight seeds cannot place it. A further doubling could go either side; if this line fails again the right response is to read what courtesy is for in a world that already shortens the wait, not to add seeds. */
   for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]) {
-    let base = seedGraph(seed, 50, loaded, { target: 150, posted: true });
+    let base = playedGraph(seed, 50, loaded, { target: 150, posted: true });
     for (const at of [120, 165]) {
       while (base.t < at) base = step(base);
       for (let k = 0; k < base.course.at.length; k++) {

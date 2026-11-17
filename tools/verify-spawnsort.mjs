@@ -15,6 +15,7 @@
    Sabotage (the lane read as the opposite way round, rank ignored, a draw taken from the shared stream): each fails the assertion that holds it.
    Usage: node tools/verify-spawnsort.mjs
    ===================================================================== */
+// BARE WORLD: the subject is the lane a car first appears in (DECISIONS 10.91); walkers, rivals and brake reaction would move the world without touching the lane choice, and each arm compares worlds tick for tick against itself.
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { seedGraph, step } from "../src/sim/crossing.js";

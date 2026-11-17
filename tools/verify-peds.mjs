@@ -28,7 +28,7 @@
 import { loadMap } from "../src/map/load.js";
 import { emptyMap, road, CROSSWALK_W } from "../src/map/format.js";
 import { graphOf, junctionsOf } from "../src/sim/graph.js";
-import { seedGraph, step, overlapping, pathOf, poseOf, openTo } from "../src/sim/crossing.js";
+import { playedGraph, step, overlapping, pathOf, poseOf, openTo } from "../src/sim/crossing.js";
 import { crosswalksOf, bandOn, heldAhead, pedAt, pedPose, strikePed, bandsAhead, APPROACH, speedOf } from "../src/sim/peds.js";
 import { TEST_MAPS, testPeds } from "../src/map/samples.js";
 import { playerOn, stepDriver, withDriver, driverPose } from "../src/sim/drive.js";
@@ -39,6 +39,9 @@ import { walkedCrossroads, touching } from "./measure/peds.mjs";
 import { lookingAway } from "../src/sim/attention.js";
 import { DT, CAR, stoppingRoom, MOST_BRAKE } from "../src/sim/traffic.js";
 import { setCrosswalk, splitRoad, addCrossing } from "../src/editor/model.js";
+
+// BARE WORLD: brakeReaction, walkers off. [brakeReaction] the bar was stated against a world where cars do not brake for a conflict they are about to cause; brake reaction is a sanctioned mechanism (DECISIONS 10.46: low-speed crashing is sanctioned, no rate set) and makes touches recorded events, which this check asserts do not happen. Classified by arm in DECISIONS 10.115; nothing restated. [walkers] the check places its own people and its assertions count them; the played walkers add pedestrians it does not expect.
+const playedWithout = (seed, kmh, loaded, opts = {}) => playedGraph(seed, kmh, loaded, { brakeReaction: false, walkers: false, ...opts });
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -85,7 +88,7 @@ console.log("\n1. A CROSSWALK: MAP DATA, THE LINE MOVES BACK BY ITS WIDTH, NOTHI
   const sp = splitRoad(walked, "s", 0, P(300, 450));
   check(walked.roads.find((r) => r.id === "s").crosswalk?.end === true && sp.map.roads.some((r) => r.crosswalk?.end === true),
     "the editor writes it at the end chosen, and a split keeps it with that end");
-  let w = seedGraph(3, 50, loadMap(walked), { target: 40, posted: true });
+  let w = playedWithout(3, 50, loadMap(walked), { target: 40, posted: true });
   const Lw = w.course.at.find((a) => !a.through).layout;
   let over = 0, onIt = 0, waiting = 0;
   for (let i = 0; i < 180 / DT; i++) {
@@ -106,7 +109,7 @@ console.log("\n1. A CROSSWALK: MAP DATA, THE LINE MOVES BACK BY ITS WIDTH, NOTHI
 console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- ON THE HALF THEY HOLD");
 {
   const run = (ctl, seed, ignorePeds = false) => {
-    let w = { ...seedGraph(seed, 50, loadMap(walkedCrossroads(ctl)), { target: 40, posted: true }), ...(ignorePeds ? { ignorePeds } : {}) };
+    let w = { ...playedWithout(seed, 50, loadMap(walkedCrossroads(ctl)), { target: 40, posted: true }), ...(ignorePeds ? { ignorePeds } : {}) };
     const cws = crosswalksOf(w.course);
     const L = w.course.at.find((a) => !a.through).layout;
     const out = { crossed: 0, touch: 0, intoWreck: 0, over: 0, longest: 0, otherHalf: 0, delayed: 0, manners: new Map() };
@@ -179,14 +182,14 @@ console.log("\n2. PEOPLE WALK THE CROSSWALKS, AND THE TRAFFIC YIELDS TO THEM -- 
   check(yieldCareful === 0, `while drivers who yield strike nobody careful (${yieldStruck} struck, all of them heedless)`);
   check(stop.otherHalf + none.otherHalf > 0, `the near-half rule: ${stop.otherHalf + none.otherHalf} times a car crossed a crosswalk while somebody was still on its other half`);
   check(stop.delayed + none.delayed === 0, "and a driver waiting for somebody on foot is never counted as delaying");
-  let w = seedGraph(3, 50, loadMap(crossroads()), { target: 40, posted: true });
+  let w = playedWithout(3, 50, loadMap(crossroads()), { target: 40, posted: true });
   for (let i = 0; i < 400; i++) w = step(w);
   check(!("peds" in w), "a map with no crosswalk has nobody on foot and its world carries nothing new");
 }
 
 console.log("\n3. THE PLAYER'S CAR AGAINST A PERSON: FOUND, STRUCK, LEFT WHERE THEY FELL, WAITED FOR, CLEARED");
 {
-  let w = seedGraph(3, 50, loadMap(walkedCrossroads("stop")), { target: 20, posted: true });
+  let w = playedWithout(3, 50, loadMap(walkedCrossroads("stop")), { target: 20, posted: true });
   let who = null;
   for (let i = 0; i < 4000 && !who; i++) { w = step(w); who = (w.peds ?? []).find((q) => q.state === "crossing" && q.u > 3) ?? null; }
   const at = pedPose(w, who);
@@ -218,7 +221,7 @@ console.log("\n4. A MID-BLOCK CROSSING, MADE WITH THE EDITOR'S TOOL: A STOP EACH
   const stops = (map.signs ?? []).filter((q) => q.kind === "stop").length;
   check(ids.length === 2 && node && Math.abs(node.at.x - 310) < 0.01 && Math.abs(node.at.y - 100) < 0.01 && stops === 2 && map.roads.find((r) => r.id === ids[0]).crosswalk?.end === true,
     "one tap on a street splits it where it was tapped, puts a stop sign on both new approaches and a crosswalk between them -- a node with no side street");
-  let w = seedGraph(3, 50, L, { target: 20, posted: true });
+  let w = playedWithout(3, 50, L, { target: 20, posted: true });
   let over = 0, stopped = 0, rolled = 0, crossed = 0, touch = 0;
   for (let i = 0; i < 240 / DT; i++) {
     const before = new Map(w.actors.map((a) => [a.id, a])), people = new Map((w.peds ?? []).map((q) => [q.id, q]));
@@ -244,7 +247,7 @@ console.log("\n5. DRIVERS WHO LOOK AWAY CAN MISS SOMEBODY ON FOOT -- AND ONLY TH
   const run = (seed, perceive) => {
     /* Everybody careful: this section is about what drivers see, not about
        people taking risks (section 6). */
-    let w = seedGraph(seed, 50, loadMap(testPeds()), { target: 60, posted: true, perceive, pedRisk: { trusting: 0, heedless: 0 }, gapHeedless: 0 });
+    let w = playedWithout(seed, 50, loadMap(testPeds()), { target: 60, posted: true, perceive, pedRisk: { trusting: 0, heedless: 0 }, gapHeedless: 0 });
     let silent = 0, across = 0, unexplained = 0;
     const lastAway = new Map();
     let seenCrash = 0;
@@ -289,7 +292,7 @@ console.log("\n6. FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (the mai
   const careful = { pedRisk: { trusting: 0, heedless: 0 }, gapHeedless: 0 };
   let carefulStruck = 0, walked = 0;
   for (const [raw, cars, seed] of [[testPeds(), 60, 3], [TEST_MAPS.find((t) => t.id === "city").build(), 300, 5]]) {
-    let w = seedGraph(seed, 50, loadMap(raw), { target: cars, posted: true, ...careful });
+    let w = playedWithout(seed, 50, loadMap(raw), { target: cars, posted: true, ...careful });
     const seen = new Set();
     for (let i = 0; i < 300 / DT; i++) { w = step(w); for (const q of w.peds ?? []) seen.add(q.id); }
     walked += seen.size;
@@ -306,7 +309,7 @@ console.log("\n6. FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (the mai
      exposure check that nothing careful is struck and nothing is silent. */
   let byManner = {}, silent = 0;
   for (const seed of [3]) {
-    let w = seedGraph(seed, 50, loadMap(TEST_MAPS.find((t) => t.id === "city").build()), { target: 300, posted: true });
+    let w = playedWithout(seed, 50, loadMap(TEST_MAPS.find((t) => t.id === "city").build()), { target: 300, posted: true });
     const manner = new Map();
     for (let i = 0; i < 300 / DT; i++) { w = step(w); for (const q of w.peds ?? []) manner.set(q.id, q.manner); silent += touching(w).length; }
     for (const c of (w.crashes ?? []).filter((c) => String(c.a).startsWith("ped-"))) byManner[manner.get(c.a)] = (byManner[manner.get(c.a)] ?? 0) + 1;
@@ -326,7 +329,7 @@ console.log("\n6. FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (the mai
     return m;
   };
   const L = loadMap(street());
-  let w = seedGraph(3, 50, L, { target: 8, posted: true, gapRate: 300, gapHeedless: 1 });
+  let w = playedWithout(3, 50, L, { target: 8, posted: true, gapRate: 300, gapHeedless: 1 });
   let me = playerOn(w.course, "a", "end"), playerHits = 0, laps = 0, heldSince = null;
   const hitIds = new Set();
   for (let i = 0; i < 480 / DT; i++) {
@@ -352,7 +355,7 @@ console.log("\n6. FAIRNESS IS OWED TO THE PLAYER, NOT TO THE SIMULATION (the mai
      not step out until the player is past; a car of the traffic in the same
      spot gets no such grace. */
   const probe = (asPlayer, gap = 7, blind = false) => {
-    let pw = seedGraph(1, 50, L, { target: 0, posted: true, gapRate: 0, gapHeedless: 1 });
+    let pw = playedWithout(1, 50, L, { target: 0, posted: true, gapRate: 0, gapHeedless: 1 });
     const car0 = playerOn(pw.course, "a", "end");
     const path = pathOf(pw, car0);
     const cws = crosswalksOf(pw.course);
@@ -422,7 +425,7 @@ console.log("\n7. PEOPLE ARE SEEN COMING AND GOING: THEY APPEAR ON THE PAVEMENT,
      far kerb for the whole departure. */
   const raw = testPeds(), L = loadMap(raw);
   const roadHalf = Object.fromEntries(L.roads.map((r) => [r.id, (r.outer ?? r.width) / 2]));
-  let w = seedGraph(3, 50, L, { target: 40, posted: true });
+  let w = playedWithout(3, 50, L, { target: 40, posted: true });
   const cws = crosswalksOf(w.course);
   const first = new Map(), stepped = new Map(), lastOff = new Map();
   let bornOnRoad = 0, rushed = 0, vanishedOnRoad = 0, people = 0;
@@ -468,7 +471,7 @@ console.log("\n8. SOMEBODY SEEN RUNNING ACROSS IS BRAKED FOR, EVEN BY A CAR TOO 
   };
   const L = loadMap(street());
   const probe = (from) => {
-    let pw = seedGraph(1, 50, L, { target: 0, posted: true, gapRate: 0 });
+    let pw = playedWithout(1, 50, L, { target: 0, posted: true, gapRate: 0 });
     const car0 = playerOn(pw.course, "a", "end");
     const path = pathOf(pw, car0);
     const ahead = bandsAhead(pw, car0.k, path).filter((e) => e.s > 80).sort((x, y) => x.s - y.s)[0];

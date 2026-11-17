@@ -5,7 +5,7 @@
    Sample: section 3b is 90 s of the city's signals. SPLIT 11 November (DECISIONS 10.70): sections 9, 9b and 10 -- nobody trapped, reverse, the soak -- are verify-contact-escape.mjs, so a failure names which half it is. */
 import { emptyMap, road } from "../src/map/format.js";
 import { loadMap } from "../src/map/load.js";
-import { seedGraph, step, poseOf, carFor } from "../src/sim/crossing.js";
+import { playedGraph, step, poseOf, carFor } from "../src/sim/crossing.js";
 import { driver, DT } from "../src/sim/traffic.js";
 import { playerAt, playerOn, withDriver, stepDriver, driverPose } from "../src/sim/drive.js";
 import { worldFor } from "../src/sim/scene.js";
@@ -126,7 +126,7 @@ console.log("3b. In an intersection: who owed whom, stated here case by case");
   /* A plain crossroads, its four legs read off, every case a straight car and a crossing one. */
   const map = TEST_MAPS.find((x) => x.id === "test-1").build();
   const lo = loadMap(map);
-  const world = seedGraph(1, 50, lo, { every: 1e9, target: 0, posted: true });
+  const world = playedGraph(1, 50, lo, { every: 1e9, target: 0, posted: true });
   /* The first straight movement anywhere with a road crossing it and a left coming the other way. */
   const offBy = (L, a, b) => Math.abs(Math.sin(((L.legs[a].bearing - L.legs[b].bearing) * Math.PI) / 180));
   let k = -1, L, routes, paths, mine, from, others, crossing, oncomingLeft;
@@ -206,7 +206,7 @@ console.log("3b. In an intersection: who owed whom, stated here case by case");
 {
   /* The record is what the light actually said, read here as the car crossed: on real traffic. */
   const lo = loadMap(TEST_MAPS.find((x) => x.id === "test-1").build());
-  let w = seedGraph(2, 50, lo, { target: 120, posted: true });
+  let w = playedGraph(2, 50, lo, { target: 120, posted: true });
   let crossed = 0, agree = 0, onRed = 0;
   for (let i = 0; i < 90 / DT; i++) {
     const was = new Map(w.actors.map((a) => [a.id, a])), t0 = w.t, lights = w.lights;
@@ -228,7 +228,7 @@ console.log("3b. In an intersection: who owed whom, stated here case by case");
 
 console.log("4. A person: a critical error, no respawn, and the drive goes on");
 {
-  let w = seedGraph(3, 50, loadMap(testPeds()), { target: 30, posted: true });
+  let w = playedGraph(3, 50, loadMap(testPeds()), { target: 30, posted: true });
   let who = null;
   for (let i = 0; i < 6000 && !who; i++) { w = step(w); who = (w.peds ?? []).find((q) => q.state === "crossing" && q.u > 3) ?? null; }
   check(!!who, "somebody crosses");

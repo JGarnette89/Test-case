@@ -9,6 +9,7 @@
      6. THE MAP ASKS FOR IT AND NOTHING ELSE DOES: a carriageway posts the limit (110) over its whole length and a ramp keeps a lower advisory speed; the shipped five-lane road, which does not ask, posts 110 on 60 to 70% of its length as it always did; a world with no `bends` is the world it was.
    Sabotage: the judgement removed fails 5; the join margin removed fails 3; the capability floor raised to the grip fails 1 and 2. Usage: node tools/verify-bends.mjs
    ===================================================================== */
+// BARE WORLD: this check builds `seedGraph` with the played options it needs stated one by one, and isolates what the bend judgement does to ordinary drivers; walkers, rivals and brake reaction would move the world for reasons unrelated to the bend (DECISIONS 10.96 to 10.98).
 import { roadgen, testHighwayGenWide } from "../src/map/roadgen.js";
 import { loadMap } from "../src/map/load.js";
 import { seedGraph, step } from "../src/sim/crossing.js";

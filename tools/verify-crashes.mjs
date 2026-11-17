@@ -14,7 +14,7 @@
    ===================================================================== */
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, overlapping, crashWith, poseOf, CRASH_CLEAR, DT } from "../src/sim/crossing.js";
+import { playedGraph, step, overlapping, crashWith, poseOf, CRASH_CLEAR, DT } from "../src/sim/crossing.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -24,7 +24,7 @@ const city = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
 console.log("\n1. CONTACT IS A CRASH, AND IT IS SEEN THROUGH");
 {
   /* Two cars put in the same place: the next step must crash them. */
-  let w = seedGraph(1, 50, t1, { target: 60, posted: true });
+  let w = playedGraph(1, 50, t1, { target: 60, posted: true });
   const a = w.actors.find((x) => !x.player && (x.v ?? 0) > 3);
   const clone = { ...a, id: "clone", n: 99999 };
   w = { ...w, actors: [...w.actors, clone] };
@@ -51,7 +51,7 @@ console.log("\n2. NO TWO CARS EVER OVERLAP UNLESS THEY ARE A RECORDED CRASH");
      observation axis switched on for all), heavy traffic, both maps. */
   let natural = 0, silent = 0;
   for (const [name, loaded, cars] of [["test map 1", t1, 150], ["the city", city, 250]]) {
-    let w = seedGraph(3, 50, loaded, { target: cars, posted: true, perceive: true });
+    let w = playedGraph(3, 50, loaded, { target: cars, posted: true, perceive: true });
     for (let i = 0; i < 3 * 60 / DT; i++) {
       w = step(w);
       if (i % 5) continue;
@@ -66,7 +66,7 @@ console.log("\n2. NO TWO CARS EVER OVERLAP UNLESS THEY ARE A RECORDED CRASH");
 
 console.log("\n3. THE CAR THE PLAYER HITS HAS CRASHED TOO");
 {
-  let w = seedGraph(1, 50, t1, { target: 40, posted: true });
+  let w = playedGraph(1, 50, t1, { target: 40, posted: true });
   const a = w.actors.find((x) => !x.player);
   w = crashWith(w, a.id, { x: 0, y: 0, z: 0 });
   const now = w.actors.find((x) => x.id === a.id);
@@ -75,7 +75,7 @@ console.log("\n3. THE CAR THE PLAYER HITS HAS CRASHED TOO");
 
 console.log("\n4. TRAFFIC THAT NEVER CRASHED STILL DOES NOT");
 {
-  let w = seedGraph(1, 50, city, { target: 200, posted: true });
+  let w = playedGraph(1, 50, city, { target: 200, posted: true });
   for (let i = 0; i < 2 * 60 / DT; i++) w = step(w);
   /* VEHICLES: a heedless person stepping in front of a car is a strike the
      design allows -- everybody struck took a risk -- and verify-peds owns it;
@@ -90,7 +90,7 @@ console.log("\n5. A WORLD'S CRASH LIST BEGINS WITH ITS CLOCK (12 November, DECIS
      to zero and left the crash list as it was, so every probe counting `w.crashes` counted a crash from before its own window, with a time in the world's future, and the screen could open on a crash the
      player never saw. The list begins empty; the wreck stays, as an actor. [instrument: the case is a measured one, found by describing each crash, tools/measure/warmup-crashes.mjs] */
   const loop = loadMap(TEST_MAPS.find((t) => t.id === "test-loop").build());
-  let w = seedGraph(3, 50, loop, { target: 260, posted: true, brakeReaction: true, walkers: true, rivals: true });
+  let w = playedGraph(3, 50, loop, { target: 260, posted: true, brakeReaction: true, walkers: true, rivals: true });
   check((w.crashes ?? []).length === 0, `a world opens with no crash in its list, though the warm-up crashed two cars: ${(w.crashes ?? []).length} logged at t = ${w.t}`);
   for (let i = 0; i < 5 / DT; i++) w = step(w);
   check((w.crashes ?? []).every((c) => c.t >= 0 && c.t <= w.t + 1e-9), `and every crash logged lies inside the clock that is running: ${(w.crashes ?? []).length} logged, latest at ${(w.crashes ?? []).reduce((m, c) => Math.max(m, c.t), 0).toFixed(2)} s of ${w.t.toFixed(2)}`);
@@ -105,7 +105,7 @@ console.log("\n6. A WORLD OPENS CLEAR OF THE WARM-UP'S WRECKS (12 November, DECI
      cars: a struck person is stored apart (`peds`, state "struck") and the clearing filters `actors` only, so it is untouched BY CONSTRUCTION; NOT TESTED HERE, because no map or seed with a person lying at t = 0 is known (the loop has no crosswalks). [Jay: the call is the maintainer's, an artefact against content; the three seeds are measured cases] */
   const loop = loadMap(TEST_MAPS.find((t) => t.id === "test-loop").build());
   for (const seed of [3, 8, 17]) {
-    const w = seedGraph(seed, 50, loop, { target: 300, posted: true, brakeReaction: true, walkers: true, rivals: true });
+    const w = playedGraph(seed, 50, loop, { target: 300, posted: true, brakeReaction: true, walkers: true, rivals: true });
     const wrecks = w.actors.filter((x) => x.crash).length;
     check(wrecks === 0, `loop seed ${seed} at 300 cars opens with no wreck standing: ${wrecks} crashed cars at t = 0 (each had two or more before)`);
   }

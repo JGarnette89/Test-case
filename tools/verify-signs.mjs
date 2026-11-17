@@ -22,10 +22,13 @@ import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
 import { graphOf, junctionsOf } from "../src/sim/graph.js";
-import { seedGraph, step, pathOf, whatStops, blockedBy, overlapping, YIELD_AT } from "../src/sim/crossing.js";
+import { playedGraph, step, pathOf, whatStops, blockedBy, overlapping, YIELD_AT } from "../src/sim/crossing.js";
 import { DT, CAR, wantedSpeed } from "../src/sim/traffic.js";
 import { yieldCross } from "./measure/yield.mjs";
 import { newDraft, addRoad, addPoint, setRoadControl, setSignBack, splitRoad, deleteRoad, controlAt, setNoLeft } from "../src/editor/model.js";
+
+// BARE WORLD: brakeReaction, rivals off. [brakeReaction] the bar was stated against a world where cars do not brake for a conflict they are about to cause; brake reaction is a sanctioned mechanism (DECISIONS 10.46: low-speed crashing is sanctioned, no rate set) and makes touches recorded events, which this check asserts do not happen. Classified by arm in DECISIONS 10.115; nothing restated. [rivals] the bar is a count or rate of ordinary traffic and the rivals (named, slow or odd drivers) are not part of what it was stated against.
+const playedWithout = (seed, kmh, loaded, opts = {}) => playedGraph(seed, kmh, loaded, { brakeReaction: false, rivals: false, ...opts });
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); if (!ok) failed++; };
@@ -61,7 +64,7 @@ for (const t of TEST_MAPS) {
   const ctl = (l) => JSON.stringify(l.roads.map((r) => [r.id, r.control]));
   const legs = (l) => JSON.stringify(graphOf(l, { conflicts: false }).at.map((q) => q.layout.place.control));
   check(s.signs.length > 0 && ctl(a) === ctl(b) && legs(a) === legs(b), `${t.name}: ${s.signs.length} stop and yield signs in place of the shorthand, the same control on every road end and every leg`);
-  let wa = seedGraph(2, 50, a, { target: 100, posted: true }), wb = seedGraph(2, 50, b, { target: 100, posted: true });
+  let wa = playedWithout(2, 50, a, { target: 100, posted: true }), wb = playedWithout(2, 50, b, { target: 100, posted: true });
   let same = JSON.stringify(wa.actors) === JSON.stringify(wb.actors);
   for (let i = 0; i < 1200 && same; i++) { wa = step(wa); wb = step(wb); same = JSON.stringify(wa.actors) === JSON.stringify(wb.actors); }
   check(same, `${t.name}: and the traffic is identical, tick for tick, for a minute`);
@@ -145,7 +148,7 @@ console.log("\n7. A YIELD SIGN: SLOW, GIVE WAY, STOP ONLY IF NEEDED (the maintai
        car traffic. With the 6% trucks in, the uncontrolled crossroads
        carried 28 minor-road crossings against 31 -- slower pull-aways, not
        a lock (the lock was 1); trucks are verify-trucks' business. */
-    let w = seedGraph(seed, 50, loadMap(yieldCross(ctl)), { target: cars, posted: true, trucks: 0 });
+    let w = playedWithout(seed, 50, loadMap(yieldCross(ctl)), { target: cars, posted: true, trucks: 0 });
     const out = { minor: [], idleStops: 0, rests: 0, throughHeldByUncommitted: 0, crashes: 0, over: 0 };
     const low = new Map(), idle = new Map();
     for (let i = 0; i < secs / DT; i++) {
@@ -262,7 +265,7 @@ console.log("\n9. A NO-LEFT-TURN SIGN: NOBODY TURNS LEFT FROM THAT APPROACH, EVE
   check(draft.signs.some((q) => q.kind === "no-left-turn") && L.roads.find((r) => r.id === "s").noLeft?.end && lefts("s") === 0 && lefts("n") > 0 && lefts("w") > 0,
     `the editor puts the sign at the south approach, the loader carries it, and no lane of that approach is given a left (${lefts("n")} still on the north, ${lefts("w")} on the west)`);
   check(junctionsOf(c).some((j) => j.signs.some((q) => q.kind === "no-left-turn")), "and it is drawn, beside that approach");
-  let w = seedGraph(3, 50, L, { target: 40, posted: true });
+  let w = playedWithout(3, 50, L, { target: 40, posted: true });
   const turned = { s: 0, other: 0 };
   for (let i = 0; i < 240 / DT; i++) {
     const before = new Map(w.actors.map((a) => [a.id, a]));

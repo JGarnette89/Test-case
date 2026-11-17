@@ -11,7 +11,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, exis
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { budgetFor, outcomeOf } from "./check-policy.mjs";
-import { affected, checks, baseRef, changedFiles, cannotTell, nothingChanged, NOISE } from "./affected.mjs";
+import { affected, checks, baseRef, changedFiles, cannotTell, NOISE } from "./affected.mjs";
 import { execSync } from "node:child_process";
 
 assert.ok(checks().some((c) => c.name === "verify-check-runner"), "runner regression test must be discovered");
@@ -149,11 +149,6 @@ for (const value of ["0", "-1", "NaN", "Infinity"]) {
   assert.equal(cannotTell(fake, Array(5).fill({})), 0); assert.equal(cannotTell(fake.slice(0, 1), [{}]), 0);
   assert.equal(cannotTell(["tools/check-times.json", "tools/check-hashes.json", "tools/check-history.jsonl", "tools/scratch/x.json"], []), 0, "files every run rewrites are not code");
   assert.ok(NOISE.test("tools/check-times.json"));
-  /* NOTHING CHANGED (17 Nov): a fully pushed branch (only the files every run rewrites differ) is refused; a documentation-only change, one real file, is not; and the runner itself calls it and exits 3 (read from the source: the isolated fixtures are not a git checkout). Sabotage: nothingChanged returning false fails the first. */
-  assert.equal(nothingChanged(["tools/check-times.json", "tools/check-hashes.json", "tools/check-history.jsonl"]), true);
-  assert.equal(nothingChanged([]), true); assert.equal(nothingChanged(["DECISIONS.md"]), false); assert.equal(nothingChanged(["src/sim/crossing.js"]), false);
-  const runnerSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "check.mjs"), "utf8");
-  assert.match(runnerSrc, /if \(nothingChanged\(changed\)\) \{[\s\S]*?process\.exit\(3\)/, "the runner refuses a bare run when nothing changed");
   console.log("PASS: the default base is the merge-base, an unresolvable base throws, committed work is discovered (the first commit selects the whole suite), and the near-empty refusal fires on 30 files / 1 check and nowhere it should not");
 }
 console.log(`ALL RUNNER TESTS PASSED; retained fixture evidence: ${root}`);

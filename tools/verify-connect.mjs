@@ -29,7 +29,7 @@ import { emptyMap, road } from "../src/map/format.js";
 import { testMap1 } from "../src/map/samples.js";
 import { graphOf } from "../src/sim/graph.js";
 import { defaultTurns, receive } from "../src/sim/lanes.js";
-import { seedGraph, step, overlapping } from "../src/sim/crossing.js";
+import { playedGraph, step, overlapping } from "../src/sim/crossing.js";
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -111,7 +111,7 @@ const N = { x: 500, y: 100 }, S = { x: 500, y: 900 }, E = { x: 900, y: 500 }, W 
 {
   const dbl = [["left"], ["left"], ["straight", "right"]];
   const { loaded } = node([["N", N, 3, dbl], ["S", S, 3], ["E", E, 2], ["W", W, 2]], "stop");
-  let w = seedGraph(5, 50, loaded, { target: 60 });
+  let w = playedGraph(5, 50, loaded, { target: 60 });
   const usedLanes = new Set();
   let ov = 0;
   for (let i = 0; i < 20 * 180; i++) {

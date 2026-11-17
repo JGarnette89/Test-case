@@ -35,9 +35,12 @@ import { testMap1 } from "../src/map/samples.js";
 import { graphOf } from "../src/sim/graph.js";
 import { offsetsOf, baysAt, taperFor } from "../src/map/bays.js";
 import { defaultTurns } from "../src/sim/lanes.js";
-import { seedGraph, step, overlapping } from "../src/sim/crossing.js";
+import { playedGraph, step, overlapping } from "../src/sim/crossing.js";
 import { LC_TIME } from "../src/sim/lanechange.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
+
+// BARE WORLD: brakeReaction off. [brakeReaction] the bar was stated against a world where cars do not brake for a conflict they are about to cause; brake reaction is a sanctioned mechanism (DECISIONS 10.46: low-speed crashing is sanctioned, no rate set) and makes touches recorded events, which this check asserts do not happen. Classified by arm in DECISIONS 10.115; nothing restated.
+const playedWithout = (seed, kmh, loaded, opts = {}) => playedGraph(seed, kmh, loaded, { brakeReaction: false, ...opts });
 
 let failed = 0;
 const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (!ok) failed++; };
@@ -122,7 +125,7 @@ console.log("\n2. A BAY IS FOR ITS TURN");
 
 console.log("\n3. IN TRAFFIC, AT 300 CARS");
 {
-  let w = seedGraph(3, 50, loaded, { target: 300, posted: true });
+  let w = playedWithout(3, 50, loaded, { target: 300, posted: true });
   const L = w.course.at[kE].layout;
   let overlaps = 0, early = 0, earlyEg = null, overtakeIn = 0, bayEntries = 0, leftsE = 0, leftsNotBay = 0;
   const seenLc = new Set(), counted = new Set();

@@ -9,7 +9,7 @@
 import { loadMap } from "../src/map/load.js";
 import { testBuses, testMap1 } from "../src/map/samples.js";
 import { emptyMap, road } from "../src/map/format.js";
-import { seedGraph, step, poseOf } from "../src/sim/crossing.js";
+import { playedGraph, step, poseOf } from "../src/sim/crossing.js";
 import { laneSpanOnGraph } from "../src/sim/graph.js";
 import { stopsOf, DWELL, MIN_DWELL, MAX_DWELL, inBay, laneAt } from "../src/sim/buses.js";
 import { planPass } from "../src/sim/passing.js";
@@ -17,6 +17,9 @@ import { onRoadSurface } from "../src/map/sidewalks.js";
 import { reads, DIFFICULTY } from "../src/core/driver.js";
 import { walkNetOf, walkerPose, WAIT_PATIENCE } from "../src/sim/walkers.js";
 import { DT, lenOf } from "../src/sim/traffic.js";
+
+// BARE WORLD: brakeReaction, rivals off. [brakeReaction] the bar was stated against a world where cars do not brake for a conflict they are about to cause; brake reaction is a sanctioned mechanism (DECISIONS 10.46: low-speed crashing is sanctioned, no rate set) and makes touches recorded events, which this check asserts do not happen. Classified by arm in DECISIONS 10.115; nothing restated. [rivals] the bar is a count or rate of ordinary traffic and the rivals (named, slow or odd drivers) are not part of what it was stated against.
+const playedWithout = (seed, kmh, loaded, opts = {}) => playedGraph(seed, kmh, loaded, { brakeReaction: false, rivals: false, ...opts });
 
 let fails = 0;
 /* VEHICLES TOUCHING VEHICLES. A person struck is peds.js's content -- the
@@ -67,7 +70,7 @@ console.log("6. bays: out of the lane, passed, and given way to -- by those who 
   /* One run at the rule's own difficulty and the hard one (14 October, the cost of a check): three ordinary runs gave 59 of 59 and 63 waits against floors of 5 and 10; one gives 26 and 35. The hard run, where the floor is close, is kept whole. */
   for (const [seed, hard] of [[5, false], [8, true]]) {
   DIFFICULTY["yield-to-bus"] = hard ? 0.9 : realDifficulty;
-  let v = seedGraph(seed, 50, L, { every: 2.0, target: 90, posted: true, buses: 0.3 });
+  let v = playedWithout(seed, 50, L, { every: 2.0, target: 90, posted: true, buses: 0.3 });
   episodes.clear();
   for (let k = 0; k < (MINS6 * 60) / DT; k++) {
     v = step(v);

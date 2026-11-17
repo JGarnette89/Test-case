@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
-import { seedGraph, step, carriedWorld, carriedPose, DT } from "../src/sim/crossing.js";
+import { playedGraph, step, carriedWorld, carriedPose, DT } from "../src/sim/crossing.js";
 import { lateralOf } from "../src/sim/lanechange.js";
 import { playerAt, stepDriver, driverPose, carriedPlayer, withDriver } from "../src/sim/drive.js";
 import { holdAt } from "../src/sim/player.js";
@@ -23,7 +23,7 @@ const check = (ok, msg) => { console.log(`  ${ok ? "ok  " : "FAIL:"} ${msg}`); i
 
 console.log("\n1. THE DRAWN SIDEWAYS OFFSET IS THE ANALYTIC ONE AT THE CARRIED TIME");
 {
-  let w = seedGraph(1, 50, loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build()), { target: 200, posted: true });
+  let w = playedGraph(1, 50, loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build()), { target: 200, posted: true });
   const samples = []; let steppedBy = 0;
   for (let i = 0; i < 90 / DT && samples.length < 400; i++) {
     w = step(w);
@@ -50,7 +50,7 @@ console.log("\n2. THE PLAYER'S DRAWN CAR DOES NOT STEP AT A TICK, SIDEWAYS OR IN
      second (tools/measure/player-carry.mjs: 208 mm off the line and 0.77 degrees in one tick of a steered weave at 80 km/h). WHAT A SMOOTH PICTURE NEEDS IS NO JUMP AT THE BOUNDARY: the pose drawn at the very end of one tick
      (carry = DT) and the pose of the next tick (carry = 0) are the same place. (A first version compared the drawn car with the straight line between the two ticks' poses; that is a hindsight no extrapolation has at the tick
      where the wheel reverses, and read WORSE for the fix in heading, 0.72 degrees against 0.54, at exactly that tick.) The jump is judged at its 95th percentile, and its worst is reported against what holding still gives. */
-  const course = { ...seedGraph(1, 50, loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build()), { every: 2 }), actors: [] };
+  const course = { ...playedGraph(1, 50, loadMap(TEST_MAPS.find((m) => m.id === "test-loop").build()), { every: 2 }), actors: [] };
   const route = Object.keys(course.course.at[0].layout.paths).find((r) => /^loop-7\|end#1/.test(r)), turnOf = (a, b) => ((a - b + 540) % 360) - 180;
   let me = { ...playerAt(course.course, 0, route), s: 300, v: 80 / 3.6, going: true, accepted: true, signal: null, off: 0 }, world = withDriver(course, me);
   /* TWO DRIVES: a SMOOTH one (a sine of the wheel, as a lane change is steered: no wheel reversal inside a tick), which is what is asserted; and a BANG-BANG one (the wheel flipped from +0.5 to -0.5 in a tick), which is reported, not asserted: no extrapolation knows the wheel is about to reverse, and a thumb does not do it. */
