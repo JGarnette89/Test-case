@@ -47,11 +47,11 @@ if (process.argv[3] === "arms2") {
   const seeds = Array.from({ length: Number(process.env.SEEDS ?? 8) }, (_, i) => i + 1), mins = Math.floor(secs / 60), out = {};
   const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length, se = (a) => Math.sqrt(a.reduce((x, y) => x + (y - mean(a)) ** 2, 0) / (a.length - 1)) / Math.sqrt(a.length);
   for (const arm of ["off", "on"]) {
-    const rows = seeds.map((sd) => one(sd, 1.0, arm, null)); out[arm] = rows;
+    const rows = seeds.map((sd) => one(sd, 1.0, arm, process.env.CARS ? Number(process.env.CARS) : null)); out[arm] = rows;
     const bb = rows.reduce((t, r) => t + r.behindBirths, 0), ab = rows.reduce((t, r) => t + r.aheadBirths, 0);
     if (arm === "off" && bb !== 0) throw new Error(`the OFF arm placed ${bb} cars behind the player: the arm did not take`);
     if (arm === "on" && bb < 20) throw new Error(`the ON arm placed only ${bb} cars behind the player: the arm did not take`);
-    console.log(`arm ${arm.padEnd(3)} on ${MAP}: placed behind ${bb}, ahead ${ab}; ${rows.filter((r) => r.edged).length} of ${seeds.length} reached the road's end (arm verified by the placements)`);
+    console.log(`arm ${arm.padEnd(3)} on ${MAP}${process.env.CARS ? ` at ${process.env.CARS} cars` : ""}: placed behind ${bb}, ahead ${ab}; ${rows.filter((r) => r.edged).length} of ${seeds.length} reached the road's end (arm verified by the placements)`);
   }
   const last = mins - 2;   // the last whole minute's index in `curve`
   for (const [label, f] of [["whole run (cars seen by the last minute)", (r, k) => r.curve[last][k]], [`steady window (minute 3 to ${mins - 1})`, (r, k) => r.curve[last][k] - r.curve[2][k]]]) for (const k of ["seen", "passes"]) {
