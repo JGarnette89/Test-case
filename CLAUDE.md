@@ -285,6 +285,7 @@ Eight things to know before your first change:
    - **While iterating**: `node tools/check.mjs --direct` -- only the
      checks that import a changed file themselves (the check written
      against it), and screens and core. Minutes for a feature module.
+   - **A PUSH IS VERIFIED WITH `--all` OR BY NAMING THE CHECKS, NEVER WITH A BARE RUN** (17 Nov): the default diffs against the merge-base with origin/main, so on a fully pushed branch it has nothing to select and used to report a pass on nothing. A bare run in that state now refuses (exit 3, `NOTHING CHANGED`); the rule still stands for the cases a refusal cannot see.
    - **Before a commit**: `node tools/check.mjs` -- the derived set. It is
      complete by construction for code the checks import. **`--all`** (the
      whole suite but the legacy set) runs when a commit crosses subsystems

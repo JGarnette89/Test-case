@@ -104,6 +104,11 @@ export function cannotTell(changed, list) {
   return code.length >= CODE_MIN && list.length < SET_MIN ? code.length : 0;
 }
 
+/* NOTHING CHANGED (17 November, the lead: "a push is verified with --all or by naming the checks, never with a bare run"). With every real file identical to the base -- a branch that is fully pushed -- a bare run
+   selects almost nothing (the run-record files alone pick up one check) and reports a PASS on nothing: the original defect, wearing a different hat. A bare run in that state is refused; the checks are named or --all is
+   asked for. A change that is only documentation is NOT this case (it has changed files and selects none, on purpose). */
+export function nothingChanged(changed) { return changed.filter((f) => !NOISE.test(f)).length === 0; }
+
 /* `direct`: only the checks that import a changed file THEMSELVES -- the
    check written against it -- plus the two that see every screen. The
    iteration loop; the full closure is what a commit runs. */

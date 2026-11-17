@@ -39,7 +39,7 @@ import { budgetFor, outcomeOf, passed } from "./check-policy.mjs";
 import { cpus, freemem } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checks as allChecks, affected, changedFiles, baseRef, cannotTell, NOISE } from "./affected.mjs";
+import { checks as allChecks, affected, changedFiles, baseRef, cannotTell, nothingChanged, NOISE } from "./affected.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TIMES = join(ROOT, "tools", "check-times.json");
@@ -77,6 +77,7 @@ else if (args.includes("--all")) list = every;
 else {
   let changed, b;
   try { b = baseRef(opt("--base")); changed = changedFiles(opt("--base")); } catch (e) { console.error(`CANNOT TELL: ${e.message}`); process.exit(3); }
+  if (nothingChanged(changed)) { console.error(`NOTHING CHANGED against ${b.ref} (${b.sha}): a bare run on a fully pushed branch verifies nothing and would report a pass. Run --all, or name the checks, or pass --base <ref>.`); process.exit(3); }
   list = affected(changed, { direct: args.includes("--direct") });
   const real = changed.filter((f) => !NOISE.test(f));
   console.log(`base ${b.ref} (${b.sha}): ${real.length} changed file(s) -> ${list.length} check(s) can see them`);
