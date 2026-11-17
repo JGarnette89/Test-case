@@ -114,7 +114,22 @@ export function chordGrade(course, a, s = a.s, half = CURVATURE_CHORD_HALF) {
 /* THE BODY OF ONE CAR THIS FRAME: { roll, pitch, pivot } in radians and metres, or null for a car that has no business leaning (a wreck). `world` is the
    world at its tick, `carry` the seconds since, `dt` the frame's step, `body` the memory. The tick-rate inputs (the speed change, the curvature, the player's
    turning against the road) are taken ONCE per tick; the lane change's analytic term is read at the carried time; the spring runs at the frame rate. */
+/* A WRECK'S JOLT (17 Nov 2026; Jay's believable stops, the open half: a wreck stood perfectly level, as if nothing had hit it). One kick at the crash, a damped
+   shake in pitch and roll at the car's own body frequencies, gone in WRECK_SECONDS, then the body is level again (null, no memory, nothing to prune: a pure function
+   of the time since the crash, so the screen and a check read the same thing). The size is the closing speed the car had (`crash.speed`, recorded at contact): WRECK_GAIN
+   radians per m/s up to WRECK_MAX. All of them [invented] and flagged here for Jay to dial: 0.004 rad per m/s is 0.23 degrees per m/s (10 m/s: 2.3 degrees), the cap 0.1 rad
+   is 5.7 degrees, the shake dies in about two seconds (WRECK_TAU 0.6 s, a 3 s window). No permanent tilt: a wreck's rest attitude is not modelled. */
+export const WRECK_GAIN = 0.004, WRECK_MAX = 0.1, WRECK_SECONDS = 3, WRECK_TAU = 0.6;
+export function wreckBody(a, world, carry) {
+  const T = world.t + carry - (a.crash?.t ?? 0), V = a.crash?.speed ?? 0;
+  if (!(T >= 0) || T > WRECK_SECONDS || !(V > 1)) return null;
+  const row = rowOf(a.kind), A = Math.min(WRECK_MAX, WRECK_GAIN * V), env = Math.exp(-T / WRECK_TAU);
+  let h = 0; for (const ch of String(a.id)) h += ch.charCodeAt(0);
+  const side = h % 2 ? 1 : -1;   // which way it rolls first: deterministic from the car, not from a clock
+  return { roll: side * 0.7 * A * env * Math.sin(2 * Math.PI * row.rollHz * T), pitch: A * env * Math.sin(2 * Math.PI * row.pitchHz * T), pivot: row.pivot };
+}
 export function bodyOf(body, world, a, carry, dt) {
+  if (a.crash && !a.player && !a.parked) return wreckBody(a, world, carry);
   if (a.crash || a.crashed || a.parked) return null;
   const row = resolveBody(a.kind, modsOf(a)), id = a.id;
   body.seen.add(id);

@@ -101,9 +101,10 @@ export function playerContact(w, me) {
     const owed = owedBy(me, a, layout);
     /* A car changing lane into them, with the player holding theirs, owes them the lane. */
     const cutIn = !!a.lc && !a.lc.abort && Math.abs(me.off ?? 0) <= LANE / 2 - HALF_W && w.t - (me.laneAt ?? -Infinity) >= CHANGED_WITHIN;
+    const cs = closingSpeed(me, mine, q, v);
     const notTheirs = owed ? owed === "other" : cutIn || rearStruck(me, mine, q, v, w.t);
-    fresh.push({ kind: "car", id: a.id, closing: closingSpeed(me, mine, q, v), atFault: !notTheirs, why: owed ? "right of way" : cutIn ? "cut in" : notTheirs ? "from behind" : null });
-    w = crashWith(w, a.id, { x: p.x, y: p.y, z: p.z ?? 0 }, "player", notTheirs ? a.id : "player");
+    fresh.push({ kind: "car", id: a.id, closing: cs, atFault: !notTheirs, why: owed ? "right of way" : cutIn ? "cut in" : notTheirs ? "from behind" : null });
+    w = crashWith(w, a.id, { x: p.x, y: p.y, z: p.z ?? 0 }, "player", notTheirs ? a.id : "player", cs);
   }
   const parked = w.parked ? contactWith(w.course, w.parked, mine, touching) : null;
   if (parked) {

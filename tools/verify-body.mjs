@@ -192,7 +192,18 @@ console.log("\n6. MEMORY");
   beginBodyFrame(m2); const b = bodyOf(m2, world(1.05), car(9, 20), 0, 0.5); endBodyFrame(m2);
   check(Math.abs(b.pitch - targetsOf(BODY.car, 0, 20 / 0.05).pitch) < 1e-9, "a long gap between frames (a backgrounded tab) snaps exactly to the target and does not integrate a huge step");
   const wreck = newBody(); beginBodyFrame(wreck);
-  check(bodyOf(wreck, world(1), { ...car(5, 10), crash: { t: 0 } }, 0, FDT) === null, "a wreck has no body motion");
+  /* A WRECK'S JOLT (17 Nov, Jay's believable stops): REPLACES "a wreck has no body motion", whose premise was the thing Jay found wrong. Expectations in the check, not read from the module: a car that struck at 10 m/s
+     shakes (a pitch peak of at least 0.5 degrees within the first second, and no more than 6 degrees at any speed), it is level again by 3 s, it does nothing before the crash, a crash with no speed
+     recorded does nothing, a bigger impact shakes more, the same shake is read twice, and a parked car and the player are still not shaken. */
+  const mk = (v, t0 = 0) => ({ ...car(5, 0), crash: { t: t0, speed: v } }), DEGR = 180 / Math.PI;
+  const peak = (v, from, to) => { let p = 0; for (let t = from; t <= to; t += 0.02) { const r = bodyOf(wreck, world(t), mk(v), 0, FDT); if (r) p = Math.max(p, Math.abs(r.pitch)); } return p * DEGR; };
+  check(peak(10, 0, 1) >= 0.5, `a car that struck at 10 m/s shakes: pitch peak ${peak(10, 0, 1).toFixed(2)} degrees in the first second (at least 0.5)`);
+  check(peak(60, 0, 3) <= 6.0, `and never more than 6 degrees, however hard it was hit (60 m/s: ${peak(60, 0, 3).toFixed(2)})`);
+  check(peak(10, 3.0001, 5) === 0 && bodyOf(wreck, world(3.5), mk(10), 0, FDT) === null, "level again after 3 s (null): a wreck that has settled costs nothing");
+  check(bodyOf(wreck, world(0.2), mk(10, 1), 0, FDT) === null && bodyOf(wreck, world(1), mk(0.5), 0, FDT) === null, "nothing before the crash, and nothing for a crash with no speed recorded");
+  check(peak(20, 0, 1) > peak(5, 0, 1), `a bigger impact shakes more (20 m/s ${peak(20, 0, 1).toFixed(2)} against 5 m/s ${peak(5, 0, 1).toFixed(2)})`);
+  check(JSON.stringify(bodyOf(wreck, world(0.4), mk(10), 0, FDT)) === JSON.stringify(bodyOf(wreck, world(0.4), mk(10), 0, FDT)), "the same shake when read twice");
+  check(bodyOf(wreck, world(0.4), { ...mk(10), parked: true }, 0, FDT) === null && bodyOf(wreck, world(0.4), { ...mk(10), player: true }, 0, FDT) === null, "a parked car and the player are not shaken");
 }
 
 console.log("\n7. WIRING");

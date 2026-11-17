@@ -2376,11 +2376,11 @@ export function step(world) {
      (verify-crashes, 30 September). */
   const hits = contactsIn({ ...world, t: world.t + DT, actors: next });
   if (hits.length) {
-    const hit = new Map();
+    const v0 = new Map(next.map((x) => [x.id, x.v ?? 0])), hit = new Map();
     for (const c of hits) { if (!hit.has(c.a)) hit.set(c.a, c); if (!hit.has(c.b)) hit.set(c.b, c); }
     for (let i = 0; i < next.length; i++) {
       const c = hit.get(next[i].id);
-      if (c && !next[i].crash && !next[i].player) next[i] = { ...next[i], v: 0, a: 0, crash: { t: world.t + DT, with: c.a === next[i].id ? c.b : c.a, at: c.at } };
+      if (c && !next[i].crash && !next[i].player) next[i] = { ...next[i], v: 0, a: 0, crash: { t: world.t + DT, with: c.a === next[i].id ? c.b : c.a, at: c.at, speed: Math.abs((v0.get(next[i].id) ?? 0) - (v0.get(c.a === next[i].id ? c.b : c.a) ?? 0)) } };
     }
     byKCache.delete(next);
     crashes = [...(crashes ?? []), ...hits.filter((c) => c.fresh).map((c) => ({ t: world.t + DT, a: c.a, b: c.b, at: c.at }))].slice(-50);
@@ -2398,7 +2398,7 @@ export function step(world) {
       if (!leg || (leg.across ?? leg.lanes ?? 1) < 2) continue;
       if (a.v * a.v * curvatureAt(p, a.s) <= lateralCapability(a, world.grip ?? 1)) continue;
       const pose = poseOf(at, a), here = { x: pose.x, y: pose.y };
-      next[i] = { ...a, v: 0, a: 0, crash: { t: world.t + DT, with: "road", at: here } };
+      next[i] = { ...a, v: 0, a: 0, crash: { t: world.t + DT, with: "road", at: here, speed: a.v } };
       (lost ??= []).push({ t: world.t + DT, a: a.id, b: "road", at: here });
     }
     if (lost) { byKCache.delete(next); crashes = [...(crashes ?? []), ...lost].slice(-50); }
@@ -3370,10 +3370,10 @@ export function contactsIn(world) {
 }
 
 /* The car the player hit has crashed too: it stops, and it is logged. */
-export function crashWith(world, id, at, other = "player", striker = null) {
+export function crashWith(world, id, at, other = "player", striker = null, closing = null) {
   const t = world.t;
   let found = false;
-  const actors = world.actors.map((a) => { if (a.id !== id || a.crash) return a; found = true; return { ...a, v: 0, a: 0, crash: { t, with: other, at } }; });
+  const actors = world.actors.map((a) => { if (a.id !== id || a.crash) return a; found = true; return { ...a, v: 0, a: 0, crash: { t, with: other, at, speed: closing ?? a.v } }; });
   if (!found) return world;
   return { ...world, actors, crashes: [...(world.crashes ?? []), { t, a: other, b: id, at, ...(striker ? { striker } : {}) }].slice(-50) };
 }
