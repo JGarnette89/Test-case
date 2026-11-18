@@ -47,7 +47,8 @@ if (process.argv[3] === "one") {
   const rows = seeds.map((sd) => one(sd, 1.0, ARM, cars)), bb = rows.reduce((t, r) => t + r.behindBirths, 0);
   if (ARM === "off" && bb !== 0) throw new Error(`the OFF arm placed ${bb} cars behind the player: the arm did not take`);
   if (ARM === "on" && bb < 10) throw new Error(`the ON arm placed only ${bb} cars behind the player: the arm did not take`);
-  console.log(JSON.stringify({ map: MAP, arm: ARM, cars, behindBirths: bb, edged: rows.filter((r) => r.edged).length, seen: rows.map((r) => r.seen), passes: rows.map((r) => r.passes) }));
+  /* `seen4`/`passes4`: the same cumulative counts at the 4-minute mark, BEFORE any run can reach the road's end (the generated road is about 6 minutes at speed; at 330 s two or three of eight runs have, and a player parked at the end with the rule on has cars arriving from behind him, which inflates the count without being driving: found 18 Nov reading the ladder). */
+  console.log(JSON.stringify({ map: MAP, arm: ARM, cars, behindBirths: bb, edged: rows.filter((r) => r.edged).length, seen: rows.map((r) => r.seen), passes: rows.map((r) => r.passes), seen4: rows.map((r) => r.curve[3]?.seen), passes4: rows.map((r) => r.curve[3]?.passes) }));
   process.exit(0);
 }
 /* THE ARMS, VERIFIED BY AN OBSERVABLE IN THE WORLD (the standing practice, 17 Nov: an arm is proved by something the world does, never by the variable that set it): rule off must place NO car behind the player, rule on at
