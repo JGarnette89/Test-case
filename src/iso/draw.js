@@ -504,7 +504,8 @@ export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = t
   };
   if (flat && terrain.length) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const c of terrain) for (const q of c) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
+    if (terrain.xs) { x0 = terrain.xs[0]; x1 = terrain.xs[terrain.xs.length - 1]; y0 = terrain.ys[0]; y1 = terrain.ys[terrain.ys.length - 1]; }   // a grid terrain: its first and last vertex are the extremes the walk over every corner found
+    else for (const c of terrain) for (const q of c) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
     const g = [{ x: x0, y: y0, z: 0 }, { x: x1, y: y0, z: 0 }, { x: x1, y: y1, z: 0 }, { x: x0, y: y1, z: 0 }];
     items.push({ layer: 0, key: -Infinity, tag: audit && { kind: "cell", poly: g }, paint: () => { quad(ctx, P, g[0], g[1], g[2], g[3]); ctx.fillStyle = shade(C.grass, { x: 0, y: 0, z: 1 }, 0.35); ctx.fill(); } });
   }
@@ -540,14 +541,32 @@ export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = t
     if (flat && Math.abs(a.z) < 0.05 && Math.abs(b.z) < 0.05 && Math.abs(c.z) < 0.05 && Math.abs(d.z) < 0.05) return;   // flat: the quad under the lot
     if (onScreen(a.x, a.y, a.z) || onScreen(c.x, c.y, c.z)) cellItem(a, b, c, d);
   };
-  const grid = flat ? null : terrain.grid;
-  if (grid) {
+  /* A GRID TERRAIN IS VISITED FROM ITS ARRAYS: a cell's two test corners (its first and far ones) and its four heights are read from the typed arrays and the cell is BUILT only if it is drawn, so a frame allocates for the hundred cells it shows and not for the three hundred thousand it considers (iso/road.js GridTerrain). The test is `visitCell`'s own, term for term. */
+  let visited = 0;
+  const visitIdx = (idx) => {
+    visited++;
+    const nx = terrain.xs.length - 1, j = Math.floor(idx / nx), i = idx - j * nx, w = nx + 1, xs = terrain.xs, ys = terrain.ys, zs = terrain.zs;
+    const za = zs[j * w + i], zb = zs[j * w + i + 1], zc = zs[(j + 1) * w + i + 1], zd = zs[(j + 1) * w + i];
+    if (flat && Math.abs(za) < 0.05 && Math.abs(zb) < 0.05 && Math.abs(zc) < 0.05 && Math.abs(zd) < 0.05) return;   // flat: the quad under the lot
+    if (onScreen(xs[i], ys[j], za) || onScreen(xs[i + 1], ys[j + 1], zc)) { const cell = terrain.cellAt(idx); cellItem(cell[0], cell[1], cell[2], cell[3]); }
+  };
+  const grid = terrain.grid;
+  if (grid && terrain.xs) {
+    let j0 = 0, j1 = grid.ny - 1, i0 = 0, i1 = grid.nx - 1;
+    if (!flat) {
+      const r = view.groundRect(grid.zMin, grid.zMax, margin), cs = grid.cell;
+      /* A cell shows if its first corner (x, y) or its far corner (x + cs, y + cs) is on the canvas: both lie in the rectangle, so the first corner's index runs from one cell before the rectangle to its far edge, plus slack for the accumulated float steps. */
+      i0 = Math.max(0, Math.floor((r.x0 - grid.x0) / cs) - 2); i1 = Math.min(grid.nx - 1, Math.ceil((r.x1 - grid.x0) / cs) + 1);
+      j0 = Math.max(0, Math.floor((r.y0 - grid.y0) / cs) - 2); j1 = Math.min(grid.ny - 1, Math.ceil((r.y1 - grid.y0) / cs) + 1);
+    }
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) visitIdx(j * grid.nx + i);
+  } else if (grid && !flat) {
     const r = view.groundRect(grid.zMin, grid.zMax, margin), cs = grid.cell;
-    /* A cell shows if its first corner (x, y) or its far corner (x + cs, y + cs) is on the canvas: both lie in the rectangle, so the first corner's index runs from one cell before the rectangle to its far edge, plus one cell of slack for the accumulated float steps. */
     const i0 = Math.max(0, Math.floor((r.x0 - grid.x0) / cs) - 2), i1 = Math.min(grid.nx - 1, Math.ceil((r.x1 - grid.x0) / cs) + 1);
     const j0 = Math.max(0, Math.floor((r.y0 - grid.y0) / cs) - 2), j1 = Math.min(grid.ny - 1, Math.ceil((r.y1 - grid.y0) / cs) + 1);
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) visitCell(terrain[j * grid.nx + i]);
-  } else for (const cell of terrain) visitCell(cell);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { visited++; visitCell(terrain[j * grid.nx + i]); }
+  } else for (const cell of terrain) { visited++; visitCell(cell); }
+  counts.visited = visited;
 
   /* THE FLOOR IS ITS OWN LAYER (22 September). The maintainer: "traffic
      disappears under the intersections and occasionally under the road

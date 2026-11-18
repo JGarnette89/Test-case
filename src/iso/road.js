@@ -139,27 +139,37 @@ export function groundAt(x, y) {
 
 /* The ground as a grid of cells, each with its four corner heights, for
    a renderer to fill. Coarse on purpose. */
-export function terrain({ x0 = -80, y0 = -90, x1 = 760, y1 = 520, cell = 10, ground = groundAt } = {}) {
-  const cells = [];
-  /* THE GRID IT WAS BUILT ON, KEPT (17 Nov 2026, the draw's biggest line): the cells are row-major from (x0, y0) in squares of `cell`, so a frame that wants the ones near the camera can compute their index range instead of testing every cell in the map
-     (iso/draw.js; SIMULATOR 1.2.12 asked for exactly this on 15 October, "a spatial index makes it the size of the view", when the highway had 33,150 cells; the generated road has 329,208). */
-  let nx = 0, zMin = Infinity, zMax = -Infinity;
-  for (let y = y0; y < y1; y += cell) {
-    let cols = 0;
-    for (let x = x0; x < x1; x += cell) {
-      cols++;
-      cells.push([
-        { x, y, z: ground(x, y) },
-        { x: x + cell, y, z: ground(x + cell, y) },
-        { x: x + cell, y: y + cell, z: ground(x + cell, y + cell) },
-        { x, y: y + cell, z: ground(x, y + cell) },
-      ]);
-      const q = cells[cells.length - 1]; for (let m = 0; m < 4; m++) { const z = q[m].z; if (z < zMin) zMin = z; if (z > zMax) zMax = z; }
-    }
-    nx = cols;
+/* THE GROUND AS A GRID OF HEIGHTS, NOT A MILLION OBJECTS (18 Nov 2026; Jay's phone, a stall of about 100 ms about once a minute: measured on the desk, every frame over 40 ms fell within 10 ms of a MAJOR garbage collection of 73 to 84 ms, which has to mark the live heap, and 149 of its
+   205 MB was this array: 329,208 cells of the generated road, each an array of four point objects, 473 bytes a cell, 1.6 million objects). A cell is only ever read as the heights at its four corners, so what is kept is the grid: the x of each column, the y of each row, and the ground height at each
+   vertex (float64, so every value is exactly what the corner objects held), about 2.7 MB; `cellAt` builds a cell's four corners when a frame wants one, which is about a hundred cells a frame. The array interface the draw and its checks use is kept: `length`, `grid`, `cellAt(i)`, iteration, `slice()`.
+   The heights are evaluated once per VERTEX, not once per corner of every cell (4x fewer calls of the ground function, which is also the world build's cost). */
+class GridTerrain {
+  constructor(xs, ys, zs, cell, x0, y0) {
+    const nx = Math.max(0, xs.length - 1), ny = Math.max(0, ys.length - 1);
+    let zMin = Infinity, zMax = -Infinity;
+    for (let k = 0; k < zs.length; k++) { const z = zs[k]; if (z < zMin) zMin = z; if (z > zMax) zMax = z; }
+    this.xs = xs; this.ys = ys; this.zs = zs; this.length = nx * ny;
+    this.grid = nx * ny ? { x0, y0, cell, nx, ny, zMin, zMax } : null;
   }
-  cells.grid = cells.length ? { x0, y0, cell, nx, ny: Math.round(cells.length / nx), zMin, zMax } : null;
-  return cells;
+  /* The four corners of cell `idx` (row-major), the order and the values the old array held: (x, y), (x + cell, y), (x + cell, y + cell), (x, y + cell). */
+  cellAt(idx) {
+    const nx = this.xs.length - 1, j = Math.floor(idx / nx), i = idx - j * nx, w = nx + 1, xs = this.xs, ys = this.ys, zs = this.zs;
+    return [{ x: xs[i], y: ys[j], z: zs[j * w + i] }, { x: xs[i + 1], y: ys[j], z: zs[j * w + i + 1] }, { x: xs[i + 1], y: ys[j + 1], z: zs[(j + 1) * w + i + 1] }, { x: xs[i], y: ys[j + 1], z: zs[(j + 1) * w + i] }];
+  }
+  *[Symbol.iterator]() { for (let k = 0; k < this.length; k++) yield this.cellAt(k); }
+  /* Every cell as a plain array: for checks that compare against the old representation, never for a frame. */
+  slice() { const out = new Array(this.length); for (let k = 0; k < this.length; k++) out[k] = this.cellAt(k); return out; }
+}
+export function terrain({ x0 = -80, y0 = -90, x1 = 760, y1 = 520, cell = 10, ground = groundAt } = {}) {
+  /* The columns and rows by the loop the cells were always made by (`x += cell`), so the coordinates are the same numbers to the last bit. */
+  const xv = [], yv = [];
+  for (let x = x0; x < x1; x += cell) xv.push(x);
+  for (let y = y0; y < y1; y += cell) yv.push(y);
+  if (xv.length) xv.push(xv[xv.length - 1] + cell);
+  if (yv.length) yv.push(yv[yv.length - 1] + cell);
+  const xs = Float64Array.from(xv), ys = Float64Array.from(yv), w = xs.length, zs = new Float64Array(w * ys.length);
+  if (xs.length > 1 && ys.length > 1) for (let j = 0; j < ys.length; j++) for (let i = 0; i < w; i++) zs[j * w + i] = ground(xs[i], ys[j]);
+  return new GridTerrain(xs, ys, zs, cell, x0, y0);
 }
 
 /* Which samples of the bridge road are deck rather than embankment --
