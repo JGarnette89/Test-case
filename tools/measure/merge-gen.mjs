@@ -17,7 +17,8 @@ const loaded = loadMap(TEST_MAPS.find((m) => m.id === id).build());
 let joiners = 0, nearRest = 0, long20 = 0, merges = 0, crashes = 0; const gaps = [], stands = [];
 for (let seed = 1; seed <= SEEDS; seed++) {
   let w = seedGraph(seed, 50, loaded, { every: 2.0, target: CARS, posted: true, walkers: true, rivals: true, brakeReaction: true, mergeTolerance: tol });
-  if (w.mergeTolerance !== tol) throw new Error(`the world carries mergeTolerance ${w.mergeTolerance}, not ${tol}`);
+  /* a world built with the tolerance OFF omits the key (null is an explicit off, `seedGraph`), so absent reads as null: the first run threw on exactly that, undefined against null */
+  if ((w.mergeTolerance ?? null) !== tol) throw new Error(`the world carries mergeTolerance ${w.mergeTolerance ?? null}, not ${tol}`);
   for (let i = 0; i < 1200; i++) w = step(w);
   const c0 = (w.crashes ?? []).length, ids = new Set(), reach = new Set(), minV20 = new Map(), standing = new Map(), maxStand = new Map();
   for (let i = 0; i < SECS * 20; i++) {

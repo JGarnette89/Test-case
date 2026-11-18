@@ -412,6 +412,11 @@ function seg(ctx, P, a, b) {
   const p = proj(P, a.x, a.y, a.z, QP), q = proj(P, b.x, b.y, b.z, QQ);
   ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
 }
+/* A SEGMENT ADDED TO THE PATH BEING BUILT, not stroked: the lane markings of one road piece are one path per style and one stroke (17-18 Nov 2026, the lead's second candidate for the frame's 33 ms: the markings were 1,696 of a frame's 3,944 canvas calls, a beginPath, moveTo, lineTo and stroke apiece). The same segments, the same style, the same order; only the strokes are fewer. */
+function segAdd(ctx, P, a, b) {
+  const p = proj(P, a.x, a.y, a.z, QP), q = proj(P, b.x, b.y, b.z, QQ);
+  ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]);
+}
 
 /* =====================================================================
    ONE FRAME.
@@ -441,7 +446,7 @@ function sidewalkPiece(w, i0, i1) {
   return poly;
 }
 
-export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
+export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = true } = {}) {
   const { roads, terrain, cam, k, tilt, props = [], actors = [], junctions = [], sidewalks = [], stops = [] } = scene;
   /* THE GROUND IS THE SCENE'S, not stage 0's hill: a map supplies its
      own (flat, for now), and a deck is wherever a road stands more than
@@ -614,7 +619,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     counts.segments++;
     /* The paint on the segment: its edges, the centre line with its
        gaps, and the lines between lanes going the same way. */
-    const lines = () => {
+    const linesEach = () => {
       ctx.lineWidth = Math.max(1, 0.15 * k);
       ctx.strokeStyle = "rgba(250,250,242,0.8)";
       /* A ONE-WAY ROAD has no centre line: its LEFT edge is yellow and its
@@ -641,6 +646,28 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
          yet apart -- a bay lying on its neighbour before its taper. */
       if (road.laneLines && i % 2 === 0) { ctx.strokeStyle = "rgba(250,250,242,0.75)"; for (const line of road.laneLines) if (line[i] && line[i + 1]) seg(ctx, P, line[i], line[i + 1]); }
     };
+    /* THE MARKINGS, BATCHED (the same lines `linesEach` strokes one at a time, in the same order and styles): the edge lines in one stroke, the centre line(s) in one, the lane lines in one. `verify-markings` holds the two to the same segments, style by style. */
+    const lines = () => {
+      ctx.lineWidth = Math.max(1, 0.15 * k);
+      ctx.strokeStyle = "rgba(250,250,242,0.8)";
+      ctx.beginPath();
+      if (road.oneWay) { segAdd(ctx, P, d, c); ctx.stroke(); ctx.strokeStyle = C.yellow; ctx.beginPath(); segAdd(ctx, P, a, b); ctx.stroke(); }
+      else { segAdd(ctx, P, a, b); segAdd(ctx, P, d, c); ctx.stroke(); }
+      const mid = road.centre ?? pts;
+      if (road.oneWay) { /* no centre line */ }
+      else if (road.kind === "arterial" || road.kind === "highway") {
+        const p0 = mid[i], p1 = mid[i + 1], len = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+        const ox = (-(p1.y - p0.y) / len) * 0.14, oy = ((p1.x - p0.x) / len) * 0.14;
+        ctx.strokeStyle = C.yellow; ctx.beginPath();
+        for (const s of [-1, 1]) segAdd(ctx, P, { x: p0.x + s * ox, y: p0.y + s * oy, z: p0.z }, { x: p1.x + s * ox, y: p1.y + s * oy, z: p1.z });
+        ctx.stroke();
+      } else if (road.kind !== "residential" && i % 3 !== 2) { ctx.strokeStyle = C.yellow; ctx.beginPath(); segAdd(ctx, P, mid[i], mid[i + 1]); ctx.stroke(); }
+      if (road.laneLines && i % 2 === 0) {
+        let any = false;
+        for (const line of road.laneLines) if (line[i] && line[i + 1]) { if (!any) { ctx.strokeStyle = "rgba(250,250,242,0.75)"; ctx.beginPath(); any = true; } segAdd(ctx, P, line[i], line[i + 1]); }
+        if (any) ctx.stroke();
+      }
+    };
     const fill = (p, q, r, s) => {
       quad(ctx, P, p, q, r, s);
       ctx.fillStyle = shade(C.asphalt, n, 0.45, relief(n)); ctx.fill();
@@ -650,7 +677,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
       /* KEYED BY ITS NEAREST CORNER, the mirror of the ground's rule:
          a segment follows every cell that reaches under it. */
       const key = Math.max(depthOf(a.x, a.y, a.z), depthOf(b.x, b.y, b.z), depthOf(c.x, c.y, c.z), depthOf(d.x, d.y, d.z)) + 0.01;
-      items.push({ layer: 0, key, tag: audit && { kind: "road", id: `${road.id}#${i}`, poly: [a, b, c, d] }, paint: () => { fill(a, b, c, d); if (!flat) lines(); } });
+      items.push({ layer: 0, key, tag: audit && { kind: "road", id: `${road.id}#${i}`, poly: [a, b, c, d] }, paint: () => { fill(a, b, c, d); if (!flat) { if (batchMarkings) lines(); else linesEach(); } } });
     } else {
       const across = Math.max(1, Math.round(Math.hypot(d.x - a.x, d.y - a.y) / LANE));
       const pieces = [];
