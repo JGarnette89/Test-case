@@ -522,10 +522,11 @@ console.log("\n15. HOW MANY CARS A MAP GETS: ITS OWN ROAD, AT ONE DENSITY");
   const cy = loadMap(TEST_MAPS.find((t) => t.id === "city").build());
   /* CLEAN MODE (DECISIONS 10.56): stated here, map by map. */
   {
-    const want = { city: 180, "test-loop": 180, "test-highway": 180, "test-1": 180, "test-peds": 40, "test-signs": 40, "test-buses": 20, "trial-city": 180 };
+    const want = { city: 180, "test-highway-gen-wide": 100, "test-loop": 180, "test-highway": 180, "test-1": 180, "test-peds": 40, "test-signs": 40, "test-buses": 20, "trial-city": 180 };
     const got = Object.entries(want).map(([id, n]) => { const c = cleanCarsFor(loadMap(TEST_MAPS.find((m) => m.id === id).build())); return [id, n, c]; });
-    check(got.every(([, n, c]) => n === c), `Clean mode's count: a map built small keeps its own, the others 180 (${got.map(([id, , c]) => `${id} ${c}`).join(", ")})`);
-    check(cleanMaps(TEST_MAPS).map((m) => m.id).join() === "city,test-loop", `Clean mode offers the city and the endless highway, and no fixture (${cleanMaps(TEST_MAPS).map((m) => m.name).join(", ")})`);
+    check(got.every(([, n, c]) => n === c), `Clean mode's count: a map built small keeps its own, a map that states its own count (the generated 110 road's 100) keeps that, the others 180 (${got.map(([id, , c]) => `${id} ${c}`).join(", ")})`);
+    /* 17 Nov 2026 (Jay, DECISIONS 10.110): the generated five-lane 110 road is on the main list and the stand-in city went behind "All test maps"; the list is the array's order, the generated road first. */
+    check(cleanMaps(TEST_MAPS).map((m) => m.id).join() === "test-highway-gen-wide,test-loop", `Clean mode offers the generated 110 road and the endless highway, and no fixture (${cleanMaps(TEST_MAPS).map((m) => m.name).join(", ")})`);
     check(TEST_MAPS.length === 12, "and every test map is still there behind it (twelve since 14 November: the 403-style open highway and the two generated highways were registered, then the five-lane 110 road)");
   }
   check(carsFor(t1) === 120, `test map 1 keeps the 120 it always had (${t1.laneKm.toFixed(1)} lane-km)`);

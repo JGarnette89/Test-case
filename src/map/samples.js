@@ -437,9 +437,11 @@ export function testLoop() {
    (the city is generated, so it is built only when opened). */
 export const cleanMaps = (maps) => maps.filter((m) => m.clean);
 export const TEST_MAPS = [
+  /* THE GENERATED FIVE-LANE 110 ROAD LEADS (17 Nov 2026, Jay: "can you get the generated 110 on the main list of test maps? stand in city can go behind the expanded list"; DECISIONS 10.110: it is the focus). It is in Clean mode's offer and the main list; the stand-in city is a fixture behind "All test maps" now. First in the array because the screen builds the first map the moment it opens. */
+  { id: "test-highway-gen-wide", clean: true, name: "Generated highway, five lanes at 110", blurb: "The generated highway with five lanes each way and a posted limit of 110: the fast tail runs well above it. KNOWN AND UNDER INVESTIGATION, NOT FOR REPORTING: exit queues stand in the curb lane at the interchanges (about half the traffic takes each exit), and the inner lane is held behind slower cars.", build: testHighwayGenWide },
   /* `clean`: offered in Clean mode (DECISIONS 10.50 ruling 1, 10.51, 10.56). Everything else is a fixture: it stays in
      the list so a feature can point at it, behind "All test maps", and leaves the choices a person driving is given. */
-  { id: "city", clean: true, name: "Stand-in city", blurb: "Two neighbourhoods with their own drivers, parked cars, buildings, an arterial loop and a collector on signals.", build: testCityReady },
+  { id: "city", name: "Stand-in city", blurb: "Two neighbourhoods with their own drivers, parked cars, buildings, an arterial loop and a collector on signals.", build: testCityReady },
   /* SECOND, not first: the screen builds its first map the moment it opens, and this one is generated large (about 10 s here). */
   { id: "trial-city", name: "Trial city", blurb: "The trial for the final map: a large city of every intersection type, a downtown and buses, with a divided highway past it joined by two diamond interchanges -- signals on one, stopped ramps on the other -- and an exit-only lane. Traffic comes and goes at the highway's ends and the city's edges.", build: () => trialCity(1) },
   { id: "test-peds", name: "Pedestrians", blurb: "Crosswalks at a four-way stop and at an uncontrolled crossroads, and the people who walk them.", build: testPeds },
@@ -452,6 +454,5 @@ export const TEST_MAPS = [
   /* The generated highway (map/roadgen.js, DECISIONS 10.73): a road made of transitions, for the maintainer to drive and say "more of that, less of this". Fixtures until he has. */
   { id: "test-highway-gen", name: "Generated highway", blurb: "Twenty kilometres built from eased bends, S-bends, crests that register and rollers, with an interchange every five kilometres held straight and level.", build: testHighwayGen },
   { id: "test-highway-gen-open", name: "Generated highway, no interchanges", blurb: "The same road with no interchange but the entrance you start on: all of it is the road.", build: testHighwayGenOpen },
-  { id: "test-highway-gen-wide", name: "Generated highway, five lanes at 110", blurb: "The generated highway with five lanes each way and a posted limit of 110: the fast tail runs well above it. KNOWN AND UNDER INVESTIGATION, NOT FOR REPORTING: exit queues stand in the curb lane at the interchanges (about half the traffic takes each exit), and the inner lane is held behind slower cars.", build: testHighwayGenWide },
   { id: "test-loop", clean: true, name: "Endless highway", blurb: "A one-way loop of three lanes, about 10.4 km round, with four interchanges keeping the traffic fresh. You start on a slip road and join from an acceleration lane.", build: testLoop },
 ];
