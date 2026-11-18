@@ -18,14 +18,14 @@ import { pedPose } from "../../src/sim/peds.js";
 import { walkerPose } from "../../src/sim/walkers.js";
 import { sidewalksOf } from "../../src/map/sidewalks.js";
 import { terrain } from "../../src/iso/road.js";
-import { drawFrame } from "../../src/iso/draw.js";
+const { drawFrame } = await import(process.env.DRAW ?? "../../src/iso/draw.js");
 import { chaseStep, newChase, zoomFor } from "../../src/iso/chase.js";
 
 const [mapId = "test-1", carsArg = "100,150,200,250,300,400"] = process.argv.slice(2);
 const loaded = loadMap(TEST_MAPS.find((m) => m.id === mapId).build());
 let calls = 0;
-const noop = () => { calls++; };
-const ctx = new Proxy({}, { get: (t, p) => (p in t ? t[p] : noop), set: (t, p, v) => { t[p] = v; return true; } });
+const byName = {}; const noop = () => { calls++; };
+const ctx = new Proxy({}, { get: (t, p) => (p in t ? t[p] : (() => { calls++; byName[p] = (byName[p] ?? 0) + 1; })), set: (t, p, v) => { t[p] = v; return true; } });
 const size = { w: 395, h: 527 };
 const b = loaded.bounds, ground = groundFor(loaded, { cell: 20 });
 const statics = { roads: loaded.roads.map((road) => ({ road, cars: [] })), terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground }), sidewalks: sidewalksOf(loaded), stops: loaded.stops ?? [], props: (loaded.props ?? []).map((p) => ({ x: p.at.x, y: p.at.y, heading: p.heading, l: p.l, w: p.w, h: p.h })), groundAt: ground };
@@ -60,6 +60,7 @@ for (const cars of carsArg.split(",").map(Number)) {
   const line = `  ${String(w.actors.length).padStart(4)} cars: draw p50 ${q(col("ms"), 0.5).toFixed(2)} p95 ${q(col("ms"), 0.95).toFixed(2)} max ${Math.max(...col("ms")).toFixed(2)} ms; mean ${avg(col("ms")).toFixed(2)} = list ${avg(col("list")).toFixed(2)} + sort ${avg(col("sort")).toFixed(3)} + paint ${avg(col("paint")).toFixed(2)} (means: medians do not add); calls p50 ${q(col("calls"), 0.5)} p95 ${q(col("calls"), 0.95)}; in view p50/p95: items ${q(col("items"), 0.5)}/${q(col("items"), 0.95)}, cars ${q(col("cars"), 0.5)}/${q(col("cars"), 0.95)}, road ${q(col("segs"), 0.5)}/${q(col("segs"), 0.95)}, ground ${q(col("cells"), 0.5)}, buildings ${q(col("props"), 0.5)}`;
   console.log(line);
   all.push(...rows);
+  const tot = Object.values(byName).reduce((x, y) => x + y, 0); console.log(`    canvas calls by kind (all frames of this count): ${Object.entries(byName).sort((x, y) => y[1] - x[1]).slice(0, 7).map(([k, v]) => `${k} ${(100 * v / tot).toFixed(0)}%`).join(', ')}`); for (const k of Object.keys(byName)) delete byName[k];
 }
 const col = (k) => all.map((x) => x[k]);
 console.log(`what the draw's time follows, across every frame (correlation with ms): canvas calls ${corr(col("calls"), col("ms")).toFixed(2)}, items ${corr(col("items"), col("ms")).toFixed(2)}, cars in view ${corr(col("cars"), col("ms")).toFixed(2)}, road pieces ${corr(col("segs"), col("ms")).toFixed(2)}, ground ${corr(col("cells"), col("ms")).toFixed(2)}`);

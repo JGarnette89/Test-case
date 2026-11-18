@@ -38,6 +38,18 @@ const one = (seed, pace, on, cars = null) => {
   return { curve, behindBirths, aheadBirths, edged: !!me.atEdge, seen: seen.size, passes, crashes: (w.crashes ?? []).length, cars: carsSum / Math.max(1, ticks) };
 };
 /* BUG FOUND 17 NOV, THE ARMS TEST'S FIRST RUN: `!!on` on the string "off" is TRUE, so the "off" arm ran the rule (off and on read identical, 36.0 per seed 41 28 39), and the assertion compared against the same wrong value so it passed -- the arm-forcing failure again, inside the fix for it. Fixed here; the "late" arm (27.3, 5.5 a minute) was right and equals the first harness's ON exactly, so the discrepancy is WHETHER THE PRE-ROLL RAN UNDER THE RULE (5.5 unruled pre-roll, 7.2 to 8.2 ruled). A true off arm on this road is still to re-run.
+/* THE COUNT LADDER, ONE ARM PER PROCESS (backlog 17-18 Nov: the claim "fewer cars for the same felt density" was withdrawn and never re-established with valid arms). `ARM` (off or on) and `CARS` pick one arm, `SEEDS` how many (default 8);
+   it prints ONE JSON line: the per-seed cumulative cars seen and passes within 150 m over the whole 330 s run, and the cars shaping placed behind the player, which is how the arm is proved (off must place none, on at least 10: asserted
+   before anything is printed). `tools/measure/ladder-report.mjs` pairs the lines by seed against rule off at 100 cars and reports mean +/- standard error. Usage: ARM=on CARS=70 node tools/measure/spawn-side.mjs 330 one */
+if (process.argv[3] === "one") {
+  const ARM = process.env.ARM, cars = Number(process.env.CARS), seeds = Array.from({ length: Number(process.env.SEEDS ?? 8) }, (_, i) => i + 1);
+  if (ARM !== "on" && ARM !== "off") throw new Error("ARM must be on or off");
+  const rows = seeds.map((sd) => one(sd, 1.0, ARM, cars)), bb = rows.reduce((t, r) => t + r.behindBirths, 0);
+  if (ARM === "off" && bb !== 0) throw new Error(`the OFF arm placed ${bb} cars behind the player: the arm did not take`);
+  if (ARM === "on" && bb < 10) throw new Error(`the ON arm placed only ${bb} cars behind the player: the arm did not take`);
+  console.log(JSON.stringify({ map: MAP, arm: ARM, cars, behindBirths: bb, edged: rows.filter((r) => r.edged).length, seen: rows.map((r) => r.seen), passes: rows.map((r) => r.passes) }));
+  process.exit(0);
+}
 /* THE ARMS, VERIFIED BY AN OBSERVABLE IN THE WORLD (the standing practice, 17 Nov: an arm is proved by something the world does, never by the variable that set it): rule off must place NO car behind the player, rule on at
    least 20, or this throws before printing. The arms are built in before the pre-roll. Per seed, per arm: distinct cars within 150 m cumulative at each minute, and passes; then the ON-minus-OFF difference PAIRED BY SEED, with its
    standard error (seeds are the same worlds in both arms up to the rule), over the whole run and over the steady window (minute 3 to the last whole minute). Per-seed values are printed and kept.
