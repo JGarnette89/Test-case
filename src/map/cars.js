@@ -34,12 +34,13 @@ export const carsFor = (loaded) => (loaded?.traffic?.cars > 0
    the city is under what its road would take. SMALL_BELOW is a flagged design constant, and it
    sits in the gap between what the maps are built for: 20-40, and 120 upward. */
 export const CLEAN_CARS = 180, SMALL_BELOW = 100;
-/* A MAP THAT SAYS ITS OWN COUNT KEEPS IT IN CLEAN MODE (17 Nov 2026, when the generated 110 road joined the main list): `traffic.cars` is the count a map is built for (the generated roads' 100, chosen against the dial's 160 top), and the rule below, 'one built for real
+/* A MAP THAT SAYS ITS OWN COUNT IS NEVER GIVEN MORE THAN IT (17 Nov 2026, when the generated 110 road joined the main list): `traffic.cars` is the count a map is built for (the generated roads' 100, chosen against the dial's 160 top), and the rule below, 'one built for real
    traffic gets 180', would have run that road at its dial's top, 160, 60% over the count it was made for and the end the phone has not been measured at (DECISIONS 10.92, 10.122). The two maps that were in Clean mode before state none, so they are unchanged. */
 export const cleanCarsFor = (loaded) => {
-  if (loaded?.traffic?.cars > 0) return carsFor(loaded);
   const own = carsFor(loaded);
-  return own < SMALL_BELOW ? own : Math.max(CARS.min, Math.min(carsMaxFor(loaded), CLEAN_CARS));
+  const base = own < SMALL_BELOW ? own : Math.max(CARS.min, Math.min(carsMaxFor(loaded), CLEAN_CARS));
+  /* A STATED COUNT CAN ONLY LOWER IT (the gate found the first version lifted the trial city, which states 360, from 180 to 360): the generated road states 100 and the rule gives it 100, not the 160 its dial reaches; a map that states more than the clean count keeps the clean count. */
+  return loaded?.traffic?.cars > 0 ? Math.min(own, base) : base;
 };
 /* ...and a map may offer LESS (load.js `traffic.carsMax`): the generated highways, whose shaped count is cheap and whose top is what their window can hold (roadgen.js CARS_MAX). Never more than the ceiling. */
 export const carsMaxFor = (loaded) => {
