@@ -114,6 +114,17 @@ export function viewOf(k, cam, rot, canvas, { centreY = 0.55, elev = cam.elev ??
       const px = cx + (u - v) * k, py = cy + ((u + v) * g - z * h) * k;
       return px > -m && px < W + m && py > -m && py < H + m;
     },
+    /* THE GROUND THE CANVAS CAN SEE, as a world rectangle (17 Nov 2026, for the terrain walk in draw.js): the exact inverse of `onScreen`'s projection at height z (px = cx + (u - v) k; py = cy + ((u + v) g - z h) k, so u - v = (px - cx) / k and u + v = ((py - cy) / k + z h) / g; the world offset is the rotation back), taken at the canvas corners widened by `m`
+       pixels and at BOTH ends of the heights the ground has. The projection is affine in z, so the rectangle round the eight corner points holds every point that lands on the canvas at any height between: a CONSERVATIVE bound, never a smaller one than the cull needs. */
+    groundRect: (zLo, zHi, m) => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const z of [zLo, zHi]) for (const px of [-m, W + m]) for (const py of [-m, H + m]) {
+        const A = (px - cx) / k, B = ((py - cy) / k + z * h) / g, u = (A + B) / 2, v = (B - A) / 2;
+        const x = cx0 + u * c + v * s, y = cy0 - u * s + v * c;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+      return { x0, y0, x1, y1 };
+    },
     /* The direction toward the eye, in world coordinates: (1, 1, 1/LIFT)
        in the rotated frame, turned back. */
     eye: { x: c + s, y: -s + c, z: tz },

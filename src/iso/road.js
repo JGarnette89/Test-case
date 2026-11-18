@@ -141,16 +141,24 @@ export function groundAt(x, y) {
    a renderer to fill. Coarse on purpose. */
 export function terrain({ x0 = -80, y0 = -90, x1 = 760, y1 = 520, cell = 10, ground = groundAt } = {}) {
   const cells = [];
+  /* THE GRID IT WAS BUILT ON, KEPT (17 Nov 2026, the draw's biggest line): the cells are row-major from (x0, y0) in squares of `cell`, so a frame that wants the ones near the camera can compute their index range instead of testing every cell in the map
+     (iso/draw.js; SIMULATOR 1.2.12 asked for exactly this on 15 October, "a spatial index makes it the size of the view", when the highway had 33,150 cells; the generated road has 329,208). */
+  let nx = 0, zMin = Infinity, zMax = -Infinity;
   for (let y = y0; y < y1; y += cell) {
+    let cols = 0;
     for (let x = x0; x < x1; x += cell) {
+      cols++;
       cells.push([
         { x, y, z: ground(x, y) },
         { x: x + cell, y, z: ground(x + cell, y) },
         { x: x + cell, y: y + cell, z: ground(x + cell, y + cell) },
         { x, y: y + cell, z: ground(x, y + cell) },
       ]);
+      const q = cells[cells.length - 1]; for (let m = 0; m < 4; m++) { const z = q[m].z; if (z < zMin) zMin = z; if (z > zMax) zMax = z; }
     }
+    nx = cols;
   }
+  cells.grid = cells.length ? { x0, y0, cell, nx, ny: Math.round(cells.length / nx), zMin, zMax } : null;
   return cells;
 }
 

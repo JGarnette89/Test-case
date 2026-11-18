@@ -527,11 +527,22 @@ export function drawFrame(ctx, canvas, scene, { audit = false } = {}) {
     counts.cells++;
     items.push({ layer: 0, key, tag: audit && { kind: "cell", poly: [a, b, c, d] }, paint: () => { quad(ctx, P, a, b, c, d); ctx.fillStyle = shade(tone, n, 0.35, relief(n)); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.5; ctx.stroke(); } });
   };
-  for (const cell of terrain) {
+  /* THE TERRAIN WALK IS THE SIZE OF THE VIEW, NOT OF THE MAP (17 Nov 2026; Jay's counter: a frame 33 ms past the step, the same at 100 and 160 cars; measured: this loop was 95% of the draw's script, 13 ms a frame on the desk, because it tested all 329,208 cells of the generated road
+     to find about 89, as SIMULATOR 1.2.12 had written down on 15 October for a map a tenth the size). A terrain built by `terrain()` carries its grid; the cells a canvas can show lie inside `view.groundRect` of the terrain's own heights, so only that index range is visited, in the same row-major order, with the SAME on-screen test inside it, so the items, their order and every pixel are what the full walk made
+     (tools/verify-terrainindex.mjs holds that cell for cell). The flat (far) tier, and any terrain without a grid, walk everything as before. */
+  const visitCell = (cell) => {
     const a = cell[0], b = cell[1], c = cell[2], d = cell[3];   // not destructured: that is an iterator per cell in the city, on screen or not
-    if (flat && Math.abs(a.z) < 0.05 && Math.abs(b.z) < 0.05 && Math.abs(c.z) < 0.05 && Math.abs(d.z) < 0.05) continue;   // flat: the quad under the lot
+    if (flat && Math.abs(a.z) < 0.05 && Math.abs(b.z) < 0.05 && Math.abs(c.z) < 0.05 && Math.abs(d.z) < 0.05) return;   // flat: the quad under the lot
     if (onScreen(a.x, a.y, a.z) || onScreen(c.x, c.y, c.z)) cellItem(a, b, c, d);
-  }
+  };
+  const grid = flat ? null : terrain.grid;
+  if (grid) {
+    const r = view.groundRect(grid.zMin, grid.zMax, margin), cs = grid.cell;
+    /* A cell shows if its first corner (x, y) or its far corner (x + cs, y + cs) is on the canvas: both lie in the rectangle, so the first corner's index runs from one cell before the rectangle to its far edge, plus one cell of slack for the accumulated float steps. */
+    const i0 = Math.max(0, Math.floor((r.x0 - grid.x0) / cs) - 2), i1 = Math.min(grid.nx - 1, Math.ceil((r.x1 - grid.x0) / cs) + 1);
+    const j0 = Math.max(0, Math.floor((r.y0 - grid.y0) / cs) - 2), j1 = Math.min(grid.ny - 1, Math.ceil((r.y1 - grid.y0) / cs) + 1);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) visitCell(terrain[j * grid.nx + i]);
+  } else for (const cell of terrain) visitCell(cell);
 
   /* THE FLOOR IS ITS OWN LAYER (22 September). The maintainer: "traffic
      disappears under the intersections and occasionally under the road

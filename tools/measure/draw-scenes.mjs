@@ -25,7 +25,7 @@ const [mapId = "test-1", carsArg = "100,150,200,250,300,400"] = process.argv.sli
 const loaded = loadMap(TEST_MAPS.find((m) => m.id === mapId).build());
 let calls = 0;
 const byName = {}; const noop = () => { calls++; };
-const ctx = new Proxy({}, { get: (t, p) => (p in t ? t[p] : (() => { calls++; byName[p] = (byName[p] ?? 0) + 1; })), set: (t, p, v) => { t[p] = v; return true; } });
+const ctx = new Proxy({}, { get: (t, p) => (p in t ? t[p] : (() => { calls++; globalThis.__calls = (globalThis.__calls ?? 0) + 1; byName[p] = (byName[p] ?? 0) + 1; })), set: (t, p, v) => { t[p] = v; return true; } });
 const size = { w: 395, h: 527 };
 const b = loaded.bounds, ground = groundFor(loaded, { cell: 20 });
 const statics = { roads: loaded.roads.map((road) => ({ road, cars: [] })), terrain: terrain({ x0: b.x, y0: b.y, x1: b.x + b.w, y1: b.y + b.h, cell: 20, ground }), sidewalks: sidewalksOf(loaded), stops: loaded.stops ?? [], props: (loaded.props ?? []).map((p) => ({ x: p.at.x, y: p.at.y, heading: p.heading, l: p.l, w: p.w, h: p.h })), groundAt: ground };
@@ -60,6 +60,7 @@ for (const cars of carsArg.split(",").map(Number)) {
   const line = `  ${String(w.actors.length).padStart(4)} cars: draw p50 ${q(col("ms"), 0.5).toFixed(2)} p95 ${q(col("ms"), 0.95).toFixed(2)} max ${Math.max(...col("ms")).toFixed(2)} ms; mean ${avg(col("ms")).toFixed(2)} = list ${avg(col("list")).toFixed(2)} + sort ${avg(col("sort")).toFixed(3)} + paint ${avg(col("paint")).toFixed(2)} (means: medians do not add); calls p50 ${q(col("calls"), 0.5)} p95 ${q(col("calls"), 0.95)}; in view p50/p95: items ${q(col("items"), 0.5)}/${q(col("items"), 0.95)}, cars ${q(col("cars"), 0.5)}/${q(col("cars"), 0.95)}, road ${q(col("segs"), 0.5)}/${q(col("segs"), 0.95)}, ground ${q(col("cells"), 0.5)}, buildings ${q(col("props"), 0.5)}`;
   console.log(line);
   all.push(...rows);
+  if (globalThis.__byKind) { const frames = 3 * Math.min(60, movers.length); console.log(`    PER ITEM KIND, per frame (canvas calls | script ms with the stub canvas | items): ${Object.entries(globalThis.__byKind).sort((x, y) => y[1].calls - x[1].calls).map(([kd, e]) => `${kd} ${Math.round(e.calls / frames)} calls ${(e.ms / frames).toFixed(2)} ms ${Math.round(e.n / frames)} items`).join(' | ')}`); for (const kd of Object.keys(globalThis.__byKind)) delete globalThis.__byKind[kd]; }
   const tot = Object.values(byName).reduce((x, y) => x + y, 0); console.log(`    canvas calls by kind (all frames of this count): ${Object.entries(byName).sort((x, y) => y[1] - x[1]).slice(0, 7).map(([k, v]) => `${k} ${(100 * v / tot).toFixed(0)}%`).join(', ')}`); for (const k of Object.keys(byName)) delete byName[k];
 }
 const col = (k) => all.map((x) => x[k]);
