@@ -446,7 +446,8 @@ function sidewalkPiece(w, i0, i1) {
   return poly;
 }
 
-export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = true } = {}) {
+/* `skip` (DECISIONS 10.138) is a bisect for the device: the canvas's cost is rasterising, which a main-thread timeline cannot see, so a debug chip leaves part of the scene undrawn and the counter's `other` says what that part cost. null draws everything (the default, and what every check sees); "ground" leaves out the terrain cells; "height" paints only the floor (layer 0: ground and road surfaces), no cars, buildings or props; "all" paints no item at all. */
+export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = true, skip = null } = {}) {
   const { roads, terrain, cam, k, tilt, props = [], actors = [], junctions = [], sidewalks = [], stops = [] } = scene;
   /* THE GROUND IS THE SCENE'S, not stage 0's hill: a map supplies its
      own (flat, for now), and a deck is wherever a road stands more than
@@ -531,7 +532,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = t
     const zc = (a.z + b.z + c.z + d.z) / 4;
     const tone = mix(C.grass, "#9fb86a", Math.min(1, zc / 14));
     counts.cells++;
-    items.push({ layer: 0, key, tag: audit && { kind: "cell", poly: [a, b, c, d] }, paint: () => { quad(ctx, P, a, b, c, d); ctx.fillStyle = shade(tone, n, 0.35, relief(n)); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.5; ctx.stroke(); } });
+    if (skip !== "ground") items.push({ layer: 0, key, tag: audit && { kind: "cell", poly: [a, b, c, d] }, paint: () => { quad(ctx, P, a, b, c, d); ctx.fillStyle = shade(tone, n, 0.35, relief(n)); ctx.fill(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 0.5; ctx.stroke(); } });
   };
   /* THE TERRAIN WALK IS THE SIZE OF THE VIEW, NOT OF THE MAP (17 Nov 2026; Jay's counter: a frame 33 ms past the step, the same at 100 and 160 cars; measured: this loop was 95% of the draw's script, 13 ms a frame on the desk, because it tested all 329,208 cells of the generated road
      to find about 89, as SIMULATOR 1.2.12 had written down on 15 October for a map a tenth the size). A terrain built by `terrain()` carries its grid; the cells a canvas can show lie inside `view.groundRect` of the terrain's own heights, so only that index range is visited, in the same row-major order, with the SAME on-screen test inside it, so the items, their order and every pixel are what the full walk made
@@ -1076,7 +1077,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = t
   const tBuilt = clock();
   items.sort((a, b) => a.layer - b.layer || a.key - b.key);
   const tSorted = clock();
-  for (const it of items) it.paint();
+  for (const it of items) { if (skip === "all" || (skip === "height" && it.layer >= 0.5)) continue; it.paint(); }
   const tPainted = clock();
   paintRoute(ctx, view, scene, k);
   paintNames(ctx, view, scene, k);

@@ -63,6 +63,9 @@ const DIM = "#9AA3B2", TEXT = "#E6E8EC";
 const DPR_CAP = 2;
 /* THE CANVAS'S BACKING RESOLUTION, A CHOICE (17-18 Nov 2026, the lead: Jay's canvas is about 792 x 1056 backing pixels at the cap of 2, and the part of the frame that is not the step is 33 to 37 ms and does not move with the cars): full (2x, the old and still the default), 1.5x (0.56 of the pixels) or 1x (a quarter). A chip beside the others (Clean mode: behind More) cycles it, the setting `dprCap` keeps it, and the frame counter says which was on (`px 1.5x`) so a reading carries its setting. How it looks is Jay's call; the cost of a pixel is measured on his phone, not here. */
 const DPR_STEPS = [2, 1.5, 1];
+/* TWO BISECT SWITCHES FOR THE DEVICE (DECISIONS 10.138): Jay's counter says the delay is outside the page's script (`other`), so what the canvas is asked for and how the browser composites it are the suspects. CANVAS: the 2D context's attributes, `alpha: false` (an opaque layer the compositor need not blend) and `desynchronized` (present without waiting on the compositor), each changing the context, so the canvas is remounted. LAYERS: leave part of the scene undrawn (draw.js `skip`). Neither is stored; a reload is the standard picture. */
+const CV_MODES = ["std", "opaque", "desync", "both"], CV_ATTRS = { std: undefined, opaque: { alpha: false }, desync: { desynchronized: true }, both: { alpha: false, desynchronized: true } };
+const SKIPS = [null, "ground", "height", "all"], SKIP_LABEL = { null: "all", ground: "no ground", height: "floor only", all: "nothing" };
 export { START };   // the player begins at the map's north edge, driving down to the crossroads (sim/scene.js)
 
 /* The scene for one map: roads with their ribbons from the loader, the
@@ -198,6 +201,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   /* THE POP-UP LINES (Jay's and A.U.T.O.'s), OFF BY DEFAULT since 14 November [Jay]; a chip turns them back on. Only the drawing is gated: the voice, its limiter and every detector are as they were. */
   const [dprCap, setDprCap] = useState(DPR_CAP);
   const dprRef = useRef(DPR_CAP);
+  const [cvMode, setCvMode] = useState("std"), [cvKey, setCvKey] = useState(0), [skipMode, setSkipMode] = useState(null);
+  const cvRef = useRef("std"), skipRef = useRef(null);
   const [captionsOn, setCaptionsOn] = useState(false);
   const captionsRef = useRef(false);
   /* The camera's elevation (DECISIONS 10.86): a view setting, no restart. Below 30 the draw order is knowingly wrong for vehicles near each other -- for judging feel. */
@@ -311,7 +316,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", CV_ATTRS[cvRef.current]);
     let fpsAt = performance.now();
     const frameMeter = makeFrameMeter();
 
@@ -488,7 +493,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       lastView.current = { x: cam.current.x, y: cam.current.y, z: cam.current.z ?? 0, k, rot };
       const tDraw0 = performance.now();
       cam.current.elev = elevRef.current; if (free.current) free.current.elev = elevRef.current;
-      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + carry, lights: sc.world.lights, route: sc.me ? sc.routePts : null, dest: sc.me && sc.dest ? { x: sc.dest.x, y: sc.dest.y, z: 0 } : null });
+      const drew = drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: cam.current, rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: sc.world.t + carry, lights: sc.world.lights, route: sc.me ? sc.routePts : null, dest: sc.me && sc.dest ? { x: sc.dest.x, y: sc.dest.y, z: 0 } : null }, { skip: skipRef.current });
 
       /* THE DRIVER LOOKED AT: a ring round the car and its card (iso/hud.js drawDriverCard) -- the followed car's when none is picked. */
       drawn.current = { actors, view: { k, rot, cam: { ...cam.current }, size } };
@@ -622,7 +627,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         if (!cleanRef.current) drawReadout(ctx, readout.current, 8, 22, { maxW: size.w - 16 });
       }
       /* THE FRAME METER, outside the clean-mode guard on purpose: clean mode hides the instruments and this is the one Jay asked to keep. */
-      { const mt = frameMeter.text(now); drawFrameMeter(ctx, mt ? `${mt} · px ${Math.round((100 * canvasRef.current.width) / size.w) / 100}x` : "", mt ? frameMeter.text2() : ""); }
+      { const mt = frameMeter.text(now); drawFrameMeter(ctx, mt ? `${mt} · px ${Math.round((100 * canvasRef.current.width) / size.w) / 100}x${cvRef.current !== "std" ? ` · cv ${cvRef.current}` : ""}${skipRef.current ? ` · skip ${skipRef.current}` : ""}` : "", mt ? frameMeter.text2() : ""); }
       /* Our own frame callback's time: a slow page shows here, a slow browser does not. */
       /* EVERY PART OF THE FRAME, each with its own p95 (pace.js frameParts): the sim's step when it ran on this
          frame, the poses, the camera, the draw -- its list, sort, paint and overlays -- and the HUD after it. */
@@ -638,7 +643,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     };
     tick(performance.now());
     return () => { cancelAnimationFrame(raf.current); window.removeEventListener("keydown", onKey); window.removeEventListener("keyup", onKey); };
-  }, [playing, follow, zoom, seed, limit, mode, rotate, look]);
+  }, [playing, follow, zoom, seed, limit, mode, rotate, look, cvKey]);
 
   const at = (e) => { const r = e.currentTarget.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top, { w: r.width, h: r.height }]; };
   const onDown = (e) => { e.currentTarget.setPointerCapture?.(e.pointerId); const [x, y, box] = at(e); input.current.pointer("down", e.pointerId, x, y, box, performance.now()); };
@@ -731,7 +736,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       </div>
 
       <div style={S.view}>
-        <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }}
+        <canvas key={cvKey} ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }}
           onPointerDown={mode === "drive" && !look ? onDown : camDown} onPointerMove={mode === "drive" && !look ? onMove : camMove}
           onPointerUp={mode === "drive" && !look ? onUp : camUp} onPointerCancel={mode === "drive" && !look ? onUp : camUp} />
         {mailOpen && (
@@ -901,6 +906,14 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             title="how many pixels the canvas is drawn in: full (2x), 1.5x (about half the pixels) or 1x (a quarter); the frame counter says which was on"
             onClick={() => { const next = DPR_STEPS[(DPR_STEPS.indexOf(dprCap) + 1) % DPR_STEPS.length]; dprRef.current = next; setDprCap(next); setSetting("dprCap", next); }}>
             {dprCap === 2 ? "Sharpness: full" : `Sharpness: ${dprCap}x`}</button>
+          <button className="btn" style={{ ...S.chip, borderColor: cvMode !== "std" ? C.amber : "rgba(255,255,255,0.12)", color: cvMode !== "std" ? C.white : DIM }}
+            title="the canvas's context attributes (a bisect for the frame's other time): std, opaque (alpha: false), desync (desynchronized) or both; the canvas is remounted, the drive carries on; the counter says which is on"
+            onClick={() => { const next = CV_MODES[(CV_MODES.indexOf(cvMode) + 1) % CV_MODES.length]; cvRef.current = next; setCvMode(next); setCvKey((k) => k + 1); }}>
+            {`Canvas: ${cvMode}`}</button>
+          <button className="btn" style={{ ...S.chip, borderColor: skipMode ? C.amber : "rgba(255,255,255,0.12)", color: skipMode ? C.white : DIM }}
+            title="leave part of the scene undrawn (a bisect for the frame's other time): all, no ground, floor only (no cars, buildings or props) or nothing; the counter says which is on"
+            onClick={() => { const next = SKIPS[(SKIPS.indexOf(skipMode) + 1) % SKIPS.length]; skipRef.current = next; setSkipMode(next); }}>
+            {`Layers: ${SKIP_LABEL[skipMode]}`}</button>
           <button className="btn" style={{ ...S.chip, borderColor: captionsOn ? C.amber : "rgba(255,255,255,0.12)", color: captionsOn ? C.white : DIM }}
             title="the pop-up lines, Jay's and A.U.T.O.'s: off by default (Jay, 14 November); the voice still speaks, only the drawing is gated"
             onClick={() => { const on = !captionsOn; captionsRef.current = on; setCaptionsOn(on); setSetting("captions", on); }}>
