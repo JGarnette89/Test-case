@@ -311,36 +311,45 @@ export function drawDriverCard(ctx, x, y, d, { axes, soundnessOf, lacking, compe
    (step up). Plain numbers in two arrays; nothing here touches React, and the text is rebuilt four times a second, not every frame. */
 export const LONG_FRAME_MS = 50;
 export function makeFrameMeter(windowMs = 1000) {
-  const frames = [], steps = [];   // [at, ms]
-  let text = "", builtAt = -Infinity, last = null;
+  const frames = [], steps = [];   // frames: [at, gap, cb, stepMs, nSteps] where cb/stepMs/nSteps are what the PREVIOUS frame's callback did (the work that preceded this arrival); steps: [at, ms]
+  let text = "", text2 = "", builtAt = -Infinity, last = null, prev = null, acc = { n: 0, ms: 0 };
   const trim = (a, now) => { while (a.length && a[0][0] < now - windowMs) a.shift(); };
   return {
     /** A frame arrived at `now` (the rAF timestamp). */
-    frame(now) { if (last != null) frames.push([now, now - last]); last = now; trim(frames, now); },
+    frame(now) { if (last != null) frames.push([now, now - last, prev?.cb, prev?.stepMs, prev?.n]); last = now; trim(frames, now); },
     /** A sim step took `ms`. */
-    step(now, ms) { steps.push([now, ms]); trim(steps, now); },
+    step(now, ms) { steps.push([now, ms]); acc.n++; acc.ms += ms; trim(steps, now); },
+    /** This frame's own callback is over: it took `cbMs` in all, and carried the steps counted since the last call (DECISIONS 10.137: a long gap is the work BEFORE it, so the next arrival reads this). */
+    work(cbMs) { prev = { cb: cbMs, stepMs: acc.ms, n: acc.n }; acc = { n: 0, ms: 0 }; },
     stats(now) {
       trim(frames, now); trim(steps, now);
       const ds = frames.map((f) => f[1]);
       const span = frames.length ? now - (frames[0][0] - frames[0][1]) : 0;
       const fps = span > 0 ? (frames.length * 1000) / span : 0;
       const sm = steps.map((s) => s[1]).sort((a, b) => a - b);
-      return { fps, worst: ds.length ? Math.max(...ds) : 0, long: ds.filter((d) => d > LONG_FRAME_MS).length, step: sm.length ? sm[sm.length >> 1] : null, n: ds.length };
+      /* WHAT MADE EACH LONG GAP (DECISIONS 10.137): the previous frame's callback ran for >= 60% of the gap -> it was OUR script, and it was the sim step if the steps were at least half of it, the draw if not; a callback that was short -> the delay was outside the page's script (raster, GPU, compositor, the browser). A frame with no record of its predecessor is not counted. */
+      let ls = 0, ld = 0, lo = 0; for (const f of frames) if (f[1] > LONG_FRAME_MS && f[2] != null) { if (f[2] >= 0.6 * f[1]) { if (f[3] >= 0.5 * f[2]) ls++; else ld++; } else lo++; }
+      const cbs = frames.map((f) => f[2]).filter((x) => x != null), sx = steps.map((x) => x[1]);
+      return { fps, worst: ds.length ? Math.max(...ds) : 0, long: ds.filter((d) => d > LONG_FRAME_MS).length, step: sm.length ? sm[sm.length >> 1] : null, n: ds.length, stepMax: sx.length ? Math.max(...sx) : null, cbMax: cbs.length ? Math.max(...cbs) : null, cbMed: cbs.length ? cbs.sort((a, b) => a - b)[cbs.length >> 1] : null, longStep: ls, longDraw: ld, longOther: lo };
     },
     text(now) {
       if (now - builtAt >= 250) {
         const s = this.stats(now);
         text = s.n ? `${Math.round(s.fps)} fps · worst ${Math.round(s.worst)} ms · ${s.long} long · step ${s.step == null ? "-" : s.step.toFixed(1)} ms` : "";
+        text2 = s.n && s.cbMax != null ? `step max ${s.stepMax == null ? "-" : Math.round(s.stepMax)} · page ${Math.round(s.cbMed)}/${Math.round(s.cbMax)} ms · long by step ${s.longStep} draw ${s.longDraw} other ${s.longOther}` : "";
         builtAt = now;
       }
       return text;
     },
+    /** The second line: the tail and what the long gaps were made of. */
+    text2() { return text2; },
   };
 }
-export function drawFrameMeter(ctx, text, x = 8, y = 4) {
+export function drawFrameMeter(ctx, text, text2 = "", x = 8, y = 4) {
   if (!text) return;
   ctx.font = "600 11px system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top";
   const w = ctx.measureText ? ctx.measureText(text).width + 10 : 200;
   ctx.fillStyle = "rgba(14,16,20,0.6)"; ctx.fillRect(x, y, w, 16);
   ctx.fillStyle = "#e6e8ec"; ctx.fillText(text, x + 5, y + 2);
+  if (text2) { const w2 = ctx.measureText ? ctx.measureText(text2).width + 10 : 200; ctx.fillStyle = "rgba(14,16,20,0.6)"; ctx.fillRect(x, y + 17, w2, 16); ctx.fillStyle = "#e6e8ec"; ctx.fillText(text2, x + 5, y + 19); }
 }

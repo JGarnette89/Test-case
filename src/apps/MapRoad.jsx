@@ -622,11 +622,12 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         if (!cleanRef.current) drawReadout(ctx, readout.current, 8, 22, { maxW: size.w - 16 });
       }
       /* THE FRAME METER, outside the clean-mode guard on purpose: clean mode hides the instruments and this is the one Jay asked to keep. */
-      { const mt = frameMeter.text(now); drawFrameMeter(ctx, mt ? `${mt} · px ${Math.round((100 * canvasRef.current.width) / size.w) / 100}x` : ""); }
+      { const mt = frameMeter.text(now); drawFrameMeter(ctx, mt ? `${mt} · px ${Math.round((100 * canvasRef.current.width) / size.w) / 100}x` : "", mt ? frameMeter.text2() : ""); }
       /* Our own frame callback's time: a slow page shows here, a slow browser does not. */
       /* EVERY PART OF THE FRAME, each with its own p95 (pace.js frameParts): the sim's step when it ran on this
          frame, the poses, the camera, the draw -- its list, sort, paint and overlays -- and the HUD after it. */
       const fEnd = performance.now(), dm = drew.ms ?? {};
+      frameMeter.work(fEnd - f0);
       frameTick(sc.clock ??= newSimClock(), now, fEnd - f0, {
         sim: tSim1 - tSim0, poses: tPoses - tSim1, camera: tDraw0 - tPoses, draw: tDraw1 - tDraw0,
         list: dm.build ?? 0, sort: dm.sort ?? 0, paint: dm.paint ?? 0, overlay: dm.overlay ?? 0, hud: fEnd - tDraw1,

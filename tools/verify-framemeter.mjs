@@ -35,4 +35,15 @@ const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (
   check(truck <= 1.05 && truck > 0.5, `truck lamps at ${truck.toFixed(2)} m (not the 3.4 m roof)`);
   check(bus <= 1.05 && bus > 0.5, `bus lamps at ${bus.toFixed(2)} m (not the 3.2 m roof)`);
   check(Math.abs(car - 0.75) < 1e-9, `car lamps unchanged at ${car.toFixed(2)} m`); }
+/* 6. WHAT MADE A LONG GAP (DECISIONS 10.137), stated here with frames built by hand. A gap is the work BEFORE it: the previous frame's callback. */
+{ const run = (cb, stepMs, gap) => { const m = makeFrameMeter(); m.frame(1000); m.step(1001, stepMs); m.work(cb); m.frame(1000 + gap); return m.stats(1000 + gap); };
+  const st = run(110, 100, 120), dr = run(110, 10, 120), ot = run(5, 3, 120), no = run(110, 100, 30);
+  check(st.longStep === 1 && st.longDraw === 0 && st.longOther === 0, `a 120 ms gap after a 110 ms callback that was mostly a 100 ms step is a STEP gap: ${st.longStep}/${st.longDraw}/${st.longOther}`);
+  check(dr.longDraw === 1 && dr.longStep === 0 && dr.longOther === 0, `the same gap after a callback that was mostly not the step is a DRAW gap: ${dr.longStep}/${dr.longDraw}/${dr.longOther}`);
+  check(ot.longOther === 1 && ot.longStep === 0 && ot.longDraw === 0, `a 120 ms gap after a 5 ms callback is OUTSIDE the page's script (raster, GPU, browser): ${ot.longStep}/${ot.longDraw}/${ot.longOther}`);
+  check(no.long === 0 && no.longStep + no.longDraw + no.longOther === 0, "a 30 ms gap is no long frame and is attributed to nothing");
+  const m = makeFrameMeter(); m.frame(0); m.step(1, 20); m.step(2, 70); m.work(95); m.frame(100); m.step(101, 8); m.work(12); m.frame(116);
+  const t = m.stats(116); check(t.stepMax === 70 && t.cbMax === 95, `the tail is shown, not only the median: step max ${t.stepMax} (70), page callback max ${t.cbMax} (95), step median ${t.step}`);
+  const src2 = fs.readFileSync(new URL("../src/apps/MapRoad.jsx", import.meta.url), "utf8");
+  check(/frameMeter\.work\(/.test(src2) && /frameMeter\.text2\(\)/.test(src2), "the page closes each frame's callback with work() and draws the second line"); }
 console.log(failed ? `\n${failed} FAILED` : "\nall passed"); process.exit(failed ? 1 : 0);

@@ -52,12 +52,13 @@ if (!base) {
 /* ---- injected before the page's own code: the recorders ---- */
 const hook = (settings) => `(() => {
   try { localStorage.setItem("row.settings.v1", ${JSON.stringify(JSON.stringify(settings))}); } catch (e) {}
-  const R = (window.__cdp = { frames: [], meter: [], loaf: [], on: false, t0: 0 });
+  const R = (window.__cdp = { frames: [], meter: [], meter2: [], loaf: [], on: false, t0: 0 });
   const raf = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = (cb) => raf((now) => { if (R.on) R.frames.push(now); return cb(now); });
   const ft = CanvasRenderingContext2D.prototype.fillText;
   CanvasRenderingContext2D.prototype.fillText = function (s, ...a) {
     if (typeof s === "string" && s.includes(" fps · worst") && R.on && R.meter[R.meter.length - 1]?.s !== s) R.meter.push({ at: performance.now(), s });
+    if (typeof s === "string" && s.startsWith("step max") && R.on && R.meter2[R.meter2.length - 1]?.s !== s) R.meter2.push({ at: performance.now(), s });
     return ft.call(this, s, ...a);
   };
   try { new PerformanceObserver((l) => { if (R.on) for (const e of l.getEntries()) R.loaf.push({ at: e.startTime, d: e.duration, script: (e.scripts || []).reduce((s, x) => s + x.duration, 0), pre: e.renderStart - e.startTime, rs: e.styleAndLayoutStart ? e.styleAndLayoutStart - e.startTime : null }); }).observe({ type: "long-animation-frame", buffered: false }); } catch (e) { R.noLoaf = true; }
@@ -97,7 +98,7 @@ async function runArm(arm, n) {
       series.push({ t: (Date.now() - t0) / 1000, heap: g("JSHeapUsedSize"), script: g("ScriptDuration"), task: g("TaskDuration"), layout: g("LayoutDuration"), style: g("RecalcStyleDuration") });
       await new Promise((r) => setTimeout(r, 1000));
     }
-    const d = await evaluate(`JSON.stringify({ frames: window.__cdp.frames, meter: window.__cdp.meter, loaf: window.__cdp.loaf, noLoaf: !!window.__cdp.noLoaf, t0: window.__cdp.t0, now: performance.now(), dpr: devicePixelRatio, w: innerWidth, h: innerHeight })`).then(JSON.parse);
+    const d = await evaluate(`JSON.stringify({ frames: window.__cdp.frames, meter: window.__cdp.meter, meter2: window.__cdp.meter2, loaf: window.__cdp.loaf, noLoaf: !!window.__cdp.noLoaf, t0: window.__cdp.t0, now: performance.now(), dpr: devicePixelRatio, w: innerWidth, h: innerHeight })`).then(JSON.parse);
     const dt = d.frames.slice(1).map((f, i) => f - d.frames[i]);
     const meter = d.meter.map((x) => { const m = x.s.match(/(\d+) fps · worst (\d+) ms · (\d+) long · step ([\d.-]+) ms(?: · px ([\d.]+)x)?/); return m ? { at: (x.at - d.t0) / 1000, fps: +m[1], worst: +m[2], long: +m[3], step: m[4] === "-" ? null : +m[4], px: m[5] ? +m[5] : null, s: x.s } : null; }).filter(Boolean);
     // a major collection is the heap falling by more than 8 MB between two seconds
@@ -108,7 +109,7 @@ async function runArm(arm, n) {
       meterWorstMax: Math.max(0, ...meter.map((m) => m.worst)), meterLongSeconds: meter.filter((m) => m.long > 0).length, meterSamples: meter.length, stepMed: med(meter.map((m) => m.step).filter((x) => x != null)), meterFpsMed: med(meter.map((m) => m.fps)), px: meter.find((m) => m.px)?.px ?? null,
       loaf: { n: d.loaf.length, unsupported: d.noLoaf, meanScript: d.loaf.length ? d.loaf.reduce((s, x) => s + x.script, 0) / d.loaf.length : 0, meanRender: d.loaf.length ? d.loaf.reduce((s, x) => s + (x.rs == null ? 0 : x.d - x.rs), 0) / d.loaf.length : 0, meanStyle: 0, worst: d.loaf.sort((a, b) => b.d - a.d).slice(0, 5).map((x) => ({ at: +((x.at - d.t0) / 1000).toFixed(1), d: +x.d.toFixed(0), script: +x.script.toFixed(0), afterScript: x.rs == null ? null : +(x.d - x.rs).toFixed(0), beforeRender: +x.pre.toFixed(0) })) },
       heap: { startMB: series[0].heap / 1048576, maxMB: Math.max(...series.map((s) => s.heap)) / 1048576, majors: drops.length, drops },
-      frameTimes: dt.map((x) => +x.toFixed(1)), meterLines: meter, series,
+      frameTimes: dt.map((x) => +x.toFixed(1)), meterLines: meter, meter2: d.meter2.map((x) => { const m = x.s.match(/step max (\d+|-) · page (\d+)\/(\d+) ms · long by step (\d+) draw (\d+) other (\d+)/); return m ? { at: (x.at - d.t0) / 1000, stepMax: m[1] === "-" ? null : +m[1], cbMed: +m[2], cbMax: +m[3], byStep: +m[4], byDraw: +m[5], byOther: +m[6] } : null; }).filter(Boolean), series,
     };
     return out;
   } finally { await chrome.close(); }
