@@ -9,6 +9,9 @@
    tick. This asks where it is DRAWN at the frames in between: its sideways offset from the same pose without the
    lane change must equal the analytic offset at the carried time, to a millimetre.
    ===================================================================== */
+// THE FILES THIS CHECK READS AS TEXT, which the import graph cannot see (18 Nov 2026: the Sharpness chip rewrote a line of MapRoad.jsx that verify-framemeter greps, and the derived set missed it, so the change shipped with this check red; see DECISIONS 10.129):
+// check-input: ../src/apps/MapRoad.jsx
+// check-input: ../src/iso/bench.js
 import fs from "node:fs";
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";

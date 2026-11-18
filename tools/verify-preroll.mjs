@@ -9,6 +9,8 @@
         5. THE START IS A MOVING ONE: after the pre-roll the player is moving at at least 90% of the stream's median speed (on every shaped map, six seeds), and on the five-lane road at least 10% of the moving cars are slower than him (the standing start had none).
    Sabotage: the pre-roll made a no-op fails 1; the screen's `preroll` removed fails 4; the player left standing (no starting speed, no pacer) fails 5. Usage: node tools/verify-preroll.mjs
    ===================================================================== */
+// THE FILES THIS CHECK READS AS TEXT, which the import graph cannot see (18 Nov 2026: the Sharpness chip rewrote a line of MapRoad.jsx that verify-framemeter greps, and the derived set missed it, so the change shipped with this check red; see DECISIONS 10.129):
+// check-input: ../src/apps/MapRoad.jsx
 import { readFileSync } from "node:fs";
 import { TEST_MAPS } from "../src/map/samples.js";
 import { worldFor, PREROLL } from "../src/sim/scene.js";

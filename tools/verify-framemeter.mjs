@@ -6,6 +6,8 @@
    5. Lamps: a truck's and a bus's lamps sit at about a metre (never on the roof, 3.4 m / 3.2 m), a car's where they were (its body's 0.75 m), for brake lamps and blinkers.
    Sabotage (done 17 Nov): lamps back at the roof height fails 5 (truck 3.40 m, bus 3.20 m), restored byte-identical.
    Usage: node tools/verify-framemeter.mjs */
+// THE FILES THIS CHECK READS AS TEXT, which the import graph cannot see (18 Nov 2026: the Sharpness chip rewrote a line of MapRoad.jsx that verify-framemeter greps, and the derived set missed it, so the change shipped with this check red; see DECISIONS 10.129):
+// check-input: ../src/apps/MapRoad.jsx
 import fs from "node:fs";
 import { makeFrameMeter, drawFrameMeter } from "../src/iso/hud.js";
 import { paintLamps } from "../src/iso/draw.js";
@@ -22,7 +24,8 @@ const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (
   check(m.stats(900).step === 12, `step median of 100, 10, 12 is ${m.stats(900).step} (12), the 100 ms outlier not the answer`);
   check(m.stats(1200).step === 11 || m.stats(1200).step === 12, `the 100 ms step has aged out by 1200 ms: median of 10, 12 = ${m.stats(1200).step}`); }
 { const src = fs.readFileSync(new URL("../src/apps/MapRoad.jsx", import.meta.url), "utf8");
-  const i = src.indexOf("drawFrameMeter(ctx, frameMeter.text(now))"), line = src.slice(src.lastIndexOf("\n", i) + 1, src.indexOf("\n", i));
+  /* The call is `{ const mt = frameMeter.text(now); drawFrameMeter(ctx, mt ? ...px suffix... : "") }` on one line (18 Nov: the Sharpness chip put the pixel scale into the counter); the line that holds it must still carry no clean-mode guard. */
+  const i = src.indexOf("drawFrameMeter(ctx, mt"), line = src.slice(src.lastIndexOf("\n", i) + 1, src.indexOf("\n", i));
   check(i > 0 && !/cleanRef/.test(line), "the meter is drawn with no clean-mode guard on its line"); }
 { const zs = []; const view = { into: (x, y, z) => { zs.push(z); return [x, y]; } };
   const ctx = new Proxy({}, { get: () => () => {}, set: () => true });

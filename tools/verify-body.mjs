@@ -15,6 +15,9 @@
      6. MEMORY: an id that is no longer drawn is forgotten, an id whose world restarts is somebody else, a long gap snaps and does not integrate;
      7. WIRING: the screen draws every car, the player included, through `bodyOf`, passes the body to every lamp call, and ships with it OFF.
    ===================================================================== */
+// THE FILES THIS CHECK READS AS TEXT, which the import graph cannot see (18 Nov 2026: the Sharpness chip rewrote a line of MapRoad.jsx that verify-framemeter greps, and the derived set missed it, so the change shipped with this check red; see DECISIONS 10.129):
+// check-input: ../src/apps/MapRoad.jsx
+// check-input: ../src/settings.js
 import fs from "node:fs";
 import { loadMap } from "../src/map/load.js";
 import { TEST_MAPS } from "../src/map/samples.js";
