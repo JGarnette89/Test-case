@@ -55,7 +55,8 @@ const city = loadMap(testCityReady());
   const stats = new Map();   // id -> { free: [v/limit], gap: [headway s], lc, s0, stops: [short m] }
   const stat = (k, a) => stats.get(k) ?? stats.set(k, { free: [], gap: [], lc: 0, stops: [], rival: a.rival ?? null }).get(k);
   for (const seed of [2, 3]) {
-  let w = playedGraph(seed, 50, city, { target: 150, posted: true, rivals: true });
+  /* BARE WORLD: brakeReaction off. "nobody overlapping" is stated against a world where cars do not brake for a conflict they are about to cause; brake reaction (a sanctioned mechanism, DECISIONS 10.46) makes touches recorded events, 90 car-ticks of them on this run as played. Classified by arm (DECISIONS 10.115): green with it off; nothing restated. */
+  let w = playedGraph(seed, 50, city, { target: 150, posted: true, rivals: true, brakeReaction: false });
   const key = (a) => (a.rival ? a.id : `${seed}:${a.id}`);
   const prevLc = new Map(), prevV = new Map();
   for (let i = 0; i < 600 / DT; i++) {

@@ -8,6 +8,7 @@
      5. IN A REAL WORLD, every car actually at rest sits within half its weave amplitude of its line, and the same car a metre further on, still at rest, is at the same offset.
    Sabotage: the speed term removed fails 1 and 5. Usage: node tools/verify-weave.mjs
    ===================================================================== */
+// BARE WORLD: the subject is how a standing car sits on its line; section 5 builds `seedGraph` with the options it needs stated one by one, because walkers, rivals and brake reaction would change which cars are standing, not how a standing car sits (DECISIONS 10.120).
 import { loadMap } from "../src/map/load.js";
 import { testMap1 } from "../src/map/samples.js";
 import { seedGraph, step } from "../src/sim/crossing.js";
