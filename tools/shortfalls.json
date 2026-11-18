@@ -19,5 +19,12 @@
     "item": "the courtesy ratio's statistic (DECISIONS 10.119: three blocks of sixteen seeds span 0.67 to 1.01 in the bare world)",
     "reason": "on sixteen seeds the ratio is about 0.7 in the bare world by luck of the draw and about 0.93 with rivals in it; the bar cannot be held in either",
     "recordedAt": "2026-11-17"
+  },
+  "merge-near-rest-share-played": {
+    "recorded": 0.06598984771573604,
+    "bar": 0.01,
+    "item": "the merge item in the played world (DECISIONS 10.121: the bare world's record is 3.06%, the played world's twice it)",
+    "reason": "with rivals present and cars braking for conflicts, about one joiner in fifteen at 300 cars reaches the lane end near rest; the bar is under 1%",
+    "recordedAt": "2026-11-18"
   }
 }

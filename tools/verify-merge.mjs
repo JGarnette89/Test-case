@@ -220,6 +220,27 @@ check(ran.every((r) => r.joiners >= 20), `the case arose: joiners that reached t
   const r2 = knownShortfall({ id: "merge-near-rest-share", label: `[invented: 1%, an agent's reading of Jay's 1 in 10000, extremely inept; near rest = under 2 m/s within 20 m] reaching the end of the lane at or near rest is the inept tail only, under 1% of joiners: ${ran.map((r) => `${r.nearRest} of ${r.joiners} (${(100 * r.nearRest / Math.max(1, r.joiners)).toFixed(1)}%) at ${r.cars}`).join(", ")}`, measured: worst.p, bar: 0.01, allow: 2 * se, item: "the merge item (stopped joiners at the end of the acceleration lane, DECISIONS 10.70)", reason: "13% of joiners at 300 cars reach the lane end near rest; the bar is under 1%" });
   console.log(r2.line); if (!r2.pass) failed++;   /* the bar is "under 1%" and the module's is "at most 1%": a share of exactly 1.000% is the only difference. allow = 2 standard errors of the worst cell's share [invented]: a change elsewhere reshuffles which cars meet which */
 }
+/* THE PLAYED WORLD'S NEAR-REST SHARE, HELD IN THE RATCHET (17 Nov 2026, DECISIONS 10.121; backlog item 9 of the day): the record above is the BARE world's (3.06% at 300 cars) and its ratchet only moves toward the bar, so the played
+   world's value, which is twice it (6.6%, 13 of 197 joiners), gets its OWN record: one cell, 300 cars, the played world as the page builds it (rivals, brake reaction, walkers), counted the same way (a joiner is a car on an acceleration lane
+   past its taper; near rest is under 2 m/s within 20 m of where the lane runs out, having come within 15 m). The bar is Jay's, under 1%, and does not move; this line is a SKIP while the value is no worse than recorded and RED when it is. */
+{
+  let w = playedGraph(1, 50, loaded, { every: 2.0, target: 300, posted: true });
+  for (let i = 0; i < 1200; i++) w = step(w);
+  const ids = new Set(), reach = new Set(), minV20 = new Map();
+  for (let i = 0; i < 180 * 20; i++) {
+    w = step(w);
+    for (const a of w.actors) {
+      const L = w.course.at[a.k].layout, p = L.paths[a.route], to = L.legs[p.to];
+      if (!(to?.accel && a.s > p.clearAt)) continue;
+      ids.add(a.id);
+      const toEnd = p.length - to.accelClose - a.s;
+      if (toEnd <= 20) { minV20.set(a.id, Math.min(minV20.get(a.id) ?? Infinity, a.v)); if (toEnd <= 15) reach.add(a.id); }
+    }
+  }
+  const nearRest = [...reach].filter((id) => (minV20.get(id) ?? Infinity) < 2).length, n = Math.max(1, ids.size), p = nearRest / n, se = Math.sqrt(p * (1 - p) / n);
+  const rp = knownShortfall({ id: "merge-near-rest-share-played", label: `[invented: 1%, as above] in the PLAYED world, 300 cars: ${nearRest} of ${ids.size} joiners (${(100 * p).toFixed(1)}%) reach the end of the lane at or near rest`, measured: p, bar: 0.01, allow: 2 * se, item: "the merge item in the played world (DECISIONS 10.121: the bare world's record is 3.06%, the played world's twice it)", reason: "with rivals present and cars braking for conflicts, about one joiner in fifteen at 300 cars reaches the lane end near rest; the bar is under 1%" });
+  console.log(rp.line); if (!rp.pass) failed++;
+}
 for (const r of ran) console.log(`    [${r.cars} cars] DISTRIBUTION of continuous stands, ${r.cont.n} joiners stood at all: median ${r.cont.p50.toFixed(1)} s, p90 ${r.cont.p90.toFixed(1)} s, p99 ${r.cont.p99.toFixed(1)} s, max ${r.cont.max.toFixed(1)} s; longest total time at rest ${r.tot.max.toFixed(0)} s`);
 for (const r of ran) console.log(`    [${r.cars} cars] ${r.diag}`);
 {
