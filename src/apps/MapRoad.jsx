@@ -61,6 +61,8 @@ import { DEFAULT_MERGE_TOLERANCE } from "../sim/lanechange.js";
 const LIMITS = [40, 50, 60];
 const DIM = "#9AA3B2", TEXT = "#E6E8EC";
 const DPR_CAP = 2;
+/* THE CANVAS'S BACKING RESOLUTION, A CHOICE (17-18 Nov 2026, the lead: Jay's canvas is about 792 x 1056 backing pixels at the cap of 2, and the part of the frame that is not the step is 33 to 37 ms and does not move with the cars): full (2x, the old and still the default), 1.5x (0.56 of the pixels) or 1x (a quarter). A chip beside the others (Clean mode: behind More) cycles it, the setting `dprCap` keeps it, and the frame counter says which was on (`px 1.5x`) so a reading carries its setting. How it looks is Jay's call; the cost of a pixel is measured on his phone, not here. */
+const DPR_STEPS = [2, 1.5, 1];
 export { START };   // the player begins at the map's north edge, driving down to the crossroads (sim/scene.js)
 
 /* The scene for one map: roads with their ribbons from the loader, the
@@ -194,6 +196,8 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
   /* BODY MOTION (iso/body.js, DECISIONS 10.70): the car leans, dives and squats. Off by default, a switch on the debug chips so it can be compared; page-side, no restart. */
   const [bodyOn, setBodyOn] = useState(true);
   /* THE POP-UP LINES (Jay's and A.U.T.O.'s), OFF BY DEFAULT since 14 November [Jay]; a chip turns them back on. Only the drawing is gated: the voice, its limiter and every detector are as they were. */
+  const [dprCap, setDprCap] = useState(DPR_CAP);
+  const dprRef = useRef(DPR_CAP);
   const [captionsOn, setCaptionsOn] = useState(false);
   const captionsRef = useRef(false);
   /* The camera's elevation (DECISIONS 10.86): a view setting, no restart. Below 30 the draw order is knowingly wrong for vehicles near each other -- for judging feel. */
@@ -290,6 +294,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
       const mt = [0, 2, 2.5, 3].includes(Number(s.mergeTol)) && s.mergeTol != null ? Number(s.mergeTol) : DEFAULT_MERGE_TOLERANCE;
       /* A saved real position wins over a saved worker: the worker stays off and the page steps (10.70). */
       if (ELEVATIONS.includes(Number(s.elev)) && Number(s.elev) !== 30) { elevRef.current = Number(s.elev); setElev(Number(s.elev)); }
+      if (DPR_STEPS.includes(Number(s.dprCap)) && Number(s.dprCap) !== DPR_CAP) { dprRef.current = Number(s.dprCap); setDprCap(Number(s.dprCap)); }   // 2 by default; a saved lower choice stands
       if (s.captions === true) { captionsRef.current = true; setCaptionsOn(true); }   // off by default; a saved on stands
       if (s.bodyMotion === false) { bodyRef.current = false; setBodyOn(false); }   // on by default; a saved off stands
       const wantReal = s.realPos === true;
@@ -311,7 +316,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
     const frameMeter = makeFrameMeter();
 
     const fit = () => {
-      const dpr = Math.min(DPR_CAP, window.devicePixelRatio || 1);
+      const dpr = Math.min(dprRef.current, window.devicePixelRatio || 1);
       const w = canvas.clientWidth, h = canvas.clientHeight;
       if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
         canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
@@ -617,7 +622,7 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
         if (!cleanRef.current) drawReadout(ctx, readout.current, 8, 22, { maxW: size.w - 16 });
       }
       /* THE FRAME METER, outside the clean-mode guard on purpose: clean mode hides the instruments and this is the one Jay asked to keep. */
-      drawFrameMeter(ctx, frameMeter.text(now));
+      { const mt = frameMeter.text(now); drawFrameMeter(ctx, mt ? `${mt} · px ${Math.round((100 * canvasRef.current.width) / size.w) / 100}x` : ""); }
       /* Our own frame callback's time: a slow page shows here, a slow browser does not. */
       /* EVERY PART OF THE FRAME, each with its own p95 (pace.js frameParts): the sim's step when it ran on this
          frame, the poses, the camera, the draw -- its list, sort, paint and overlays -- and the HUD after it. */
@@ -891,6 +896,10 @@ export default function MapRoad({ mapData = null, startAt = null, initialMode = 
             title="camera elevation (DECISIONS 10.86): 30 is the picture as it has always been; lower is a flatter, more chase-like view. BELOW 30 THE DRAW ORDER IS KNOWINGLY WRONG for vehicles near each other (a car can paint over a truck it is behind) and the 32-heading snap reads worse -- these steps are for judging feel, not for playing. Taps cycle 30, 25, 20, 15."
             onClick={() => { const next = ELEVATIONS[(ELEVATIONS.indexOf(elev) + 1) % ELEVATIONS.length]; elevRef.current = next; setElev(next); setSetting("elev", next); }}>
             {elev === 30 ? "Camera: 30 deg" : `Camera: ${elev} deg (feel only, sort is wrong)`}</button>
+          <button className="btn" style={{ ...S.chip, borderColor: dprCap !== DPR_CAP ? C.amber : "rgba(255,255,255,0.12)", color: dprCap !== DPR_CAP ? C.white : DIM }}
+            title="how many pixels the canvas is drawn in: full (2x), 1.5x (about half the pixels) or 1x (a quarter); the frame counter says which was on"
+            onClick={() => { const next = DPR_STEPS[(DPR_STEPS.indexOf(dprCap) + 1) % DPR_STEPS.length]; dprRef.current = next; setDprCap(next); setSetting("dprCap", next); }}>
+            {dprCap === 2 ? "Sharpness: full" : `Sharpness: ${dprCap}x`}</button>
           <button className="btn" style={{ ...S.chip, borderColor: captionsOn ? C.amber : "rgba(255,255,255,0.12)", color: captionsOn ? C.white : DIM }}
             title="the pop-up lines, Jay's and A.U.T.O.'s: off by default (Jay, 14 November); the voice still speaks, only the drawing is gated"
             onClick={() => { const on = !captionsOn; captionsRef.current = on; setCaptionsOn(on); setSetting("captions", on); }}>
