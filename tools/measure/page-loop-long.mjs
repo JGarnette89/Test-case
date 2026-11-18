@@ -5,6 +5,7 @@
    climbs, a pause that lengthens, or a frame that creeps shows as a trend. A stub canvas with SHARED no-op methods (not a Proxy: a Proxy allocates a closure per call and would be the garbage it is looking for).
    Usage: node --expose-gc tools/measure/page-loop-long.mjs [mins=30] [cars=100] [map=test-highway-gen-wide] */
 import { PerformanceObserver, constants } from "node:perf_hooks";
+import { Session } from "node:inspector/promises";
 import { TEST_MAPS } from "../../src/map/samples.js";
 import { worldFor } from "../../src/sim/scene.js";
 import { step, poseOf } from "../../src/sim/crossing.js";
@@ -33,6 +34,9 @@ let chase = null, junctions = junctionsOf(w.course), t60 = 0, ticks = 0;
 const frameMs = [], rows = []; let allocBase = process.memoryUsage().heapUsed, framesDone = 0;
 const FRAMES = mins * 60 * 60, perTick = 3;   // 60 Hz frames, a 20 Hz tick every third
 console.log(`${id}, ${cars} cars, ${mins} min of drive at 60 Hz, a full gc every ${GCEVERY} min`);
+/* PROMOTED ALLOCATIONS (env PROMOTED=1, 18 Nov 2026): what fills the OLD generation is what survives a scavenge, and that is what sets how often a major runs (the major's cost is the live heap, 10.132; its FREQUENCY is the promotion rate). The inspector's sampling heap profiler with minor-collected objects EXCLUDED and major-collected objects INCLUDED reports exactly the allocations that outlived at least one scavenge, by the function that made them. */
+let session = null;
+if (process.env.PROMOTED) { session = new Session(); session.connect(); await session.post("HeapProfiler.enable"); await session.post("HeapProfiler.startSampling", { samplingInterval: 8192, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: false }); }
 const spikes = []; let driven = 0;
 for (let f = 0; f < FRAMES; f++) {
   const tFrame = performance.now(); let tickMs = 0;
@@ -67,3 +71,11 @@ console.log(`frame script, first 3 minutes against last 3: median ${avg(first, "
 console.log(`SPIKES over 12 ms (a frame includes its tick when it has one): ${spikes.length} in ${(FRAMES / 3600).toFixed(0)} min`);
 for (const sp of spikes.slice(0, 40)) console.log(`  process clock ${sp.at} ms: t=${sp.sec}s (min ${sp.minute}) frame ${sp.frameMs} ms of which the sim tick ${sp.tickMs} ms, ${sp.km} km driven`);
 console.log(`DRIVEN ${(driven / 1000).toFixed(1)} km`);
+if (session) {
+  const { profile } = await session.post("HeapProfiler.getSamplingProfile"), agg = new Map();
+  const walk = (n) => { const cf = n.callFrame, k = `${cf.functionName || "(anon)"} ${cf.url.split("/").pop()}:${cf.lineNumber + 1}`; agg.set(k, (agg.get(k) ?? 0) + (n.selfSize ?? 0)); for (const c of n.children ?? []) walk(c); };
+  walk(profile.head);
+  const total = [...agg.values()].reduce((a, b) => a + b, 0), secs = FRAMES / 60;
+  console.log(`PROMOTED ALLOCATIONS (those that survived a scavenge), ${(total / 1048576).toFixed(0)} MB over ${secs} s of drive = ${(total / 1048576 / secs).toFixed(1)} MB a second of drive; by allocating function:`);
+  for (const [k, b] of [...agg.entries()].sort((x, y) => y[1] - x[1]).slice(0, 18)) console.log(`  ${(100 * b / total).toFixed(1).padStart(5)}%  ${(b / 1048576).toFixed(1).padStart(6)} MB  ${k}`);
+}
