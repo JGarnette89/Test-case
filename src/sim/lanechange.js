@@ -499,7 +499,7 @@ export function lagNeed(out, behind, kappa = kappaOf(out), tol = null) {
   if (tol) need = Math.min(need, tol * (behind?.v ?? 0));
   return Math.max(1.5 + stop, need);
 }
-function gapFor(out, nb, kappa, world = null, merge = false) {
+function gapFor(out, nb, kappa, world = null, merge = false, squeeze = 1) {
   /* At the FOLLOWER's hardest braking: a truck behind stops longer. */
   const stopIn = (v, vl, who) => Math.max(0, (v * v - vl * vl) / (2 * vehicleOf(who).most));
   const leadGap = nb.ahead ? clearBetween(nb.da, out, nb.ahead) : Infinity;
@@ -524,7 +524,7 @@ function gapFor(out, nb, kappa, world = null, merge = false) {
   const shed = (dv, rate) => (dv > 0 ? (dv * dv) / (2 * rate) : 0);
   /* This driver's acceleration still available at this speed (the following model's own shape). */
   const v0 = Math.max(out.v0 ?? out.v, 0.1), mineAccel = vehicleOf(out).accel * Math.max(0, 1 - (out.v / v0) ** 4);
-  const tol = merge ? world?.mergeTolerance ?? null : null;
+  const tol = merge && world?.mergeTolerance ? world.mergeTolerance * squeeze : null;
   const needLead = leadNeed(out, nb.ahead, kappa, tol);
   const needLag = lagNeed(out, nb.behind, kappa, tol);
   /* The floor alone, for the car behind: whether it can stop behind this one at all. */
@@ -658,6 +658,9 @@ function besideOn(path, s, target, guess) {
    not by the taper: past this point the joiner is slowing, and an offerer
    planning against the taper slows with it (DECISIONS 10.15). */
 export const laneEndRoom = (me, v = me.v) => stoppingRoom(v) + lenOf(me) + 10;
+/* AS THE SPACE RUNS OUT, A DRIVER COMPROMISES MORE AND MORE (Jay, 11 Nov: a joiner "is beginning to look for a smaller and smaller acceptable gap as their drivable space concludes"; DECISIONS 10.146). The merge tolerance was a flat cap; in a lane that ENDS for the through traffic (`accel.start.drop`) it now falls with the time left before the taper, from its full value (DROP_SQUEEZE_T seconds out and further) to DROP_SQUEEZE_MIN of it at the end. The floor, the room for the car behind to stop at its hardest braking, is never lowered. Both numbers are [invented], flagged; `world.dropSqueeze === false` turns it off for a comparison. Slip-road joiners are untouched. */
+export const DROP_SQUEEZE_T = 8, DROP_SQUEEZE_MIN = 0.4;
+export const dropSqueeze = (world, outLeg, toEnd, v) => { if (!outLeg?.accelDrop || world?.dropSqueeze === false) return 1; const T = Math.max(0, toEnd) / Math.max(v ?? 0, 5); return T >= DROP_SQUEEZE_T ? 1 : DROP_SQUEEZE_MIN + (1 - DROP_SQUEEZE_MIN) * (T / DROP_SQUEEZE_T); };
 const MATCH = 0.9;   // "up to the traffic's speed": within a tenth of it -- a flagged design constant
 /* WHETHER A JOINING CAR IS TRYING TO MOVE OVER NOW, and how: null while it
    is not (still accelerating, not yet beside, too late to begin), else the
@@ -714,7 +717,7 @@ export function mergePlan(world, out, layout, path, outLeg) {
     /* Matched to the gap they are making for, where they picked one (gapTarget): hanging back to drop in behind a car is not arriving slow. */
     if (!late && out.v < MATCH * Math.min(flow, out.v0 ?? flow, out.mergeV ?? Infinity)) return null;
   }
-  return { T0, best: { dir: -1, to: outLeg.pos - 1, toLeg, route, s2, sep, nb, mandatory: true, exit: true, merge: true } };
+  return { T0, best: { dir: -1, to: outLeg.pos - 1, toLeg, route, s2, sep, nb, mandatory: true, exit: true, merge: true, squeeze: dropSqueeze(world, outLeg, toEnd, out.v) } };
 }
 function mergeStep(world, out, layout, path, outLeg) {
   const plan = mergePlan(world, out, layout, path, outLeg);
@@ -878,7 +881,7 @@ function attempt(world, out, path, best, T0) {
     const own = best.exit ? exitNeighbours(world, out, here, path.to, path.length - out.s, out.route, out.s) : neighbours(world, out, path.from, out.s, out.route);
     if (own.ahead && clearBetween(own.da, out, own.ahead) < Math.max(lenOf(out), Math.max(0, out.v - (own.ahead.v ?? 0)) * T0 * 0.5)) return out;
   }
-  const { leadGap, lagGap, leadOk, lagOk, lagSurvivable } = gapFor(out, nb, kappa, world, !!best.merge);
+  const { leadGap, lagGap, leadOk, lagOk, lagSurvivable } = gapFor(out, nb, kappa, world, !!best.merge, best.squeeze ?? 1);
 
   /* THE BLIND-SPOT CHECK, AT THIS DRIVER'S OBSERVATION. Drawn once per
      manoeuvre from the driver's own seed, so a run replays exactly. */
@@ -918,7 +921,7 @@ function attempt(world, out, path, best, T0) {
   }
   if (!leadOk) return out;
   /* ...and every car beyond it that can demand room, each at its own lead need (above). */
-  for (const { car, d } of nb.aheads ?? []) if (car !== nb.ahead && clearBetween(d, out, car) < leadNeed(out, car, kappa, best.merge ? world.mergeTolerance ?? null : null)) return out;
+  for (const { car, d } of nb.aheads ?? []) if (car !== nb.ahead && clearBetween(d, out, car) < leadNeed(out, car, kappa, best.merge && world.mergeTolerance ? world.mergeTolerance * (best.squeeze ?? 1) : null)) return out;
   /* Every time a driver got this far with somebody in the blind spot is
      an occasion to look or not -- counted whether they went or not, so
      a miss RATE can be read (verify-lanes.mjs), not only the misses. */

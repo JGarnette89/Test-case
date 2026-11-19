@@ -18,11 +18,12 @@ if (process.argv[1].endsWith("lane-end-fixture.mjs") && process.argv[2] !== "run
   let w = seedGraph(seed, 50, L, { every: 1.0, target: cars, posted: true });
   console.log("graph error:", w.course?.graph?.error ?? "none", "| paths at the seam:", JSON.stringify(Object.keys(w.course.at.find((a) => a.layout?.legs && Object.values(a.layout.legs).some((l) => l.accel))?.layout.paths ?? {})));
 }
-export function runLaneEnd({ lanes = 3, open = 500, cars = 200, mins = 6, seed = 1, drop = true, every = 1.0 }) {
+export function runLaneEnd({ lanes = 3, open = 500, cars = 200, mins = 6, seed = 1, drop = true, every = 1.0, squeeze = true }) {
   const m = laneEndMap(lanes, open);
   if (!drop) { const b = m.roads.find((r) => r.id === "B"); b.lanes = lanes; delete b.accel; }
   const L = loadMap(m);
   let w = seedGraph(seed, 50, L, { every, target: cars, posted: true });
+  w = { ...w, dropSqueeze: squeeze };   // the arm: false = the flat tolerance as it was
   const seenCrash = new Set(); let crashes = 0, standing = 0, inA0 = 0, samples = 0; const fate = new Map(); let passed = 0; const passedIds = new Set();
   for (let i = 0; i < (mins * 60) / DT; i++) {
     w = step(w);
@@ -38,9 +39,9 @@ export function runLaneEnd({ lanes = 3, open = 500, cars = 200, mins = 6, seed =
     for (const [id, f] of fate) { const a = w.actors.find((x) => x.id === id); if (a && !/B\|start#A0/.test(String(a.route)) && /B\|start#[01]/.test(String(a.route))) f.merged = true; }
   }
   const fs = [...fate.values()];
-  return { lanes, open, cars, drop, crashes, curbCars: fs.length, merged: fs.filter((f) => f.merged).length, stoppedOnce: fs.filter((f) => f.standing > 0).length, stoppedSec: +(fs.reduce((s, f) => s + f.standing, 0) * DT).toFixed(1), slowest: +Math.min(99, ...fs.map((f) => f.minV)).toFixed(1), standingSamples: standing, passedPerMin: +(passed / mins).toFixed(1), actors: w.actors.length };
+  return { lanes, open, cars, drop, squeeze, squeezeSeen: w.dropSqueeze, crashes, curbCars: fs.length, merged: fs.filter((f) => f.merged).length, stoppedOnce: fs.filter((f) => f.standing > 0).length, stoppedSec: +(fs.reduce((s, f) => s + f.standing, 0) * DT).toFixed(1), slowest: +Math.min(99, ...fs.map((f) => f.minV)).toFixed(1), standingSamples: standing, passedPerMin: +(passed / mins).toFixed(1), actors: w.actors.length };
 }
 if (process.argv[1].endsWith("lane-end-fixture.mjs") && process.argv[2] === "run") {
-  const [, , , lanes, open, cars, mins, seed, drop] = process.argv;
-  console.log(JSON.stringify(runLaneEnd({ lanes: Number(lanes), open: Number(open), cars: Number(cars), mins: Number(mins), seed: Number(seed), drop: drop !== "0" })));
+  const [, , , lanes, open, cars, mins, seed, drop, sq] = process.argv;
+  console.log(JSON.stringify(runLaneEnd({ lanes: Number(lanes), open: Number(open), cars: Number(cars), mins: Number(mins), seed: Number(seed), drop: drop !== "0", squeeze: sq !== "0" })));
 }
