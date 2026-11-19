@@ -297,7 +297,8 @@ export function roadgen(overrides = {}) {
     for (let j = 0; j + 1 < breaks.length; j++) {
       const a2 = breaks[j], b2 = breaks[j + 1], line = [], us = [];
       for (let u = a2; u < b2; u += C.STEP) us.push(u); us.push(b2);
-      for (const u of car === "A" ? us : us.slice().reverse()) { const e = Q(car, u); line.push({ x: r2(e.x), y: r2(e.y), z: r2(e.z) }); }
+      /* NO TWO CONSECUTIVE POINTS ARE THE SAME POINT (19 Nov 2026, DECISIONS 10.150): a span whose break is half a step off the grid (u = 2 mod 4: `hw-11470`, `hw-11078`) sampled its last point and its break to the SAME centreline sample, a zero-length segment whose chord made the corner estimate read a radius of 217 m on a straight road, and four ordinary drivers lost the road there. */
+      for (const u of car === "A" ? us : us.slice().reverse()) { const e = Q(car, u), pt = { x: r2(e.x), y: r2(e.y), z: r2(e.z) }, last = line[line.length - 1]; if (last && last.x === pt.x && last.y === pt.y && last.z === pt.z) continue; line.push(pt); }
       let kmax = 0; for (const u of us) kmax = Math.max(kmax, Math.abs(Q(car, u).k));
       const startNode = mine.find((n) => n.kind === "entrance" && n.u === (car === "A" ? a2 : b2)), endNode = mine.find((n) => n.kind === "exit" && n.u === (car === "A" ? b2 : a2));
       const extra = {};

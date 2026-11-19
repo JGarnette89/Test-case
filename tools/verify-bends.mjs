@@ -140,5 +140,21 @@ console.log("\n5. IN A WORLD (two seeds, 300 cars, five minutes)");
   check(lostOrdinary.length === 0, `no ordinary driver (caution over 0.40) lost the road (${lostOrdinary.length})`);
   check(lo.length >= 300 && hi.length >= 1000 && m(hi) - m(lo) >= 0.03, `the least skilled take the tight bends at least 3 points of their wanted speed slower: ${(100 * m(lo)).toFixed(0)}% against ${(100 * m(hi)).toFixed(0)}%`);
 }
+
+console.log("\n7. A SUB-METRE SEGMENT IS NOT A BEND (19 Nov 2026, DECISIONS 10.150)");
+{
+  /* A straight road sampled every 4.9 m with ONE 0.19 m segment in it at the angle rounding can give it, the shape the box's far edge left on a real path: the curvature must stay under 1/1000 everywhere (the old segment-direction estimate read 1/133 within 40 m of it). Stated and built here, not read from any map's path. */
+  /* The kink is moved in 2 cm steps over 2 m because the estimate is sampled every 2 m and only a segment that covers a sample point can show (the first version of this check placed it once and passed with the old estimate in). */
+  let worst = 0;
+  for (let off = 0; off < 2; off += 0.02) {
+    const pts = [], at = []; let x = 0, acc = 0;
+    const add = (px, py) => { if (pts.length) acc += Math.hypot(px - pts[pts.length - 1].x, py - pts[pts.length - 1].y); pts.push({ x: px, y: py, z: 0 }); at.push(acc); };
+    add(0, 0); add(100 + off, 0); x = 100 + off; add(x + 0.18, 0.07); x += 0.18;
+    for (let k = 0; k < 40; k++) { x += 4.9; add(x, 0.07); }
+    const path = { pts, at, length: acc, stopAt: 0, clearAt: 0 };
+    for (let q = 5; q < acc - 5; q += 1) worst = Math.max(worst, curvatureAt(path, q));
+  }
+  check(worst < 1 / 1000, `a straight road with one 0.19 m segment in it reads a curvature of at most 1/${Math.round(1 / Math.max(worst, 1e-9))} (needs under 1/1000; the old segment-direction estimate read 1/216)`);
+}
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");
 process.exit(failed ? 1 : 0);

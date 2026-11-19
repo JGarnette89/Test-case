@@ -101,12 +101,15 @@ export function fits(me, path, lane = 3.6) {
    A loss of control is NOT a crash rule: it is asking more than there is, and the step stops the car where it is, as every crash here does. What comes of a population doing that is EMERGENT, never tuned to a rate. */
 /* THE CURVATURE OF A ROAD, ESTIMATED OVER A CHORD LONG ENOUGH TO SPAN MANY VERTICES (the second version of this, after the first read 1/500 and 1/260 a metre apart). A path is a polyline with a vertex every 4 m (roadgen `STEP`), its heading constant along a segment, so a heading change over a +-3 m window spans ONE vertex or TWO depending on where the car stands: the estimate doubles and halves between adjacent ticks, and 29 cars "lost the road" at gentle bends on a quantization error. The error goes as one over the chord (a vertex's heading step at R = 450 is 0.0089 rad, and the generator's 0.01 m coordinate rounding puts 0.0025 rad of noise on each segment's heading), MEASURED from one metre to the next over 8,000 interior samples (`tools/measure/chord-noise.mjs`): a 40 m chord varies by 12% at the 95th percentile and 16% at most, 60 m 8.4 and 11, 80 m 6.5 and 9, 100 m 5.3 and 7, 160 m 3.4 and 4. 80 m is the first that is stable to under a tenth, and still short of a bend's own length (an arc of 300 to 550 m). Cached on the path, every 2 m, built once. */
 export const CHORD = 80;
+/* THE HEADING AT A PLACE IS A CHORD'S, NOT A SEGMENT'S (19 Nov 2026, DECISIONS 10.150): `poseAt(...).rot` is the direction of whichever segment the place is on, and where a path is joined to the box a segment can be 0.19 m long, whose direction is rounding: it put 20 degrees of heading into one end of the chord and read a straight road as a 133 m radius 39 m past a join, which the 25 m `BEND_JOIN` does not cover, and four ordinary drivers lost the road there. The direction of the chord from 2 m behind to 2 m ahead cannot be made by a sub-metre segment. */
+const HEAD_HALF = 2;
+const headingAt = (path, s) => { const a = poseAt(path, Math.max(0, s - HEAD_HALF)), b = poseAt(path, Math.min(path.length, s + HEAD_HALF)); return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI; };
 function kappaProfile(path) {
   if (path._kappa) return path._kappa;
   const n = Math.floor(path.length / 2) + 1, h = CHORD / 2, out = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const s = i * 2, s0 = Math.max(0, s - h), s1 = Math.min(path.length, s + h), span = s1 - s0;
-    out[i] = span >= CHORD / 2 ? Math.abs((norm(poseAt(path, s1).rot - poseAt(path, s0).rot) * Math.PI) / 180 / span) : 0;
+    out[i] = span >= CHORD / 2 ? Math.abs((norm(headingAt(path, s1) - headingAt(path, s0)) * Math.PI) / 180 / span) : 0;
   }
   return (path._kappa = out);
 }
