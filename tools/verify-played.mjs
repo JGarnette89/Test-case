@@ -29,7 +29,7 @@ const check = (ok, msg) => { console.log(`${ok ? " ok " : "FAIL"} ${msg}`); if (
 
 const fingerprint = (w) => JSON.stringify([w.actors.map((a) => [a.id, Math.round(a.s * 1000), Math.round((a.v ?? 0) * 1000)]), (w.people ?? w.walkers ?? []).length]);
 
-for (const id of ["test-1", "test-loop"]) {
+for (const id of ["test-1", "test-highway-gen-wide"]) {   // the second was the loop until 18 Nov 2026 (DECISIONS 10.141: a borrowed fixture, the property is map-independent)
   const map = () => loadMap(TEST_MAPS.find((m) => m.id === id).build());
   console.log(`\n${id}`);
   let a = playedGraph(3, 50, map(), { every: 2.0, target: 60 });
