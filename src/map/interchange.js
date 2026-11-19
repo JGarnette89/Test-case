@@ -43,6 +43,8 @@ export const IX = {
   /* THE INTERCHANGE IS BRAIDED RAMPS, NOT A CROSSROAD (Jay, 18 November 2026, DECISIONS 10.144: "less than realistic ramps to provide a lively transition area"; the exit "can lead to a small road and then back to the highway"). "braid": no crossroad, no terminal, no stop anywhere; each carriageway's off ramp climbs to its terminal point and runs on into its own on ramp, which comes back down onto the same carriageway downstream: an exit and a return, with the tight radii, the climb and the changes of direction of the archetypes below. "diamond" is the old crossroad over both carriageways, kept as a switch so the two can be compared and nothing else is lost. THE RAMPS ARE DELIBERATELY NOT REALISTIC: their radii (R_MIN), grades (CLIMB_PEAK) and direction changes are tighter than highway design standards allow, because the point is that they are interesting to drive. Nobody is to correct them toward the standards. */
   STYLE: "braid",
   /* THE SMALL ROAD BETWEEN THE OFF RAMP AND THE ON RAMP (Jay: "the exit can lead to a small road and then back to the highway"): level at the deck, one way, a few bends of its own, drawn from its own random stream so the ramps are exactly the ramps they were. The on ramp is moved along by its length. */
+  /* ONE OR THE OTHER PER INTERCHANGE, WEIGHTED (the lead, 19 Nov 2026, DECISIONS 10.150): a RETURN interchange leads the exit through the small road back onto the same carriageway; a TURN interchange leads it over both carriageways, on a ramp of its own, to the other one's on ramp -- the player's way to change direction, with no junction and no stop on the mainline. Both offered at once would need a fork on the ramp. WHICH SITES TURN is STRATIFIED, not a coin per site: in every block of `TURN_BLOCK` consecutive sites exactly one is a turn, its place in the block drawn from a stream of its own (so the ramps and the small roads are exactly what they were), because a road that happened to draw no turn would have no way to change direction and the player was promised one. `TURN_BLOCK` is [invented]. */
+  TURN_BLOCK: 3,
   LINK_MIN: 240, LINK_MAX: 520, LINK_SWING_MIN: 12, LINK_SWING_MAX: 30, LINK_R_MIN: 45, LINK_SPEED: 40,
   /* ---- the ramps ---------------------------------------------------- */
   ANGLE_MIN: 35, ANGLE_MAX: 50,   // degrees at the gore. NOT BELOW ~35 (DECISIONS 10.74): a shallower ramp lies along the through lanes and the conflict table stops the road
@@ -134,7 +136,7 @@ const climb = (r, len) => {
 };
 
 /* THE WHOLE INTERCHANGE for a site: everything in the local frame. `half` is half the width of a carriageway. */
-export function interchangeOf(seed, i, half) {
+export function interchangeOf(seed, i, half, fullNo = i) {   // `fullNo`: this site's place among the FULL interchanges, which the turn stratification counts (the site index counts the lone slip roads too)
   const r = rng(seed * 1000003 + i * 15485863 + 41), q = (v) => Math.round(v / 4) * 4;
   const dOff = q(between(r, IX.GORE_MIN, IX.GORE_MAX)), dOn = q(between(r, IX.GORE_MIN, IX.GORE_MAX)), vT = half + between(r, IX.TERMINAL_MIN, IX.TERMINAL_MAX);
   const weights = { diamond: IX.W_DIAMOND, esses: IX.W_ESSES, sweeper: IX.W_SWEEPER, kink: IX.W_KINK, double: IX.W_DOUBLE };
@@ -153,7 +155,8 @@ export function interchangeOf(seed, i, half) {
   const onP = onDown.map((q2) => ({ s: -q2.s, v: q2.v, z: q2.z })).reverse();
   /* reversed path starts at the terminal (z = DECK) and ends at the gore (z = 0) */
   let link = null, dOnOut = dOn, onOut = onP;
-  if (IX.STYLE === "braid") {
+  const turn = IX.STYLE === "braid" && fullNo % IX.TURN_BLOCK === Math.floor(rng(seed * 31337 + Math.floor(fullNo / IX.TURN_BLOCK) * 7919 + 5)() * IX.TURN_BLOCK);
+  if (IX.STYLE === "braid" && !turn) {
     const rc = rng(seed * 7919 + i * 104729 + 17), L = q(between(rc, IX.LINK_MIN, IX.LINK_MAX));
     for (let k = 0; k < IX.ATTEMPTS && !link; k++) {
       const sg = rc() < 0.5 ? -1 : 1, a1 = between(rc, IX.LINK_SWING_MIN, IX.LINK_SWING_MAX), a2 = between(rc, IX.LINK_SWING_MIN, IX.LINK_SWING_MAX);
@@ -163,5 +166,5 @@ export function interchangeOf(seed, i, half) {
     if (!link) link = chain([{ s: 0, v: vT }, { s: L, v: vT }], { s: 1, v: 0 }, { s: 1, v: 0 }).map((q2) => ({ s: q2.s, v: q2.v, z: IX.DECK }));
     onOut = onP.map((q2) => ({ s: q2.s + L, v: q2.v, z: q2.z })); dOnOut = dOn + L;
   }
-  return { vT, dOff, dOn: dOnOut, link, linkRmin: link ? minRadius(link) : null, off: { kind: off.kind, ang: off.ang, pts: offP, rmin: minRadius(off.p) }, on: { kind: onRaw.kind, ang: onRaw.ang, pts: onOut, rmin: minRadius(onRaw.p) } };
+  return { vT, dOff, dOn: dOnOut, link, turn, linkRmin: link ? minRadius(link) : null, off: { kind: off.kind, ang: off.ang, pts: offP, rmin: minRadius(off.p) }, on: { kind: onRaw.kind, ang: onRaw.ang, pts: onOut, rmin: minRadius(onRaw.p) } };
 }

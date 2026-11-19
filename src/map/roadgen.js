@@ -230,12 +230,13 @@ export function sitesOf(C, to = C.LENGTH) {
   const half = (C.LANES * LANE) / 2, q = (v) => Math.round(v / C.STEP) * C.STEP;
   if (!(C.INTERCHANGES > 0)) { const u = q(C.FIRST_EXIT); return [{ i: 0, kind: "entrance", carriage: "A", nodes: [{ u, kind: "entrance", carriage: "A" }], zone: [u - C.ENTRANCE_BEFORE, u + C.ACCEL + C.CALM_AFTER], end: u + C.ACCEL + C.CALM_AFTER, ramp: C.RAMP_MIN, ang: 35 }]; }
   const r = rng(C.SEED * 1000003 + 977), lerp = (a2, b2, t) => a2 + (b2 - a2) * t, sites = [];
+  let fullNo = 0;
   for (let z0 = q(C.FIRST_EXIT), i = 0; z0 < to; i++) {
     const t = r(), ramp = lerp(C.RAMP_MIN, C.RAMP_MAX, r()), ang = lerp(C.ANGLE_MIN, C.ANGLE_MAX, r()), onB = r() < 0.5, open = lerp(C.OPEN_MIN, C.OPEN_MAX, Math.pow(r(), C.OPEN_SKEW));
     const kind = i === 0 ? "full" : t < C.W_FULL ? "full" : t < C.W_FULL + C.W_EXIT ? "exit" : "entrance";
     let site;
     if (kind === "full") {
-      const ix = interchangeOf(C.SEED, i, half), ZH = Math.max(ix.dOff, ix.dOn) + C.ACCEL + C.CALM_AFTER, c = z0 + ZH;
+      const ix = interchangeOf(C.SEED, i, half, fullNo++), ZH = Math.max(ix.dOff, ix.dOn) + C.ACCEL + C.CALM_AFTER, c = z0 + ZH;
       site = { i, kind, c, ix, nodes: [{ u: c - ix.dOff, kind: "exit", carriage: "A" }, { u: c + ix.dOn, kind: "entrance", carriage: "A" }, { u: c + ix.dOff, kind: "exit", carriage: "B" }, { u: c - ix.dOn, kind: "entrance", carriage: "B" }], zone: [z0, c + ZH], end: c + ZH };
     } else {
       const carriage = onB ? "B" : "A", span = kind === "exit" ? (onB ? [C.EXIT_AFTER, C.CALM_BEFORE] : [C.CALM_BEFORE, C.EXIT_AFTER]) : (onB ? [C.ACCEL + C.CALM_AFTER, C.ENTRANCE_BEFORE] : [C.ENTRANCE_BEFORE, C.ACCEL + C.CALM_AFTER]);
@@ -324,7 +325,7 @@ export function roadgen(overrides = {}) {
       const f = side(car === "B"), uOff = car === "A" ? S.c - ix.dOff : S.c + ix.dOff, uOn = car === "A" ? S.c + ix.dOn : S.c - ix.dOn;
       const off = ix.off.pts.map(f), on = ix.on.pts.map(f), sp = (arr) => Math.min(IX.RAMP_MAX_SPEED, speedForBend(C, 1 / kmin(arr)));
       const suf = car === "B" ? "b" : "";
-      m.roads.push(road({ id: `off${suf}-${uOff}`, kind: "highway", lanes: 1, oneWay: true, speed: sp(off), points: off, control: { start: "none", end: IX.STYLE === "braid" ? "none" : "stop" } }));
+      m.roads.push(road({ id: `off${suf}-${uOff}`, kind: "highway", lanes: 1, oneWay: true, speed: sp(off), points: off, control: { start: "none", end: IX.STYLE === "braid" ? (ix.turn ? "yield" : "none") : "stop" }, ...(IX.STYLE === "braid" && ix.turn ? { turns: { end: [["left"]] } } : {}) }));
       m.roads.push(road({ id: `on${suf}-${uOn}`, kind: "highway", lanes: 1, oneWay: true, speed: sp(on), points: on }));
       if (ix.link) m.roads.push(road({ id: `link${suf}-${S.c}`, kind: "service", lanes: 1, oneWay: true, speed: linkSpeed(ix.linkRmin), points: ix.link.map(f), control: { start: "none", end: "none" } }));
       if (car === "A") ramps.push({ id: `on-${uOn}`, u: uOn });
@@ -332,7 +333,10 @@ export function roadgen(overrides = {}) {
     /* The crossroad over both carriageways, level at the deck, split at its two terminals. */
     const vS = ix.vT, vN = -D - ix.vT, cr = (v0, v1) => { const out = [], n = Math.max(2, Math.ceil(Math.abs(v1 - v0) / 20)); for (let i = 0; i <= n; i++) out.push(W(0, v0 + ((v1 - v0) * i) / n, IX.DECK)); return out; };
     const stop = IX.TERMINAL_CONTROL === "stop";
-    if (IX.STYLE === "braid") { fulls.push(S); continue; }   // braided ramps: no crossroad over the carriageways (interchange.js STYLE)
+    if (IX.STYLE === "braid") {   // braided ramps: no crossroad over the carriageways (interchange.js STYLE). A TURN interchange has one road over them, free, from each off ramp's terminal to the other carriageway's on ramp (its only way on: the off ramp turns left onto it and cannot go straight on to its own on ramp).
+      if (ix.turn) m.roads.push(road({ id: `xm-${S.c}`, kind: "service", lanes: 1, oneWay: false, speed: IX.CROSS_SPEED, points: cr(vS, vN), control: { start: "none", end: "none" } }));
+      fulls.push(S); continue;
+    }
     m.roads.push(road({ id: `xs-${S.c}`, kind: "service", lanes: 1, oneWay: false, speed: IX.CROSS_SPEED, points: cr(vS + IX.CROSS_OVERRUN, vS), ...(stop ? { control: { start: "none", end: "stop" } } : {}) }));
     m.roads.push(road({ id: `xm-${S.c}`, kind: "service", lanes: 1, oneWay: false, speed: IX.CROSS_SPEED, points: cr(vS, vN), ...(stop ? { control: { start: "stop", end: "stop" } } : {}) }));
     m.roads.push(road({ id: `xn-${S.c}`, kind: "service", lanes: 1, oneWay: false, speed: IX.CROSS_SPEED, points: cr(vN, vN - IX.CROSS_OVERRUN), ...(stop ? { control: { start: "stop", end: "none" } } : {}) }));

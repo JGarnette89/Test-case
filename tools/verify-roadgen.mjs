@@ -76,24 +76,39 @@ console.log("5c. THE ROAD IS DIVIDED; THE DIAMOND (kept as a switch) CROSSES OVE
   const sites = sitesOf(ROAD, 20000).filter((s) => s.kind === "full" && s.end < 19000);
   check(sites.length >= 2 && sites.every((s) => interchangeOf(ROAD.SEED, s.i, 5.4).dOff >= 300), `${sites.length} full interchanges: every ramp leaves at least 300 m before the crossroad, in sight of the through lanes`);
 }
-console.log("5e. THE INTERCHANGE IS BRAIDED RAMPS: NO CROSSROAD, NO STOP, AN EXIT THAT RETURNS (Jay, 18 Nov 2026, DECISIONS 10.144)");
+console.log("5e. THE INTERCHANGE IS BRAIDED RAMPS, ONE KIND OR THE OTHER: A RETURN (exit, small road, back onto the same carriageway) OR A TURN (over both carriageways to the other one's on ramp); no crossroad, no stop (Jay, 18 Nov 2026; the lead, 19 Nov: one or the other per interchange, weighted; DECISIONS 10.144, 10.150)");
 {
   const L = loadMap(A), roadOf = new Map(L.roads.map((r) => [r.id, r]));
   const reachFrom = (from) => { const seen = new Set(), todo = [from]; while (todo.length) { const id = todo.pop(); if (seen.has(id)) continue; seen.add(id); const r = roadOf.get(id), ends = r.oneWay ? ["end"] : ["start", "end"]; for (const e of ends) for (const n of L.nodes) if (n.legs.some((l) => l.road === id && l.end === e)) for (const l of n.legs) if (l.road !== id && (roadOf.get(l.road).oneWay ? l.end === "start" : true)) todo.push(l.road); } return seen; };
-  check(!A.roads.some((r) => /^x[smn]-/.test(r.id)) && (L.crossings ?? []).filter((c) => c.gap != null).length === 0, "no crossroad over the carriageways, and no crossing of either");
-  check(A.roads.every((r) => (r.control?.start ?? "none") === "none" && (r.control?.end ?? "none") === "none"), `no road on the highway, its ramps or its small roads carries a stop or a yield (${A.roads.length} roads)`);
-  const links = A.roads.filter((r) => /^link/.test(r.id)), arc = (r) => r.points.reduce((t, q, i) => (i ? t + Math.hypot(q.x - r.points[i - 1].x, q.y - r.points[i - 1].y) : 0), 0);
-  const fulls = A.roads.filter((r) => /^off(b?)-/.test(r.id) && r.points.at(-1).z - r.points[0].z > 5).length;
-  check(links.length >= 6 && links.length === fulls, `every full interchange has a small road on each carriageway (${links.length} links for ${fulls} off ramps that climb to a terminal)`);
-  check(links.every((r) => arc(r) >= 235 && arc(r) <= 560 && r.oneWay && r.speed <= 40 && r.points.every((q) => Math.abs(q.z - r.points[0].z) < 0.01)), `each is one way, level at the deck, 240 to 520 m of reach, 560 of road at most (${Math.min(...links.map(arc)).toFixed(0)} to ${Math.max(...links.map(arc)).toFixed(0)}) and posted 40 or less (${links.map((r) => r.speed).join(" ")})`);
+  const climbs = (r) => r.points.at(-1).z - r.points[0].z > 5;
+  const links = A.roads.filter((r) => /^link/.test(r.id)), turns = A.roads.filter((r) => /^xm-/.test(r.id)), offs = A.roads.filter((r) => /^off(b?)-/.test(r.id) && climbs(r));
+  const arc = (r) => r.points.reduce((t, q, i) => (i ? t + Math.hypot(q.x - r.points[i - 1].x, q.y - r.points[i - 1].y) : 0), 0);
+  check(!A.roads.some((r) => /^x[sn]-/.test(r.id)), "no crossroad: none of the old crossroad's far legs");
+  const stops = A.roads.filter((r) => r.control?.start === "stop" || r.control?.end === "stop");
+  check(stops.length === 0, `no STOP anywhere on the highway, its ramps or its roads (${A.roads.length} roads)`);
+  const yields = A.roads.filter((r) => r.control?.start === "yield" || r.control?.end === "yield");
+  check(yields.every((r) => /^off(b?)-/.test(r.id) && r.control.end === "yield" && r.control.start !== "yield") && yields.length === 2 * turns.length, `the only control is a YIELD at the end of each TURN interchange's two off ramps (${yields.length} for ${turns.length} turn roads): the ramp gives way to the road over the carriageways`);
+  check(links.length + turns.length >= 1 && offs.length === links.length + 2 * turns.length, `every full interchange is one kind: ${links.length} small roads (one per carriageway of each RETURN site) and ${turns.length} turn roads (one per TURN site) for ${offs.length} climbing off ramps (= small roads + 2 per turn road)`);
+  check(links.length >= 2 && turns.length >= 1, `both kinds occur on the shipped road (${links.length / 2} return sites, ${turns.length} turn sites)`);
+  check(links.every((r) => arc(r) >= 235 && arc(r) <= 560 && r.oneWay && r.speed <= 40 && r.points.every((q) => Math.abs(q.z - r.points[0].z) < 0.01)), `each small road is one way, level at the deck, 240 to 520 m of reach (${links.length ? Math.min(...links.map(arc)).toFixed(0) : "-"} to ${links.length ? Math.max(...links.map(arc)).toFixed(0) : "-"} of road) and posted 40 or less`);
   const joined = links.every((r) => { const st = L.nodes.find((n) => n.legs.some((l) => l.road === r.id && l.end === "start")), en = L.nodes.find((n) => n.legs.some((l) => l.road === r.id && l.end === "end")); return st && en && st.legs.some((l) => /^off/.test(l.road) && l.end === "end") && en.legs.some((l) => /^on/.test(l.road) && l.end === "start"); });
   check(joined, "each small road starts where an off ramp ends and ends where an on ramp starts");
-  const offs = A.roads.filter((r) => /^off(b?)-/.test(r.id) && r.points.at(-1).z - r.points[0].z > 5);
-  const back = offs.every((r) => { const rc = reachFrom(r.id), own = /^offb/.test(r.id) ? "hb-" : "hw-", other = own === "hb-" ? "hw-" : "hb-"; return [...rc].some((id) => id.startsWith(own)) && ![...rc].some((id) => id.startsWith(other)); });
-  check(offs.length >= 6 && back, `an exit comes back: from each of the ${offs.length} off ramps you reach the SAME carriageway downstream and never the other`);
-  check(![...reachFrom("hw-0")].some((id) => /^hb-/.test(id)), "and the two carriageways are no longer joined anywhere: no turnaround");
-  /* THE LICENCE (Jay: "less than realistic ramps to provide a lively transition area"). The ramps are TIGHTER, STEEPER AND TWISTIER than highway design standards on purpose; this is the statement that nobody has corrected them toward the standards (a ramp radius under 100 m, a climb over 5%, a gore angle past 45 degrees), stated here and not read back from a sibling check. */
+  const returning = offs.filter((r) => links.some((k) => new RegExp("^link" + (/^offb/.test(r.id) ? "b" : "") + "-").test(k.id) && L.nodes.some((n) => n.legs.some((l) => l.road === r.id && l.end === "end") && n.legs.some((l) => l.road === k.id))));
+  /* LOCAL, NOT BY REACHABILITY: a later TURN interchange downstream joins the carriageways, so what is true of a return is that its own off ramp meets nothing but its own small road, which meets the on ramp of the SAME carriageway. */
+  const back = returning.every((r) => { const st = L.nodes.find((n) => n.legs.some((l) => l.road === r.id && l.end === "end")), lk = st?.legs.find((l) => /^link/.test(l.road)), en = lk && L.nodes.find((n) => n.legs.some((l) => l.road === lk.road && l.end === "end")), on = en?.legs.find((l) => /^on/.test(l.road) && l.end === "start"); return st && st.legs.length === 2 && on && /^offb/.test(r.id) === /^onb/.test(on.road); });
+  check(returning.length === links.length && back, `a RETURN exit comes back: each of its ${returning.length} off ramps meets only its own small road, which meets the on ramp of the SAME carriageway`);
+  const turning = offs.filter((r) => !returning.includes(r));
+  const across = turning.every((r) => { const rc = reachFrom(r.id), other = /^offb/.test(r.id) ? "hw-" : "hb-"; return [...rc].some((id) => id.startsWith(other)); });
+  check(turning.length === 2 * turns.length && across, `a TURN exit changes direction: from each of its ${turning.length} off ramps you reach the OTHER carriageway`);
+  check(turning.every((r) => JSON.stringify(r.turns?.end) === JSON.stringify([["left"]])), "a TURN exit may only turn onto the road over the carriageways (its lane is left-only): it cannot run straight on into its own on ramp, which is the return a TURN interchange does not have");
+  check([...reachFrom("hw-0")].some((id) => /^hb-/.test(id)), "so the player can turn around: from carriageway A you can drive onto carriageway B");
+  const xc = (L.crossings ?? []).filter((c) => c.gap != null);
+  check(xc.length === 2 * turns.length && xc.every((c) => c.gap >= 4.5), `each turn road crosses over both carriageways with clearance (${xc.length} crossings, min ${xc.length ? Math.min(...xc.map((c) => c.gap)).toFixed(1) : "-"} m, at least 4.5)`);
+  /* THE LICENCE (Jay: "less than realistic ramps to provide a lively transition area"), stated here and not read back from a sibling check. */
   check(IX.R_MIN <= 100 && IX.CLIMB_PEAK >= 0.05 && IX.ANGLE_MAX >= 45, `the ramps keep their licence: tightest radius ${IX.R_MIN} m, peak grade ${(100 * IX.CLIMB_PEAK).toFixed(0)}%, gore angle up to ${IX.ANGLE_MAX} degrees (not to be corrected toward design standards)`);
+  /* THE STRATIFICATION: in every block of TURN_BLOCK consecutive full sites exactly one is a turn (a road with no turn has no way to change direction). */
+  const kindsOf = (seed) => Array.from({ length: 30 }, (_, n) => interchangeOf(seed, n, 5.4, n).turn);
+  check([1, 2, 3, 7].every((sd) => { const k = kindsOf(sd); for (let b = 0; b + IX.TURN_BLOCK <= k.length; b += IX.TURN_BLOCK) if (k.slice(b, b + IX.TURN_BLOCK).filter(Boolean).length !== 1) return false; return true; }), `exactly one site in every ${IX.TURN_BLOCK} is a turn, for any seed`);
 }
 
 console.log("5d. THE INTERCHANGES VARY, MORE THAN THE OPEN ROAD (DECISIONS 10.75: first class)");
