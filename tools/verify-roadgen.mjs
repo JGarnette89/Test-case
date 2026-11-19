@@ -53,26 +53,49 @@ console.log("5. THE CALM AROUND AN INTERCHANGE: straight and level");
   check(z.length >= 3 && ok, `${z.length} interchanges, ${n} points held straight (curvature 0) and level (grade 0)`);
 }
 
-console.log("5c. THE ROAD IS DIVIDED, AND THE INTERCHANGE IS A DIAMOND (DECISIONS 10.75)");
+console.log("5c. THE ROAD IS DIVIDED; THE DIAMOND (kept as a switch) CROSSES OVER IT (DECISIONS 10.75)");
 {
   const L = loadMap(A), ws = (L.warnings ?? []).map((w) => w.msg ?? w.message ?? "");
   const hb = A.roads.filter((r) => /^hb-/.test(r.id)), line = g0.pts;
   const off = hb.every((r) => r.points.every((q) => { let best = Infinity; for (let i = 0; i < line.length; i += 1) { const d = Math.hypot(q.x - line[i].x, q.y - line[i].y); if (d < best) best = d; } return Math.abs(best - D) < 1.5; }));
   check(hb.length >= 6 && off, `the oncoming carriageway runs ${hb.length} roads, each point ${D.toFixed(1)} m (+-1.5) from the through line: parallel, a ${IX.MEDIAN} m median between`);
   check(!ws.some((t) => /cross|with no intersection/.test(t)), "and every crossing over the carriageways is an overpass with clearance (none refused)");
-  const xm = A.roads.filter((r) => /^xm-/.test(r.id)); const crossings = (L.crossings ?? []).filter((c) => c.gap != null);
+  /* THE DIAMOND IS KEPT AS A SWITCH (`IX.STYLE`, DECISIONS 10.144: the shipped interchange is braided ramps, section 5d), so its guarantees stay exercised on a road built with it. */
+  const was = IX.STYLE; IX.STYLE = "diamond"; const Ad = roadgen(); IX.STYLE = was; const Ld = loadMap(Ad);
+  const xm = Ad.roads.filter((r) => /^xm-/.test(r.id)); const crossings = (Ld.crossings ?? []).filter((c) => c.gap != null);
   check(xm.length >= 3 && crossings.length >= 2 * xm.length && crossings.every((c) => c.gap >= 4.5), `${xm.length} crossroads, ${crossings.length} crossings of a carriageway, each at least 4.5 m clear (min ${Math.min(...crossings.map((c) => c.gap)).toFixed(1)} m)`);
   /* THE TURNAROUND: from carriageway A you can reach carriageway B, and back, along the roads and their joins (a graph search, not a drive). */
-  const roadOf = new Map(L.roads.map((r) => [r.id, r])), outgoing = (leg) => { const r = roadOf.get(leg.road); return r.oneWay ? leg.end === "start" : true; };
-  const reach = (from) => { const seen = new Set(), todo = [from]; while (todo.length) { const id = todo.pop(); if (seen.has(id)) continue; seen.add(id); const r = roadOf.get(id), ends = r.oneWay ? ["end"] : ["start", "end"]; for (const e of ends) for (const n of L.nodes) if (n.legs.some((l) => l.road === id && l.end === e)) for (const l of n.legs) if (l.road !== id && outgoing(l)) todo.push(l.road); } return seen; };
+  const reachIn = (LL) => { const roadOf = new Map(LL.roads.map((r) => [r.id, r])), outgoing = (leg) => { const r = roadOf.get(leg.road); return r.oneWay ? leg.end === "start" : true; };
+    return (from) => { const seen = new Set(), todo = [from]; while (todo.length) { const id = todo.pop(); if (seen.has(id)) continue; seen.add(id); const r = roadOf.get(id), ends = r.oneWay ? ["end"] : ["start", "end"]; for (const e of ends) for (const n of LL.nodes) if (n.legs.some((l) => l.road === id && l.end === e)) for (const l of n.legs) if (l.road !== id && outgoing(l)) todo.push(l.road); } return seen; }; };
+  const reach = reachIn(Ld);
   const fromA = reach("hw-0"), bs = [...fromA].filter((id) => /^hb-/.test(id));
-  check(bs.length >= 3, `from carriageway A you can drive onto carriageway B (${bs.length} of its roads are reachable): an interchange is a turnaround`);
-  const hbRoads = hb.map((r) => r.id), toA = new Set(); for (const id of hbRoads) for (const x of reach(id)) toA.add(x);
+  check(bs.length >= 3, `the DIAMOND: from carriageway A you can drive onto carriageway B (${bs.length} of its roads are reachable): an interchange is a turnaround`);
+  const hbRoads = Ad.roads.filter((r) => /^hb-/.test(r.id)).map((r) => r.id), toA = new Set(); for (const id of hbRoads) for (const x of reach(id)) toA.add(x);
   check([...toA].some((id) => /^hw-/.test(id)), "and back again");
   /* OPT-IN: no bend, crest or junction on the through lanes inside an interchange: they are straight and level across the whole zone, both carriageways (B is A moved sideways), and every ramp leaves the lanes at a gore the driver can see: a start at least 300 m before the crossroad. */
   const sites = sitesOf(ROAD, 20000).filter((s) => s.kind === "full" && s.end < 19000);
   check(sites.length >= 2 && sites.every((s) => interchangeOf(ROAD.SEED, s.i, 5.4).dOff >= 300), `${sites.length} full interchanges: every ramp leaves at least 300 m before the crossroad, in sight of the through lanes`);
 }
+console.log("5e. THE INTERCHANGE IS BRAIDED RAMPS: NO CROSSROAD, NO STOP, AN EXIT THAT RETURNS (Jay, 18 Nov 2026, DECISIONS 10.144)");
+{
+  const L = loadMap(A), roadOf = new Map(L.roads.map((r) => [r.id, r]));
+  const reachFrom = (from) => { const seen = new Set(), todo = [from]; while (todo.length) { const id = todo.pop(); if (seen.has(id)) continue; seen.add(id); const r = roadOf.get(id), ends = r.oneWay ? ["end"] : ["start", "end"]; for (const e of ends) for (const n of L.nodes) if (n.legs.some((l) => l.road === id && l.end === e)) for (const l of n.legs) if (l.road !== id && (roadOf.get(l.road).oneWay ? l.end === "start" : true)) todo.push(l.road); } return seen; };
+  check(!A.roads.some((r) => /^x[smn]-/.test(r.id)) && (L.crossings ?? []).filter((c) => c.gap != null).length === 0, "no crossroad over the carriageways, and no crossing of either");
+  check(A.roads.every((r) => (r.control?.start ?? "none") === "none" && (r.control?.end ?? "none") === "none"), `no road on the highway, its ramps or its small roads carries a stop or a yield (${A.roads.length} roads)`);
+  const links = A.roads.filter((r) => /^link/.test(r.id)), arc = (r) => r.points.reduce((t, q, i) => (i ? t + Math.hypot(q.x - r.points[i - 1].x, q.y - r.points[i - 1].y) : 0), 0);
+  const fulls = A.roads.filter((r) => /^off(b?)-/.test(r.id) && r.points.at(-1).z - r.points[0].z > 5).length;
+  check(links.length >= 6 && links.length === fulls, `every full interchange has a small road on each carriageway (${links.length} links for ${fulls} off ramps that climb to a terminal)`);
+  check(links.every((r) => arc(r) >= 235 && arc(r) <= 560 && r.oneWay && r.speed <= 40 && r.points.every((q) => Math.abs(q.z - r.points[0].z) < 0.01)), `each is one way, level at the deck, 240 to 520 m of reach, 560 of road at most (${Math.min(...links.map(arc)).toFixed(0)} to ${Math.max(...links.map(arc)).toFixed(0)}) and posted 40 or less (${links.map((r) => r.speed).join(" ")})`);
+  const joined = links.every((r) => { const st = L.nodes.find((n) => n.legs.some((l) => l.road === r.id && l.end === "start")), en = L.nodes.find((n) => n.legs.some((l) => l.road === r.id && l.end === "end")); return st && en && st.legs.some((l) => /^off/.test(l.road) && l.end === "end") && en.legs.some((l) => /^on/.test(l.road) && l.end === "start"); });
+  check(joined, "each small road starts where an off ramp ends and ends where an on ramp starts");
+  const offs = A.roads.filter((r) => /^off(b?)-/.test(r.id) && r.points.at(-1).z - r.points[0].z > 5);
+  const back = offs.every((r) => { const rc = reachFrom(r.id), own = /^offb/.test(r.id) ? "hb-" : "hw-", other = own === "hb-" ? "hw-" : "hb-"; return [...rc].some((id) => id.startsWith(own)) && ![...rc].some((id) => id.startsWith(other)); });
+  check(offs.length >= 6 && back, `an exit comes back: from each of the ${offs.length} off ramps you reach the SAME carriageway downstream and never the other`);
+  check(![...reachFrom("hw-0")].some((id) => /^hb-/.test(id)), "and the two carriageways are no longer joined anywhere: no turnaround");
+  /* THE LICENCE (Jay: "less than realistic ramps to provide a lively transition area"). The ramps are TIGHTER, STEEPER AND TWISTIER than highway design standards on purpose; this is the statement that nobody has corrected them toward the standards (a ramp radius under 100 m, a climb over 5%, a gore angle past 45 degrees), stated here and not read back from a sibling check. */
+  check(IX.R_MIN <= 100 && IX.CLIMB_PEAK >= 0.05 && IX.ANGLE_MAX >= 45, `the ramps keep their licence: tightest radius ${IX.R_MIN} m, peak grade ${(100 * IX.CLIMB_PEAK).toFixed(0)}%, gore angle up to ${IX.ANGLE_MAX} degrees (not to be corrected toward design standards)`);
+}
+
 console.log("5d. THE INTERCHANGES VARY, MORE THAN THE OPEN ROAD (DECISIONS 10.75: first class)");
 {
   const R = []; for (let i = 0; i < 300; i++) { const x = interchangeOf(1, i, 5.4); R.push(x.off, x.on); }

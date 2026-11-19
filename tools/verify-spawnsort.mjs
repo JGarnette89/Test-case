@@ -72,7 +72,9 @@ const e0 = entries(0), e5 = entries(0.5), e1 = entries(1);
 const cars = (e) => e.filter((r) => r.kind === "car");
 const r0 = rho(cars(e0)), r5 = rho(cars(e5)), r1 = rho(cars(e1));
 console.log(`   ${cars(e0).length} / ${cars(e5).length} / ${cars(e1).length} cars entering`);
-check(Math.abs(r0) < 0.15, `strength 0: rho ${r0.toFixed(2)} (|rho| < 0.15: unrelated, as it was)`);
+/* THE BAR FOR "UNRELATED" IS THREE STANDARD ERRORS OF THE SAMPLE, NOT A FIXED 0.15 (18 Nov 2026, DECISIONS 10.144). A Spearman over n cars has a standard error of about 1/sqrt(n-1): 0.117 at the 73 cars this pools, so 0.15 was 1.3 of them and a true zero failed it about one run in five. Measured when the braided interchange changed the layout and this read -0.20: over eight more seeds at strength 0 the pooled rho was -0.05 on both the old and the new layout (per-seed -0.30 to +0.19), i.e. nothing there. 3 SE fails a real sort (strength 1 reads -0.74) and holds a true zero 99.7% of the time. */
+const unrelatedBar = (n) => 3 / Math.sqrt(n - 1);
+check(Math.abs(r0) < unrelatedBar(cars(e0).length), `strength 0: rho ${r0.toFixed(2)} (|rho| < ${unrelatedBar(cars(e0).length).toFixed(2)}, three standard errors at ${cars(e0).length} cars: unrelated, as it was)`);
 check(r1 < -0.5, `strength 1: rho ${r1.toFixed(2)} (below -0.5)`);
 check(r5 < -0.15 && r5 > r1, `strength 0.5: rho ${r5.toFixed(2)} (below -0.15 and above the value at 1)`);
 
@@ -114,7 +116,7 @@ console.log("\n5. THE SHAPED ROAD IS SORTED TOO (DECISIONS 10.93: shaping drew a
   const rOff = rho(off), rOn = rho(on);
   console.log(`   ${off.length} / ${on.length} cars placed by shaping (strength 0 / 0.8, three seeds)`);
   check(off.length >= 100 && on.length >= 100, `enough placed cars to say anything (${off.length} and ${on.length}, at least 100 each)`);
-  check(Math.abs(rOff) < 0.15, `strength 0: shaping's placed cars, rho ${rOff.toFixed(2)} (|rho| < 0.15: unrelated, as it was)`);
+  check(Math.abs(rOff) < unrelatedBar(off.length), `strength 0: shaping's placed cars, rho ${rOff.toFixed(2)} (|rho| < ${unrelatedBar(off.length).toFixed(2)}, three standard errors at ${off.length} cars: unrelated, as it was)`);
   check(rOn < -0.3, `strength 0.8, as the generated highway ships: rho ${rOn.toFixed(2)} (below -0.3: the placed cars follow their wanted speed)`);
 }
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");

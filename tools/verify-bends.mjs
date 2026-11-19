@@ -11,6 +11,7 @@
    ===================================================================== */
 // BARE WORLD: this check builds `seedGraph` with the played options it needs stated one by one, and isolates what the bend judgement does to ordinary drivers; walkers, rivals and brake reaction would move the world for reasons unrelated to the bend (DECISIONS 10.96 to 10.98).
 import { roadgen, testHighwayGenWide } from "../src/map/roadgen.js";
+import { IX } from "../src/map/interchange.js";
 import { loadMap } from "../src/map/load.js";
 import { seedGraph, step } from "../src/sim/crossing.js";
 import { lateralCapability, bendSpeedOf, curvatureAt, onTheOpenRoad, BEND_JOIN } from "../src/sim/corner.js";
@@ -96,8 +97,11 @@ console.log("\n6. THE MAP ASKS FOR IT AND NOTHING ELSE DOES");
   check(near(lens(raw, (r) => r.speed === 110), 1, 1e-9), "with bends by the driver the carriageways post 110 over their whole length");
   const ramps = raw.roads.filter((r) => /^(off|on)b?-/.test(r.id));
   check(ramps.length > 4 && ramps.every((r) => r.speed < 110), `and the ${ramps.length} ramps keep a lower advisory speed (${Math.max(...ramps.map((r) => r.speed))} at most)`);
-  const ship = lens(testHighwayGenWide(), (r) => r.speed === 110);
-  check(ship > 0.6 && ship < 0.7, `the shipped five-lane road, which does not ask, still posts 110 on ${(100 * ship).toFixed(0)}% of its length (60 to 70%)`);
+  /* THE ROAD'S LAYOUT MOVED WHEN THE INTERCHANGE BECAME BRAIDED RAMPS (18 Nov 2026, DECISIONS 10.144): each interchange now carries a small road of 240 to 520 m between its ramps, so its calm zone is longer and every feature after it sits elsewhere. The old road is still there under `IX.STYLE = "diamond"` and still posts 110 on 60 to 70% of its length (63.9%); the shipped braided road posts it on 77.8%. What this protects is that a road which does not ask still lowers its speed for its bends on a real share of its length: neither all of it nor almost none. */
+  const wide = (style) => { const was = IX.STYLE; IX.STYLE = style; try { return lens(testHighwayGenWide(), (r) => r.speed === 110); } finally { IX.STYLE = was; } };
+  const old = wide("diamond"), ship = wide("braid");
+  check(old > 0.6 && old < 0.7, `the old diamond road, which does not ask, still posts 110 on ${(100 * old).toFixed(0)}% of its length (60 to 70%, as it always did)`);
+  check(ship > 0.6 && ship < 0.9, `the shipped braided road, which does not ask, posts 110 on ${(100 * ship).toFixed(0)}% of its length (60 to 90%: its longer calm zones leave fewer bends)`);
   const fp = (w) => JSON.stringify(w.actors.map((x) => [x.id, x.route, Math.round(x.s * 1e3), Math.round(x.v * 1e3)]));
   let wa = seedGraph(3, 50, loadMap(testHighwayGenWide()), { every: 2.0, target: 40, posted: true }), wb = seedGraph(3, 50, loadMap(testHighwayGenWide()), { every: 2.0, target: 40, posted: true, bends: null });
   let same = true;

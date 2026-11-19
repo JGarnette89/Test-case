@@ -40,6 +40,10 @@ export const IX = {
   CROSS_SPEED: 50,
   /* WHO STOPS AT THE TERMINALS. "stop": the crossroad's legs stop as well as the ramps (an all-way stop). "free": only the ramps stop, which is the usual diamond and the one wanted, but a free-flowing crossroad crashed 3 of 32 seeded drives (all inside 5 s: a through car behind one turning onto the ramp did not brake, 4 m off its bumper) against 0 of 32 with the stop: the sim's own lane-sharing rule at a free node, not geometry, and not mine to change here (DECISIONS 10.76). "stop" until that is fixed. */
   TERMINAL_CONTROL: "stop",
+  /* THE INTERCHANGE IS BRAIDED RAMPS, NOT A CROSSROAD (Jay, 18 November 2026, DECISIONS 10.144: "less than realistic ramps to provide a lively transition area"; the exit "can lead to a small road and then back to the highway"). "braid": no crossroad, no terminal, no stop anywhere; each carriageway's off ramp climbs to its terminal point and runs on into its own on ramp, which comes back down onto the same carriageway downstream: an exit and a return, with the tight radii, the climb and the changes of direction of the archetypes below. "diamond" is the old crossroad over both carriageways, kept as a switch so the two can be compared and nothing else is lost. THE RAMPS ARE DELIBERATELY NOT REALISTIC: their radii (R_MIN), grades (CLIMB_PEAK) and direction changes are tighter than highway design standards allow, because the point is that they are interesting to drive. Nobody is to correct them toward the standards. */
+  STYLE: "braid",
+  /* THE SMALL ROAD BETWEEN THE OFF RAMP AND THE ON RAMP (Jay: "the exit can lead to a small road and then back to the highway"): level at the deck, one way, a few bends of its own, drawn from its own random stream so the ramps are exactly the ramps they were. The on ramp is moved along by its length. */
+  LINK_MIN: 240, LINK_MAX: 520, LINK_SWING_MIN: 12, LINK_SWING_MAX: 30, LINK_R_MIN: 45, LINK_SPEED: 40,
   /* ---- the ramps ---------------------------------------------------- */
   ANGLE_MIN: 35, ANGLE_MAX: 50,   // degrees at the gore. NOT BELOW ~35 (DECISIONS 10.74): a shallower ramp lies along the through lanes and the conflict table stops the road
   R_MIN: 86,                 // m: the tightest radius a ramp may have: the loader lowers the posted speed of a tighter bend (84 m is 40 km/h), and a ramp that is 25 km/h is a parking lot, not a race track
@@ -148,5 +152,16 @@ export function interchangeOf(seed, i, half) {
   /* The on ramp is the same kind of path turned round: from the terminal, heading along the road, down to the gore. Mirror s and reverse, and the climb runs the other way. */
   const onP = onDown.map((q2) => ({ s: -q2.s, v: q2.v, z: q2.z })).reverse();
   /* reversed path starts at the terminal (z = DECK) and ends at the gore (z = 0) */
-  return { vT, dOff, dOn, off: { kind: off.kind, ang: off.ang, pts: offP, rmin: minRadius(off.p) }, on: { kind: onRaw.kind, ang: onRaw.ang, pts: onP, rmin: minRadius(onRaw.p) } };
+  let link = null, dOnOut = dOn, onOut = onP;
+  if (IX.STYLE === "braid") {
+    const rc = rng(seed * 7919 + i * 104729 + 17), L = q(between(rc, IX.LINK_MIN, IX.LINK_MAX));
+    for (let k = 0; k < IX.ATTEMPTS && !link; k++) {
+      const sg = rc() < 0.5 ? -1 : 1, a1 = between(rc, IX.LINK_SWING_MIN, IX.LINK_SWING_MAX), a2 = between(rc, IX.LINK_SWING_MIN, IX.LINK_SWING_MAX);
+      const p = chain([{ s: 0, v: vT }, { s: 0.33 * L, v: vT + sg * a1 }, { s: 0.67 * L, v: vT - sg * a2 }, { s: L, v: vT }], { s: 1, v: 0 }, { s: 1, v: 0 });
+      if (minRadius(p) >= IX.LINK_R_MIN && !selfCrosses(p)) link = p.map((q2) => ({ s: q2.s, v: q2.v, z: IX.DECK }));
+    }
+    if (!link) link = chain([{ s: 0, v: vT }, { s: L, v: vT }], { s: 1, v: 0 }, { s: 1, v: 0 }).map((q2) => ({ s: q2.s, v: q2.v, z: IX.DECK }));
+    onOut = onP.map((q2) => ({ s: q2.s + L, v: q2.v, z: q2.z })); dOnOut = dOn + L;
+  }
+  return { vT, dOff, dOn: dOnOut, link, linkRmin: link ? minRadius(link) : null, off: { kind: off.kind, ang: off.ang, pts: offP, rmin: minRadius(off.p) }, on: { kind: onRaw.kind, ang: onRaw.ang, pts: onOut, rmin: minRadius(onRaw.p) } };
 }

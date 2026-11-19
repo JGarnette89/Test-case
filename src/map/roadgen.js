@@ -273,6 +273,8 @@ const r2 = (v) => Math.round(v * 10000) / 10000;
 /* WHERE THE BENDS ARE THE DRIVERS' BUSINESS (`BENDS: "driver"`, DECISIONS 10.96) a bend does not lower the posted speed: the cars' own speeds and skills decide what it asks of them (sim/corner.js). */
 const speedForBend = (C, minR) => { let best = 40; for (let v = 40; v <= C.LIMIT; v += 5) if (radiusFor(v / 3.6) <= minR * 0.85) best = v; return best; };
 /* The carriageway's: the bend's business is the drivers' where the map says so. A RAMP keeps its bend-lowered advisory speed either way (`speedForBend`). */
+/* The small road between an off ramp and an on ramp: the fastest of 20 to LINK_SPEED the loader will not lower, from the radius the generator measured (its estimate reads about 10% above the loader's, so 0.85 of that again), never below 20: it is allowed to be slow and tight, it is a lively transition (DECISIONS 10.144). */
+const linkSpeed = (rmin) => { let best = 20; for (let v = 20; v <= IX.LINK_SPEED; v += 5) if (radiusFor(v / 3.6) <= rmin * 0.85 * 0.9) best = v; return best; };
 const speedFor = (C, minR) => (C.BENDS === "driver" ? C.LIMIT : speedForBend(C, minR));
 
 export function roadgen(overrides = {}) {
@@ -322,13 +324,15 @@ export function roadgen(overrides = {}) {
       const f = side(car === "B"), uOff = car === "A" ? S.c - ix.dOff : S.c + ix.dOff, uOn = car === "A" ? S.c + ix.dOn : S.c - ix.dOn;
       const off = ix.off.pts.map(f), on = ix.on.pts.map(f), sp = (arr) => Math.min(IX.RAMP_MAX_SPEED, speedForBend(C, 1 / kmin(arr)));
       const suf = car === "B" ? "b" : "";
-      m.roads.push(road({ id: `off${suf}-${uOff}`, kind: "highway", lanes: 1, oneWay: true, speed: sp(off), points: off, control: { start: "none", end: "stop" } }));
+      m.roads.push(road({ id: `off${suf}-${uOff}`, kind: "highway", lanes: 1, oneWay: true, speed: sp(off), points: off, control: { start: "none", end: IX.STYLE === "braid" ? "none" : "stop" } }));
       m.roads.push(road({ id: `on${suf}-${uOn}`, kind: "highway", lanes: 1, oneWay: true, speed: sp(on), points: on }));
+      if (ix.link) m.roads.push(road({ id: `link${suf}-${S.c}`, kind: "service", lanes: 1, oneWay: true, speed: linkSpeed(ix.linkRmin), points: ix.link.map(f), control: { start: "none", end: "none" } }));
       if (car === "A") ramps.push({ id: `on-${uOn}`, u: uOn });
     }
     /* The crossroad over both carriageways, level at the deck, split at its two terminals. */
     const vS = ix.vT, vN = -D - ix.vT, cr = (v0, v1) => { const out = [], n = Math.max(2, Math.ceil(Math.abs(v1 - v0) / 20)); for (let i = 0; i <= n; i++) out.push(W(0, v0 + ((v1 - v0) * i) / n, IX.DECK)); return out; };
     const stop = IX.TERMINAL_CONTROL === "stop";
+    if (IX.STYLE === "braid") { fulls.push(S); continue; }   // braided ramps: no crossroad over the carriageways (interchange.js STYLE)
     m.roads.push(road({ id: `xs-${S.c}`, kind: "service", lanes: 1, oneWay: false, speed: IX.CROSS_SPEED, points: cr(vS + IX.CROSS_OVERRUN, vS), ...(stop ? { control: { start: "none", end: "stop" } } : {}) }));
     m.roads.push(road({ id: `xm-${S.c}`, kind: "service", lanes: 1, oneWay: false, speed: IX.CROSS_SPEED, points: cr(vS, vN), ...(stop ? { control: { start: "stop", end: "stop" } } : {}) }));
     m.roads.push(road({ id: `xn-${S.c}`, kind: "service", lanes: 1, oneWay: false, speed: IX.CROSS_SPEED, points: cr(vN, vN - IX.CROSS_OVERRUN), ...(stop ? { control: { start: "stop", end: "none" } } : {}) }));
@@ -345,7 +349,7 @@ export function roadgen(overrides = {}) {
   const sbend = gen.plan.features.filter((f) => f.kind === "sbend" && f.u1 < C.LENGTH)[0];
   m.sections = [{ id: "start", name: "join from the slip road", look: look(ramps[0].u + 300), start: { road: ramps[0].id, end: "end" }, judge: "You start standing on a slip road. Join the highway, then drive: what does the road do?" }];
   const fx = fulls[1] ?? fulls[0];
-  if (fx) m.sections.push({ id: "interchange", name: "an interchange", look: look(fx.c), start: { road: entranceBefore(fx.c - fx.ix.dOff - 600).id, end: "end" }, judge: `A diamond at ${(fx.c / 1000).toFixed(1)} km: ${fx.ix.off.kind} off, ${fx.ix.on.kind} on. Leave, cross over, join the other way: is it a section of driving you chose, or one you were put through?` });
+  if (fx) m.sections.push({ id: "interchange", name: "an interchange", look: look(fx.c), start: { road: entranceBefore(fx.c - fx.ix.dOff - 600).id, end: "end" }, judge: IX.STYLE === "braid" ? `Braided ramps at ${(fx.c / 1000).toFixed(1)} km: ${fx.ix.off.kind} off, a small road, ${fx.ix.on.kind} on, back onto the same carriageway. Tight, climbing and turning on purpose: is it a lively stretch of driving, and does the traffic join you cleanly?` : `A diamond at ${(fx.c / 1000).toFixed(1)} km: ${fx.ix.off.kind} off, ${fx.ix.on.kind} on. Leave, cross over, join the other way: is it a section of driving you chose, or one you were put through?` });
   if (crest) m.sections.push({ id: "crest", name: "the sharpest crest", look: look((crest.u0 + crest.u1) / 2), start: { road: entranceBefore(crest.u0).id, end: "end" }, judge: `Over the crest at ${(crest.u0 / 1000).toFixed(1)} km the grade changes ${(100 * crest.dg).toFixed(0)} points in ${crest.vc.toFixed(0)} m. Does the nose go over, and does it register?` });
   if (roller) m.sections.push({ id: "rollers", name: "rollers", look: look((roller.u0 + roller.u1) / 2), start: { road: entranceBefore(roller.u0).id, end: "end" }, judge: `Crest after crest from ${(roller.u0 / 1000).toFixed(1)} km: does it read as speed?` });
   if (sbend) m.sections.push({ id: "sbend", name: "an S-bend", look: look((sbend.u0 + sbend.u1) / 2), start: { road: entranceBefore(sbend.u0).id, end: "end" }, judge: `An S-bend at ${(sbend.u0 / 1000).toFixed(1)} km: the lean swings from one side to the other. Does that read?` });
