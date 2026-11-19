@@ -274,7 +274,7 @@ export function loadMap(map) {
     if (bays && oneWay) { warn("bays-one-way", `road ${id}: turn bays on a one-way road are not supported; dropped`); bays = null; }
     const leftArrow = r.leftArrow && typeof r.leftArrow === "object" ? { start: !!r.leftArrow.start, end: !!r.leftArrow.end } : null;
     /* An acceleration lane at the road's start (map/accel.js), fed by the road named in `from`. */
-    const accel = r.accel?.start && typeof r.accel.start === "object" ? { start: { from: r.accel.start.from ?? null, ...(Number(r.accel.start.length) > 0 ? { length: Number(r.accel.start.length) } : {}) } } : null;
+    const accel = r.accel?.start && typeof r.accel.start === "object" ? { start: { from: r.accel.start.from ?? null, ...(Number(r.accel.start.length) > 0 ? { length: Number(r.accel.start.length) } : {}), ...(r.accel.start.drop ? { drop: true } : {}) } } : null;
     const crosswalk = r.crosswalk && typeof r.crosswalk === "object" && (r.crosswalk.start || r.crosswalk.end) ? { start: !!r.crosswalk.start, end: !!r.crosswalk.end } : null;
     const parking = r.parking ?? KINDS[kind].parking;
     /* THE SURFACE OUTSIDE THE LANES: a parallel-parking strip each side of

@@ -390,7 +390,7 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
         const outTo = seam ? accLane.length / 2 : accLane.length;
         const id = `${base}#A0`;
         legs[id] = {
-          id, base, lane: null, lanes: count, pos: leftBays + count, across: across + 1, bay: null, accel: true, accelFrom: r.accel.start.from,
+          id, base, lane: null, lanes: count, pos: leftBays + count, across: across + 1, bay: null, accel: true, accelFrom: r.accel.start.from, accelDrop: !!r.accel.start.drop,
           inner: false, curb: false, road: r.id, end: l.end, bearing: l.bearing, control: ctl, arrow: false, sign: null, zone: zoneOf(r),
           speed: (r.speed ?? 50) / 3.6, inLane: null, outLane: accLane, oneWay: !!r.oneWay, inFrom: 0, outTo,
           accelClose: Math.max(0, outTo - accLane.closesAt), accelEnd: Math.max(0, outTo - accLane.endsAt),
@@ -523,10 +523,12 @@ export function graphOf(loaded, { lane = 3.6, control = null, conflicts: withCon
            may not make this movement, or one with nowhere to land. */
         if (B.accel) {
           /* The feeding road lands in the acceleration lane, and only there. */
-          if (A.road !== B.accelFrom || recv[`${A.base}>${B.base}`]?.[A.pos] == null) continue;
+          /* A DROP (`accel.start.drop`, DECISIONS 10.145): the feeding road's through lanes land in the road's own lanes as at any seam, and its CURB lane, the one the road no longer has, lands here and runs out: the same lane that ends, for a car already on the carriageway. */
+          if (B.accelDrop) { if (A.road !== B.accelFrom || !A.curb) continue; }
+          else if (A.road !== B.accelFrom || recv[`${A.base}>${B.base}`]?.[A.pos] == null) continue;
         } else {
           if (B.bay || recv[`${A.base}>${B.base}`]?.[A.pos] !== B.lane) continue;
-          if (ids.some((id) => legs[id].base === B.base && legs[id].accel && legs[id].accelFrom === A.road)) continue;
+          if (ids.some((id) => legs[id].base === B.base && legs[id].accel && !legs[id].accelDrop && legs[id].accelFrom === A.road)) continue;
         }
         paths[`${from}/${to}`] = pathBetween(place, A, B, { from, to, intent: kind });
       }
