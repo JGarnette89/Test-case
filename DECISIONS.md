@@ -8924,3 +8924,14 @@ The lead: Jay's "as space runs out each driver compromises more and more" is wha
 **Where it lands:** a generator-level licence (a draw of "legacy" features: a short merge, an awkward drop, a tight curve against its sign) in a later slice, after the lane-ending behaviour, the turnaround and the start-entrance question are settled. Nothing built or changed by this entry.
 **Also noted, `[Jay]`:** the service-stop element "is coming together", cars leaving and rejoining the highway sensibly. That is the exit, small road and return circuit (10.144) doing its job: the first piece of his stops design arriving through infrastructure rather than through content.
 **OUTSTANDING AND BLOCKING, asked of Jay by the lead: the felt density in his own words** ("like the loop", "busier than now", "someone every few seconds"). Three things wait on it and are to be settled TOGETHER when it arrives, not separately: shaping's constants (10.140, 10.141), the car-count cap (10.122, 10.140), and how much the variable lane count needs to do (10.142, 10.143).
+
+**ADDENDUM TO 10.146, the lead's request (19 Nov): the table at the generated road's own density, squeeze off against on, and a correction to "not the lever".** The 3-cars-per-lane-km cell had been measured only with the squeeze off (3 seeds); it is now 9 runs off (the 3 before and 6 explicit) against 6 on, 5 minutes each, same fixture. Stopped at least once / curb-lane cars, car-seconds standing, flow past 3.5 km a minute (no-drop control: 15.0 at 40 cars, 26.5 at 80, 40.9 at 120):
+| open, cars | off | on | flow off / on |
+|---|---|---|---|
+| 500 m, 40 | 40 of 394 (10%), 198 car-s (0.50 per curb car) | 14 of 263 (5%), 65 car-s (0.25) | 13.8 / 13.8 |
+| 500 m, 80 | 52 of 246 (21%), 577 | 41 of 239 (17%), 576 | 23.7 / 23.5 |
+| 500 m, 120 | 81 of 381 (21%), 1,289 | 79 of 374 (21%), 1,230 | 36.3 / 36.0 |
+| 1,000 m, 40 | 34 of 394 (9%), 132 (0.33) | 15 of 261 (6%), 55 (0.21) | 14.0 / 14.0 |
+| 1,000 m, 80 | 25 of 241 (10%), 389 | 24 of 243 (10%), 253 | 24.6 / 24.5 |
+| 1,000 m, 120 | 49 of 379 (13%), 620 | 38 of 376 (10%), 542 | 36.7 / 36.7 |
+No crashes in any cell; every flow within 2% of its off arm and 90 to 94% of the control. **THE CORRECTION: at the generated road's own density the squeeze HALVES the standing (0.50 to 0.25 car-seconds per curb-lane car at 500 m, 0.33 to 0.21 at 1,000 m) and the 500 m stop share falls from 10% to 5% (14 of 263 against 40 of 394: about p = 0.03, one run's worth of cells so a modest claim); at twice that density it does nothing measurable.** So "not the lever" was too strong for the density he drives and right for a busy road: the squeeze helps where the stream still has gaps to be tolerant about, and cannot where it does not (10.146's mechanism). Kept, and now with its measured benefit stated: it is a halving of a small number at 3 per lane-km, not a fix for a busy drop.
