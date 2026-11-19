@@ -2387,6 +2387,7 @@ invisible to the encroachment fault because it only ever watches priors — in
   tree. index.html carries `Cache-Control: max-age=600`; there is no
   service worker. Before saying "on the LAN", check a vite server is running.
 - **A UI CHANGE IS NOT VERIFIED UNTIL IT HAS BEEN SEEN ON THE PAGE A USER LOADS, IN THE DEFAULT SETTING (the project lead, 6 November; DECISIONS 10.59).** Local, and in the setting you happen to have, is not verification. The menu fix read correct in its check and was a half-fix with Clean mode off, the default. This is the case the browser is for in the order below: a stamp says which build is served, not what it shows.
+- **A PERFORMANCE READING FROM A DEVICE CARRIES THE DEVICE'S STATE (18 November 2026, DECISIONS 10.139).** Jay's phone stalled at 100 to 230 ms with the page's script at 14 ms; after a reset it mostly did not. It had 27 to 29 Chrome tabs open, and for two days nobody asked. A reading is the counter's two lines PLUS the tabs open, roughly how long the phone has been up, and anything else running; without them it is half a measurement. The goal is resilience under memory pressure, not only throughput: a small live heap (10.132) is part of it.
 - **VERIFY FROM THE SERVER SIDE, NOT THE BROWSER SIDE.** The maintainer,
   25 September, after the browser pane's approval prompts piled up: an
   agent here cannot judge anything visual anyway -- no animation frames
