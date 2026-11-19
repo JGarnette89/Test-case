@@ -61,9 +61,10 @@ console.log("\n4. IT BITES ONLY WHERE THE CLOSING SPEED ASKS FOR MORE");
 console.log("\n5. A LANE CHANGE OF CHOICE IS UNTOUCHED");
 {
   const src = readFileSync(new URL("../src/sim/lanechange.js", import.meta.url), "utf8");
-  const code = src.split("\n").filter((l) => /mergeTolerance \?\? null/.test(l));   // the lines that READ it (the doc comments never say "?? null")
-  check(code.length === 2 && code.every((l) => /merge \? /.test(l)), `every place the sim reads it is gated on a merge (${code.length} reads: the gap for the car ahead and behind, and the cars further ahead; each behind \`merge ?\`)`);
-  check(/const tol = merge \? world\?\.mergeTolerance \?\? null : null;/.test(src), "and gapFor, the one function every lane change and merge is judged by, reads it as `merge ? world?.mergeTolerance : null`");
+  /* The read now carries the dying-lane squeeze as a factor (DECISIONS 10.146): `merge && world.mergeTolerance ? world.mergeTolerance * squeeze : null`; still read only behind `merge`, and the lines that read it are counted the same way. */
+  const code = src.split("\n").filter((l) => /world\??\.mergeTolerance \* /.test(l) && !/^\s*(\/\/|\*|\/\*)/.test(l));
+  check(code.length === 2 && code.every((l) => /merge( && world\??\.mergeTolerance)? \? /.test(l) || /best\.merge && world\.mergeTolerance/.test(l)), `every place the sim reads it is gated on a merge (${code.length} reads: the gap for the car ahead and behind, and the cars further ahead; each behind \`merge ?\`)`);
+  check(/const tol = merge && world\?\.mergeTolerance \? world\.mergeTolerance \* squeeze : null;/.test(src), "and gapFor, the one function every lane change and merge is judged by, reads it only when `merge` (the squeeze is 1 outside a dying lane)");
 }
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");
 process.exit(failed ? 1 : 0);
