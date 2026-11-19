@@ -1,3 +1,4 @@
+/* RETRACTED (DECISIONS 10.143): this measures an EMPTY lane. The acceleration lane is an additional lane fed only by its slip road, so with no feeding road nothing ever lands in it and the through traffic never sees it; the result (no crash, no slow car) is vacuous. Kept as the evidence of what was run. */
 /* A LANE THAT ENDS, WITHOUT ANY NEW MACHINERY (DECISIONS 10.142): an acceleration lane (map/accel.js) with NO feeding road on a mid span of the generated highway, so the fifth lane is open for L m and then closes over its taper, which is a lane drop 5 to 4. Counts crashes and cars slow or standing within 350 m of the drop. Usage: node tools/measure/lane-drop-probe.mjs cars mins L span seed (L 0 = as built) */
 import { TEST_MAPS } from "../../src/map/samples.js";
 import { worldFor } from "../../src/sim/scene.js";
