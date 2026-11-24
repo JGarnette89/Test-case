@@ -255,3 +255,52 @@ Report back, briefly:
 - the sabotage, and which line fired;
 - what `assist` and body motion you used, and why;
 - **anything that did not work, any disagreement between `whatStops` and `openTo`, and anything in this spec that turned out wrong.** Say it plainly. Do not work around it silently.
+
+---
+
+## REVIEW OUTCOME (24 November 2026, the planner)
+
+**Built by the executor in `56a2ee1`, reviewed and corrected in `3abcfb5`.** `56a2ee1`'s message says `verify-rounds` is RED on purpose. That was true when it was written; after `3abcfb5` it is green: `3 of 3 passed` (verify-core, verify-screens, verify-rounds) `[M, node tools/check.mjs --base 7c33eae]`.
+
+### The red, traced: the spec's detector was wrong, not the good driver
+
+`failedToYield`, asked only at the line crossing (this spec, section 2), flagged the unmodified good driver in 3 of 84 runs `[M]`:
+- **who-first #6:** the player stopped first (21.70 s) and a rival stopped after (21.90 s). The rival went out of turn, and on the crossing tick both were already moving. A car under way counts as committed (`crossing.js blockedBy`), so the player was blamed for the rival's mistake.
+- **who-first #13 and into-gap #10:** the good driver itself rolled the stop (`rolledStop`), a limit of `good-driver.mjs`. The flag there is right.
+
+### Corrected rule `[invented]`, until Jay rules
+
+Each moment is read in the world before the move, for a sound driver in the player's place (`openTo`). There are two kinds of right of way:
+- **THE TURN AT A STOP.** Pulling away from the line while a waiting driver at a stop sign holds the way is a fault, judged at the pull-away alone. It is a rule with no judgment in it.
+- **A GAP IN MOVING TRAFFIC.** It is a fault only if the way was shut at the pull-away AND still shut as the player entered.
+  - The sound driver's gap is too conservative to judge alone. At `across` seed 14 it refused a pull-away with the car 87 m and 9.6 s off `[M]`. Marking that would make no sense to a driver.
+  - The proper measure is the time margin to the entitled car (post-encroachment time, the encroachment ruling in CLAUDE.md). **That is slice 2's first item.**
+
+The check now states this rule run by run over 84 eager runs:
+- 3 were held by the stop rule `[M]`;
+- 15 were shut at both moments;
+- 30 were shut at the pull-away and open by the entry;
+- 28 were open at both;
+- the good driver had no flag in any of the 77 runs where it pulled away from rest at the line.
+
+**Sabotaged two ways, and restored byte-identical (SHA-1 `e85e780a`):**
+1. Dropping the stop rule fired `eager: failedToYield in every one of them -- not who-first#5 across#25`.
+2. Flagging on the pull-away alone fired three lines: `failedToYield in none of those 58 -- in ...` (30 runs), the run-by-run line, and the good-driver control `-- in across#8 across#14`.
+
+### Also changed in review
+
+**The round maps use two-point legs.** The executor exported `stroke` from `map/samples.js`, and that one-word change put 65 checks in the derived set: hours here `[M, the executor's killed run: 630-951 s per check]`. Straight legs need no helper. `samples.js` is untouched, and the results are identical `[M, verify-rounds: the same times and exposures]`.
+
+### Findings for Jay, not acted on
+
+1. **WHO OWED WHOM WHEN A DRIVER GOES OUT OF TURN AT AN ALL-WAY STOP.**
+   - At who-first #6 the good driver collided with the rival who went out of turn, and `contact.js owedBy` put it on the player. Its rule 5, "whoever entered second had somebody already in there", rests on line-crossing order, not stopping order.
+   - Is a driver who stopped first, and then enters behind somebody who went out of turn, at fault? Ontario says to yield to vehicles already in the intersection, which supports `owedBy`. But the game then scores the player 0 stars for the rival's mistake.
+   - A traffic-law question: his.
+2. **"Who goes first" rarely tests taking turns.** An eager driver at the four-way stop went ahead of a waiting driver with the right of way in only 2 of 30 seeds `[M]`. The round's stored seed shows the wait (2.0 s), but most players will not meet the situation the round is named for. Slice 2 should choose the round's seed by that property, or raise the traffic.
+3. **Rounds run 29 to 40 s** `[M]`, against the 20-30 s wanted. The 140 m legs and the stop take most of it.
+4. **The check drives with lane assist 0 and the screen with "gentle" (0.5),** so a real drive is slightly more forgiving than the checked one.
+
+### Not verified
+
+Nothing about how it looks or feels. The preview cannot animate here (CLAUDE.md item 7), so the first look is Jay's, on his phone.
