@@ -31,3 +31,6 @@ pnpm-debug.log*
 # Throwaway measurement probes. The findings belong in tools/verify-*.mjs,
 # never here.
 tools/scratch/
+
+# agent worktrees (Claude Code isolation), never committed
+.claude/worktrees/
