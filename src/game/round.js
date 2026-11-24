@@ -14,7 +14,7 @@
    use is not public and stays out.
    ===================================================================== */
 import { worldFor, playerContact, PREROLL } from "../sim/scene.js";
-import { step, DT, openTo } from "../sim/crossing.js";
+import { step, DT, openTo, AT_REST, atNode, blockedBy } from "../sim/crossing.js";
 import { stepDriver, withDriver, playerHonk } from "../sim/drive.js";
 import { afterContact } from "../sim/contact.js";
 import { detect, newEventState, TRIGGERS } from "../sim/events.js";
@@ -33,6 +33,9 @@ export const CLEAR_BY = 25;       // m past the far edge of the box, in the lane
 export const TIME_CAP = 60;       // s of a round before it is called out of time [invented]
 export const FAILED_TO_YIELD = 5;  // severity of going when the way was not open [invented]
 export const WRONG_TURN = 2;      // severity of making another turn than the one asked [invented] (TRIGGERS gives missedTurn 2)
+/* m short of the stop line within which a pull-away from rest is THE pull-away from the line, the moment a stop-and-go driver
+   commits (crossing.js blockedBy: "commitment begins at the launch rather than at the line"). [invented] */
+export const LAUNCH_SPAN = 6;
 
 /* The arguments `sceneFor` (apps/MapRoad.jsx) takes, positionally. */
 export const sceneArgs = (def) => [def.seed, KMH, EVERY, true, def.cars, def.map(), def.start];
@@ -41,7 +44,19 @@ export const sceneArgs = (def) => [def.seed, KMH, EVERY, true, def.cars, def.map
 export const roundWorld = (def) => worldFor(...sceneArgs(def), false, false, { checks: false, mergeTolerance: DEFAULT_MERGE_TOLERANCE, preroll: PREROLL });
 
 export function startRound(def, { world, me }) {
-  return { def, world, me, ev: newEventState(), events: [], t0: world.t, targetK: me.k, made: null, crossedAt: null, end: null, hornSeen: 0 };
+  return { def, world, me, ev: newEventState(), events: [], t0: world.t, targetK: me.k, made: null, crossedAt: null, launch: null, end: null, hornSeen: 0 };
+}
+
+/* WHO HOLDS THE WAY, BY THE STOP RULE: a driver the sim says this one must yield to (crossing.js blockedBy, the same call openTo
+   makes) who is themselves at a stop sign as posted and not yet under way -- waiting for a turn they have. Classifies why the
+   way was shut; openTo decides whether it was. */
+function waitingByStop(me, world) {
+  const L = world.course.at[me.k ?? 0].layout;
+  return atNode(world, world.actors, me.k ?? 0).some((a) => {
+    if (a.id === me.id || a.going || !blockedBy(me, a, L, 1, world.t ?? 0)) return false;
+    const q = L.paths[a.route];
+    return (L.place.control?.[q.from] ?? L.legs[q.from]?.control) === "stop";
+  });
 }
 
 const layoutOf = (w, me) => w.course.at[me.k ?? 0]?.layout;
@@ -69,13 +84,31 @@ export function roundTick(rs, input) {
   const events = found.slice();
 
   /* THE TURN MADE, and FAILED TO YIELD: on the tick the line is crossed at the round's own intersection (events.js's own test). */
-  let { made, crossedAt } = rs;
+  let { made, crossedAt, launch } = rs;
   const path = pathOf(world, me), pPath = pathOf(prev.world, prev.me);
-  const crossed = me.k === rs.targetK && (prev.me.k ?? 0) === (me.k ?? 0) && path && pPath && pPath.from === path.from && prev.me.s <= path.stopAt && me.s > path.stopAt;
+  const sameApproach = me.k === rs.targetK && (prev.me.k ?? 0) === (me.k ?? 0) && path && pPath && pPath.from === path.from;
+  /* THE PULL-AWAY FROM THE LINE: the last one before the crossing, and whether a sound driver standing there had an opening. */
+  if (sameApproach && made == null && (prev.me.v ?? 0) < AT_REST && (me.v ?? 0) >= AT_REST && prev.me.s <= path.stopAt && path.stopAt - prev.me.s < LAUNCH_SPAN) {
+    const sound = { ...prev.me, caution: 1 }, open = openTo(sound, prev.world, 1);
+    launch = { t: world.t, open, byStop: !open && waitingByStop(sound, prev.world) };
+  }
+  const crossed = sameApproach && prev.me.s <= path.stopAt && me.s > path.stopAt;
   if (crossed && made == null) {
     made = path.intent; crossedAt = world.t;
-    /* A SOUND DRIVER IN THE PLAYER'S PLACE, in the world BEFORE the move: was there an opening? On a red, ranRed already says it. */
-    if (!events.some((e) => e.id === "ranRed") && !openTo({ ...prev.me, caution: 1 }, prev.world, 1)) {
+    /* FAILED TO YIELD (review, 24 November). Each moment is read in the world before the move, for a sound driver in the
+       player's place (crossing.js openTo, the undue-delay clock's own question). Two kinds of right of way, judged two ways:
+       - THE TURN AT A STOP: pulling away from the line while a driver at a stop sign who has the right of way is still
+         waiting for it (they stopped first, or are on the right). A rule with no judgment in it, so the pull-away alone is it.
+       - A GAP IN MOVING TRAFFIC: the sound driver's gap is conservative (one pull-away it refused had the car 87 m and 9.6 s
+         off), so it counts only if the way was ALSO shut as the player entered -- by which time only a car already committed
+         to the intersection shuts it. The proper measure is the time margin to the entitled car (post-encroachment time,
+         the encroachment ruling): slice 2.
+       Read at the crossing alone it blamed the player for a rival who stopped after them and went out of turn, both already
+       under way. Rolling in with no pull-away, the crossing is the commitment. All [invented] until Jay rules.
+       On a red, ranRed already says it. */
+    const atEntry = openTo({ ...prev.me, caution: 1 }, prev.world, 1);
+    const failed = launch ? launch.byStop || (!launch.open && !atEntry) : !atEntry;
+    if (!events.some((e) => e.id === "ranRed") && failed) {
       events.push({ id: "failedToYield", t: world.t, severity: FAILED_TO_YIELD, praise: false });
     }
   }
@@ -91,7 +124,7 @@ export function roundTick(rs, input) {
   else if (me.atEdge) end = { why: "edge" };
   else if (world.t - rs.t0 > TIME_CAP) end = { why: "time" };
 
-  return { rs: { ...rs, me, world, ev: state, events: [...rs.events, ...events], made, crossedAt, end, hornSeen }, signal: me.signal };
+  return { rs: { ...rs, me, world, ev: state, events: [...rs.events, ...events], made, crossedAt, launch, end, hornSeen }, signal: me.signal };
 }
 
 /* The verdict. Each id appears once, with a count. */

@@ -20,11 +20,11 @@
    ===================================================================== */
 import { isDeepStrictEqual } from "node:util";
 import { ROUNDS, HELD_FOR } from "../src/game/rounds.js";
-import { roundWorld, startRound, roundTick, verdictOf, CLEAR_BY, TIME_CAP } from "../src/game/round.js";
+import { roundWorld, startRound, roundTick, verdictOf, CLEAR_BY, TIME_CAP, LAUNCH_SPAN } from "../src/game/round.js";
 import { driveRound, routesOfTask } from "./lib/round-drive.mjs";
 import { measureRun, AT_SPAN } from "./measure/round-seeds.mjs";
 import { loadMap } from "../src/map/load.js";
-import { openTo, AT_REST, DT } from "../src/sim/crossing.js";
+import { openTo, AT_REST, DT, atNode, blockedBy } from "../src/sim/crossing.js";
 import { END_WORDS, WORDS } from "../src/game/words.js";
 
 let failed = 0;
@@ -33,14 +33,32 @@ const byId = Object.fromEntries(ROUNDS.map((r) => [r.id, r]));
 const ids = (v) => v.faults.map((f) => f.id);
 const pathOf = (rs) => rs.world.course.at[rs.me.k].layout.paths[rs.me.route];
 
-/* A run with one thing changed, recording what the crossing tick looked like: the speed, whether the car had stopped,
-   and whether a sound driver in its place had an opening in the world before the move (crossing.js openTo). */
+/* A run with one thing changed, read by the CHECK ITSELF tick by tick (not from the round's own record): the last pull-away from rest
+   within LAUNCH_SPAN of the line before the crossing -- whether a sound driver standing there had an opening (crossing.js openTo), and
+   who the sim says it had to yield to there, each with the control their road POSTS in the round's own map data (not the sim's
+   lookup) -- and whether the way was open on the crossing tick.
+   `expected` is the rule as GAME/round.js states it: at a pull-away, a waiting driver at a stop sign holding the way, or the way shut
+   at the pull-away AND at the entry; rolling in, shut at the entry. */
+const postedOf = (def) => Object.fromEntries(def.map().roads.map((r) => [r.id, r.control?.end ?? "none"]));
 function run(def, edit = null) {
-  let cross = null;
+  let cross = null, launch = null;
+  const posted = postedOf(def);
   const r = driveRound(def, {
     edit,
     onTick: (before, inp, after) => {
-      if (cross == null && before.crossedAt == null && after.crossedAt != null) cross = { v: before.me.v, stopped: before.me.stoppedAt != null, open: openTo({ ...before.me, caution: 1 }, before.world, 1), t: after.world.t - after.t0 };
+      if (before.crossedAt != null) return;
+      const L = before.world.course.at[before.me.k].layout, p = L.paths[before.me.route];
+      if (before.me.k === before.targetK && (before.me.v ?? 0) < AT_REST && (after.me.v ?? 0) >= AT_REST && before.me.s <= p.stopAt && p.stopAt - before.me.s < LAUNCH_SPAN) {
+        const sound = { ...before.me, caution: 1 };
+        const holders = atNode(before.world, before.world.actors, before.me.k).filter((a) => a.id !== before.me.id && blockedBy(sound, a, L, 1, before.world.t));
+        const byStop = holders.some((a) => !a.going && posted[L.legs[L.paths[a.route].from].road] === "stop");
+        launch = { open: openTo(sound, before.world, 1), byStop, holders: holders.length };
+      }
+      if (after.crossedAt != null) {
+        const open = openTo({ ...before.me, caution: 1 }, before.world, 1);
+        const expected = launch ? launch.byStop || (!launch.open && !open) : !open;
+        cross = { v: before.me.v, stopped: before.me.stoppedAt != null, launched: !!launch, open, launchOpen: launch?.open ?? null, byStop: !!launch?.byStop, expected, t: after.world.t - after.t0 };
+      }
     },
   });
   return { ...r, cross };
@@ -102,18 +120,25 @@ console.log("\n3. EACH DETECTOR FIRES ON THE DRIVING IT IS ABOUT, AND NOT ON THE
     }
   }
   const crossed = rows.filter((x) => x.eager.cross);
-  const closed = crossed.filter((x) => x.eager.cross.open === false), open = crossed.filter((x) => x.eager.cross.open === true);
-  check(closed.length >= 3, `eager: EXPOSURE in ${closed.length} of ${crossed.length} runs that crossed (of ${rows.length}) the way was shut to a sound driver on the crossing tick, at least 3 [M]`);
-  const missed = closed.filter((x) => !ids(x.eager.verdict).includes("failedToYield"));
-  check(closed.length > 0 && missed.length === 0, `eager: failedToYield is in the faults of every such run${missed.length ? ` -- not ${missed.map((x) => `${x.id}#${x.seed}`).join(" ")}` : ` (${closed.length})`}`);
-  check(open.length > 0, `eager: EXPOSURE the way was open on the crossing tick in ${open.length} runs, so there is a case for "none where it was true"`);
-  const spurious = open.filter((x) => ids(x.eager.verdict).includes("failedToYield"));
-  check(open.length > 0 && spurious.length === 0, `eager: failedToYield is in none of the ${open.length} runs where the way was open`);
-  /* The unmodified good driver over the SAME seeds. */
-  const goodCrossed = rows.filter((x) => x.good.cross);
-  const goodFaulted = goodCrossed.filter((x) => ids(x.good.verdict).includes("failedToYield"));
-  console.log(`        the unmodified good driver crossed in ${goodCrossed.length} of the same ${rows.length} runs [M]`);
-  check(goodCrossed.length > 0 && goodFaulted.length === 0, `eager control: the unmodified good driver has failedToYield in none of ${goodCrossed.length} runs${goodFaulted.length ? ` -- in ${goodFaulted.map((x) => `${x.id}#${x.seed}`).join(" ")} (whatStops let it go where openTo says the way was shut; see the report)` : ""}`);
+  const flagged = (x) => ids(x.eager.verdict).includes("failedToYield");
+  const byStop = crossed.filter((x) => x.eager.cross.byStop), bothShut = crossed.filter((x) => !x.eager.cross.byStop && x.eager.cross.launched && x.eager.cross.launchOpen === false && !x.eager.cross.open);
+  const gapOnly = crossed.filter((x) => !x.eager.cross.byStop && x.eager.cross.launchOpen === false && x.eager.cross.open), openBoth = crossed.filter((x) => x.eager.cross.launchOpen === true && x.eager.cross.open);
+  console.log(`        eager runs that crossed: ${crossed.length} of ${rows.length}; held by a waiting driver at a stop sign at the pull-away ${byStop.length} (${["who-first", "into-gap", "across"].map((id) => `${id} ${byStop.filter((x) => x.id === id).length}`).join(", ")}); shut by a gap at the pull-away and still at the entry ${bothShut.length}; shut by a gap at the pull-away and open by the entry ${gapOnly.length}; open at both ${openBoth.length} [M]`);
+  check(byStop.length >= 3, `eager: EXPOSURE the stop rule held the way at the pull-away in ${byStop.length} runs, at least 3`);
+  check(byStop.every(flagged), `eager: failedToYield in every one of them${byStop.filter((x) => !flagged(x)).length ? ` -- not ${byStop.filter((x) => !flagged(x)).map((x) => `${x.id}#${x.seed}`).join(" ")}` : ""}`);
+  check(gapOnly.length >= 3 && openBoth.length >= 3, `eager: EXPOSURE a gap shut at the pull-away but open by the entry in ${gapOnly.length} runs and open at both in ${openBoth.length}, at least 3 each`);
+  check(![...gapOnly, ...openBoth].some(flagged), `eager: failedToYield in none of those ${gapOnly.length + openBoth.length}${[...gapOnly, ...openBoth].filter(flagged).length ? ` -- in ${[...gapOnly, ...openBoth].filter(flagged).map((x) => `${x.id}#${x.seed}`).join(" ")}` : ""}`);
+  const disagree = crossed.filter((x) => x.eager.cross.expected !== flagged(x));
+  check(disagree.length === 0, `eager: the verdict is the rule, run by run, in all ${crossed.length} (shut-at-both cases: ${bothShut.length}, each flagged as the rule says)${disagree.length ? ` -- not ${disagree.map((x) => `${x.id}#${x.seed}`).join(" ")}` : ""}`);
+  /* The unmodified good driver over the SAME seeds. It waits by whatStops (good-driver.mjs), not by openTo. Where it came to rest
+     at the line before going, it is the case the control is about; where it rolled in (good-driver.mjs's own limit), a
+     failedToYield beside the rolledStop is the detector right, and is reported, not asserted. */
+  const goodCrossed = rows.filter((x) => x.good.cross), goodStood = goodCrossed.filter((x) => x.good.cross.launched);
+  const goodFaulted = goodStood.filter((x) => ids(x.good.verdict).includes("failedToYield"));
+  const goodRolled = goodCrossed.filter((x) => !x.good.cross.launched);
+  console.log(`        the unmodified good driver crossed in ${goodCrossed.length} of the same ${rows.length} runs; pulled away from rest at the line in ${goodStood.length}; rolled in in ${goodRolled.length}${goodRolled.length ? ` (${goodRolled.map((x) => `${x.id}#${x.seed}: ${ids(x.good.verdict).join(",") || "no fault"}`).join("; ")})` : ""} [M]`);
+  check(goodStood.length >= 30, `eager control: EXPOSURE the good driver pulled away from rest at the line in ${goodStood.length} runs, at least 30`);
+  check(goodFaulted.length === 0, `eager control: where it pulled away from rest at the line, the unmodified good driver has failedToYield in none of ${goodStood.length} runs${goodFaulted.length ? ` -- in ${goodFaulted.map((x) => `${x.id}#${x.seed}`).join(" ")}` : ""}`);
 }
 {
   /* SILENT, at who-first: no signal until the tick that crosses the line. A turn with no signal at all is not a turn in this sim (the signal IS the turn commit: no signal is straight on, drive.js routeForSignal), so the signal is held back to the one tick it can no longer be before. */

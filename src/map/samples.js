@@ -60,7 +60,7 @@ import { testHighwayGen, testHighwayGenOpen, testHighwayGenWide } from "./roadge
 
 /* A straight stroke, or a bowed one: `bow` metres sideways at the
    middle, so a road can bend without anybody computing an arc. */
-export function stroke(a, b, { n = 24, bow = 0, z = () => 0 } = {}) {
+function stroke(a, b, { n = 24, bow = 0, z = () => 0 } = {}) {
   const pts = [];
   const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
   const nx = -dy / L, ny = dx / L;

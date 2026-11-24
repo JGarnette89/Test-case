@@ -7,10 +7,10 @@
    driver over seeds 1-60 and printed what each showed; the chosen values
    carry that run's mark below.
 
-   Each leg is 140 m, the intersection at the middle of a 500 m square.
+   Each leg is 140 m, the intersection at the middle of a 500 m square. A leg is straight, so it is its two
+   ends (no stroke helper: map/samples.js is imported by 65 checks, and a one-word export there re-runs them all).
    ===================================================================== */
 import { emptyMap, road } from "../map/format.js";
-import { stroke } from "../map/samples.js";
 
 const C = { x: 250, y: 250 };
 const LEG = 140;
@@ -23,7 +23,7 @@ function crossroads(id, name, legs) {
   m.bounds = { x: 0, y: 0, w: 500, h: 500 };
   for (const side of ["S", "N", "W", "E"]) {
     const { kind, control } = legs[side];
-    m.roads.push(road({ id: side, kind, points: stroke(FAR[side], C), control: { start: "none", end: control } }));
+    m.roads.push(road({ id: side, kind, points: [FAR[side], C], control: { start: "none", end: control } }));
   }
   return m;
 }
