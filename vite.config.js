@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 /* A BUILD STAMP, baked into the served code: the commit, a "+" if the
    tree was dirty, and when this server or build started. A phone tab
@@ -27,6 +28,15 @@ export default defineConfig(({ command }) => ({
      cares. */
   base: process.env.BASE_PATH ?? "/",
   plugins: [react()],
+  /* TWO ENTRIES: the developer app (index.html) and the short game (play.html, src/game/). */
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        play: fileURLToPath(new URL("./play.html", import.meta.url)),
+      },
+    },
+  },
   server: {
     // Bind to the LAN as well as localhost so the dev server can be opened on a
     // phone or tablet on the same wifi — the only test that tells you anything.

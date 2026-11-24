@@ -46,6 +46,7 @@ const SCREENS = [
      with every other check green. */
   { id: "App", file: "src/App.jsx", why: "the shell every route goes through" },
   { id: "MergeRush", file: "src/apps/MergeRush.jsx", why: "unwired, but reachable at #/merge-rush" },
+  { id: "Game", file: "src/game/Game.jsx", why: "the short game (play.html)" },
 ];
 
 /* A window just real enough to import a browser module. Deliberately
