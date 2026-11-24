@@ -7,6 +7,12 @@
 - **THE LOGIC EXAMINERS MARK BY IS NOT PUBLIC, AND IT STAYS OUT OF THE PRODUCT.** A round is graded by the law (public) and by what the sim's traffic did. It is never graded by how an examiner would deduct for it, or at what threshold. This applies with most force to option C: its faults may be named in the sheet's own categories, but how serious each one is, and when it fails a candidate, may not come from examining practice.
 - **A conflict of interest is not a concern for now.** Section 6's other question is set aside by him, not answered.
 - **Needing testers is a goal, not an obstacle.** The 12-tester, 14-day closed test is wanted, as a recruiting step.
+- **THE ROUND IS DRIVEN, NOT TAPPED (Jay, 24 November): "I still want the round to be driven, not just the user watching a recording."**
+  - **Section 4's GO tap and its hold-until-tapped mode are withdrawn.** The player drives the round with the existing two controls (`player.js`, `drive.js`), starting a short way before an intersection: `scene.js` `worldFor` with a map and `startAt`, placed clear by `placePlayer`.
+  - **The verdict is the player's own detectors in `events.js`**, already written for the player: `ranRed`, `rolledStop`, `stoppedShort`, `tightGap`, `lateSignal`, `wideTurn`, `honkedAt`, `blockingBox`, plus contact. No change inside the sim is needed to start.
+  - **It sits on the current sim, not the deleted engine.** Only the old situations' ideas and lesson prose come back, re-authored as maps and arrivals.
+  - **The cost: rounds are longer**, about 20-30 s against 8-20 `[D: from a 100 m approach at 50 km/h, about 7 s, plus the stop, the wait and the exit; assuming the start is placed about there]`.
+  - **The open defect that bears on it: the player's car has no position of its own (10.64).** Judgments that depend on the lane (a wide turn, leaving the lane) rest on re-location, which is built only behind the `realPos` switch and unmerged. Early rounds favour what is sound today: stops, gaps, signals, signalling, pedestrians. Lane rounds wait for re-location, which 10.65 puts "first in the queue when there is usage", and this game is that usage.
 
 Marks follow CLAUDE.md item 3: `[M]` a run printed it (the run is named), `[D: from ..., assuming ...]` derived, `[S]` a published third-party source (listed at the end), `[Jay]` his words, `[invented]` my judgment with no ruling behind it.
 
