@@ -2,6 +2,12 @@
 
 **Status: a proposal for Jay. Nothing is built, and nothing in the existing order of work (PLAN.md, HANDOFF-2026-11-19.md) changes until he rules.**
 
+**JAY'S ANSWERS, 24 November (on section 6 and section 7), recorded before anything else is decided:**
+- **The score sheet is public**: "given away with every test". Its categories may be used as vocabulary, in the game and in its marketing.
+- **THE LOGIC EXAMINERS MARK BY IS NOT PUBLIC, AND IT STAYS OUT OF THE PRODUCT.** A round is graded by the law (public) and by what the sim's traffic did. It is never graded by how an examiner would deduct for it, or at what threshold. This applies with most force to option C: its faults may be named in the sheet's own categories, but how serious each one is, and when it fails a candidate, may not come from examining practice.
+- **A conflict of interest is not a concern for now.** Section 6's other question is set aside by him, not answered.
+- **Needing testers is a goal, not an obstacle.** The 12-tester, 14-day closed test is wanted, as a recruiting step.
+
 Marks follow CLAUDE.md item 3: `[M]` a run printed it (the run is named), `[D: from ..., assuming ...]` derived, `[S]` a published third-party source (listed at the end), `[Jay]` his words, `[invented]` my judgment with no ruling behind it.
 
 ---
