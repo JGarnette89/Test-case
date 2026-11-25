@@ -5,7 +5,9 @@
    roundTick, the same calls the screen makes.
 
    A policy is `policy(rs) -> "hold" | "go"`, called on the frozen frame
-   and then once per tick while waiting. THE POLICIES READ THE OPENINGS
+   and then once per tick while waiting. SLICE 7: a GO is the thumb's target
+   speed (round.js setTarget), the full limit for oracle, eager and late and
+   `target` of the policy's own for `creep` (a third of it). THE POLICIES READ THE OPENINGS
    THEMSELVES, tick by tick, with crossing.js openTo: never the round's own
    record (rs.openings), which would compare the code with itself. An
    opening here is a stretch of ticks the way is open, at least
@@ -13,7 +15,7 @@
 
    Policies carry state (the tracker), so make a fresh one per run.
    ===================================================================== */
-import { toDecision, press, release, roundTick, verdictOf, TIME_CAP } from "../../src/game/round.js";
+import { toDecision, press, setTarget, roundTick, verdictOf, TIME_CAP, LIMIT } from "../../src/game/round.js";
 import { openTo, DT } from "../../src/sim/crossing.js";
 import { REACTION_FLOOR } from "../../src/core/perception.js";
 
@@ -57,16 +59,23 @@ export function late(x) {
   } };
 }
 
+/* creep: hold until the first opening has run REACTION_FLOOR (as the oracle does), then go at a THIRD of the limit. */
+export const CREEP_OF = 1 / 3;
+export function creep() {
+  const o = oracle();
+  return { ...o, target: LIMIT * CREEP_OF };
+}
+
 /* Drive a round to its end. Returns { rs, verdict, ticks, T } or null when the seed has no decision point. */
 export function driveDecision(type, seed, cars, make, { maxTicks = Math.round((TIME_CAP + 20) / DT), onTick = null } = {}) {
   let rs = toDecision(type, seed, cars);
   if (!rs) return null;
-  const { policy, T } = make();
+  const { policy, T, target = LIMIT } = make();
   const start = rs;
   let ticks = 0;
   while (!rs.end && ticks < maxTicks) {
     if (rs.phase !== "gone") {
-      if (policy(rs) === "go") rs = release(rs);
+      if (policy(rs) === "go") rs = setTarget(rs, target);
       else if (rs.phase === "frozen") rs = press(rs);
     }
     const before = rs;

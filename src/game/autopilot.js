@@ -35,6 +35,7 @@
 import { aheadOf } from "../sim/drive.js";
 import { sliderFor, ACCEL_MAX } from "../sim/player.js";
 import { limitAt } from "../sim/graph.js";
+import { HARSH_AT } from "../sim/traffic.js";
 
 /* The acceleration the autopilot may ask for, m/s^2 (-1.5 is the braking floor, goodInput's own). Cruising and approaching: 1.2 (goodInput's). GONE (slice 4, section 3):
    the car's own full pull-away, ACCEL_MAX, 2.72 on the flat [M, sim/player.js], until it reaches PACE of the limit -- Jay: "launch faster". [instrument; the launch cap is the spec's] */
@@ -45,7 +46,7 @@ const HOLD = -0.3;          // the brake while standing [instrument: goodInput's
 /* m short of the line within which a car at rest and not yet counted is still held to count its stop (goodInput: 12). */
 const COUNT_SPAN = 12;
 
-export function autoInput(me, world, { task, phase }) {
+export function autoInput(me, world, { task, phase, target }) {
   const course = world.course;
   const spot = course.at[me.k], path = spot.layout.paths[me.route];
   const steer = -(me.off ?? 0) * 0.25 - (me.psi ?? 0) * 2.5;
@@ -56,7 +57,14 @@ export function autoInput(me, world, { task, phase }) {
 
   const posted = limitAt(course, me) ?? 13.9;
   const ahead = aheadOf(me, course, world);
-  let slider = sliderFor(Math.max(-1.5, Math.min(phase === "go" ? LAUNCH_ACCEL : CRUISE_ACCEL, (posted * PACE - me.v) * 0.6)), me.v, me.grade ?? 0);
+  /* SLICE 7, THE THUMB SETS THE SPEED (control.js): once GONE, with a `target` (m/s) the car aims for that speed -- never over the road's posted one
+     -- accelerating at up to ACCEL_MAX and braking at up to HARSH_AT (the sim's own harsh threshold, the arcade brake [invented]), so a drag down is
+     felt. A target of 0 stops the car wherever it is. The corner's cap and a car ahead (`stop`, below) still win. With no target (the other phases, and
+     any caller that has no thumb) it is as before. */
+  const thumb = phase === "go" && target != null;
+  const aim = thumb ? Math.min(target, posted) : posted * PACE;
+  let slider = sliderFor(Math.max(thumb ? -HARSH_AT : -1.5, Math.min(phase === "go" ? LAUNCH_ACCEL : CRUISE_ACCEL, (aim - me.v) * 0.6)), me.v, me.grade ?? 0);
+  if (thumb && aim < 0.05 && me.v < 0.3) slider = HOLD;
   let stop = ahead.stop;
   if (phase === "go" && stop?.line && me.s <= path.stopAt) stop = null;
   if (stop) slider = Math.min(slider, stop.at);

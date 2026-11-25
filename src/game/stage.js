@@ -21,9 +21,10 @@
    resampled by distance with a time warp. No harsh-braking event comes of it,
    because the approach's events are not the player's (slice 2).
    ===================================================================== */
-import { atNode, conflictOf, blockedBy, CAR, carriedWorld, carriedPose, AT_REST } from "../sim/crossing.js";
+import { atNode, conflictOf, blockedBy, CAR, carriedWorld, carriedPose, poseOf, AT_REST } from "../sim/crossing.js";
 import { lenOf } from "../sim/traffic.js";
-import { driverPose } from "../sim/drive.js";
+import { driverPose, carriedPlayer } from "../sim/drive.js";
+import { limitAt } from "../sim/graph.js";
 import { fitK } from "../iso/freecam.js";
 import { UP_HEADING } from "../iso/chase.js";
 
@@ -39,14 +40,14 @@ export const INTRO_END = SCREECH + SETTLE;   // 1.05 s: the button is accepted f
 /* THE PLAYBACK AFTER GO (slice 5, section 3): the sim runs this many ticks per tick of real time from the moment the player lets go to the
    end of the round [invented]. Same ticks, so the same verdict; only the playback is quicker. Game.jsx reads it through `speedOf`. */
 export const FAST = 2;
-export const speedOf = (phase) => (phase === "gone" ? FAST : 1);
+/* Slice 7: FAST applies only once the car is CLEAR OF THE BOX (`clear`, round.js clearOfBox), since until then the player's thumb is driving it and a
+   thumb that is played back at twice the speed is not the thumb the player moved. `clear` defaults to true so the phase alone still reads as before. */
+export const speedOf = (phase, clear = true) => (phase === "gone" && clear ? FAST : 1);
 
 /* THE WORLD'S ARRIVAL (slice 6): seconds of sim ticks before the freeze that `decision.replay` holds [invented]. Played over the intro, so faster than
    real time by REPLAY_RATE [D: REPLAY / INTRO_END]: arcade, as the screech is. round.js reads REPLAY. */
 export const REPLAY = 2.0;
 export const REPLAY_RATE = REPLAY / INTRO_END;
-/* A MOTION STREAK is this many seconds of a car's travel long [invented]. */
-export const STREAK_S = 0.5;
 
 /* THE ARRIVAL RECORDED: seconds of sim ticks before the freeze that `trail` holds [invented]. (round.js reads it.) */
 export const TRAIL = 3.0;
@@ -176,7 +177,7 @@ export function decisionFrame(rs) {
   const wc = carriedWorld(world, 0);
   /* SLICE 6, Jay: "the wide view": ONLY a car at its line or in the box shapes the frame. An ARRIVING car (up to 4 s out, 55 m at 50 km/h) and a
      HOLDING car (the sound driver's conservative gap, 230 m out at worst [M, slice 5 review run]) would each widen it to 50-108 m and make the cars
-     that decide the decision small. They are shown by a ring and their seconds when on the screen, and by a badge pinned to its edge (edgePoint)
+     that decide the decision small. They are shown by a ring and their seconds when on the screen, and, off the screen, by a ghost at its edge (ghostOf, slice 7)
      pointing at them when not. */
   for (const id of relevantIds(world, me)) {
     const a = world.actors.find((c) => c.id === id), why = a && whyRelevant(world, me, a);
@@ -259,18 +260,6 @@ export function stopOrder(world, me) {
   return out;
 }
 
-/* A BADGE FOR A CAR OFF THE SCREEN (review, 25 November): the screen point (px, py) pulled in along the line from the screen's centre until
-   it lies INSET pixels inside every edge. A point already inside stays where it is. Returns { x, y, off, angle }, angle (radians, screen)
-   from the badge toward the car, for the pointer. */
-export const EDGE_INSET = 28;   // px [invented]: half a badge and a margin
-export function edgePoint(px, py, size, inset = EDGE_INSET) {
-  const cx = size.w / 2, cy = size.h / 2, dx = px - cx, dy = py - cy;
-  const hx = cx - inset, hy = cy - inset;
-  const f = Math.max(Math.abs(dx) / hx, Math.abs(dy) / hy);
-  if (!(f > 1)) return { x: px, y: py, off: false, angle: Math.atan2(dy, dx) };
-  return { x: cx + dx / f, y: cy + dy / f, off: true, angle: Math.atan2(dy, dx) };
-}
-
 /* THE SECONDS TO THE CONFLICT of a relevant car that is arriving and not in the order above: [{ id, secs }], whole seconds, from its
    distance to the conflict and its speed (the same quantity whyRelevant's time filter reads). */
 export function arrivalSeconds(world, me) {
@@ -300,30 +289,148 @@ export function replayAt(replay, t) {
   return { world: replay[i].world, carry: i === n - 1 ? 0 : Math.max(0, simT - replay[i].t), i };
 }
 
-/* THE MOTION STREAK of a drawn car: three lines behind it along its heading (heading in degrees, a direction of (cos, sin), as skidLines reads
-   it), each STREAK_S x v long, starting at the car's rear bumper and spread across its width, with alpha falling from the middle line outward
-   [invented]. Nothing for a car at rest (v under AT_REST). Returns [{ x0, y0, x1, y1, z, alpha }] in world coordinates. */
-export const STREAK_LANES = [0, -0.6, 0.6];   // m across the car [invented]
-export const STREAK_ALPHA = [0.55, 0.35, 0.35];
-export function streakOf(pose, v) {
-  if (!(v > AT_REST)) return [];
-  const h = pose.heading * DEG, dx = Math.cos(h), dy = Math.sin(h), nx = -dy, ny = dx, half = (pose.length ?? CAR.length) / 2, len = STREAK_S * v;
-  return STREAK_LANES.map((o, i) => {
-    const x0 = pose.x - dx * half + nx * o, y0 = pose.y - dy * half + ny * o;
-    return { x0, y0, x1: x0 - dx * len, y1: y0 - dy * len, z: pose.z ?? 0, alpha: STREAK_ALPHA[i] };
-  });
+/* ------------------------------------------------------ NO CLIPPING IN THE ARRIVAL (slice 7, section 1) */
+
+/* Jay, after slice 6: "I just saw the player car teleport through another car to the stop line, it's okay to be in a queue but clipping through
+   traffic is a no-go." The screech replays the player's recorded trail on a warped clock while the world replays on its own, so at some instants the
+   player's drawn car stands where another car is drawn. DRAWN FOOTPRINTS are tested as oriented rectangles (each vehicle's own length and width),
+   at CLIP_SAMPLES + 1 instants of the intro, and the decision picks the longest screech that clears every one (`chooseScreech`, called once by
+   round.js toDecisionFrom -- never per frame on the screen). */
+export const CLIP_SAMPLES = 60;      // the intro is tested at 1/60 steps [the spec's]
+export const SCREECH_MIN_M = 6;      // m: a screech shorter than this is not drawn, the player is drawn at its own pose in the replay [the spec's]
+export const CLIP_DEPTH = 0.01;      // m of penetration below which two footprints are not overlapping [instrument: float slack]
+const CLIP_STEP_M = 1;               // the trail is shortened by this much at a time while searching [instrument]
+
+/* The four corners of a drawn footprint { x, y, heading (degrees), length, width }, in world metres. */
+export function cornersOf(p) {
+  const h = p.heading * DEG, ux = Math.cos(h), uy = Math.sin(h), vx = -uy, vy = ux, l = p.length / 2, w = p.width / 2;
+  return [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => ({ x: p.x + ux * l * a + vx * w * b, y: p.y + uy * l * a + vy * w * b }));
 }
 
-/* THE STREAKS OF A DRAWN FRAME: every drawn car that is not the player's, a pedestrian's or a wreck's, with its speed from the world's own
-   actor of that id. `poses` is what `actorsOf` returned. Returns [{ id, lines }] for the cars that move. */
-export function streaksFor(poses, world) {
-  const byId = new Map(world.actors.map((a) => [a.id, a]));
-  const out = [];
-  for (const p of poses) {
-    const a = byId.get(p.id);
-    if (!a || p.player || p.ped || p.crashed || a.shadow) continue;
-    const lines = streakOf(p, a.v ?? 0);
-    if (lines.length) out.push({ id: p.id, lines });
+/* How far two oriented rectangles overlap, in metres: the smallest penetration over their four edge normals (the separating-axis test), or 0 when
+   some axis separates them. */
+export function overlapDepth(a, b) {
+  const ca = cornersOf(a), cb = cornersOf(b);
+  let least = Infinity;
+  for (const poly of [ca, cb]) {
+    for (let i = 0; i < 2; i++) {
+      const dx = poly[i + 1].x - poly[i].x, dy = poly[i + 1].y - poly[i].y, n = Math.hypot(dx, dy), ax = -dy / n, ay = dx / n;
+      const pa = ca.map((c) => c.x * ax + c.y * ay), pb = cb.map((c) => c.x * ax + c.y * ay);
+      const o = Math.min(Math.max(...pa), Math.max(...pb)) - Math.max(Math.min(...pa), Math.min(...pb));
+      if (!(o > 0)) return 0;
+      least = Math.min(least, o);
+    }
+  }
+  return least;
+}
+
+/* The distance between two footprints (0 when they overlap): the smallest corner-to-edge distance. Used to say how close a car came. */
+export function gapOf(a, b) {
+  if (overlapDepth(a, b) > 0) return 0;
+  const seg = (p, q, r) => { const dx = q.x - p.x, dy = q.y - p.y, f = Math.max(0, Math.min(1, ((r.x - p.x) * dx + (r.y - p.y) * dy) / (dx * dx + dy * dy))); return Math.hypot(r.x - p.x - f * dx, r.y - p.y - f * dy); };
+  const ca = cornersOf(a), cb = cornersOf(b);
+  let m = Infinity;
+  for (const [P, Q] of [[ca, cb], [cb, ca]]) for (const r of P) for (let i = 0; i < 4; i++) m = Math.min(m, seg(Q[i], Q[(i + 1) % 4], r));
+  return m;
+}
+
+/* EVERY OTHER ROAD USER AS DRAWN at `t` seconds into the intro: the replayed world at that time, each car carried forward by the replay's carry
+   -- the calls `actorsOf` (apps/MapRoad.jsx) makes for the traffic, which a Node check cannot import. */
+export function othersAt(replay, t) {
+  const r = replayAt(replay, t), w = r.world, wc = carriedWorld(w, r.carry), out = [];
+  for (const a of w.actors) {
+    if (a.shadow || a.player) continue;
+    const p = carriedPose(wc, a, r.carry);
+    out.push({ id: a.id, x: p.x, y: p.y, heading: p.rot, length: p.length, width: p.width });
   }
   return out;
+}
+
+/* THE PLAYER AS DRAWN at `t`: the screech's pose while it plays, otherwise the replayed world's own player (the frozen pose from INTRO_END, and for
+   the whole intro when there is no screech). */
+export function playerAt(trail, replay, t) {
+  const it = introAt(trail, t), r = replayAt(replay, t), me = r.world.actors.find((a) => a.player && !a.shadow);
+  const p = it.pose ?? driverPose(carriedPlayer(me, r.carry), r.world.course);
+  return { x: p.x, y: p.y, heading: p.heading, length: lenOf(me), width: CAR.width };
+}
+
+/* The others at every sample of the intro, worked out once. */
+export const othersTrack = (replay) => Array.from({ length: CLIP_SAMPLES + 1 }, (_, i) => othersAt(replay, (INTRO_END * i) / CLIP_SAMPLES));
+
+/* THE WORST OVERLAP of the player (with this trail, or none) over the intro: { worst, t, id, along, across, nearest } -- `along` and `across` are the
+   other car's place in the player's frame at that instant (metres along the player's heading, and to its left), so a check can say which
+   configuration it was; `nearest` is the closest any other footprint came, overlapping or not. */
+export function clipOf(trail, replay, track = othersTrack(replay)) {
+  let out = { worst: 0, t: null, id: null, along: null, across: null, nearest: Infinity };
+  for (let i = 0; i <= CLIP_SAMPLES; i++) {
+    const t = (INTRO_END * i) / CLIP_SAMPLES, me = playerAt(trail, replay, t);
+    for (const o of track[i]) {
+      const d = overlapDepth(me, o);
+      if (d > out.worst) {
+        const h = me.heading * DEG, dx = o.x - me.x, dy = o.y - me.y;
+        out = { ...out, worst: d, t, id: o.id, along: dx * Math.cos(h) + dy * Math.sin(h), across: -dx * Math.sin(h) + dy * Math.cos(h) };
+      }
+      out.nearest = Math.min(out.nearest, gapOf(me, o));
+    }
+  }
+  return out;
+}
+
+/* THE SCREECH THIS DECISION USES, decided once at the freeze. In order of preference (the spec's):
+   (a) the whole recorded trail, if no instant of the intro overlaps another road user ("full"), or its longest SUFFIX, shortened by CLIP_STEP_M at a
+       time and never under SCREECH_MIN_M, that clears every instant: the screech starts later on the trail ("shortened");
+   (b) none -- an empty trail, which `introAt` reads as no screech -- and the player is drawn at its own pose in the replayed world, the sim's own
+       motion, where the sim never overlaps two cars ("own").
+   Returns { kind, trail, meters, clip } with `clip` the worst overlap of the FULL trail (what the screech would have done). */
+export function chooseScreech(trail, replay) {
+  const track = othersTrack(replay), full = clipOf(trail, replay, track), along = alongOf(trail);
+  if (!(full.worst > CLIP_DEPTH)) return { kind: "full", trail, meters: along.total, clip: full };
+  for (let L = Math.floor(along.total / CLIP_STEP_M) * CLIP_STEP_M; L >= SCREECH_MIN_M - 1e-9; L -= CLIP_STEP_M) {
+    let i = trail.length - 1;
+    while (i > 0 && along.total - along.d[i] < L - 1e-9) i--;
+    const sub = trail.slice(i);
+    if (!(clipOf(sub, replay, track).worst > CLIP_DEPTH)) return { kind: "shortened", trail: sub, meters: along.total - along.d[i], clip: full };
+  }
+  return { kind: "own", trail: [], meters: 0, clip: full };
+}
+
+/* ------------------------------------------------------ GHOSTS AT THE EDGE (slice 7, section 3) */
+
+/* Jay: "a ghost car at the edge of the screen that becomes real once the car enters the players actual view... simulate the driver simply looking
+   left or right." An ARRIVING or HOLDING car (whyRelevant) whose drawn pose is off the screen is drawn as a translucent silhouette, standing on ITS
+   OWN PATH, ahead of it toward the conflict, at the first point that is GHOST_INSET px inside the screen. No number. The moment the car's own pose is
+   on the screen the ghost is gone and the car is drawn as itself. */
+export const GHOST_INSET = 24;            // px [invented]
+export const GHOST_ALPHA = [0.25, 0.6];   // far .. at the edge [invented]
+const GHOST_STEP_M = 0.25;                // m, the walk along the path [instrument]
+
+/* `view` is iso/project.js viewOf (its `P`), `size` { w, h }, `carry` the seconds the drawn car is carried past its tick. Returns
+   { id, x, y, z, heading, alpha, length, width, height } or null. THE OPACITY is from the DISTANCE along the car's path to the ghost's point: 0.25
+   at ARRIVE_WITHIN seconds of the road's posted speed away or further, 0.6 on the point -- a distance, so it rises with every metre the car closes
+   (a time would fall again as a car braked) [D: ARRIVE_WITHIN x the posted limit, assuming a car at it]. */
+export function ghostOf(world, me, a, view, size, carry = 0) {
+  const why = whyRelevant(world, me, a);
+  if (why !== "arriving" && why !== "holds") return null;
+  const L = world.course.at[me.k ?? 0].layout, path = L.paths[a.route];
+  const at = (s) => poseOf(world, { ...a, s });
+  const inside = (p, m) => { const [x, y] = view.P(p.x, p.y, p.z ?? 0); return x >= m && x <= size.w - m && y >= m && y <= size.h - m; };
+  const s0 = Math.min(a.s + (a.v ?? 0) * carry, path.length);
+  if (inside(at(s0), 0)) return null;
+  let lo = s0, hi = null;
+  for (let s = s0 + GHOST_STEP_M; s < path.length + GHOST_STEP_M; s += GHOST_STEP_M) {
+    const q = Math.min(s, path.length);
+    if (inside(at(q), GHOST_INSET)) { hi = q; break; }
+    lo = q;
+  }
+  if (hi == null) return null;
+  for (let i = 0; i < 16; i++) { const mid = (lo + hi) / 2; if (inside(at(mid), GHOST_INSET)) hi = mid; else lo = mid; }
+  const p = at(hi), far = ARRIVE_WITHIN * (limitAt(world.course, a) ?? 13.9);
+  const near = 1 - clamp01((hi - s0) / far);
+  return { id: a.id, x: p.x, y: p.y, z: p.z ?? 0, heading: p.rot, alpha: GHOST_ALPHA[0] + (GHOST_ALPHA[1] - GHOST_ALPHA[0]) * near, length: p.length, width: p.width, height: p.height };
+}
+
+/* The eight corners of a ghost's box, world points { x, y, z }, for the screen to project. */
+export function ghostBox(g) {
+  const c = cornersOf(g);
+  return [...c.map((q) => ({ ...q, z: g.z })), ...c.map((q) => ({ ...q, z: g.z + (g.height ?? 1.5) }))];
 }

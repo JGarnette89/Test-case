@@ -30,13 +30,15 @@ import { DEFAULT_MERGE_TOLERANCE } from "../sim/lanechange.js";
 import { lenOf, HARSH_AT } from "../sim/traffic.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { autoInput } from "./autopilot.js";
-import { TRAIL, TRAIL_MIN_M, REPLAY } from "./stage.js";
+import { TRAIL, TRAIL_MIN_M, REPLAY, chooseScreech } from "./stage.js";
 import { faultWords, praiseWords } from "./words.js";
 
 /* What `sceneFor` is called with by its other callers (ExamRide: 50 and 2.0; MapRoad: 50 and 2.0). `kmh` only sizes
    the geometry of a map whose roads post their own speeds; `every` is the spawn spacing the screens pass. [instrument] */
 export const KMH = 50;
 export const EVERY = 2.0;
+/* THE TOP OF THE THUMB'S SPEED, m/s (slice 7; control.js): the limit the round is built at. [D: KMH / 3.6] */
+export const LIMIT = KMH / 3.6;
 
 export const CLEAR_BY = 10;       // m past the far edge of the box, in the lane out, and the round is through [invented; slice 4: from 25, the tail after the box is shorter]
 export const TIME_CAP = 60;       // s of a round, counted from the freeze, before it is called out of time [invented]
@@ -78,10 +80,10 @@ export const roundWorld = (def) => worldFor(...sceneArgs(def), false, false, { c
 /* THE PER-DECISION STATE, in ONE object (slice 4, section 1): the openings, when the car froze and when it went, the arrival's trail, the
    pull-away, the turn made, the crossing and the timing verdict. A later slice with several decision points keeps a list of these; `rs`
    carries the world, the car, the events and the end, which are the round's. */
-export const newDecision = () => ({ decideAt: null, goAt: null, openings: [], timing: null, trail: null, replay: null, launch: null, made: null, crossedAt: null });
+export const newDecision = () => ({ decideAt: null, goAt: null, openings: [], timing: null, trail: null, replay: null, screech: null, launch: null, made: null, crossedAt: null });
 
 export function startRound(def, { world, me }) {
-  return { def, world, me, ev: newEventState(), events: [], t0: world.t, targetK: me.k, end: null, phase: "approach", decision: newDecision() };
+  return { def, world, me, ev: newEventState(), events: [], t0: world.t, targetK: me.k, end: null, phase: "approach", target: 0, decision: newDecision() };
 }
 
 /* WHO HOLDS THE WAY, BY THE STOP RULE: a driver the sim says this one must yield to (crossing.js blockedBy, the same call openTo
@@ -142,7 +144,7 @@ export function toDecisionFrom(rs0, k) {
   if (!at) return null;
   if ((rs0.me.k ?? 0) > k) return null;
   if ((rs0.me.k ?? 0) === k) { const p = at.layout.paths[rs0.me.route]; if (p && rs0.me.s > p.stopAt) return null; }
-  let rs = { ...rs0, targetK: k, phase: "approach", decision: newDecision(), events: [] };
+  let rs = { ...rs0, targetK: k, phase: "approach", target: 0, decision: newDecision(), events: [] };
   const t0 = rs.world.t;
   /* THE ARRIVAL, RECORDED (slice 3): the car as it stood on each of the last TRAIL seconds of ticks (the car objects themselves; their
      poses are worked out once, at the freeze). Nothing here is read by the sim. */
@@ -172,7 +174,7 @@ export function toDecisionFrom(rs0, k) {
         const p = driverPose(h.me, rs.world.course);
         return { x: p.x, y: p.y, z: p.z ?? 0, heading: p.heading, v: h.me.v, s: h.me.s, t: h.t };
       });
-      rs = { ...rs, events: [], phase: "frozen", t0: rs.world.t, decision: { ...rs.decision, decideAt: rs.world.t, trail, replay: wh } };
+      rs = { ...rs, events: [], phase: "frozen", t0: rs.world.t, decision: { ...rs.decision, decideAt: rs.world.t, trail, replay: wh, screech: chooseScreech(trail, wh) } };
       return trackOpenings(rs);
     }
     rs = roundTick(rs);
@@ -203,11 +205,26 @@ export function timingOf(openings, decideAt, now) {
   return { kind: "early", delay: null, from: null, missedGap: false, atFreeze: false };
 }
 
-/* The player lets go: the decision. */
-export function release(rs) {
+/* GO (slice 7): the first tick at which the thumb's target speed is above 0. `release` is the GO itself, with the speed the car is aimed at (the
+   limit by default, so a caller with no thumb still goes at full pace); `setTarget` is what the control calls, every time the target changes: it
+   sets the speed, and the first time it is above 0 it is GO. Everything that reads GO (timing, launch, failedToYield, forcedBrake, threading) reads
+   it at that tick, unchanged. After GO the target is the thumb's to move: down to brake, up to hurry, 0 to stop wherever the car is. */
+export function release(rs, target = LIMIT) {
   if (rs.phase !== "frozen" && rs.phase !== "waiting") return rs;
   const d = rs.decision;
-  return { ...rs, phase: "gone", decision: { ...d, goAt: rs.world.t, timing: timingOf(d.openings, d.decideAt, rs.world.t) } };
+  return { ...rs, target, phase: "gone", decision: { ...d, goAt: rs.world.t, timing: timingOf(d.openings, d.decideAt, rs.world.t) } };
+}
+
+export function setTarget(rs, target) {
+  const v = Math.max(0, Math.min(LIMIT, target));
+  if (rs.phase === "frozen" || rs.phase === "waiting") return v > 0 ? release(rs, v) : { ...rs, target: 0 };
+  return { ...rs, target: v };
+}
+
+/* CLEAR OF THE BOX: the car has left the round's own intersection, past its clear line or on to another node (what FAST waits for, stage.js speedOf). */
+export function clearOfBox(rs) {
+  const p = pathOf(rs.world, rs.me);
+  return rs.me.k !== rs.targetK || !p || rs.me.s >= p.clearAt;
 }
 
 /* THE ENTITLED CARS, by the round's own statement: another road user at the player's node whose path CONFLICTS with the player's route, that
@@ -239,7 +256,7 @@ export function roundTick(rs, { held } = {}) {
   const prev = { me: rs.me, world: rs.world };
   let me = rs.me, world = rs.world;
   const phase = rs.phase === "waiting" ? "hold" : rs.phase === "gone" ? "go" : "approach";
-  const inp = autoInput(me, world, { task: def.task, phase });
+  const inp = autoInput(me, world, { task: def.task, phase, target: rs.target });
   me = stepDriver({ ...me, signal: inp.signal }, { steer: inp.steer, slider: inp.slider, assist: 0 }, world, DT);
   let w = step(withDriver(world, me));
   const c = playerContact(w, me);

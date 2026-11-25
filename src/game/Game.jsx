@@ -2,8 +2,9 @@
    YOUR TURN (working title): the short game's screen (GAME.md;
    WORK-game-slice2 section 7). Five rounds, each ONE FROZEN DECISION: the
    car is already at its stop line, the scene is frozen, and the player
-   goes at once or holds the button while the sim runs and lets go when it
-   is their turn. The car then drives itself (autopilot.js) and the
+   holds the button while the sim runs and DRAGS UP when it is their turn:
+   how far up is how fast (control.js; slice 7), letting go keeps the speed,
+   dragging back down brakes. The car steers itself (autopilot.js) and the
    traffic answers.
 
    REACT STATE CHANGES ONLY BETWEEN ROUNDS (GAME.md rule 3): the world, the
@@ -22,7 +23,8 @@ import { Play, RotateCcw, ChevronRight } from "lucide-react";
 import { sceneFor, actorsOf } from "../apps/MapRoad.jsx";
 import { withGameBody } from "./look.js";
 import { drawSet, SET_SIZE } from "./rounds.js";
-import { sceneArgs, toDecision, press, release, roundTick, verdictOf } from "./round.js";
+import { sceneArgs, toDecision, press, setTarget, roundTick, verdictOf, clearOfBox } from "./round.js";
+import { offsetOf, thumbTarget, zoneRect, rangeOf, DEAD } from "./control.js";
 import { END_WORDS, TASK_WORDS, delayWords } from "./words.js";
 import { DT } from "../sim/crossing.js";
 import { pageMore, pageLeft } from "../sim/pace.js";
@@ -30,7 +32,7 @@ import { driverPose, carriedPlayer } from "../sim/drive.js";
 import { drawFrame } from "../iso/draw.js";
 import { viewOf } from "../iso/project.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
-import { INTRO_END, RING_MIN_PX, REPLAY_RATE, introAt, frameCamera, decisionFrame, skidLines, relevantIds, stopOrder, arrivalSeconds, speedOf, edgePoint, replayAt, streaksFor } from "./stage.js";
+import { INTRO_END, RING_MIN_PX, REPLAY_RATE, introAt, frameCamera, decisionFrame, skidLines, relevantIds, stopOrder, arrivalSeconds, speedOf, replayAt, ghostOf, ghostBox } from "./stage.js";
 import { panFree, pinchFree } from "../iso/freecam.js";
 import { newBody } from "../iso/body.js";
 import { BUILD } from "../iso/perf.js";
@@ -52,17 +54,10 @@ export const BUTTON_H = 96, BUTTON_MARGIN = 16, BUTTON_FROM_BOTTOM = 24;
 export const buttonRect = (box) => ({ x: BUTTON_MARGIN, y: box.h - BUTTON_H - BUTTON_FROM_BOTTOM, w: box.w - 2 * BUTTON_MARGIN, h: BUTTON_H });
 const inRect = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
-/* THE POINTER'S READING OF THE DECISION, in one small pure function so that "hold to wait, let go to go" can change in one place (a
-   separate GO button with a WAIT that re-freezes on release is a change here). `by` is who holds the button: a pointer id, "key", or null.
-   ev is { type: "down" | "up", id, x, y } or { type: "key-down" | "key-up" }; box is { w, h } of the canvas.
-   Returns { by, act }: act is "press" (the sim starts to run), "release" (GO) or null. [invented, the planner's reading of Jay's words] */
-export function decisionInput(by, ev, box) {
-  if (ev.type === "down") return by == null && inRect(buttonRect(box), ev.x, ev.y) ? { by: ev.id, act: "press" } : { by, act: null };
-  if (ev.type === "key-down") return by == null ? { by: "key", act: "press" } : { by, act: null };
-  if (ev.type === "up") return by === ev.id ? { by: null, act: "release" } : { by, act: null };
-  if (ev.type === "key-up") return by === "key" ? { by: null, act: "release" } : { by, act: null };
-  return { by, act: null };
-}
+/* THE CONTROL (slice 7; control.js): the player's thumb sets the speed. A touch that lands in the control's ZONE (the button's rectangle, and the
+   range above it) holds the button -- the sim runs, the car waits -- and a drag UP from where it landed sets the speed the car aims for, 0 under a
+   small dead zone, the limit at the top of the range. Letting go KEEPS the speed; a later touch takes over from it; a drag back down brakes. GO is the
+   first tick at which the speed is above 0 (round.js setTarget). Steering is the autopilot's. */
 
 const norm = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
 const ease = (b) => b * b * (3 - 2 * b);
@@ -77,7 +72,10 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
   sc.world = rs.world; sc.me = rs.me;
   /* BODY MOTION: on, as MapRoad's default (settings.js bodyMotion: true). Its saved setting is async to load and is not read here. */
   const body = newBody();
-  let by = null, owed = 0, lastAt = 0, handle = 0, endAt = null, goneAt = null, stopped = false;
+  let owed = 0, lastAt = 0, handle = 0, endAt = null, goneAt = null, stopped = false;
+  /* THE THUMB: the touch holding the control ({ id, y, base }, base the drag its target was at when it landed), and where the bar is drawn from
+     (the last press point, kept after the finger lifts so the kept speed stays on the screen). Closure variables, never React state. */
+  let grab = null, bar = null;
   let chase = null;   // the chase camera, started at GO
   /* THE CAMERA SHOWN: { x, y, z, k, rot }, eased toward the decision frame; `userCam` is the player's own (pan and pinch) and wins while set. */
   let shown = null, userCam = null, goCam = null, pinch = null;
@@ -85,7 +83,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
   /* THE INTRO CLOCK (stage.js): seconds since the round was shown. A closure variable, never React state. The decision is not
      accepted before INTRO_END; a tap during it skips to its end and counts as nothing. */
   let intro = 0;
-  const trail = rs0.decision.trail ?? [];
+  const trail = rs0.decision.screech?.trail ?? rs0.decision.trail ?? [];
 
   const fit = () => {
     const dpr = Math.min(DPR_CAP, (win && win.devicePixelRatio) || 1);
@@ -94,55 +92,67 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     return { w, h };
   };
-  /* The decision, from any input: press runs the sim, release is GO. */
+  /* GO, the camera's side: the decision camera hands over to the chase, from where it was. */
+  const go = () => { goneAt = performance.now(); goCam = shown; userCam = null; ptrs.clear(); pinch = null; };
+  const aim = (v) => { const was = rs.phase; rs = setTarget(rs, v); if (was !== "gone" && rs.phase === "gone") go(); };
+  /* The keys and the intro's skip: a tap during the intro skips to its end and is not a decision; Space waits, the arrows set the speed (the limit, or 0). */
   const decide = (ev) => {
     if (stopped || rs.end) return;
-    if (intro < INTRO_END) { if (ev.type === "down" || ev.type === "key-down") intro = INTRO_END; return; }   // a tap skips the intro; it is not a decision
-    const box ={ w: canvas.clientWidth, h: canvas.clientHeight };
-    const r = decisionInput(by, ev, box);
-    by = r.by;
-    if (r.act === "press") rs = press(rs);
-    else if (r.act === "release") { rs = release(rs); goneAt = performance.now(); goCam = shown; userCam = null; ptrs.clear(); pinch = null; }
+    if (intro < INTRO_END) { if (ev.type === "down" || ev.type === "key-down") intro = INTRO_END; return; }
+    if (ev.type === "key-down" && rs.phase === "frozen") rs = press(rs);
+    else if (ev.type === "key-fast") aim(Infinity);
+    else if (ev.type === "key-stop") aim(0);
   };
   const canPan = () => (rs.phase === "frozen" || rs.phase === "waiting") && intro >= INTRO_END && !rs.end && !stopped;
   const local = (e) => { const b = canvas.getBoundingClientRect(); return { id: e.pointerId, x: e.clientX - b.left, y: e.clientY - b.top }; };
-  /* A DRAG IS NEVER THE BUTTON: a finger that lands outside the button's rectangle while the decision is open pans (one) or pinch-zooms (two) and
-     takes no part in the decision; the button is its own rectangle and its own pointer. */
+  /* A DRAG OUTSIDE THE CONTROL'S ZONE IS NEVER THE CONTROL: a finger that lands outside the zone while the decision is open pans (one) or pinch-zooms
+     (two) and takes no part in the decision; one that lands INSIDE it is the thumb and never pans. */
   const onDown = (e) => {
     canvas.setPointerCapture?.(e.pointerId);
-    const q = local(e);
-    if (canPan() && !inRect(buttonRect({ w: canvas.clientWidth, h: canvas.clientHeight }), q.x, q.y) && shown) {
+    const q = local(e), size = { w: canvas.clientWidth, h: canvas.clientHeight };
+    if (intro < INTRO_END) { decide({ type: "down" }); return; }
+    if (stopped || rs.end) return;
+    const zone = zoneRect(size, buttonRect(size));
+    if (!grab && inRect(zone, q.x, q.y)) {
+      grab = { id: q.id, y: q.y, base: offsetOf(rs.target, size) };
+      bar = { x: q.x, y: q.y };
+      if (rs.phase === "frozen") rs = press(rs);
+      return;
+    }
+    if (canPan() && !inRect(zone, q.x, q.y) && shown) {
       userCam = userCam ?? { ...shown };
       ptrs.set(q.id, { x: q.x, y: q.y });
       if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { cam: userCam, a: { ...a }, b: { ...b } }; }
       return;
     }
-    decide({ type: "down", ...q });
   };
   const onMove = (e) => {
+    const q = local(e), size = { w: canvas.clientWidth, h: canvas.clientHeight };
+    if (grab && e.pointerId === grab.id) { if (!stopped && !rs.end) aim(thumbTarget(grab, q.y, size)); return; }
     const was = ptrs.get(e.pointerId);
     if (!was || !userCam) return;
-    const q = local(e), size = { w: canvas.clientWidth, h: canvas.clientHeight };
     ptrs.set(q.id, { x: q.x, y: q.y });
     if (ptrs.size === 1) userCam = panFree(userCam, size, was, q);
     else if (ptrs.size === 2 && pinch) { const [a, b] = [...ptrs.values()]; userCam = pinchFree(pinch, size, a, b); }
   };
   const onUp = (e) => {
     if (ptrs.delete(e.pointerId)) { pinch = null; return; }
-    decide({ type: "up", ...local(e) });
+    /* LETTING GO KEEPS THE SPEED (Jay): the target stays where the thumb left it; only the grab ends. */
+    if (grab && e.pointerId === grab.id) grab = null;
   };
   const onKey = (e) => {
-    if (e.key !== " ") return;
+    if (e.type !== "keydown" || e.repeat) return;
+    if (e.key === " ") decide({ type: "key-down" });
+    else if (e.key === "ArrowUp") decide({ type: "key-fast" });
+    else if (e.key === "ArrowDown") decide({ type: "key-stop" });
+    else return;
     e.preventDefault();
-    if (e.type === "keydown" && !e.repeat) decide({ type: "key-down" });
-    else if (e.type === "keyup") decide({ type: "key-up" });
   };
   canvas.addEventListener("pointerdown", onDown);
   canvas.addEventListener("pointermove", onMove);
   canvas.addEventListener("pointerup", onUp);
   canvas.addEventListener("pointercancel", onUp);
   win?.addEventListener("keydown", onKey);
-  win?.addEventListener("keyup", onKey);
   const stop = () => {
     stopped = true;
     cancel(handle);
@@ -151,7 +161,6 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     canvas.removeEventListener("pointerup", onUp);
     canvas.removeEventListener("pointercancel", onUp);
     win?.removeEventListener("keydown", onKey);
-    win?.removeEventListener("keyup", onKey);
   };
 
   const tick = (now) => {
@@ -163,7 +172,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     /* THE SIM STEPS AT 20 Hz FROM AN ACCUMULATOR, as #/map does (sim/pace.js) -- and not at all while frozen. */
     if (rs.phase === "frozen") { owed = 0; if (intro < INTRO_END) intro = Math.min(INTRO_END, intro + dt); }
     else {
-      owed += dt * speedOf(rs.phase);   // FAST sim ticks per tick of real time once the player has let go (stage.js)
+      owed += dt * speedOf(rs.phase, clearOfBox(rs));   // FAST sim ticks per tick of real time once the car is GONE and clear of the box (stage.js; slice 7)
       const sp0 = performance.now();
       for (let steps = 0; pageMore(owed, steps, performance.now() - sp0); steps++) {
         owed -= DT;
@@ -186,7 +195,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     const world = rp ? rp.world : rs.world, carry = rp ? rp.carry : owed;
     /* The player as THAT world has them (the rings and the order are read for the moment drawn); the frozen car once the intro is over. */
     const drawMe = rp ? (world.actors.find((a) => a.player && !a.shadow) ?? me) : me;
-    body.dt = dt * (rp ? REPLAY_RATE : speedOf(rs.phase));
+    body.dt = dt * (rp ? REPLAY_RATE : speedOf(rs.phase, clearOfBox(rs)));
     const actors = actorsOf(withGameBody(rp ? { ...sc, world } : sc), carry, body);   // the game's exaggerated body motion (look.js)
     const p = driverPose(carriedPlayer(me, owed), world.course);
     /* THE INTRO (stage.js): the player's drawn pose and body are the screech's, for as long as it plays; every other car keeps its own. */
@@ -227,41 +236,43 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     /* THE RELEVANT TRAFFIC, ringed (stage.js relevantIds: conflicts with the player's route, not past it, and at its line, in the box or
        arriving within a few seconds), recomputed from the drawn world every frame, as MapRoad rings a picked driver. */
     if (rs.phase !== "gone") {
-      /* THE MOTION STREAKS (stage.js streaksFor, slice 6): three fading lines behind every other car that is moving, STREAK_S of its travel
-         long, drawn from the drawn world every frame, so a car that has been seen arriving still reads as moving once frozen and the
-         streak shortens away as it slows while the player waits. Under the rings and badges. */
-      ctx.lineCap = "round";
-      for (const { lines } of streaksFor(actors, world)) {
-        for (const l of lines) {
-          const [ax, ay] = view.P(l.x0, l.y0, l.z), [bx, by2] = view.P(l.x1, l.y1, l.z);
-          const g = ctx.createLinearGradient(ax, ay, bx, by2);
-          g.addColorStop(0, `rgba(255,255,255,${l.alpha})`); g.addColorStop(1, "rgba(255,255,255,0)");
-          ctx.strokeStyle = g; ctx.lineWidth = Math.max(1.5, 0.3 * k);
-          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by2); ctx.stroke();
-        }
-      }
       ctx.strokeStyle = AMBER; ctx.lineWidth = 2;
       for (const id of relevantIds(world, drawMe)) {
         const pose = actors.find((a) => a.id === id);
         if (!pose) continue;
         const [px, py] = view.P(pose.x, pose.y, pose.z ?? 0);
-        /* A car off the screen has no ring: it has its edge badge (below). */
+        /* A car off the screen has no ring: it has its ghost (below). */
         if (px < 0 || px > size.w || py < 0 || py > size.h) continue;
         ctx.beginPath(); ctx.arc(px, py, Math.max(RING_MIN_PX, 3.2 * k), 0, Math.PI * 2); ctx.stroke();
+      }
+      /* THE GHOSTS (slice 7, Jay: "a ghost car at the edge of the screen that becomes real once the car enters the players actual view"): an
+         arriving or holding car whose own pose is off the screen is a translucent silhouette on ITS OWN PATH, at the first point 24 px inside the
+         screen, more opaque as it closes, no number. Drawn as one filled silhouette of the car's box projected by the view (drawFrame is one pass
+         over the whole scene and cannot be run again for a few cars). The moment the car's own pose is on the screen the ghost is gone. */
+      for (const a of world.actors) {
+        if (a.player || a.shadow) continue;
+        const g = ghostOf(world, drawMe, a, view, size, carry);
+        if (!g) continue;
+        const pts = ghostBox(g).map((q) => view.P(q.x, q.y, q.z)).sort((m, n) => m[0] - n[0] || m[1] - n[1]);
+        const cross = (o, a1, b1) => (a1[0] - o[0]) * (b1[1] - o[1]) - (a1[1] - o[1]) * (b1[0] - o[0]);
+        const hull = [];
+        for (const pass of [pts, pts.slice().reverse()]) {
+          const start = hull.length;
+          for (const q of pass) { while (hull.length >= start + 2 && cross(hull[hull.length - 2], hull[hull.length - 1], q) <= 0) hull.pop(); hull.push(q); }
+          hull.pop();
+        }
+        ctx.save();
+        ctx.globalAlpha = g.alpha; ctx.fillStyle = "#dfe9ff"; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.lineJoin = "round";
+        ctx.beginPath(); hull.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
       }
       /* THE STOPPING ORDER (stage.js stopOrder, from each car's own stoppedAt) in a disc above each car at its line, the player's reading YOU;
          an arriving car on a road with no stop shows its seconds to the conflict. Recomputed every frame, so it updates while the player waits. */
       const badge = (id, text, you) => {
         const pose = actors.find((a) => a.id === id);
         if (!pose) return;
-        const [qx, qy] = view.P(pose.x, pose.y, pose.z ?? 0), e = edgePoint(qx, qy - Math.max(22, 4.5 * k), size);
-        const px = e.x, py = e.y;
-        /* OFF THE SCREEN (a car the careful driver waits for, further out than the frame): the badge sits at the edge with a pointer to it. */
-        if (e.off) {
-          ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#14161a"; ctx.lineWidth = 2;
-          const a = e.angle, tx = px + Math.cos(a) * 20, ty = py + Math.sin(a) * 20;
-          ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(px + Math.cos(a + 0.5) * 11, py + Math.sin(a + 0.5) * 11); ctx.lineTo(px + Math.cos(a - 0.5) * 11, py + Math.sin(a - 0.5) * 11); ctx.closePath(); ctx.fill(); ctx.stroke();
-        }
+        const [qx, qy] = view.P(pose.x, pose.y, pose.z ?? 0), px = qx, py = qy - Math.max(22, 4.5 * k);
+        if (qx < 0 || qx > size.w || qy < 0 || qy > size.h) return;   // a car off the screen has its ghost, and no number
         ctx.font = `700 ${you ? 14 : 15}px ${FONT}`;
         const w = Math.max(20, ctx.measureText(text).width + 12), h = 20;
         ctx.fillStyle = you ? AMBER : "#ffffff"; ctx.strokeStyle = "#14161a"; ctx.lineWidth = 2;
@@ -290,8 +301,20 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       const r = buttonRect(size), held = rs.phase === "waiting";
       ctx.fillStyle = held ? "#8fd694" : AMBER;
       ctx.fillRect(r.x, r.y, r.w, r.h);
-      ctx.fillStyle = "#1a1c20"; ctx.textBaseline = "middle"; ctx.font = `700 ${size.w < 360 ? 16 : 19}px ${FONT}`;
-      ctx.fillText(held ? "WAITING · LET GO TO GO" : "HOLD TO WAIT · LET GO TO GO", size.w / 2, r.y + r.h / 2);
+      ctx.fillStyle = "#1a1c20"; ctx.textBaseline = "middle"; ctx.font = `700 ${size.w < 360 ? 15 : 18}px ${FONT}`;
+      ctx.fillText(held ? "WAITING · DRAG UP TO GO" : "HOLD TO WAIT · DRAG UP TO GO", size.w / 2, r.y + r.h / 2);
+    }
+    /* THE SPEED BAR (slice 7): from the press point, a vertical bar showing the target (0 to the limit, the dead zone marked), and beside it the
+       car's own speed on the same scale. Drawn from the last press point after the finger lifts, so the kept speed stays on the screen. */
+    if (bar && intro >= INTRO_END && !rs.end) {
+      const R = rangeOf(size), top = DEAD + R, x = Math.min(bar.x, size.w - 44), kmh = (v) => Math.round(v * 3.6);
+      ctx.fillStyle = "rgba(20,22,26,0.55)"; ctx.fillRect(x - 6, bar.y - top, 12, top);
+      ctx.fillStyle = "rgba(255,255,255,0.35)"; ctx.fillRect(x - 6, bar.y - DEAD - 1, 12, 2);
+      ctx.fillStyle = grab ? AMBER : "rgba(242,184,75,0.7)"; ctx.fillRect(x - 6, bar.y - offsetOf(rs.target, size), 12, offsetOf(rs.target, size));
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(x + 8, bar.y - offsetOf(me.v, size), 4, offsetOf(me.v, size));
+      ctx.fillStyle = "#ffffff"; ctx.font = `700 13px ${FONT}`; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+      ctx.fillText(`${kmh(rs.target)} km/h`, x + 16, bar.y - offsetOf(rs.target, size) + 6);
+      ctx.textAlign = "center";
     }
     /* The round is over: say so on the canvas for the second it is still drawn. */
     if (endAt != null) {
@@ -370,7 +393,7 @@ export default function Game() {
           <div style={S.dim}>Round {ix + 1} of {plan.length}</div>
           <div style={S.big}>{TASK_WORDS[def.task]}</div>
           <div style={S.sub}>{def.brief}</div>
-          {ix === 0 && attempt === 1 && <div style={S.hint}>Hold the big button to let the traffic move while you wait. Let go to go.</div>}
+          {ix === 0 && attempt === 1 && <div style={S.hint}>Hold the big button to let the traffic move while you wait. Drag up to go: the further up, the faster. Let go and the car keeps its speed.</div>}
         </div>
       )}
 
