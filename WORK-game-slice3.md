@@ -127,3 +127,39 @@ Report back briefly:
 - the sabotage results;
 - where the skid marks are drawn;
 - **anything that did not work or that this spec got wrong, said plainly.**
+
+---
+
+## REVIEW OUTCOME (25 November 2026, the planner)
+
+**Built by the executor in `5474033`, reviewed and adjusted in the commit after it.** The derived set passed: `3 of 3 passed` (verify-core, verify-screens, verify-rounds) `[M, node tools/check.mjs --base 1da44c5]`.
+
+### Changed in review
+
+**The screech is a constant deceleration over 1.0 s,** not the spec's cubic over 0.8 s.
+- The executor's measurement showed the spec's 3.0 s trail covers only 5.4-5.5 m of road `[M]`: the sim's stop is gentle. So the trail is the last 3.0 s or 15 m, whichever is longer.
+- With the cubic over 0.8 s, the car entered at about 56 m/s, roughly 200 km/h `[D: 3 x 15 m / 0.8 s]`. That reads as a jump, not a stop.
+- Quadratic over 1.0 s enters at about 30 m/s (108 km/h) and stops at about 30 m/s^2 `[D: assuming the 15 m trail]`. The intro is now 1.9 s.
+- The check's "fast start, abrupt stop" lines hold. The executor's linear sabotage fired both.
+
+### Accepted deviations (the executor's, all stated in the code)
+
+- **The trail is at least 15 m.**
+- **The far view's zoom is capped at 0.43 of the screen height.** `fitK` centres the map, but the camera anchor sits at 55% of the height, so the map's lower corners would run off screen.
+- **The skid marks are drawn over the road after the cars, at alpha 0.5, ending 2.4 m behind the player's centre.** The painter is one pass, and `src/iso` was off limits. Another car passing over them is drawn under the lines.
+- **The rings stop once the car has gone.**
+
+### Measured `[M, verify-rounds]`
+
+- The trail is 15.15-15.24 m over all 228 pooled seeds.
+- Every wait seed has at least one ringed car at the freeze (108 of 108). The 80% bar has no headroom with 4 cars.
+- 4231 observations of a car already past its conflict, so the "past" test can fail (sabotage (a) fired it).
+- The player's car stays at least 157.8 px from a screen edge through the intro.
+
+### Not verified
+
+How any of it looks: the far shot, the screech, the skid marks, the rings. The first look is Jay's.
+
+### For audio later
+
+The intro phase edges (far to screech, the stop at `u = 1`, the end of the settle, the tap-skip) are values of `introAt`'s `phase`. A hook on them is the place for a screech sound.
