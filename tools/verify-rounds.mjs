@@ -35,7 +35,7 @@ import { openTo, AT_REST, atNode, blockedBy, conflictOf, CAR, poseOf } from "../
 import { viewOf } from "../src/iso/project.js";
 import { UP_HEADING } from "../src/iso/chase.js";
 import { driverPose } from "../src/sim/drive.js";
-import { relevantIds, screechAt, settleAt, introAt, frameCamera, decisionFrame, skidLines, stopOrder, arrivalSeconds, SAME_MOMENT, FAST, speedOf, SCREECH, SETTLE, INTRO_END } from "../src/game/stage.js";
+import { relevantIds, screechAt, settleAt, introAt, frameCamera, decisionFrame, skidLines, stopOrder, arrivalSeconds, SAME_MOMENT, FAST, speedOf, SCREECH, SETTLE, INTRO_END, edgePoint } from "../src/game/stage.js";
 import { lenOf } from "../src/sim/traffic.js";
 import { aheadOf } from "../src/sim/drive.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
@@ -106,6 +106,8 @@ function conflictingNow(rs) {
     if (a.going || a.s >= q.stopAt) why = "box";
     else if (a.v < AT_REST && a.stoppedAt != null) why = "line";
     else if (secs <= ARRIVE) why = "arriving";
+    /* ...or the sim's own sound driver must yield to it, however far out (review, 25 November): the car that makes it a wait round is shown. */
+    else if (blockedBy({ ...rs.me, caution: 1 }, a, L, 1, rs.world.t)) why = "holds";
     out.push({ a, why, secs });
   }
   return out;
@@ -458,9 +460,9 @@ console.log("\n11. THE STAGING (slice 3): the arrival recorded, the screech, the
     for (const { rs } of waitFrozen) { const before = atFreeze.withRing; observeRing(rs, atFreeze); if (atFreeze.withRing > before) firstRinged++; }
     const all = { missed: [...atFreeze.missed, ...relScan.missed], ringedPast: [...atFreeze.ringedPast, ...relScan.ringedPast], ringedNoConflict: [...atFreeze.ringedNoConflict, ...relScan.ringedNoConflict], mismatch: [...atFreeze.mismatch, ...relScan.mismatch] };
     check(atFreeze.holds + relScan.holds >= 20, `EXPOSURE: the sim says a car holds the sound driver in ${atFreeze.holds} observations at the freeze and ${relScan.holds} on ${relScan.ticks} waiting ticks (at least 20)`);
-    check(all.missed.length === 0, `every car blockedBy says holds the sound driver is ringed unless it is further out than 4 s, at the freeze and on every waiting tick${all.missed.length ? ` -- not ${all.missed.slice(0, 6).join(" ")}` : ""}`);
+    check(all.missed.length === 0, `every car blockedBy says holds the sound driver is ringed, however far out, at the freeze and on every waiting tick${all.missed.length ? ` -- not ${all.missed.slice(0, 6).join(" ")}` : ""}`);
     console.log(`        holding cars further out than 4 s and so not ringed: ${atFreeze.farHolds + relScan.farHolds} of ${atFreeze.holds + relScan.holds} holding observations (the sound driver's gap is conservative) [M, this run]`);
-    check(all.mismatch.length === 0, `the ringed set is exactly the check's own relevant set (conflicting, not past, and at its line, in the box or arriving within 4 s) at the freeze and on every waiting tick${all.mismatch.length ? ` -- not ${all.mismatch.slice(0, 6).join(" ")}` : ""}`);
+    check(all.mismatch.length === 0, `the ringed set is exactly the check's own relevant set (conflicting, not past, and at its line, in the box, arriving within 4 s, or holding the sound driver) at the freeze and on every waiting tick${all.mismatch.length ? ` -- not ${all.mismatch.slice(0, 6).join(" ")}` : ""}`);
     check(all.ringedNoConflict.length === 0, `no ringed car's path fails to conflict with the player's (conflictOf, the check's own call)${all.ringedNoConflict.length ? ` -- not ${all.ringedNoConflict.slice(0, 6).join(" ")}` : ""}`);
     check(atFreeze.pastCars + relScan.pastCars > 0, `EXPOSURE: ${atFreeze.pastCars + relScan.pastCars} car-observations of a car conflicting but already past its conflict (the case the not-yet-past test is for)`);
     check(all.ringedPast.length === 0, `no car already past its conflict is ringed${all.ringedPast.length ? ` -- ringed past: ${all.ringedPast.slice(0, 6).join(" ")}` : ""}`);
@@ -486,13 +488,15 @@ console.log("\n12. THE DECISION FRAME AND THE LAUNCH (slice 5): only what decide
 
   /* 1. THE FRAME. The cars that matter are read here by the check's own statement (conflictingNow: atNode, conflictOf, the time filter),
      not through stage.js relevantIds; the points are the player's stop pose and those cars as the world poses them. */
-  const missed = [], notEqual = [], boxMissed = [], widths = [];
-  let relSeen = 0, seedsDropping = 0, droppedCars = 0;
+  const missed = [], notEqual = [], boxMissed = [], widths = [], edgeBad = [];
+  let relSeen = 0, seedsDropping = 0, droppedCars = 0, farHolders = 0, farOff = 0;
   for (const { x, rs } of frozen) {
     const k = rs.me.k ?? 0, L = rs.world.course.at[k].layout, p = driverPose(rs.me, rs.world.course);
     const pts = [[p.x, p.y, p.z ?? 0, "stop pose"]];
     const own = conflictingNow(rs);
-    for (const c of own) if (c.why) { const q = poseOf(rs.world, c.a); pts.push([q.x, q.y, q.z ?? 0, `car ${c.a.id}`]); relSeen++; }
+    const far = [];
+    for (const c of own) if (c.why && c.why !== "holds") { const q = poseOf(rs.world, c.a); pts.push([q.x, q.y, q.z ?? 0, `car ${c.a.id}`]); relSeen++; }
+      else if (c.why === "holds") { const q = poseOf(rs.world, c.a); far.push([q.x, q.y, q.z ?? 0, `car ${c.a.id}`]); farHolders++; }
     const dropped = own.filter((c) => !c.why && c.secs > ARRIVE && c.secs !== Infinity);   // conflicting, not past, MORE THAN 4 s out and moving
     if (dropped.length) { seedsDropping++; droppedCars += dropped.length; }
     if (new Set(relevantIds(rs.world, rs.me)).size !== own.filter((c) => c.why).length) notEqual.push(tag(x));
@@ -502,14 +506,23 @@ console.log("\n12. THE DECISION FRAME AND THE LAUNCH (slice 5): only what decide
     for (const size of sizes) {
       const fc = frameCamera(f, p, size), v = viewOf(fc.k, { ...fc.cam, id: null }, fc.rot, size);
       for (const q of pts) if (!onScreen(v, size, q)) missed.push(`${tag(x)}/${size.w}x${size.h}:${q[3]}`);
+      /* A FAR HOLDER is badged at the screen's edge when off it: the badge's point is inside the screen by at least 20 px [stated here], and a car on screen keeps its own point. */
+      for (const q of far) {
+        const [qx, qy] = v.P(q[0], q[1], q[2]), e = edgePoint(qx, qy, size), inside = qx >= 0 && qx <= size.w && qy >= 0 && qy <= size.h;
+        if (e.off) farOff++;
+        if (!(e.x >= 20 && e.x <= size.w - 20 && e.y >= 20 && e.y <= size.h - 20) && e.off) edgeBad.push(`${tag(x)}/${size.w}x${size.h}:${q[3]}`);
+        if (inside && qx >= 28 && qx <= size.w - 28 && qy >= 28 && qy <= size.h - 28 && (e.off || e.x !== qx || e.y !== qy)) edgeBad.push(`${tag(x)}/${size.w}x${size.h}:${q[3]} moved`);
+      }
       const at = L.place.at;
       for (const [dx, dy] of [[-half, -half], [half, -half], [half, half], [-half, half]]) if (!onScreen(v, size, [at.x + dx, at.y + dy, 0])) boxMissed.push(`${tag(x)}/${size.w}x${size.h}`);
     }
   }
   check(frozen.length >= 40 && relSeen >= 20, `EXPOSURE: ${frozen.length} frozen rounds and ${relSeen} relevant cars read (at least 40 and 20)`);
-  check(missed.length === 0, `the player's stop pose and every relevant car project inside the screen, 400x800 and 800x400, in every pooled seed${missed.length ? ` -- not ${missed.slice(0, 5).join(" ")}` : ""}`);
+  check(missed.length === 0, `the player's stop pose and every relevant car within 4 s project inside the screen, 400x800 and 800x400, in every pooled seed${missed.length ? ` -- not ${missed.slice(0, 5).join(" ")}` : ""}`);
+  check(farHolders >= 10 && farOff >= 10, `EXPOSURE: ${farHolders} cars the sound driver waits for further out than 4 s (relevant, kept out of the frame), ${farOff} badge placements off the screen (at least 10 each) [M, this run]`);
+  check(edgeBad.length === 0, `each such car off the screen is badged at least 20 px inside its edge, and one well inside keeps its own point${edgeBad.length ? ` -- not ${edgeBad.slice(0, 5).join(" ")}` : ""}`);
   check(boxMissed.length === 0, `the intersection's own box (8 m either side of its centre [instrument]) projects inside the screen in every one${boxMissed.length ? ` -- not ${boxMissed.slice(0, 5).join(" ")}` : ""}`);
-  check(notEqual.length === 0, `stage.js relevantIds is the check's own relevant set in every one (the time filter applied: at its line, in the box, or within 4 s)${notEqual.length ? ` -- not ${notEqual.slice(0, 5).join(" ")}` : ""}`);
+  check(notEqual.length === 0, `stage.js relevantIds is the check's own relevant set in every one (the time filter applied: at its line, in the box, within 4 s, or holding the sound driver)${notEqual.length ? ` -- not ${notEqual.slice(0, 5).join(" ")}` : ""}`);
   const ws = widths.slice().sort((a, b) => a - b), within = widths.filter((w) => w <= 120).length / widths.length;
   check(within >= 0.95, `the frame is at most 120 m across [invented] in ${(100 * within).toFixed(1)}% of ${widths.length} seeds (at least 95%)`);
   console.log(`        frame size (the longer side): median ${ws[ws.length >> 1].toFixed(1)} m, widest ${ws[ws.length - 1].toFixed(1)} m, over ${widths.length} seeds [M, this run]`);
@@ -575,7 +588,7 @@ console.log("\n13. THE STOPPING ORDER (slice 5): numbered from stoppedAt, held t
   let secsN = 0;
   const scan = [...twoWay.map((e) => e.rs), ...twoWay.filter((e) => e.x.pool === "wait").slice(0, 20).map((e) => { let w = press(e.rs); for (let i = 0; i < 20 && !w.end; i++) w = roundTick(w); return w; })];
   for (const rs of scan) {
-    const mine = arrivalSeconds(rs.world, rs.me), ownArr = conflictingNow(rs).filter((c) => c.why === "arriving"), numberedIds = new Set(stopOrder(rs.world, rs.me).map((r) => r.id));
+    const mine = arrivalSeconds(rs.world, rs.me), ownArr = conflictingNow(rs).filter((c) => c.why === "arriving" || (c.why === "holds" && c.a.v > AT_REST)), numberedIds = new Set(stopOrder(rs.world, rs.me).map((r) => r.id));
     const want = ownArr.filter((c) => !numberedIds.has(c.a.id));
     secsN += mine.length;
     if (mine.length !== want.length || want.some((c) => !mine.some((m) => m.id === c.a.id && m.secs === Math.round(c.secs)))) secsWrong.push(`${rs.def.id}@${rs.world.t.toFixed(2)}`);
@@ -638,6 +651,7 @@ console.log("\n15. THE PLAYBACK AND THE GESTURES (slice 5), as source text and t
   const dragBranch = /if \(canPan\(\)[\s\S]*?return;\s*\}/.exec(down)?.[0] ?? "";
   check(/!inRect\(buttonRect\(/.test(dragBranch) && dragBranch.length > 0, "a finger that lands OUTSIDE the button's rectangle takes the drag branch (source text)");
   check(/panFree\(/.test(move) && /pinchFree\(/.test(move), "a drag outside the button routes to panFree and pinchFree (source text)");
+  { const gsrc = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8"); check(/edgePoint\(qx, qy/.test(gsrc) && /if \(e\.off\)/.test(gsrc), "a badge whose car is off the screen is pinned to the edge with a pointer (Game.jsx calls edgePoint and draws when off; source text)"); }
   check(!/decide\(|press\(|release\(/.test(dragBranch) && !/decide\(|press\(|release\(/.test(move), "the drag branch and the move handler never call decide, press or release (source text)");
   check(/if \(ptrs\.delete\(e\.pointerId\)\) \{[^}]*return;/.test(up), "a drag finger lifting never reaches decide (source text)");
   check(/userCam = null/.test(src) && /goCam/.test(src), "after GO the player's camera is dropped and the chase blends in from where it was (source text)");

@@ -21,7 +21,7 @@
    resampled by distance with a time warp. No harsh-braking event comes of it,
    because the approach's events are not the player's (slice 2).
    ===================================================================== */
-import { atNode, conflictOf, CAR, carriedWorld, carriedPose, AT_REST } from "../sim/crossing.js";
+import { atNode, conflictOf, blockedBy, CAR, carriedWorld, carriedPose, AT_REST } from "../sim/crossing.js";
 import { lenOf } from "../sim/traffic.js";
 import { driverPose } from "../sim/drive.js";
 import { fitK } from "../iso/freecam.js";
@@ -165,9 +165,11 @@ export function decisionFrame(rs) {
   const half = Math.max(L.place.boxHalf ?? 0, ...Object.values(L.legs ?? {}).map((l) => l.boxHalf ?? 0));
   for (const dx of [-half, half]) for (const dy of [-half, half]) pts.push({ x: at.x + dx, y: at.y + dy });
   const wc = carriedWorld(world, 0);
+  /* A car relevant only because the sound driver yields to it far out ("holds") does NOT shape the frame: it would widen it to 230 m
+     [M, verify-rounds, review run]. It is shown as a badge pinned to the screen's edge instead (edgePoint), pointing at it. */
   for (const id of relevantIds(world, me)) {
     const a = world.actors.find((c) => c.id === id);
-    if (a) { const p = carriedPose(wc, a, 0); pts.push({ x: p.x, y: p.y }); }
+    if (a && whyRelevant(world, me, a) !== "holds") { const p = carriedPose(wc, a, 0); pts.push({ x: p.x, y: p.y }); }
   }
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
@@ -202,6 +204,11 @@ export function whyRelevant(world, me, a) {
   if (a.v < AT_REST && a.stoppedAt != null) return "line";
   const d = theirIn(L, me, a);
   if (d != null && a.v > AT_REST && d / a.v <= ARRIVE_WITHIN) return "arriving";
+  /* "holds" (review, 25 November): the sim's own sound driver (caution 1) must yield to it, however far out. Without this, 24 of 108 wait
+     seeds showed NO car at the freeze [M, verify-rounds, slice 5's first run]: the careful driver's conservative gap waits for a car more
+     than ARRIVE_WITHIN out, and the player was asked to wait for something they were not shown. The car that makes it a wait round decides
+     the decision, so it is shown, with its seconds (arrivalSeconds), and the player judges whether to thread the needle. */
+  if (blockedBy({ ...me, caution: 1 }, a, L, 1, world.t ?? 0)) return "holds";
   return null;
 }
 
@@ -241,6 +248,18 @@ export function stopOrder(world, me) {
   return out;
 }
 
+/* A BADGE FOR A CAR OFF THE SCREEN (review, 25 November): the screen point (px, py) pulled in along the line from the screen's centre until
+   it lies INSET pixels inside every edge. A point already inside stays where it is. Returns { x, y, off, angle }, angle (radians, screen)
+   from the badge toward the car, for the pointer. */
+export const EDGE_INSET = 28;   // px [invented]: half a badge and a margin
+export function edgePoint(px, py, size, inset = EDGE_INSET) {
+  const cx = size.w / 2, cy = size.h / 2, dx = px - cx, dy = py - cy;
+  const hx = cx - inset, hy = cy - inset;
+  const f = Math.max(Math.abs(dx) / hx, Math.abs(dy) / hy);
+  if (!(f > 1)) return { x: px, y: py, off: false, angle: Math.atan2(dy, dx) };
+  return { x: cx + dx / f, y: cy + dy / f, off: true, angle: Math.atan2(dy, dx) };
+}
+
 /* THE SECONDS TO THE CONFLICT of a relevant car that is arriving and not in the order above: [{ id, secs }], whole seconds, from its
    distance to the conflict and its speed (the same quantity whyRelevant's time filter reads). */
 export function arrivalSeconds(world, me) {
@@ -248,7 +267,8 @@ export function arrivalSeconds(world, me) {
   if (!L) return [];
   const numbered = new Set(stopOrder(world, me).map((r) => r.id)), out = [];
   for (const a of atNode(world, world.actors, k)) {
-    if (numbered.has(a.id) || whyRelevant(world, me, a) !== "arriving") continue;
+    const why = whyRelevant(world, me, a);
+    if (numbered.has(a.id) || !(why === "arriving" || (why === "holds" && a.v > AT_REST))) continue;
     out.push({ id: a.id, secs: Math.round(theirIn(L, me, a) / a.v) });
   }
   return out;

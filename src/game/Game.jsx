@@ -30,7 +30,7 @@ import { driverPose, carriedPlayer } from "../sim/drive.js";
 import { drawFrame } from "../iso/draw.js";
 import { viewOf } from "../iso/project.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
-import { INTRO_END, RING_MIN_PX, introAt, frameCamera, decisionFrame, skidLines, relevantIds, stopOrder, arrivalSeconds, speedOf } from "./stage.js";
+import { INTRO_END, RING_MIN_PX, introAt, frameCamera, decisionFrame, skidLines, relevantIds, stopOrder, arrivalSeconds, speedOf, edgePoint } from "./stage.js";
 import { panFree, pinchFree } from "../iso/freecam.js";
 import { newBody } from "../iso/body.js";
 import { BUILD } from "../iso/perf.js";
@@ -232,7 +232,14 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       const badge = (id, text, you) => {
         const pose = actors.find((a) => a.id === id);
         if (!pose) return;
-        const [px, py0] = view.P(pose.x, pose.y, pose.z ?? 0), py = py0 - Math.max(22, 4.5 * k);
+        const [qx, qy] = view.P(pose.x, pose.y, pose.z ?? 0), e = edgePoint(qx, qy - Math.max(22, 4.5 * k), size);
+        const px = e.x, py = e.y;
+        /* OFF THE SCREEN (a car the careful driver waits for, further out than the frame): the badge sits at the edge with a pointer to it. */
+        if (e.off) {
+          ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#14161a"; ctx.lineWidth = 2;
+          const a = e.angle, tx = px + Math.cos(a) * 20, ty = py + Math.sin(a) * 20;
+          ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(px + Math.cos(a + 0.5) * 11, py + Math.sin(a + 0.5) * 11); ctx.lineTo(px + Math.cos(a - 0.5) * 11, py + Math.sin(a - 0.5) * 11); ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
         ctx.font = `700 ${you ? 14 : 15}px ${FONT}`;
         const w = Math.max(20, ctx.measureText(text).width + 12), h = 20;
         ctx.fillStyle = you ? AMBER : "#ffffff"; ctx.strokeStyle = "#14161a"; ctx.lineWidth = 2;
