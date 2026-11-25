@@ -38,7 +38,7 @@ const EPS = 1e-6;
 export function probe(type, cars, seed) {
   let rs = toDecision(type, seed, cars);
   if (!rs) return null;
-  const T = tracker(), t0 = rs.decideAt;
+  const T = tracker(), t0 = rs.decision.decideAt;
   rs = press(rs);
   T.see(rs);
   while (rs.world.t - t0 < PROBE_FOR && !rs.end) { rs = roundTick(rs); T.see(rs); }
@@ -72,7 +72,7 @@ export function classify(type, cars, seed) {
   const r = driveDecision(type, seed, cars, oracle);
   const v = r.verdict, ok = r.rs.end?.why === "through" && v.made === type.task && v.stars === 3 && v.faults.length === 0;
   if (!ok) return { seed, pool: null, reason: "oracleFails", wouldBe: pool, detail: `${r.rs.end?.why} ${v.stars}* [${v.faults.map((f) => f.id)}]` };
-  return { seed, pool, opens, lasts, held: r.rs.goAt - r.rs.decideAt };
+  return { seed, pool, opens, lasts, held: r.rs.decision.goAt - r.rs.decision.decideAt };
 }
 
 /* A type at a car count over seeds 1..n. */

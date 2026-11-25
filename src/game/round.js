@@ -38,7 +38,7 @@ import { faultWords, praiseWords } from "./words.js";
 export const KMH = 50;
 export const EVERY = 2.0;
 
-export const CLEAR_BY = 25;       // m past the far edge of the box, in the lane out, and the round is through [invented]
+export const CLEAR_BY = 10;       // m past the far edge of the box, in the lane out, and the round is through [invented; slice 4: from 25, the tail after the box is shorter]
 export const TIME_CAP = 60;       // s of a round, counted from the freeze, before it is called out of time [invented]
 export const APPROACH_CAP = 60;   // s of sim time to build the decision point; past it the seed is not a round [invented, the spec's]
 export const FRONT_CLEAR = 10;    // m of clear road ahead in the player's own lane for "at the front" [invented, the spec's]
@@ -71,11 +71,13 @@ export const sceneArgs = (def) => [def.seed, KMH, EVERY, true, def.cars, def.map
 /* The same world `sceneFor` builds, through the one function it calls (sim/scene.js worldFor), with the trailing options it passes. */
 export const roundWorld = (def) => worldFor(...sceneArgs(def), false, false, { checks: false, mergeTolerance: DEFAULT_MERGE_TOLERANCE, preroll: PREROLL });
 
+/* THE PER-DECISION STATE, in ONE object (slice 4, section 1): the openings, when the car froze and when it went, the arrival's trail, the
+   pull-away, the turn made, the crossing and the timing verdict. A later slice with several decision points keeps a list of these; `rs`
+   carries the world, the car, the events and the end, which are the round's. */
+export const newDecision = () => ({ decideAt: null, goAt: null, openings: [], timing: null, trail: null, launch: null, made: null, crossedAt: null });
+
 export function startRound(def, { world, me }) {
-  return {
-    def, world, me, ev: newEventState(), events: [], t0: world.t, targetK: me.k, made: null, crossedAt: null, launch: null, end: null,
-    phase: "approach", decideAt: null, goAt: null, openings: [], timing: null, trail: null,
-  };
+  return { def, world, me, ev: newEventState(), events: [], t0: world.t, targetK: me.k, end: null, phase: "approach", decision: newDecision() };
 }
 
 /* WHO HOLDS THE WAY, BY THE STOP RULE: a driver the sim says this one must yield to (crossing.js blockedBy, the same call openTo
@@ -97,9 +99,10 @@ const pathOf = (w, me) => layoutOf(w, me)?.paths[me.route];
    clock asks (crossing.js openTo, caution 1). The list holds stretches { from, to } in world.t; `to` is null while one is still open. */
 const wayOpen = (rs) => openTo({ ...rs.me, caution: 1 }, rs.world, 1);
 function trackOpenings(rs) {
-  const open = wayOpen(rs), t = rs.world.t, last = rs.openings[rs.openings.length - 1];
-  if (open && (!last || last.to != null)) return { ...rs, openings: [...rs.openings, { from: t, to: null }] };
-  if (!open && last && last.to == null) return { ...rs, openings: [...rs.openings.slice(0, -1), { ...last, to: t }] };
+  const open = wayOpen(rs), t = rs.world.t, { openings } = rs.decision, last = openings[openings.length - 1];
+  const set = (o) => ({ ...rs, decision: { ...rs.decision, openings: o } });
+  if (open && (!last || last.to != null)) return set([...openings, { from: t, to: null }]);
+  if (!open && last && last.to == null) return set([...openings.slice(0, -1), { ...last, to: t }]);
   return rs;
 }
 
@@ -120,17 +123,32 @@ function carAhead(rs) {
    empty (the detectors' own state carries on, so the stop is still judged as one). */
 export function toDecision(def0, seed, cars) {
   const def = { ...def0, seed, cars };
-  let rs = startRound(def, roundWorld(def));
+  const rs = startRound(def, roundWorld(def));
+  return toDecisionFrom(rs, rs.me.k);
+}
+
+/* EVERY DECISION POINT IS A CUT (slice 4, section 1): from ANY running round state, run on -- unseen, the autopilot -- to rest at the line
+   of node `k`, record the arrival, freeze, and return the decision state; null when there is no decision there. The per-decision
+   state is fresh (`newDecision`): the world, the car and the round's events carry on from `rs0`.
+   NULL BEFORE RUNNING when the round has ended, or the car is already past that line (on a later node, or on this one beyond its stop
+   line): there is no decision to come. toDecision is this from the round's start. */
+export function toDecisionFrom(rs0, k) {
+  if (rs0.end) return null;
+  const at = rs0.world.course.at[k];
+  if (!at) return null;
+  if ((rs0.me.k ?? 0) > k) return null;
+  if ((rs0.me.k ?? 0) === k) { const p = at.layout.paths[rs0.me.route]; if (p && rs0.me.s > p.stopAt) return null; }
+  let rs = { ...rs0, targetK: k, phase: "approach", decision: newDecision(), events: [] };
   const t0 = rs.world.t;
   /* THE ARRIVAL, RECORDED (slice 3): the car as it stood on each of the last TRAIL seconds of ticks (the car objects themselves; their
      poses are worked out once, at the freeze). Nothing here is read by the sim. */
   const hist = [];
   while (rs.world.t - t0 <= APPROACH_CAP) {
-    if (rs.end || rs.crossedAt != null || rs.me.contacts > 0) return null;
+    if (rs.end || rs.decision.crossedAt != null || rs.me.contacts > 0) return null;
     hist.push({ t: rs.world.t, me: rs.me });
     const path = pathOf(rs.world, rs.me);
     if (rs.me.v < AT_REST && rs.me.stoppedAt != null && Math.abs(path.stopAt - (rs.me.s + lenOf(rs.me) / 2)) <= AT_LINE && rs.me.k === rs.targetK && !carAhead(rs)) {
-      /* rs.trail: the drawn pose and speed of the player on each tick of the last TRAIL s; the LAST ENTRY IS THE FROZEN POSE. Entries on
+      /* decision.trail: the drawn pose and speed of the player on each tick of the last TRAIL s; the LAST ENTRY IS THE FROZEN POSE. Entries on
          another node or route than the freeze's (a car only just arrived on this approach) are left out. */
       const own = hist.filter((h) => h.me.k === rs.me.k && h.me.route === rs.me.route);
       /* THE SPEC'S 3.0 s IS NOT ENOUGH ROAD (review of slice 3): the sim's comfortable stop sheds speed over about 9 s, so the last 3 s
@@ -143,7 +161,7 @@ export function toDecision(def0, seed, cars) {
         const p = driverPose(h.me, rs.world.course);
         return { x: p.x, y: p.y, z: p.z ?? 0, heading: p.heading, v: h.me.v, s: h.me.s, t: h.t };
       });
-      rs = { ...rs, events: [], phase: "frozen", decideAt: rs.world.t, t0: rs.world.t, trail };
+      rs = { ...rs, events: [], phase: "frozen", t0: rs.world.t, decision: { ...rs.decision, decideAt: rs.world.t, trail } };
       return trackOpenings(rs);
     }
     rs = roundTick(rs);
@@ -177,7 +195,8 @@ export function timingOf(openings, decideAt, now) {
 /* The player lets go: the decision. */
 export function release(rs) {
   if (rs.phase !== "frozen" && rs.phase !== "waiting") return rs;
-  return { ...rs, phase: "gone", goAt: rs.world.t, timing: timingOf(rs.openings, rs.decideAt, rs.world.t) };
+  const d = rs.decision;
+  return { ...rs, phase: "gone", decision: { ...d, goAt: rs.world.t, timing: timingOf(d.openings, d.decideAt, rs.world.t) } };
 }
 
 /* One tick. In `frozen` it does nothing (the screen does not call it) and returns `rs`. `held === false` while waiting is a release
@@ -205,7 +224,7 @@ export function roundTick(rs, { held } = {}) {
   const events = found.slice();
 
   /* THE TURN MADE, and FAILED TO YIELD: on the tick the line is crossed at the round's own intersection (events.js's own test). */
-  let { made, crossedAt, launch } = rs;
+  let { made, crossedAt, launch } = rs.decision;
   const path = pathOf(world, me), pPath = pathOf(prev.world, prev.me);
   const sameApproach = me.k === rs.targetK && (prev.me.k ?? 0) === (me.k ?? 0) && path && pPath && pPath.from === path.from;
   /* THE PULL-AWAY FROM THE LINE: the last one before the crossing, and whether a sound driver standing there had an opening. */
@@ -244,9 +263,9 @@ export function roundTick(rs, { held } = {}) {
   if (crossedAt != null && ((me.k === rs.targetK && p2 && me.s >= p2.clearAt + CLEAR_BY) || me.k !== rs.targetK)) end = { why: "through" };
   else if (c.fresh?.some((f) => f.kind === "person" || f.atFault)) end = { why: "contact" };
   else if (me.atEdge) end = { why: "edge" };
-  else if (rs.decideAt != null && world.t - rs.decideAt > TIME_CAP) end = { why: "time" };
+  else if (rs.decision.decideAt != null && world.t - rs.decision.decideAt > TIME_CAP) end = { why: "time" };
 
-  let next = { ...rs, me, world, ev: state, events: [...rs.events, ...events], made, crossedAt, launch, end };
+  let next = { ...rs, me, world, ev: state, events: [...rs.events, ...events], decision: { ...rs.decision, made, crossedAt, launch }, end };
   /* The openings are kept from the freeze until the car is released. */
   if (next.phase === "waiting") next = trackOpenings(next);
   return next;
@@ -270,15 +289,16 @@ export function verdictOf(rs) {
   };
   for (const e of rs.events) {
     /* Waiting is the TIMING verdict's (undueDelay, below): the sim's own dawdling detector would say it a second time. */
-    if (e.id === "dawdling" && rs.timing) continue;
+    if (e.id === "dawdling" && rs.decision.timing) continue;
     if (e.praise) { const w = praiseWords(e.id); if (w) bump(praise, e, w); }
     else if (e.noFault) bump(notes, e, faultWords(e.id));
     else bump(faults, { ...e, severity: e.severity ?? TRIGGERS[e.id]?.severity ?? 1 }, faultWords(e.id));
   }
   /* The other turn than the one asked. */
-  if (rs.made != null && rs.made !== def.task) faults.push({ id: "wrongTurn", count: 1, severity: WRONG_TURN, words: faultWords("wrongTurn") });
+  const D = rs.decision;
+  if (D.made != null && D.made !== def.task) faults.push({ id: "wrongTurn", count: 1, severity: WRONG_TURN, words: faultWords("wrongTurn") });
   /* THE TIMING, once the player has let go. */
-  const t = rs.timing ?? null;
+  const t = D.timing ?? null;
   const delay = t?.kind === "inside" ? t.delay : null;
   const tStars = timingStars(t);
   if (delay != null && delay >= UNDUE - EPS) faults.push({ id: "undueDelay", count: 1, severity: UNDUE_SEVERITY, words: faultWords("undueDelay") });
@@ -290,5 +310,5 @@ export function verdictOf(rs) {
   const byFaults = !through || worst >= 5 ? 0 : worst >= 3 ? 1 : worst >= 1 ? 2 : 3;
   const stars = Math.min(byFaults, tStars);
   if (through && tStars === 3 && t?.kind === "inside" && praiseWords("quick")) praise.push({ id: "quick", count: 1, words: praiseWords("quick") });
-  return { stars, why: rs.end?.why ?? null, faults, praise, notes, made: rs.made, task: def.task, delay, timingStars: t ? tStars : null, openAtFreeze: !!rs.openings?.[0] && rs.openings[0].from === rs.decideAt };
+  return { stars, why: rs.end?.why ?? null, faults, praise, notes, made: D.made, task: def.task, delay, timingStars: t ? tStars : null, openAtFreeze: !!D.openings?.[0] && D.openings[0].from === D.decideAt };
 }

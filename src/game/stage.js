@@ -22,22 +22,23 @@
    resampled by distance with a time warp. No harsh-braking event comes of it,
    because the approach's events are not the player's (slice 2).
    ===================================================================== */
-import { atNode, conflictOf, CAR } from "../sim/crossing.js";
+import { atNode, conflictOf, CAR, carriedWorld, carriedPose } from "../sim/crossing.js";
 import { lenOf } from "../sim/traffic.js";
+import { driverPose } from "../sim/drive.js";
 import { fitK } from "../iso/freecam.js";
 import { UP_HEADING } from "../iso/chase.js";
 
 /* THE TIMES, seconds. All [invented]. */
-export const HOLD_FAR = 0.5;
-export const SCREECH = 1.0;   // review, 25 November: 0.8 with the cubic below entered at about 56 m/s [D: 3 x 15 m / 0.8 s]
+export const HOLD_FAR = 0.35;   // slice 4: shorter, the shot is close now (was 0.5)
+export const SCREECH = 1.1;   // slice 4: 24 m in 1.1 s quadratic enters at about 44 m/s and stops at about 40 m/s^2 [D: 2 x 24 / 1.1, 2 x 24 / 1.1^2]: a cinematic, flagged (was 1.0 over 15 m)
 export const SETTLE = 0.4;
-export const INTRO_END = HOLD_FAR + SCREECH + SETTLE;   // 1.9 s: the button is accepted from here
+export const INTRO_END = HOLD_FAR + SCREECH + SETTLE;   // 1.85 s: the button is accepted from here
 
 /* THE ARRIVAL RECORDED: seconds of sim ticks before the freeze that `trail` holds [invented]. (round.js reads it.) */
 export const TRAIL = 3.0;
 /* ...and AT LEAST this many metres of road, whichever is longer [invented; a departure from the spec, see round.js toDecision]: it is
    SKID plus a margin, so the marks have road to lie on. */
-export const TRAIL_MIN_M = 15;
+export const TRAIL_MIN_M = 24;
 /* Metres of the trail, ending at the frozen pose, that carry skid marks [invented], and how far the marks sit either side of the car's centre line [invented]. */
 export const SKID = 12;
 export const SKID_HALF = 0.8;
@@ -154,6 +155,32 @@ export function farCamera(bounds, p, size) {
   const across = rb.w + rb.h;
   const kv = (0.43 * size.h) / ((across * 0.5) / 2);   // ground squash g = 0.5 at the default elevation; the lower half of the map is across * g / 2
   return { cam: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2, z: 0 }, rot, k: Math.min(fitK(rb, size), kv) };
+}
+
+/* THE FRAME OF A DECISION (slice 4, section 2): the world rectangle { x, y, w, h } the far shot fits, derived from THE DECISION and never
+   from the map, so it is called per decision. The box holds: the trail's start and the stop point (the frozen pose); the intersection's
+   own box (its node, plus or minus the layout's box half-size); every relevant car at the freeze, by its drawn pose -- all grown by
+   FRAME_MARGIN on each side; and the decision view's own circle, so that the far shot is never narrower than where it dives to. */
+export const FRAME_MARGIN = 12;   // m [invented]
+export function decisionFrame(rs) {
+  const { world, me } = rs, tr = rs.decision?.trail ?? [], k = rs.targetK ?? me.k ?? 0;
+  const L = world.course.at[k].layout, at = L.place.at;
+  const stop = tr[tr.length - 1] ?? driverPose(me, world.course);
+  const pts = [stop];
+  if (tr.length) pts.push(tr[0]);
+  const half = Math.max(L.place.boxHalf ?? 0, ...Object.values(L.legs ?? {}).map((l) => l.boxHalf ?? 0));
+  for (const dx of [-half, half]) for (const dy of [-half, half]) pts.push({ x: at.x + dx, y: at.y + dy });
+  const wc = carriedWorld(world, 0);
+  for (const id of relevantIds(world, me)) {
+    const a = world.actors.find((c) => c.id === id);
+    if (a) { const p = carriedPose(wc, a, 0); pts.push({ x: p.x, y: p.y }); }
+  }
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  x0 -= FRAME_MARGIN; y0 -= FRAME_MARGIN; x1 += FRAME_MARGIN; y1 += FRAME_MARGIN;
+  const h = stop.heading * DEG, cx = stop.x + Math.cos(h) * CENTRE_AHEAD, cy = stop.y + Math.sin(h) * CENTRE_AHEAD;
+  x0 = Math.min(x0, cx - SEE_RADIUS); y0 = Math.min(y0, cy - SEE_RADIUS); x1 = Math.max(x1, cx + SEE_RADIUS); y1 = Math.max(y1, cy + SEE_RADIUS);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
 /* THE INTRO CAMERA at `t`: the far view for HOLD_FAR, then over SCREECH eased into the decision camera, the position and the zoom on the

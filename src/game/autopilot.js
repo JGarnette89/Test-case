@@ -8,7 +8,7 @@
    TAKEN from goodInput:
    - cruise by `sliderFor` toward 0.95 of the posted limit (`limitAt`), the
      acceleration wanted proportional to the speed still to gain, capped
-     at -1.5 .. 1.2 m/s^2;
+     at -1.5 .. 1.2 m/s^2 (CHANGED in slice 4: once GONE the cap is the car's full pull-away, ACCEL_MAX);
    - `aheadOf(me, course, world).stop` as the slider marker, so
      `slider = min(slider, stop.at)`;
    - at rest, until the stop counts, slider -0.3;
@@ -33,9 +33,13 @@
                followed, and past the line everything is as normal.
    ===================================================================== */
 import { aheadOf } from "../sim/drive.js";
-import { sliderFor } from "../sim/player.js";
+import { sliderFor, ACCEL_MAX } from "../sim/player.js";
 import { limitAt } from "../sim/graph.js";
 
+/* The acceleration the autopilot may ask for, m/s^2 (-1.5 is the braking floor, goodInput's own). Cruising and approaching: 1.2 (goodInput's). GONE (slice 4, section 3):
+   the car's own full pull-away, ACCEL_MAX, 2.72 on the flat [M, sim/player.js], until it reaches PACE of the limit -- Jay: "launch faster". [instrument; the launch cap is the spec's] */
+const CRUISE_ACCEL = 1.2;
+export const LAUNCH_ACCEL = ACCEL_MAX;
 const PACE = 0.95;          // of the posted limit [instrument: goodInput's own default]
 const HOLD = -0.3;          // the brake while standing [instrument: goodInput's own]
 /* m short of the line within which a car at rest and not yet counted is still held to count its stop (goodInput: 12). */
@@ -52,7 +56,7 @@ export function autoInput(me, world, { task, phase }) {
 
   const posted = limitAt(course, me) ?? 13.9;
   const ahead = aheadOf(me, course, world);
-  let slider = sliderFor(Math.max(-1.5, Math.min(1.2, (posted * PACE - me.v) * 0.6)), me.v, me.grade ?? 0);
+  let slider = sliderFor(Math.max(-1.5, Math.min(phase === "go" ? LAUNCH_ACCEL : CRUISE_ACCEL, (posted * PACE - me.v) * 0.6)), me.v, me.grade ?? 0);
   let stop = ahead.stop;
   if (phase === "go" && stop?.line && me.s <= path.stopAt) stop = null;
   if (stop) slider = Math.min(slider, stop.at);

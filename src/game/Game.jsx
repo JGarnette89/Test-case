@@ -30,12 +30,12 @@ import { driverPose, carriedPlayer } from "../sim/drive.js";
 import { drawFrame } from "../iso/draw.js";
 import { viewOf } from "../iso/project.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
-import { INTRO_END, RING_MIN_PX, CENTRE_AHEAD, SEE_RADIUS, introAt, introCamera, decisionCamera, farCamera, skidLines, relevantIds } from "./stage.js";
+import { INTRO_END, RING_MIN_PX, CENTRE_AHEAD, SEE_RADIUS, introAt, introCamera, decisionCamera, farCamera, decisionFrame, skidLines, relevantIds } from "./stage.js";
 import { newBody } from "../iso/body.js";
 import { BUILD } from "../iso/perf.js";
 
 const DPR_CAP = 2;
-const AFTER_END = 1000;   // ms the round keeps drawing after it ends, so the player sees what happened [invented]
+const AFTER_END = 600;    // ms the round keeps drawing after it ends, so the player sees what happened [invented; slice 4: from 1000]
 const TEXT = "#E6E8EC", DIM = "#9AA3B2", AMBER = "#F2B84B", BG = "#1A1C20";
 const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
@@ -79,8 +79,8 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
   /* THE INTRO CLOCK (stage.js): seconds since the round was shown. A closure variable, never React state. The decision is not
      accepted before INTRO_END; a tap during it skips to its end and counts as nothing. */
   let intro = 0;
-  const trail = rs0.trail ?? [];
-  const bounds = sc.loaded.bounds;
+  const trail = rs0.decision.trail ?? [];
+  const frame = decisionFrame(rs0);   // the far shot fits THIS decision (stage.js), once
 
   const fit = () => {
     const dpr = Math.min(DPR_CAP, (win && win.devicePixelRatio) || 1);
@@ -160,7 +160,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     const dd = decisionCamera(p, size), dec = { ...dd.cam, rot: dd.rot }, kDec = dd.k;
     let cam = dec, k = kDec;
     if (it) {
-      const ic = introCamera(intro, farCamera(bounds, p, size), dd);
+      const ic = introCamera(intro, farCamera(frame, p, size), dd);
       cam = { ...ic.cam, rot: ic.rot }; k = ic.k;
     }
     if (rs.phase === "gone") {
@@ -215,7 +215,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       ctx.fillStyle = "#ffffff"; ctx.font = `700 12px ${FONT}`; ctx.textBaseline = "middle"; ctx.fillText("FROZEN", size.w - 52, 24); ctx.textBaseline = "top";
     } else if (rs.phase === "waiting") {
       ctx.fillStyle = "#ffffff"; ctx.font = `700 34px ${FONT}`;
-      ctx.fillText(`${(world.t - rs.decideAt).toFixed(1)} s`, size.w / 2, 66);
+      ctx.fillText(`${(world.t - rs.decision.decideAt).toFixed(1)} s`, size.w / 2, 66);
     }
     if (rs.phase !== "gone" && intro >= INTRO_END) {
       const r = buttonRect(size), held = rs.phase === "waiting";
