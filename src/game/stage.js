@@ -29,9 +29,9 @@ import { UP_HEADING } from "../iso/chase.js";
 
 /* THE TIMES, seconds. All [invented]. */
 export const HOLD_FAR = 0.5;
-export const SCREECH = 0.8;
+export const SCREECH = 1.0;   // review, 25 November: 0.8 with the cubic below entered at about 56 m/s [D: 3 x 15 m / 0.8 s]
 export const SETTLE = 0.4;
-export const INTRO_END = HOLD_FAR + SCREECH + SETTLE;   // 1.7 s: the button is accepted from here
+export const INTRO_END = HOLD_FAR + SCREECH + SETTLE;   // 1.9 s: the button is accepted from here
 
 /* THE ARRIVAL RECORDED: seconds of sim ticks before the freeze that `trail` holds [invented]. (round.js reads it.) */
 export const TRAIL = 3.0;
@@ -80,8 +80,12 @@ export function poseAtDistance(trail, along, dist) {
   return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, z: (a.z ?? 0) + ((b.z ?? 0) - (a.z ?? 0)) * f, heading: a.heading + norm(b.heading - a.heading) * f };
 }
 
-/* THE SHARE OF THE TRAIL COVERED at `u` of the replay: fast at the start, abrupt at the end. [invented, the spec's cubic ease-out] */
-export const coveredShare = (u) => 1 - Math.pow(1 - clamp01(u), 3);
+/* THE SHARE OF THE TRAIL COVERED at `u` of the replay: a CONSTANT DECELERATION to rest, the motion of a hard braking stop, which is what
+   a screech is (review, 25 November). The spec's cubic ease-out entered at three times the trail's average speed, about 56 m/s (roughly
+   200 km/h) over 15 m in 0.8 s, and would read as a jump, not a stop. Quadratic over 1.0 s enters at twice the average, about 30 m/s
+   (108 km/h), and stops at about 30 m/s^2 [D: 2 x 15 m / 1.0 s, and 2 x 15 m / 1.0 s^2, assuming the 15 m trail]. Still a cinematic,
+   still abrupt at the end (the last tenth of u covers 1% of the road). [invented] */
+export const coveredShare = (u) => 1 - Math.pow(1 - clamp01(u), 2);
 
 /* THE SCREECH: the car's pose and body at `u` in [0, 1] of the replay. `pitch` is radians, nose down negative: it comes on over the
    first RAMP of the replay and holds to the stop (hard braking all the way down), then `settleAt` takes it back to level. */
