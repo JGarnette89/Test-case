@@ -83,3 +83,41 @@ Report:
 - the frame sizes, the off-screen arriving share, the moving share in the replay, the streak share, and the memory of one replay, all `[M]`;
 - the sabotages;
 - **every departure from this spec, said plainly.**
+
+---
+
+## REVIEW OUTCOME (25 November 2026, the planner)
+
+**Built by the executor in `19bda60`; the check was adjusted in review in the commit after it.** The derived set passed: `4 of 4 passed` (verify-check-runner, verify-core, verify-screens, verify-rounds) `[M, node tools/check.mjs --base 76b850a]`.
+
+### Changed in review (the check only)
+
+- **The arriving-off-screen exposure is now a count:** at least 10 seeds and 20 placements. It measured 25 seeds and 40 placements `[M]`.
+  - The spec's 20% of seeds was my guess at how common the case is. It measured 11.0%, because the frame holds most cars arriving within 4 s.
+  - What exposure needs is that the badge path runs, and a count says that.
+  - The executor left the line red rather than loosen it, which was right.
+- **The frame bar is tightened** from 50 m in 95% of seeds to 40 m in every seed. The clean widest is 31.1 m, median 28.1 m `[M]`.
+  - Sabotage (b) had cleared the old bar by only 3 points.
+  - **Re-run of (b) against it:** the frame line fired (86.8% within 40 m, widest 100.1 m), and so did the exposure line (0 seeds). `stage.js` SHA-1 was `db9cdc3b...` before and after.
+
+### Measured `[M, the executor's runs and the review run]`
+
+- **The replay:** 41 worlds over 2.00 s in every seed, played over the 1.05 s intro (1.90x `[D]`). The last world is the frozen world.
+- **Movement during the replay:** some other road user moves at least 3 m in 100% of seeds (median 26.1 m).
+- **Streaks:** some car is streaked at the freeze in 100% of seeds.
+- **Memory:** about 0.54 MB per replay, as references to the sim's own worlds.
+- **Unchanged:** pools, verdicts, the eager distribution (56/11/0/41) and the 171 order pairs.
+
+### Sabotage (a)
+
+The frozen world drawn throughout the intro is caught only by a source-text line, since Game.jsx cannot run to a frame.
+
+### Accepted deviations
+
+- Streaks, rings and order badges are also drawn during the replay, read from the replayed world.
+- A car off the screen gets only its edge badge.
+- The streak's three lines, offsets and fade are `[invented]`.
+
+### Not verified
+
+How it looks: the replay's speed, the streaks, rings during the replay, the 28 m frame and the 0.8 s screech on a phone. The first look is Jay's.
