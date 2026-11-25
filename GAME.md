@@ -6,7 +6,11 @@ The reasoning and Jay's rulings are in [PROPOSAL-SHORT-GAME-2026-11-24.md](PROPO
 
 ## What it is
 
-- **A round:** 20-30 seconds, DRIVEN by the player with the two existing controls, through ONE intersection. The player is put about 100-150 m before it, given a task ("turn left"), and the round ends once they are through it.
+- **A round is ONE DECISION (Jay, 25 November).** His words: "Boring. The gameplay needs to be even faster... just a cut to the car pulling up to the decision point and the scene freezes. The player press go immediately or they can hold 'wait' and the simulation continues so the player can wait for their correct timing."
+  - The car is already stopped at the line, and the scene is frozen.
+  - The player either goes now, or holds WAIT while the sim runs and lets go when it is their turn.
+  - The car then drives itself through, and the traffic answers the decision.
+  - This supersedes slice 1's driven round (24 November), which stays in git history.
 - **A set:** five rounds.
 - **Its own app:** `play.html` -> `src/game/`. It is not a route in `App.jsx`'s developer menu.
 - **It sits on the simulator** (`src/sim/`, `src/iso/`, `src/core/`, `src/map/`) and changes nothing inside it unless a spec says so.
