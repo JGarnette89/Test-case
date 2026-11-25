@@ -30,7 +30,7 @@ import { DEFAULT_MERGE_TOLERANCE } from "../sim/lanechange.js";
 import { lenOf, HARSH_AT } from "../sim/traffic.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { autoInput } from "./autopilot.js";
-import { TRAIL, TRAIL_MIN_M } from "./stage.js";
+import { TRAIL, TRAIL_MIN_M, REPLAY } from "./stage.js";
 import { faultWords, praiseWords } from "./words.js";
 
 /* What `sceneFor` is called with by its other callers (ExamRide: 50 and 2.0; MapRoad: 50 and 2.0). `kmh` only sizes
@@ -78,7 +78,7 @@ export const roundWorld = (def) => worldFor(...sceneArgs(def), false, false, { c
 /* THE PER-DECISION STATE, in ONE object (slice 4, section 1): the openings, when the car froze and when it went, the arrival's trail, the
    pull-away, the turn made, the crossing and the timing verdict. A later slice with several decision points keeps a list of these; `rs`
    carries the world, the car, the events and the end, which are the round's. */
-export const newDecision = () => ({ decideAt: null, goAt: null, openings: [], timing: null, trail: null, launch: null, made: null, crossedAt: null });
+export const newDecision = () => ({ decideAt: null, goAt: null, openings: [], timing: null, trail: null, replay: null, launch: null, made: null, crossedAt: null });
 
 export function startRound(def, { world, me }) {
   return { def, world, me, ev: newEventState(), events: [], t0: world.t, targetK: me.k, end: null, phase: "approach", decision: newDecision() };
@@ -147,9 +147,16 @@ export function toDecisionFrom(rs0, k) {
   /* THE ARRIVAL, RECORDED (slice 3): the car as it stood on each of the last TRAIL seconds of ticks (the car objects themselves; their
      poses are worked out once, at the freeze). Nothing here is read by the sim. */
   const hist = [];
+  /* THE WORLD'S ARRIVAL, RECORDED (slice 6, Jay: "the player is the only car moving when they arrive... it should be the most visually busy
+     moment"): the sim's world as it stood on each tick of the last REPLAY seconds before the freeze, kept as references to the world objects
+     the sim already made (each tick builds new actors and shares the course, so a kept world costs its actors and little else). Nothing here is
+     read by the sim, and the LAST ENTRY IS THE FROZEN WORLD ITSELF (the same object). Older ones are dropped as new ones arrive. */
+  const wh = [];
   while (rs.world.t - t0 <= APPROACH_CAP) {
     if (rs.end || rs.decision.crossedAt != null || rs.me.contacts > 0) return null;
     hist.push({ t: rs.world.t, me: rs.me });
+    wh.push({ t: rs.world.t, world: rs.world });
+    while (wh.length > 1 && rs.world.t - wh[0].t > REPLAY + 1e-6) wh.shift();
     const path = pathOf(rs.world, rs.me);
     if (rs.me.v < AT_REST && rs.me.stoppedAt != null && Math.abs(path.stopAt - (rs.me.s + lenOf(rs.me) / 2)) <= AT_LINE && rs.me.k === rs.targetK && !carAhead(rs)) {
       /* decision.trail: the drawn pose and speed of the player on each tick of the last TRAIL s; the LAST ENTRY IS THE FROZEN POSE. Entries on
@@ -165,7 +172,7 @@ export function toDecisionFrom(rs0, k) {
         const p = driverPose(h.me, rs.world.course);
         return { x: p.x, y: p.y, z: p.z ?? 0, heading: p.heading, v: h.me.v, s: h.me.s, t: h.t };
       });
-      rs = { ...rs, events: [], phase: "frozen", t0: rs.world.t, decision: { ...rs.decision, decideAt: rs.world.t, trail } };
+      rs = { ...rs, events: [], phase: "frozen", t0: rs.world.t, decision: { ...rs.decision, decideAt: rs.world.t, trail, replay: wh } };
       return trackOpenings(rs);
     }
     rs = roundTick(rs);

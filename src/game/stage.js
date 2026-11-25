@@ -30,14 +30,23 @@ import { UP_HEADING } from "../iso/chase.js";
 /* THE TIMES, seconds. All [invented]. */
 /* Slice 5, Jay: "realism in speed and acceleration/stopping isn't a primary concern here": 24 m in 0.6 s quadratic enters at about 80 m/s and
    stops at about 133 m/s^2 [D: 2 x 24 / 0.6, 2 x 24 / 0.6^2, assuming the 24 m trail]: an arcade cinematic, flagged. (Slice 4: 1.1 s.) */
-export const SCREECH = 0.6;
+/* Slice 6: lengthened to 0.8 s [invented] so the player has time to take in the arriving traffic (24 m in 0.8 s quadratic enters at about 60 m/s
+   [D: 2 x 24 / 0.8, assuming the 24 m trail]); the intro is 1.05 s with SETTLE. */
+export const SCREECH = 0.8;
 export const SETTLE = 0.25;
-export const INTRO_END = SCREECH + SETTLE;   // 0.85 s: the button is accepted from here
+export const INTRO_END = SCREECH + SETTLE;   // 1.05 s: the button is accepted from here
 
 /* THE PLAYBACK AFTER GO (slice 5, section 3): the sim runs this many ticks per tick of real time from the moment the player lets go to the
    end of the round [invented]. Same ticks, so the same verdict; only the playback is quicker. Game.jsx reads it through `speedOf`. */
 export const FAST = 2;
 export const speedOf = (phase) => (phase === "gone" ? FAST : 1);
+
+/* THE WORLD'S ARRIVAL (slice 6): seconds of sim ticks before the freeze that `decision.replay` holds [invented]. Played over the intro, so faster than
+   real time by REPLAY_RATE [D: REPLAY / INTRO_END]: arcade, as the screech is. round.js reads REPLAY. */
+export const REPLAY = 2.0;
+export const REPLAY_RATE = REPLAY / INTRO_END;
+/* A MOTION STREAK is this many seconds of a car's travel long [invented]. */
+export const STREAK_S = 0.5;
 
 /* THE ARRIVAL RECORDED: seconds of sim ticks before the freeze that `trail` holds [invented]. (round.js reads it.) */
 export const TRAIL = 3.0;
@@ -150,13 +159,13 @@ export function frameCamera(bounds, p, size) {
   return { cam: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2, z: 0 }, rot, k: Math.min(fitK(rb, size), kv) };
 }
 
-/* THE FRAME OF A DECISION (slice 5, section 1): the world rectangle { x, y, w, h } the camera holds, derived from THE DECISION and never
+/* THE FRAME OF A DECISION (slice 5, section 1; slice 6 section 2): the world rectangle { x, y, w, h } the camera holds, derived from THE DECISION and never
    from the map or the arrival. It fits the intersection's own box (its node, plus or minus the layout's box half-size), the player's stop
-   pose, and every relevant car (relevantIds: those that decide it NOW) by its drawn pose -- grown by FRAME_MARGIN on each side, and never
+   pose, and every relevant car at its line or in the box (whyRelevant "line" or "box") by its drawn pose -- grown by FRAME_MARGIN on each side, and never
    less than FRAME_MIN_R round the box's centre -- and nothing else. Dropped from slice 4: the trail's start (the player's car screeches
    in from the edge and may start outside it) and the decision view's 45 m circle. */
-export const FRAME_MARGIN = 6;    // m [invented]
-export const FRAME_MIN_R = 25;    // m [invented]
+export const FRAME_MARGIN = 4;    // m [invented; slice 6, from 6]
+export const FRAME_MIN_R = 14;    // m [invented; slice 6, from 25]
 export function decisionFrame(rs) {
   const { world, me } = rs, k = rs.targetK ?? me.k ?? 0;
   const L = world.course.at[k].layout, at = L.place.at;
@@ -165,11 +174,13 @@ export function decisionFrame(rs) {
   const half = Math.max(L.place.boxHalf ?? 0, ...Object.values(L.legs ?? {}).map((l) => l.boxHalf ?? 0));
   for (const dx of [-half, half]) for (const dy of [-half, half]) pts.push({ x: at.x + dx, y: at.y + dy });
   const wc = carriedWorld(world, 0);
-  /* A car relevant only because the sound driver yields to it far out ("holds") does NOT shape the frame: it would widen it to 230 m
-     [M, verify-rounds, review run]. It is shown as a badge pinned to the screen's edge instead (edgePoint), pointing at it. */
+  /* SLICE 6, Jay: "the wide view": ONLY a car at its line or in the box shapes the frame. An ARRIVING car (up to 4 s out, 55 m at 50 km/h) and a
+     HOLDING car (the sound driver's conservative gap, 230 m out at worst [M, slice 5 review run]) would each widen it to 50-108 m and make the cars
+     that decide the decision small. They are shown by a ring and their seconds when on the screen, and by a badge pinned to its edge (edgePoint)
+     pointing at them when not. */
   for (const id of relevantIds(world, me)) {
-    const a = world.actors.find((c) => c.id === id);
-    if (a && whyRelevant(world, me, a) !== "holds") { const p = carriedPose(wc, a, 0); pts.push({ x: p.x, y: p.y }); }
+    const a = world.actors.find((c) => c.id === id), why = a && whyRelevant(world, me, a);
+    if (why === "line" || why === "box") { const p = carriedPose(wc, a, 0); pts.push({ x: p.x, y: p.y }); }
   }
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
@@ -270,6 +281,49 @@ export function arrivalSeconds(world, me) {
     const why = whyRelevant(world, me, a);
     if (numbered.has(a.id) || !(why === "arriving" || (why === "holds" && a.v > AT_REST))) continue;
     out.push({ id: a.id, secs: Math.round(theirIn(L, me, a) / a.v) });
+  }
+  return out;
+}
+
+/* ------------------------------------------------------ THE ARRIVAL, REPLAYED (slice 6, section 1) */
+
+/* WHICH WORLD IS DRAWN at `t` seconds into the intro, from `decision.replay` ([{ t, world }], oldest first, the last being the frozen world):
+   the recorded span is played over INTRO_END, so the sim time is the first entry's plus t / INTRO_END of the span. Returns { world, carry, i }:
+   the last tick at or before that time, and the seconds since it (what `actorsOf` carries each car forward by, so the motion is smooth between
+   20 Hz ticks). At t <= 0 it is the first world; at t >= INTRO_END it is the frozen world itself with no carry. Pure. */
+export function replayAt(replay, t) {
+  const n = replay.length, last = replay[n - 1];
+  if (n === 1 || t >= INTRO_END) return { world: last.world, carry: 0, i: n - 1 };
+  const first = replay[0], simT = first.t + (Math.max(0, t) / INTRO_END) * (last.t - first.t);
+  let i = 0;
+  while (i < n - 1 && replay[i + 1].t <= simT + 1e-9) i++;
+  return { world: replay[i].world, carry: i === n - 1 ? 0 : Math.max(0, simT - replay[i].t), i };
+}
+
+/* THE MOTION STREAK of a drawn car: three lines behind it along its heading (heading in degrees, a direction of (cos, sin), as skidLines reads
+   it), each STREAK_S x v long, starting at the car's rear bumper and spread across its width, with alpha falling from the middle line outward
+   [invented]. Nothing for a car at rest (v under AT_REST). Returns [{ x0, y0, x1, y1, z, alpha }] in world coordinates. */
+export const STREAK_LANES = [0, -0.6, 0.6];   // m across the car [invented]
+export const STREAK_ALPHA = [0.55, 0.35, 0.35];
+export function streakOf(pose, v) {
+  if (!(v > AT_REST)) return [];
+  const h = pose.heading * DEG, dx = Math.cos(h), dy = Math.sin(h), nx = -dy, ny = dx, half = (pose.length ?? CAR.length) / 2, len = STREAK_S * v;
+  return STREAK_LANES.map((o, i) => {
+    const x0 = pose.x - dx * half + nx * o, y0 = pose.y - dy * half + ny * o;
+    return { x0, y0, x1: x0 - dx * len, y1: y0 - dy * len, z: pose.z ?? 0, alpha: STREAK_ALPHA[i] };
+  });
+}
+
+/* THE STREAKS OF A DRAWN FRAME: every drawn car that is not the player's, a pedestrian's or a wreck's, with its speed from the world's own
+   actor of that id. `poses` is what `actorsOf` returned. Returns [{ id, lines }] for the cars that move. */
+export function streaksFor(poses, world) {
+  const byId = new Map(world.actors.map((a) => [a.id, a]));
+  const out = [];
+  for (const p of poses) {
+    const a = byId.get(p.id);
+    if (!a || p.player || p.ped || p.crashed || a.shadow) continue;
+    const lines = streakOf(p, a.v ?? 0);
+    if (lines.length) out.push({ id: p.id, lines });
   }
   return out;
 }

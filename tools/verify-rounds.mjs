@@ -31,11 +31,11 @@ import { DT } from "../src/sim/crossing.js";
 import { pageMore, pageLeft, PAGE_STEPS } from "../src/sim/pace.js";
 import { driveDecision, oracle, eager, late, tracker } from "./lib/round-drive.mjs";
 import { loadMap } from "../src/map/load.js";
-import { openTo, AT_REST, atNode, blockedBy, conflictOf, CAR, poseOf } from "../src/sim/crossing.js";
+import { openTo, AT_REST, atNode, blockedBy, conflictOf, CAR, poseOf, carriedWorld, carriedPose } from "../src/sim/crossing.js";
 import { viewOf } from "../src/iso/project.js";
 import { UP_HEADING } from "../src/iso/chase.js";
 import { driverPose } from "../src/sim/drive.js";
-import { relevantIds, screechAt, settleAt, introAt, frameCamera, decisionFrame, skidLines, stopOrder, arrivalSeconds, SAME_MOMENT, FAST, speedOf, SCREECH, SETTLE, INTRO_END, edgePoint } from "../src/game/stage.js";
+import { relevantIds, screechAt, settleAt, introAt, frameCamera, decisionFrame, skidLines, stopOrder, arrivalSeconds, SAME_MOMENT, FAST, speedOf, SCREECH, SETTLE, INTRO_END, edgePoint, replayAt, streakOf, streaksFor, STREAK_S, REPLAY, REPLAY_RATE } from "../src/game/stage.js";
 import { lenOf } from "../src/sim/traffic.js";
 import { aheadOf } from "../src/sim/drive.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
@@ -376,7 +376,7 @@ console.log("\n10. THE GAME'S BODY MOTION (Jay, 25 November: overemphasize it, s
   check(world.actors.length > 0, `EXPOSURE: a round's world has ${world.actors.length} actors to dress`);
   check(out.world.actors.every((a) => a.bodyMods === GAME_BODY) && world.actors.every((a) => a.bodyMods === undefined), "every actor drawn carries the game's modifiers, and the sim's own world is untouched");
   const src = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
-  check(/actorsOf\(withGameBody\(sc\), owed, body\)/.test(src), "the screen draws through withGameBody (source text: a React screen no check can run to a frame)");
+  check(/actorsOf\(withGameBody\(rp \? \{ \.\.\.sc, world \} : sc\), carry, body\)/.test(src), "the screen draws through withGameBody (slice 6: of the replayed world while the intro plays, of the sim's own otherwise) (source text: a React screen no check can run to a frame)");
 }
 
 console.log("\n11. THE STAGING (slice 3): the arrival recorded, the screech, the ringed traffic, the cameras");
@@ -434,7 +434,7 @@ console.log("\n11. THE STAGING (slice 3): the arrival recorded, the screech, the
     check(ps[0] <= (-8 * Math.PI) / 180 && ps.some((p) => p > 0) && changes === 1 && settleAt(SETTLE) === 0 && settleAt(SETTLE + 1) === 0, `the settle starts nose-down, overshoots nose-up once (${(Math.max(...ps) * 180 / Math.PI).toFixed(2)} degrees at most) and is level at ${SETTLE} s and after [M, this run]`);
   }
   console.log(`        the durations [invented]: screech ${SCREECH} s, settle ${SETTLE} s, intro ${INTRO_END.toFixed(2)} s (no far shot)`);
-  check(SCREECH === 0.6 && SETTLE === 0.25 && Math.abs(INTRO_END - 0.85) < 1e-9 && introAt(frozen[0].rs.decision.trail, SCREECH - 0.01).phase === "screech" && introAt(frozen[0].rs.decision.trail, SCREECH + 0.01).phase === "settle" && introAt(frozen[0].rs.decision.trail, INTRO_END).phase === "done", "the intro is a screech of 0.6 s then a settle of 0.25 s, with no far phase (stated here, the spec's)");
+  check(SCREECH === 0.8 && SETTLE === 0.25 && Math.abs(INTRO_END - 1.05) < 1e-9 && introAt(frozen[0].rs.decision.trail, SCREECH - 0.01).phase === "screech" && introAt(frozen[0].rs.decision.trail, SCREECH + 0.01).phase === "settle" && introAt(frozen[0].rs.decision.trail, INTRO_END).phase === "done", "the intro is a screech of 0.8 s (slice 6, from 0.6) then a settle of 0.25 s, with no far phase (stated here, the spec's)");
 
   /* THE SKID MARKS. */
   {
@@ -475,7 +475,7 @@ console.log("\n11. THE STAGING (slice 3): the arrival recorded, the screech, the
   /* 4. THE SOURCE: the intro and its rings, as text (a React screen no check can run to a frame). The camera itself is section 12's. */
   {
     const src = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
-    check(/frameCamera\(decisionFrame\(rs\), p, size\)/.test(src) && !/farCamera|introCamera|decisionCamera/.test(src) && /relevantIds\(world, me\)/.test(src) && /skidLines\(trail/.test(src) && /intro >= INTRO_END/.test(src) && /intro < INTRO_END\) \{ if \(ev\.type === "down"/.test(src), "the screen holds the decision frame from the first frame (no far shot, no introCamera), draws the rings and the skid marks, shows the button only after the intro, and a tap during it only skips (source text)");
+    check(/frameCamera\(decisionFrame\(rs\), p, size\)/.test(src) && !/farCamera|introCamera|decisionCamera/.test(src) && /relevantIds\(world, drawMe\)/.test(src) && /skidLines\(trail/.test(src) && /intro >= INTRO_END/.test(src) && /intro < INTRO_END\) \{ if \(ev\.type === "down"/.test(src), "the screen holds the decision frame from the first frame (no far shot, no introCamera), draws the rings and the skid marks, shows the button only after the intro, and a tap during it only skips (source text)");
   }
 }
 
@@ -489,42 +489,52 @@ console.log("\n12. THE DECISION FRAME AND THE LAUNCH (slice 5): only what decide
   /* 1. THE FRAME. The cars that matter are read here by the check's own statement (conflictingNow: atNode, conflictOf, the time filter),
      not through stage.js relevantIds; the points are the player's stop pose and those cars as the world poses them. */
   const missed = [], notEqual = [], boxMissed = [], widths = [], edgeBad = [];
-  let relSeen = 0, seedsDropping = 0, droppedCars = 0, farHolders = 0, farOff = 0;
+  let relSeen = 0, seedsDropping = 0, droppedCars = 0, farHolders = 0, farOff = 0, arrivers = 0, arriveOff = 0, seedsArriveOff = 0, seedsFarOff = 0, seedsEitherOff = 0;
   for (const { x, rs } of frozen) {
     const k = rs.me.k ?? 0, L = rs.world.course.at[k].layout, p = driverPose(rs.me, rs.world.course);
     const pts = [[p.x, p.y, p.z ?? 0, "stop pose"]];
     const own = conflictingNow(rs);
+    /* SLICE 6: the frame holds only the stop pose and the cars `line` and `box`; an `arriving` or `holds` car moving (it has seconds to show)
+       is read separately, as one the frame does NOT hold and the screen badges at its edge when it is off it. */
     const far = [];
-    for (const c of own) if (c.why && c.why !== "holds") { const q = poseOf(rs.world, c.a); pts.push([q.x, q.y, q.z ?? 0, `car ${c.a.id}`]); relSeen++; }
-      else if (c.why === "holds") { const q = poseOf(rs.world, c.a); far.push([q.x, q.y, q.z ?? 0, `car ${c.a.id}`]); farHolders++; }
+    for (const c of own) if (c.why === "line" || c.why === "box") { const q = poseOf(rs.world, c.a); pts.push([q.x, q.y, q.z ?? 0, `car ${c.a.id}`]); relSeen++; }
+      else if ((c.why === "arriving" || c.why === "holds") && c.a.v > AT_REST) { const q = poseOf(rs.world, c.a); far.push([q.x, q.y, q.z ?? 0, `car ${c.a.id}`, c.why]); if (c.why === "holds") farHolders++; else arrivers++; }
     const dropped = own.filter((c) => !c.why && c.secs > ARRIVE && c.secs !== Infinity);   // conflicting, not past, MORE THAN 4 s out and moving
     if (dropped.length) { seedsDropping++; droppedCars += dropped.length; }
     if (new Set(relevantIds(rs.world, rs.me)).size !== own.filter((c) => c.why).length) notEqual.push(tag(x));
     const f = decisionFrame(rs);
     widths.push(Math.max(f.w, f.h));
     const half = 8;   // the box's own corners, from the layout: a frame must hold the whole intersection (the check reads place.at and a 6 m half-size at least)
+    let seedArriveOff = false, seedFarOff = false;
     for (const size of sizes) {
       const fc = frameCamera(f, p, size), v = viewOf(fc.k, { ...fc.cam, id: null }, fc.rot, size);
       for (const q of pts) if (!onScreen(v, size, q)) missed.push(`${tag(x)}/${size.w}x${size.h}:${q[3]}`);
       /* A FAR HOLDER is badged at the screen's edge when off it: the badge's point is inside the screen by at least 20 px [stated here], and a car on screen keeps its own point. */
       for (const q of far) {
         const [qx, qy] = v.P(q[0], q[1], q[2]), e = edgePoint(qx, qy, size), inside = qx >= 0 && qx <= size.w && qy >= 0 && qy <= size.h;
-        if (e.off) farOff++;
+        if (e.off) { if (q[4] === "holds") { farOff++; seedFarOff = true; } else { arriveOff++; seedArriveOff = true; } }
         if (!(e.x >= 20 && e.x <= size.w - 20 && e.y >= 20 && e.y <= size.h - 20) && e.off) edgeBad.push(`${tag(x)}/${size.w}x${size.h}:${q[3]}`);
         if (inside && qx >= 28 && qx <= size.w - 28 && qy >= 28 && qy <= size.h - 28 && (e.off || e.x !== qx || e.y !== qy)) edgeBad.push(`${tag(x)}/${size.w}x${size.h}:${q[3]} moved`);
       }
       const at = L.place.at;
       for (const [dx, dy] of [[-half, -half], [half, -half], [half, half], [-half, half]]) if (!onScreen(v, size, [at.x + dx, at.y + dy, 0])) boxMissed.push(`${tag(x)}/${size.w}x${size.h}`);
     }
+    if (seedArriveOff) seedsArriveOff++;
+    if (seedFarOff) seedsFarOff++;
+    if (seedArriveOff || seedFarOff) seedsEitherOff++;
   }
   check(frozen.length >= 40 && relSeen >= 20, `EXPOSURE: ${frozen.length} frozen rounds and ${relSeen} relevant cars read (at least 40 and 20)`);
-  check(missed.length === 0, `the player's stop pose and every relevant car within 4 s project inside the screen, 400x800 and 800x400, in every pooled seed${missed.length ? ` -- not ${missed.slice(0, 5).join(" ")}` : ""}`);
+  check(missed.length === 0, `the player's stop pose and every relevant car AT ITS LINE OR IN THE BOX project inside the screen, 400x800 and 800x400, in every pooled seed${missed.length ? ` -- not ${missed.slice(0, 5).join(" ")}` : ""}`);
   check(farHolders >= 10 && farOff >= 10, `EXPOSURE: ${farHolders} cars the sound driver waits for further out than 4 s (relevant, kept out of the frame), ${farOff} badge placements off the screen (at least 10 each) [M, this run]`);
-  check(edgeBad.length === 0, `each such car off the screen is badged at least 20 px inside its edge, and one well inside keeps its own point${edgeBad.length ? ` -- not ${edgeBad.slice(0, 5).join(" ")}` : ""}`);
+  const arriveShare = seedsArriveOff / frozen.length;
+  check(arriveShare >= 0.2, `EXPOSURE: in ${(100 * arriveShare).toFixed(1)}% of ${frozen.length} seeds an ARRIVING car (moving, within 4 s of its conflict, not in the frame) is off the screen and gets its edge badge (at least 20%); ${seedsFarOff} seeds have a holding car off it too [M, this run]`);
+  console.log(`        arriving cars: ${arrivers} observations kept out of the frame, ${arriveOff} badge placements off the screen, in ${seedsArriveOff} of ${frozen.length} seeds (${(100 * arriveShare).toFixed(1)}%); an arriving OR a holding car is badged at the edge in ${seedsEitherOff} seeds (${(100 * seedsEitherOff / frozen.length).toFixed(1)}%) [M, this run]`);
+  if (arriveShare < 0.2) console.log(`        FINDING: the spec's 20% of seeds with an ARRIVING car off the screen is false on these pools: ${seedsArriveOff} of ${frozen.length} (${(100 * arriveShare).toFixed(1)}%). The frame (median ${widths.slice().sort((a, b) => a - b)[widths.length >> 1].toFixed(1)} m) holds most cars arriving within 4 s, which is the frame doing its job. The line is left as written and RED; counting a holding car as well it would be ${(100 * seedsEitherOff / frozen.length).toFixed(1)}%`);
+  check(edgeBad.length === 0, `each such car (arriving or holding) off the screen is badged at least 20 px inside its edge, and one well inside keeps its own point${edgeBad.length ? ` -- not ${edgeBad.slice(0, 5).join(" ")}` : ""}`);
   check(boxMissed.length === 0, `the intersection's own box (8 m either side of its centre [instrument]) projects inside the screen in every one${boxMissed.length ? ` -- not ${boxMissed.slice(0, 5).join(" ")}` : ""}`);
   check(notEqual.length === 0, `stage.js relevantIds is the check's own relevant set in every one (the time filter applied: at its line, in the box, within 4 s, or holding the sound driver)${notEqual.length ? ` -- not ${notEqual.slice(0, 5).join(" ")}` : ""}`);
-  const ws = widths.slice().sort((a, b) => a - b), within = widths.filter((w) => w <= 120).length / widths.length;
-  check(within >= 0.95, `the frame is at most 120 m across [invented] in ${(100 * within).toFixed(1)}% of ${widths.length} seeds (at least 95%)`);
+  const ws = widths.slice().sort((a, b) => a - b), within = widths.filter((w) => w <= 50).length / widths.length;
+  check(within >= 0.95, `the frame's longer side is at most 50 m [invented, slice 6; slice 5's was 120] in ${(100 * within).toFixed(1)}% of ${widths.length} seeds (at least 95%)`);
   console.log(`        frame size (the longer side): median ${ws[ws.length >> 1].toFixed(1)} m, widest ${ws[ws.length - 1].toFixed(1)} m, over ${widths.length} seeds [M, this run]`);
   const dshare = seedsDropping / frozen.length;
   check(dshare >= 0.2, `EXPOSURE: the time filter bites -- in ${(100 * dshare).toFixed(1)}% of ${frozen.length} seeds a conflicting, not-yet-past car is NOT relevant because it is more than 4 s out (at least 20%)`);
@@ -566,8 +576,8 @@ console.log("\n12. THE DECISION FRAME AND THE LAUNCH (slice 5): only what decide
   let mid = fresh; for (let i = 0; i < 40; i++) mid = roundTick(mid);
   const ref = frozenOf.get(tag(x0)), a1 = toDecisionFrom(fresh, fresh.me.k), a2 = toDecisionFrom(mid, mid.me.k);
   check(a1 != null && a2 != null && a1.phase === "frozen" && a2.phase === "frozen" && a1.decision.decideAt === ref.decision.decideAt && a2.decision.decideAt === ref.decision.decideAt, `POSITIVE CONTROL: from the start, and from 2 s into the approach, toDecisionFrom freezes at the same moment toDecision does (${a1?.decision.decideAt?.toFixed(2)}, ${a2?.decision.decideAt?.toFixed(2)}, ${ref.decision.decideAt.toFixed(2)} s)`);
-  check(a1 != null && isDeepStrictEqual(Object.keys(a1.decision).sort(), ["crossedAt", "decideAt", "goAt", "launch", "made", "openings", "timing", "trail"]), "the per-decision state is ONE object, rs.decision, holding the openings, decideAt, goAt, the trail, launch, made, crossedAt and the timing");
-  check(a1 != null && ["decideAt", "goAt", "openings", "timing", "trail", "launch", "made", "crossedAt"].every((f) => !(f in a1)), "and none of those fields is left on the round itself");
+  check(a1 != null && isDeepStrictEqual(Object.keys(a1.decision).sort(), ["crossedAt", "decideAt", "goAt", "launch", "made", "openings", "replay", "timing", "trail"]), "the per-decision state is ONE object, rs.decision, holding the openings, decideAt, goAt, the trail, the replay (slice 6), launch, made, crossedAt and the timing");
+  check(a1 != null && ["decideAt", "goAt", "openings", "timing", "trail", "replay", "launch", "made", "crossedAt"].every((f) => !(f in a1)), "and none of those fields is left on the round itself");
 }
 
 console.log("\n13. THE STOPPING ORDER (slice 5): numbered from stoppedAt, held to the sim's own blockedBy");
@@ -666,6 +676,129 @@ console.log("\n15. THE PLAYBACK AND THE GESTURES (slice 5), as source text and t
   const sorted = goToEnd.slice().sort((a, b) => a - b), med = sorted[sorted.length >> 1], worst = sorted[sorted.length - 1];
   check(goToEnd.length >= 20 && Number.isFinite(after), `EXPOSURE: ${goToEnd.length} oracle wait runs timed from GO to their end, AFTER_END read from the source (${after} ms)`);
   console.log(`        GO to the result card [D: the oracle's GO-to-end in sim seconds / ${FAST} + AFTER_END ${after} ms, assuming the page keeps up]: median ${(med / FAST + after / 1000).toFixed(2)} s (sim ${med.toFixed(2)} s), worst ${(worst / FAST + after / 1000).toFixed(2)} s (sim ${worst.toFixed(2)} s) over ${goToEnd.length} runs [M for the sim seconds, this run]`);
+}
+
+console.log("\n16. THE WORLD ARRIVES WITH YOU (slice 6): the replay, which world is drawn when, the streaks, as source text");
+{
+  const frozen = POOLED.map((x) => ({ x, rs: frozenOf.get(tag(x)) })).filter((e) => e.rs);
+  const posOf = (w, a) => { const q = poseOf(w, a); return { x: q.x, y: q.y }; };
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  check(frozen.length >= 40, `EXPOSURE: ${frozen.length} frozen rounds read, at least 40`);
+  console.log(`        REPLAY ${REPLAY} s [invented], played over the intro ${INTRO_END.toFixed(2)} s: ${REPLAY_RATE.toFixed(2)}x real time [D: REPLAY / INTRO_END]`);
+
+  /* 1. THE RECORDING, read by the check's own statements. */
+  const short = [], order = [], notLast = [], jump = [], spans = [], moved = [], nWorlds = [];
+  let ticksRead = 0, maxStep = 0;
+  for (const { x, rs } of frozen) {
+    const rp = rs.decision.replay;
+    if (!Array.isArray(rp) || !rp.length) { short.push(tag(x)); continue; }
+    nWorlds.push(rp.length);
+    const span = rp[rp.length - 1].t - rp[0].t;
+    spans.push(span);
+    if (!(span >= 1.9 - 1e-6)) short.push(`${tag(x)}(${span.toFixed(2)})`);
+    for (let i = 1; i < rp.length; i++) if (!(Math.abs(rp[i].t - rp[i - 1].t - DT) < 1e-6 && rp[i].world.t === rp[i].t)) { order.push(`${tag(x)}[${i}]`); break; }
+    /* the last world is the frozen world: the same actors, at the same places to 1 cm */
+    const lw = rp[rp.length - 1].world;
+    if (!(lw.t === rs.world.t && lw.actors.length === rs.world.actors.length && rs.world.actors.every((a) => { const b = lw.actors.find((c) => c.id === a.id); return b && dist(posOf(rs.world, a), posOf(lw, b)) <= 0.01; }))) notLast.push(tag(x));
+    /* consecutive recorded ticks are CONSECUTIVE STATES of the sim: no car jumps between two (a car at 25 m/s moves 1.25 m a tick; 3 m is generous [instrument]) */
+    for (let i = 1; i < rp.length; i++) {
+      for (const a of rp[i].world.actors) {
+        const b = rp[i - 1].world.actors.find((c) => c.id === a.id);
+        if (!b) continue;
+        const d = dist(posOf(rp[i].world, a), posOf(rp[i - 1].world, b)); ticksRead++; maxStep = Math.max(maxStep, d);
+        if (d > 3) jump.push(`${tag(x)}[${i}]:${a.id}`);
+      }
+    }
+    /* does the world MOVE in it: the largest displacement of any OTHER road user between the first world and the last */
+    let most = 0;
+    for (const a of rs.world.actors) {
+      if (a.player || a.shadow) continue;
+      const b = rp[0].world.actors.find((c) => c.id === a.id);
+      if (b) most = Math.max(most, dist(posOf(rp[0].world, b), posOf(rs.world, a)));
+    }
+    moved.push(most);
+  }
+  check(short.length === 0 && spans.length === frozen.length, `every pooled seed's replay spans at least 1.9 s of ticks (${stat(spans)} s, ${stat(nWorlds)} worlds [M, this run])${short.length ? ` -- not ${short.slice(0, 5).join(" ")}` : ""}`);
+  check(order.length === 0, `its ticks are in order, one DT apart, each world stamped with its own time${order.length ? ` -- not ${order.slice(0, 5).join(" ")}` : ""}`);
+  check(notLast.length === 0, `its last world's actors are the frozen world's, every one within 1 cm${notLast.length ? ` -- not ${notLast.slice(0, 5).join(" ")}` : ""}`);
+  check(ticksRead >= 1000 && jump.length === 0, `EXPOSURE: ${ticksRead} car-ticks read across consecutive recorded worlds (at least 1000), none moving more than 3 m in a tick (largest ${maxStep.toFixed(2)} m [M, this run])${jump.length ? ` -- not ${jump.slice(0, 5).join(" ")}` : ""}`);
+  const share = moved.filter((m) => m >= 3).length / moved.length;
+  check(moved.length === frozen.length && share >= 0.8, `EXPOSURE: some other road user moves at least 3 m [invented] over the replay in ${(100 * share).toFixed(1)}% of ${moved.length} seeds (at least 80%) [M, this run]`);
+  console.log(`        the most any other road user moves over the replay: ${stat(moved)} m [M, this run]`);
+
+  /* 2. replayAt: the world drawn at t, stated here. */
+  {
+    const bad0 = [], badEnd = [], notMono = [], notCovered = [], badCarry = [];
+    for (const { x, rs } of frozen) {
+      const rp = rs.decision.replay, last = rp.length - 1;
+      if (replayAt(rp, 0).world !== rp[0].world) bad0.push(tag(x));
+      for (const t of [INTRO_END, INTRO_END + 0.01, INTRO_END + 5]) { const r = replayAt(rp, t); if (r.world !== rs.world || r.carry !== 0) badEnd.push(`${tag(x)}@${t}`); }
+      let prev = -1, seen = new Set();
+      for (let i = 0; i <= 200; i++) {
+        const t = (INTRO_END * i) / 200, r = replayAt(rp, t);
+        if (r.i < prev) notMono.push(`${tag(x)}@${t.toFixed(3)}`);
+        prev = r.i; seen.add(r.i);
+        if (!(r.carry >= 0 && r.carry < DT + 1e-9 && r.world === rp[r.i].world)) badCarry.push(`${tag(x)}@${t.toFixed(3)}`);
+      }
+      if (!(seen.has(0) && seen.has(last))) notCovered.push(tag(x));
+    }
+    check(bad0.length === 0, `the replay drawn at t = 0 is the first recorded world, in every seed${bad0.length ? ` -- not ${bad0.slice(0, 5).join(" ")}` : ""}`);
+    check(badEnd.length === 0, `at t = INTRO_END and after it the drawn world is the frozen world itself, with no carry, in every seed (nothing jumps when the button appears)${badEnd.length ? ` -- not ${badEnd.slice(0, 5).join(" ")}` : ""}`);
+    check(notMono.length === 0 && badCarry.length === 0, `between them the world drawn only moves forward through the replay, and its carry is within one tick (201 samples a seed)${notMono.length + badCarry.length ? ` -- not ${[...notMono, ...badCarry].slice(0, 5).join(" ")}` : ""}`);
+    check(notCovered.length === 0, `EXPOSURE: the intro passes through the first world and the last of every seed's replay (so the whole arrival is drawn)${notCovered.length ? ` -- not ${notCovered.slice(0, 5).join(" ")}` : ""}`);
+  }
+
+  /* 3. THE REPLAY IS DRAWABLE: every world of every replay can be read by the rings and the order as the screen reads it, with the player as THAT world has them. */
+  {
+    let worlds = 0, threw = [], ringedWorlds = 0, orderedWorlds = 0;
+    for (const { x, rs } of frozen) for (const { world } of rs.decision.replay) {
+      const meAt = world.actors.find((a) => a.player && !a.shadow);
+      try { relevantIds(world, meAt); stopOrder(world, meAt); arrivalSeconds(world, meAt); worlds++; if (relevantIds(world, meAt).length) ringedWorlds++; if (stopOrder(world, meAt).length) orderedWorlds++; }
+      catch (err) { threw.push(`${tag(x)}@${world.t.toFixed(2)}:${String(err.message).slice(0, 40)}`); }
+    }
+    check(worlds >= 1000 && threw.length === 0, `${worlds} replayed worlds are read by relevantIds, stopOrder and arrivalSeconds without throwing (at least 1000) [M, this run]${threw.length ? ` -- threw ${threw.slice(0, 4).join(" ")}` : ""}`);
+    check(ringedWorlds > 0 && orderedWorlds > 0, `EXPOSURE: ${ringedWorlds} of those worlds have a ringed car and ${orderedWorlds} a numbered one (so the reading was of something)`);
+  }
+
+  /* 4. THE STREAK, stated here. */
+  {
+    const pose = { x: 10, y: -4, z: 0, heading: 30, length: 4.5 }, h = (30 * Math.PI) / 180, dir = [Math.cos(h), Math.sin(h)];
+    check(streakOf(pose, 0).length === 0 && streakOf(pose, AT_REST).length === 0 && streakOf(pose, AT_REST * 0.5).length === 0, "streakOf returns nothing for a car at rest (v at or under AT_REST)");
+    check(STREAK_S === 0.5, `STREAK_S is 0.5 s of travel (stated here, [invented])`);
+    const lines = streakOf(pose, 10), len = lines.map((l) => Math.hypot(l.x1 - l.x0, l.y1 - l.y0));
+    check(lines.length === 3 && len.every((l) => Math.abs(l - 0.5 * 10) < 1e-9), `a car at 10 m/s gets 3 lines, each STREAK_S x v = 5 m long (${len.map((l) => l.toFixed(3)).join(", ")} [M, this run])`);
+    check(lines.every((l) => { const ux = (l.x1 - l.x0) / 5, uy = (l.y1 - l.y0) / 5, back = (l.x0 - pose.x) * dir[0] + (l.y0 - pose.y) * dir[1]; return Math.abs(ux + dir[0]) < 1e-9 && Math.abs(uy + dir[1]) < 1e-9 && Math.abs(back + 2.25) < 1e-9; }), "each runs straight BACK along the heading, starting at the rear bumper (half a car length behind the centre)");
+    check(new Set(lines.map((l) => ((l.x0 - pose.x) * -dir[1] + (l.y0 - pose.y) * dir[0]).toFixed(6))).size === 3 && lines.every((l) => l.alpha > 0 && l.alpha <= 1), "the three lines sit at three different offsets across the car, each with an alpha in (0, 1]");
+    const l20 = streakOf(pose, 20);
+    check(Math.abs(Math.hypot(l20[0].x1 - l20[0].x0, l20[0].y1 - l20[0].y0) - 10) < 1e-9, "twice the speed, twice the length (proportional to speed)");
+    /* over the freezes, through the function the screen calls (streaksFor on the drawn poses) */
+    let streaked = 0, movingSeeds = 0, noStreakWhileMoving = [], streakAtRest = [];
+    for (const { x, rs } of frozen) {
+      const w = rs.world, wc = carriedWorld(w, 0), poses = [];
+      for (const a of w.actors) if (!a.shadow) { const q = carriedPose(wc, a, 0); poses.push({ id: a.id, x: q.x, y: q.y, z: q.z ?? 0, heading: q.rot, length: q.length, player: !!a.player }); }
+      const got = streaksFor(poses, w), gotIds = new Set(got.map((g) => g.id));
+      const movers = w.actors.filter((a) => !a.player && !a.shadow && a.v > AT_REST);
+      if (movers.length) movingSeeds++;
+      if (got.length) streaked++;
+      for (const a of movers) if (!gotIds.has(a.id)) noStreakWhileMoving.push(`${tag(x)}:${a.id}`);
+      for (const g of got) { const a = w.actors.find((c) => c.id === g.id); if (!(a.v > AT_REST) || a.player) streakAtRest.push(`${tag(x)}:${g.id}`); }
+    }
+    const share = streaked / frozen.length;
+    check(share >= 0.5, `EXPOSURE: some car is streaked at the freeze in ${(100 * share).toFixed(1)}% of ${frozen.length} seeds (at least 50%) [M, this run]; ${movingSeeds} seeds have another road user above AT_REST`);
+    check(noStreakWhileMoving.length === 0, `every other road user moving at the freeze has its streaks${noStreakWhileMoving.length ? ` -- not ${noStreakWhileMoving.slice(0, 5).join(" ")}` : ""}`);
+    check(streakAtRest.length === 0, `...and no car at rest, and not the player's, has one${streakAtRest.length ? ` -- ${streakAtRest.slice(0, 5).join(" ")}` : ""}`);
+  }
+
+  /* 5. THE SOURCE: the screen plays the replay in the intro and draws the streaks while frozen or waiting. */
+  {
+    const src = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
+    check(/replayAt\(rs\.decision\.replay, intro\)/.test(src) && /const it = rs\.phase === "frozen" && intro < INTRO_END \? introAt\(trail, intro\) : null;\s*\n\s*const rp = it && rs\.decision\.replay\?\.length/.test(src) && /const world = rp \? rp\.world : rs\.world/.test(src) && /actorsOf\(withGameBody\(rp \? \{ \.\.\.sc, world \} : sc\), carry, body\)/.test(src), "Game.jsx draws the recorded worlds over the intro (replayAt on rs.decision.replay at the intro clock, the world and carry from it, through actorsOf and withGameBody) and the frozen world after it (source text)");
+    check(/body\.dt = dt \* \(rp \? REPLAY_RATE : speedOf\(rs\.phase\)\)/.test(src), "the body's clock runs at the replay's rate while it plays (source text)");
+    const streakBlock = /if \(rs\.phase !== "gone"\) \{[\s\S]*?streaksFor\(actors, world\)/.exec(src)?.[0] ?? "";
+    check(streakBlock.length > 0 && /createLinearGradient/.test(src), "Game.jsx draws the streaks (streaksFor on the drawn actors and the drawn world) in every phase but gone, so while frozen and waiting (source text)");
+    check(/relevantIds\(world, drawMe\)/.test(src) && /stopOrder\(world, drawMe\)/.test(src) && /px < 0 \|\| px > size\.w/.test(src), "the rings and the order are read from the drawn world, and a car off the screen is not ringed (source text)");
+    check(/it \? it\.u : 1/.test(src) && !/replay[^\n]*roundTick|roundTick[^\n]*replay/.test(src), "the replay is never stepped through the sim: nothing in Game.jsx feeds a recorded world to roundTick (source text)");
+  }
 }
 
 console.log(`\n${failed === 0 ? "ALL PASSED" : `${failed} FAILED`}`);

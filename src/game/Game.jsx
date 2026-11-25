@@ -30,7 +30,7 @@ import { driverPose, carriedPlayer } from "../sim/drive.js";
 import { drawFrame } from "../iso/draw.js";
 import { viewOf } from "../iso/project.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
-import { INTRO_END, RING_MIN_PX, introAt, frameCamera, decisionFrame, skidLines, relevantIds, stopOrder, arrivalSeconds, speedOf, edgePoint } from "./stage.js";
+import { INTRO_END, RING_MIN_PX, REPLAY_RATE, introAt, frameCamera, decisionFrame, skidLines, relevantIds, stopOrder, arrivalSeconds, speedOf, edgePoint, replayAt, streaksFor } from "./stage.js";
 import { panFree, pinchFree } from "../iso/freecam.js";
 import { newBody } from "../iso/body.js";
 import { BUILD } from "../iso/perf.js";
@@ -177,12 +177,19 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     /* THE END: keep drawing for a second, THEN stop the loop, THEN tell the screen. */
     if (endAt != null && now - endAt >= AFTER_END) { stop(); onEnd(verdictOf(rs)); return; }
 
-    const me = rs.me, world = rs.world;
-    body.dt = dt * speedOf(rs.phase);
-    const actors = actorsOf(withGameBody(sc), owed, body);   // the game's exaggerated body motion (look.js)
+    const me = rs.me;
+    /* THE ARRIVAL OF THE WORLD (slice 6; Jay: "it should actually be the most visually busy moment"): over the intro the drawn world is the sim's own
+       last REPLAY seconds, recorded by round.js, played at REPLAY_RATE x (stage.js replayAt) and ending on the frozen world exactly. Every other
+       road user moves and its body moves with it; the player's own car is the screech, below. A tap during the intro skips to its end. */
+    const it = rs.phase === "frozen" && intro < INTRO_END ? introAt(trail, intro) : null;
+    const rp = it && rs.decision.replay?.length ? replayAt(rs.decision.replay, intro) : null;
+    const world = rp ? rp.world : rs.world, carry = rp ? rp.carry : owed;
+    /* The player as THAT world has them (the rings and the order are read for the moment drawn); the frozen car once the intro is over. */
+    const drawMe = rp ? (world.actors.find((a) => a.player && !a.shadow) ?? me) : me;
+    body.dt = dt * (rp ? REPLAY_RATE : speedOf(rs.phase));
+    const actors = actorsOf(withGameBody(rp ? { ...sc, world } : sc), carry, body);   // the game's exaggerated body motion (look.js)
     const p = driverPose(carriedPlayer(me, owed), world.course);
     /* THE INTRO (stage.js): the player's drawn pose and body are the screech's, for as long as it plays; every other car keeps its own. */
-    const it = rs.phase === "frozen" && intro < INTRO_END ? introAt(trail, intro) : null;
     if (it?.pose) {
       const mine = actors.find((a) => a.player);
       if (mine) { mine.x = it.pose.x; mine.y = it.pose.y; mine.z = it.pose.z; mine.heading = it.pose.heading; mine.body = it.body; mine.brakeLamp = true; }
@@ -203,7 +210,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       cam = { x: dec.x + (chase.x - dec.x) * b, y: dec.y + (chase.y - dec.y) * b, z: dec.z + (chase.z - dec.z) * b, rot: norm(dec.rot + norm(chase.rot - dec.rot) * b) };
       k = kDec + (kChase - kDec) * b;
     }
-    drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: { ...cam, id: null }, rot: cam.rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: world.t + owed, lights: world.lights });
+    drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: { ...cam, id: null }, rot: cam.rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: world.t + carry, lights: world.lights });
 
     /* THE SKID MARKS: over the road, AFTER the cars (drawFrame is one painter's pass this slice may not edit, so they cannot go under
        the cars). Low alpha dark lines; they stop short of the player's own footprint (stage.js SKID_REAR), so nothing is drawn across
@@ -220,11 +227,26 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     /* THE RELEVANT TRAFFIC, ringed (stage.js relevantIds: conflicts with the player's route, not past it, and at its line, in the box or
        arriving within a few seconds), recomputed from the drawn world every frame, as MapRoad rings a picked driver. */
     if (rs.phase !== "gone") {
+      /* THE MOTION STREAKS (stage.js streaksFor, slice 6): three fading lines behind every other car that is moving, STREAK_S of its travel
+         long, drawn from the drawn world every frame, so a car that has been seen arriving still reads as moving once frozen and the
+         streak shortens away as it slows while the player waits. Under the rings and badges. */
+      ctx.lineCap = "round";
+      for (const { lines } of streaksFor(actors, world)) {
+        for (const l of lines) {
+          const [ax, ay] = view.P(l.x0, l.y0, l.z), [bx, by2] = view.P(l.x1, l.y1, l.z);
+          const g = ctx.createLinearGradient(ax, ay, bx, by2);
+          g.addColorStop(0, `rgba(255,255,255,${l.alpha})`); g.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.strokeStyle = g; ctx.lineWidth = Math.max(1.5, 0.3 * k);
+          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by2); ctx.stroke();
+        }
+      }
       ctx.strokeStyle = AMBER; ctx.lineWidth = 2;
-      for (const id of relevantIds(world, me)) {
+      for (const id of relevantIds(world, drawMe)) {
         const pose = actors.find((a) => a.id === id);
         if (!pose) continue;
         const [px, py] = view.P(pose.x, pose.y, pose.z ?? 0);
+        /* A car off the screen has no ring: it has its edge badge (below). */
+        if (px < 0 || px > size.w || py < 0 || py > size.h) continue;
         ctx.beginPath(); ctx.arc(px, py, Math.max(RING_MIN_PX, 3.2 * k), 0, Math.PI * 2); ctx.stroke();
       }
       /* THE STOPPING ORDER (stage.js stopOrder, from each car's own stoppedAt) in a disc above each car at its line, the player's reading YOU;
@@ -247,8 +269,8 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
         ctx.fillStyle = "#14161a"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(text, px, py + 0.5);
       };
-      for (const r of stopOrder(world, me)) badge(r.id, r.you ? `YOU ${r.n}` : `${r.n}`, r.you);
-      for (const r of arrivalSeconds(world, me)) badge(r.id, `${r.secs}s`, false);
+      for (const r of stopOrder(world, drawMe)) badge(r.id, r.you ? `YOU ${r.n}` : `${r.n}`, r.you);
+      for (const r of arrivalSeconds(world, drawMe)) badge(r.id, `${r.secs}s`, false);
     }
 
     /* THE HUD, all on the canvas. */
