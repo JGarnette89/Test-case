@@ -227,3 +227,52 @@ Report back briefly:
 - section 3's counts and section 4's worst time;
 - the sabotage results;
 - **anything that did not work or that this spec got wrong, said plainly.** In particular, say whether `eager` in the `wait` pool is flagged often enough for "go now" to be a real mistake. That is the game's whole tension.
+
+---
+
+## REVIEW OUTCOME (25 November 2026, the planner)
+
+**Built by the executor in `6999630`, reviewed and corrected in the commit after it.** The derived set passed `[M, node tools/check.mjs --base d9647a5]`:
+- verify-rounds passed in 234 s;
+- verify-check-runner passed;
+- verify-core and verify-screens passed on a rerun. The first run failed with no `node_modules` in the worktree: an environment problem, not the code.
+
+### Changed in review
+
+1. **THE DELAY RUNS FROM THE FIRST OPENING**, not from the stretch the GO fell in. This is the sim's reading of Jay's band, written above `UNDUE_AT` in `crossing.js`: "waiting 4-5 seconds beyond when the opening is there", read as time since the opening APPEARED.
+   - The executor's version was more lenient and differed from the sim's clock wherever the road flickers.
+   - The pooled runs cannot tell the two apart: sabotaged back, every real run passed. So it is now held by a stated case in section 9.
+2. **GOING INTO A SHUT ROAD IS 1 STAR, NOT 2** (`EARLY_STARS`, `[invented]`).
+   - At 2, going at once in a wait round cost a single star in 61 of 108 seeds `[M]`, so "always go now" was barely a losing habit.
+   - Now it is 0 stars in 47 seeds (`failedToYield` or contact) and 1 star in the other 61 `[M]`.
+   - Section 3 asserts at most 1 star in every wait seed.
+3. **WAITING IS SAID ONCE.** The sim's own `dawdling` detector is not a fault beside `undueDelay` when there is a timing verdict.
+4. **THE GAME'S BODY MOTION.** Jay, 25 November: "I want to really overemphasize the body motion of the cars, making it easy for the player to see the arrival and movement of vehicles quickly."
+   - `src/game/look.js` gives every car the game draws, the player's included, `bodyMods: [{ gain: 2.0, zeta: 0.6 }]` `[invented]`, through the renderer's own modifier path (`iso/body.js resolveBody`). No edit to the shared renderer, and `#/map` is unchanged.
+   - The renderer's caps (10 degrees of pitch, 14 of roll) still hold, and a firm stop already reaches the pitch cap at this gain. Lifting the caps is an `iso/body.js` edit: 17 checks, about 20-25 minutes, one of them the known red `verify-preroll`. It is held back until Jay says it is not enough.
+   - Section 10 checks: twice the amplitude and less damping for every vehicle kind (stated in the check, not read from `look.js`); the sim's world untouched; the screen drawing through `withGameBody`.
+5. **A latent crash in the check's failure messages** (`tag` applied to a `{ x, r }` entry) hid which seeds failed, in the executor's own "never 3 stars" line too. Fixed. A sabotage run had crashed on it instead of failing cleanly.
+
+### Sabotaged, restored byte-identical (SHA-1 `7713e625`)
+
+- **A, early back to 2 stars,** fired three lines:
+  - `eager in every wait seed: at most 1 star -- more in four-way-straight/wait#51 ...`;
+  - the stated 1-star line;
+  - the stated early-note line.
+- **B, the delay from the stretch taken,** fired: `an opening let pass and a later one taken: the delay is from the first (3.5 s, not 0.5; got 0.50)`.
+
+### Findings, not acted on
+
+- **"Go now" in a wait round is a real mistake (0 stars) in only 44% of wait seeds** `[M]`. The rest cost two stars by the note `early`.
+  - The gap judgment is the weak half: the sound driver's gap is too conservative to mark by itself.
+  - The proper measure, the time margin to the entitled car (the encroachment ruling), is still to build.
+- **Every pool settled on 4 cars** `[M]`. At 8 and 12 many seeds never reach the decision point. Traffic is light; more tension would come from more cars once the decision point is reachable under load.
+- **The autopilot's "ignore the line marker" rule is never exercised** (0 of 3672 moving ticks `[M, executor]`). The check says CANNOT TELL, not pass.
+- **A cancelled touch** (`pointercancel`, for example a system gesture) counts as letting go, so the car goes. The canvas has `touch-action: none`, which makes it rare.
+- **The executor's deviations, accepted:**
+  - the car's FRONT within 2 m of the line (its centre is 2.25 m back when stopped at it);
+  - the autopilot keeps its signal on through the box.
+
+### Not verified
+
+How it looks or feels, the decision camera, the blend to the chase camera, the touch handling. The first look is Jay's.
