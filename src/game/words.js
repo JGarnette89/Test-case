@@ -26,6 +26,11 @@ export const WORDS = {
   stoppedForPed: "You stopped for someone on foot.",
   letSomeoneIn: "You let someone in.",
   letIn: "A driver let you in.",
+  /* The round's timing (WORK-game-slice2 section 6). */
+  undueDelay: "You waited well after the road was yours.",
+  early: "You went before a careful driver would have. It worked out this time.",
+  missedGap: "There was an earlier gap you could have taken.",
+  quick: "Right on time.",
 };
 
 /* Why a round ended without the player getting through. */
@@ -42,3 +47,9 @@ export const praiseWords = (id) => WORDS[id] ?? null;
 
 /* The task in large words, on the intro. */
 export const TASK_WORDS = { straight: "Go straight", left: "Turn left", right: "Turn right" };
+
+/* THE DELAY, said: how long after the road became the player's they went. `delay` seconds, one decimal place. */
+export function delayWords(delay, openAtFreeze) {
+  const d = delay.toFixed(1);
+  return openAtFreeze ? `The road was clear when you arrived; you went after ${d} s.` : `You went ${d} s after the road was clear.`;
+}

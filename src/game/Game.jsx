@@ -1,31 +1,33 @@
 /* =====================================================================
    YOUR TURN (working title): the short game's screen (GAME.md;
-   WORK-game-slice1 section 6). Four driven rounds at one intersection
-   each, a verdict after each, a summary at the end.
+   WORK-game-slice2 section 7). Five rounds, each ONE FROZEN DECISION: the
+   car is already at its stop line, the scene is frozen, and the player
+   goes at once or holds the button while the sim runs and lets go when it
+   is their turn. The car then drives itself (autopilot.js) and the
+   traffic answers.
 
    REACT STATE CHANGES ONLY BETWEEN ROUNDS (GAME.md rule 3): the world, the
-   player and the controls live in `runRound`'s own variables, the readouts
-   are drawn on the canvas, and when a round ends the loop is stopped FIRST
-   and the result set after.
+   camera and the button live in `runRound`'s own variables, the readouts
+   and the button are drawn on the canvas, and when a round ends the loop
+   is stopped FIRST and the result set after.
 
    The scene and the drawn poses are MapRoad's own (`sceneFor`, `actorsOf`):
-   one implementation of the quantity (GAME.md rule 4). The canvas loop,
-   sizing and chase camera follow ExamRide and MapRoad.
+   one implementation of the quantity (GAME.md rule 4). `sceneFor` also
+   builds a world of its own from the same arguments (its static parts --
+   roads, terrain, junctions -- are what is wanted); the round's world, built
+   by round.js toDecision, replaces it.
    ===================================================================== */
 import React, { useEffect, useRef, useState } from "react";
 import { Play, RotateCcw, ChevronRight } from "lucide-react";
 import { sceneFor, actorsOf } from "../apps/MapRoad.jsx";
-import { ROUNDS } from "./rounds.js";
-import { sceneArgs, startRound, roundTick, verdictOf, PLAYER_ASSIST } from "./round.js";
-import { END_WORDS, TASK_WORDS } from "./words.js";
+import { drawSet, SET_SIZE } from "./rounds.js";
+import { sceneArgs, toDecision, press, release, roundTick, verdictOf } from "./round.js";
+import { END_WORDS, TASK_WORDS, delayWords } from "./words.js";
 import { DT } from "../sim/crossing.js";
 import { pageMore, pageLeft } from "../sim/pace.js";
-import { driverPose, carriedPlayer, aheadOf, headwayOf, followTarget } from "../sim/drive.js";
-import { HONK_FOR } from "../sim/horn.js";
-import { controls } from "../iso/controls.js";
+import { driverPose, carriedPlayer } from "../sim/drive.js";
 import { drawFrame } from "../iso/draw.js";
-import { drawSlider, drawWheelBar, drawSignals, drawHorn } from "../iso/hud.js";
-import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
+import { newChase, chaseStep, zoomFor, UP_HEADING } from "../iso/chase.js";
 import { newBody } from "../iso/body.js";
 import { BUILD } from "../iso/perf.js";
 
@@ -34,17 +36,44 @@ const AFTER_END = 1000;   // ms the round keeps drawing after it ends, so the pl
 const TEXT = "#E6E8EC", DIM = "#9AA3B2", AMBER = "#F2B84B", BG = "#1A1C20";
 const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
-/* ONE ROUND ON A CANVAS. The world, the player and the camera are this function's own variables, never React state.
-   `ctl` is iso/controls.js's controls; `onEnd(verdict)` is called once, AFTER the loop has been stopped. Returns a stop. */
-export function runRound({ canvas, def, ctl, onEnd, raf: schedule = requestAnimationFrame, cancel = cancelAnimationFrame, win = typeof window !== "undefined" ? window : null }) {
+/* THE DECISION CAMERA [invented, the spec's]: centred this far ahead of the stop line along the player's heading (the middle of the
+   intersection), zoomed so a circle of this radius fits the shorter screen side; after GO it eases into the chase camera over BLEND ms. */
+export const CENTRE_AHEAD = 10;   // m
+export const SEE_RADIUS = 45;     // m
+export const BLEND = 600;         // ms
+/* The button: at least 88 px tall [the spec's], near the bottom, full width minus margins. [instrument] */
+export const BUTTON_H = 96, BUTTON_MARGIN = 16, BUTTON_FROM_BOTTOM = 24;
+
+export const buttonRect = (box) => ({ x: BUTTON_MARGIN, y: box.h - BUTTON_H - BUTTON_FROM_BOTTOM, w: box.w - 2 * BUTTON_MARGIN, h: BUTTON_H });
+const inRect = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+
+/* THE POINTER'S READING OF THE DECISION, in one small pure function so that "hold to wait, let go to go" can change in one place (a
+   separate GO button with a WAIT that re-freezes on release is a change here). `by` is who holds the button: a pointer id, "key", or null.
+   ev is { type: "down" | "up", id, x, y } or { type: "key-down" | "key-up" }; box is { w, h } of the canvas.
+   Returns { by, act }: act is "press" (the sim starts to run), "release" (GO) or null. [invented, the planner's reading of Jay's words] */
+export function decisionInput(by, ev, box) {
+  if (ev.type === "down") return by == null && inRect(buttonRect(box), ev.x, ev.y) ? { by: ev.id, act: "press" } : { by, act: null };
+  if (ev.type === "key-down") return by == null ? { by: "key", act: "press" } : { by, act: null };
+  if (ev.type === "up") return by === ev.id ? { by: null, act: "release" } : { by, act: null };
+  if (ev.type === "key-up") return by === "key" ? { by: null, act: "release" } : { by, act: null };
+  return { by, act: null };
+}
+
+const norm = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
+const ease = (b) => b * b * (3 - 2 * b);
+
+/* ONE ROUND ON A CANVAS. The world, the player and the camera are this function's own variables, never React state. `rs0` is the frozen
+   round (round.js toDecision); `onEnd(verdict)` is called once, AFTER the loop has been stopped. Returns a stop. */
+export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationFrame, cancel = cancelAnimationFrame, win = typeof window !== "undefined" ? window : null }) {
   const ctx = canvas.getContext("2d");
-  const held = new Set();
+  const def = rs0.def;
   const sc = sceneFor(...sceneArgs(def));
-  let rs = startRound(def, { world: sc.world, me: sc.me });
-  let cam = newChase();
-  /* BODY MOTION: on, as MapRoad's default (settings.js bodyMotion: true). Its saved setting is async to load and is not read here, so a player who switched it off on #/map still sees it. */
+  let rs = rs0;
+  sc.world = rs.world; sc.me = rs.me;
+  /* BODY MOTION: on, as MapRoad's default (settings.js bodyMotion: true). Its saved setting is async to load and is not read here. */
   const body = newBody();
-  let owed = 0, lastAt = 0, handle = 0, endAt = null, stopped = false;
+  let by = null, owed = 0, lastAt = 0, handle = 0, endAt = null, goneAt = null, stopped = false;
+  let chase = null;   // the chase camera, started at GO
 
   const fit = () => {
     const dpr = Math.min(DPR_CAP, (win && win.devicePixelRatio) || 1);
@@ -53,17 +82,35 @@ export function runRound({ canvas, def, ctl, onEnd, raf: schedule = requestAnima
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     return { w, h };
   };
-  const onKey = (e) => {
-    if (e.type === "keydown" && !e.repeat && (e.key === "q" || e.key === "e")) ctl.signal(e.key === "q" ? "left" : "right");
-    if (e.type === "keydown" && !e.repeat && e.key === "h") ctl.horn();
-    if (e.type === "keydown") held.add(e.key); else held.delete(e.key);
-    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
+  /* The decision, from any input: press runs the sim, release is GO. */
+  const decide = (ev) => {
+    if (stopped || rs.end) return;
+    const box = { w: canvas.clientWidth, h: canvas.clientHeight };
+    const r = decisionInput(by, ev, box);
+    by = r.by;
+    if (r.act === "press") rs = press(rs);
+    else if (r.act === "release") { rs = release(rs); goneAt = performance.now(); }
   };
+  const local = (e) => { const b = canvas.getBoundingClientRect(); return { id: e.pointerId, x: e.clientX - b.left, y: e.clientY - b.top }; };
+  const onDown = (e) => { canvas.setPointerCapture?.(e.pointerId); decide({ type: "down", ...local(e) }); };
+  const onUp = (e) => decide({ type: "up", ...local(e) });
+  const onKey = (e) => {
+    if (e.key !== " ") return;
+    e.preventDefault();
+    if (e.type === "keydown" && !e.repeat) decide({ type: "key-down" });
+    else if (e.type === "keyup") decide({ type: "key-up" });
+  };
+  canvas.addEventListener("pointerdown", onDown);
+  canvas.addEventListener("pointerup", onUp);
+  canvas.addEventListener("pointercancel", onUp);
   win?.addEventListener("keydown", onKey);
   win?.addEventListener("keyup", onKey);
   const stop = () => {
     stopped = true;
     cancel(handle);
+    canvas.removeEventListener("pointerdown", onDown);
+    canvas.removeEventListener("pointerup", onUp);
+    canvas.removeEventListener("pointercancel", onUp);
     win?.removeEventListener("keydown", onKey);
     win?.removeEventListener("keyup", onKey);
   };
@@ -73,20 +120,19 @@ export function runRound({ canvas, def, ctl, onEnd, raf: schedule = requestAnima
     const size = fit();
     const dt = lastAt ? Math.min(0.25, Math.max(0, (now - lastAt) / 1000)) : 0;
     lastAt = now;
-    const st = ctl.state;
-    if (held.size) ctl.keys(held, dt);
 
-    /* THE SIM STEPS AT 20 Hz FROM AN ACCUMULATOR, as #/map does (sim/pace.js). */
-    owed += dt;
-    const sp0 = performance.now();
-    for (let steps = 0; pageMore(owed, steps, performance.now() - sp0); steps++) {
-      owed -= DT;
-      const r = roundTick(rs, { steer: st.steer, slider: st.slider, signal: st.signal, horn: st.horn, assist: PLAYER_ASSIST });
-      rs = r.rs;
-      st.signal = r.signal;   // spent by the turn it caused
-      if (rs.end && endAt == null) endAt = now;
+    /* THE SIM STEPS AT 20 Hz FROM AN ACCUMULATOR, as #/map does (sim/pace.js) -- and not at all while frozen. */
+    if (rs.phase === "frozen") owed = 0;
+    else {
+      owed += dt;
+      const sp0 = performance.now();
+      for (let steps = 0; pageMore(owed, steps, performance.now() - sp0); steps++) {
+        owed -= DT;
+        rs = roundTick(rs);
+        if (rs.end && endAt == null) endAt = now;
+      }
+      owed = pageLeft(owed);
     }
-    owed = pageLeft(owed);
     sc.world = rs.world; sc.me = rs.me;
 
     /* THE END: keep drawing for a second, THEN stop the loop, THEN tell the screen. */
@@ -96,32 +142,40 @@ export function runRound({ canvas, def, ctl, onEnd, raf: schedule = requestAnima
     body.dt = dt;
     const actors = actorsOf(sc, owed, body);
     const p = driverPose(carriedPlayer(me, owed), world.course);
-    cam = { ...chaseStep(cam, { ...p, v: me.v }, dt, { rotate: true }), id: null };
-    const k = zoomFor(size.w, size.h, cam.lead, 0.55, 30);
-    drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam, rot: cam.rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: world.t + owed, lights: world.lights });
+    /* The decision camera, then the chase camera blended in from GO. */
+    const h = (p.heading * Math.PI) / 180;
+    const dec = { x: p.x + Math.cos(h) * CENTRE_AHEAD, y: p.y + Math.sin(h) * CENTRE_AHEAD, z: p.z ?? 0, rot: UP_HEADING - p.heading };
+    const kDec = Math.min(size.w, size.h) / (2 * SEE_RADIUS * Math.SQRT2);
+    let cam = dec, k = kDec;
+    if (rs.phase === "gone") {
+      chase = chase ? { ...chaseStep(chase, { ...p, v: me.v }, dt, { rotate: true }) } : newChase({ x: p.x, y: p.y, z: p.z ?? 0 }, p.heading);
+      const kChase = zoomFor(size.w, size.h, chase.lead, 0.55, 30);
+      const b = ease(Math.min(1, (performance.now() - (goneAt ?? now)) / BLEND));
+      cam = { x: dec.x + (chase.x - dec.x) * b, y: dec.y + (chase.y - dec.y) * b, z: dec.z + (chase.z - dec.z) * b, rot: norm(dec.rot + norm(chase.rot - dec.rot) * b) };
+      k = kDec + (kChase - kDec) * b;
+    }
+    drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: { ...cam, id: null }, rot: cam.rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: world.t + owed, lights: world.lights });
 
     /* THE HUD, all on the canvas. */
     ctx.textAlign = "center"; ctx.textBaseline = "top";
-    ctx.fillStyle = "#ffffff"; ctx.font = `700 26px ${FONT}`;
-    ctx.fillText(`${Math.round(me.v * 3.6)}`, size.w / 2, 6);
-    ctx.fillStyle = "rgba(230,232,236,0.8)"; ctx.font = `12px ${FONT}`;
-    ctx.fillText("km/h", size.w / 2, 38);
-    /* The task, always. */
-    ctx.fillStyle = AMBER; ctx.font = `600 15px ${FONT}`;
-    ctx.fillText(def.say, size.w / 2, 56);
-    /* What the car will do at the line, said back, so the signal is a control and not only a light. */
-    const ahead = aheadOf(me, world.course, world);
-    if (ahead.node) {
-      const word = ahead.intent === "left" ? "turning left" : ahead.intent === "right" ? "turning right" : "straight on";
-      ctx.fillStyle = ahead.committed ? "#6cc070" : me.signal ? AMBER : "rgba(230,232,236,0.6)";
-      ctx.font = `13px ${FONT}`;
-      ctx.fillText(`${word}${ahead.committed ? " — committed" : ` in ${Math.round(ahead.toLine)} m`}`, size.w / 2, 78);
+    ctx.fillStyle = AMBER; ctx.font = `700 22px ${FONT}`;
+    ctx.fillText(TASK_WORDS[def.task] ?? def.task, size.w / 2, 14);
+    ctx.fillStyle = "rgba(230,232,236,0.8)"; ctx.font = `13px ${FONT}`;
+    ctx.fillText(def.say, size.w / 2, 42);
+    if (rs.phase === "frozen") {
+      ctx.fillStyle = "rgba(20,22,26,0.7)"; ctx.fillRect(size.w - 92, 12, 80, 24);
+      ctx.fillStyle = "#ffffff"; ctx.font = `700 12px ${FONT}`; ctx.textBaseline = "middle"; ctx.fillText("FROZEN", size.w - 52, 24); ctx.textBaseline = "top";
+    } else if (rs.phase === "waiting") {
+      ctx.fillStyle = "#ffffff"; ctx.font = `700 34px ${FONT}`;
+      ctx.fillText(`${(world.t - rs.decideAt).toFixed(1)} s`, size.w / 2, 66);
     }
-    const hw = headwayOf(me, world);
-    drawSlider(ctx, size, st.slider, me.v, me.grade ?? 0, ahead.stop, ahead.stop ? null : followTarget(me, hw));
-    drawWheelBar(ctx, size, st.steer);
-    drawSignals(ctx, size, st.signal, now);
-    drawHorn(ctx, size, me.honkAt != null && world.t - me.honkAt < HONK_FOR);
+    if (rs.phase !== "gone") {
+      const r = buttonRect(size), held = rs.phase === "waiting";
+      ctx.fillStyle = held ? "#8fd694" : AMBER;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = "#1a1c20"; ctx.textBaseline = "middle"; ctx.font = `700 ${size.w < 360 ? 16 : 19}px ${FONT}`;
+      ctx.fillText(held ? "WAITING · LET GO TO GO" : "HOLD TO WAIT · LET GO TO GO", size.w / 2, r.y + r.h / 2);
+    }
     /* The round is over: say so on the canvas for the second it is still drawn. */
     if (endAt != null) {
       ctx.fillStyle = "rgba(20,22,26,0.7)"; ctx.fillRect(0, size.h / 2 - 28, size.w, 56);
@@ -136,39 +190,49 @@ export function runRound({ canvas, def, ctl, onEnd, raf: schedule = requestAnima
 
 export default function Game() {
   const canvasRef = useRef(null);
-  const input = useRef(controls());
-  const [phase, setPhase] = useState("title");   // title | intro | driving | result | summary
+  const frozen = useRef(null);                      // the frozen round the loop starts from
+  const [phase, setPhase] = useState("title");      // title | building | round | result | summary
+  const [plan, setPlan] = useState([]);              // the set: five { type, pool, seed, cars }
   const [ix, setIx] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const [verdict, setVerdict] = useState(null);
-  const [stars, setStars] = useState([]);          // the last verdict's stars per round
-  const def = ROUNDS[ix];
+  const [stars, setStars] = useState([]);            // the last verdict's stars per round
+  const cur = plan[ix];
+  const def = cur?.type;
+
+  /* BUILDING THE DECISION POINT, after the card has painted (not in the first paint). */
+  useEffect(() => {
+    if (phase !== "building" || !cur) return undefined;
+    let cancelled = false;
+    const h = setTimeout(() => {
+      const rs = toDecision(cur.type, cur.seed, cur.cars);
+      if (cancelled) return;
+      frozen.current = rs;
+      setPhase(rs ? "round" : "summary");
+    }, 60);
+    return () => { cancelled = true; clearTimeout(h); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, ix, attempt]);
 
   useEffect(() => {
-    if (phase !== "driving" || !canvasRef.current) return undefined;
-    const ctl = controls();
-    input.current = ctl;
+    if (phase !== "round" || !canvasRef.current || !frozen.current) return undefined;
     return runRound({
-      canvas: canvasRef.current, def, ctl,
+      canvas: canvasRef.current, rs0: frozen.current,
       /* The loop has stopped; only now does React hear of the round. */
       onEnd: (v) => { setVerdict(v); setStars((s) => { const n = s.slice(); n[ix] = v.stars; return n; }); setPhase("result"); },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, ix, attempt]);
 
-  const at = (e) => { const r = e.currentTarget.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top, { w: r.width, h: r.height }]; };
-  const onDown = (e) => { e.currentTarget.setPointerCapture?.(e.pointerId); const [x, y, box] = at(e); input.current.pointer("down", e.pointerId, x, y, box, performance.now()); };
-  const onMove = (e) => { const [x, y, box] = at(e); input.current.pointer("move", e.pointerId, x, y, box, performance.now()); };
-  const onUp = (e) => { const [x, y, box] = at(e); input.current.pointer("up", e.pointerId, x, y, box, performance.now()); };
-
   const total = stars.reduce((s, n) => s + (n ?? 0), 0);
-  const isLast = ix === ROUNDS.length - 1;
+  const isLast = ix >= plan.length - 1;
+  /* The set's seed is taken here, when Play is pressed: never inside a render or a useMemo (GAME.md). */
+  const play = () => { const p = drawSet((Math.random() * 2 ** 31) >>> 0); setPlan(p); setIx(0); setStars([]); setVerdict(null); setAttempt((a) => a + 1); setPhase(p.length ? "building" : "title"); };
 
-  if (phase === "driving") {
+  if (phase === "round") {
     return (
       <div style={S.fill}>
-        <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }}
-          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
+        <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", touchAction: "none" }} />
       </div>
     );
   }
@@ -178,34 +242,34 @@ export default function Game() {
       {phase === "title" && (
         <div style={S.card}>
           <div style={S.big}>Your Turn</div>
-          <div style={S.sub}>Four intersections. Drive each one, and see how you did.</div>
-          <button style={S.btn} onClick={() => { setIx(0); setStars([]); setPhase("intro"); }}><Play size={18} /> Play</button>
+          <div style={S.sub}>{SET_SIZE} intersections. At each, decide: go now, or wait for your turn.</div>
+          <button style={S.btn} onClick={play}><Play size={18} /> Play</button>
           <div style={S.stamp}>{BUILD}</div>
         </div>
       )}
 
-      {phase === "intro" && (
+      {phase === "building" && def && (
         <div style={S.card}>
-          <div style={S.dim}>Round {ix + 1} of {ROUNDS.length} · {def.title}</div>
+          <div style={S.dim}>Round {ix + 1} of {plan.length}</div>
           <div style={S.big}>{TASK_WORDS[def.task]}</div>
           <div style={S.sub}>{def.brief}</div>
-          {ix === 0 && <div style={S.hint}>Drag on the left to steer. Slide the right edge up to go, down to brake. Tap a top corner to signal.</div>}
-          <button style={S.btn} onClick={() => { setAttempt((a) => a + 1); setPhase("driving"); }}><Play size={18} /> Drive</button>
+          {ix === 0 && attempt === 1 && <div style={S.hint}>Hold the big button to let the traffic move while you wait. Let go to go.</div>}
         </div>
       )}
 
-      {phase === "result" && verdict && (
+      {phase === "result" && verdict && def && (
         <div style={S.card}>
-          <div style={S.dim}>Round {ix + 1} of {ROUNDS.length} · {def.title}</div>
+          <div style={S.dim}>Round {ix + 1} of {plan.length} · {def.title}</div>
           <div style={S.starsRow} aria-label={`${verdict.stars} of 3 stars`}>{[0, 1, 2].map((i) => (i < verdict.stars ? "★" : "☆")).join(" ")}</div>
           {verdict.why !== "through" && <div style={S.fault}>{END_WORDS[verdict.why] ?? verdict.why}</div>}
+          {verdict.delay != null && <div style={S.sub}>{delayWords(verdict.delay, verdict.openAtFreeze)}</div>}
           {verdict.faults.map((f) => <div key={f.id} style={S.fault}>{f.words}{f.count > 1 ? ` (×${f.count})` : ""}</div>)}
           {verdict.notes.map((f) => <div key={f.id} style={S.note}>{f.words}</div>)}
           {verdict.praise.map((f) => <div key={f.id} style={S.praise}>{f.words}{f.count > 1 ? ` (×${f.count})` : ""}</div>)}
           {verdict.why === "through" && !verdict.faults.length && !verdict.praise.length && <div style={S.praise}>A clean round.</div>}
           <div style={S.row}>
-            <button style={S.btnGhost} onClick={() => { setAttempt((a) => a + 1); setPhase("driving"); }}><RotateCcw size={18} /> Try again</button>
-            <button style={S.btn} onClick={() => { if (isLast) setPhase("summary"); else { setIx(ix + 1); setPhase("intro"); } }}>{isLast ? "See your set" : "Next"} <ChevronRight size={18} /></button>
+            <button style={S.btnGhost} onClick={() => { setAttempt((a) => a + 1); setPhase("building"); }}><RotateCcw size={18} /> Try again</button>
+            <button style={S.btn} onClick={() => { if (isLast) setPhase("summary"); else { setIx(ix + 1); setPhase("building"); } }}>{isLast ? "See your set" : "Next"} <ChevronRight size={18} /></button>
           </div>
         </div>
       )}
@@ -213,11 +277,11 @@ export default function Game() {
       {phase === "summary" && (
         <div style={S.card}>
           <div style={S.big}>Your set</div>
-          {ROUNDS.map((r, i) => (
-            <div key={r.id} style={S.sumRow}><span>{r.title}</span><span style={S.starsSmall}>{[0, 1, 2].map((j) => (j < (stars[i] ?? 0) ? "★" : "☆")).join("")}</span></div>
+          {plan.map((r, i) => (
+            <div key={i} style={S.sumRow}><span>{r.type.title}</span><span style={S.starsSmall}>{[0, 1, 2].map((j) => (j < (stars[i] ?? 0) ? "★" : "☆")).join("")}</span></div>
           ))}
-          <div style={S.sub}>{total} of {ROUNDS.length * 3} stars</div>
-          <button style={S.btn} onClick={() => { setIx(0); setStars([]); setVerdict(null); setPhase("intro"); }}><RotateCcw size={18} /> Play again</button>
+          <div style={S.sub}>{total} of {plan.length * 3} stars</div>
+          <button style={S.btn} onClick={play}><RotateCcw size={18} /> Play again</button>
         </div>
       )}
     </div>
