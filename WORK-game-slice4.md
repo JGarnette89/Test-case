@@ -102,3 +102,31 @@ Report, beyond slice 3's list:
 - the share of seeds whose far shot is narrower than the map;
 - the new pool sizes;
 - **whether the field refactor stayed inside the four files.**
+
+---
+
+## REVIEW OUTCOME (25 November 2026, the planner)
+
+**Built by the executor in `464201b`. Accepted without code changes.** The derived set passed: `4 of 4 passed` (verify-check-runner, verify-core, verify-screens, verify-rounds) `[M, node tools/check.mjs --base 48490f2]`.
+
+### Measured `[M, the executor's runs, re-run in review]`
+
+- **The launch:** 1.20 m/s one second after GO before, 2.72 after (oracle, 108 wait seeds).
+- **GO to the end of the round:** median 8.05 s before, 4.65 s after (CLEAR_BY 25 to 10 m included).
+- **Fairness held:** all 228 oracle runs and 120 eager `now` runs still end through, with 3 stars and no fault.
+- **The far shot is narrower than the map in 228 of 228 seeds.**
+- **The pools are unchanged by the launch:** their first 30 seeds are slice 3's.
+
+### Sabotages
+
+- **(a) The map's bounds as the frame** fired the map-share line and its exposure line. The other framing lines pass with it, because the whole map holds every point: the share line is the one that catches it.
+- **(b) The launch capped at 1.2** fired the 2.2 m/s line.
+
+### Accepted deviations
+
+- `tools/measure/round-seeds.mjs` was a fifth file touched by the refactor: two print lines read the moved fields.
+- `toDecisionFrom`'s guard is covered by a positive control and a past-the-line state, not by a sabotage.
+
+### Not verified
+
+How the closer far shot and the 1.1 s screech look. The screech enters at about 44 m/s `[D]`; flag it if it reads as a jump.
