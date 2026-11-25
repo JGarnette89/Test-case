@@ -26,6 +26,7 @@ Jay: "The wide shot still includes way too much information... cars shown at the
   The rest of the road is scenery, not information.
 - **Speed is arcade.** Fast in, fast out. The rules of the road are not arcade: right of way is what the round is about.
 - **Panning is the player's choice,** never the default framing.
+- **The arrival is the busiest moment, not a still one (Jay, 25 November, after slice 5).** His words: "The player is the only car moving when they arrive... a truck was frozen in the middle of the intersection the whole time... it should actually be the most visually busy moment with the user trying to keep track of everything." The traffic is seen moving into the freeze, and a car that was moving still reads as moving once frozen.
 
 ## The merge as the same test (design, NOT BUILT)
 
