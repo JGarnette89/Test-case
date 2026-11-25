@@ -116,3 +116,35 @@ Report:
 - the ghost exposure;
 - the sabotages;
 - **every departure from this spec, said plainly.**
+
+---
+
+## REVIEW OUTCOME (25 November 2026, the planner)
+
+**Built by the executor in `4e3b96f`; the check was adjusted in review in the commit after it.** The derived set passed: `3 of 3 passed` (verify-core, verify-screens, verify-rounds; verify-check-runner was not selected) `[M, node tools/check.mjs --base 90a55f7]`.
+
+### Changed in review (the check only)
+
+- **The creep bar was mine and it was false.** "Within 10% of a third of the limit before the box" cannot happen. The car is at rest at its line, so it crosses the line at 2.71 m/s in every seed and first reaches the target 8.56 m past it. Boxes are 6.05 to 17.35 m deep `[M]`.
+  - The executor left it red rather than loosen it, which was right.
+  - It is now two lines: the creeping car reaches within 10% of the target in every wait seed (108 of 108), and never goes over 1.1x it (peak 4.47 to 4.60 m/s against 5.09) `[M]`.
+  - The executor's extra line ("within 10% by the box's far edge", 90 of 108) is removed. It measured box depth, not the control.
+  - **Sabotage of the new lines:** the autopilot aiming for full pace whatever the target (`autopilot.js`, SHA-1 `a124bbe5...` before and after). Fired: the never-over line (peak 9.10 m/s against 5.09), the speed-follows-target line, the brake line and the harsh-threshold line.
+
+### Measured `[M, the executor's runs and the review run]`
+
+- **Clipping:** slice 6's whole trail overlapped another car in 35 of 228 seeds (worst 1.80 m; 23 behind, 12 ahead). After the fix, 0. 193 seeds keep the whole trail, 14 take a shortened screech (6.1 to 21.2 m) and 21 draw the player at its own pose.
+- **Verdicts:** oracle and eager are unchanged from slice 6 on all 456 seed-policy pairs. The first 30 of every pool are unchanged.
+- **Ghosts:** 47 of 228 seeds have a relevant car off the screen. Every ghost is at least 24.0 px inside, at most 0.137 m off its path, and its heading is exact.
+- **The brake is soft:** from 5 m/s a drag to 0 stops the car in 4.75 s, peak 3.01 m/s^2. The autopilot's pull toward the target is proportional, so the braking eases as the car slows. The executor's report said 0.40 s; the check prints 4.75 s.
+
+### Accepted deviations
+
+- Ghost opacity is by distance along the path, not by time.
+- The autopilot caps the target at the posted limit, not at PACE times it.
+- Lifting the thumb without dragging no longer means GO. GO is the first drag above the dead zone, and a thumb lifted at 0 leaves the car waiting while the world runs.
+- Sabotage (c) as the spec wrote it cannot fail on these maps, where every approach projects axis-aligned. The executor's (c2), a ghost 1.5 m off its path and turned 20 degrees, fired the path and heading lines.
+
+### Not verified
+
+How it looks and feels: the drag scale, the bar, the ghosts, the soft brake. The first look is Jay's.
