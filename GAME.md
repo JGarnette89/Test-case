@@ -15,6 +15,35 @@ The reasoning and Jay's rulings are in [PROPOSAL-SHORT-GAME-2026-11-24.md](PROPO
 - **Its own app:** `play.html` -> `src/game/`. It is not a route in `App.jsx`'s developer menu.
 - **It sits on the simulator** (`src/sim/`, `src/iso/`, `src/core/`, `src/map/`) and changes nothing inside it unless a spec says so.
 
+## What the player sees (Jay, 25 November)
+
+Jay: "The wide shot still includes way too much information... cars shown at the extremes of the road are completely irrelevant but we are sacrificing what we need to actually see (the stopping order of cars at the intersection or decision point)... realism in speed and acceleration/stopping isn't a primary concern here, read the scene, thread the needle if need be and get into traffic... An extreme wide shot is hard to read at a glance on a phone unless the user can pan around."
+
+- **Show only what decides the decision:**
+  - who is at the lines and in what order they stopped;
+  - who is in the box;
+  - who arrives in the next few seconds.
+  The rest of the road is scenery, not information.
+- **Speed is arcade.** Fast in, fast out. The rules of the road are not arcade: right of way is what the round is about.
+- **Panning is the player's choice,** never the default framing.
+
+## The merge as the same test (design, NOT BUILT)
+
+The decision point is the end of an acceleration lane, or the point where a merge has to be judged.
+
+- **Frozen,** as at an intersection, with the player's car in the acceleration lane.
+- **Shown:** only the target lane's cars beside and behind the player within a few seconds, with the gaps between them, and a courtesy offer if a driver gives one (`sim/courtesy.js` exists).
+- **Prompts, not driving:**
+  - SIGNAL (tap). The traffic reads the signal, since courtesy gaps answer only a signalling player.
+  - Then SPEED UP or EASE OFF (two zones) to line up with a gap.
+  - Then MERGE (let go) when the gap is beside you.
+- **The verdict comes from the same places as at an intersection:**
+  - whether the signal came first;
+  - whether a driver in the target lane had to brake harder than comfortable;
+  - the time margin to the car behind;
+  - whether the lane ran out (`sim/lanechange.js`, `map/accel.js`, `verify-merge` hold the sim's side).
+- **Not built.** It waits on the intersection version being right.
+
 ## Rules that hold for every change
 
 1. **NEVER AUTHOR THE ANSWER.** What happened in a round is what the sim's traffic did and what the player's detectors (`src/sim/events.js`) noticed. No round says "the player must wait 3 s". A round is a map plus a seed plus a car count, and when a round needs tension, the seed or the car count is chosen by a MEASURED property of the run, never typed in as a time.
