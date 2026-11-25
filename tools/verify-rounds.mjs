@@ -18,10 +18,12 @@
 
    Every negative assertion carries its own line asserting the case arose.
    ===================================================================== */
+import { BODY, resolveBody } from "../src/iso/body.js";
+import { GAME_BODY, withGameBody } from "../src/game/look.js";
 import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { TYPES, POOLS_RUN, drawSet, SET_SIZE } from "../src/game/rounds.js";
-import { toDecision, verdictOf, timingStars, UNDUE, LAUNCH_SPAN, AT_LINE, FRONT_CLEAR } from "../src/game/round.js";
+import { toDecision, roundWorld, verdictOf, timingStars, timingOf, UNDUE, LAUNCH_SPAN, AT_LINE, FRONT_CLEAR } from "../src/game/round.js";
 import { driveDecision, oracle, eager, late, tracker } from "./lib/round-drive.mjs";
 import { loadMap } from "../src/map/load.js";
 import { openTo, AT_REST, atNode, blockedBy } from "../src/sim/crossing.js";
@@ -103,11 +105,15 @@ const eagerRuns = [];
   check(notThree.length === 0, `eager in every now seed: 3 stars${notThree.length ? ` -- not ${notThree.slice(0, 6).map((e) => `${tag(e.x)}(${e.r.rs.end?.why},${e.r.verdict.stars}*,[${ids(e.r.verdict)}])`).join(" ")}` : ""}`);
   check(wait.length >= 20 && wait.every((e) => e.r.T.freezeOpen === false), `EXPOSURE: ${wait.length} wait seeds, the way shut at the freeze in every one (the check's own openTo)`);
   const three = wait.filter((e) => e.r.verdict.stars === 3);
-  check(three.length === 0, `eager in every wait seed: never 3 stars${three.length ? ` -- 3 stars in ${three.slice(0, 6).map(tag).join(" ")}` : ""}`);
+  check(three.length === 0, `eager in every wait seed: never 3 stars${three.length ? ` -- 3 stars in ${three.slice(0, 6).map((e) => tag(e.x)).join(" ")}` : ""}`);
+  /* GOING AT ONCE INTO A SHUT ROAD IS NEVER BETTER THAN 1 STAR (review, 25 November): at 2 it cost one star in most wait seeds and
+     "always go now" was barely a losing habit. */
+  const over1 = wait.filter((e) => e.r.verdict.stars > 1);
+  check(over1.length === 0, `eager in every wait seed: at most 1 star${over1.length ? ` -- more in ${over1.slice(0, 6).map((e) => tag(e.x)).join(" ")}` : ""}`);
   const fty = wait.filter((e) => ids(e.r.verdict).includes("failedToYield")), hit = wait.filter((e) => e.r.rs.end?.why === "contact" || ids(e.r.verdict).some((f) => f === "collision" || f === "struckPerson")), early = wait.filter((e) => e.r.verdict.notes.some((n) => n.id === "early"));
   const hard = wait.filter((e) => ids(e.r.verdict).includes("failedToYield") || e.r.rs.end?.why === "contact");
   console.log(`        eager in the ${wait.length} wait seeds [M, this run]: failedToYield ${fty.length}; contact or a collision ${hit.length}; the note early ${early.length}; failedToYield or contact ${hard.length} (${((100 * hard.length) / wait.length).toFixed(0)}%); 0 stars ${wait.filter((e) => e.r.verdict.stars === 0).length}, 1 star ${wait.filter((e) => e.r.verdict.stars === 1).length}, 2 stars ${wait.filter((e) => e.r.verdict.stars === 2).length}`);
-  if (hard.length * 2 < wait.length) console.log(`        FINDING: fewer than half of the wait seeds flag going at once by failedToYield or contact (${hard.length} of ${wait.length}): going now is a real mistake in the rest only by the note "early" (2 stars)`);
+  if (hard.length * 2 < wait.length) console.log(`        FINDING: fewer than half of the wait seeds flag going at once by failedToYield or contact (${hard.length} of ${wait.length}): going now is a real mistake in the rest only by the note "early" (1 star)`);
 }
 
 console.log("\n4. GO WORKS WHEN THE WAY IS SHUT");
@@ -248,16 +254,39 @@ console.log("\n9. THE VERDICT TABLE, ON STATED INPUTS");
   check(Object.keys(END_WORDS).sort().join() === "contact,edge,time", "the three not-finished reasons have words");
   /* THE TIMING, stated: the stars by delay, the lower of timing and faults, the notes. */
   check([0, 1.0].every((d) => stars([], { timing: inside(d) }) === 3) && [1.01, 2.5].every((d) => stars([], { timing: inside(d) }) === 2) && [2.51, 3.9].every((d) => stars([], { timing: inside(d) }) === 1), "stars by delay: up to 1.0 s 3, up to 2.5 s 2, later 1");
-  check(timingStars({ kind: "early" }) === 2 && timingStars(null) === 3, "went before the first opening: 2 stars; no timing yet: no limit");
+  check(timingStars({ kind: "early" }) === 1 && timingStars(null) === 3, "went before the first opening: 1 star; no timing yet: no limit");
   const u = verdictOf(rs([], { timing: inside(UNDUE) })), u2 = verdictOf(rs([], { timing: inside(UNDUE - 0.05) }));
   check(u.faults.some((f) => f.id === "undueDelay" && f.severity === 2) && u.stars === 1 && !u2.faults.some((f) => f.id === "undueDelay"), `undueDelay (severity 2) at ${UNDUE} s and not a tick before; 1 star`);
   check(stars([ev("underLimit", 1)], { timing: inside(0.2) }) === 2 && stars([ev("harshBraking", 3)], { timing: inside(0.2) }) === 1, "the lower of the timing and the fault table: a quick go with a fault keeps the fault's stars");
   const e1 = verdictOf(rs([], { timing: { kind: "early", delay: null, missedGap: false } })), e2 = verdictOf(rs([ev("failedToYield", 5)], { timing: { kind: "early", delay: null, missedGap: false } }));
-  check(e1.notes.some((n) => n.id === "early") && e1.stars === 2 && !e2.notes.some((n) => n.id === "early") && e2.stars === 0, "early: the note and 2 stars when failedToYield did not flag it; no note, and 0 stars, when it did");
+  check(e1.notes.some((n) => n.id === "early") && e1.stars === 1 && !e2.notes.some((n) => n.id === "early") && e2.stars === 0, "early: the note and 1 star when failedToYield did not flag it; no note, and 0 stars, when it did");
+  check(!verdictOf(rs([ev("dawdling", 2)], { timing: inside(4.2) })).faults.some((f) => f.id === "dawdling") && verdictOf(rs([ev("dawdling", 2)], { timing: inside(4.2) })).faults.some((f) => f.id === "undueDelay"), "waiting is said once: with a timing verdict, dawdling is not a fault beside undueDelay");
   check(verdictOf(rs([], { timing: inside(0.3, { missedGap: true }) })).notes.some((n) => n.id === "missedGap"), "missedGap is a note");
+  /* THE DELAY RUNS FROM THE FIRST OPENING, as the sim reads Jay's undue-delay band (crossing.js, above UNDUE_AT), not from the stretch
+     finally taken. Stated, because the pooled runs cannot tell the two apart: sabotaged to the stretch taken, every real run still
+     passed (review, 25 November). */
+  const fo = timingOf([{ from: 10, to: 11 }, { from: 13, to: null }], 10, 13.5), late = timingOf([{ from: 10.2, to: 10.3 }, { from: 12, to: null }], 10, 12.5);
+  check(fo.kind === "inside" && Math.abs(fo.delay - 3.5) < 1e-6 && fo.missedGap === false, `an opening let pass and a later one taken: the delay is from the first (3.5 s, not 0.5; got ${fo.delay?.toFixed(2)})`);
+  check(late.kind === "inside" && Math.abs(late.delay - 0.5) < 1e-6, `a flicker shorter than REACTION_FLOOR was never an opening: the delay is from the real one (0.5 s; got ${late.delay?.toFixed(2)})`);
   check(verdictOf(rs([], { timing: inside(0.3) })).praise.some((p) => p.id === "quick" && p.words === "Right on time.") && !verdictOf(rs([], { timing: inside(2) })).praise.some((p) => p.id === "quick"), "quick is praise at 3 timing stars and at no other");
   check(verdictOf(rs([], { timing: inside(0), openings: [{ from: 0, to: null }], decideAt: 0 })).openAtFreeze === true && verdictOf(rs([], { timing: inside(1), openings: [{ from: 2, to: null }], decideAt: 0 })).openAtFreeze === false, "openAtFreeze says whether the first opening is the freeze moment");
   check(["undueDelay", "early", "missedGap", "quick"].every((id) => WORDS[id]), "the new words exist");
+}
+
+console.log("\n10. THE GAME'S BODY MOTION (Jay, 25 November: overemphasize it, so arrivals and movement read at a glance)");
+{
+  /* Stated here, not read from look.js: at least double the amplitude, less damping than the shared table, for every vehicle kind. */
+  for (const kind of Object.keys(BODY)) {
+    const base = BODY[kind], g = resolveBody(kind, GAME_BODY);
+    check(g.roll >= 2 * base.roll - 1e-9 && g.pitch >= 2 * base.pitch - 1e-9 && g.rollZeta < base.rollZeta && g.pitchZeta < base.pitchZeta,
+      `${kind}: the game's body moves at least twice as far (roll ${base.roll} to ${g.roll.toFixed(2)}, pitch ${base.pitch} to ${g.pitch.toFixed(2)} degrees per m/s^2) and is less damped (${base.rollZeta} to ${g.rollZeta.toFixed(2)})`);
+  }
+  const T0 = TYPES[0], { world } = roundWorld({ ...T0, seed: T0.pools.wait[0], cars: T0.cars });
+  const sc = { world }, out = withGameBody(sc);
+  check(world.actors.length > 0, `EXPOSURE: a round's world has ${world.actors.length} actors to dress`);
+  check(out.world.actors.every((a) => a.bodyMods === GAME_BODY) && world.actors.every((a) => a.bodyMods === undefined), "every actor drawn carries the game's modifiers, and the sim's own world is untouched");
+  const src = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
+  check(/actorsOf\(withGameBody\(sc\), owed, body\)/.test(src), "the screen draws through withGameBody (source text: a React screen no check can run to a frame)");
 }
 
 console.log(`\n${failed === 0 ? "ALL PASSED" : `${failed} FAILED`}`);

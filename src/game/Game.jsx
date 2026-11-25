@@ -20,6 +20,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Play, RotateCcw, ChevronRight } from "lucide-react";
 import { sceneFor, actorsOf } from "../apps/MapRoad.jsx";
+import { withGameBody } from "./look.js";
 import { drawSet, SET_SIZE } from "./rounds.js";
 import { sceneArgs, toDecision, press, release, roundTick, verdictOf } from "./round.js";
 import { END_WORDS, TASK_WORDS, delayWords } from "./words.js";
@@ -140,7 +141,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
 
     const me = rs.me, world = rs.world;
     body.dt = dt;
-    const actors = actorsOf(sc, owed, body);
+    const actors = actorsOf(withGameBody(sc), owed, body);   // the game's exaggerated body motion (look.js)
     const p = driverPose(carriedPlayer(me, owed), world.course);
     /* The decision camera, then the chase camera blended in from GO. */
     const h = (p.heading * Math.PI) / 180;

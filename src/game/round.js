@@ -60,7 +60,8 @@ export const UNDUE = 4.0;
 export const UNDUE_SEVERITY = 2;      // [invented]
 export const MISSED_GAP = 1.5;        // s: an earlier opening at least this long, let pass, is a missed gap [invented, the spec's]
 export const STARS_AT = [1.0, 2.5];   // s of delay: at most the first is 3 stars, at most the second 2, later 1 [invented, the spec's]
-export const EARLY_STARS = 2;         // went before the first opening, and not flagged as failing to yield [invented, the spec's]
+export const EARLY_STARS = 1;         // went before the first opening, and not flagged as failing to yield [invented: the planner, review 25 November -- at 2,
+                                      // going at once in a wait round cost one star in 61 of 108 seeds, so "always go now" was barely a losing habit]
 const EPS = 1e-6;                     // [instrument] float slack on sums of DT
 
 /* The arguments `sceneFor` (apps/MapRoad.jsx) takes, positionally. */
@@ -137,7 +138,11 @@ export const press = (rs) => (rs.phase === "frozen" ? { ...rs, phase: "waiting" 
 
 /* THE TIMING VERDICT, at GO. Looks at the openings as they stand at `now` (the world the car is released in).
    - inside an opening: the stretch the GO falls in is open now and has run REACTION_FLOOR (a shorter one was never an opening),
-     or is the one open at the freeze (going at once is the right answer, and it has no history to measure). delay = now - its start.
+     or is the one open at the freeze (going at once is the right answer, and it has no history to measure).
+     delay = now - THE FIRST OPENING's start (review, 25 November): the sim reads Jay's undue-delay band ("waiting 4-5 seconds
+     beyond when the opening is there") as time since the opening APPEARED, not since the stretch the driver finally took
+     (crossing.js, the comment above UNDUE_AT: on a busy road an opening is a rapid series of brief ones, and the unbroken
+     reading never fires). The first opening is the first stretch that ran REACTION_FLOOR, or the one open at the freeze.
      missedGap: an EARLIER stretch of at least MISSED_GAP, let pass.
    - otherwise: before an opening (or into a shut road after one): kind "early". */
 export function timingOf(openings, decideAt, now) {
@@ -145,7 +150,8 @@ export function timingOf(openings, decideAt, now) {
   const atFreeze = !!cur && cur.to == null && cur.from === decideAt;
   if (cur && cur.to == null && (atFreeze || now - cur.from >= REACTION_FLOOR - EPS)) {
     const earlier = openings.slice(0, -1);
-    return { kind: "inside", delay: now - cur.from, from: cur.from, missedGap: earlier.some((o) => o.to - o.from >= MISSED_GAP - EPS), atFreeze };
+    const first = openings.find((o) => o.from === decideAt || (o.to ?? now) - o.from >= REACTION_FLOOR - EPS) ?? cur;
+    return { kind: "inside", delay: now - first.from, from: first.from, missedGap: earlier.some((o) => o.to - o.from >= MISSED_GAP - EPS), atFreeze };
   }
   return { kind: "early", delay: null, from: null, missedGap: false, atFreeze: false };
 }
@@ -245,6 +251,8 @@ export function verdictOf(rs) {
     list.push({ id: e.id, count: 1, ...(e.severity != null && !e.praise ? { severity: e.severity } : {}), words });
   };
   for (const e of rs.events) {
+    /* Waiting is the TIMING verdict's (undueDelay, below): the sim's own dawdling detector would say it a second time. */
+    if (e.id === "dawdling" && rs.timing) continue;
     if (e.praise) { const w = praiseWords(e.id); if (w) bump(praise, e, w); }
     else if (e.noFault) bump(notes, e, faultWords(e.id));
     else bump(faults, { ...e, severity: e.severity ?? TRIGGERS[e.id]?.severity ?? 1 }, faultWords(e.id));
