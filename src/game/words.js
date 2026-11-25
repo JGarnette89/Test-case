@@ -28,7 +28,8 @@ export const WORDS = {
   letIn: "A driver let you in.",
   /* The round's timing (WORK-game-slice2 section 6). */
   undueDelay: "You waited well after the road was yours.",
-  early: "You went before a careful driver would have. It worked out this time.",
+  forcedBrake: "You made another driver brake hard.",
+  threaded: "Threaded the needle.",
   missedGap: "There was an earlier gap you could have taken.",
   quick: "Right on time.",
 };

@@ -15,6 +15,8 @@
    7. DETERMINISTIC.
    8. failedToYield (slice 1's rule, unchanged): the eager policy is the GO.
    9. THE VERDICT TABLE, on stated inputs.
+  (slice 5: 12 holds the decision FRAME and the time filter, 13 the stopping order, 14 forcedBrake and threading the needle, 15 the playback and
+   the gestures as source text.)
 
    Every negative assertion carries its own line asserting the case arose.
    ===================================================================== */
@@ -24,13 +26,16 @@ import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { TYPES, POOLS_RUN, drawSet, SET_SIZE } from "../src/game/rounds.js";
 import { toDecision, toDecisionFrom, startRound, roundTick, press, release, roundWorld, verdictOf, timingStars, timingOf, UNDUE, LAUNCH_SPAN, AT_LINE, FRONT_CLEAR } from "../src/game/round.js";
+import { HARSH_AT } from "../src/sim/traffic.js";
+import { DT } from "../src/sim/crossing.js";
+import { pageMore, pageLeft, PAGE_STEPS } from "../src/sim/pace.js";
 import { driveDecision, oracle, eager, late, tracker } from "./lib/round-drive.mjs";
 import { loadMap } from "../src/map/load.js";
 import { openTo, AT_REST, atNode, blockedBy, conflictOf, CAR, poseOf } from "../src/sim/crossing.js";
 import { viewOf } from "../src/iso/project.js";
 import { UP_HEADING } from "../src/iso/chase.js";
 import { driverPose } from "../src/sim/drive.js";
-import { relevantIds, screechAt, settleAt, introAt, introCamera, farCamera, decisionFrame, decisionCamera, skidLines, HOLD_FAR, SCREECH, SETTLE, INTRO_END } from "../src/game/stage.js";
+import { relevantIds, screechAt, settleAt, introAt, frameCamera, decisionFrame, skidLines, stopOrder, arrivalSeconds, SAME_MOMENT, FAST, speedOf, SCREECH, SETTLE, INTRO_END } from "../src/game/stage.js";
 import { lenOf } from "../src/sim/traffic.js";
 import { aheadOf } from "../src/sim/drive.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
@@ -84,20 +89,49 @@ const frozenOf = new Map();
   check(wrongOpen.length === 0, `the way is open at the freeze in every now seed and shut in every wait seed (pools are not stale)${wrongOpen.length ? ` -- not ${wrongOpen.slice(0, 6).join(" ")}` : ""}`);
 }
 
+/* THE RELEVANT CARS, THE CHECK'S OWN STATEMENT (slice 5): another road user at the player's node whose path conflicts with the player's route
+   and which is not yet past that conflict (the sim's own test, stated here from conflictOf and CAR), AND one of: standing at its line with its
+   stop counted (`stoppedAt`) and not going; in the box (past its stop line) or going; or arriving -- its distance to ITS conflict over its speed
+   at most 4.0 s [invented, the spec's]. Stated here and not read from stage.js, which is what is under test. Returns [{ a, why, secs }] for
+   the conflicting cars not yet past, `why` null for the ones the time filter drops. */
+const ARRIVE = 4.0;
+function conflictingNow(rs) {
+  const k = rs.me.k ?? 0, L = rs.world.course.at[k].layout, out = [];
+  for (const a of atNode(rs.world, rs.world.actors, k)) {
+    if (a.id === rs.me.id || a.shadow || a.player || a.route == null) continue;
+    const hit = conflictOf(L, rs.me.route, a.route);
+    if (!hit || a.s > hit.clearOf + CAR.length / 2 + (lenOf(a) - CAR.length)) continue;
+    const q = L.paths[a.route], meet = conflictOf(L, a.route, rs.me.route), secs = meet && a.v > AT_REST ? (meet.a - a.s) / a.v : Infinity;
+    let why = null;
+    if (a.going || a.s >= q.stopAt) why = "box";
+    else if (a.v < AT_REST && a.stoppedAt != null) why = "line";
+    else if (secs <= ARRIVE) why = "arriving";
+    out.push({ a, why, secs });
+  }
+  return out;
+}
+
 /* THE RING, READ BY THE CHECK ITSELF (section 11): one observation of a round state. The expectations are stated here from the sim's own
    calls (atNode, conflictOf, blockedBy) and not read from stage.js, which only supplies the ringed set under test. */
-const relScan = { ticks: 0, holds: 0, missed: [], pastCars: 0, ringedPast: [], ringedNoConflict: [], withRing: 0 };
+const relScan = { ticks: 0, holds: 0, farHolds: 0, missed: [], pastCars: 0, ringedPast: [], ringedNoConflict: [], withRing: 0, mismatch: [], dropped: 0, kept: 0 };
 function observeRing(rs, acc) {
   const k = rs.me.k ?? 0, L = rs.world.course.at[k].layout, sound = { ...rs.me, caution: 1 }, t = rs.world.t;
   const ringed = new Set(relevantIds(rs.world, rs.me));
+  const own = conflictingNow(rs), want = new Set(own.filter((c) => c.why).map((c) => c.a.id));
   acc.ticks++;
+  acc.dropped += own.filter((c) => !c.why).length; acc.kept += want.size;
   if (ringed.size) acc.withRing++;
+  if (ringed.size !== want.size || [...ringed].some((id) => !want.has(id))) acc.mismatch.push(`${rs.def.id}@${t.toFixed(2)}`);
   for (const a of atNode(rs.world, rs.world.actors, k)) {
     if (a.id === rs.me.id || a.shadow || a.player) continue;
     const hit = conflictOf(L, rs.me.route, a.route);
     /* PAST ITS CONFLICT: a car's `s` beyond where its path stops conflicting with the player's, with its length (the sim's own reading, blockedBy). */
     const past = !!hit && a.s > hit.clearOf + CAR.length / 2 + (lenOf(a) - CAR.length);
-    if (blockedBy(sound, a, L, 1, t)) { acc.holds++; if (!ringed.has(a.id)) acc.missed.push(`${a.id}@${t.toFixed(2)}`); }
+    if (blockedBy(sound, a, L, 1, t)) {
+      acc.holds++;
+      /* A holding car the time filter dropped is one the sound driver's CONSERVATIVE gap still waits for, further out than 4 s: counted, not a miss. */
+      if (!ringed.has(a.id)) { if (own.some((c) => c.a.id === a.id && !c.why)) acc.farHolds++; else acc.missed.push(`${a.id}@${t.toFixed(2)}`); }
+    }
     if (past) { acc.pastCars++; if (ringed.has(a.id)) acc.ringedPast.push(`${a.id}@${t.toFixed(2)}`); }
   }
   for (const id of ringed) {
@@ -106,16 +140,39 @@ function observeRing(rs, acc) {
   }
 }
 
+/* THE STOPPING ORDER, READ BY THE CHECK ITSELF (section 13): one observation of a round state at an all-way stop. Every pair of numbered cars with
+   different numbers i < j: the later one stopped more than 0.4 s [stated here] after the earlier, and the sim's own blockedBy says (where their
+   paths conflict at all) that j must yield to i and i need not yield to j. Pairs sharing a number are exempt (the right-hand rule settles them). */
+const orderAcc = { freezes: 0, ticks: 0, numbered: 0, pairs: 0, pairsFreeze: 0, same: 0, flat: 0, youMissing: [], notSorted: [], wrong: [], reverse: [] };
+function orderScan(rs, acc, name, atFreeze) {
+  const L = rs.world.course.at[rs.me.k].layout, t = rs.world.t, rows = stopOrder(rs.world, rs.me);
+  const byId = (id) => rs.world.actors.find((a) => a.id === id) ?? (rs.me.id === id ? rs.me : null);
+  if (atFreeze) acc.freezes++; else acc.ticks++;
+  acc.numbered += rows.length;
+  if (atFreeze && !rows.some((r) => r.you && r.id === rs.me.id)) acc.youMissing.push(name);
+  for (let i = 0; i < rows.length; i++) for (let j = 0; j < rows.length; j++) {
+    const ri = rows[i], rj = rows[j];
+    if (ri.n >= rj.n) { if (i < j && ri.n === rj.n) acc.same++; continue; }
+    const ci = byId(ri.id), cj = byId(rj.id);
+    if (!(cj.stoppedAt - ci.stoppedAt > 0.4)) acc.notSorted.push(`${name}:${ri.id}<${rj.id}`);
+    if (!conflictOf(L, cj.route, ci.route)) { acc.flat++; continue; }
+    acc.pairs++; if (atFreeze) acc.pairsFreeze++;
+    if (!blockedBy({ ...cj, caution: 1 }, ci, L, 1, t)) acc.wrong.push(`${name}@${t.toFixed(2)}:${rj.id} should yield to ${ri.id}`);
+    if (blockedBy({ ...ci, caution: 1 }, cj, L, 1, t)) acc.reverse.push(`${name}@${t.toFixed(2)}:${ri.id} should not yield to ${rj.id}`);
+  }
+}
+
 console.log("\n2. THE ORACLE (hold until the first opening has run REACTION_FLOOR, then go) PASSES EVERY POOLED SEED");
-const holds = [];
+const holds = [], oracleForced = [], goToEnd = [];
 {
   const bad = [];
   for (const x of POOLED) {
     /* Slice 3: every waiting tick of a wait seed is also read for who is ringed (section 11), so the relevance is judged on the road as
        it changes and not at the freeze alone. */
-    const r = driveDecision(x.type, x.seed, x.type.cars, oracle, x.pool === "wait" ? { onTick: (before) => { if (before.phase === "waiting") observeRing(before, relScan); } } : {});
+    const r = driveDecision(x.type, x.seed, x.type.cars, oracle, x.pool === "wait" ? { onTick: (before) => { if (before.phase === "waiting") { observeRing(before, relScan); if (x.type.id.startsWith("four-way")) orderScan(before, orderAcc, tag(x), false); } } } : {});
     const v = r.verdict;
     if (!(r.rs.end?.why === "through" && v.made === x.type.task && v.stars === 3 && v.faults.length === 0)) bad.push(`${tag(x)}(${r.rs.end?.why},${v.stars}*,[${ids(v)}])`);
+    if (ids(v).includes("forcedBrake")) oracleForced.push(tag(x));
     if (x.pool === "wait") holds.push(r.rs.decision.goAt - r.rs.decision.decideAt);
   }
   check(bad.length === 0, `all ${POOLED.length} end through, make the task, earn 3 stars with no fault${bad.length ? ` -- not ${bad.slice(0, 6).join(" ")}` : ""}`);
@@ -132,16 +189,11 @@ const eagerRuns = [];
   const notThree = now.filter((e) => e.r.verdict.stars !== 3);
   check(notThree.length === 0, `eager in every now seed: 3 stars${notThree.length ? ` -- not ${notThree.slice(0, 6).map((e) => `${tag(e.x)}(${e.r.rs.end?.why},${e.r.verdict.stars}*,[${ids(e.r.verdict)}])`).join(" ")}` : ""}`);
   check(wait.length >= 20 && wait.every((e) => e.r.T.freezeOpen === false), `EXPOSURE: ${wait.length} wait seeds, the way shut at the freeze in every one (the check's own openTo)`);
-  const three = wait.filter((e) => e.r.verdict.stars === 3);
-  check(three.length === 0, `eager in every wait seed: never 3 stars${three.length ? ` -- 3 stars in ${three.slice(0, 6).map((e) => tag(e.x)).join(" ")}` : ""}`);
-  /* GOING AT ONCE INTO A SHUT ROAD IS NEVER BETTER THAN 1 STAR (review, 25 November): at 2 it cost one star in most wait seeds and
-     "always go now" was barely a losing habit. */
-  const over1 = wait.filter((e) => e.r.verdict.stars > 1);
-  check(over1.length === 0, `eager in every wait seed: at most 1 star${over1.length ? ` -- more in ${over1.slice(0, 6).map((e) => tag(e.x)).join(" ")}` : ""}`);
-  const fty = wait.filter((e) => ids(e.r.verdict).includes("failedToYield")), hit = wait.filter((e) => e.r.rs.end?.why === "contact" || ids(e.r.verdict).some((f) => f === "collision" || f === "struckPerson")), early = wait.filter((e) => e.r.verdict.notes.some((n) => n.id === "early"));
+  /* SLICE 5 (section 4): going early is no longer a star penalty in itself, so slice 4's "never 3 stars" and "at most 1 star" lines are gone;
+     what the early GO did to the traffic is judged in section 14 (forcedBrake, threaded). */
+  const fty = wait.filter((e) => ids(e.r.verdict).includes("failedToYield")), hit = wait.filter((e) => e.r.rs.end?.why === "contact" || ids(e.r.verdict).some((f) => f === "collision" || f === "struckPerson"));
   const hard = wait.filter((e) => ids(e.r.verdict).includes("failedToYield") || e.r.rs.end?.why === "contact");
-  console.log(`        eager in the ${wait.length} wait seeds [M, this run]: failedToYield ${fty.length}; contact or a collision ${hit.length}; the note early ${early.length}; failedToYield or contact ${hard.length} (${((100 * hard.length) / wait.length).toFixed(0)}%); 0 stars ${wait.filter((e) => e.r.verdict.stars === 0).length}, 1 star ${wait.filter((e) => e.r.verdict.stars === 1).length}, 2 stars ${wait.filter((e) => e.r.verdict.stars === 2).length}`);
-  if (hard.length * 2 < wait.length) console.log(`        FINDING: fewer than half of the wait seeds flag going at once by failedToYield or contact (${hard.length} of ${wait.length}): going now is a real mistake in the rest only by the note "early" (1 star)`);
+  console.log(`        eager in the ${wait.length} wait seeds [M, this run]: failedToYield ${fty.length}; contact or a collision ${hit.length}; failedToYield or contact ${hard.length} (${((100 * hard.length) / wait.length).toFixed(0)}%);  0 stars ${wait.filter((e) => e.r.verdict.stars === 0).length}, 1 star ${wait.filter((e) => e.r.verdict.stars === 1).length}, 2 stars ${wait.filter((e) => e.r.verdict.stars === 2).length}, 3 stars ${wait.filter((e) => e.r.verdict.stars === 3).length}`);
 }
 
 console.log("\n4. GO WORKS WHEN THE WAY IS SHUT");
@@ -197,6 +249,10 @@ console.log("\n6. THE RESTATED CONSTANT");
   const m = /const UNDUE_AT = ([0-9.]+);/.exec(src);
   check(!!m, "crossing.js has a line `const UNDUE_AT = <n>;` (the exposure: the text was found)");
   check(m && Number(m[1]) === UNDUE, `round.js UNDUE (${UNDUE}) equals crossing.js UNDUE_AT (${m?.[1]})`);
+  /* stage.js's SAME_MOMENT restates crossing.js's `const SAME_MOMENT = 0.4;` (line 661, not exported), the sim's own tie tolerance between two stops. */
+  const sm = /const SAME_MOMENT = ([0-9.]+);/.exec(src);
+  check(!!sm, "crossing.js has a line `const SAME_MOMENT = <n>;` (the exposure: the text was found)");
+  check(sm && Number(sm[1]) === SAME_MOMENT, `stage.js SAME_MOMENT (${SAME_MOMENT}) equals crossing.js SAME_MOMENT (${sm?.[1]})`);
 }
 
 console.log("\n7. DETERMINISTIC");
@@ -282,12 +338,16 @@ console.log("\n9. THE VERDICT TABLE, ON STATED INPUTS");
   check(Object.keys(END_WORDS).sort().join() === "contact,edge,time", "the three not-finished reasons have words");
   /* THE TIMING, stated: the stars by delay, the lower of timing and faults, the notes. */
   check([0, 1.0].every((d) => stars([], { timing: inside(d) }) === 3) && [1.01, 2.5].every((d) => stars([], { timing: inside(d) }) === 2) && [2.51, 3.9].every((d) => stars([], { timing: inside(d) }) === 1), "stars by delay: up to 1.0 s 3, up to 2.5 s 2, later 1");
-  check(timingStars({ kind: "early" }) === 1 && timingStars(null) === 3, "went before the first opening: 1 star; no timing yet: no limit");
+  check(timingStars({ kind: "early" }) === 3 && timingStars(null) === 3, "going early is not a timing fault (3 timing stars: what it did to the traffic is the verdict's); no timing yet: no limit");
   const u = verdictOf(rs([], { timing: inside(UNDUE) })), u2 = verdictOf(rs([], { timing: inside(UNDUE - 0.05) }));
   check(u.faults.some((f) => f.id === "undueDelay" && f.severity === 2) && u.stars === 1 && !u2.faults.some((f) => f.id === "undueDelay"), `undueDelay (severity 2) at ${UNDUE} s and not a tick before; 1 star`);
   check(stars([ev("underLimit", 1)], { timing: inside(0.2) }) === 2 && stars([ev("harshBraking", 3)], { timing: inside(0.2) }) === 1, "the lower of the timing and the fault table: a quick go with a fault keeps the fault's stars");
-  const e1 = verdictOf(rs([], { timing: { kind: "early", delay: null, missedGap: false } })), e2 = verdictOf(rs([ev("failedToYield", 5)], { timing: { kind: "early", delay: null, missedGap: false } }));
-  check(e1.notes.some((n) => n.id === "early") && e1.stars === 1 && !e2.notes.some((n) => n.id === "early") && e2.stars === 0, "early: the note and 1 star when failedToYield did not flag it; no note, and 0 stars, when it did");
+  const early = { kind: "early", delay: null, missedGap: false };
+  const e1 = verdictOf(rs([], { timing: early })), e2 = verdictOf(rs([ev("failedToYield", 5)], { timing: early })), e3 = verdictOf(rs([ev("forcedBrake", 3)], { timing: early })), e4 = verdictOf(rs([ev("collision", 5)], { timing: early })), e5 = verdictOf(rs([], { timing: early, end: { why: "contact" } })), e6 = verdictOf(rs([], { timing: inside(0.3) }));
+  check(e1.stars === 3 && e1.praise.some((x) => x.id === "threaded" && x.words === "Threaded the needle.") && !e1.notes.some((n) => n.id === "early"), "early with nothing forced: threaded, 3 stars, praised in the words, and no note");
+  check(e2.stars === 0 && !e2.praise.some((x) => x.id === "threaded") && e4.stars === 0 && !e4.praise.some((x) => x.id === "threaded") && e5.stars === 0 && !e5.praise.some((x) => x.id === "threaded"), "early with failedToYield, a collision or an ended-by-contact round: 0 stars and not threaded");
+  check(e3.stars === 1 && e3.faults.some((f) => f.id === "forcedBrake" && f.severity === 3 && f.words === "You made another driver brake hard.") && !e3.praise.some((x) => x.id === "threaded"), "forcedBrake is a severity-3 fault in the words, 1 star, and the GO is not threaded");
+  check(!e6.praise.some((x) => x.id === "threaded") && stars([ev("forcedBrake", 3)], { timing: inside(0.2) }) === 1, "a GO inside an opening is never threaded; a forcedBrake costs a timely GO its stars too (a consequence is a consequence)");
   check(!verdictOf(rs([ev("dawdling", 2)], { timing: inside(4.2) })).faults.some((f) => f.id === "dawdling") && verdictOf(rs([ev("dawdling", 2)], { timing: inside(4.2) })).faults.some((f) => f.id === "undueDelay"), "waiting is said once: with a timing verdict, dawdling is not a fault beside undueDelay");
   check(verdictOf(rs([], { timing: inside(0.3, { missedGap: true }) })).notes.some((n) => n.id === "missedGap"), "missedGap is a note");
   /* THE DELAY RUNS FROM THE FIRST OPENING, as the sim reads Jay's undue-delay band (crossing.js, above UNDUE_AT), not from the stretch
@@ -298,7 +358,7 @@ console.log("\n9. THE VERDICT TABLE, ON STATED INPUTS");
   check(late.kind === "inside" && Math.abs(late.delay - 0.5) < 1e-6, `a flicker shorter than REACTION_FLOOR was never an opening: the delay is from the real one (0.5 s; got ${late.delay?.toFixed(2)})`);
   check(verdictOf(rs([], { timing: inside(0.3) })).praise.some((p) => p.id === "quick" && p.words === "Right on time.") && !verdictOf(rs([], { timing: inside(2) })).praise.some((p) => p.id === "quick"), "quick is praise at 3 timing stars and at no other");
   check(verdictOf(rs([], { timing: inside(0), openings: [{ from: 0, to: null }], decideAt: 0 })).openAtFreeze === true && verdictOf(rs([], { timing: inside(1), openings: [{ from: 2, to: null }], decideAt: 0 })).openAtFreeze === false, "openAtFreeze says whether the first opening is the freeze moment");
-  check(["undueDelay", "early", "missedGap", "quick"].every((id) => WORDS[id]), "the new words exist");
+  check(["undueDelay", "forcedBrake", "threaded", "missedGap", "quick"].every((id) => WORDS[id]) && !("early" in WORDS), "the words exist, and the dropped note `early` has none");
 }
 
 console.log("\n10. THE GAME'S BODY MOTION (Jay, 25 November: overemphasize it, so arrivals and movement read at a glance)");
@@ -371,7 +431,8 @@ console.log("\n11. THE STAGING (slice 3): the arrival recorded, the screech, the
     let changes = 0; for (let i = 1; i < signs.length; i++) if (signs[i] !== signs[i - 1]) changes++;
     check(ps[0] <= (-8 * Math.PI) / 180 && ps.some((p) => p > 0) && changes === 1 && settleAt(SETTLE) === 0 && settleAt(SETTLE + 1) === 0, `the settle starts nose-down, overshoots nose-up once (${(Math.max(...ps) * 180 / Math.PI).toFixed(2)} degrees at most) and is level at ${SETTLE} s and after [M, this run]`);
   }
-  console.log(`        the durations [invented]: far ${HOLD_FAR} s, screech ${SCREECH} s, settle ${SETTLE} s, intro ${INTRO_END.toFixed(1)} s`);
+  console.log(`        the durations [invented]: screech ${SCREECH} s, settle ${SETTLE} s, intro ${INTRO_END.toFixed(2)} s (no far shot)`);
+  check(SCREECH === 0.6 && SETTLE === 0.25 && Math.abs(INTRO_END - 0.85) < 1e-9 && introAt(frozen[0].rs.decision.trail, SCREECH - 0.01).phase === "screech" && introAt(frozen[0].rs.decision.trail, SCREECH + 0.01).phase === "settle" && introAt(frozen[0].rs.decision.trail, INTRO_END).phase === "done", "the intro is a screech of 0.6 s then a settle of 0.25 s, with no far phase (stated here, the spec's)");
 
   /* THE SKID MARKS. */
   {
@@ -390,110 +451,71 @@ console.log("\n11. THE STAGING (slice 3): the arrival recorded, the screech, the
     check(skidLines(frozen[0].rs.decision.trail, 0).every((l) => l.length === 0) && skidLines(frozen[0].rs.decision.trail, 1)[0].length > skidLines(frozen[0].rs.decision.trail, 0.5)[0].length, "the marks grow as the car covers the road: none at u = 0, more at u = 1 than at 0.5");
   }
 
-  /* 3. RELEVANCE. */
+  /* 3. RELEVANCE (slice 5: the time filter). */
   {
-    const waitFrozen = frozen.filter((e) => e.x.pool === "wait"), atFreeze = { ticks: 0, holds: 0, missed: [], pastCars: 0, ringedPast: [], ringedNoConflict: [], withRing: 0 };
+    const waitFrozen = frozen.filter((e) => e.x.pool === "wait"), atFreeze = { ticks: 0, holds: 0, farHolds: 0, missed: [], pastCars: 0, ringedPast: [], ringedNoConflict: [], withRing: 0, mismatch: [], dropped: 0, kept: 0 };
     let firstRinged = 0;
     for (const { rs } of waitFrozen) { const before = atFreeze.withRing; observeRing(rs, atFreeze); if (atFreeze.withRing > before) firstRinged++; }
-    const all = { missed: [...atFreeze.missed, ...relScan.missed], ringedPast: [...atFreeze.ringedPast, ...relScan.ringedPast], ringedNoConflict: [...atFreeze.ringedNoConflict, ...relScan.ringedNoConflict] };
+    const all = { missed: [...atFreeze.missed, ...relScan.missed], ringedPast: [...atFreeze.ringedPast, ...relScan.ringedPast], ringedNoConflict: [...atFreeze.ringedNoConflict, ...relScan.ringedNoConflict], mismatch: [...atFreeze.mismatch, ...relScan.mismatch] };
     check(atFreeze.holds + relScan.holds >= 20, `EXPOSURE: the sim says a car holds the sound driver in ${atFreeze.holds} observations at the freeze and ${relScan.holds} on ${relScan.ticks} waiting ticks (at least 20)`);
-    check(all.missed.length === 0, `every car blockedBy says holds the sound driver is ringed, at the freeze and on every waiting tick${all.missed.length ? ` -- not ${all.missed.slice(0, 6).join(" ")}` : ""}`);
+    check(all.missed.length === 0, `every car blockedBy says holds the sound driver is ringed unless it is further out than 4 s, at the freeze and on every waiting tick${all.missed.length ? ` -- not ${all.missed.slice(0, 6).join(" ")}` : ""}`);
+    console.log(`        holding cars further out than 4 s and so not ringed: ${atFreeze.farHolds + relScan.farHolds} of ${atFreeze.holds + relScan.holds} holding observations (the sound driver's gap is conservative) [M, this run]`);
+    check(all.mismatch.length === 0, `the ringed set is exactly the check's own relevant set (conflicting, not past, and at its line, in the box or arriving within 4 s) at the freeze and on every waiting tick${all.mismatch.length ? ` -- not ${all.mismatch.slice(0, 6).join(" ")}` : ""}`);
     check(all.ringedNoConflict.length === 0, `no ringed car's path fails to conflict with the player's (conflictOf, the check's own call)${all.ringedNoConflict.length ? ` -- not ${all.ringedNoConflict.slice(0, 6).join(" ")}` : ""}`);
     check(atFreeze.pastCars + relScan.pastCars > 0, `EXPOSURE: ${atFreeze.pastCars + relScan.pastCars} car-observations of a car conflicting but already past its conflict (the case the not-yet-past test is for)`);
     check(all.ringedPast.length === 0, `no car already past its conflict is ringed${all.ringedPast.length ? ` -- ringed past: ${all.ringedPast.slice(0, 6).join(" ")}` : ""}`);
     const share = firstRinged / waitFrozen.length;
     check(waitFrozen.length >= 20 && share >= 0.8, `EXPOSURE: at least one car is ringed at the freeze in ${(100 * share).toFixed(0)}% of ${waitFrozen.length} wait seeds (at least 80% [invented])`);
+    if (share < 0.8) console.log(`        FINDING: ${waitFrozen.length - firstRinged} of ${waitFrozen.length} wait seeds show NO ringed car at the freeze: the car the sound driver waits for is more than 4 s out (${atFreeze.farHolds + relScan.farHolds} of ${atFreeze.holds + relScan.holds} holding observations were dropped by the time filter). The 80% line above is slice 3's [invented] floor, left as it was and left RED: the spec's time filter makes it false`);
     console.log(`        ringed at the freeze: ${firstRinged} of ${waitFrozen.length} wait seeds (${(100 * share).toFixed(0)}%); ${relScan.withRing} of ${relScan.ticks} waiting ticks had a ring [M, this run]`);
   }
 
-  /* 4. THE CAMERAS. */
+  /* 4. THE SOURCE: the intro and its rings, as text (a React screen no check can run to a frame). The camera itself is section 12's. */
   {
-    const boxes = [{ w: 400, h: 800 }, { w: 800, h: 400 }];
-    const inside = (P, size, pts) => pts.every(([x, y, z]) => { const [px, py] = P(x, y, z); return px >= 0 && px <= size.w && py >= 0 && py <= size.h; });
-    const failCorners = [], failEnd = [], failCar = [];
-    let carMin = Infinity;
-    const bounds = { x: 0, y: 0, w: 500, h: 500 };
-    const corners = [[0, 0, 0], [500, 0, 0], [500, 500, 0], [0, 500, 0]];
-    for (const { x, rs } of frozen.slice(0, 40)) {
-      const p = driverPose(rs.me, rs.world.course);
-      for (const size of boxes) {
-        const far = farCamera(bounds, p, size), dec = decisionCamera(p, size);
-        const c0 = introCamera(0, far, dec), v0 = viewOf(c0.k, { ...c0.cam, id: null }, c0.rot, size);
-        if (!inside(v0.P, size, corners)) failCorners.push(`${tag(x)}/${size.w}x${size.h}`);
-        /* THE DECISION CAMERA, as stated: 10 m ahead of the frozen pose along its heading, the heading up, 45 m fits the shorter side. */
-        const h = (p.heading * Math.PI) / 180, want = { x: p.x + 10 * Math.cos(h), y: p.y + 10 * Math.sin(h), rot: UP_HEADING - p.heading, k: Math.min(size.w, size.h) / (2 * 45 * Math.SQRT2) };
-        for (const t of [HOLD_FAR + SCREECH, INTRO_END]) {
-          const ce = introCamera(t, far, dec);
-          if (!(Math.hypot(ce.cam.x - want.x, ce.cam.y - want.y) <= 0.01 && Math.abs(ce.k - want.k) <= 1e-6 && Math.abs(((ce.rot - want.rot + 540) % 360) - 180) <= 1e-6)) failEnd.push(`${tag(x)}/${size.w}x${size.h}@${t}`);
-        }
-        for (let i = 0; i <= 20; i++) {
-          const t = (i * INTRO_END) / 20, ic = introCamera(t, far, dec), at = introAt(rs.decision.trail, t).pose ?? p;
-          const [px, py] = viewOf(ic.k, { ...ic.cam, id: null }, ic.rot, size).P(at.x, at.y, at.z ?? 0);
-          carMin = Math.min(carMin, px, py, size.w - px, size.h - py);
-          if (!(px >= 0 && px <= size.w && py >= 0 && py <= size.h)) failCar.push(`${tag(x)}/${size.w}x${size.h}@${t.toFixed(2)}`);
-        }
-      }
-    }
-    check(failCorners.length === 0, `at t = 0 all four corners of the map's bounds project inside the screen, 400x800 and 800x400, for 40 rounds${failCorners.length ? ` -- not ${failCorners.slice(0, 4).join(" ")}` : ""}`);
-    check(failEnd.length === 0, `at the intro's end the camera equals the decision camera (1 cm, 1e-6 in k, the heading up)${failEnd.length ? ` -- not ${failEnd.slice(0, 4).join(" ")}` : ""}`);
-    check(failCar.length === 0, `the player's car projects inside the screen at every 1/20th of the intro, both boxes, 40 rounds (closest to an edge ${carMin.toFixed(1)} px [M, this run])${failCar.length ? ` -- not ${failCar.slice(0, 4).join(" ")}` : ""}`);
-    /* Other headings than the map's: the far view must hold the map at any rotation, as the rotated square's own corners say. */
-    const oddFail = [];
-    for (const heading of [0, 33, 90, 180, 250, 359]) for (const size of boxes) {
-      const far = farCamera(bounds, { x: 250, y: 400, z: 0, heading }, size), v = viewOf(far.k, { ...far.cam, id: null }, far.rot, size);
-      if (!inside(v.P, size, corners)) oddFail.push(`${heading}deg/${size.w}x${size.h}`);
-    }
-    check(oddFail.length === 0, `the far view holds the whole map at any heading (0, 33, 90, 180, 250, 359 degrees)${oddFail.length ? ` -- not ${oddFail.join(" ")}` : ""}`);
-    check(frozen.slice(0, 40).every(({ rs }) => lenTrail(rs.decision.trail) > 10), `EXPOSURE: the car moves more than 10 m over the intro it is checked through`);
     const src = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
-    check(/introCamera\(intro, farCamera\(frame, p, size\), dd\)/.test(src) && /frame = decisionFrame\(rs0\)/.test(src) && /decisionCamera\(p, size\)/.test(src) && /relevantIds\(world, me\)/.test(src) && /skidLines\(trail/.test(src) && /intro >= INTRO_END/.test(src) && /intro < INTRO_END\) \{ if \(ev\.type === "down"/.test(src), "the screen draws the intro camera, the rings and the skid marks, shows the button only after the intro, and a tap during it only skips (source text: a React screen no check can run to a frame)");
+    check(/frameCamera\(decisionFrame\(rs\), p, size\)/.test(src) && !/farCamera|introCamera|decisionCamera/.test(src) && /relevantIds\(world, me\)/.test(src) && /skidLines\(trail/.test(src) && /intro >= INTRO_END/.test(src) && /intro < INTRO_END\) \{ if \(ev\.type === "down"/.test(src), "the screen holds the decision frame from the first frame (no far shot, no introCamera), draws the rings and the skid marks, shows the button only after the intro, and a tap during it only skips (source text)");
   }
 }
 
-console.log("\n12. THE FRAMING AND THE LAUNCH (slice 4): the far shot frames the decision, the trail, the launch, toDecisionFrom");
+console.log("\n12. THE DECISION FRAME AND THE LAUNCH (slice 5): only what decides the decision, the trail, the launch, toDecisionFrom");
 {
   const frozen = POOLED.map((x) => ({ x, rs: frozenOf.get(tag(x)) })).filter((e) => e.rs);
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const sizes = [{ w: 400, h: 800 }, { w: 800, h: 400 }];
-  const mapCorners = [[0, 0, 0], [500, 0, 0], [500, 500, 0], [0, 500, 0]];   // the round maps are 500 m squares (rounds.js), stated here
   const onScreen = (v, size, [x, y, z]) => { const [px, py] = v.P(x, y, z); return px >= 0 && px <= size.w && py >= 0 && py <= size.h; };
 
-  /* 1. THE FAR SHOT FRAMES THE DECISION. The cars that matter are read here by the check's own calls (atNode, conflictOf, poseOf),
-     not through stage.js relevantIds; the points are the trail's start, the stop point, those cars as the world poses them, and the
-     decision view's own circle. */
-  const missed = [], circleOut = [], zoomOut = [], notNarrower = [];
-  let relSeen = 0, mapFits = 0, shots = 0, seedsNarrow = 0;
+  /* 1. THE FRAME. The cars that matter are read here by the check's own statement (conflictingNow: atNode, conflictOf, the time filter),
+     not through stage.js relevantIds; the points are the player's stop pose and those cars as the world poses them. */
+  const missed = [], notEqual = [], boxMissed = [], widths = [];
+  let relSeen = 0, seedsDropping = 0, droppedCars = 0;
   for (const { x, rs } of frozen) {
-    const k = rs.me.k ?? 0, L = rs.world.course.at[k].layout, tr = rs.decision.trail, p = driverPose(rs.me, rs.world.course);
-    const pts = [[tr[0].x, tr[0].y, tr[0].z ?? 0, "trail start"], [tr[tr.length - 1].x, tr[tr.length - 1].y, tr[tr.length - 1].z ?? 0, "stop point"]];
-    for (const a of atNode(rs.world, rs.world.actors, k)) {
-      if (a.id === rs.me.id || a.shadow || a.player) continue;
-      const hit = conflictOf(L, rs.me.route, a.route);
-      if (!hit || a.s > hit.clearOf + CAR.length / 2 + (lenOf(a) - CAR.length)) continue;
-      const q = poseOf(rs.world, a);
-      pts.push([q.x, q.y, q.z ?? 0, `car ${a.id}`]); relSeen++;
-    }
-    const h = (p.heading * Math.PI) / 180, cx = p.x + 10 * Math.cos(h), cy = p.y + 10 * Math.sin(h);
-    let narrowAll = true;
+    const k = rs.me.k ?? 0, L = rs.world.course.at[k].layout, p = driverPose(rs.me, rs.world.course);
+    const pts = [[p.x, p.y, p.z ?? 0, "stop pose"]];
+    const own = conflictingNow(rs);
+    for (const c of own) if (c.why) { const q = poseOf(rs.world, c.a); pts.push([q.x, q.y, q.z ?? 0, `car ${c.a.id}`]); relSeen++; }
+    const dropped = own.filter((c) => !c.why && c.secs > ARRIVE && c.secs !== Infinity);   // conflicting, not past, MORE THAN 4 s out and moving
+    if (dropped.length) { seedsDropping++; droppedCars += dropped.length; }
+    if (new Set(relevantIds(rs.world, rs.me)).size !== own.filter((c) => c.why).length) notEqual.push(tag(x));
+    const f = decisionFrame(rs);
+    widths.push(Math.max(f.w, f.h));
+    const half = 8;   // the box's own corners, from the layout: a frame must hold the whole intersection (the check reads place.at and a 6 m half-size at least)
     for (const size of sizes) {
-      const far = farCamera(decisionFrame(rs), p, size), v = viewOf(far.k, { ...far.cam, id: null }, far.rot, size), dec = decisionCamera(p, size);
+      const fc = frameCamera(f, p, size), v = viewOf(fc.k, { ...fc.cam, id: null }, fc.rot, size);
       for (const q of pts) if (!onScreen(v, size, q)) missed.push(`${tag(x)}/${size.w}x${size.h}:${q[3]}`);
-      for (let i = 0; i < 16; i++) if (!onScreen(v, size, [cx + 45 * Math.cos((i * Math.PI) / 8), cy + 45 * Math.sin((i * Math.PI) / 8), 0])) circleOut.push(`${tag(x)}/${size.w}x${size.h}#${i}`);
-      if (!(far.k <= dec.k + 1e-9)) zoomOut.push(`${tag(x)}/${size.w}x${size.h}`);
-      const fits = mapCorners.every((c) => onScreen(v, size, c));
-      shots++; if (fits) mapFits++;
-      if (fits) narrowAll = false;
+      const at = L.place.at;
+      for (const [dx, dy] of [[-half, -half], [half, -half], [half, half], [-half, half]]) if (!onScreen(v, size, [at.x + dx, at.y + dy, 0])) boxMissed.push(`${tag(x)}/${size.w}x${size.h}`);
     }
-    if (narrowAll) seedsNarrow++;
   }
   check(frozen.length >= 40 && relSeen >= 20, `EXPOSURE: ${frozen.length} frozen rounds and ${relSeen} relevant cars read (at least 40 and 20)`);
-  check(missed.length === 0, `the trail's start, the stop point and every relevant car project inside the screen, 400x800 and 800x400, in every pooled seed${missed.length ? ` -- not ${missed.slice(0, 5).join(" ")}` : ""}`);
-  check(circleOut.length === 0, `the decision view's 45 m circle fits inside the far shot (16 points of its rim, both boxes)${circleOut.length ? ` -- not ${circleOut.slice(0, 5).join(" ")}` : ""}`);
-  check(zoomOut.length === 0, `the far shot is never more zoomed in than the decision view, so the dive is never a zoom-out${zoomOut.length ? ` -- not ${zoomOut.slice(0, 5).join(" ")}` : ""}`);
-  const share = seedsNarrow / frozen.length;
-  check(share >= 0.9, `the shot is NOT the whole map: the map's four corners do not all fit the screen in ${(100 * share).toFixed(1)}% of ${frozen.length} seeds (at least 90% [invented])`);
-  check(mapFits < shots, `EXPOSURE: the test can tell -- ${shots - mapFits} of ${shots} shots leave the map's corners out (a frame equal to the map would put them all in)`);
-  console.log(`        far shot narrower than the map: ${seedsNarrow} of ${frozen.length} seeds (${(100 * share).toFixed(1)}%), ${relSeen} relevant cars [M, this run]`);
+  check(missed.length === 0, `the player's stop pose and every relevant car project inside the screen, 400x800 and 800x400, in every pooled seed${missed.length ? ` -- not ${missed.slice(0, 5).join(" ")}` : ""}`);
+  check(boxMissed.length === 0, `the intersection's own box (8 m either side of its centre [instrument]) projects inside the screen in every one${boxMissed.length ? ` -- not ${boxMissed.slice(0, 5).join(" ")}` : ""}`);
+  check(notEqual.length === 0, `stage.js relevantIds is the check's own relevant set in every one (the time filter applied: at its line, in the box, or within 4 s)${notEqual.length ? ` -- not ${notEqual.slice(0, 5).join(" ")}` : ""}`);
+  const ws = widths.slice().sort((a, b) => a - b), within = widths.filter((w) => w <= 120).length / widths.length;
+  check(within >= 0.95, `the frame is at most 120 m across [invented] in ${(100 * within).toFixed(1)}% of ${widths.length} seeds (at least 95%)`);
+  console.log(`        frame size (the longer side): median ${ws[ws.length >> 1].toFixed(1)} m, widest ${ws[ws.length - 1].toFixed(1)} m, over ${widths.length} seeds [M, this run]`);
+  const dshare = seedsDropping / frozen.length;
+  check(dshare >= 0.2, `EXPOSURE: the time filter bites -- in ${(100 * dshare).toFixed(1)}% of ${frozen.length} seeds a conflicting, not-yet-past car is NOT relevant because it is more than 4 s out (at least 20%)`);
+  console.log(`        time filter: ${seedsDropping} of ${frozen.length} seeds (${(100 * dshare).toFixed(1)}%) drop a conflicting car, ${droppedCars} cars in all [M, this run]`);
 
   /* 2. THE TRAIL, at least 20 m, stated here and not as stage.js's TRAIL_MIN_M. */
   const trLens = frozen.map(({ rs }) => rs.decision.trail.slice(1).reduce((s, q, i) => s + dist(q, rs.decision.trail[i]), 0));
@@ -507,6 +529,7 @@ console.log("\n12. THE FRAMING AND THE LAUNCH (slice 4): the far shot frames the
     let goAt = null, v1 = null;
     const r = driveDecision(x.type, x.seed, x.type.cars, oracle, { onTick: (b, a) => { if (b.phase === "gone" && goAt == null) goAt = b.decision.goAt; if (goAt != null && v1 == null && a.world.t - goAt >= 1.0 - 1e-6) v1 = a.me.v; } });
     waitRuns.push(r); if (v1 != null) speeds.push(v1);
+    goToEnd.push(r.rs.world.t - r.rs.decision.goAt);
   }
   check(speeds.length >= 20 && speeds.length === waitRuns.length, `EXPOSURE: the car was still driving 1.0 s after GO in ${speeds.length} of ${waitRuns.length} wait seeds (at least 20, all of them)`);
   check(speeds.every((v) => v >= 2.2), `in every wait seed the car's speed 1.0 s after GO is at least 2.2 m/s (${stat(speeds)} m/s [M, this run]; 2.2 is 0.8 of ACCEL_MAX for 1 s, allowing for the slider's response [invented])`);
@@ -532,6 +555,103 @@ console.log("\n12. THE FRAMING AND THE LAUNCH (slice 4): the far shot frames the
   check(a1 != null && a2 != null && a1.phase === "frozen" && a2.phase === "frozen" && a1.decision.decideAt === ref.decision.decideAt && a2.decision.decideAt === ref.decision.decideAt, `POSITIVE CONTROL: from the start, and from 2 s into the approach, toDecisionFrom freezes at the same moment toDecision does (${a1?.decision.decideAt?.toFixed(2)}, ${a2?.decision.decideAt?.toFixed(2)}, ${ref.decision.decideAt.toFixed(2)} s)`);
   check(a1 != null && isDeepStrictEqual(Object.keys(a1.decision).sort(), ["crossedAt", "decideAt", "goAt", "launch", "made", "openings", "timing", "trail"]), "the per-decision state is ONE object, rs.decision, holding the openings, decideAt, goAt, the trail, launch, made, crossedAt and the timing");
   check(a1 != null && ["decideAt", "goAt", "openings", "timing", "trail", "launch", "made", "crossedAt"].every((f) => !(f in a1)), "and none of those fields is left on the round itself");
+}
+
+console.log("\n13. THE STOPPING ORDER (slice 5): numbered from stoppedAt, held to the sim's own blockedBy");
+{
+  const freezes = POOLED.map((x) => ({ x, rs: frozenOf.get(tag(x)) })).filter((e) => e.rs);
+  const allWay = freezes.filter((e) => e.x.type.id.startsWith("four-way"));
+  for (const { x, rs } of allWay) orderScan(rs, orderAcc, tag(x), true);
+  const A = orderAcc;
+  check(A.freezes >= 20 && A.numbered >= A.freezes, `EXPOSURE: ${A.freezes} all-way freezes and ${A.ticks} waiting ticks read, ${A.numbered} car-observations numbered`);
+  check(A.youMissing.length === 0, `the player's car is numbered at every freeze${A.youMissing.length ? ` -- not ${A.youMissing.slice(0, 5).join(" ")}` : ""}`);
+  check(A.notSorted.length === 0, `a lower number always stopped earlier, by more than 0.4 s, by the cars' own stoppedAt${A.notSorted.length ? ` -- not ${A.notSorted.slice(0, 5).join(" ")}` : ""}`);
+  check(A.pairs >= 20, `EXPOSURE: ${A.pairs} pairs of numbered cars with different numbers whose paths conflict (${A.pairsFreeze} at the freeze, the rest on the waiting ticks of the oracle's wait runs) (at least 20); ${A.same} pair-observations share a number and are exempt, ${A.flat} do not conflict and have nothing to yield [M, this run]`);
+  check(A.wrong.length === 0, `blockedBy (the sim's own call) says the car numbered j must yield to the one numbered i, in all ${A.pairs} pairs${A.wrong.length ? ` -- not ${A.wrong.slice(0, 5).join(" ")}` : ""}`);
+  check(A.reverse.length === 0, `...and never the other way round, in any of them${A.reverse.length ? ` -- not ${A.reverse.slice(0, 5).join(" ")}` : ""}`);
+  console.log(`        order pairs [M, this run]: ${A.pairs} over ${A.freezes} all-way freezes and ${A.ticks} waiting ticks (only ${A.pairsFreeze} at the freeze itself: the player has usually just stopped and the others are not yet at their lines)`);
+  const twoWay = freezes.filter((e) => e.x.type.id.startsWith("two-way")), secsWrong = [];
+  /* THE SECONDS, at a road with no stop: whole seconds of the car's own distance over its speed, for the arriving cars that are not numbered. */
+  let secsN = 0;
+  const scan = [...twoWay.map((e) => e.rs), ...twoWay.filter((e) => e.x.pool === "wait").slice(0, 20).map((e) => { let w = press(e.rs); for (let i = 0; i < 20 && !w.end; i++) w = roundTick(w); return w; })];
+  for (const rs of scan) {
+    const mine = arrivalSeconds(rs.world, rs.me), ownArr = conflictingNow(rs).filter((c) => c.why === "arriving"), numberedIds = new Set(stopOrder(rs.world, rs.me).map((r) => r.id));
+    const want = ownArr.filter((c) => !numberedIds.has(c.a.id));
+    secsN += mine.length;
+    if (mine.length !== want.length || want.some((c) => !mine.some((m) => m.id === c.a.id && m.secs === Math.round(c.secs)))) secsWrong.push(`${rs.def.id}@${rs.world.t.toFixed(2)}`);
+  }
+  check(secsN >= 20, `EXPOSURE: ${secsN} arriving cars labelled with their seconds over ${scan.length} two-way observations (at least 20) [M, this run]`);
+  check(secsWrong.length === 0, `each is labelled with its own distance to the conflict over its speed, in whole seconds, and no other car is${secsWrong.length ? ` -- not ${secsWrong.slice(0, 5).join(" ")}` : ""}`);
+}
+
+console.log("\n14. FORCED BRAKING AND THREADING THE NEEDLE (slice 5): the traffic's own tick-to-tick braking, past HARSH_AT");
+{
+  /* THE CHECK'S OWN READING, tick by tick on every eager run: from GO until the player is clear of the box, any other road user at the node
+     whose path conflicts with the player's, not yet past the conflict and not yet stopped at its line, whose speed fell by more than HARSH_AT
+     over one tick (the speed before the tick minus the speed after it, over DT). */
+  const rows = [];
+  for (const x of POOLED) {
+    let hard = false;
+    const r = driveDecision(x.type, x.seed, x.type.cars, eager, { onTick: (before, after) => {
+      if (before.phase !== "gone" || before.me.k !== before.targetK) return;
+      const L = before.world.course.at[before.targetK].layout, q = L.paths[after.me.route];
+      if (!(after.me.s < q.clearAt)) return;
+      const next = new Map(after.world.actors.map((a) => [a.id, a]));
+      for (const a of atNode(before.world, before.world.actors, before.targetK)) {
+        if (a.id === before.me.id || a.shadow || a.player || a.route == null || a.stoppedAt != null) continue;
+        const hit = conflictOf(L, before.me.route, a.route);
+        if (!hit || a.s > hit.clearOf + CAR.length / 2 + (lenOf(a) - CAR.length)) continue;
+        const b = next.get(a.id);
+        if (b && (a.v - b.v) / DT > HARSH_AT) hard = true;
+      }
+    } });
+    rows.push({ x, r, hard });
+  }
+  const has = (e, id) => ids(e.r.verdict).includes(id), wait = rows.filter((e) => e.x.pool === "wait");
+  const hardRuns = rows.filter((e) => e.hard), calm = rows.filter((e) => !e.hard);
+  check(wait.length >= 20 && rows.length >= 40, `EXPOSURE: ${rows.length} eager runs, ${wait.length} in the wait pools`);
+  check(hardRuns.length >= 3, `EXPOSURE: ${hardRuns.length} eager runs (${hardRuns.filter((e) => e.x.pool === "wait").length} in the wait pools) where an entitled car's tick-to-tick deceleration passed HARSH_AT (${HARSH_AT.toFixed(1)} m/s^2) after GO, read by the check itself (at least 3) [M, this run]`);
+  check(hardRuns.every((e) => has(e, "forcedBrake")), `forcedBrake in every one of those ${hardRuns.length} runs${hardRuns.filter((e) => !has(e, "forcedBrake")).length ? ` -- not ${hardRuns.filter((e) => !has(e, "forcedBrake")).slice(0, 5).map((e) => tag(e.x)).join(" ")}` : ""}`);
+  check(calm.length >= 20 && calm.every((e) => !has(e, "forcedBrake")), `...and in none of the ${calm.length} where it did not happen${calm.filter((e) => has(e, "forcedBrake")).length ? ` -- in ${calm.filter((e) => has(e, "forcedBrake")).slice(0, 5).map((e) => tag(e.x)).join(" ")}` : ""}`);
+  check(hardRuns.every((e) => { const f = e.r.verdict.faults.find((q) => q.id === "forcedBrake"); return f && f.severity === 3 && f.words === "You made another driver brake hard."; }), "forcedBrake is severity 3 with the spec's words in every one");
+  check(oracleForced.length === 0, `the oracle has forcedBrake in none of the ${POOLED.length} pooled seeds${oracleForced.length ? ` -- FINDING, in ${oracleForced.slice(0, 8).join(" ")}` : ""}`);
+
+  /* THREADED: an early GO, through, with neither forcedBrake, failedToYield nor contact. */
+  const bad = (e) => ["forcedBrake", "failedToYield", "collision", "struckPerson"].some((id) => has(e, id)) || e.r.rs.end?.why === "contact";
+  const early = wait.filter((e) => e.r.T.freezeOpen === false), threaded = early.filter((e) => !bad(e) && e.r.rs.end?.why === "through"), notThreaded = early.filter(bad);
+  check(threaded.length >= 3, `EXPOSURE: ${threaded.length} eager wait runs were early and drew neither forcedBrake, failedToYield nor contact (at least 3) [M, this run]`);
+  const wrongT = threaded.filter((e) => !e.r.verdict.praise.some((p) => p.id === "threaded" && p.words === "Threaded the needle.") || e.r.verdict.timingStars !== 3 || e.r.verdict.stars !== 3);
+  check(wrongT.length === 0, `each of them gets the praise threaded, 3 timing stars and 3 stars${wrongT.length ? ` -- not ${wrongT.slice(0, 5).map((e) => `${tag(e.x)}(${e.r.verdict.stars}*,[${ids(e.r.verdict)}])`).join(" ")}` : ""}`);
+  check(notThreaded.length >= 3 && notThreaded.every((e) => !e.r.verdict.praise.some((p) => p.id === "threaded") && e.r.verdict.stars <= 1), `EXPOSURE: ${notThreaded.length} early runs did draw one (at least 3), and none of them is threaded or has more than 1 star`);
+  check(!rows.filter((e) => e.x.pool === "now").some((e) => e.r.verdict.praise.some((p) => p.id === "threaded")), "a GO into an open road (the now pool) is never threaded");
+  const dist = [0, 1, 2, 3].map((n) => wait.filter((e) => e.r.verdict.stars === n).length);
+  console.log(`        eager outcomes in the ${wait.length} wait runs [M, this run]: 0 stars ${dist[0]}, 1 star ${dist[1]}, 2 stars ${dist[2]}, 3 stars ${dist[3]}; forcedBrake in ${wait.filter((e) => has(e, "forcedBrake")).length}, failedToYield in ${wait.filter((e) => has(e, "failedToYield")).length}, threaded ${threaded.length}`);
+}
+
+console.log("\n15. THE PLAYBACK AND THE GESTURES (slice 5), as source text and the pace budget");
+{
+  check(FAST === 2 && speedOf("gone") === FAST && speedOf("waiting") === 1 && speedOf("frozen") === 1, `after GO the sim runs ${FAST} ticks per tick of real time, and only after GO (stated here: 2 [invented])`);
+  const src = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
+  check(/owed \+= dt \* speedOf\(rs\.phase\)/.test(src) && /pageMore\(owed, steps/.test(src) && /owed = pageLeft\(owed\)/.test(src), "Game.jsx adds FAST ticks' worth of time a tick after GO and still steps through pageMore / pageLeft (source text)");
+  const down = /const onDown = [\s\S]*?\n  \};/.exec(src)?.[0] ?? "", move = /const onMove = [\s\S]*?\n  \};/.exec(src)?.[0] ?? "", up = /const onUp = [\s\S]*?\n  \};/.exec(src)?.[0] ?? "";
+  check(down.length > 0 && move.length > 0 && up.length > 0, "EXPOSURE: onDown, onMove and onUp were found in the source");
+  const dragBranch = /if \(canPan\(\)[\s\S]*?return;\s*\}/.exec(down)?.[0] ?? "";
+  check(/!inRect\(buttonRect\(/.test(dragBranch) && dragBranch.length > 0, "a finger that lands OUTSIDE the button's rectangle takes the drag branch (source text)");
+  check(/panFree\(/.test(move) && /pinchFree\(/.test(move), "a drag outside the button routes to panFree and pinchFree (source text)");
+  check(!/decide\(|press\(|release\(/.test(dragBranch) && !/decide\(|press\(|release\(/.test(move), "the drag branch and the move handler never call decide, press or release (source text)");
+  check(/if \(ptrs\.delete\(e\.pointerId\)\) \{[^}]*return;/.test(up), "a drag finger lifting never reaches decide (source text)");
+  check(/userCam = null/.test(src) && /goCam/.test(src), "after GO the player's camera is dropped and the chase blends in from where it was (source text)");
+  /* THE PAGE BUDGET at FAST: frames of 60, 30 and 20 fps, ticks per second of real time, and no frame over PAGE_STEPS ticks. */
+  for (const fps of [60, 30, 20]) {
+    let owed = 0, total = 0, most = 0;
+    for (let f = 0; f < fps * 10; f++) { owed += (1 / fps) * FAST; let steps = 0; while (pageMore(owed, steps, 0)) { owed -= DT; steps++; total++; } owed = pageLeft(owed); most = Math.max(most, steps); }
+    check(most <= PAGE_STEPS && Math.abs(total / 10 - FAST / DT) <= 1.5, `at ${fps} fps the page steps ${(total / 10).toFixed(1)} ticks per second (${(FAST / DT).toFixed(0)} wanted) and no frame more than ${PAGE_STEPS} (most ${most}) [M, this run]`);
+  }
+  /* GO TO THE RESULT CARD [D]: the oracle's sim seconds from GO to the end, over FAST, plus AFTER_END. */
+  const after = Number(/const AFTER_END = (\d+)/.exec(src)?.[1]);
+  const sorted = goToEnd.slice().sort((a, b) => a - b), med = sorted[sorted.length >> 1], worst = sorted[sorted.length - 1];
+  check(goToEnd.length >= 20 && Number.isFinite(after), `EXPOSURE: ${goToEnd.length} oracle wait runs timed from GO to their end, AFTER_END read from the source (${after} ms)`);
+  console.log(`        GO to the result card [D: the oracle's GO-to-end in sim seconds / ${FAST} + AFTER_END ${after} ms, assuming the page keeps up]: median ${(med / FAST + after / 1000).toFixed(2)} s (sim ${med.toFixed(2)} s), worst ${(worst / FAST + after / 1000).toFixed(2)} s (sim ${worst.toFixed(2)} s) over ${goToEnd.length} runs [M for the sim seconds, this run]`);
 }
 
 console.log(`\n${failed === 0 ? "ALL PASSED" : `${failed} FAILED`}`);

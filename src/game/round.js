@@ -22,12 +22,12 @@
    use is not public and stays out.
    ===================================================================== */
 import { worldFor, playerContact, PREROLL } from "../sim/scene.js";
-import { step, DT, openTo, AT_REST, atNode, blockedBy } from "../sim/crossing.js";
+import { step, DT, openTo, AT_REST, atNode, blockedBy, conflictOf, CAR } from "../sim/crossing.js";
 import { stepDriver, withDriver, driverPose } from "../sim/drive.js";
 import { afterContact } from "../sim/contact.js";
 import { detect, newEventState, TRIGGERS } from "../sim/events.js";
 import { DEFAULT_MERGE_TOLERANCE } from "../sim/lanechange.js";
-import { lenOf } from "../sim/traffic.js";
+import { lenOf, HARSH_AT } from "../sim/traffic.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { autoInput } from "./autopilot.js";
 import { TRAIL, TRAIL_MIN_M } from "./stage.js";
@@ -61,8 +61,12 @@ export const UNDUE = 4.0;
 export const UNDUE_SEVERITY = 2;      // [invented]
 export const MISSED_GAP = 1.5;        // s: an earlier opening at least this long, let pass, is a missed gap [invented, the spec's]
 export const STARS_AT = [1.0, 2.5];   // s of delay: at most the first is 3 stars, at most the second 2, later 1 [invented, the spec's]
-export const EARLY_STARS = 1;         // went before the first opening, and not flagged as failing to yield [invented: the planner, review 25 November -- at 2,
-                                      // going at once in a wait round cost one star in 61 of 108 seeds, so "always go now" was barely a losing habit]
+/* THE FORCED BRAKE (slice 5, section 4; Jay: "thread the needle if need be"). If an ENTITLED car brakes harder than the sim's own harsh
+   threshold (HARSH_AT, traffic.js) at any tick between GO and the player clearing the box, the fault `forcedBrake` is added: "You made another
+   driver brake hard." THIS IS A DELIBERATE DEPARTURE FROM THE OLD ENGINE'S STANDARD, where a fault was intrusion on entitled space whether or
+   not anybody reacted (CLAUDE.md, "Encroachment is measured in seconds"). Here an early GO that nobody had to answer is threaded, and a GO
+   that made somebody stand on the brakes is the fault: Jay's call for this game. Severity [invented]. */
+export const FORCED_BRAKE = 3;
 const EPS = 1e-6;                     // [instrument] float slack on sums of DT
 
 /* The arguments `sceneFor` (apps/MapRoad.jsx) takes, positionally. */
@@ -199,6 +203,25 @@ export function release(rs) {
   return { ...rs, phase: "gone", decision: { ...d, goAt: rs.world.t, timing: timingOf(d.openings, d.decideAt, rs.world.t) } };
 }
 
+/* THE ENTITLED CARS, by the round's own statement: another road user at the player's node whose path CONFLICTS with the player's route, that
+   is not yet past that conflict (blockedBy's own test) and has not yet stopped at its line (`stoppedAt` null -- a car standing at its line
+   brakes for nobody). Read on the world BEFORE a tick, with the speeds of the world after it: the deceleration is the change in speed from
+   one tick to the next, in the round's own tick. Returns the ids braking harder than HARSH_AT. */
+function forcedBrakers(prev, world, me) {
+  const k = me.k ?? 0, L = world.course?.at[k]?.layout;
+  if (!L) return [];
+  const after = new Map(world.actors.map((a) => [a.id, a]));
+  const out = [];
+  for (const a of atNode(prev.world, prev.world.actors, k)) {
+    if (a.id === me.id || a.shadow || a.player || a.route == null || (a.k ?? 0) !== k || a.stoppedAt != null) continue;
+    const hit = conflictOf(L, me.route, a.route);
+    if (!hit || a.s > hit.clearOf + CAR.length / 2 + (lenOf(a) - CAR.length)) continue;
+    const b = after.get(a.id);
+    if (b && (a.v - b.v) / DT > HARSH_AT) out.push(a.id);
+  }
+  return out;
+}
+
 /* One tick. In `frozen` it does nothing (the screen does not call it) and returns `rs`. `held === false` while waiting is a release
    (a screen that reads the button's state each tick can pass it instead of calling `release`). The autopilot drives the car: `hold` in
    waiting, `go` once gone, `approach` while building. */
@@ -222,6 +245,16 @@ export function roundTick(rs, { held } = {}) {
   }
   const { events: found, state } = detect(prev, { me, world, hit: c.hit, contact: c }, rs.ev);
   const events = found.slice();
+
+  /* FORCED BRAKING: from GO until the player has cleared the box, once per car. */
+  if (rs.phase === "gone" && rs.decision.goAt != null && me.k === rs.targetK) {
+    const pp = pathOf(world, me);
+    if (pp && me.s < pp.clearAt) {
+      for (const id of forcedBrakers(prev, world, me)) {
+        if (!rs.events.some((e) => e.id === "forcedBrake" && e.by === id)) events.push({ id: "forcedBrake", t: world.t, severity: FORCED_BRAKE, praise: false, by: id });
+      }
+    }
+  }
 
   /* THE TURN MADE, and FAILED TO YIELD: on the tick the line is crossed at the round's own intersection (events.js's own test). */
   let { made, crossedAt, launch } = rs.decision;
@@ -274,7 +307,7 @@ export function roundTick(rs, { held } = {}) {
 /* The stars the TIMING alone earns. */
 export function timingStars(t) {
   if (!t) return 3;
-  if (t.kind === "early") return EARLY_STARS;
+  if (t.kind === "early") return 3;   // going early is not a timing fault; what it did to the traffic is the verdict's (forcedBrake, failedToYield, contact)
   return t.delay <= STARS_AT[0] + EPS ? 3 : t.delay <= STARS_AT[1] + EPS ? 2 : 1;
 }
 
@@ -302,7 +335,8 @@ export function verdictOf(rs) {
   const delay = t?.kind === "inside" ? t.delay : null;
   const tStars = timingStars(t);
   if (delay != null && delay >= UNDUE - EPS) faults.push({ id: "undueDelay", count: 1, severity: UNDUE_SEVERITY, words: faultWords("undueDelay") });
-  if (t?.kind === "early" && !faults.some((f) => f.id === "failedToYield")) notes.push({ id: "early", count: 1, words: faultWords("early") });
+  /* THREADED: went before the first opening and nobody had to answer it: no forced braking, no failure to yield, no contact. */
+  if (t?.kind === "early" && rs.end?.why === "through" && !faults.some((f) => ["forcedBrake", "failedToYield", "collision", "struckPerson"].includes(f.id)) && praiseWords("threaded")) praise.push({ id: "threaded", count: 1, words: praiseWords("threaded") });
   if (t?.missedGap) notes.push({ id: "missedGap", count: 1, words: faultWords("missedGap") });
   const worst = faults.reduce((m, f) => Math.max(m, f.severity), 0);
   /* STARS, one table, all [invented] until Jay rules: the LOWER of the fault table and the timing's. */

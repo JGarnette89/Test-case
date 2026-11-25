@@ -10,10 +10,9 @@
    player acts: no timer; the snap is the staging.
 
    THE INTRO, in order (all durations [invented], dialled with Jay, kept here):
-     far shot   HOLD_FAR   the whole map fits, the player's heading up, the
-                           player's car at the START of its recorded arrival;
      screech    SCREECH    the car replays its arrival fast and stops hard,
-                           and the camera dives into the decision view;
+                           in the DECISION FRAME the camera already holds
+                           (slice 5: there is no far shot and no dive);
      settle     SETTLE     the body bounces back to level (a damped pitch).
    The button is shown and accepted from INTRO_END.
 
@@ -22,17 +21,23 @@
    resampled by distance with a time warp. No harsh-braking event comes of it,
    because the approach's events are not the player's (slice 2).
    ===================================================================== */
-import { atNode, conflictOf, CAR, carriedWorld, carriedPose } from "../sim/crossing.js";
+import { atNode, conflictOf, CAR, carriedWorld, carriedPose, AT_REST } from "../sim/crossing.js";
 import { lenOf } from "../sim/traffic.js";
 import { driverPose } from "../sim/drive.js";
 import { fitK } from "../iso/freecam.js";
 import { UP_HEADING } from "../iso/chase.js";
 
 /* THE TIMES, seconds. All [invented]. */
-export const HOLD_FAR = 0.35;   // slice 4: shorter, the shot is close now (was 0.5)
-export const SCREECH = 1.1;   // slice 4: 24 m in 1.1 s quadratic enters at about 44 m/s and stops at about 40 m/s^2 [D: 2 x 24 / 1.1, 2 x 24 / 1.1^2]: a cinematic, flagged (was 1.0 over 15 m)
-export const SETTLE = 0.4;
-export const INTRO_END = HOLD_FAR + SCREECH + SETTLE;   // 1.85 s: the button is accepted from here
+/* Slice 5, Jay: "realism in speed and acceleration/stopping isn't a primary concern here": 24 m in 0.6 s quadratic enters at about 80 m/s and
+   stops at about 133 m/s^2 [D: 2 x 24 / 0.6, 2 x 24 / 0.6^2, assuming the 24 m trail]: an arcade cinematic, flagged. (Slice 4: 1.1 s.) */
+export const SCREECH = 0.6;
+export const SETTLE = 0.25;
+export const INTRO_END = SCREECH + SETTLE;   // 0.85 s: the button is accepted from here
+
+/* THE PLAYBACK AFTER GO (slice 5, section 3): the sim runs this many ticks per tick of real time from the moment the player lets go to the
+   end of the round [invented]. Same ticks, so the same verdict; only the playback is quicker. Game.jsx reads it through `speedOf`. */
+export const FAST = 2;
+export const speedOf = (phase) => (phase === "gone" ? FAST : 1);
 
 /* THE ARRIVAL RECORDED: seconds of sim ticks before the freeze that `trail` holds [invented]. (round.js reads it.) */
 export const TRAIL = 3.0;
@@ -50,11 +55,6 @@ export const PITCH_DIVE = 10;
 const RAMP = 0.15;
 /* The ring: at least this many SCREEN pixels in radius, so a car a few pixels long at the far zoom still reads [the spec's]. */
 export const RING_MIN_PX = 14;
-/* The decision camera [invented, slice 2's]: centred this far ahead of the stop line along the player's heading, zoomed so a circle of
-   this radius fits the shorter screen side. */
-export const CENTRE_AHEAD = 10;   // m
-export const SEE_RADIUS = 45;     // m
-
 const DEG = Math.PI / 180;
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 const ease = (b) => b * b * (3 - 2 * b);
@@ -106,17 +106,16 @@ export function settleAt(tau) {
   return -PITCH_DIVE * DEG * Math.exp(-3 * x) * Math.cos(1.5 * Math.PI * x);
 }
 
-/* WHERE THE INTRO IS at `t` seconds: the phase, and the player's drawn pose and body for it. `null` pose once it is over (the sim's own
-   pose and body are the player's again). */
+/* WHERE THE INTRO IS at `t` seconds: the phase, and the player's drawn pose and body for it. `null` pose once it is over (the sim's own pose
+   and body are the player's again). */
 export function introAt(trail, t) {
   if (t >= INTRO_END || !trail?.length) return { phase: "done", pose: null, body: null, u: 1 };
-  const far = t < HOLD_FAR, u = clamp01((t - HOLD_FAR) / SCREECH);
-  if (t < HOLD_FAR + SCREECH) {
-    const s = screechAt(trail, u);
-    return { phase: far ? "far" : "screech", pose: { x: s.x, y: s.y, z: s.z, heading: s.heading }, body: { roll: 0, pitch: s.pitch, pivot: 0.35 }, u };
+  if (t < SCREECH) {
+    const u = clamp01(t / SCREECH), s = screechAt(trail, u);
+    return { phase: "screech", pose: { x: s.x, y: s.y, z: s.z, heading: s.heading }, body: { roll: 0, pitch: s.pitch, pivot: 0.35 }, u };
   }
   const s = screechAt(trail, 1);
-  return { phase: "settle", pose: { x: s.x, y: s.y, z: s.z, heading: s.heading }, body: { roll: 0, pitch: settleAt(t - HOLD_FAR - SCREECH), pivot: 0.35 }, u: 1 };
+  return { phase: "settle", pose: { x: s.x, y: s.y, z: s.z, heading: s.heading }, body: { roll: 0, pitch: settleAt(t - SCREECH), pivot: 0.35 }, u: 1 };
 }
 
 /* THE SKID MARKS: two polylines of world points { x, y, z } (the rear wheels, SKID_HALF either side of the centre line) along the last
@@ -138,36 +137,31 @@ export function skidLines(trail, u = 1) {
 
 /* ------------------------------------------------------------ THE CAMERAS */
 
-/* THE DECISION CAMERA (slice 2's, moved here so a check can read it): from the player's frozen pose `p` { x, y, z, heading } and the screen. */
-export function decisionCamera(p, size) {
-  const h = p.heading * DEG;
-  return { cam: { x: p.x + Math.cos(h) * CENTRE_AHEAD, y: p.y + Math.sin(h) * CENTRE_AHEAD, z: p.z ?? 0 }, rot: UP_HEADING - p.heading, k: Math.min(size.w, size.h) / (2 * SEE_RADIUS * Math.SQRT2) };
-}
-
-/* THE FAR VIEW: the whole map (`bounds`, its loaded bounds) fits the screen, the player's heading up.
-   THE CENTRE USED IS THE MAP'S CENTRE (which keeps the player's car and the intersection both on screen, being inside the bounds).
-   The zoom is iso/freecam.js `fitK` on the bounds as the rotated view sees them, BUT NOT ABOVE what keeps the lower corner on the screen:
-   fitK sizes the projection to the canvas centred, while the camera puts its anchor at 55% of the height (iso/project.js CENTRE_Y), so a
-   map that fills fitK's height runs 5% off the bottom. The cap below is that missing term. */
-export function farCamera(bounds, p, size) {
+/* THE CAMERA OF A DECISION (slice 5): the frame { x, y, w, h } (decisionFrame, below) fits the screen, the player's heading up.
+   THE CENTRE USED IS THE FRAME'S CENTRE. The zoom is iso/freecam.js `fitK` on the frame as the rotated view sees it, BUT NOT ABOVE what
+   keeps the lower corner on the screen: fitK sizes the projection to the canvas centred, while the camera puts its anchor at 55% of the
+   height (iso/project.js CENTRE_Y), so a frame that fills fitK's height runs 5% off the bottom. The cap below is that missing term.
+   `p` is the player's frozen pose (only its heading is read). */
+export function frameCamera(bounds, p, size) {
   const rot = UP_HEADING - p.heading, a = rot * DEG, c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a));
   const rb = { x: 0, y: 0, w: bounds.w * c + bounds.h * s, h: bounds.w * s + bounds.h * c };
   const across = rb.w + rb.h;
-  const kv = (0.43 * size.h) / ((across * 0.5) / 2);   // ground squash g = 0.5 at the default elevation; the lower half of the map is across * g / 2
+  const kv = (0.43 * size.h) / ((across * 0.5) / 2);   // ground squash g = 0.5 at the default elevation; the lower half of the frame is across * g / 2
   return { cam: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2, z: 0 }, rot, k: Math.min(fitK(rb, size), kv) };
 }
 
-/* THE FRAME OF A DECISION (slice 4, section 2): the world rectangle { x, y, w, h } the far shot fits, derived from THE DECISION and never
-   from the map, so it is called per decision. The box holds: the trail's start and the stop point (the frozen pose); the intersection's
-   own box (its node, plus or minus the layout's box half-size); every relevant car at the freeze, by its drawn pose -- all grown by
-   FRAME_MARGIN on each side; and the decision view's own circle, so that the far shot is never narrower than where it dives to. */
-export const FRAME_MARGIN = 12;   // m [invented]
+/* THE FRAME OF A DECISION (slice 5, section 1): the world rectangle { x, y, w, h } the camera holds, derived from THE DECISION and never
+   from the map or the arrival. It fits the intersection's own box (its node, plus or minus the layout's box half-size), the player's stop
+   pose, and every relevant car (relevantIds: those that decide it NOW) by its drawn pose -- grown by FRAME_MARGIN on each side, and never
+   less than FRAME_MIN_R round the box's centre -- and nothing else. Dropped from slice 4: the trail's start (the player's car screeches
+   in from the edge and may start outside it) and the decision view's 45 m circle. */
+export const FRAME_MARGIN = 6;    // m [invented]
+export const FRAME_MIN_R = 25;    // m [invented]
 export function decisionFrame(rs) {
-  const { world, me } = rs, tr = rs.decision?.trail ?? [], k = rs.targetK ?? me.k ?? 0;
+  const { world, me } = rs, k = rs.targetK ?? me.k ?? 0;
   const L = world.course.at[k].layout, at = L.place.at;
-  const stop = tr[tr.length - 1] ?? driverPose(me, world.course);
+  const stop = driverPose(me, world.course);
   const pts = [stop];
-  if (tr.length) pts.push(tr[0]);
   const half = Math.max(L.place.boxHalf ?? 0, ...Object.values(L.legs ?? {}).map((l) => l.boxHalf ?? 0));
   for (const dx of [-half, half]) for (const dy of [-half, half]) pts.push({ x: at.x + dx, y: at.y + dy });
   const wc = carriedWorld(world, 0);
@@ -178,37 +172,84 @@ export function decisionFrame(rs) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
   x0 -= FRAME_MARGIN; y0 -= FRAME_MARGIN; x1 += FRAME_MARGIN; y1 += FRAME_MARGIN;
-  const h = stop.heading * DEG, cx = stop.x + Math.cos(h) * CENTRE_AHEAD, cy = stop.y + Math.sin(h) * CENTRE_AHEAD;
-  x0 = Math.min(x0, cx - SEE_RADIUS); y0 = Math.min(y0, cy - SEE_RADIUS); x1 = Math.max(x1, cx + SEE_RADIUS); y1 = Math.max(y1, cy + SEE_RADIUS);
+  x0 = Math.min(x0, at.x - FRAME_MIN_R); y0 = Math.min(y0, at.y - FRAME_MIN_R); x1 = Math.max(x1, at.x + FRAME_MIN_R); y1 = Math.max(y1, at.y + FRAME_MIN_R);
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-}
-
-/* THE INTRO CAMERA at `t`: the far view for HOLD_FAR, then over SCREECH eased into the decision camera, the position and the zoom on the
-   one easing so the car (which arrives over the same time) stays in frame. `far` and `decision` are { cam, rot, k }. */
-export function introCamera(t, far, decision) {
-  const b = ease(clamp01((t - HOLD_FAR) / SCREECH));
-  return {
-    cam: { x: far.cam.x + (decision.cam.x - far.cam.x) * b, y: far.cam.y + (decision.cam.y - far.cam.y) * b, z: (far.cam.z ?? 0) + ((decision.cam.z ?? 0) - (far.cam.z ?? 0)) * b },
-    rot: far.rot + norm(decision.rot - far.rot) * b,
-    k: far.k + (decision.k - far.k) * b,
-  };
 }
 
 /* ------------------------------------------------------ THE RELEVANT TRAFFIC */
 
-/* THE CARS THAT MATTER TO THE DECISION at this node: other road users at the player's node whose path CONFLICTS with the player's route
-   there and who are not yet past that conflict (their `s` at most the conflict's `clearOf`, as crossing.js blockedBy reads it: plus half
-   a car and the length beyond a car's own). Derived from the sim's own geometry, never typed in; recomputed from the drawn world. */
+/* A car's distance along its own path to where its conflict with the player's route begins (crossing.js blockedBy's `meet.a - them.s`). */
+const theirIn = (L, me, a) => { const meet = conflictOf(L, a.route, me.route); return meet ? meet.a - a.s : null; };
+
+/* Seconds [invented, the spec's 4.0]: an arriving car is relevant when its distance to the conflict over its speed is at most this. */
+export const ARRIVE_WITHIN = 4.0;
+/* WHY a car matters to the decision right now, or null. The car must CONFLICT with the player's route and not yet be past that conflict
+   (crossing.js blockedBy's own test: its `s` at most the conflict's `clearOf`, plus half a car and the length beyond a car's own), and
+   then be one of (slice 5, Jay: "cars shown at the extremes of the road are completely irrelevant"):
+     "line"      at its stop line, at rest, its stop counted (the sim records `stoppedAt` only for a car that stopped at its line, wherever
+                 within it a driver who stops short came to rest: the sim's own counted stop, not a distance of ours);
+     "box"       in the box (past its stop line) or going;
+     "arriving"  its distance to the conflict over its speed is at most ARRIVE_WITHIN.
+   A car further out is drawn, not ringed, and does not shape the frame. */
+export function whyRelevant(world, me, a) {
+  const L = world.course?.at[me.k ?? 0]?.layout;
+  if (!L || a.id === me.id || a.shadow || a.player || a.route == null || (a.k ?? 0) !== (me.k ?? 0)) return null;
+  const hit = conflictOf(L, me.route, a.route);
+  if (!hit) return null;
+  if (a.s > hit.clearOf + CAR.length / 2 + (lenOf(a) - CAR.length)) return null;   // already past it
+  const q = L.paths[a.route];
+  if (a.going || a.s >= q.stopAt) return "box";
+  if (a.v < AT_REST && a.stoppedAt != null) return "line";
+  const d = theirIn(L, me, a);
+  if (d != null && a.v > AT_REST && d / a.v <= ARRIVE_WITHIN) return "arriving";
+  return null;
+}
+
+/* THE CARS THAT MATTER TO THE DECISION at this node, by whyRelevant. Derived from the sim's own geometry, never typed in; recomputed from
+   the drawn world. */
 export function relevantIds(world, me) {
+  const k = me.k ?? 0;
+  if (!world.course?.at[k]?.layout) return [];
+  return atNode(world, world.actors, k).filter((a) => whyRelevant(world, me, a)).map((a) => a.id);
+}
+
+/* ------------------------------------------------------ THE STOPPING ORDER (slice 5, section 2) */
+
+/* Restates crossing.js's `const SAME_MOMENT = 0.4;` (line 661, not exported): two stops within it share a number and the sim settles them by
+   the right-hand rule. tools/verify-rounds.mjs reads that line's text and holds the two equal. [the sim's own tolerance] */
+export const SAME_MOMENT = 0.4;
+
+/* THE ORDER THEY STOPPED: every car at the player's node standing at its line under a STOP (the player's included), with its stop counted
+   and not yet going, numbered by `stoppedAt` and nothing else. Stops within SAME_MOMENT of the one before share a number, so any two cars
+   with different numbers differ by more than the sim's tolerance and the sim's own order applies. Returns [{ id, n, you, stoppedAt }]. */
+export function stopOrder(world, me) {
   const k = me.k ?? 0, L = world.course?.at[k]?.layout;
   if (!L) return [];
+  const rows = atNode(world, world.actors, k).filter((a) => {
+    if (a.shadow || a.route == null || (a.k ?? 0) !== k || a.going || a.stoppedAt == null || a.v >= AT_REST) return false;
+    const q = L.paths[a.route];
+    if (!q) return false;
+    return (L.place.control?.[q.from] ?? L.legs[q.from]?.control) === "stop";
+  }).sort((x, y) => x.stoppedAt - y.stoppedAt);
   const out = [];
+  let n = 0, prev = -Infinity;
+  for (const a of rows) {
+    if (a.stoppedAt - prev > SAME_MOMENT) n++;
+    prev = a.stoppedAt;
+    out.push({ id: a.id, n, you: a.id === me.id || !!a.player, stoppedAt: a.stoppedAt });
+  }
+  return out;
+}
+
+/* THE SECONDS TO THE CONFLICT of a relevant car that is arriving and not in the order above: [{ id, secs }], whole seconds, from its
+   distance to the conflict and its speed (the same quantity whyRelevant's time filter reads). */
+export function arrivalSeconds(world, me) {
+  const k = me.k ?? 0, L = world.course?.at[k]?.layout;
+  if (!L) return [];
+  const numbered = new Set(stopOrder(world, me).map((r) => r.id)), out = [];
   for (const a of atNode(world, world.actors, k)) {
-    if (a.id === me.id || a.shadow || a.player || a.route == null || (a.k ?? 0) !== k) continue;
-    const hit = conflictOf(L, me.route, a.route);
-    if (!hit) continue;
-    if (a.s > hit.clearOf + CAR.length / 2 + (lenOf(a) - CAR.length)) continue;   // already past it
-    out.push(a.id);
+    if (numbered.has(a.id) || whyRelevant(world, me, a) !== "arriving") continue;
+    out.push({ id: a.id, secs: Math.round(theirIn(L, me, a) / a.v) });
   }
   return out;
 }

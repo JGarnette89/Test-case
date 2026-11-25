@@ -41,7 +41,7 @@ const START = { road: "S", end: "end" };   // the approach from the south, whose
 /* THE POOLS [M, tools/measure/round-seeds.mjs]: filled from the run named in POOLS_RUN. `now`: the way is open at the freeze and stays
    open at least 2.0 s, so going at once is right. `wait`: shut at the freeze, and an opening of at least 1.5 s begins between 1.0 and
    10.0 s into the wait. Every seed in either pool is one the oracle (hold until the opening, then go) passes with 3 stars and no fault. */
-export const POOLS_RUN = "[M, tools/measure/round-seeds.mjs, run 2026-11-25 (slice 4, after the full-throttle launch), seeds 1-200 at 4, 8 and 12 cars; the rebuilt first 30 of each pool equal the slice-3 pools, now/wait 131/48, 109/64, 162/18, 64/49]";
+export const POOLS_RUN = "[M, tools/measure/round-seeds.mjs, run 2026-11-25 (slice 5, with forcedBrake in the oracle's criteria), seeds 1-200 at 4, 8 and 12 cars; the rebuilt first 30 of each pool equal slice 4's, now/wait 131/48, 109/64, 162/18, 64/49; no oracle seed rejected for a forcedBrake]";
 /* Per type, the car count with the most pooled seeds, and the first 30 seeds of each pool (a cap [invented] so verify-rounds stays short; the
    search found now/wait: straight-4way (131, 48), left-4way (109, 64), right-2way (162, 18), left-2way (64, 49) at the chosen counts). */
 const POOLS = {

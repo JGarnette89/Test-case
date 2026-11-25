@@ -30,7 +30,8 @@ import { driverPose, carriedPlayer } from "../sim/drive.js";
 import { drawFrame } from "../iso/draw.js";
 import { viewOf } from "../iso/project.js";
 import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
-import { INTRO_END, RING_MIN_PX, CENTRE_AHEAD, SEE_RADIUS, introAt, introCamera, decisionCamera, farCamera, decisionFrame, skidLines, relevantIds } from "./stage.js";
+import { INTRO_END, RING_MIN_PX, introAt, frameCamera, decisionFrame, skidLines, relevantIds, stopOrder, arrivalSeconds, speedOf } from "./stage.js";
+import { panFree, pinchFree } from "../iso/freecam.js";
 import { newBody } from "../iso/body.js";
 import { BUILD } from "../iso/perf.js";
 
@@ -39,10 +40,12 @@ const AFTER_END = 600;    // ms the round keeps drawing after it ends, so the pl
 const TEXT = "#E6E8EC", DIM = "#9AA3B2", AMBER = "#F2B84B", BG = "#1A1C20";
 const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
-/* THE DECISION CAMERA (stage.js decisionCamera: centred CENTRE_AHEAD m ahead of the stop line, a SEE_RADIUS circle fits); after GO it
-   eases into the chase camera over BLEND ms [invented]. */
-export { CENTRE_AHEAD, SEE_RADIUS };
+/* THE DECISION CAMERA holds the decision FRAME (stage.js decisionFrame: the box, the player's stop pose and the cars that decide it, from the
+   first frame to GO); after GO it eases into the chase camera over BLEND ms [invented]. The player may pan and pinch while frozen or waiting
+   (iso/freecam.js panFree, pinchFree) and the camera returns to the frame on its own after GO. */
 export const BLEND = 600;         // ms
+/* The camera follows the frame as the cars that decide it change, at this rate (1/s) [invented]. */
+const FOLLOW = 6;
 /* The button: at least 88 px tall [the spec's], near the bottom, full width minus margins. [instrument] */
 export const BUTTON_H = 96, BUTTON_MARGIN = 16, BUTTON_FROM_BOTTOM = 24;
 
@@ -76,11 +79,13 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
   const body = newBody();
   let by = null, owed = 0, lastAt = 0, handle = 0, endAt = null, goneAt = null, stopped = false;
   let chase = null;   // the chase camera, started at GO
+  /* THE CAMERA SHOWN: { x, y, z, k, rot }, eased toward the decision frame; `userCam` is the player's own (pan and pinch) and wins while set. */
+  let shown = null, userCam = null, goCam = null, pinch = null;
+  const ptrs = new Map();   // pointer id -> { x, y }: the fingers that are DRAGGING (never the one holding the button)
   /* THE INTRO CLOCK (stage.js): seconds since the round was shown. A closure variable, never React state. The decision is not
      accepted before INTRO_END; a tap during it skips to its end and counts as nothing. */
   let intro = 0;
   const trail = rs0.decision.trail ?? [];
-  const frame = decisionFrame(rs0);   // the far shot fits THIS decision (stage.js), once
 
   const fit = () => {
     const dpr = Math.min(DPR_CAP, (win && win.devicePixelRatio) || 1);
@@ -97,11 +102,35 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     const r = decisionInput(by, ev, box);
     by = r.by;
     if (r.act === "press") rs = press(rs);
-    else if (r.act === "release") { rs = release(rs); goneAt = performance.now(); }
+    else if (r.act === "release") { rs = release(rs); goneAt = performance.now(); goCam = shown; userCam = null; ptrs.clear(); pinch = null; }
   };
+  const canPan = () => (rs.phase === "frozen" || rs.phase === "waiting") && intro >= INTRO_END && !rs.end && !stopped;
   const local = (e) => { const b = canvas.getBoundingClientRect(); return { id: e.pointerId, x: e.clientX - b.left, y: e.clientY - b.top }; };
-  const onDown = (e) => { canvas.setPointerCapture?.(e.pointerId); decide({ type: "down", ...local(e) }); };
-  const onUp = (e) => decide({ type: "up", ...local(e) });
+  /* A DRAG IS NEVER THE BUTTON: a finger that lands outside the button's rectangle while the decision is open pans (one) or pinch-zooms (two) and
+     takes no part in the decision; the button is its own rectangle and its own pointer. */
+  const onDown = (e) => {
+    canvas.setPointerCapture?.(e.pointerId);
+    const q = local(e);
+    if (canPan() && !inRect(buttonRect({ w: canvas.clientWidth, h: canvas.clientHeight }), q.x, q.y) && shown) {
+      userCam = userCam ?? { ...shown };
+      ptrs.set(q.id, { x: q.x, y: q.y });
+      if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { cam: userCam, a: { ...a }, b: { ...b } }; }
+      return;
+    }
+    decide({ type: "down", ...q });
+  };
+  const onMove = (e) => {
+    const was = ptrs.get(e.pointerId);
+    if (!was || !userCam) return;
+    const q = local(e), size = { w: canvas.clientWidth, h: canvas.clientHeight };
+    ptrs.set(q.id, { x: q.x, y: q.y });
+    if (ptrs.size === 1) userCam = panFree(userCam, size, was, q);
+    else if (ptrs.size === 2 && pinch) { const [a, b] = [...ptrs.values()]; userCam = pinchFree(pinch, size, a, b); }
+  };
+  const onUp = (e) => {
+    if (ptrs.delete(e.pointerId)) { pinch = null; return; }
+    decide({ type: "up", ...local(e) });
+  };
   const onKey = (e) => {
     if (e.key !== " ") return;
     e.preventDefault();
@@ -109,6 +138,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     else if (e.type === "keyup") decide({ type: "key-up" });
   };
   canvas.addEventListener("pointerdown", onDown);
+  canvas.addEventListener("pointermove", onMove);
   canvas.addEventListener("pointerup", onUp);
   canvas.addEventListener("pointercancel", onUp);
   win?.addEventListener("keydown", onKey);
@@ -117,6 +147,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     stopped = true;
     cancel(handle);
     canvas.removeEventListener("pointerdown", onDown);
+    canvas.removeEventListener("pointermove", onMove);
     canvas.removeEventListener("pointerup", onUp);
     canvas.removeEventListener("pointercancel", onUp);
     win?.removeEventListener("keydown", onKey);
@@ -132,7 +163,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     /* THE SIM STEPS AT 20 Hz FROM AN ACCUMULATOR, as #/map does (sim/pace.js) -- and not at all while frozen. */
     if (rs.phase === "frozen") { owed = 0; if (intro < INTRO_END) intro = Math.min(INTRO_END, intro + dt); }
     else {
-      owed += dt;
+      owed += dt * speedOf(rs.phase);   // FAST sim ticks per tick of real time once the player has let go (stage.js)
       const sp0 = performance.now();
       for (let steps = 0; pageMore(owed, steps, performance.now() - sp0); steps++) {
         owed -= DT;
@@ -147,7 +178,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     if (endAt != null && now - endAt >= AFTER_END) { stop(); onEnd(verdictOf(rs)); return; }
 
     const me = rs.me, world = rs.world;
-    body.dt = dt;
+    body.dt = dt * speedOf(rs.phase);
     const actors = actorsOf(withGameBody(sc), owed, body);   // the game's exaggerated body motion (look.js)
     const p = driverPose(carriedPlayer(me, owed), world.course);
     /* THE INTRO (stage.js): the player's drawn pose and body are the screech's, for as long as it plays; every other car keeps its own. */
@@ -156,14 +187,16 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       const mine = actors.find((a) => a.player);
       if (mine) { mine.x = it.pose.x; mine.y = it.pose.y; mine.z = it.pose.z; mine.heading = it.pose.heading; mine.body = it.body; mine.brakeLamp = true; }
     }
-    /* The decision camera, then the chase camera blended in from GO; or, in the intro, the far view diving into it. */
-    const dd = decisionCamera(p, size), dec = { ...dd.cam, rot: dd.rot }, kDec = dd.k;
-    let cam = dec, k = kDec;
-    if (it) {
-      const ic = introCamera(intro, farCamera(frame, p, size), dd);
-      cam = { ...ic.cam, rot: ic.rot }; k = ic.k;
-    }
-    if (rs.phase === "gone") {
+    /* THE DECISION FRAME holds from the first frame to GO (the intro included: no far shot, no dive), eased as the cars that decide it change;
+       the player's own pan and pinch win while they last. After GO, the chase camera is blended in from where the camera was. */
+    let cam, k;
+    if (rs.phase !== "gone") {
+      const fr = frameCamera(decisionFrame(rs), p, size), a = shown ? 1 - Math.exp(-FOLLOW * dt) : 1;
+      shown = shown ? { x: shown.x + (fr.cam.x - shown.x) * a, y: shown.y + (fr.cam.y - shown.y) * a, z: 0, k: shown.k + (fr.k - shown.k) * a, rot: fr.rot } : { ...fr.cam, k: fr.k, rot: fr.rot };
+      if (userCam) shown = { ...userCam, z: userCam.z ?? 0 };
+      cam = { x: shown.x, y: shown.y, z: shown.z, rot: shown.rot }; k = shown.k;
+    } else {
+      const dec = goCam ?? shown, kDec = dec.k;
       chase = chase ? { ...chaseStep(chase, { ...p, v: me.v }, dt, { rotate: true }) } : newChase({ x: p.x, y: p.y, z: p.z ?? 0 }, p.heading);
       const kChase = zoomFor(size.w, size.h, chase.lead, 0.55, 30);
       const b = ease(Math.min(1, (performance.now() - (goneAt ?? now)) / BLEND));
@@ -184,8 +217,8 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       line.forEach((q, i) => { const [qx, qy] = view.P(q.x, q.y, q.z); if (i) ctx.lineTo(qx, qy); else ctx.moveTo(qx, qy); });
       ctx.stroke();
     }
-    /* THE RELEVANT TRAFFIC, ringed (stage.js relevantIds: conflicts with the player's route and not yet past it), recomputed from the
-       drawn world every frame, as MapRoad rings a picked driver; and the player's own car in white during the far shot only. */
+    /* THE RELEVANT TRAFFIC, ringed (stage.js relevantIds: conflicts with the player's route, not past it, and at its line, in the box or
+       arriving within a few seconds), recomputed from the drawn world every frame, as MapRoad rings a picked driver. */
     if (rs.phase !== "gone") {
       ctx.strokeStyle = AMBER; ctx.lineWidth = 2;
       for (const id of relevantIds(world, me)) {
@@ -194,14 +227,21 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
         const [px, py] = view.P(pose.x, pose.y, pose.z ?? 0);
         ctx.beginPath(); ctx.arc(px, py, Math.max(RING_MIN_PX, 3.2 * k), 0, Math.PI * 2); ctx.stroke();
       }
-    }
-    if (it?.phase === "far") {
-      const mine = actors.find((a) => a.player);
-      if (mine) {
-        const [px, py] = view.P(mine.x, mine.y, mine.z ?? 0);
-        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(px, py, Math.max(RING_MIN_PX, 3.2 * k), 0, Math.PI * 2); ctx.stroke();
-      }
+      /* THE STOPPING ORDER (stage.js stopOrder, from each car's own stoppedAt) in a disc above each car at its line, the player's reading YOU;
+         an arriving car on a road with no stop shows its seconds to the conflict. Recomputed every frame, so it updates while the player waits. */
+      const badge = (id, text, you) => {
+        const pose = actors.find((a) => a.id === id);
+        if (!pose) return;
+        const [px, py0] = view.P(pose.x, pose.y, pose.z ?? 0), py = py0 - Math.max(22, 4.5 * k);
+        ctx.font = `700 ${you ? 14 : 15}px ${FONT}`;
+        const w = Math.max(20, ctx.measureText(text).width + 12), h = 20;
+        ctx.fillStyle = you ? AMBER : "#ffffff"; ctx.strokeStyle = "#14161a"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(px - w / 2, py - h / 2, w, h, h / 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#14161a"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(text, px, py + 0.5);
+      };
+      for (const r of stopOrder(world, me)) badge(r.id, r.you ? `YOU ${r.n}` : `${r.n}`, r.you);
+      for (const r of arrivalSeconds(world, me)) badge(r.id, `${r.secs}s`, false);
     }
 
     /* THE HUD, all on the canvas. */

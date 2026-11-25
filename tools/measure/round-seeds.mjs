@@ -71,7 +71,7 @@ export function classify(type, cars, seed) {
   /* THE ORACLE. */
   const r = driveDecision(type, seed, cars, oracle);
   const v = r.verdict, ok = r.rs.end?.why === "through" && v.made === type.task && v.stars === 3 && v.faults.length === 0;
-  if (!ok) return { seed, pool: null, reason: "oracleFails", wouldBe: pool, detail: `${r.rs.end?.why} ${v.stars}* [${v.faults.map((f) => f.id)}]` };
+  if (!ok) return { seed, pool: null, reason: "oracleFails", forced: v.faults.some((f) => f.id === "forcedBrake"), wouldBe: pool, detail: `${r.rs.end?.why} ${v.stars}* [${v.faults.map((f) => f.id)}]` };
   return { seed, pool, opens, lasts, held: r.rs.decision.goAt - r.rs.decision.decideAt };
 }
 
@@ -81,6 +81,8 @@ export function sweep(type, cars, n, onSeed = null) {
   for (let seed = 1; seed <= n; seed++) { const row = classify(type, cars, seed); rows.push(row); if (onSeed) onSeed(row); }
   const why = {};
   for (const r of rows) if (!r.pool) why[r.reason] = (why[r.reason] ?? 0) + 1;
+  const forced = rows.filter((r) => r.forced).length;   // slice 5: the oracle's seeds that now fail ONLY for a forcedBrake among their faults (a count, not a reason)
+  if (forced) why.oracleForcedBrake = forced;
   return { cars, rows, now: rows.filter((r) => r.pool === "now").map((r) => r.seed), wait: rows.filter((r) => r.pool === "wait").map((r) => r.seed), why };
 }
 
