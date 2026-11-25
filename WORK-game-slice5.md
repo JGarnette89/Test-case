@@ -115,3 +115,43 @@ Report:
 - GO to the result card `[D]`;
 - the sabotages;
 - **every departure from this spec, said plainly.**
+
+---
+
+## REVIEW OUTCOME (25 November 2026, the planner)
+
+**Built by the executor in `6496bd4`, changed in review in the commit after it.** The derived set passed: `4 of 4 passed` (verify-check-runner, verify-core, verify-screens, verify-rounds) `[M, node tools/check.mjs --base f360237]`.
+
+### Changed in review: the car the careful driver waits for is always shown
+
+- **The executor's FINDING:** with the time filter as specified, 24 of 108 wait seeds showed NO marked car at the freeze `[M]`. The sound driver's conservative gap waits for a car more than 4 s out, so the player was told to wait for something they were not shown. The executor left slice 3's 80% line red rather than loosen it, which was right.
+- **The fix:** a fourth reason a car is relevant, `holds`: the sim's own `blockedBy` says the sound driver (caution 1) must yield to it, however far out. It is the car that makes it a wait round, so it decides the decision.
+- **It does not shape the frame:** letting it do so widened the frame to 233 m and failed the 120 m line (92.1% of seeds) `[M]`. Instead, its seconds badge is pinned to the screen's edge with a pointer toward it (`stage.js edgePoint`, `EDGE_INSET` 28 px `[invented]`).
+- **After:** a car is marked at the freeze in 108 of 108 wait seeds. The frame is median 50.0 m, widest 107.6 m. 35 far holders were kept out of the frame, with 67 badge placements off the screen `[M, verify-rounds]`.
+- **Sabotage, restored byte-identical (stage.js SHA-1 `4eb556fb...` before and after):**
+  - Removing `holds` fired five lines: every holding car ringed, the ringed set equal to the check's own, the 80% line, relevantIds equal to the check's set per seed, and the seconds labels.
+  - `edgePoint` returning the raw point fired the edge-badge line.
+
+### Measured `[M, verify-rounds, the review run]`
+
+- **Eager GO in the 108 wait runs:** 56 at 0 stars (failedToYield), 11 at 1 star (forcedBrake), 41 at 3 stars (threaded).
+- **The oracle:** forcedBrake in none of the 228 pooled seeds. The pools are unchanged.
+- **Order pairs:** 171, all agreeing with `blockedBy`. None is at the freeze itself (executor's departure 3).
+- **GO to the result card:** median 2.93 s `[D: sim seconds / FAST + AFTER_END]`.
+
+### Accepted deviations (the executor's)
+
+- Numbering covers every car stopped at a STOP at the node, not only conflicting ones.
+- "At its line" means the sim's counted stop (`stoppedAt`), not a distance.
+- The camera eases toward the frame while waiting, so arrivals stay in view; panning overrides it.
+- The 0.6 s screech over 24 m enters at about 80 m/s `[D]`.
+- Sabotage (b) in the spec's form changed nothing (CANNOT TELL): stopped cars share nearly one `s`, and actor order is arrival order. The executor's stronger variant (b2) fired three order lines.
+
+### Not verified
+
+How it looks and feels: the badges' legibility, the edge pointer, pan and pinch, the 0.6 s screech, 2x after GO. The first look is Jay's.
+
+### Open for Jay
+
+- **Threading is judged by forced braking alone,** so a GO that scares nobody is 3 stars even if a careful driver would have waited.
+- **A far car the careful driver waits for is shown only as an edge badge.** In those rounds going early is usually "threaded".
