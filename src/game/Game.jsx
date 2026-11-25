@@ -28,7 +28,9 @@ import { DT } from "../sim/crossing.js";
 import { pageMore, pageLeft } from "../sim/pace.js";
 import { driverPose, carriedPlayer } from "../sim/drive.js";
 import { drawFrame } from "../iso/draw.js";
-import { newChase, chaseStep, zoomFor, UP_HEADING } from "../iso/chase.js";
+import { viewOf } from "../iso/project.js";
+import { newChase, chaseStep, zoomFor } from "../iso/chase.js";
+import { INTRO_END, RING_MIN_PX, CENTRE_AHEAD, SEE_RADIUS, introAt, introCamera, decisionCamera, farCamera, skidLines, relevantIds } from "./stage.js";
 import { newBody } from "../iso/body.js";
 import { BUILD } from "../iso/perf.js";
 
@@ -37,10 +39,9 @@ const AFTER_END = 1000;   // ms the round keeps drawing after it ends, so the pl
 const TEXT = "#E6E8EC", DIM = "#9AA3B2", AMBER = "#F2B84B", BG = "#1A1C20";
 const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
-/* THE DECISION CAMERA [invented, the spec's]: centred this far ahead of the stop line along the player's heading (the middle of the
-   intersection), zoomed so a circle of this radius fits the shorter screen side; after GO it eases into the chase camera over BLEND ms. */
-export const CENTRE_AHEAD = 10;   // m
-export const SEE_RADIUS = 45;     // m
+/* THE DECISION CAMERA (stage.js decisionCamera: centred CENTRE_AHEAD m ahead of the stop line, a SEE_RADIUS circle fits); after GO it
+   eases into the chase camera over BLEND ms [invented]. */
+export { CENTRE_AHEAD, SEE_RADIUS };
 export const BLEND = 600;         // ms
 /* The button: at least 88 px tall [the spec's], near the bottom, full width minus margins. [instrument] */
 export const BUTTON_H = 96, BUTTON_MARGIN = 16, BUTTON_FROM_BOTTOM = 24;
@@ -75,6 +76,11 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
   const body = newBody();
   let by = null, owed = 0, lastAt = 0, handle = 0, endAt = null, goneAt = null, stopped = false;
   let chase = null;   // the chase camera, started at GO
+  /* THE INTRO CLOCK (stage.js): seconds since the round was shown. A closure variable, never React state. The decision is not
+     accepted before INTRO_END; a tap during it skips to its end and counts as nothing. */
+  let intro = 0;
+  const trail = rs0.trail ?? [];
+  const bounds = sc.loaded.bounds;
 
   const fit = () => {
     const dpr = Math.min(DPR_CAP, (win && win.devicePixelRatio) || 1);
@@ -86,7 +92,8 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
   /* The decision, from any input: press runs the sim, release is GO. */
   const decide = (ev) => {
     if (stopped || rs.end) return;
-    const box = { w: canvas.clientWidth, h: canvas.clientHeight };
+    if (intro < INTRO_END) { if (ev.type === "down" || ev.type === "key-down") intro = INTRO_END; return; }   // a tap skips the intro; it is not a decision
+    const box ={ w: canvas.clientWidth, h: canvas.clientHeight };
     const r = decisionInput(by, ev, box);
     by = r.by;
     if (r.act === "press") rs = press(rs);
@@ -123,7 +130,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     lastAt = now;
 
     /* THE SIM STEPS AT 20 Hz FROM AN ACCUMULATOR, as #/map does (sim/pace.js) -- and not at all while frozen. */
-    if (rs.phase === "frozen") owed = 0;
+    if (rs.phase === "frozen") { owed = 0; if (intro < INTRO_END) intro = Math.min(INTRO_END, intro + dt); }
     else {
       owed += dt;
       const sp0 = performance.now();
@@ -143,11 +150,19 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     body.dt = dt;
     const actors = actorsOf(withGameBody(sc), owed, body);   // the game's exaggerated body motion (look.js)
     const p = driverPose(carriedPlayer(me, owed), world.course);
-    /* The decision camera, then the chase camera blended in from GO. */
-    const h = (p.heading * Math.PI) / 180;
-    const dec = { x: p.x + Math.cos(h) * CENTRE_AHEAD, y: p.y + Math.sin(h) * CENTRE_AHEAD, z: p.z ?? 0, rot: UP_HEADING - p.heading };
-    const kDec = Math.min(size.w, size.h) / (2 * SEE_RADIUS * Math.SQRT2);
+    /* THE INTRO (stage.js): the player's drawn pose and body are the screech's, for as long as it plays; every other car keeps its own. */
+    const it = rs.phase === "frozen" && intro < INTRO_END ? introAt(trail, intro) : null;
+    if (it?.pose) {
+      const mine = actors.find((a) => a.player);
+      if (mine) { mine.x = it.pose.x; mine.y = it.pose.y; mine.z = it.pose.z; mine.heading = it.pose.heading; mine.body = it.body; mine.brakeLamp = true; }
+    }
+    /* The decision camera, then the chase camera blended in from GO; or, in the intro, the far view diving into it. */
+    const dd = decisionCamera(p, size), dec = { ...dd.cam, rot: dd.rot }, kDec = dd.k;
     let cam = dec, k = kDec;
+    if (it) {
+      const ic = introCamera(intro, farCamera(bounds, p, size), dd);
+      cam = { ...ic.cam, rot: ic.rot }; k = ic.k;
+    }
     if (rs.phase === "gone") {
       chase = chase ? { ...chaseStep(chase, { ...p, v: me.v }, dt, { rotate: true }) } : newChase({ x: p.x, y: p.y, z: p.z ?? 0 }, p.heading);
       const kChase = zoomFor(size.w, size.h, chase.lead, 0.55, 30);
@@ -156,6 +171,38 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       k = kDec + (kChase - kDec) * b;
     }
     drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: { ...cam, id: null }, rot: cam.rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: world.t + owed, lights: world.lights });
+
+    /* THE SKID MARKS: over the road, AFTER the cars (drawFrame is one painter's pass this slice may not edit, so they cannot go under
+       the cars). Low alpha dark lines; they stop short of the player's own footprint (stage.js SKID_REAR), so nothing is drawn across
+       its roof, and they stay for the rest of the round. During the intro they grow as the car covers the road. */
+    const view = viewOf(k, { ...cam, id: null }, cam.rot, size);
+    const marks = skidLines(trail, it ? it.u : 1);
+    ctx.strokeStyle = "rgba(10,10,12,0.5)"; ctx.lineWidth = Math.max(1.5, 0.25 * k); ctx.lineCap = "round";
+    for (const line of marks) {
+      if (line.length < 2) continue;
+      ctx.beginPath();
+      line.forEach((q, i) => { const [qx, qy] = view.P(q.x, q.y, q.z); if (i) ctx.lineTo(qx, qy); else ctx.moveTo(qx, qy); });
+      ctx.stroke();
+    }
+    /* THE RELEVANT TRAFFIC, ringed (stage.js relevantIds: conflicts with the player's route and not yet past it), recomputed from the
+       drawn world every frame, as MapRoad rings a picked driver; and the player's own car in white during the far shot only. */
+    if (rs.phase !== "gone") {
+      ctx.strokeStyle = AMBER; ctx.lineWidth = 2;
+      for (const id of relevantIds(world, me)) {
+        const pose = actors.find((a) => a.id === id);
+        if (!pose) continue;
+        const [px, py] = view.P(pose.x, pose.y, pose.z ?? 0);
+        ctx.beginPath(); ctx.arc(px, py, Math.max(RING_MIN_PX, 3.2 * k), 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    if (it?.phase === "far") {
+      const mine = actors.find((a) => a.player);
+      if (mine) {
+        const [px, py] = view.P(mine.x, mine.y, mine.z ?? 0);
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(px, py, Math.max(RING_MIN_PX, 3.2 * k), 0, Math.PI * 2); ctx.stroke();
+      }
+    }
 
     /* THE HUD, all on the canvas. */
     ctx.textAlign = "center"; ctx.textBaseline = "top";
@@ -170,7 +217,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       ctx.fillStyle = "#ffffff"; ctx.font = `700 34px ${FONT}`;
       ctx.fillText(`${(world.t - rs.decideAt).toFixed(1)} s`, size.w / 2, 66);
     }
-    if (rs.phase !== "gone") {
+    if (rs.phase !== "gone" && intro >= INTRO_END) {
       const r = buttonRect(size), held = rs.phase === "waiting";
       ctx.fillStyle = held ? "#8fd694" : AMBER;
       ctx.fillRect(r.x, r.y, r.w, r.h);

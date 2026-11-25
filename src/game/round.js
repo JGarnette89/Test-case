@@ -23,13 +23,14 @@
    ===================================================================== */
 import { worldFor, playerContact, PREROLL } from "../sim/scene.js";
 import { step, DT, openTo, AT_REST, atNode, blockedBy } from "../sim/crossing.js";
-import { stepDriver, withDriver } from "../sim/drive.js";
+import { stepDriver, withDriver, driverPose } from "../sim/drive.js";
 import { afterContact } from "../sim/contact.js";
 import { detect, newEventState, TRIGGERS } from "../sim/events.js";
 import { DEFAULT_MERGE_TOLERANCE } from "../sim/lanechange.js";
 import { lenOf } from "../sim/traffic.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { autoInput } from "./autopilot.js";
+import { TRAIL, TRAIL_MIN_M } from "./stage.js";
 import { faultWords, praiseWords } from "./words.js";
 
 /* What `sceneFor` is called with by its other callers (ExamRide: 50 and 2.0; MapRoad: 50 and 2.0). `kmh` only sizes
@@ -73,7 +74,7 @@ export const roundWorld = (def) => worldFor(...sceneArgs(def), false, false, { c
 export function startRound(def, { world, me }) {
   return {
     def, world, me, ev: newEventState(), events: [], t0: world.t, targetK: me.k, made: null, crossedAt: null, launch: null, end: null,
-    phase: "approach", decideAt: null, goAt: null, openings: [], timing: null,
+    phase: "approach", decideAt: null, goAt: null, openings: [], timing: null, trail: null,
   };
 }
 
@@ -121,11 +122,28 @@ export function toDecision(def0, seed, cars) {
   const def = { ...def0, seed, cars };
   let rs = startRound(def, roundWorld(def));
   const t0 = rs.world.t;
+  /* THE ARRIVAL, RECORDED (slice 3): the car as it stood on each of the last TRAIL seconds of ticks (the car objects themselves; their
+     poses are worked out once, at the freeze). Nothing here is read by the sim. */
+  const hist = [];
   while (rs.world.t - t0 <= APPROACH_CAP) {
     if (rs.end || rs.crossedAt != null || rs.me.contacts > 0) return null;
+    hist.push({ t: rs.world.t, me: rs.me });
     const path = pathOf(rs.world, rs.me);
     if (rs.me.v < AT_REST && rs.me.stoppedAt != null && Math.abs(path.stopAt - (rs.me.s + lenOf(rs.me) / 2)) <= AT_LINE && rs.me.k === rs.targetK && !carAhead(rs)) {
-      rs = { ...rs, events: [], phase: "frozen", decideAt: rs.world.t, t0: rs.world.t };
+      /* rs.trail: the drawn pose and speed of the player on each tick of the last TRAIL s; the LAST ENTRY IS THE FROZEN POSE. Entries on
+         another node or route than the freeze's (a car only just arrived on this approach) are left out. */
+      const own = hist.filter((h) => h.me.k === rs.me.k && h.me.route === rs.me.route);
+      /* THE SPEC'S 3.0 s IS NOT ENOUGH ROAD (review of slice 3): the sim's comfortable stop sheds speed over about 9 s, so the last 3 s
+         cover 5.4-5.5 m [M, probe, 64 pooled seeds] and the screech would replay a crawl. The trail is the last TRAIL s OR the last
+         TRAIL_MIN_M of road, whichever is LONGER. */
+      let i = own.length - 1;
+      const end = own[i];
+      while (i > 0 && (end.t - own[i].t < TRAIL - 1e-6 || end.me.s - own[i].me.s < TRAIL_MIN_M)) i--;
+      const trail = own.slice(i).map((h) => {
+        const p = driverPose(h.me, rs.world.course);
+        return { x: p.x, y: p.y, z: p.z ?? 0, heading: p.heading, v: h.me.v, s: h.me.s, t: h.t };
+      });
+      rs = { ...rs, events: [], phase: "frozen", decideAt: rs.world.t, t0: rs.world.t, trail };
       return trackOpenings(rs);
     }
     rs = roundTick(rs);

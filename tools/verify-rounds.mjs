@@ -26,7 +26,11 @@ import { TYPES, POOLS_RUN, drawSet, SET_SIZE } from "../src/game/rounds.js";
 import { toDecision, roundWorld, verdictOf, timingStars, timingOf, UNDUE, LAUNCH_SPAN, AT_LINE, FRONT_CLEAR } from "../src/game/round.js";
 import { driveDecision, oracle, eager, late, tracker } from "./lib/round-drive.mjs";
 import { loadMap } from "../src/map/load.js";
-import { openTo, AT_REST, atNode, blockedBy } from "../src/sim/crossing.js";
+import { openTo, AT_REST, atNode, blockedBy, conflictOf, CAR } from "../src/sim/crossing.js";
+import { viewOf } from "../src/iso/project.js";
+import { UP_HEADING } from "../src/iso/chase.js";
+import { driverPose } from "../src/sim/drive.js";
+import { relevantIds, screechAt, settleAt, introAt, introCamera, farCamera, decisionCamera, skidLines, HOLD_FAR, SCREECH, SETTLE, INTRO_END } from "../src/game/stage.js";
 import { lenOf } from "../src/sim/traffic.js";
 import { aheadOf } from "../src/sim/drive.js";
 import { REACTION_FLOOR } from "../src/core/perception.js";
@@ -80,12 +84,36 @@ const frozenOf = new Map();
   check(wrongOpen.length === 0, `the way is open at the freeze in every now seed and shut in every wait seed (pools are not stale)${wrongOpen.length ? ` -- not ${wrongOpen.slice(0, 6).join(" ")}` : ""}`);
 }
 
+/* THE RING, READ BY THE CHECK ITSELF (section 11): one observation of a round state. The expectations are stated here from the sim's own
+   calls (atNode, conflictOf, blockedBy) and not read from stage.js, which only supplies the ringed set under test. */
+const relScan = { ticks: 0, holds: 0, missed: [], pastCars: 0, ringedPast: [], ringedNoConflict: [], withRing: 0 };
+function observeRing(rs, acc) {
+  const k = rs.me.k ?? 0, L = rs.world.course.at[k].layout, sound = { ...rs.me, caution: 1 }, t = rs.world.t;
+  const ringed = new Set(relevantIds(rs.world, rs.me));
+  acc.ticks++;
+  if (ringed.size) acc.withRing++;
+  for (const a of atNode(rs.world, rs.world.actors, k)) {
+    if (a.id === rs.me.id || a.shadow || a.player) continue;
+    const hit = conflictOf(L, rs.me.route, a.route);
+    /* PAST ITS CONFLICT: a car's `s` beyond where its path stops conflicting with the player's, with its length (the sim's own reading, blockedBy). */
+    const past = !!hit && a.s > hit.clearOf + CAR.length / 2 + (lenOf(a) - CAR.length);
+    if (blockedBy(sound, a, L, 1, t)) { acc.holds++; if (!ringed.has(a.id)) acc.missed.push(`${a.id}@${t.toFixed(2)}`); }
+    if (past) { acc.pastCars++; if (ringed.has(a.id)) acc.ringedPast.push(`${a.id}@${t.toFixed(2)}`); }
+  }
+  for (const id of ringed) {
+    const a = rs.world.actors.find((c) => c.id === id);
+    if (!a || !conflictOf(L, rs.me.route, a.route)) acc.ringedNoConflict.push(`${id}@${t.toFixed(2)}`);
+  }
+}
+
 console.log("\n2. THE ORACLE (hold until the first opening has run REACTION_FLOOR, then go) PASSES EVERY POOLED SEED");
 const holds = [];
 {
   const bad = [];
   for (const x of POOLED) {
-    const r = driveDecision(x.type, x.seed, x.type.cars, oracle);
+    /* Slice 3: every waiting tick of a wait seed is also read for who is ringed (section 11), so the relevance is judged on the road as
+       it changes and not at the freeze alone. */
+    const r = driveDecision(x.type, x.seed, x.type.cars, oracle, x.pool === "wait" ? { onTick: (before) => { if (before.phase === "waiting") observeRing(before, relScan); } } : {});
     const v = r.verdict;
     if (!(r.rs.end?.why === "through" && v.made === x.type.task && v.stars === 3 && v.faults.length === 0)) bad.push(`${tag(x)}(${r.rs.end?.why},${v.stars}*,[${ids(v)}])`);
     if (x.pool === "wait") holds.push(r.rs.goAt - r.rs.decideAt);
@@ -287,6 +315,139 @@ console.log("\n10. THE GAME'S BODY MOTION (Jay, 25 November: overemphasize it, s
   check(out.world.actors.every((a) => a.bodyMods === GAME_BODY) && world.actors.every((a) => a.bodyMods === undefined), "every actor drawn carries the game's modifiers, and the sim's own world is untouched");
   const src = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
   check(/actorsOf\(withGameBody\(sc\), owed, body\)/.test(src), "the screen draws through withGameBody (source text: a React screen no check can run to a frame)");
+}
+
+console.log("\n11. THE STAGING (slice 3): the arrival recorded, the screech, the ringed traffic, the cameras");
+{
+  const rsOf = (x) => frozenOf.get(tag(x));
+  const frozen = POOLED.map((x) => ({ x, rs: rsOf(x) })).filter((e) => e.rs);
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const lenTrail = (tr) => tr.slice(1).reduce((s, p, i) => s + dist(p, tr[i]), 0);
+  check(frozen.length >= 40, `EXPOSURE: ${frozen.length} frozen rounds read, at least 40`);
+
+  /* 1. THE TRAIL. */
+  const lastOff = [], short = [], back = [], sShort = [], spans = [];
+  for (const { x, rs } of frozen) {
+    const tr = rs.trail, p = driverPose(rs.me, rs.world.course);
+    if (!tr?.length) { lastOff.push(tag(x)); continue; }
+    const e = tr[tr.length - 1];
+    if (!(dist(e, p) <= 0.01 && Math.abs(e.z - (p.z ?? 0)) <= 0.01 && Math.abs(e.heading - p.heading) <= 0.5)) lastOff.push(tag(x));
+    spans.push(e.t - tr[0].t);
+    for (let i = 1; i < tr.length; i++) {
+      /* distance along, stated twice: the car's own `s`, and the displacement along the heading it was pointing */
+      const h = (tr[i - 1].heading * Math.PI) / 180, along = (tr[i].x - tr[i - 1].x) * Math.cos(h) + (tr[i].y - tr[i - 1].y) * Math.sin(h);
+      if (tr[i].s < tr[i - 1].s - 1e-9 || along < -1e-6) { back.push(`${tag(x)}[${i}]`); break; }
+    }
+  }
+  const lens = frozen.filter((e) => e.rs.trail?.length).map((e) => lenTrail(e.rs.trail));
+  for (const e of frozen) if (e.rs.trail?.length && lenTrail(e.rs.trail) < 10) short.push(tag(e.x));
+  check(lens.length === frozen.length, `every frozen round carries a trail (${lens.length} of ${frozen.length})`);
+  check(lastOff.length === 0, `the trail's last entry is the frozen pose, to 1 cm, in every one${lastOff.length ? ` -- not ${lastOff.slice(0, 6).join(" ")}` : ""}`);
+  check(lens.length > 0 && short.length === 0, `EXPOSURE: every trail covers at least 10 m of road (shortest ${Math.min(...lens).toFixed(2)} m)${short.length ? ` -- not ${short.slice(0, 6).join(" ")}` : ""}`);
+  check(back.length === 0, `its distance along is non-decreasing, by the car's s and by the displacement along its heading, in every one${back.length ? ` -- not ${back.slice(0, 6).join(" ")}` : ""}`);
+  check(spans.every((s) => s >= 3.0 - 1e-6), `each trail spans at least 3.0 s of ticks (shortest ${Math.min(...spans).toFixed(2)} s)`);
+  console.log(`        trail lengths over ${lens.length} pooled seeds: ${stat(lens)} m; spans ${stat(spans)} s [M, this run]`);
+
+  /* 2. screechAt. */
+  const bad0 = [], bad1 = [], notMono = [], notAbrupt = [], notFast = [], notDive = [];
+  for (const { x, rs } of frozen) {
+    const tr = rs.trail, a = screechAt(tr, 0), b = screechAt(tr, 1), D = dist(tr[0], tr[tr.length - 1]);
+    if (!(dist(a, tr[0]) <= 0.01)) bad0.push(tag(x));
+    if (!(dist(b, tr[tr.length - 1]) <= 0.01)) bad1.push(tag(x));
+    const covered = []; for (let i = 0; i <= 100; i++) covered.push(dist(screechAt(tr, i / 100), tr[0]));
+    if (covered.some((c, i) => i && c < covered[i - 1] - 1e-9)) notMono.push(tag(x));
+    if (!((covered[100] - covered[90]) / D < 0.1 - 1e-6)) notAbrupt.push(tag(x));
+    if (!(covered[10] / D > 0.1 + 1e-6)) notFast.push(tag(x));
+    if (!(screechAt(tr, 1).pitch <= (-8 * Math.PI) / 180 && screechAt(tr, 0.5).pitch <= (-8 * Math.PI) / 180 && screechAt(tr, 0).pitch >= -1e-9)) notDive.push(tag(x));
+  }
+  check(bad0.length === 0 && bad1.length === 0, `screechAt(0) is the trail's first pose and screechAt(1) the frozen pose, each to 1 cm, in every one${bad0.length + bad1.length ? ` -- not ${[...bad0, ...bad1].slice(0, 6).join(" ")}` : ""}`);
+  check(notMono.length === 0, `the distance covered is non-decreasing in u (101 samples) in every one${notMono.length ? ` -- not ${notMono.slice(0, 6).join(" ")}` : ""}`);
+  check(notAbrupt.length === 0, `the last tenth of u covers less than a tenth of the distance (the stop is abrupt) in every one${notAbrupt.length ? ` -- not ${notAbrupt.slice(0, 6).join(" ")}` : ""}`);
+  check(notFast.length === 0, `the first tenth of u covers more than a tenth (the arrival is fast) in every one${notFast.length ? ` -- not ${notFast.slice(0, 6).join(" ")}` : ""}`);
+  check(notDive.length === 0, `the nose is down at least 8 degrees at u = 0.5 and at the stop, and level at u = 0, in every one${notDive.length ? ` -- not ${notDive.slice(0, 6).join(" ")}` : ""}`);
+  {
+    const taus = Array.from({ length: 41 }, (_, i) => (i * SETTLE) / 40), ps = taus.map(settleAt);
+    const signs = ps.map((p) => Math.sign(p)).filter((s) => s !== 0);
+    let changes = 0; for (let i = 1; i < signs.length; i++) if (signs[i] !== signs[i - 1]) changes++;
+    check(ps[0] <= (-8 * Math.PI) / 180 && ps.some((p) => p > 0) && changes === 1 && settleAt(SETTLE) === 0 && settleAt(SETTLE + 1) === 0, `the settle starts nose-down, overshoots nose-up once (${(Math.max(...ps) * 180 / Math.PI).toFixed(2)} degrees at most) and is level at ${SETTLE} s and after [M, this run]`);
+  }
+  console.log(`        the durations [invented]: far ${HOLD_FAR} s, screech ${SCREECH} s, settle ${SETTLE} s, intro ${INTRO_END.toFixed(1)} s`);
+
+  /* THE SKID MARKS. */
+  {
+    const off = [], notLateral = [], farEnough = [];
+    let marked = 0;
+    for (const { x, rs } of frozen) {
+      const [l, r] = skidLines(rs.trail, 1), e = rs.trail[rs.trail.length - 1];
+      if (l.length < 2 || r.length !== l.length) { off.push(tag(x)); continue; }
+      marked++;
+      if (l.some((q, i) => Math.abs(dist(q, r[i]) - 1.6) > 0.01)) notLateral.push(tag(x));
+      const ds = l.concat(r).map((q) => dist(q, e));
+      if (Math.max(...ds) > 12 + 1 || Math.min(...ds) < 2.25) farEnough.push(tag(x));
+    }
+    check(marked === frozen.length && off.length === 0, `EXPOSURE: two skid lines in every one (${marked} of ${frozen.length})`);
+    check(notLateral.length === 0 && farEnough.length === 0, `the lines are 1.6 m apart (0.8 m either side of the centre line), lie within the last 12 m, and stop clear of the car's own body (2.25 m from its centre)${notLateral.length + farEnough.length ? ` -- not ${[...notLateral, ...farEnough].slice(0, 6).join(" ")}` : ""}`);
+    check(skidLines(frozen[0].rs.trail, 0).every((l) => l.length === 0) && skidLines(frozen[0].rs.trail, 1)[0].length > skidLines(frozen[0].rs.trail, 0.5)[0].length, "the marks grow as the car covers the road: none at u = 0, more at u = 1 than at 0.5");
+  }
+
+  /* 3. RELEVANCE. */
+  {
+    const waitFrozen = frozen.filter((e) => e.x.pool === "wait"), atFreeze = { ticks: 0, holds: 0, missed: [], pastCars: 0, ringedPast: [], ringedNoConflict: [], withRing: 0 };
+    let firstRinged = 0;
+    for (const { rs } of waitFrozen) { const before = atFreeze.withRing; observeRing(rs, atFreeze); if (atFreeze.withRing > before) firstRinged++; }
+    const all = { missed: [...atFreeze.missed, ...relScan.missed], ringedPast: [...atFreeze.ringedPast, ...relScan.ringedPast], ringedNoConflict: [...atFreeze.ringedNoConflict, ...relScan.ringedNoConflict] };
+    check(atFreeze.holds + relScan.holds >= 20, `EXPOSURE: the sim says a car holds the sound driver in ${atFreeze.holds} observations at the freeze and ${relScan.holds} on ${relScan.ticks} waiting ticks (at least 20)`);
+    check(all.missed.length === 0, `every car blockedBy says holds the sound driver is ringed, at the freeze and on every waiting tick${all.missed.length ? ` -- not ${all.missed.slice(0, 6).join(" ")}` : ""}`);
+    check(all.ringedNoConflict.length === 0, `no ringed car's path fails to conflict with the player's (conflictOf, the check's own call)${all.ringedNoConflict.length ? ` -- not ${all.ringedNoConflict.slice(0, 6).join(" ")}` : ""}`);
+    check(atFreeze.pastCars + relScan.pastCars > 0, `EXPOSURE: ${atFreeze.pastCars + relScan.pastCars} car-observations of a car conflicting but already past its conflict (the case the not-yet-past test is for)`);
+    check(all.ringedPast.length === 0, `no car already past its conflict is ringed${all.ringedPast.length ? ` -- ringed past: ${all.ringedPast.slice(0, 6).join(" ")}` : ""}`);
+    const share = firstRinged / waitFrozen.length;
+    check(waitFrozen.length >= 20 && share >= 0.8, `EXPOSURE: at least one car is ringed at the freeze in ${(100 * share).toFixed(0)}% of ${waitFrozen.length} wait seeds (at least 80% [invented])`);
+    console.log(`        ringed at the freeze: ${firstRinged} of ${waitFrozen.length} wait seeds (${(100 * share).toFixed(0)}%); ${relScan.withRing} of ${relScan.ticks} waiting ticks had a ring [M, this run]`);
+  }
+
+  /* 4. THE CAMERAS. */
+  {
+    const boxes = [{ w: 400, h: 800 }, { w: 800, h: 400 }];
+    const inside = (P, size, pts) => pts.every(([x, y, z]) => { const [px, py] = P(x, y, z); return px >= 0 && px <= size.w && py >= 0 && py <= size.h; });
+    const failCorners = [], failEnd = [], failCar = [];
+    let carMin = Infinity;
+    const bounds = { x: 0, y: 0, w: 500, h: 500 };
+    const corners = [[0, 0, 0], [500, 0, 0], [500, 500, 0], [0, 500, 0]];
+    for (const { x, rs } of frozen.slice(0, 40)) {
+      const p = driverPose(rs.me, rs.world.course);
+      for (const size of boxes) {
+        const far = farCamera(bounds, p, size), dec = decisionCamera(p, size);
+        const c0 = introCamera(0, far, dec), v0 = viewOf(c0.k, { ...c0.cam, id: null }, c0.rot, size);
+        if (!inside(v0.P, size, corners)) failCorners.push(`${tag(x)}/${size.w}x${size.h}`);
+        /* THE DECISION CAMERA, as stated: 10 m ahead of the frozen pose along its heading, the heading up, 45 m fits the shorter side. */
+        const h = (p.heading * Math.PI) / 180, want = { x: p.x + 10 * Math.cos(h), y: p.y + 10 * Math.sin(h), rot: UP_HEADING - p.heading, k: Math.min(size.w, size.h) / (2 * 45 * Math.SQRT2) };
+        for (const t of [HOLD_FAR + SCREECH, INTRO_END]) {
+          const ce = introCamera(t, far, dec);
+          if (!(Math.hypot(ce.cam.x - want.x, ce.cam.y - want.y) <= 0.01 && Math.abs(ce.k - want.k) <= 1e-6 && Math.abs(((ce.rot - want.rot + 540) % 360) - 180) <= 1e-6)) failEnd.push(`${tag(x)}/${size.w}x${size.h}@${t}`);
+        }
+        for (let i = 0; i <= 20; i++) {
+          const t = (i * INTRO_END) / 20, ic = introCamera(t, far, dec), at = introAt(rs.trail, t).pose ?? p;
+          const [px, py] = viewOf(ic.k, { ...ic.cam, id: null }, ic.rot, size).P(at.x, at.y, at.z ?? 0);
+          carMin = Math.min(carMin, px, py, size.w - px, size.h - py);
+          if (!(px >= 0 && px <= size.w && py >= 0 && py <= size.h)) failCar.push(`${tag(x)}/${size.w}x${size.h}@${t.toFixed(2)}`);
+        }
+      }
+    }
+    check(failCorners.length === 0, `at t = 0 all four corners of the map's bounds project inside the screen, 400x800 and 800x400, for 40 rounds${failCorners.length ? ` -- not ${failCorners.slice(0, 4).join(" ")}` : ""}`);
+    check(failEnd.length === 0, `at the intro's end the camera equals the decision camera (1 cm, 1e-6 in k, the heading up)${failEnd.length ? ` -- not ${failEnd.slice(0, 4).join(" ")}` : ""}`);
+    check(failCar.length === 0, `the player's car projects inside the screen at every 1/20th of the intro, both boxes, 40 rounds (closest to an edge ${carMin.toFixed(1)} px [M, this run])${failCar.length ? ` -- not ${failCar.slice(0, 4).join(" ")}` : ""}`);
+    /* Other headings than the map's: the far view must hold the map at any rotation, as the rotated square's own corners say. */
+    const oddFail = [];
+    for (const heading of [0, 33, 90, 180, 250, 359]) for (const size of boxes) {
+      const far = farCamera(bounds, { x: 250, y: 400, z: 0, heading }, size), v = viewOf(far.k, { ...far.cam, id: null }, far.rot, size);
+      if (!inside(v.P, size, corners)) oddFail.push(`${heading}deg/${size.w}x${size.h}`);
+    }
+    check(oddFail.length === 0, `the far view holds the whole map at any heading (0, 33, 90, 180, 250, 359 degrees)${oddFail.length ? ` -- not ${oddFail.join(" ")}` : ""}`);
+    check(frozen.slice(0, 40).every(({ rs }) => lenTrail(rs.trail) > 10), `EXPOSURE: the car moves more than 10 m over the intro it is checked through`);
+    const src = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
+    check(/introCamera\(intro, farCamera\(bounds, p, size\), dd\)/.test(src) && /decisionCamera\(p, size\)/.test(src) && /relevantIds\(world, me\)/.test(src) && /skidLines\(trail/.test(src) && /intro >= INTRO_END/.test(src) && /intro < INTRO_END\) \{ if \(ev\.type === "down"/.test(src), "the screen draws the intro camera, the rings and the skid marks, shows the button only after the intro, and a tap during it only skips (source text: a React screen no check can run to a frame)");
+  }
 }
 
 console.log(`\n${failed === 0 ? "ALL PASSED" : `${failed} FAILED`}`);
