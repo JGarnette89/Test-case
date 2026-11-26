@@ -24,7 +24,7 @@ import { BODY, resolveBody } from "../src/iso/body.js";
 import { GAME_BODY, withGameBody } from "../src/game/look.js";
 import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
-import { TYPES, POOLS_RUN, drawSet, SET_SIZE } from "../src/game/rounds.js";
+import { TYPES, POOLS_RUN, drawSet, SET_SIZE, HAZARD_MIN } from "../src/game/rounds.js";
 import { toDecision, toDecisionFrom, startRound, roundTick, press, release, setTarget, stopNow, clearOfBox, roundWorld, verdictOf, timingStars, timingOf, UNDUE, LAUNCH_SPAN, AT_LINE, FRONT_CLEAR, LIMIT, KMH } from "../src/game/round.js";
 import { DEAD, RANGE_OF, rangeOf, targetOf, offsetOf, thumbTarget, zoneRect, isTap, TAP_MS } from "../src/game/control.js";
 import { hazardRun, cwAheadOf } from "./lib/hazard-drive.mjs";
@@ -555,13 +555,15 @@ console.log("\n12. THE DECISION FRAME AND THE LAUNCH (slice 5): only what decide
   const x0 = POOLED.find((e) => e.pool === "wait"), type0 = x0.type;
   let past = null;
   { let rs = toDecision(type0, x0.seed, type0.cars), t = null; const { policy } = oracle();
-    while (rs && !rs.end && (t == null || rs.world.t - t < 3.0 - 1e-6)) {
+    /* SLICE 9 REVIEW: stop at the first tick the car is 2 m past its stop line [instrument]. The fixed 3 s past GO outlived the boosted round. */
+    const pathOf = (q) => q.world.course.at[q.targetK].layout.paths[q.me.route];
+    while (rs && !rs.end && !(t != null && rs.me.k === rs.targetK && rs.me.s > pathOf(rs).stopAt + 2)) {
       if (rs.phase !== "gone") { if (policy(rs) === "go") rs = release(rs); else if (rs.phase === "frozen") rs = press(rs); }
       rs = roundTick(rs); if (rs.phase === "gone" && t == null) t = rs.decision.goAt;
     }
     past = rs; }
   const p0 = past.world.course.at[past.targetK].layout.paths[past.me.route];
-  check(past.phase === "gone" && !past.end && past.me.k === past.targetK && past.me.s > p0.stopAt, `EXPOSURE: the state is running, 3 s past GO, not ended, and the car is past its stop line (s ${past.me.s.toFixed(1)} > ${p0.stopAt.toFixed(1)} [M, this run])`);
+  check(past.phase === "gone" && !past.end && past.me.k === past.targetK && past.me.s > p0.stopAt, `EXPOSURE: the state is running, ${(past.world.t - past.decision.goAt).toFixed(2)} s past GO, not ended, and the car is past its stop line (s ${past.me.s.toFixed(1)} > ${p0.stopAt.toFixed(1)} [M, this run])`);
   check(toDecisionFrom(past, past.targetK) === null, "toDecisionFrom toward the same node from that state returns null (the car is past that line)");
   const fresh = startRound({ ...type0, seed: x0.seed, cars: type0.cars }, roundWorld({ ...type0, seed: x0.seed, cars: type0.cars }));
   let mid = fresh; for (let i = 0; i < 40; i++) mid = roundTick(mid);
@@ -923,14 +925,16 @@ const dragSizes = [{ w: 400, h: 800 }, { w: 800, h: 400 }];
     const old = JSON.parse(readFileSync(new URL("./lib/slice6-verdicts.json", import.meta.url), "utf8"));
     const diff = [];
     let n = 0;
-    for (const x of POOLED) for (const [name, make] of [["oracle", oracle], ["eager", eager]]) {
+    /* SLICE 9 REVIEW: the ORACLE only. The boost changes what an eager driver threads, which the spec expected; eager is compared with slice 8,
+       contact by contact, in section 21. */
+    for (const x of POOLED) for (const [name, make] of [["oracle", oracle]]) {
       const r = driveDecision(x.type, x.seed, x.type.cars, make), v = r.verdict, key = `${x.type.id}/${x.pool}#${x.seed}/${name}`;
       const now = { end: r.rs.end?.why, stars: v.stars, faults: ids(v).sort().join(","), praise: v.praise.map((f) => f.id).sort().join(","), delay: v.delay == null ? null : +v.delay.toFixed(2) };
       n++;
       if (!isDeepStrictEqual(old[key], now)) diff.push(`${key}: ${JSON.stringify(old[key])} -> ${JSON.stringify(now)}`);
     }
-    check(n >= 400 && Object.keys(old).length === n, `EXPOSURE: ${n} (seed, policy) pairs compared with slice 6's stored verdicts (${Object.keys(old).length} stored; at least 400)`);
-    check(diff.length === 0, `under the thumb at the full limit, oracle and eager end, star, fault, praise and delay exactly as in slice 6 in every pooled seed: ${n - diff.length} of ${n} the same${diff.length ? ` -- differ: ${diff.slice(0, 5).join(" | ")}` : ""}`);
+    check(n >= 200 && Object.keys(old).filter((key) => key.endsWith("/oracle")).length === n, `EXPOSURE: ${n} oracle (seed, policy) pairs compared with slice 6's stored verdicts (at least 200)`);
+    check(diff.length === 0, `under the thumb at the full limit, the oracle's end, star, fault, praise and delay exactly as in slice 6 in every pooled seed: ${n - diff.length} of ${n} the same${diff.length ? ` -- differ: ${diff.slice(0, 5).join(" | ")}` : ""}`);
   }
 
   /* 6. Source text: the thumb is drawn, releasing keeps the speed, and a drag inside the zone never pans. */
@@ -1044,7 +1048,15 @@ console.log("\n20. A HAZARD AFTER THE TURN (slice 8): the sim's person, STOP at 
 
   /* 1. The pools, and whether they are the sim's. */
   for (const ht of HT) console.log(`        ${ht.id}: cars ${ht.cars}, ${ht.pools.hazard.length} hazard seeds`);
-  check(HT.every((ht) => ht.pools.hazard.length === 0 || ht.pools.hazard.length >= 5), `every type that has a hazard pool has at least 5 seeds in it (${HT.map((ht) => `${ht.id.replace("-hazard", "")} ${ht.pools.hazard.length}`).join(", ")})`);
+  /* SLICE 9 REVIEW: the floor is held where it is drawn. A pool under HAZARD_MIN (5) is never drawn, over 2000 sets (10000 rounds). */
+  { const counts = new Map(); let rounds = 0;
+    for (let s = 1; s <= 2000; s++) for (const x of drawSet(s)) { rounds++; if (x.pool === "hazard") counts.set(x.type.id, (counts.get(x.type.id) ?? 0) + 1); }
+    const small = HT.filter((ht) => ht.pools.hazard.length > 0 && ht.pools.hazard.length < HAZARD_MIN);
+    const drawnSmall = small.filter((ht) => counts.get(ht.id));
+    const hz = [...counts.values()].reduce((a, b) => a + b, 0);
+    console.log(`        pool sizes: ${HT.map((ht) => `${ht.id.replace("-hazard", "")} ${ht.pools.hazard.length}`).join(", ")}; hazard rounds ${hz} of ${rounds} (${(100 * hz / rounds).toFixed(1)}%) [M, this run], by type: ${[...counts].map(([k, n]) => `${k} ${n}`).join(", ")}`);
+    check(hz > 0 && counts.size >= 2, `EXPOSURE: hazard rounds were drawn (${hz}) in ${counts.size} types (at least 2)`);
+    check(drawnSmall.length === 0 && [...counts.keys()].every((id) => HT.find((ht) => ht.id === id).pools.hazard.length >= HAZARD_MIN), `no hazard pool under HAZARD_MIN (${HAZARD_MIN}) is ever drawn${small.length ? ` (under it, not drawn: ${small.map((ht) => `${ht.id} ${ht.pools.hazard.length}`).join(", ")})` : ""}${drawnSmall.length ? ` -- DRAWN: ${drawnSmall.map((ht) => ht.id).join(" ")}` : ""}`); }
   check(HAZ.length >= 20 && HT.filter((ht) => ht.pools.hazard.length).length >= 2, `EXPOSURE: ${HAZ.length} hazard seeds in ${HT.filter((ht) => ht.pools.hazard.length).length} types (at least 20 seeds, 2 types)`);
   const gone = HAZ.filter((x) => !free.get(htag(x))?.step);
   check(gone.length === 0, `every hazard seed has a person who steps onto the player's path after its stop line, with the player's nose still short of the paint, under the oracle's drive${gone.length ? ` -- not ${gone.slice(0, 5).map(htag).join(" ")}` : ""}`);
@@ -1102,7 +1114,7 @@ console.log("\n20. A HAZARD AFTER THE TURN (slice 8): the sim's person, STOP at 
     const fz = toDecision(x1.ht, x1.seed, x1.ht.cars), w = press(fz);
     check(stopNow(fz) === fz && stopNow(w) === w, "STOP before GO is nothing (frozen and waiting rounds are returned as they were): a tap there is slice 7's press");
     let rs = setTarget(press(fz), LIMIT);
-    for (let i = 0; i < 60 && !rs.end; i++) rs = roundTick(rs);
+    for (let i = 0; i < 200 && !rs.end && rs.me.v < 3.5; i++) rs = roundTick(rs);   // SLICE 9 REVIEW: to 3.5 m/s [instrument], not a fixed 60 ticks the boosted round outlives
     const v0 = rs.me.v;
     rs = stopNow(rs);
     let n = 0;

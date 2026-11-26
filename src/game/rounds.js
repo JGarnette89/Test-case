@@ -80,6 +80,9 @@ export const TYPES = DEFS.map((d) => ({ ...d, cars: POOLS[d.id].cars, pools: { n
    pressed (never inside a useMemo). A pool that is empty falls back to the other, and a type with neither is skipped. */
 export const SET_SIZE = 5;
 export const P_WAIT = 0.7;   // [invented, the spec's]
+/* A HAZARD POOL SMALLER THAN THIS IS NEVER DRAWN (slice 9 review): five seeds is the variety floor every pool is held to [invented]. The boost left
+   four-way-straight one fair hazard seed in 6000 searched [M, slice 9's run], and one seed drawn every time is a memorised round, not a hazard. */
+export const HAZARD_MIN = 5;
 export function drawSet(setSeed, types = TYPES) {
   const r = rng(setSeed), usable = types.filter((t) => t.pools.now.length || t.pools.wait.length);
   if (!usable.length) return [];
@@ -87,13 +90,13 @@ export function drawSet(setSeed, types = TYPES) {
   while (order.length < SET_SIZE) order.push(usable[Math.floor(r() * usable.length)]);
   /* THE HAZARD ROLL has its own stream, so the plain draws above are the draws they always were (slice 8): with probability HAZARD_P a round is the
      type's HAZARD round, from its hazard pool, when it has one. Two draws per round, always, whether or not they are used. */
-  const rh = rng((setSeed ^ 0x9e3779b9) >>> 0);
+  const rh = rng((setSeed ^ 0x9e3779b9) >>> 0);   // HAZARD_MIN: below it the type plays no hazard round (slice 9 review)
   return order.slice(0, SET_SIZE).map((type) => {
     const wantWait = r() < P_WAIT;
     const pool = wantWait ? (type.pools.wait.length ? "wait" : "now") : (type.pools.now.length ? "now" : "wait");
     const seeds = type.pools[pool];
     const plain = { type, pool, seed: seeds[Math.floor(r() * seeds.length)], cars: type.cars };
     const roll = rh(), pick = rh(), hz = type.hazardType;
-    return hz?.pools.hazard.length && roll < HAZARD_P ? { type: hz, pool: "hazard", seed: hz.pools.hazard[Math.floor(pick * hz.pools.hazard.length)], cars: hz.cars } : plain;
+    return hz?.pools.hazard.length >= HAZARD_MIN && roll < HAZARD_P ? { type: hz, pool: "hazard", seed: hz.pools.hazard[Math.floor(pick * hz.pools.hazard.length)], cars: hz.cars } : plain;
   });
 }
