@@ -90,3 +90,43 @@ Report:
 - the oracle's reaction margin;
 - the sabotages;
 - **every departure from this spec, said plainly.**
+
+---
+
+## REVIEW OUTCOME (26 November 2026, the planner)
+
+**Built by the executor in `6c465bd`; accepted without change.** The derived set passed: `3 of 3 passed` (verify-core, verify-screens, verify-rounds) `[M, node tools/check.mjs --base d6e6eb0, the review run]`.
+
+### Measured `[M, the executor's runs and the review run]`
+
+- **Hazard pools,** from 1500 candidate seeds per type, 4 cars:
+  - four-way straight: 6;
+  - four-way left: **0**, so this type never gets a hazard round;
+  - two-way right: 25;
+  - two-way left: 30 kept of 60 found.
+- **Draw rate:** 31% of the drawn rounds are hazard rounds, against `HAZARD_P` 35%. The difference is the left four-way, which has no pool.
+- **Danger with no stop:** 61 of 61 kept seeds strike the person or come within 1 m; 26 strike.
+- **Fairness:** with STOP 0.85 s after the step-off, 61 of 61 strike nobody. At rest the nose is 0.11 to 5.52 m short of the crosswalk's middle, median 1.07.
+- **STOP:** braking is at least 0.9 of the full brake on every tick, peaking at 10.49 m/s^2.
+- **Verdict:** the reaction time on the verdict equals the check's own to 0.000 s over 170 runs.
+
+### Accepted deviations
+
+- **Danger is a pool criterion,** so check 3's 100% holds by construction. Without it, most seeds where a person steps out never come near the player: the sim's people step out only where the player can respond, and often wait at the middle for the car.
+- **Hazard rounds strip the world's walkers.** A person is created at the curb at the sim's own rate instead.
+  - `pedRisk` is trusting 0.2 and heedless 0.7 `[invented]`.
+- **"Stops short" is measured against the crosswalk's middle,** not its near edge.
+- **The autopilot uses the sim's `ignorePeds` flag,** on its own query only, never on the stepped world.
+  - The sim's comment calls that flag "a check's controlled comparison, never a game setting". The game uses it for the same question, asked without people. Accepted, and noted here so it is not a surprise.
+- **After GO a tap anywhere is STOP.**
+- **A hint line is drawn after GO:** "TAP TO STOP · DRAG TO SET SPEED".
+
+### Sabotages (the executor's)
+
+- (a) STOP braking at `HARSH_AT` fired the fairness, margin, full-brake and source-text lines.
+- (b) The autopilot stopping for the person fired seven lines, including danger at 0%.
+- `autopilot.js` was restored byte-identical after each.
+
+### Not verified
+
+How it looks and feels: whether the person reads as a hazard, the tap's feel, and the hint. The first look is Jay's.
