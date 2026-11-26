@@ -52,6 +52,8 @@ The decision point is the end of an acceleration lane, or the point where a merg
 
 - **"Adding roads more complex than a 2 or 4 way stop will bring this to the next level."** Jay's order: TRAFFIC LIGHTS first, then YIELD AND MERGE ("Id like to see 1 and 3 mostly"). A wide multi-lane road is not chosen yet.
 - **A left turn on a plain green light (no arrow) freezes IN THE INTERSECTION** (Jay, asked and answered). The car pulls in and waits where a good driver waits, then the scene freezes there, and the player picks the gap in oncoming traffic. If the light turns, they finish the turn once it is safe.
+- **Waiting in the intersection after your light has ended is a fault when it holds up cross traffic (Jay, 26 November):** "Sitting in the intersection after the light expires and impeding the cross traffic is a violation. Failure to take own right of way resulting in impeding of traffic."
+  - It is derived, never authored. It arises when the player's light has ended, the way through is open (the oncoming traffic has stopped or cleared), and a cross-traffic driver with a green is held by the player's car.
 
 ## Your town (Jay, 26 November): RULED IN DIRECTION, NOT BUILT
 
