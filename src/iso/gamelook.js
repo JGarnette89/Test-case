@@ -163,58 +163,108 @@ function paintStatic(ctx, kind, cx, top, S, o) {
 
 /* ---- where a face stands -------------------------------------------- */
 
-/* THE ROAD IN THE SCREEN, once a frame: every road ribbon segment and every junction surface as a screen polygon (convex), kept on the view. Nothing typed in: the quantity a face must keep off is the road the sim drew. */
-const OBST = new WeakMap(), PLACED = new WeakMap();
-function obstaclesOf(view, scene, canvas) {
-  let o = OBST.get(view);
-  if (o) return o;
-  o = [];
-  const add = (pts) => {
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const q of pts) { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); x1 = Math.max(x1, q[0]); y1 = Math.max(y1, q[1]); }
-    if (x1 < -80 || x0 > canvas.w + 80 || y1 < -80 || y0 > canvas.h + 80) return;
-    o.push({ pts, x0, y0, x1, y1 });
-  };
-  for (const j of scene.junctions ?? []) if (j.surface?.length) add(j.surface.map((q) => view.P(q.x, q.y, q.z ?? 0)));
+/* THE ROAD IN THE SCREEN: every road ribbon segment and every junction surface as a convex polygon, the quantity a face must keep off (nothing typed in). The polygons are built in the world ONCE per map (typed arrays); each frame they are only re-projected, in place, into the same arrays -- the first version built fresh arrays of arrays every frame and the collector took most of the cost. */
+const PLACED = new WeakMap(), WORLD = new WeakMap();
+const OB = { view: null, list: [], n: 0 };
+function worldPolys(scene) {
+  let w = WORLD.get(scene.roads);
+  if (w && w.j === scene.junctions) return w;
+  const polys = [], add = (pts) => { const n = pts.length; polys.push({ n, w: Float64Array.from(pts.flatMap((q) => [q.x, q.y, q.z ?? 0])), sx: new Float64Array(n), sy: new Float64Array(n), x0: 0, y0: 0, x1: 0, y1: 0 }); };
+  for (const j of scene.junctions ?? []) if (j.surface?.length) add(j.surface);
   for (const { road } of scene.roads ?? []) {
     if (!road.left || !road.right) continue;
-    for (let i = 0; i + 1 < road.left.length; i++) {
-      const a = road.left[i], b = road.left[i + 1], c = road.right[i + 1], d = road.right[i];
-      if (!a || !b || !c || !d) continue;
-      add([view.P(a.x, a.y, a.z ?? 0), view.P(b.x, b.y, b.z ?? 0), view.P(c.x, c.y, c.z ?? 0), view.P(d.x, d.y, d.z ?? 0)]);
-    }
+    for (let i = 0; i + 1 < road.left.length; i++) { const a = road.left[i], b = road.left[i + 1], c = road.right[i + 1], d = road.right[i]; if (a && b && c && d) add([a, b, c, d]); }
   }
-  OBST.set(view, o);
-  return o;
+  w = { j: scene.junctions, polys };
+  WORLD.set(scene.roads, w);
+  return w;
 }
-/* Does a convex polygon overlap an axis-aligned rectangle (inflated by `m` px)? Separating axes: the rectangle's two and the polygon's edges. */
+const PT0 = [0, 0];
+/* The polygons in view, projected for this view (once per frame: the view object is new each frame). */
+function obstaclesOf(view, scene, canvas) {
+  if (OB.view === view && OB.scene === scene) return OB.list;
+  const { polys } = worldPolys(scene), list = OB.list;
+  list.length = 0;
+  for (const p of polys) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < p.n; i++) {
+      view.into(p.w[3 * i], p.w[3 * i + 1], p.w[3 * i + 2], PT0);
+      p.sx[i] = PT0[0]; p.sy[i] = PT0[1];
+      if (PT0[0] < x0) x0 = PT0[0]; if (PT0[0] > x1) x1 = PT0[0]; if (PT0[1] < y0) y0 = PT0[1]; if (PT0[1] > y1) y1 = PT0[1];
+    }
+    if (x1 < -80 || x0 > canvas.w + 80 || y1 < -80 || y0 > canvas.h + 80) continue;
+    p.x0 = x0; p.y0 = y0; p.x1 = x1; p.y1 = y1;
+    list.push(p);
+  }
+  OB.view = view; OB.scene = scene;
+  return list;
+}
+/* Does a convex polygon overlap an axis-aligned rectangle? Separating axes: the polygon's edges (the rectangle's own two are settled by the bounding-box test). */
 function overlaps(poly, x0, y0, x1, y1) {
   if (poly.x1 < x0 || poly.x0 > x1 || poly.y1 < y0 || poly.y0 > y1) return false;
-  const P = poly.pts, R = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-  for (let i = 0; i < P.length; i++) {
-    const a = P[i], b = P[(i + 1) % P.length], nx = -(b[1] - a[1]), ny = b[0] - a[0];
-    let pmin = Infinity, pmax = -Infinity, rmin = Infinity, rmax = -Infinity;
-    for (const q of P) { const d = q[0] * nx + q[1] * ny; pmin = Math.min(pmin, d); pmax = Math.max(pmax, d); }
-    for (const q of R) { const d = q[0] * nx + q[1] * ny; rmin = Math.min(rmin, d); rmax = Math.max(rmax, d); }
+  const n = poly.n, sx = poly.sx, sy = poly.sy;
+  for (let i = 0; i < n; i++) {
+    const j = i + 1 === n ? 0 : i + 1, nx = -(sy[j] - sy[i]), ny = sx[j] - sx[i];
+    let pmin = Infinity, pmax = -Infinity;
+    for (let q = 0; q < n; q++) { const d = sx[q] * nx + sy[q] * ny; if (d < pmin) pmin = d; if (d > pmax) pmax = d; }
+    const a = x0 * nx + y0 * ny, b = x1 * nx + y0 * ny, c = x1 * nx + y1 * ny, d4 = x0 * nx + y1 * ny;
+    const rmin = Math.min(a, b, c, d4), rmax = Math.max(a, b, c, d4);
     if (pmax <= rmin || rmax <= pmin) return false;
   }
-  return true;   // the rectangle's own axes were settled by the bounding-box test above
+  return true;
 }
 const DIRS = Array.from({ length: 16 }, (_, i) => [Math.cos((i * Math.PI) / 8), Math.sin((i * Math.PI) / 8)]);
 const CLEAR_PX = 1;   // [instrument] the clearance asked of the search
-/* The smallest push, in the screen, that takes a face's rectangle off every road polygon: the search walks outward in 2 px steps in 16 directions and takes the first step at which some direction is clear, the one most nearly away from the intersection's middle. A face already clear is not moved. */
-export function pushFor(view, scene, canvas, rect, away) {
-  const obs = obstaclesOf(view, scene, canvas), placed = PLACED.get(view) ?? [];   // faces already placed this frame keep each other apart too
-  const clearAt = (dx, dy) => { const x0 = rect.x + dx - CLEAR_PX, y0 = rect.y + dy - CLEAR_PX, x1 = rect.x + rect.w + dx + CLEAR_PX, y1 = rect.y + rect.h + dy + CLEAR_PX; for (const q of obs) if (overlaps(q, x0, y0, x1, y1)) return false; for (const r of placed) if (!(r.x1 < x0 || r.x0 > x1 || r.y1 < y0 || r.y0 > y1)) return false; return true; };
-  if (clearAt(0, 0)) return { dx: 0, dy: 0, t: 0 };
-  const al = Math.hypot(away[0], away[1]) || 1;
-  for (let t = 2; t <= 600; t += 2) {
-    let best = null, bestDot = -Infinity;
-    for (const d of DIRS) { if (!clearAt(d[0] * t, d[1] * t)) continue; const dot = (d[0] * away[0] + d[1] * away[1]) / al; if (dot > bestDot) { bestDot = dot; best = d; } }
-    if (best) return { dx: best[0] * t, dy: best[1] * t, t };
-  }
-  return { dx: 0, dy: 0, t: 0 };
+/* Counters the check reads: searches run, cache hits, and rectangle tests made. */
+export const pushStats = { searches: 0, hits: 0, kept: 0, tests: 0 };
+const REFRESH = 12;   // frames a kept push may stand before the search runs again [invented, a perf choice]
+const NEAR = [];
+const S_ = { rx: 0, ry: 0, rw: 0, rh: 0, placed: null };
+function clearAt(list, dx, dy) {
+  pushStats.tests++;
+  const x0 = S_.rx + dx - CLEAR_PX, y0 = S_.ry + dy - CLEAR_PX, x1 = S_.rx + S_.rw + dx + CLEAR_PX, y1 = S_.ry + S_.rh + dy + CLEAR_PX;
+  for (let i = 0; i < list.length; i++) if (overlaps(list[i], x0, y0, x1, y1)) return false;
+  const placed = S_.placed;
+  for (let i = 0; i < placed.length; i++) { const r = placed[i]; if (!(r.x1 < x0 || r.x0 > x1 || r.y1 < y0 || r.y0 > y1)) return false; }
+  return true;
 }
+function walk(list, from, to, ax, ay, al) {
+  for (let t = from; t <= to; t += 2) {
+    let best = -1, bestDot = -Infinity;
+    for (let i = 0; i < 16; i++) { const d = DIRS[i]; if (!clearAt(list, d[0] * t, d[1] * t)) continue; const dot = (d[0] * ax + d[1] * ay) / al; if (dot > bestDot) { bestDot = dot; best = i; } }
+    if (best >= 0) return { dx: DIRS[best][0] * t, dy: DIRS[best][1] * t, t };
+  }
+  return null;
+}
+/* Is the face, moved by `was`'s push, still clear of the road and of the faces placed before it? */
+function stillClear(view, scene, canvas, rect, was) {
+  const all = obstaclesOf(view, scene, canvas);
+  S_.rx = rect.x; S_.ry = rect.y; S_.rw = rect.w; S_.rh = rect.h; S_.placed = PLACED.get(view) ?? [];
+  return clearAt(all, was.dx, was.dy);
+}
+/* The smallest push, in the screen, that takes a face's rectangle off every road polygon: the search walks outward in 2 px steps in 16 directions and takes the first step at which some direction is clear, the one most nearly away from the intersection's middle. A face already clear is not moved.
+   COST (slice 10 perf pass): the search only looks at polygons within the radius it is walking (a prefiltered list, widened to all of them only if nothing is clear inside it), and when the camera moves it starts 8 px short of the last answer (`hint`, the push it had a frame ago) rather than at 0. A static camera does no search at all (paintFace's cache). */
+export function pushFor(view, scene, canvas, rect, away, hint = null) {
+  const all = obstaclesOf(view, scene, canvas);
+  S_.rx = rect.x; S_.ry = rect.y; S_.rw = rect.w; S_.rh = rect.h; S_.placed = PLACED.get(view) ?? [];   // faces already placed this frame keep each other apart too
+  pushStats.searches++;
+  const R0 = hint != null ? hint + 24 : 80;
+  NEAR.length = 0;
+  for (const q of all) if (!(q.x1 < rect.x - R0 - 2 || q.x0 > rect.x + rect.w + R0 + 2 || q.y1 < rect.y - R0 - 2 || q.y0 > rect.y + rect.h + R0 + 2)) NEAR.push(q);
+  if (clearAt(NEAR, 0, 0)) return { dx: 0, dy: 0, t: 0 };
+  const al = Math.hypot(away[0], away[1]) || 1, start = hint != null ? Math.max(2, Math.floor((hint - 8) / 2) * 2) : 2;
+  const r = walk(NEAR, start, R0, away[0], away[1], al) ?? (start > 2 ? walk(NEAR, 2, start - 2, away[0], away[1], al) : null);
+  if (r) return r;
+  return walk(all, R0 + 2, 600, away[0], away[1], al) ?? { dx: 0, dy: 0, t: 0 };
+}
+/* A sign's placement, kept against the camera that made it: x, y, z to a centimetre, the heading to a twentieth of a degree and the zoom to a two-hundredth of a px/m, and the canvas size. Finer than a pixel's effect at any zoom the game uses (a centimetre is 0.3 px at 30 px/m); a camera that has not moved gets the same answer without a search. */
+const PLACE = new WeakMap();
+const CAM_KEY = { x: 100, y: 100, z: 100, rot: 20, k: 200 };   // quanta per unit; exported so the check can restate and sabotage them
+const keyOf = (scene, view, canvas, o) => { o.x = Math.round(scene.cam.x * CAM_KEY.x); o.y = Math.round(scene.cam.y * CAM_KEY.y); o.z = Math.round((scene.cam.z ?? 0) * CAM_KEY.z); o.r = Math.round(view.rot * CAM_KEY.rot); o.k = Math.round(view.k * CAM_KEY.k); o.w = canvas.w; o.h = canvas.h; return o; };
+const sameKey = (a, b) => a.x === b.x && a.y === b.y && a.z === b.z && a.r === b.r && a.k === b.k && a.w === b.w && a.h === b.h;
+/* The last answer is a good place to start only when the camera has moved a little (a drag or the chase's ease): under 5% in zoom and 5 degrees in heading. After a jump (a new zoom, a cut) the search starts cold, or a face would be left far from where the road lets it stand. */
+const nearKey = (a, b) => Math.abs(a.k - b.k) <= 0.05 * Math.max(a.k, 1) && Math.abs(a.r - b.r) <= 5 * CAM_KEY.rot && a.w === b.w && a.h === b.h;
+const KEY_NOW = { x: 0, y: 0, z: 0, r: 0, k: 0, w: 0, h: 0 };
 
 /* One sign, as TWO items. The post stays a layer-1 box in the world. The FACE is a layer-0.75 item: after the whole floor (layers 0 and 0.5) and before every car and person, which is a deliberate game choice, information first: under the game look a vehicle or a person is never hidden by a sign. It is a flat face turned to the camera, stood at the head of its post and then moved off the road (pushFor), with a thin leader down to the post's foot. */
 export function signItems(items, H, { s, j, geom, ctx, view, canvas, scene, k, audit, depthOf }) {
@@ -229,7 +279,15 @@ function paintFace(ctx, view, canvas, s, j, scene, k, geom) {
   const w = faceWidth(kind, S), Hh = faceHeight(kind, S, opts);
   const up = kind === "signal" ? 0.12 * S : 0;   // the top lens's glow reaches above the housing
   const rect = { x: post[0] - w / 2, y: post[1] - Hh - up, w, h: Hh + up };
-  const { dx, dy, t } = pushFor(view, scene, canvas, rect, [foot[0] - mid[0], foot[1] - mid[1]]);
+  const was = PLACE.get(s);
+  keyOf(scene, view, canvas, KEY_NOW);
+  let place;
+  if (was && sameKey(was.key, KEY_NOW)) { place = was; pushStats.hits++; }
+  else if (was && nearKey(was.key, KEY_NOW) && was.age < REFRESH && stillClear(view, scene, canvas, rect, was)) {
+    /* A camera that is moving a little: last frame's push is kept while it still clears the road (one rectangle test against the polygons), and searched afresh every REFRESH frames, so a face does not stay further out than it need. */
+    place = { key: { ...KEY_NOW }, dx: was.dx, dy: was.dy, t: was.t, age: was.age + 1 }; PLACE.set(s, place); pushStats.kept++;
+  } else { const r = pushFor(view, scene, canvas, rect, [foot[0] - mid[0], foot[1] - mid[1]], was && nearKey(was.key, KEY_NOW) ? was.t : null); place = { key: { ...KEY_NOW }, dx: r.dx, dy: r.dy, t: r.t, age: 0 }; PLACE.set(s, place); }
+  const { dx, dy, t } = place;
   const cx = post[0] + dx, top = post[1] - Hh + dy;
   { const list = PLACED.get(view) ?? []; list.push({ x0: rect.x + dx, y0: rect.y + dy, x1: rect.x + rect.w + dx, y1: rect.y + rect.h + dy }); PLACED.set(view, list); }
   if (t > 0) { ctx.strokeStyle = "rgba(70,74,82,0.9)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(foot[0], foot[1]); ctx.lineTo(cx, top + Hh); ctx.stroke(); }
@@ -271,7 +329,7 @@ export const RETURN_R = 5;     // m, the curb return's radius [invented, the spe
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 /* THE CORNERS, derived from the sidewalks the sim's map already has and cached on the sidewalks array: two sidewalks of different roads whose inner edges end at the same point (within 0.6 m) meet at a corner, and each edge leaves it along its own direction. The radius is RETURN_R and never more than the corner allows (the shorter edge, and 80% of it). Nothing of the sim's surface is moved: the fillet is asphalt painted INTO the block's corner, over the sidewalk. */
-const CORNERS = new WeakMap();
+const CORNERS = new WeakMap(), PREP = new WeakMap();
 export function cornersOf(sidewalks) {
   let list = CORNERS.get(sidewalks);
   if (list) return list;
@@ -331,8 +389,14 @@ function trimmed(w, trims) {
 
 /* The curb along every sidewalk in view and the asphalt fillet and curb line of every return in view, as items for drawFrame's list: layer 0.5, so they follow every floor item (the sidewalks included, which the fillets paint over) and precede every layer-1 one. */
 export function curbItems(items, { sidewalks, view, onScreen, audit, ctx, k, asphalt }) {
-  const corners = cornersOf(sidewalks), trims = new Map();
-  for (const c of corners) for (const e of c.ends) { if (!trims.has(e.wi)) trims.set(e.wi, []); trims.get(e.wi).push(e); }
+  let prep = PREP.get(sidewalks);
+  if (!prep) {   // the corners and every sidewalk's trimmed edge never change: built once per map
+    const corners = cornersOf(sidewalks), trims = new Map();
+    for (const c of corners) for (const e of c.ends) { if (!trims.has(e.wi)) trims.set(e.wi, []); trims.get(e.wi).push(e); }
+    prep = { corners, trims, edges: new Map() };
+    PREP.set(sidewalks, prep);
+  }
+  const { corners, trims, edges } = prep;
   const KEY = -1e12;
   const lineW = Math.max(2, 0.28 * k), P = [0, 0];
   const trace = (pts) => { ctx.beginPath(); pts.forEach((q, i) => { view.into(q.x, q.y, q.z ?? 0, P); i ? ctx.lineTo(P[0], P[1]) : ctx.moveTo(P[0], P[1]); }); };
@@ -340,7 +404,8 @@ export function curbItems(items, { sidewalks, view, onScreen, audit, ctx, k, asp
     let seen = false;
     for (let i = 0; i < w.inner.length && !seen; i++) seen = onScreen(w.inner[i].x, w.inner[i].y, w.inner[i].z ?? 0);
     if (!seen) return;
-    const pts = trimmed(w, trims.get(wi) ?? []);
+    let pts = edges.get(wi);
+    if (!pts) { pts = trimmed(w, trims.get(wi) ?? []); edges.set(wi, pts); }
     items.push({ layer: 0.5, key: KEY, tag: audit && { kind: "game-curb", layer: 0.5, id: w.id }, paint: () => {
       ctx.lineCap = "butt"; ctx.lineJoin = "round";
       trace(pts); ctx.strokeStyle = CURB_SHADE; ctx.lineWidth = lineW + 1.5; ctx.stroke();

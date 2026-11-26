@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { drawFrame } from "../../src/iso/draw.js";
 import { viewOf } from "../../src/iso/project.js";
-import { cornersOf, signPx, SPEED_MAX_PX, PLATE_TEXT_MIN_PX, SIGN_MIN_PX, SIGN_MAX_PX, PERSON_MIN_PX, BAR_MIN_PX, STOP_MIN_PX, RETURN_R, spriteStats } from "../../src/iso/gamelook.js";
+import { cornersOf, pushStats, signPx, SPEED_MAX_PX, PLATE_TEXT_MIN_PX, SIGN_MIN_PX, SIGN_MAX_PX, PERSON_MIN_PX, BAR_MIN_PX, STOP_MIN_PX, RETURN_R, spriteStats } from "../../src/iso/gamelook.js";
 import { lightAt, arrowAt } from "../../src/sim/signal.js";
 import { loadMap, groundFor } from "../../src/map/load.js";
 import * as MAPS from "../../src/map/samples.js";
@@ -454,6 +454,35 @@ export async function faceChecks(check, scenes) {
   check(plates >= 8, `EXPOSURE: ${plates} ALL WAY plates painted on the decision scenes`);
   check(minPx >= PLATE_TEXT_MIN_PX, `the ALL WAY text is at least ${PLATE_TEXT_MIN_PX} px (smallest ${minPx} px)`);
   check(narrow === 0, "every ALL WAY plate is as wide as its octagon");
+
+  /* THE PLACEMENT CACHE (the perf pass): a camera that has not moved gets its answer without a search, and one that has moved gets a new one that is still clear of the road. */
+  console.log("\n  20.6 THE PLACEMENT IS CACHED AGAINST THE CAMERA, AND A MOVED CAMERA IS PLACED AGAIN");
+  {
+    const base = scenes.find((x) => x.decision && x.type && x.type.includes("hazard")).scene, faceBoxes = (sc) => { const g = draw(sc, { look: "game" }); return { g, boxes: g.groups.map((gr) => { const f = g.fills.filter((q) => q.at > gr.start && q.at <= gr.end); return f.length ? bboxOf(f) : null; }).filter(Boolean) }; };
+    const overlap = (sc, boxes) => { const polys = roadPolys(sc); let w = 0; for (const b of boxes) { if (b.x1 < 0 || b.x0 > SIZE.w || b.y1 < 0 || b.y0 > SIZE.h) continue; for (const p of polys) w = Math.max(w, depthOf(p, b)); } return w; };
+    const A = faceBoxes(base);                                  // warms the cache for this camera
+    const s0 = pushStats.searches, h0 = pushStats.hits, t0 = pushStats.tests;
+    const A2 = faceBoxes(base);
+    const nFaces = A2.boxes.length;
+    check(nFaces >= 8 && A.boxes.some((b, i) => A.g.strokes.length >= 0 && b), `EXPOSURE: ${nFaces} faces on the decision scene`);
+    check(pushStats.searches === s0 && pushStats.tests === t0 && pushStats.hits - h0 >= nFaces, `a camera that has not moved does no search: the second identical frame ran ${pushStats.searches - s0} searches and ${pushStats.tests - t0} rectangle tests, and took ${pushStats.hits - h0} cached placements for ${nFaces} faces`);
+    check(A.g.raw.join("\n") === A2.g.raw.join("\n"), "and paints exactly what the searched frame painted (call for call)");
+    const moves = [["zoomed 1.4x", { ...base, k: base.k * 1.4 }], ["panned 4 m", { ...base, cam: { ...base.cam, x: base.cam.x + 3, y: base.cam.y + 3 } }], ["turned 25 degrees", { ...base, rot: base.rot + 25 }]];
+    for (const [name, sc] of moves) {
+      const a = pushStats.searches, B = faceBoxes(sc), ov = overlap(sc, B.boxes);
+      const shifted = B.boxes.some((b, i) => A.boxes[i] && (Math.abs(b.x0 - A.boxes[i].x0) > 1 || Math.abs(b.y0 - A.boxes[i].y0) > 1));
+      check(pushStats.searches > a && ov === 0 && shifted, `a camera ${name} is placed again (${pushStats.searches - a} searches), every face is clear of the road (worst overlap ${ov.toFixed(2)} px) and the faces are not where the old camera left them`);
+    }
+    /* a pan, frame by frame: every frame clear, and what each costs */
+    let worst = 0, tests = 0, searches = 0, n = 0; const kept0 = pushStats.kept;
+    for (let i = 1; i <= 40; i++) {
+      const sc = { ...base, cam: { ...base.cam, x: base.cam.x + i * 0.12, y: base.cam.y + i * 0.07 }, k: base.k * (1 + 0.002 * i), t: base.t + i * 0.05 };
+      const a = pushStats.tests, b = pushStats.searches, B = faceBoxes(sc);
+      worst = Math.max(worst, overlap(sc, B.boxes)); tests += pushStats.tests - a; searches += pushStats.searches - b; n++;
+    }
+    console.log(`        [M, this run] a 40-frame pan and zoom: ${(searches / n).toFixed(1)} searches and ${(tests / n).toFixed(0)} rectangle tests a frame (${pushStats.kept - kept0} placements kept while still clear); worst overlap ${worst.toFixed(2)} px`);
+    check(searches >= 2 * 8 && pushStats.kept - kept0 >= 100 && worst === 0, `EXPOSURE: on the moving camera the search ran again for ${searches} placements and ${pushStats.kept - kept0} were kept while still clear, in ${n} frames of 8 faces, and no frame left a face over the road (worst overlap 0 px)`);
+  }
 }
 
 function scName(sc) { return sc.type ? `${sc.type}#${sc.seed ?? ""}` : sc.j ? `map@${sc.j.node}` : "plain"; }
