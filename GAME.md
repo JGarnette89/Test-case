@@ -54,7 +54,8 @@ The decision point is the end of an acceleration lane, or the point where a merg
 - **Rounds are played in the player's own town as it grows.** Jay: "you play your own town as it grows." The fixed test maps are a stand-in until then.
 - **Building is picking a plot, not drawing roads.** Stars buy a plot in one of three sizes, small, medium or large ("3 is exactly my thoughts"). The generator (`src/map/generate.js`) fills it, joined to the existing roads, and a bigger plot is more intricate.
 - **"Drive through it" is a chained, predetermined route of decisions,** with the car driving itself between them. Jay: "Chained, predetermined route." It is not free driving.
-- **A round's payout is measured from how hard the decision was,** never priced by the plot's label (rule 1 below).
+- **A plot is generated, not authored (Jay: "I agree. Fundamental change in what we are trying to deliver").** DECISIONS 10.63's "mission areas are authored" does not apply to plots.
+- **A round's payout is measured from how hard the decision was,** never priced by the plot's label (rule 1 below). Jay: "Payout logic is sound, we'll adjust from there." The weights start `[invented]`.
 - The reasoning, the open points and the order: [PROPOSAL-YOUR-TOWN-2026-11-26.md](PROPOSAL-YOUR-TOWN-2026-11-26.md).
 
 ## Rules that hold for every change

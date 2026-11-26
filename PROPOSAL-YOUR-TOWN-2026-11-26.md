@@ -1,6 +1,6 @@
 # PROPOSAL: your own town, built from rewards (26 November 2026)
 
-**RULED IN DIRECTION (26 November): the town is IN the first release, and the player plays their own town as it grows.** Section 4's two points are still open, and section 7's order is the planner's. The standing instruction applies: "I want to avoid adding 50 half-cooked features" (DECISIONS 10.38). This is the layer AFTER the round loop is fun on its own (slices 9 and 10 first).
+**RULED IN DIRECTION (26 November): the town is IN the first release, and the player plays their own town as it grows.** Section 4's two points were ruled the same day (below). Section 7's order is the planner's. The standing instruction applies: "I want to avoid adding 50 half-cooked features" (DECISIONS 10.38). This is the layer AFTER the round loop is fun on its own (slices 9 and 10 first).
 
 ## 1. Jay's idea, in his words
 
@@ -35,10 +35,10 @@
 - **Traffic from inside the town.** A closed town is fed by its buildings and parked cars (`sim/parking.js`), as the generated city already is. The stand-in city took 6 to 8 s to build on Jay's phone `[M, DECISIONS 10.63]`. A starter town is far smaller; this is unmeasured.
 - **Saving the town** through `src/storage.js`. A town is a seed and a list of plots, so it stays small.
 
-## 4. Two things to settle before building
+## 4. Two things settled before building (both RULED by Jay, 26 November)
 
-- **DECISIONS 10.63 ruled mission areas AUTHORED, because "a generator cannot supply intent."** A plot is not a mission area: its intent is the tier the player paid for, which the generator CAN express as which features it places. This should be said and ruled, not slipped past.
-- **The reward must be measured, never priced by label.** A round's payout comes from how hard its decision actually was: the traffic at the lines, the conflicts, the gap the player took. A plot's price can be set by hand, `[invented]`. What it pays out cannot be (GAME.md rule 1).
+- **DECISIONS 10.63 ruled mission areas AUTHORED, because "a generator cannot supply intent."** A plot is not a mission area: its intent is the tier the player paid for, which the generator CAN express as which features it places. This should be said and ruled, not slipped past. **RULED, Jay: "First point I agree. Fundamental change in what we are trying to deliver."** For the game, a plot is generated; 10.63 still holds for authored mission areas, should they return.
+- **The reward must be measured, never priced by label.** A round's payout comes from how hard its decision actually was: the traffic at the lines, the conflicts, the gap the player took. A plot's price can be set by hand, `[invented]`. What it pays out cannot be (GAME.md rule 1). **RULED, Jay: "Payout logic is sound, we'll adjust from there."** The measure and its weights start `[invented]` and are tuned by Jay.
 
 ## 5. Questions for Jay, and his answers (26 November)
 
