@@ -78,3 +78,44 @@ Report:
 - what the juice looks like;
 - the sabotages;
 - **every departure from this spec, said plainly.**
+
+---
+
+## REVIEW OUTCOME (planner, 26 November 2026)
+
+**Shipped: e86dfbe (the executor's cdd549f) and 610dc04 (the review's changes), on the session tip.**
+
+**The sim change is the opt-in only.**
+- `accelFor(slider, v, grade, power = 1)`, with `top = (power === 1 ? T_MAX : power * T_MAX) - R`.
+- `sliderFor` passes power through. That was not in the spec, and it is needed for the autopilot's inversion.
+- `stepPlayerOn` and drive.js `stepNoLane` read `input.power ?? 1`.
+- At power 1 or absent, 113,967 `accelFor` and 22,413 `sliderFor` values hash the same as on 31a9d3d `[M, verify-rounds section 21]`.
+- Brake and coast are unchanged at every power. Sabotage (b), scaling the brake, fired "power never touches brake or coast" and "STOP is the unboosted full brake".
+
+**Launch `[M, verify-rounds, this review's run]`.**
+- From rest: 7.18 m/s^2 (2.5 x 2.973 - 0.25). The spec's 6.8 used a rounded T_MAX.
+- GO to 50 km/h on the flat: 2.00 s, against 5.45 s before `[D: accelFor integrated]`.
+- Peak acceleration is 1.000 of the boosted full throttle on all oracle runs.
+- No run exceeds its posted limit by more than 0.3 m/s. Residential legs post 40 km/h.
+
+**Executor departure, accepted: the corner cap.** On a turning path, inside its box, the autopilot aims at no more than 0.9 of the arc's clean speed (`sim/corner.js cornerOf`). Without it, boosted left turns went wide and made 35 new contacts. So turns get less of the boost than straights. This is for Jay to judge.
+
+**Verdicts against slice 8 (684 pairs).**
+- Oracle and creep: 0 changed.
+- Eager: 31 changed. Contacts were 5 before and are 5 now; five seeds newly in contact, and five cleared. The list prints in section 21.
+
+**Four lines the executor left red (correctly: it may not loosen). Each was revised by the planner on the evidence:**
+1. **Section 12's exposure:** "3 s past GO, not ended" became the first tick 2 m past the stop line `[instrument]`. The boosted round ends before 3 s. It now prints 1.10 s past GO, still running.
+2. **Section 18.5, verdicts equal to slice 6:** now the ORACLE only, 228 of 228 the same. Eager's change was expected by the spec, and section 21 compares it with slice 8 contact by contact.
+3. **"Every type with a hazard pool has at least 5 seeds":** the boost left four-way-straight 1 fair hazard seed in 6000 searched `[M]`. Lowering the floor would make a memorised round. So `rounds.js` now draws NO pool under `HAZARD_MIN` = 5 `[invented]`, and the check asserts that no such pool is ever drawn over 2000 sets.
+   - Sabotage: put back the old draw. It fired "no hazard pool under HAZARD_MIN (5) is ever drawn ... DRAWN: four-way-straight-hazard", 1 FAILED. Restored byte-identical, SHA-1 ed472bbb before and after.
+   - **The cost, for Jay:** hazard rounds fall from about 31% to 17.4% of rounds `[M]`, and only on two-way roads. A straight through a four-way stop no longer gets a hazard: the boosted car is too fast for a fair stop at the person.
+4. **"STOP then drag up":** the brake starts at 3.5 m/s `[instrument]`, not after a fixed 60 ticks that the boosted round outlives.
+
+**Checks.**
+- `node tools/verify-rounds.mjs`, alone, on the review's tree: ALL PASSED, 285 lines.
+- The executor's derived run did not finish under contention: 27 ok and 1 SLOW, then `7 of 7 passed` for verify-wheel, verify-drive, verify-contact, verify-screens, verify-core, verify-exam and verify-money.
+- The planner's `node tools/check.mjs --base 31a9d3d` (70 checks) is STILL RUNNING as this ships. **The deploy is UNGATED on that run.** The case for shipping: no sim check passes `power`, and at power 1 the arithmetic is proven bit-identical above. Its result is recorded below when it lands.
+- **Pre-existing, not slice 9's: verify-preroll fails on the unchanged 31a9d3d** ("test-highway-gen: 8 seeds with a 15 s pre-roll, 1 with a crash"). Its last recorded run was a pass on 14 November at 328418f. Nothing ran it between then and now. Recorded for a sim session; not fixed here.
+
+**Not verified:** the feel (camera lag, shake, speed lines, smoke). Jay judges it on the phone.
