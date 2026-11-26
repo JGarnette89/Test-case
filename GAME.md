@@ -48,6 +48,11 @@ The decision point is the end of an acceleration lane, or the point where a merg
   - whether the lane ran out (`sim/lanechange.js`, `map/accel.js`, `verify-merge` hold the sim's side).
 - **Not built.** It waits on the intersection version being right.
 
+## The next intersections (Jay, 26 November)
+
+- **"Adding roads more complex than a 2 or 4 way stop will bring this to the next level."** Jay's order: TRAFFIC LIGHTS first, then YIELD AND MERGE ("Id like to see 1 and 3 mostly"). A wide multi-lane road is not chosen yet.
+- **A left turn on a plain green light (no arrow) freezes IN THE INTERSECTION** (Jay, asked and answered). The car pulls in and waits where a good driver waits, then the scene freezes there, and the player picks the gap in oncoming traffic. If the light turns, they finish the turn once it is safe.
+
 ## Your town (Jay, 26 November): RULED IN DIRECTION, NOT BUILT
 
 - **The player builds a town from rewards, and it is in the first release.** Jay: "Yes the town is in the first release."
