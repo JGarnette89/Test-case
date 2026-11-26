@@ -1,6 +1,6 @@
 # PROPOSAL: your own town, built from rewards (26 November 2026)
 
-**A PROPOSAL, NOT RULED. Nothing is built from it until Jay answers section 5.** The standing instruction applies: "I want to avoid adding 50 half-cooked features" (DECISIONS 10.38). This is the layer AFTER the round loop is fun on its own (slices 9 and 10 first).
+**RULED IN DIRECTION (26 November): the town is IN the first release, and the player plays their own town as it grows.** Section 4's two points are still open, and section 7's order is the planner's. The standing instruction applies: "I want to avoid adding 50 half-cooked features" (DECISIONS 10.38). This is the layer AFTER the round loop is fun on its own (slices 9 and 10 first).
 
 ## 1. Jay's idea, in his words
 
@@ -42,12 +42,12 @@
 
 ## 5. Questions for Jay, and his answers (26 November)
 
-1. **Release (asked again, more specifically; open).** The first version people download, with ads, could ship in one of two ways:
+1. **Release: RULED, Jay: "Yes the town is in the first release."** It was asked as follows. The first version people download, with ads, could ship in one of two ways:
    - (a) the rounds alone, with the town added in a later update; or
    - (b) not until the town is in it.
 2. **"Actually drive through it": RULED, Jay: "Chained, predetermined route."** A route through the town is a fixed chain of decisions, and the car drives itself between them. Not free driving.
 3. **Plot sizes: RULED, Jay: "3 is exactly my thoughts."** Three sizes: small, medium and large.
-4. **Where rounds come from (asked again, more specifically; open).** Today every round is a random intersection on the project's fixed test maps. Once a player owns a town, should:
+4. **Where rounds come from: RULED, Jay: "My thinking is you play your own town as it grows."** Every round is in the player's own town, from the first round on. It was asked as follows. Today every round is a random intersection on the project's fixed test maps. Once a player owns a town, should:
    - (a) every round happen in their town; or
    - (b) a starting set stay on the fixed maps (before the player owns anything, or as a separate mode), with the town's rounds beside it?
 
@@ -59,3 +59,21 @@
 - One upgrade tier that adds a signal.
 
 It shows whether owning a place keeps a player coming back, before any of the expensive parts.
+
+## 7. What the rulings change, and the order (planner, 26 November)
+
+**The fixed test maps become a stand-in.** If rounds always come from the player's town, then:
+- the first round is played in a **starter town** the player owns from the start;
+- the round pools in `src/game/rounds.js`, measured on fixed maps today, have to be measured on any town;
+- a town has to give enough different decisions, or the rounds repeat. A starter town of one crossroads would repeat at once.
+
+So the starter town is a small generated neighbourhood: a few intersections of different kinds, a T with a stop and an all-way stop at least `[invented]`. Its size is measured by how many different decisions it gives, never chosen.
+
+**The order, each step something Jay can play:**
+1. **Rounds from any map.** The pool criteria run on a map's intersections, measured, not listed by hand. Proven on the existing test maps first, so nothing changes for the player yet.
+2. **A starter town.** Generated from a seed, saved through `src/storage.js`; every round is played in it.
+3. **Plots.** Stars buy a small, medium or large plot beside the town. `fillZone` fills it, joined to the roads around it, and its intersections join the round pool.
+4. **Size buys intricacy.** Medium and large plots bring signals, more lanes, crosswalks with people, and bus stops, from the sim's existing pieces.
+5. **The chained route.** A predetermined route through the town as a chain of decisions, the car driving itself between them.
+
+Slices 9 and 10 (the boost and the look) finish first.

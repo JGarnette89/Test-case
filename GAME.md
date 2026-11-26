@@ -48,6 +48,15 @@ The decision point is the end of an acceleration lane, or the point where a merg
   - whether the lane ran out (`sim/lanechange.js`, `map/accel.js`, `verify-merge` hold the sim's side).
 - **Not built.** It waits on the intersection version being right.
 
+## Your town (Jay, 26 November): RULED IN DIRECTION, NOT BUILT
+
+- **The player builds a town from rewards, and it is in the first release.** Jay: "Yes the town is in the first release."
+- **Rounds are played in the player's own town as it grows.** Jay: "you play your own town as it grows." The fixed test maps are a stand-in until then.
+- **Building is picking a plot, not drawing roads.** Stars buy a plot in one of three sizes, small, medium or large ("3 is exactly my thoughts"). The generator (`src/map/generate.js`) fills it, joined to the existing roads, and a bigger plot is more intricate.
+- **"Drive through it" is a chained, predetermined route of decisions,** with the car driving itself between them. Jay: "Chained, predetermined route." It is not free driving.
+- **A round's payout is measured from how hard the decision was,** never priced by the plot's label (rule 1 below).
+- The reasoning, the open points and the order: [PROPOSAL-YOUR-TOWN-2026-11-26.md](PROPOSAL-YOUR-TOWN-2026-11-26.md).
+
 ## Rules that hold for every change
 
 1. **NEVER AUTHOR THE ANSWER.** What happened in a round is what the sim's traffic did and what the player's detectors (`src/sim/events.js`) noticed. No round says "the player must wait 3 s". A round is a map plus a seed plus a car count, and when a round needs tension, the seed or the car count is chosen by a MEASURED property of the run, never typed in as a time.
