@@ -28,6 +28,7 @@ import { HONK_FOR } from "../sim/horn.js";
 import { CHECKS } from "../sim/checks.js";
 import { poseAt, groundAt as stage0Ground, LANE } from "./road.js";
 import { C } from "../theme.js";
+import * as GL from "./gamelook.js";
 
 /* Below this many pixels a metre the view is FAR (drawFrame): the whole
    city at once, drawn simply: a car is then under seven pixels long. */
@@ -125,6 +126,8 @@ export function dropFor(at, deg, grade, bm, boxes) {
   return -low;
 }
 export { boxCorners };
+/* What the game look borrows from this file (gamelook.js cannot import it back). */
+const GAME_HELPERS = { boxCorners, paintBox, paintShadow };
 /* Corner i of a box as a point, for the few places that want one. */
 const cornerOf = (b, i) => ({ x: b[3 * i], y: b[3 * i + 1], z: b[3 * i + 2] });
 /* Faces as corner indices, wound so the normal points outward. */
@@ -447,7 +450,9 @@ function sidewalkPiece(w, i0, i1) {
 }
 
 /* `skip` (DECISIONS 10.138) is a bisect for the device: the canvas's cost is rasterising, which a main-thread timeline cannot see, so a debug chip leaves part of the scene undrawn and the counter's `other` says what that part cost. null draws everything (the default, and what every check sees); "ground" leaves out the terrain cells; "height" paints only the floor (layer 0: ground and road surfaces), no cars, buildings or props; "all" paints no item at all. */
-export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = true, skip = null } = {}) {
+/* `look: "game"` (WORK-game-slice10) turns on the game's own paint for people, signs and intersections (iso/gamelook.js). Only Game.jsx passes it; absent or null, every branch below is skipped and the frame is what it always was. */
+export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = true, skip = null, look = null } = {}) {
+  const game = look === "game";
   const { roads, terrain, cam, k, tilt, props = [], actors = [], junctions = [], sidewalks = [], stops = [] } = scene;
   /* THE GROUND IS THE SCENE'S, not stage 0's hill: a map supplies its
      own (flat, for now), and a deck is wherever a road stands more than
@@ -625,6 +630,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = t
       if (seen) sidewalkItem(w, i0, poly);
     }
   }
+  if (game && !flat) GL.curbItems(items, { sidewalks, view, onScreen, audit, ctx, k, asphalt: shade(C.asphalt, UP, 0.45) });
   const lerp = (p, q, t) => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, z: p.z + (q.z - p.z) * t });
   let deckSpan = 0;   // the largest key span of any deck piece in view: how far past its centre a car on a deck must be keyed
   /* ONE ROAD SEGMENT ON SCREEN. A function of its own, called only past
@@ -811,13 +817,14 @@ export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = t
            head. Dark edges keep it off the asphalt. */
         if (l.kind === "signal") {
           const lit = movementLight(j.signal, l.base, l.intent ?? "straight", scene.t ?? 0, scene.lights?.[j.k]?.live) ?? "red";
-          const w = Math.min(20, Math.max(5, 0.9 * k));
+          const w = game ? GL.stopLineWidth(k) : Math.min(20, Math.max(5, 0.9 * k));
           ctx.lineWidth = w + 2; ctx.strokeStyle = "rgba(10,10,12,0.85)"; seg(ctx, P, l.a, l.b);
           ctx.lineWidth = w; ctx.strokeStyle = LINE_LIT[lit] ?? LINE_LIT.red; seg(ctx, P, l.a, l.b);
           continue;
         }
+        if (game && l.kind === "yield") { GL.paintTeeth(ctx, view, l, j, k); continue; }
         if (l.kind === "stop" || l.kind === "yield") {
-          ctx.lineWidth = Math.min(14, Math.max(3.5, 0.7 * k));
+          ctx.lineWidth = game ? GL.stopLineWidth(k) : Math.min(14, Math.max(3.5, 0.7 * k));
           ctx.strokeStyle = "rgba(252,252,246,0.98)";
           /* A yield line is broken -- the line a driver may roll over -- where a stop line is solid. */
           if (l.kind === "yield") ctx.setLineDash([Math.max(3, 0.6 * k), Math.max(3, 0.5 * k)]);
@@ -826,7 +833,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = t
           continue;
         }
         /* A crosswalk bar is half a metre of paint. */
-        ctx.lineWidth = Math.max(1.5, 0.5 * k);
+        ctx.lineWidth = game ? GL.crossBarWidth(view, l, GL.neighbourLine(j.lines, l)) : Math.max(1.5, 0.5 * k);
         ctx.strokeStyle = "rgba(250,250,242,0.95)";
         seg(ctx, P, l.a, l.b);
       }
@@ -904,6 +911,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = t
       const { isLight, postH, post, lens, housing, arrowLens, face, speedBoard, oneWay, oneWayBar, band, plate } = geom;
       items.push({ layer: 1, key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01, tag: audit && { kind: "sign", at: s.at }, paint: () => {
         paintBox(ctx, view, post, "#9a9da3");
+        if (game) { GL.paintSign(ctx, view, s, j, scene, k, geom); return; }
         if (s.kind === "speed-limit") {
           paintBox(ctx, view, speedBoard, "#f4f4ee");
           /* The number, projected onto the board's centre and sized to it. */
@@ -977,6 +985,7 @@ export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = t
     }
     /* A PERSON: a narrow upright box, 0.5 m square and 1.7 m tall. */
     if (a.ped) {
+      if (game) { items.push({ layer: 1, key: carKey(at), tag: audit && { kind: "ped", id: a.id, at }, paint: GL.personPaint(GAME_HELPERS, { ctx, view, a, at, deg, t: scene.t ?? 0, k }) }); return; }
       /* Struck: lying on the road, flashing like a wreck's hazards. */
       const person = a.struck ? boxCorners(at, deg, 0, { l: 1.7, w: 0.5, h: 0.3 }) : boxCorners(at, deg, 0, { l: 0.5, w: 0.5, h: 1.7 });
       const colour = a.struck ? (Math.floor((scene.t ?? 0) * 2) % 2 ? "#ff8a1e" : "#5a2a08") : PED_COLOURS[(a.n ?? 0) % PED_COLOURS.length];

@@ -58,8 +58,8 @@ const levelOf = (poly, x, y) => poly.reduce((m, p) => { const d = (p.x - x) ** 2
 
 /* Audit one frame: every car against every surface whose footprint it
    is inside. Returns the violations. */
-function audit(scene, canvas, rot) {
-  const out = drawFrame(stub, canvas, { ...scene, rot }, { audit: true });
+function audit(scene, canvas, rot, look = null) {
+  const out = drawFrame(stub, canvas, { ...scene, rot }, { audit: true, ...(look ? { look } : {}) });
   const order = out.order;
   const bad = [], belowGround = [];
   /* People on foot stand on the same surfaces cars do (sim/peds.js). */
@@ -86,10 +86,10 @@ function audit(scene, canvas, rot) {
 }
 
 const ROTS = Array.from({ length: 24 }, (_, i) => i * 15);
-const summarise = (name, scene, canvas, cams) => {
+const summarise = (name, scene, canvas, cams, look = null) => {
   let bad = [], below = [], frames = 0, carsSeen = 0;
   for (const cam of cams) for (const rot of ROTS) {
-    const r = audit({ ...scene, cam }, canvas, rot);
+    const r = audit({ ...scene, cam }, canvas, rot, look);
     bad = bad.concat(r.bad); below = below.concat(r.belowGround); frames++; carsSeen += r.cars;
   }
   const kinds = {};
@@ -138,6 +138,14 @@ const summarise = (name, scene, canvas, cams) => {
   for (const x of r.bad) byCar[x.car] = (byCar[x.car] ?? 0) + 1;
   const worst = Object.entries(byCar).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([c, n]) => `${c} x${n}`).join(", ");
   check(r.bad.length === 0, `on the test map no car is ever drawn under the surface it stands on or over a deck it is under, at any of 24 rotations from 4 cameras${r.bad.length ? ` (${worst})` : ""}`);
+  /* THE GAME LOOK (WORK-game-slice10): the same scene, the same cameras and rotations, with the people and signs and curb returns the game paints. A person is still layer 1 by its foot, so no person or car is under a surface it stands on. */
+  {
+    const rg = summarise("map", scene, canvas, cams, "game");
+    const au = drawFrame(stub, canvas, { ...scene, cam: cams[0], rot: 0 }, { audit: true, look: "game" });
+    const game05 = au.order.filter((o) => o.layer === 0.5).length;
+    check(game05 > 0 && rg.carsSeen > 0, `EXPOSURE (game look): the audited frame carries ${game05} layer-0.5 game items (curbs and returns) and ${(rg.carsSeen / rg.frames).toFixed(0)} cars and people a frame`);
+    check(rg.bad.length === 0, `with look: "game", on the test map no car or person is drawn under the surface it stands on or over a deck it is under, at 24 rotations from 4 cameras (${rg.frames} frames, ${rg.bad.length} misdrawn)`);
+  }
   const atJunctions = r.bad.filter((x) => x.on.startsWith("junction")).length, onRoads = r.bad.filter((x) => x.on.startsWith("road")).length, decks = r.bad.filter((x) => x.on.startsWith("deck")).length;
   console.log(`   of which at junctions ${atJunctions}, on roads ${onRoads}, decks ${decks}`);
   /* The land model's defect, not the painter's: named so it is never mistaken for either. */
@@ -191,14 +199,14 @@ const summarise = (name, scene, canvas, cams) => {
     const cams = [];
     for (const fx of [0.2, 0.5, 0.8]) for (const fy of [0.2, 0.5, 0.8]) cams.push({ x: ext.x + ext.w * fx, y: ext.y + ext.h * fy, z: 0 });
     let bad = [], frames = 0, seen = 0, pedsSeen = 0;
-    for (const cam of cams) for (const k of KS) for (const rot of R) {
-      const r = audit({ ...scene, cam, k }, canvas, rot);
+    for (const look of [null, "game"]) for (const cam of cams) for (const k of KS) for (const rot of R) {
+      const r = audit({ ...scene, cam, k }, canvas, rot, look);
       bad = bad.concat(r.bad.map((b) => ({ ...b, k }))); frames++; seen += r.cars;
     }
     if (peds) pedsSeen = actors.filter((a) => a.ped).length;
     const worst = bad.slice(0, 4).map((b) => `${b.car} at k ${b.k} rot ${b.rot}: ${b.why}`).join("; ");
     check(bad.length === 0 && seen > 0 && (!peds || pedsSeen > 0),
-      `${name}, the free camera: ${frames} frames over 9 positions, zoom ${FREE_K.min} to ${FREE_K.max} px/m across both detail thresholds, 5 rotations -- ${seen} car${peds ? " and person" : ""} placements audited${peds ? ` (${pedsSeen} people on foot)` : ""}, ${bad.length} misdrawn${worst ? ` (${worst})` : ""}`);
+      `${name}, the free camera, default and game look: ${frames} frames over 9 positions, zoom ${FREE_K.min} to ${FREE_K.max} px/m across both detail thresholds, 5 rotations -- ${seen} car${peds ? " and person" : ""} placements audited${peds ? ` (${pedsSeen} people on foot)` : ""}, ${bad.length} misdrawn${worst ? ` (${worst})` : ""}`);
   }
 }
 

@@ -23,6 +23,7 @@
 import { BODY, resolveBody } from "../src/iso/body.js";
 import { GAME_BODY, withGameBody } from "../src/game/look.js";
 import { readFileSync } from "node:fs";
+import { gameLookChecks } from "./lib/game-look-check.mjs";
 import { isDeepStrictEqual } from "node:util";
 import { TYPES, POOLS_RUN, drawSet, SET_SIZE, HAZARD_MIN } from "../src/game/rounds.js";
 import { toDecision, toDecisionFrom, startRound, roundTick, press, release, setTarget, stopNow, clearOfBox, roundWorld, verdictOf, timingStars, timingOf, UNDUE, LAUNCH_SPAN, AT_LINE, FRONT_CLEAR, LIMIT, KMH } from "../src/game/round.js";
@@ -1305,6 +1306,10 @@ console.log("\n21. THE LAUNCH IS A BOOST (slice 9): one opt-in sim change, power
     check(Math.max(...rows) <= 1.02, `STOP is the unboosted full brake and no stronger: the worst tick is ${Math.max(...rows).toFixed(3)} of -accelFor(-1, v) (at most 1.02 [instrument]); the weakest is ${Math.min(...rows).toFixed(3)} (section 20 holds the lower bound 0.9) [M, this run]`);
   }
 }
+
+/* 22. THE GAME LOOK (slice 10): people, signs and the intersection as the game paints them, and the default left alone. */
+console.log("\n22. THE GAME LOOK (WORK-game-slice10)");
+await gameLookChecks(check);
 
 console.log(`\n${failed === 0 ? "ALL PASSED" : `${failed} FAILED`}`);
 process.exit(failed ? 1 : 0);

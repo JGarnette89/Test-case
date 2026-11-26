@@ -245,7 +245,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     const shk = boost.shake > 0 ? shakeOf(boost, now / 1000) : null;
     ctx.save();
     if (shk) ctx.translate(shk.x, shk.y);
-    drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: { ...cam, id: null }, rot: cam.rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: world.t + carry, lights: world.lights });
+    drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: { ...cam, id: null }, rot: cam.rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: world.t + carry, lights: world.lights }, { look: "game" });   // the game's own paint for people, signs and intersections (iso/gamelook.js)
 
     /* THE SKID MARKS: over the road, AFTER the cars (drawFrame is one painter's pass this slice may not edit, so they cannot go under
        the cars). Low alpha dark lines; they stop short of the player's own footprint (stage.js SKID_REAR), so nothing is drawn across
