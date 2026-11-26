@@ -114,3 +114,56 @@ Report:
 - the sabotages;
 - what you could not do;
 - **every departure from this spec, said plainly.**
+
+---
+
+## REVIEW OUTCOME (planner, 26 November 2026)
+
+**Shipped: c18cba0, 5ae72f1 and c57b380** (the executor's 8692166, 6bc6ef9 and a3fac94, rebased onto slice 9's 7fd4556), plus this review's commit.
+
+**What it is.**
+- An opt-in `look: "game"` in `drawFrame`. Only Game.jsx passes it.
+- All new paint lives in `src/iso/gamelook.js`.
+- With no look given, the call log equals the unmodified draw.js of 9074f5e on 19 of 19 scenes. This is a check line, and the old file is loaded from git.
+
+**Two review rounds.**
+1. **Sign faces covered the box.** In the executor's own screenshot f1-s7-r0.png, the four STOP faces stood over the intersection and one hid Victor, the car the round turns on.
+   - Now a face is moved off every road ribbon and junction surface by a search over the projected polygons, with a leader line to its post.
+   - Faces paint at layer 0.75: after the floor, before every car and person. Information first.
+   - The ALL WAY plate is octagon-wide with 9 px text, and speed boards are capped at 30 px.
+   - New lines: worst overlap 0.00 px; no two faces overlap; every face is painted before every car and person.
+   - Sabotage (the face put back over its post) fired the overlap, the moved-exposure and the face-pair lines.
+2. **The look doubled the frame loop's script time.** Planner's harness, Chromium, Pixel 7 profile, CPU x4: median 5.8-6.5 ms became 9.5-11.9 ms, p90 8 became 13.6-24.2 ms `[M]`.
+   - The profile blamed the per-frame placement search (`overlaps`) and garbage collection from per-frame polygons.
+   - The fixes: placements are cached against the camera; road polygons are typed arrays projected in place; curb geometry is built once per map.
+   - After `[M, executor, seeded, 3 runs each, back to back]`:
+     - at the freeze, +1.0 ms median and +1.7 ms p90 over base, within the planner's bar `[invented]` of 1.5 and 3;
+     - while the camera moves, +1.6 ms median, slightly over the bar, and +2.5 ms p90, inside it.
+   - **Flagged:** fewer frames fit the same window, so non-script frame cost (rasterising) is up, and this metric does not see it. Jay's phone is the test.
+   - Sabotage (dropping k from the placement cache key) fired the overlap line and the zoomed and panned re-placement lines.
+
+**Merge.**
+- Game.jsx conflicted with slice 9's shake around the same `drawFrame` call; both are kept.
+- verify-rounds conflicted with slice 9's section 21; both are kept, and the look's section is 22.
+
+**One line went red on the combined tree:** the face-count exposure floor (100), at 94.
+- Slice 9 emptied the four-way-straight hazard pool, whose scenes carried four STOP faces each.
+- The floor was NOT lowered. The sample was widened with each type's first `wait` seed: 122 faces on 20 scenes, and all section 22 lines pass `[M, tools/scratch/slice10/runlook.mjs, which runs the same gameLookChecks]`.
+- Sections 1-21 passed on that run (412 ok, the one FAIL being this line).
+
+**Checks.**
+- `node tools/check.mjs verify-paint verify-screens verify-core` on the combined tree: `3 of 3 passed`.
+- The executor's derived run, on 8692166 before the review rounds: `15 of 18 passed`.
+  - verify-rounds and verify-start timed out at the cap under 3-way load; each passed alone.
+  - verify-preroll failed. That failure is pre-existing: the planner reproduced it on 31a9d3d (slice 9's REVIEW OUTCOME).
+- Since then only gamelook.js and the check have changed, and the default path is held identical by section 22's call-log line.
+- **The deploy is ungated on a full derived rerun of the final tree.**
+
+**Departures accepted:**
+- the signal's size is measured on its long side;
+- every person's legs swing on the clock, standing or walking;
+- the crosswalk bars sit on the sim's 1 m zebra lines;
+- the protected-left lens is "cannot tell" (no map has one in view);
+- a moving camera keeps a face's push for up to 12 frames, so the push is not minimal every frame.
+
+**For Jay** (all `[invented]`): continental crosswalks, the ALL WAY plate's colours, a yield sign with no text, shark's teeth for yield lines, the hi-vis people palette, and the thin leader lines from posts to faces.

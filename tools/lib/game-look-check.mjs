@@ -142,7 +142,8 @@ export async function gameLookChecks(check, { base = "9074f5e" } = {}) {
   /* ---- the scenes ---- */
   const hz = roundScenes(4);
   const peopleSeen = hz.reduce((n, s) => n + (s.world.peds ?? []).length, 0);
-  const plain = TYPES.map((t) => plainScene(t, t.pools.now[0]));
+  /* SLICE 10 REVIEW, after slice 9 emptied the four-way-straight hazard pool: the first `wait` seed of each type too, so the faces sampled stay over the floor (94 without them [M]). */
+  const plain = TYPES.flatMap((t) => [plainScene(t, t.pools.now[0]), ...(t.pools.wait.length ? [plainScene(t, t.pools.wait[0])] : [])]);
   const tm1 = mapScene("testMap1"), loop = mapScene("testLoop"), signs = mapScene("testSigns");
   console.log(`        scenes: ${hz.length} hazard decision scenes carrying ${peopleSeen} people on foot (${[...new Set(hz.map((s) => s.type))].join(", ")}), ${plain.length} plain freezes, test map 1 (signals), the loop (one way, do not enter), the signs map (yield)`);
 
