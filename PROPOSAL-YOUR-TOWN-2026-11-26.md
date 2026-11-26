@@ -40,14 +40,16 @@
 - **DECISIONS 10.63 ruled mission areas AUTHORED, because "a generator cannot supply intent."** A plot is not a mission area: its intent is the tier the player paid for, which the generator CAN express as which features it places. This should be said and ruled, not slipped past.
 - **The reward must be measured, never priced by label.** A round's payout comes from how hard its decision actually was: the traffic at the lines, the conflicts, the gap the player took. A plot's price can be set by hand, `[invented]`. What it pays out cannot be (GAME.md rule 1).
 
-## 5. Questions for Jay
+## 5. Questions for Jay, and his answers (26 November)
 
-1. Is this the first release of the short game, or the layer after it?
-2. **"Actually drive through it":**
-   - chained decisions along a route through your town, with the car driving itself between them; or
-   - free driving, as on `#/map`?
-3. Plot sizes and tiers: how many? (The proposal is three: small, medium, large.)
-4. Does the town replace the current rounds, or sit beside them, e.g. the first set on fixed maps and your town after?
+1. **Release (asked again, more specifically; open).** The first version people download, with ads, could ship in one of two ways:
+   - (a) the rounds alone, with the town added in a later update; or
+   - (b) not until the town is in it.
+2. **"Actually drive through it": RULED, Jay: "Chained, predetermined route."** A route through the town is a fixed chain of decisions, and the car drives itself between them. Not free driving.
+3. **Plot sizes: RULED, Jay: "3 is exactly my thoughts."** Three sizes: small, medium and large.
+4. **Where rounds come from (asked again, more specifically; open).** Today every round is a random intersection on the project's fixed test maps. Once a player owns a town, should:
+   - (a) every round happen in their town; or
+   - (b) a starting set stay on the fixed maps (before the player owns anything, or as a separate mode), with the town's rounds beside it?
 
 ## 6. The smallest version that tests the idea
 
