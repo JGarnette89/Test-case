@@ -428,7 +428,7 @@ function stepNoLane(me, input, world, dt) {
   const paved = pavedAt(course, me.at) === true;
   const revFrom = reversePull(me, input.slider, world.t);
   const reversing = revFrom != null && world.t - revFrom >= REV_DWELL && (me.v ?? 0) <= 0.1 && d < INOPERABLE;
-  let a = accelFor(slider, me.v, 0) - (paved ? 0 : 1.5);
+  let a = accelFor(slider, me.v, 0, input.power ?? 1) - (paved ? 0 : 1.5);
   let v = Math.max(0, Math.min(paved ? V_MAX : V_MAX / 4, me.v + a * dt));
   if (d > 0) v = Math.min(v, damagedTop(d));
   let h = (me.at.heading * Math.PI) / 180, move = v;

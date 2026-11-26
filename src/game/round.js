@@ -293,7 +293,7 @@ export function roundTick(rs, { held } = {}) {
   let me = rs.me, world = rs.world;
   const phase = rs.phase === "waiting" ? "hold" : rs.phase === "gone" ? "go" : "approach";
   const inp = autoInput(me, world, { task: def.task, phase, target: rs.target, stop: rs.stop });
-  me = stepDriver({ ...me, signal: inp.signal }, { steer: inp.steer, slider: inp.slider, assist: 0 }, world, DT);
+  me = stepDriver({ ...me, signal: inp.signal }, { steer: inp.steer, slider: inp.slider, assist: 0, power: inp.power }, world, DT);
   let w = step(withDriver(world, me));
   const c = playerContact(w, me);
   world = c.world;

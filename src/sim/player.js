@@ -78,14 +78,15 @@ export function holdBand(v, grade = 0) {
    band and staying in it as it climbs with the speed and the hill:
    something the player DOES, which is what makes smoothness a skill
    the sheet can read. Continuous and monotone in the slider. */
-export function accelFor(slider, v, grade = 0) {
+export function accelFor(slider, v, grade = 0, power = 1) {
   const R = resistance(v, grade), coast = -R;
   if (slider < -NEUTRAL) {
     const frac = (-slider - NEUTRAL) / (1 - NEUTRAL);
     return coast - frac * BRAKE_MAX;
   }
   if (slider <= NEUTRAL) return coast;
-  const top = T_MAX - R;                                    // full throttle's net: negative on a hill steeper than the engine
+  /* full throttle's net: negative on a hill steeper than the engine. */
+  const top = (power === 1 ? T_MAX : power * T_MAX) - R;       // OPT-IN `power`: the game's boost after GO; absent or 1 is the old expression, bit for bit
   const { lo, hi } = holdBand(v, grade);
   if (lo <= NEUTRAL) return coast + ((slider - NEUTRAL) / (1 - NEUTRAL)) * (top - coast);   // no room for a band (downhill): one ramp
   if (slider < lo) return coast * ((lo - slider) / (lo - NEUTRAL));
@@ -98,13 +99,13 @@ export function accelFor(slider, v, grade = 0) {
    the one position that gives `a` at this speed and grade -- on the
    brake, in the coast band, or even on the throttle when the road takes
    more than the stop needs. Clamped to the slider's ends. */
-export function sliderFor(a, v, grade = 0) {
+export function sliderFor(a, v, grade = 0, power = 1) {
   let lo = -1, hi = 1;
   if (a <= accelFor(-1, v, grade)) return -1;
-  if (a >= accelFor(1, v, grade)) return 1;
+  if (a >= accelFor(1, v, grade, power)) return 1;
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
-    if (accelFor(mid, v, grade) < a) lo = mid; else hi = mid;
+    if (accelFor(mid, v, grade, power) < a) lo = mid; else hi = mid;
   }
   return (lo + hi) / 2;
 }
@@ -302,7 +303,7 @@ export function stepPlayerOn(me, input, geom, dt) {
   const onRoad = geom.paved ?? (me.off >= geom.edges.left - 0.5 && me.off <= geom.edges.right + 0.5);
   const grade = geom.gradeAt ? geom.gradeAt(me.s) : 0;
   const inBox = !!geom.box && me.s >= geom.box[0] && me.s <= geom.box[1];
-  let a = accelFor(input.slider, me.v, grade) - (onRoad ? 0 : 1.5);
+  let a = accelFor(input.slider, me.v, grade, input.power ?? 1) - (onRoad ? 0 : 1.5);
   let kappa = 0, lat = 0, scrub = 0;
   if (inBox) {
     kappa = geom.arcAt ? geom.arcAt(me.s) : 0;

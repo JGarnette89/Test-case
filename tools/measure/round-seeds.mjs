@@ -113,11 +113,11 @@ const main = !!process.argv[1] && process.argv[1].endsWith("round-seeds.mjs");
 if (main) {
   const ids = args.filter((a) => !a.startsWith("--"));
   const opt = (name, d) => (args.find((a) => a.startsWith(`--${name}=`)) ?? `--${name}=${d}`).split("=")[1];
-  const COUNTS = opt("cars", "4,8,12").split(",").map(Number), SEEDS = Number(opt("seeds", 200));
+  const COUNTS = opt("cars", "4,8,12").split(",").map(Number), SEEDS = Number(opt("seeds", 200)), FROM = Number(opt("from", 1));   // --from: the first seed of a --hazard search, so a long search can be split across processes (slice 9)
   if (args.includes("--hazard")) {
     for (const type of TYPES.filter((t) => !ids.length || ids.includes(t.id))) {
       const ht = type.hazardType, rows = [], why = {};
-      for (let seed = 1; seed <= SEEDS; seed++) { const r = classifyHazard(ht, ht.cars, seed); rows.push(r); if (!r.pool) why[r.reason] = (why[r.reason] ?? 0) + 1; }
+      for (let seed = FROM; seed <= SEEDS; seed++) { const r = classifyHazard(ht, ht.cars, seed); rows.push(r); if (!r.pool) why[r.reason] = (why[r.reason] ?? 0) + 1; }
       const pool = rows.filter((r) => r.pool === "hazard");
       console.log(`${ht.id.padEnd(26)} cars ${ht.cars}: hazard ${pool.length} of ${SEEDS}, rejected ${JSON.stringify(why)}; strikes under no stop ${pool.filter((r) => r.struck).length}`);
       console.log(`  HAZARDS ${JSON.stringify({ id: type.id, cars: ht.cars, seeds: pool.map((r) => r.seed) })}`);

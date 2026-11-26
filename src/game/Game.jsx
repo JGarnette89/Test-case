@@ -23,7 +23,7 @@ import { Play, RotateCcw, ChevronRight } from "lucide-react";
 import { sceneFor, actorsOf } from "../apps/MapRoad.jsx";
 import { withGameBody } from "./look.js";
 import { drawSet, SET_SIZE } from "./rounds.js";
-import { sceneArgs, toDecision, press, setTarget, stopNow, roundTick, verdictOf, clearOfBox } from "./round.js";
+import { LIMIT, sceneArgs, toDecision, press, setTarget, stopNow, roundTick, verdictOf, clearOfBox } from "./round.js";
 import { offsetOf, thumbTarget, zoneRect, rangeOf, isTap, DEAD } from "./control.js";
 import { END_WORDS, TASK_WORDS, delayWords, reactionWords } from "./words.js";
 import { DT } from "../sim/crossing.js";
@@ -36,6 +36,8 @@ import { INTRO_END, RING_MIN_PX, REPLAY_RATE, introAt, frameCamera, decisionFram
 import { panFree, pinchFree } from "../iso/freecam.js";
 import { newBody } from "../iso/body.js";
 import { BUILD } from "../iso/perf.js";
+import { CAR } from "../sim/traffic.js";
+import { newBoost, boostStep, isHard, lagOf, shakeOf, streaksOf, spawnPuffs, PUFF_S } from "./boost.js";
 
 const DPR_CAP = 2;
 const AFTER_END = 600;    // ms the round keeps drawing after it ends, so the player sees what happened [invented; slice 4: from 1000]
@@ -79,6 +81,9 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
   /* A TAP AFTER GO IS STOP (slice 8): the touch that might be one ({ id, t0, x, y, moved }), anywhere on the screen once the car is gone. Decided at lift (control.js isTap). */
   let tap = null;
   let chase = null;   // the chase camera, started at GO
+  /* THE BOOST'S FEEL (boost.js, slice 9): the camera's trail, the shake, the speed lines and the smoke, all a function of this closure variable and the car's own
+     acceleration. Never React state. */
+  let boost = newBoost();
   /* THE CAMERA SHOWN: { x, y, z, k, rot }, eased toward the decision frame; `userCam` is the player's own (pan and pinch) and wins while set. */
   let shown = null, userCam = null, goCam = null, pinch = null;
   const ptrs = new Map();   // pointer id -> { x, y }: the fingers that are DRAGGING (never the one holding the button)
@@ -199,6 +204,8 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     if (endAt != null && now - endAt >= AFTER_END) { stop(); onEnd(verdictOf(rs)); return; }
 
     const me = rs.me;
+    /* THE BOOST's state for this frame: hard acceleration after GO, and only then (boost.js isHard). */
+    boost = boostStep(boost, rs.phase === "gone" && !rs.end && isHard(me), dt);
     /* THE ARRIVAL OF THE WORLD (slice 6; Jay: "it should actually be the most visually busy moment"): over the intro the drawn world is the sim's own
        last REPLAY seconds, recorded by round.js, played at REPLAY_RATE x (stage.js replayAt) and ending on the frozen world exactly. Every other
        road user moves and its body moves with it; the player's own car is the screech, below. A tap during the intro skips to its end. */
@@ -230,7 +237,14 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       const b = ease(Math.min(1, (performance.now() - (goneAt ?? now)) / BLEND));
       cam = { x: dec.x + (chase.x - dec.x) * b, y: dec.y + (chase.y - dec.y) * b, z: dec.z + (chase.z - dec.z) * b, rot: norm(dec.rot + norm(chase.rot - dec.rot) * b) };
       k = kDec + (kChase - kDec) * b;
+      /* THE CAMERA TRAILS the car at the launch's peak (up to 3 m, back over ~0.6 s): the view is pulled back along the car's heading, so the car pulls away up the screen. */
+      const lag = lagOf(boost);
+      if (lag > 0) { const hh = (p.heading * Math.PI) / 180; cam = { ...cam, x: cam.x - Math.cos(hh) * lag, y: cam.y - Math.sin(hh) * lag }; }
     }
+    /* THE SHAKE: while the launch's shake lasts (at most 2 px, ~0.4 s) the whole world frame is offset; the HUD below is drawn after the restore, steady. */
+    const shk = boost.shake > 0 ? shakeOf(boost, now / 1000) : null;
+    ctx.save();
+    if (shk) ctx.translate(shk.x, shk.y);
     drawFrame(ctx, size, { roads: sc.roads, terrain: sc.terrain, cam: { ...cam, id: null }, rot: cam.rot, k, tilt: false, actors, groundAt: sc.ground, junctions: sc.junctions, sidewalks: sc.sidewalks, stops: sc.stops, props: sc.props, t: world.t + carry, lights: world.lights });
 
     /* THE SKID MARKS: over the road, AFTER the cars (drawFrame is one painter's pass this slice may not edit, so they cannot go under
@@ -245,6 +259,22 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       line.forEach((q, i) => { const [qx, qy] = view.P(q.x, q.y, q.z); if (i) ctx.lineTo(qx, qy); else ctx.moveTo(qx, qy); });
       ctx.stroke();
     }
+    /* TIRE SMOKE: for the first 0.4 s of a launch, puffs from the rear wheels (boost.js spawnPuffs), grey, growing and fading as they age. */
+    if (boost.on) { const mine = actors.find((a) => a.player); if (mine) boost = spawnPuffs(boost, mine, CAR); }
+    for (const pf of boost.puffs) {
+      const [qx, qy] = view.P(pf.x, pf.y, pf.z), u = pf.age / PUFF_S;
+      ctx.fillStyle = `rgba(225,225,228,${(0.5 * (1 - u)).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(qx, qy - u * 0.9 * k, (0.5 + 1.1 * u) * k, 0, Math.PI * 2); ctx.fill();
+    }
+    /* SPEED LINES: streaks at the screen's edges, their count and length rising with the car's speed, only while the car is boosting (boost.js streaksOf). */
+    if (boost.k > 0) {
+      ctx.lineWidth = 2; ctx.lineCap = "round";
+      for (const sl of streaksOf(boost, me.v, LIMIT, size, now / 1000)) {
+        ctx.strokeStyle = `rgba(255,255,255,${sl.alpha.toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(sl.x, sl.y0); ctx.lineTo(sl.x, sl.y1); ctx.stroke();
+      }
+    }
+    ctx.restore();
     /* THE RELEVANT TRAFFIC, ringed (stage.js relevantIds: conflicts with the player's route, not past it, and at its line, in the box or
        arriving within a few seconds), recomputed from the drawn world every frame, as MapRoad rings a picked driver. */
     if (rs.phase !== "gone") {

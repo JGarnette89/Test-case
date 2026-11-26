@@ -65,12 +65,12 @@ const DEFS = [
    and are not touched. */
 const EXIT = { straight: "N", left: "W", right: "E" };
 export const HAZARD_P = 0.35;   // the chance a round of a set is a hazard round, from the types that have a pool [invented, the spec's]
-export const HAZARDS_RUN = "[M, tools/measure/round-seeds.mjs --hazard --seeds=1500, run 2026-11-25 (slice 8), at 4 cars, found by the search and kept if a stop at REACTION_FLOOR + 0.5 s rests with the crosswalk ahead of the nose: straight-4way 6, left-4way 0, right-2way 25, left-2way 60 (the first 30 kept) of 1500 seeds each; the first 30 of each pool are kept (a cap [invented] so verify-rounds stays short)]";
+export const HAZARDS_RUN = "[M, tools/measure/round-seeds.mjs --hazard, run 2026-11-26 (slice 9, WITH THE BOOST: the car launches at power 2.5), at 4 cars, found by the search and kept if a stop at REACTION_FLOOR + 0.5 s rests with the crosswalk ahead of the nose: straight-4way 1 of 6000 seeds (slice 8: 6 of 1500), left-4way 0 of 1500, right-2way 30 of 1500 (slice 8: 25), left-2way 81 of 1500 (slice 8: 60); the first 30 of each pool are kept (a cap [invented] so verify-rounds stays short)]";
 const HAZARDS = {
-  "four-way-straight": { cars: 4, seeds: [46, 185, 458, 611, 695, 1061] },
+  "four-way-straight": { cars: 4, seeds: [547] },
   "four-way-left": { cars: 4, seeds: [] },
-  "two-way-right": { cars: 4, seeds: [94, 113, 131, 201, 228, 333, 337, 425, 479, 493, 668, 694, 774, 811, 874, 914, 1021, 1025, 1110, 1139, 1208, 1245, 1321, 1429, 1456] },
-  "two-way-left": { cars: 4, seeds: [1, 4, 17, 19, 42, 84, 91, 103, 168, 216, 314, 386, 397, 398, 416, 442, 499, 502, 510, 511, 528, 567, 573, 606, 621, 643, 674, 704, 816, 880] },
+  "two-way-right": { cars: 4, seeds: [89, 131, 201, 228, 312, 320, 414, 432, 445, 511, 580, 654, 668, 686, 694, 704, 774, 811, 874, 914, 939, 1110, 1112, 1120, 1139, 1245, 1299, 1338, 1429, 1456] },
+  "two-way-left": { cars: 4, seeds: [17, 19, 42, 74, 84, 91, 103, 112, 118, 168, 213, 216, 252, 285, 297, 362, 397, 398, 400, 442, 499, 502, 510, 511, 528, 540, 542, 543, 567, 585] },
 };
 const hazardOf = (d) => ({ ...d, id: `${d.id}-hazard`, hazard: true, map: () => d.map(EXIT[d.task]), cars: HAZARDS[d.id].cars, pools: { hazard: HAZARDS[d.id].seeds } });
 export const TYPES = DEFS.map((d) => ({ ...d, cars: POOLS[d.id].cars, pools: { now: POOLS[d.id].now, wait: POOLS[d.id].wait }, hazardType: hazardOf(d) }));

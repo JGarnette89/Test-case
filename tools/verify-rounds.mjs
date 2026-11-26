@@ -29,7 +29,10 @@ import { toDecision, toDecisionFrom, startRound, roundTick, press, release, setT
 import { DEAD, RANGE_OF, rangeOf, targetOf, offsetOf, thumbTarget, zoneRect, isTap, TAP_MS } from "../src/game/control.js";
 import { hazardRun, cwAheadOf } from "./lib/hazard-drive.mjs";
 import { crosswalksOf } from "../src/sim/peds.js";
-import { accelFor } from "../src/sim/player.js";
+import { accelFor, sliderFor, T_MAX, NEUTRAL, resistance } from "../src/sim/player.js";
+import { BOOST, HARD_AT, LAG_M, EASE_BACK, SHAKE_PX, SHAKE_S, SMOKE_S, STREAKS_MAX, newBoost, boostStep, isHard, hardShare, lagOf, shakeOf, streaksOf, spawnPuffs } from "../src/game/boost.js";
+import { createHash } from "node:crypto";
+import { limitAt } from "../src/sim/graph.js";
 import { autoInput } from "../src/game/autopilot.js";
 import { HARSH_AT } from "../src/sim/traffic.js";
 import { DT } from "../src/sim/crossing.js";
@@ -1153,6 +1156,141 @@ console.log("\n20. A HAZARD AFTER THE TURN (slice 8): the sim's person, STOP at 
     check(/if \(thumb && stopped\) slider = me\.v > 0\.05 \? -1 : HOLD/.test(asrc), "STOP is slider -1 until the car is at rest, then the hold (source text)");
     const gsrc = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
     check(/if \(rs\.phase === "gone"\) tap = \{/.test(gsrc) && /isTap\(performance\.now\(\) - was\.t0, was\.moved\)\) rs = stopNow\(rs\)/.test(gsrc), "a tap is decided at lift with isTap, and a touch only becomes a tap candidate when the round is already gone (source text)");
+  }
+}
+
+console.log("\n21. THE LAUNCH IS A BOOST (slice 9): one opt-in sim change, power 1 is the old arithmetic to the bit, the boost is real, the top is the limit, no new contact, the feel drawn only while boosting");
+{
+  /* 1. THE SIM IS UNTOUCHED AT POWER 1. The expectation is a hash of the OLD code's output, made on 31a9d3d (slice 8) and stated here, not read from the code under test. */
+  const grid = (f) => { const out = []; for (let i = -100; i <= 100; i++) for (let v = 0; v <= 40; v += 0.5) for (const g of [-0.2, -0.1, -0.05, 0, 0.05, 0.1, 0.23]) out.push(f(i / 100, v, g).toString()); return out; };
+  const sha = (a) => createHash("sha1").update(a.join(",")).digest("hex");
+  const OLD_ACCEL = "4bbdc5d3d2038e96dd44c43c355f6b003d0daa59", OLD_SLIDER = "0a0e55cb850b3bcd078ce07d2044727a7feb4a97";   // [M, node on 31a9d3d's src/sim/player.js: 113967 and 22413 values]
+  const absent = grid((s, v, g) => accelFor(s, v, g)), one = grid((s, v, g) => accelFor(s, v, g, 1));
+  check(absent.length === 113967 && sha(absent) === OLD_ACCEL, `accelFor with power absent is the old formula to the last bit: the SHA-1 of ${absent.length} values (slider -1..1 by 0.01, speed 0..40 by 0.5, 7 grades) is slice 8's [M, 31a9d3d]`);
+  check(sha(one) === OLD_ACCEL, "...and with power 1, the same 113967 values, to the last bit");
+  const so = [], so1 = [];
+  for (let a = -9; a <= 3; a += 0.05) for (let v = 0; v <= 30; v += 1) for (const g of [-0.1, 0, 0.1]) { so.push(sliderFor(a, v, g).toString()); so1.push(sliderFor(a, v, g, 1).toString()); }
+  check(sha(so) === OLD_SLIDER && sha(so1) === OLD_SLIDER, `sliderFor, power absent and 1, is the old values to the last bit (${so.length} values) [M, 31a9d3d]`);
+  /* Power moves only the throttle: brake and coast are the same at every power (a negative assertion, with its exposure line). */
+  let moved = 0, same = 0, brakeDiff = 0;
+  for (let i = -100; i <= 100; i++) for (let v = 0; v <= 33; v += 1.5) for (const g of [-0.1, 0, 0.1]) for (const p of [0.5, 2.5, 4]) {
+    const s = i / 100, a1 = accelFor(s, v, g), ap = accelFor(s, v, g, p);
+    if (s <= NEUTRAL) { if (ap !== a1) brakeDiff++; else same++; } else if (ap !== a1) moved++;
+  }
+  check(moved >= 1000 && same >= 1000, `EXPOSURE: power moved ${moved} throttle values and was applied to ${same + brakeDiff} brake and coast values`);
+  check(brakeDiff === 0, `power never touches the brake or the coast: slider at or under the neutral band is the same at power 0.5, 2.5 and 4 as at 1, in all ${same} samples`);
+  check(Math.abs(accelFor(1, 0, 0, BOOST) - (BOOST * T_MAX - resistance(0))) < 1e-9 && accelFor(1, 10, 0, 2) > accelFor(1, 10, 0, 1) && accelFor(1, 10, 0, 2) < accelFor(1, 10, 0, 3), `full throttle's supply is power x T_MAX: from rest at BOOST ${BOOST} it is ${accelFor(1, 0, 0, BOOST).toFixed(2)} m/s^2 (${BOOST} x ${T_MAX.toFixed(3)} - ${resistance(0).toFixed(2)}), against ${accelFor(1, 0).toFixed(2)} at 1, and it rises with power [M, this run]`);
+  check(BOOST === 2.5, "BOOST is 2.5 [invented, for Jay to tune]");
+
+  /* 2. THE BOOST IS REAL and 3. THE TOP IS THE LIMIT, measured tick to tick under the oracle, over every `now` seed of all four types. The round ends a few metres past
+     the box, before the car is at its road's limit, so each run is carried on past its end (roundTick moves the world and the car on past rs.end, the autopilot still
+     aiming for the kept target) for the top-speed lines. The limit is the ROAD's own (graph.js limitAt: 40 km/h on the residential legs, 50 on the collector), not the
+     thumb's 50 km/h. */
+  const peaks = [], over = [], tops = [], reach10 = [], byTask = {};
+  let tickCount = 0, hardAfterGo = 0, hardBeforeGo = 0;
+  for (const x of POOLED.filter((e) => e.pool === "now")) {
+    let peak = 0, goT = null, r10 = null, worstOver = -Infinity, topShare = 0;
+    const note = (me, world) => { const posted = limitAt(world.course, me) ?? LIMIT; worstOver = Math.max(worstOver, me.v - posted); topShare = Math.max(topShare, me.v / posted); };
+    const r = driveDecision(x.type, x.seed, x.type.cars, oracle, { onTick: (b, a) => {
+      if (b.phase !== "gone") { if (a.phase !== "gone" && isHard(a.me)) hardBeforeGo++; return; }
+      goT ??= b.decision.goAt;
+      const acc = (a.me.v - b.me.v) / DT, full = BOOST * T_MAX - resistance(b.me.v, 0);
+      if (b.me.v < 0.95 * LIMIT && Math.abs(b.me.grade ?? 0) < 0.01) peak = Math.max(peak, acc / full);
+      tickCount++; note(a.me, a.world);
+      if (isHard(a.me)) hardAfterGo++;
+      if (r10 == null && a.me.v >= 10) r10 = a.world.t - goT;
+    } });
+    if (r.rs.end?.why === "through" && r.rs.decision.goAt != null) {
+      let rs = r.rs;
+      for (let i = 0; i < 400; i++) { rs = roundTick(rs); note(rs.me, rs.world); if (r10 == null && rs.me.v >= 10) r10 = rs.world.t - goT; }
+    }
+    peaks.push({ x, peak }); over.push(worstOver); tops.push(topShare); if (r10 != null) reach10.push(r10), (byTask[x.type.task] ??= []).push(r10);
+  }
+  const worstPeak = peaks.reduce((m, q) => Math.min(m, q.peak), Infinity);
+  check(peaks.length >= 100 && hardAfterGo > 0, `EXPOSURE: ${peaks.length} oracle runs over the now pools, ${tickCount} ticks after GO, ${hardAfterGo} of them hard accelerating`);
+  check(peaks.every((q) => q.peak >= 0.9), `THE BOOST IS REAL: in every oracle run the car's peak acceleration after GO is at least 0.9 of BOOST x T_MAX - resistance(v) on the flat (worst ${worstPeak.toFixed(3)}; peak ratios ${stat(peaks.map((q) => q.peak))}) [M, this run]`);
+  console.log(`        from GO to 36 km/h (10 m/s), over ${reach10.length} oracle runs: ${stat(reach10)} s; by task: ${Object.entries(byTask).map(([k, v]) => `${k} ${v.length} runs ${stat(v)}`).join("; ")} [M, this run]`);
+  const time50 = (power) => { for (let t = 0, vv = 0; t < 60; t += DT) { vv = Math.min(LIMIT, vv + accelFor(1, vv, 0, power) * DT); if (vv >= LIMIT - 1e-9) return t + DT; } return NaN; };
+  console.log(`        GO to 50 km/h on the flat, full throttle: ${time50(BOOST).toFixed(2)} s at power ${BOOST}, against ${time50(1).toFixed(2)} s at power 1 (slice 8's car) [D: accelFor(1, v, 0, power) integrated at ${DT} s, the road's own limit not applied]`);
+  check(reach10.length >= 100, `EXPOSURE: ${reach10.length} of ${peaks.length} oracle runs reached 36 km/h (at least 100)`);
+  check(over.every((d) => d <= 0.3), `THE TOP IS THE LIMIT: no oracle run's speed, carried on past the round's end, exceeds its road's posted limit by more than 0.3 m/s [instrument] (worst ${Math.max(...over).toFixed(2)} m/s over)`);
+  check(tops.filter((u) => u >= 0.9).length >= 100, `EXPOSURE: ${tops.filter((u) => u >= 0.9).length} runs got within 10% of their road's limit (at least 100), so the top line saw the top`);
+  check(hardBeforeGo === 0, "the feel's trigger is silent before GO: not one tick before GO is hard accelerating, over every oracle run (the frozen and waiting car)");
+
+  /* 4. NO NEW CONTACT: every pooled seed under oracle, eager and creep against slice 8's stored verdicts (tools/lib/slice8-verdicts.json, made by tools/measure/slice8-verdicts.mjs on 31a9d3d). */
+  {
+    const old = JSON.parse(readFileSync(new URL("./lib/slice8-verdicts.json", import.meta.url), "utf8"));
+    const diff = [], byPol = { oracle: { b: 0, n: 0 }, eager: { b: 0, n: 0 }, creep: { b: 0, n: 0 } }, fresh = [];
+    let n = 0;
+    const contactOf = (r) => r.rs.end?.why === "contact" || r.verdict.faults.some((f) => f.id === "collision" || f.id === "struckPerson");
+    for (const x of POOLED) for (const [name, make] of [["oracle", oracle], ["eager", eager], ["creep", creep]]) {
+      const r = driveDecision(x.type, x.seed, x.type.cars, make), v = r.verdict, key = `${x.type.id}/${x.pool}#${x.seed}/${name}`, o = old[key];
+      const now = { end: r.rs.end?.why, stars: v.stars, faults: ids(v).sort().join(","), praise: v.praise.map((f) => f.id).sort().join(","), delay: v.delay == null ? null : +v.delay.toFixed(2), contact: contactOf(r) };
+      n++;
+      if (o?.contact) byPol[name].b++;
+      if (now.contact) byPol[name].n++;
+      if (!isDeepStrictEqual(o, now)) diff.push(`${key} ${o ? `${o.stars}* [${o.faults}]${o.contact ? " CONTACT" : ""}` : "(none)"} -> ${now.stars}* [${now.faults}]${now.contact ? " CONTACT" : ""}`);
+      if (now.contact && !o?.contact) fresh.push(key);
+    }
+    check(n >= 400 && Object.keys(old).filter((k) => /(now|wait)#\d+\/(oracle|eager|creep)$/.test(k)).length === n, `EXPOSURE: ${n} (seed, policy) pairs compared with slice 8's stored verdicts (at least 400; the stored table has the same pairs)`);
+    check(byPol.eager.b >= 1, `EXPOSURE: slice 8 itself had ${byPol.eager.b} eager contacts (the policy that drives into traffic), so "no more contact" saw a case`);
+    for (const name of ["oracle", "eager", "creep"]) console.log(`        ${name}: contact in ${byPol[name].b} seeds in slice 8, ${byPol[name].n} now [M, this run]`);
+    check(["oracle", "eager", "creep"].every((p) => byPol[p].n <= byPol[p].b), `NO MORE CONTACT than slice 8, per policy: oracle ${byPol.oracle.n} against ${byPol.oracle.b}, eager ${byPol.eager.n} against ${byPol.eager.b}, creep ${byPol.creep.n} against ${byPol.creep.b}`);
+    const calm = diff.filter((d) => /\/(oracle|creep) /.test(d));
+    check(calm.length === 0, `oracle and creep verdicts are slice 8's in every pooled seed (${calm.length} differ${calm.length ? `: ${calm.slice(0, 3).join(" | ")}` : ""})`);
+    console.log(`        verdicts changed: ${diff.length} of ${n} (eager ${diff.filter((d) => /\/eager /.test(d)).length}); seeds newly in contact under a policy: ${fresh.length ? fresh.join(", ") : "none"} [M, this run]`);
+    for (const d of diff) console.log(`          ${d}`);
+  }
+
+  /* 5. The feel: pure properties, then source text. */
+  {
+    const hardMe = { v: 3, a: 6.5, grade: 0 }, softMe = { v: 3, a: 1, grade: 0 };
+    check(isHard(hardMe) && !isHard(softMe) && !isHard({ v: 0, a: 0 }) && hardShare(hardMe) > HARD_AT && HARD_AT === 0.6, "isHard is above 0.6 of what the boosted full throttle could give at that speed: 6.5 m/s^2 at 3 m/s is hard, 1 is not, rest is not");
+    const box = { w: 400, h: 800 }, dims = { length: 4.5, width: 1.8 };
+    let st = newBoost();
+    check(lagOf(st) === 0 && streaksOf(st, 13, LIMIT, box, 1).length === 0 && shakeOf(st, 1).x === 0 && shakeOf(st, 1).y === 0 && spawnPuffs(st, { x: 0, y: 0, heading: 0 }, dims) === st, "with the car not boosting nothing is drawn: no lag, no streaks, no shake, no puffs");
+    let maxLag = 0, maxShake = 0, puffsMade = 0, lateSmoke = 0, lastStreaks = 0;
+    for (let t = 0; t < 1.0; t += 0.05) {
+      st = boostStep(st, true, 0.05);
+      maxLag = Math.max(maxLag, lagOf(st)); const sh = shakeOf(st, t); maxShake = Math.max(maxShake, Math.abs(sh.x), Math.abs(sh.y));
+      const before = st.puffs.length; st = spawnPuffs(st, { x: 0, y: 0, heading: 0 }, dims);
+      if (st.puffs.length > before) { puffsMade++; if (st.since >= SMOKE_S) lateSmoke++; }
+      lastStreaks = streaksOf(st, 13.9, LIMIT, box, t).length;
+    }
+    check(puffsMade >= 4 && lateSmoke === 0 && puffsMade <= Math.ceil(SMOKE_S / 0.05) + 1, `EXPOSURE + smoke: ${puffsMade} frames spawned puffs, all in the first ${SMOKE_S} s of the launch (${lateSmoke} later)`);
+    check(maxLag > 0.95 * LAG_M && maxLag <= LAG_M + 1e-9 && maxShake <= SHAKE_PX + 1e-9 && maxShake > 0.5, `the camera trails by up to ${LAG_M} m (reached ${maxLag.toFixed(2)}) and the shake is at most ${SHAKE_PX} px per axis (reached ${maxShake.toFixed(2)}) [spec; M, this run]`);
+    check(lastStreaks > 0 && lastStreaks <= STREAKS_MAX, `speed lines: ${lastStreaks} streaks at 50 km/h while boosting (at most ${STREAKS_MAX})`);
+    const fast = streaksOf(st, 13.9, LIMIT, box, 1), slow = streaksOf(st, 4, LIMIT, box, 1);
+    check(fast.length > slow.length && slow.length > 0 && (fast[0].y1 - fast[0].y0) > (slow[0].y1 - slow[0].y0), `their count and length rise with speed: ${slow.length} short ones at 4 m/s, ${fast.length} long ones at 13.9`);
+    let u = boostStep({ ...st, k: 1, shake: 0 }, false, 0), steps = 0;
+    while (lagOf(u) > 1e-9 && steps < 100) { u = boostStep(u, false, 0.05); steps++; }
+    check(Math.abs(steps * 0.05 - EASE_BACK) <= 0.1 && SHAKE_S === 0.4, `the camera eases back in ${(steps * 0.05).toFixed(2)} s (about ${EASE_BACK} s) and the shake fades over ${SHAKE_S} s`);
+    const src = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
+    check(/boost = boostStep\(boost, rs\.phase === "gone" && !rs\.end && isHard\(me\), dt\)/.test(src), "Game.jsx feeds the feel only while the round is gone and not over and the car is accelerating hard (source text)");
+    check(/const lag = lagOf\(boost\);\s*\n\s*if \(lag > 0\)/.test(src) && /boost\.shake > 0 \? shakeOf\(boost,/.test(src) && /if \(boost\.on\)[^\n]*spawnPuffs\(boost,/.test(src) && /if \(boost\.k > 0\) \{[\s\S]*?streaksOf\(boost,/.test(src), "the camera lag, the shake, the tire smoke and the speed lines are each drawn under a guard on the boost state, in Game.jsx (source text)");
+    const loop = src.slice(src.indexOf("export function runRound"), src.indexOf("export default function"));
+    check(loop.length > 5000 && !/useState|setState|useReducer/.test(loop), `EXPOSURE + no React state is written inside runRound's frame loop (${loop.length} characters of source text read)`);
+    const asrc = readFileSync(new URL("../src/game/autopilot.js", import.meta.url), "utf8"), rsrc = readFileSync(new URL("../src/game/round.js", import.meta.url), "utf8");
+    check(/const power = phase === "go" \? BOOST : 1;/.test(asrc) && /power: inp\.power/.test(rsrc), "the car carries BOOST only in the go phase, and round.js hands it to the sim as the input's power (source text)");
+    /* ...and by behaviour: the autopilot's input. */
+    const rs0 = frozenOf.get(tag(POOLED.find((e) => e.pool === "now" && e.type.task === "straight"))), w = setTarget(press(rs0), LIMIT);
+    const go = autoInput(w.me, w.world, { task: w.def.task, phase: "go", target: LIMIT }), hold = autoInput(w.me, w.world, { task: w.def.task, phase: "hold" }), app = autoInput(w.me, w.world, { task: w.def.task, phase: "approach" });
+    check(go.power === BOOST && hold.power === 1 && app.power === 1 && go.slider === 1, `autoInput: go carries power ${go.power} with the throttle at full (slider ${go.slider}) at a full target from rest; hold and approach carry ${hold.power} and ${app.power}`);
+    const nearTop = autoInput({ ...w.me, v: LIMIT - 0.2 }, w.world, { task: w.def.task, phase: "go", target: LIMIT });
+    check(nearTop.slider < 1, `within 0.5 m/s of the target the full throttle gives way to slice 7's pull (slider ${nearTop.slider.toFixed(2)} at 0.2 m/s short)`);
+  }
+
+  /* 6. STOP is still the full brake and no more: a boosted engine does not strengthen it. */
+  {
+    const HZ = TYPES.map((t) => t.hazardType).flatMap((ht) => ht.pools.hazard.slice(0, 15).map((seed) => ({ ht, seed })));
+    const rows = [];
+    for (const x of HZ) {
+      const r = hazardRun(x.ht, x.seed, x.ht.cars, { stopAfter: REACTION_FLOOR + 0.5 });
+      if (!r.stopTick) continue;
+      for (const q of r.speeds) if (q.t > r.stopTick + 1e-9 && q.v0 > 0.5) rows.push((q.v0 - q.v) / DT / -accelFor(-1, q.v0));
+    }
+    check(rows.length >= 100, `EXPOSURE: ${rows.length} braking ticks after a STOP in the boosted car (at least 100)`);
+    check(Math.max(...rows) <= 1.02, `STOP is the unboosted full brake and no stronger: the worst tick is ${Math.max(...rows).toFixed(3)} of -accelFor(-1, v) (at most 1.02 [instrument]); the weakest is ${Math.min(...rows).toFixed(3)} (section 20 holds the lower bound 0.9) [M, this run]`);
   }
 }
 
