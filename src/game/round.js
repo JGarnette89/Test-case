@@ -31,6 +31,7 @@ import { lenOf, HARSH_AT } from "../sim/traffic.js";
 import { REACTION_FLOOR } from "../core/perception.js";
 import { autoInput } from "./autopilot.js";
 import { TRAIL, TRAIL_MIN_M, REPLAY, chooseScreech } from "./stage.js";
+import { bandsAhead } from "../sim/peds.js";
 import { faultWords, praiseWords } from "./words.js";
 
 /* What `sceneFor` is called with by its other callers (ExamRide: 50 and 2.0; MapRoad: 50 and 2.0). `kmh` only sizes
@@ -74,16 +75,36 @@ const EPS = 1e-6;                     // [instrument] float slack on sums of DT
 /* The arguments `sceneFor` (apps/MapRoad.jsx) takes, positionally. */
 export const sceneArgs = (def) => [def.seed, KMH, EVERY, true, def.cars, def.map(), def.start];
 
-/* The same world `sceneFor` builds, through the one function it calls (sim/scene.js worldFor), with the trailing options it passes. */
-export const roundWorld = (def) => worldFor(...sceneArgs(def), false, false, { checks: false, mergeTolerance: DEFAULT_MERGE_TOLERANCE, preroll: PREROLL });
+/* THE HAZARD (slice 8; Jay: "after turning maybe have a chance for a hazard to appear and the user has to quickly hit stop"). A hazard round is the same
+   round on a map with a crosswalk on the EXIT leg (rounds.js), in a world whose people are more often trusting or heedless than the city's (the sim's own
+   `world.pedRisk`, peds.js) and who come to the curb more often (`world.pedEvery`). NOBODY IS PLACED, AND NOTHING IS TIMED: the sim creates the people, and
+   in front of the PLAYER it lets one step out only where a response exists (peds.js playerCanRespond: reacting at REACTION_FLOOR, braking as hard as the car
+   can). Which seeds carry a hazard is measured (tools/measure/round-seeds.mjs). */
+export const HAZARD_RISK = { trusting: 0.2, heedless: 0.7 };   // shares of people, the rest careful [invented]
+export const HAZARD_EVERY = 1;                                    // s between people at a crosswalk, on average [invented; the city's is peds.js PED_EVERY, 25]
+export const HAZARD_HOLD = 3;                                     // s at rest short of a person who will not leave the paint, and the round is over [invented]
+export const HAZARD_REACH = 40;                                   // m along the exit, past the box's edge, a hazard round runs to [invented, the spec's]
+
+/* The same world `sceneFor` builds, through the one function it calls (sim/scene.js worldFor), with the trailing options it passes. A hazard round's
+   world has its own people (HAZARD_RISK, HAZARD_EVERY): the world's two fields, set here and nowhere else. */
+export const roundWorld = (def) => {
+  const r = worldFor(...sceneArgs(def), false, false, { checks: false, mergeTolerance: DEFAULT_MERGE_TOLERANCE, preroll: PREROLL });
+  if (!def.hazard) return r;
+  /* NO WALKERS IN A HAZARD WORLD: with them a crossing is "wanted" and waits (up to 90 s) for somebody walking by to take it, and the round maps' two
+     walkers are seldom near the one crosswalk (2 of 40 seeds had a person step off at the default rate). Without them the sim creates the person at the
+     curb at its own seeded rate (the sim's own people step), the older path. Still the sim's person, at the sim's rate. */
+  const { walkers, walkerN, walkRng, pedWant, ...world } = r.world;
+  void walkers; void walkerN; void walkRng; void pedWant;
+  return { ...r, world: { ...world, pedRisk: HAZARD_RISK, pedEvery: HAZARD_EVERY } };
+};
 
 /* THE PER-DECISION STATE, in ONE object (slice 4, section 1): the openings, when the car froze and when it went, the arrival's trail, the
    pull-away, the turn made, the crossing and the timing verdict. A later slice with several decision points keeps a list of these; `rs`
    carries the world, the car, the events and the end, which are the round's. */
-export const newDecision = () => ({ decideAt: null, goAt: null, openings: [], timing: null, trail: null, replay: null, screech: null, launch: null, made: null, crossedAt: null });
+export const newDecision = () => ({ hazard: null, peopleAtGo: null, decideAt: null, goAt: null, openings: [], timing: null, trail: null, replay: null, screech: null, launch: null, made: null, crossedAt: null });
 
 export function startRound(def, { world, me }) {
-  return { def, world, me, ev: newEventState(), events: [], t0: world.t, targetK: me.k, end: null, phase: "approach", target: 0, decision: newDecision() };
+  return { def, world, me, ev: newEventState(), events: [], t0: world.t, targetK: me.k, end: null, phase: "approach", target: 0, stop: false, decision: newDecision() };
 }
 
 /* WHO HOLDS THE WAY, BY THE STOP RULE: a driver the sim says this one must yield to (crossing.js blockedBy, the same call openTo
@@ -212,13 +233,28 @@ export function timingOf(openings, decideAt, now) {
 export function release(rs, target = LIMIT) {
   if (rs.phase !== "frozen" && rs.phase !== "waiting") return rs;
   const d = rs.decision;
-  return { ...rs, target, phase: "gone", decision: { ...d, goAt: rs.world.t, timing: timingOf(d.openings, d.decideAt, rs.world.t) } };
+  return { ...rs, target, phase: "gone", decision: { ...d, goAt: rs.world.t, peopleAtGo: (rs.world.peds ?? []).map((p) => p.id), timing: timingOf(d.openings, d.decideAt, rs.world.t) } };
+}
+
+/* THE REACTION'S END (slice 8): the tick a stop is asked for after a person stepped off -- STOP, or the target going to 0 -- recorded once, in the world's
+   own time. A stop asked for before anybody stepped off is nobody's reaction and records nothing. */
+const markStop = (rs) => {
+  const h = rs.decision.hazard;
+  return h && h.stopAt == null ? { ...rs, decision: { ...rs.decision, hazard: { ...h, stopAt: rs.world.t } } } : rs;
+};
+
+/* STOP (slice 8; Jay: "quickly hit stop"): after GO, the target goes to 0 and the autopilot brakes with the car's FULL brake (slider -1, the braking
+   peds.js playerCanRespond assumes) until it is at rest. A later drag up clears it (setTarget). Before GO it is nothing (a tap there is the press). */
+export function stopNow(rs) {
+  if (rs.phase !== "gone") return rs;
+  return markStop({ ...rs, target: 0, stop: true });
 }
 
 export function setTarget(rs, target) {
   const v = Math.max(0, Math.min(LIMIT, target));
   if (rs.phase === "frozen" || rs.phase === "waiting") return v > 0 ? release(rs, v) : { ...rs, target: 0 };
-  return { ...rs, target: v };
+  const next = { ...rs, target: v, stop: v > 0 ? false : rs.stop };   // a drag up clears a STOP
+  return v === 0 ? markStop(next) : next;
 }
 
 /* CLEAR OF THE BOX: the car has left the round's own intersection, past its clear line or on to another node (what FAST waits for, stage.js speedOf). */
@@ -256,7 +292,7 @@ export function roundTick(rs, { held } = {}) {
   const prev = { me: rs.me, world: rs.world };
   let me = rs.me, world = rs.world;
   const phase = rs.phase === "waiting" ? "hold" : rs.phase === "gone" ? "go" : "approach";
-  const inp = autoInput(me, world, { task: def.task, phase, target: rs.target });
+  const inp = autoInput(me, world, { task: def.task, phase, target: rs.target, stop: rs.stop });
   me = stepDriver({ ...me, signal: inp.signal }, { steer: inp.steer, slider: inp.slider, assist: 0 }, world, DT);
   let w = step(withDriver(world, me));
   const c = playerContact(w, me);
@@ -314,15 +350,42 @@ export function roundTick(rs, { held } = {}) {
   me = afterContact(me, c, world).me;
   world = withDriver(world, me);
 
+  /* THE HAZARD (slice 8): a person the SIM sent onto a crosswalk the player's route crosses, after the player cleared its stop line. Recorded once, at
+     the tick they stepped off; then whether the car came to rest short of them, and whether they are still crossing. Nothing here moves anybody. */
+  const p2 = pathOf(world, me);
+  const bands = p2 ? bandsAhead(world, me.k ?? 0, p2) : [];
+  let hazard = rs.decision.hazard;
+  const crossing = (world.peds ?? []).filter((q) => q.state === "crossing" && bands.some((b) => b.cw.i === q.cw));
+  /* STILL IN THE WAY: crossing, and the player's tail not yet past the far edge of the paint. One who stays out on the paint after the car has gone by
+     (the sim lets a person wait for a car that is not going to move) is nothing the player can still hit, and does not hold the round open. */
+  const inWay = crossing.filter((q) => { const b = bands.find((x) => x.cw.i === q.cw); return me.s - lenOf(me) / 2 < b.s + (b.cw.to - b.cw.from) / 2; });
+  if (!hazard && crossedAt != null && rs.phase === "gone") {
+    const was = new Map((prev.world.peds ?? []).map((q) => [q.id, q.state]));
+    /* ...and only while the player's nose is still short of the paint: somebody who steps off behind the car is not in its way. */
+    const q = crossing.find((x) => { const b = bands.find((y) => y.cw.i === x.cw); return was.get(x.id) !== "crossing" && me.s + lenOf(me) / 2 < b.s - (b.cw.to - b.cw.from) / 2; });
+    if (q) hazard = { id: q.id, cw: q.cw, stepAt: world.t, stopAt: null, restShort: false, struck: false };
+  }
+  if (hazard) {
+    const b = bands.find((x) => x.cw.i === hazard.cw);
+    const short = !!b && me.v < AT_REST && me.s + lenOf(me) / 2 < b.s;   // short of the line the person crosses on: the crosswalk's middle
+    const struck = hazard.struck || !!c.fresh?.some((f) => f.kind === "person");
+    if ((short && !hazard.restShort) || struck !== hazard.struck) hazard = { ...hazard, restShort: hazard.restShort || short, struck };
+    if (short && hazard.restSince == null) hazard = { ...hazard, restSince: world.t };
+    if (!short && hazard.restSince != null) hazard = { ...hazard, restSince: null };
+  }
+  /* A hazard round is not over while somebody is still crossing the player's path, and runs HAZARD_REACH along the exit; one that ends with the
+     person clear and the car at rest short of where they crossed ends there. */
+  const reach = def.hazard ? HAZARD_REACH : CLEAR_BY, clearOfIt = !def.hazard || inWay.length === 0;
+
   /* THE END: the first of these. The time is counted from the freeze, and not at all while the decision point is being built. */
   let end = null;
-  const p2 = pathOf(world, me);
-  if (crossedAt != null && ((me.k === rs.targetK && p2 && me.s >= p2.clearAt + CLEAR_BY) || me.k !== rs.targetK)) end = { why: "through" };
+  if (crossedAt != null && clearOfIt && ((me.k === rs.targetK && p2 && me.s >= p2.clearAt + reach) || me.k !== rs.targetK)) end = { why: "through" };
+  else if (def.hazard && hazard?.restShort && !hazard.struck && me.v < AT_REST && (inWay.length === 0 || (hazard.restSince != null && world.t - hazard.restSince >= HAZARD_HOLD))) end = { why: "through" };
   else if (c.fresh?.some((f) => f.kind === "person" || f.atFault)) end = { why: "contact" };
   else if (me.atEdge) end = { why: "edge" };
   else if (rs.decision.decideAt != null && world.t - rs.decision.decideAt > TIME_CAP) end = { why: "time" };
 
-  let next = { ...rs, me, world, ev: state, events: [...rs.events, ...events], decision: { ...rs.decision, made, crossedAt, launch }, end };
+  let next = { ...rs, me, world, ev: state, events: [...rs.events, ...events], decision: { ...rs.decision, made, crossedAt, launch, hazard }, end };
   /* The openings are kept from the freeze until the car is released. */
   if (next.phase === "waiting") next = trackOpenings(next);
   return next;
@@ -362,11 +425,17 @@ export function verdictOf(rs) {
   /* THREADED: went before the first opening and nobody had to answer it: no forced braking, no failure to yield, no contact. */
   if (t?.kind === "early" && rs.end?.why === "through" && !faults.some((f) => ["forcedBrake", "failedToYield", "collision", "struckPerson"].includes(f.id)) && praiseWords("threaded")) praise.push({ id: "threaded", count: 1, words: praiseWords("threaded") });
   if (t?.missedGap) notes.push({ id: "missedGap", count: 1, words: faultWords("missedGap") });
+  /* THE HAZARD'S VERDICT (slice 8): a strike is the sim's own struckPerson (stars 0 below: the round ends in contact); a stop short of the person is
+     the praise, whatever the reaction time, which is information and not a fault [invented, for Jay]. The reaction runs from the tick the person
+     stepped off to the tick STOP (or the target 0) was asked for [M per round]; null when it was not asked after the step. */
+  const H = D.hazard ?? null;
+  const reaction = H && H.stopAt != null ? H.stopAt - H.stepAt : null;
+  if (H && H.restShort && !H.struck && praiseWords("stoppedInTime")) praise.push({ id: "stoppedInTime", count: 1, words: praiseWords("stoppedInTime") });
   const worst = faults.reduce((m, f) => Math.max(m, f.severity), 0);
   /* STARS, one table, all [invented] until Jay rules: the LOWER of the fault table and the timing's. */
   const through = rs.end?.why === "through";
   const byFaults = !through || worst >= 5 ? 0 : worst >= 3 ? 1 : worst >= 1 ? 2 : 3;
   const stars = Math.min(byFaults, tStars);
   if (through && tStars === 3 && t?.kind === "inside" && praiseWords("quick")) praise.push({ id: "quick", count: 1, words: praiseWords("quick") });
-  return { stars, why: rs.end?.why ?? null, faults, praise, notes, made: D.made, task: def.task, delay, timingStars: t ? tStars : null, openAtFreeze: !!D.openings?.[0] && D.openings[0].from === D.decideAt };
+  return { stars, why: rs.end?.why ?? null, faults, praise, notes, made: D.made, task: def.task, delay, timingStars: t ? tStars : null, openAtFreeze: !!D.openings?.[0] && D.openings[0].from === D.decideAt, hazard: H ? { stepAt: H.stepAt, reaction, stoppedShort: H.restShort, struck: H.struck } : null };
 }

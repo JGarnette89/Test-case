@@ -25,6 +25,7 @@
 import { TYPES } from "../../src/game/rounds.js";
 import { toDecision, press, roundTick } from "../../src/game/round.js";
 import { driveDecision, oracle, tracker } from "../lib/round-drive.mjs";
+import { hazardRun } from "../lib/hazard-drive.mjs";
 import { REACTION_FLOOR } from "../../src/core/perception.js";
 
 export const NOW_LONG = 2.0;     // s [invented, the spec's]
@@ -86,12 +87,43 @@ export function sweep(type, cars, n, onSeed = null) {
   return { cars, rows, now: rows.filter((r) => r.pool === "now").map((r) => r.seed), wait: rows.filter((r) => r.pool === "wait").map((r) => r.seed), why };
 }
 
+/* THE HAZARD SEEDS (slice 8; GAME.md rule 1: chosen by measurement). On the type's hazard map (rounds.js: a crosswalk on the exit leg, people by round.js
+   HAZARD_RISK), the oracle's drive with NO stop, and again with a STOP at REACTION_FLOOR + HAZARD_LAG after the person steps off. A seed is a HAZARD seed when
+   - a person who was in the world before the player's GO steps onto the player's path after its stop line and before the round ends [the spec's];
+   - the oracle WITH the stop strikes nobody and comes to rest short of them [the spec's];
+   - (mine, so the hazard is not decoration) the oracle with NO stop strikes them or comes within DANGER_M of them [invented, the spec's check 3 stated as a criterion].
+   Otherwise it is a plain seed, and the reason is kept. */
+export const HAZARD_LAG = 0.5;   // s, on top of REACTION_FLOOR, between a person stepping off and the oracle's STOP [invented, the spec's]
+export const DANGER_M = 1;       // m: "comes within 1 m of them" [invented, the spec's]
+export function classifyHazard(type, cars, seed) {
+  const free = hazardRun(type, seed, cars);
+  if (!free) return { seed, pool: null, reason: "noPoint" };
+  if (!free.step) return { seed, pool: null, reason: "nobodyStepped" };
+  if (!free.step.preGo) return { seed, pool: null, reason: "personNotThereAtGo" };
+  const danger = free.struck || free.minGap <= DANGER_M + EPS;
+  const stop = hazardRun(type, seed, cars, { stopAfter: REACTION_FLOOR + HAZARD_LAG });
+  if (!stop?.step || stop.step.id !== free.step.id) return { seed, pool: null, reason: "stopRunDiffers" };
+  if (stop.struck || !stop.restShort) return { seed, pool: null, reason: stop.struck ? "stopStillStrikes" : "stopNotShort", danger };
+  if (!danger) return { seed, pool: null, reason: "notDangerous", minGap: free.minGap };
+  return { seed, pool: "hazard", danger, minGap: free.minGap, struck: free.struck, step: free.step.t - free.goAt, manner: free.step.manner };
+}
+
 const args = process.argv.slice(2);
 const main = !!process.argv[1] && process.argv[1].endsWith("round-seeds.mjs");
 if (main) {
   const ids = args.filter((a) => !a.startsWith("--"));
   const opt = (name, d) => (args.find((a) => a.startsWith(`--${name}=`)) ?? `--${name}=${d}`).split("=")[1];
   const COUNTS = opt("cars", "4,8,12").split(",").map(Number), SEEDS = Number(opt("seeds", 200));
+  if (args.includes("--hazard")) {
+    for (const type of TYPES.filter((t) => !ids.length || ids.includes(t.id))) {
+      const ht = type.hazardType, rows = [], why = {};
+      for (let seed = 1; seed <= SEEDS; seed++) { const r = classifyHazard(ht, ht.cars, seed); rows.push(r); if (!r.pool) why[r.reason] = (why[r.reason] ?? 0) + 1; }
+      const pool = rows.filter((r) => r.pool === "hazard");
+      console.log(`${ht.id.padEnd(26)} cars ${ht.cars}: hazard ${pool.length} of ${SEEDS}, rejected ${JSON.stringify(why)}; strikes under no stop ${pool.filter((r) => r.struck).length}`);
+      console.log(`  HAZARDS ${JSON.stringify({ id: type.id, cars: ht.cars, seeds: pool.map((r) => r.seed) })}`);
+    }
+    process.exit(0);
+  }
   for (const type of TYPES.filter((t) => !ids.length || ids.includes(t.id))) {
     const table = [];
     for (const cars of COUNTS) {

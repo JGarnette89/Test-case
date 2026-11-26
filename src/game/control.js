@@ -41,3 +41,9 @@ export const zoneRect = (size, button) => {
   const r = rangeOf(size);
   return { x: button.x, y: button.y - r, w: button.w, h: button.h + r };
 };
+
+/* A TAP IS STOP (slice 8; Jay: "quickly hit stop"): a touch after GO that lifts within TAP_MS and has moved less than DEAD px. A touch that moves is
+   slice 7's drag and sets a speed; one held longer is a hold that keeps the target. Decided at LIFT, since a re-grab that does not move keeps the
+   target (`offsetOf`) and so cannot tell a tap by what it did to the target. [invented, the spec's] */
+export const TAP_MS = 250;
+export const isTap = (ms, movedPx) => ms < TAP_MS && movedPx < DEAD;

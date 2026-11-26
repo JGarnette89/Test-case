@@ -23,9 +23,9 @@ import { Play, RotateCcw, ChevronRight } from "lucide-react";
 import { sceneFor, actorsOf } from "../apps/MapRoad.jsx";
 import { withGameBody } from "./look.js";
 import { drawSet, SET_SIZE } from "./rounds.js";
-import { sceneArgs, toDecision, press, setTarget, roundTick, verdictOf, clearOfBox } from "./round.js";
-import { offsetOf, thumbTarget, zoneRect, rangeOf, DEAD } from "./control.js";
-import { END_WORDS, TASK_WORDS, delayWords } from "./words.js";
+import { sceneArgs, toDecision, press, setTarget, stopNow, roundTick, verdictOf, clearOfBox } from "./round.js";
+import { offsetOf, thumbTarget, zoneRect, rangeOf, isTap, DEAD } from "./control.js";
+import { END_WORDS, TASK_WORDS, delayWords, reactionWords } from "./words.js";
 import { DT } from "../sim/crossing.js";
 import { pageMore, pageLeft } from "../sim/pace.js";
 import { driverPose, carriedPlayer } from "../sim/drive.js";
@@ -76,6 +76,8 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
   /* THE THUMB: the touch holding the control ({ id, y, base }, base the drag its target was at when it landed), and where the bar is drawn from
      (the last press point, kept after the finger lifts so the kept speed stays on the screen). Closure variables, never React state. */
   let grab = null, bar = null;
+  /* A TAP AFTER GO IS STOP (slice 8): the touch that might be one ({ id, t0, x, y, moved }), anywhere on the screen once the car is gone. Decided at lift (control.js isTap). */
+  let tap = null;
   let chase = null;   // the chase camera, started at GO
   /* THE CAMERA SHOWN: { x, y, z, k, rot }, eased toward the decision frame; `userCam` is the player's own (pan and pinch) and wins while set. */
   let shown = null, userCam = null, goCam = null, pinch = null;
@@ -116,9 +118,12 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     if (!grab && inRect(zone, q.x, q.y)) {
       grab = { id: q.id, y: q.y, base: offsetOf(rs.target, size) };
       bar = { x: q.x, y: q.y };
+      if (rs.phase === "gone") tap = { id: q.id, t0: performance.now(), x: q.x, y: q.y, moved: 0 };   // a touch before GO is the press, never STOP
       if (rs.phase === "frozen") rs = press(rs);
       return;
     }
+    /* After GO a touch anywhere is a candidate for STOP: the thumb should not have to find the button to brake. */
+    if (rs.phase === "gone" && !tap) { tap = { id: q.id, t0: performance.now(), x: q.x, y: q.y, moved: 0 }; return; }
     if (canPan() && !inRect(zone, q.x, q.y) && shown) {
       userCam = userCam ?? { ...shown };
       ptrs.set(q.id, { x: q.x, y: q.y });
@@ -128,6 +133,7 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
   };
   const onMove = (e) => {
     const q = local(e), size = { w: canvas.clientWidth, h: canvas.clientHeight };
+    if (tap && e.pointerId === tap.id) tap.moved = Math.max(tap.moved, Math.hypot(q.x - tap.x, q.y - tap.y));
     if (grab && e.pointerId === grab.id) { if (!stopped && !rs.end) aim(thumbTarget(grab, q.y, size)); return; }
     const was = ptrs.get(e.pointerId);
     if (!was || !userCam) return;
@@ -139,6 +145,12 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
     if (ptrs.delete(e.pointerId)) { pinch = null; return; }
     /* LETTING GO KEEPS THE SPEED (Jay): the target stays where the thumb left it; only the grab ends. */
     if (grab && e.pointerId === grab.id) grab = null;
+    /* ...UNLESS IT WAS A TAP: a touch after GO that lifts inside TAP_MS having moved less than DEAD is STOP, the car's full brake (round.js stopNow). */
+    if (tap && e.pointerId === tap.id) {
+      const was = tap;
+      tap = null;
+      if (!stopped && !rs.end && rs.phase === "gone" && isTap(performance.now() - was.t0, was.moved)) rs = stopNow(rs);
+    }
   };
   const onKey = (e) => {
     if (e.type !== "keydown" || e.repeat) return;
@@ -316,6 +328,11 @@ export function runRound({ canvas, rs0, onEnd, raf: schedule = requestAnimationF
       ctx.fillText(`${kmh(rs.target)} km/h`, x + 16, bar.y - offsetOf(rs.target, size) + 6);
       ctx.textAlign = "center";
     }
+    /* After GO, one small line says what a tap does. It says nothing of any hazard: nothing here announces one (slice 8). */
+    if (rs.phase === "gone" && !rs.end && intro >= INTRO_END) {
+      ctx.fillStyle = "rgba(230,232,236,0.6)"; ctx.font = `12px ${FONT}`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.fillText("TAP TO STOP · DRAG TO SET SPEED", size.w / 2, size.h - 10);
+    }
     /* The round is over: say so on the canvas for the second it is still drawn. */
     if (endAt != null) {
       ctx.fillStyle = "rgba(20,22,26,0.7)"; ctx.fillRect(0, size.h / 2 - 28, size.w, 56);
@@ -403,6 +420,7 @@ export default function Game() {
           <div style={S.starsRow} aria-label={`${verdict.stars} of 3 stars`}>{[0, 1, 2].map((i) => (i < verdict.stars ? "★" : "☆")).join(" ")}</div>
           {verdict.why !== "through" && <div style={S.fault}>{END_WORDS[verdict.why] ?? verdict.why}</div>}
           {verdict.delay != null && <div style={S.sub}>{delayWords(verdict.delay, verdict.openAtFreeze)}</div>}
+          {verdict.hazard?.stoppedShort && !verdict.hazard.struck && verdict.hazard.reaction != null && <div style={S.sub}>{reactionWords(verdict.hazard.reaction)}</div>}
           {verdict.faults.map((f) => <div key={f.id} style={S.fault}>{f.words}{f.count > 1 ? ` (×${f.count})` : ""}</div>)}
           {verdict.notes.map((f) => <div key={f.id} style={S.note}>{f.words}</div>)}
           {verdict.praise.map((f) => <div key={f.id} style={S.praise}>{f.words}{f.count > 1 ? ` (×${f.count})` : ""}</div>)}

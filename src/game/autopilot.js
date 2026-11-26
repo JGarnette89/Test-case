@@ -46,7 +46,7 @@ const HOLD = -0.3;          // the brake while standing [instrument: goodInput's
 /* m short of the line within which a car at rest and not yet counted is still held to count its stop (goodInput: 12). */
 const COUNT_SPAN = 12;
 
-export function autoInput(me, world, { task, phase, target }) {
+export function autoInput(me, world, { task, phase, target, stop: stopped = false }) {
   const course = world.course;
   const spot = course.at[me.k], path = spot.layout.paths[me.route];
   const steer = -(me.off ?? 0) * 0.25 - (me.psi ?? 0) * 2.5;
@@ -56,7 +56,11 @@ export function autoInput(me, world, { task, phase, target }) {
   if (phase === "hold") return { steer, slider: HOLD, signal };
 
   const posted = limitAt(course, me) ?? 13.9;
-  const ahead = aheadOf(me, course, world);
+  /* SLICE 8: AFTER GO THE AUTOPILOT DOES NOT STOP FOR A PERSON ON ITS OWN -- that is the player's job now (STOP). Until slice 8 it did: the sim's
+     stop marker (drive.js stopFor, from crossing.js whatStops) holds a driver short of a crosswalk somebody holds, and the autopilot honored it. The
+     sim's own `ignorePeds` is the way to ask the question without them; it reaches only this call, never the world the car is stepped in. The queue
+     rule (a car ahead) and the line are untouched. */
+  const ahead = aheadOf(me, course, phase === "go" ? { ...world, ignorePeds: true } : world);
   /* SLICE 7, THE THUMB SETS THE SPEED (control.js): once GONE, with a `target` (m/s) the car aims for that speed -- never over the road's posted one
      -- accelerating at up to ACCEL_MAX and braking at up to HARSH_AT (the sim's own harsh threshold, the arcade brake [invented]), so a drag down is
      felt. A target of 0 stops the car wherever it is. The corner's cap and a car ahead (`stop`, below) still win. With no target (the other phases, and
@@ -65,6 +69,8 @@ export function autoInput(me, world, { task, phase, target }) {
   const aim = thumb ? Math.min(target, posted) : posted * PACE;
   let slider = sliderFor(Math.max(thumb ? -HARSH_AT : -1.5, Math.min(phase === "go" ? LAUNCH_ACCEL : CRUISE_ACCEL, (aim - me.v) * 0.6)), me.v, me.grade ?? 0);
   if (thumb && aim < 0.05 && me.v < 0.3) slider = HOLD;
+  /* STOP (slice 8): the car's FULL brake, slider -1, until it is at rest; then the hold. */
+  if (thumb && stopped) slider = me.v > 0.05 ? -1 : HOLD;
   let stop = ahead.stop;
   if (phase === "go" && stop?.line && me.s <= path.stopAt) stop = null;
   if (stop) slider = Math.min(slider, stop.at);

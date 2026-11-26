@@ -5,7 +5,8 @@
    ===================================================================== */
 export const WORDS = {
   collision: "You hit another vehicle.",
-  struckPerson: "You hit a person.",
+  struckPerson: "You hit a pedestrian.",   // [invented wording, the spec's]
+  stoppedInTime: "Stopped in time.",
   struckBy: "Another driver hit you. Not your fault.",
   ranRed: "You entered the intersection on a red light.",
   rolledStop: "You didn't come to a complete stop at the stop sign.",
@@ -54,3 +55,6 @@ export function delayWords(delay, openAtFreeze) {
   const d = delay.toFixed(1);
   return openAtFreeze ? `The road was clear when you arrived; you went after ${d} s.` : `You went ${d} s after the road was clear.`;
 }
+
+/* THE REACTION, said: from the tick the person stepped off to the tick the player asked for the stop. Seconds, two decimal places. */
+export function reactionWords(secs) { return `Your reaction: ${secs.toFixed(2)} s.`; }

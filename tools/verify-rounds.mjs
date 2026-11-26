@@ -25,8 +25,11 @@ import { GAME_BODY, withGameBody } from "../src/game/look.js";
 import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { TYPES, POOLS_RUN, drawSet, SET_SIZE } from "../src/game/rounds.js";
-import { toDecision, toDecisionFrom, startRound, roundTick, press, release, setTarget, clearOfBox, roundWorld, verdictOf, timingStars, timingOf, UNDUE, LAUNCH_SPAN, AT_LINE, FRONT_CLEAR, LIMIT, KMH } from "../src/game/round.js";
-import { DEAD, RANGE_OF, rangeOf, targetOf, offsetOf, thumbTarget, zoneRect } from "../src/game/control.js";
+import { toDecision, toDecisionFrom, startRound, roundTick, press, release, setTarget, stopNow, clearOfBox, roundWorld, verdictOf, timingStars, timingOf, UNDUE, LAUNCH_SPAN, AT_LINE, FRONT_CLEAR, LIMIT, KMH } from "../src/game/round.js";
+import { DEAD, RANGE_OF, rangeOf, targetOf, offsetOf, thumbTarget, zoneRect, isTap, TAP_MS } from "../src/game/control.js";
+import { hazardRun, cwAheadOf } from "./lib/hazard-drive.mjs";
+import { crosswalksOf } from "../src/sim/peds.js";
+import { accelFor } from "../src/sim/player.js";
 import { autoInput } from "../src/game/autopilot.js";
 import { HARSH_AT } from "../src/sim/traffic.js";
 import { DT } from "../src/sim/crossing.js";
@@ -269,11 +272,11 @@ console.log("\n7. DETERMINISTIC");
   const s1 = drawSet(12345), s2 = drawSet(12345), s3 = drawSet(54321);
   check(s1.length === SET_SIZE && isDeepStrictEqual(s1.map((r) => [r.type.id, r.pool, r.seed]), s2.map((r) => [r.type.id, r.pool, r.seed])), `a set seed draws the same ${SET_SIZE} rounds twice`);
   check(!isDeepStrictEqual(s1.map((r) => r.seed), s3.map((r) => r.seed)) || !isDeepStrictEqual(s1.map((r) => r.type.id), s3.map((r) => r.type.id)), "and another set seed draws other rounds");
-  check(TYPES.every((t) => s1.some((r) => r.type.id === t.id)), "a set holds one of each type");
+  check(TYPES.every((t) => s1.some((r) => r.type.id.replace("-hazard", "") === t.id)), "a set holds one of each type (a hazard round counts as its type)");
   /* Over many sets: wait drawn at about P_WAIT. [instrument: a tolerance wide enough for 400 draws] */
-  let w = 0, n = 0;
-  for (let i = 1; i <= 80; i++) for (const r of drawSet(i)) { n++; if (r.pool === "wait") w++; r.type.pools[r.pool].includes(r.seed) || failed++; }
-  check(n === 80 * SET_SIZE && Math.abs(w / n - 0.7) < 0.08, `over 80 sets, the wait pool is drawn ${((100 * w) / n).toFixed(0)}% of the time (0.7 asked), every seed from its own pool [M, this run]`);
+  let w = 0, n = 0, all = 0, hz = 0;
+  for (let i = 1; i <= 80; i++) for (const r of drawSet(i)) { all++; if (r.pool === "hazard") hz++; r.type.pools[r.pool].includes(r.seed) || failed++; if (r.pool === "hazard") continue; n++; if (r.pool === "wait") w++; }   // slice 8: a hazard round is neither wait nor now; the share is of the plain draws
+  check(all === 80 * SET_SIZE && n + hz === all && Math.abs(w / n - 0.7) < 0.08, `over 80 sets, the wait pool is drawn ${((100 * w) / n).toFixed(0)}% of the plain draws (0.7 asked; ${hz} of ${all} draws were hazard rounds, ${(100 * hz / all).toFixed(0)}% against HAZARD_P 35% from the types that have a pool), every seed from its own pool [M, this run]`);
 }
 
 console.log("\n8. failedToYield (SLICE 1's RULE): THE EAGER POLICY IS THE GO");
@@ -561,8 +564,8 @@ console.log("\n12. THE DECISION FRAME AND THE LAUNCH (slice 5): only what decide
   let mid = fresh; for (let i = 0; i < 40; i++) mid = roundTick(mid);
   const ref = frozenOf.get(tag(x0)), a1 = toDecisionFrom(fresh, fresh.me.k), a2 = toDecisionFrom(mid, mid.me.k);
   check(a1 != null && a2 != null && a1.phase === "frozen" && a2.phase === "frozen" && a1.decision.decideAt === ref.decision.decideAt && a2.decision.decideAt === ref.decision.decideAt, `POSITIVE CONTROL: from the start, and from 2 s into the approach, toDecisionFrom freezes at the same moment toDecision does (${a1?.decision.decideAt?.toFixed(2)}, ${a2?.decision.decideAt?.toFixed(2)}, ${ref.decision.decideAt.toFixed(2)} s)`);
-  check(a1 != null && isDeepStrictEqual(Object.keys(a1.decision).sort(), ["crossedAt", "decideAt", "goAt", "launch", "made", "openings", "replay", "screech", "timing", "trail"]), "the per-decision state is ONE object, rs.decision, holding the openings, decideAt, goAt, the trail, the replay (slice 6), the screech chosen (slice 7), launch, made, crossedAt and the timing");
-  check(a1 != null && ["decideAt", "goAt", "openings", "timing", "trail", "replay", "screech", "launch", "made", "crossedAt"].every((f) => !(f in a1)), "and none of those fields is left on the round itself");
+  check(a1 != null && isDeepStrictEqual(Object.keys(a1.decision).sort(), ["crossedAt", "decideAt", "goAt", "hazard", "launch", "made", "openings", "peopleAtGo", "replay", "screech", "timing", "trail"]), "the per-decision state is ONE object, rs.decision, holding the openings, decideAt, goAt, the trail, the replay (slice 6), the screech chosen (slice 7), launch, made, crossedAt, the timing, and (slice 8) the hazard and who was there at GO");
+  check(a1 != null && ["decideAt", "goAt", "openings", "timing", "trail", "replay", "screech", "launch", "made", "crossedAt", "hazard", "peopleAtGo"].every((f) => !(f in a1)), "and none of those fields is left on the round itself");
 }
 
 console.log("\n13. THE STOPPING ORDER (slice 5): numbered from stoppedAt, held to the sim's own blockedBy");
@@ -1024,6 +1027,132 @@ console.log("\n19. GHOST CARS AT THE EDGE (slice 7): an arriving or holding car 
     const block = /const g = ghostOf\([\s\S]*?ctx\.restore\(\);/.exec(src)?.[0] ?? "";
     check(block.length > 0 && !/fillText|measureText/.test(block), "...and no number goes with it (source text)");
     check(!/streaksFor|streakOf|edgePoint|createLinearGradient/.test(src) && !/export (const|function) (streakOf|streaksFor|edgePoint|STREAK_S|EDGE_INSET)\b/.test(st), "the motion streaks and the edge badges are gone from the screen and from stage.js (source text)");
+  }
+}
+
+console.log("\n20. A HAZARD AFTER THE TURN (slice 8): the sim's person, STOP at the full brake, the verdict");
+{
+  const HT = TYPES.map((t) => t.hazardType), HAZ = HT.flatMap((ht) => ht.pools.hazard.map((seed) => ({ ht, seed })));
+  const htag = (x) => `${x.ht.id}#${x.seed}`;
+  const LAG = REACTION_FLOOR + 0.5;   // the oracle's STOP, s after the step-off [invented, the spec's]
+  /* Each hazard seed driven three ways by the check's own driver (tools/lib/hazard-drive.mjs): the oracle's GO and no stop; and a STOP at REACTION_FLOOR + 0.5 s after the person steps off. */
+  const free = new Map(), stopped = new Map();
+  for (const x of HAZ) { free.set(htag(x), hazardRun(x.ht, x.seed, x.ht.cars)); stopped.set(htag(x), hazardRun(x.ht, x.seed, x.ht.cars, { stopAfter: LAG })); }
+
+  /* 1. The pools, and whether they are the sim's. */
+  for (const ht of HT) console.log(`        ${ht.id}: cars ${ht.cars}, ${ht.pools.hazard.length} hazard seeds`);
+  check(HT.every((ht) => ht.pools.hazard.length === 0 || ht.pools.hazard.length >= 5), `every type that has a hazard pool has at least 5 seeds in it (${HT.map((ht) => `${ht.id.replace("-hazard", "")} ${ht.pools.hazard.length}`).join(", ")})`);
+  check(HAZ.length >= 20 && HT.filter((ht) => ht.pools.hazard.length).length >= 2, `EXPOSURE: ${HAZ.length} hazard seeds in ${HT.filter((ht) => ht.pools.hazard.length).length} types (at least 20 seeds, 2 types)`);
+  const gone = HAZ.filter((x) => !free.get(htag(x))?.step);
+  check(gone.length === 0, `every hazard seed has a person who steps onto the player's path after its stop line, with the player's nose still short of the paint, under the oracle's drive${gone.length ? ` -- not ${gone.slice(0, 5).map(htag).join(" ")}` : ""}`);
+  const mine = HAZ.filter((x) => free.get(htag(x))?.step && !free.get(htag(x)).step.preGo);
+  check(HAZ.filter((x) => free.get(htag(x))?.step?.preGo).length === HAZ.length - gone.length && mine.length === 0, `THE PERSON IS THE SIM'S: in every hazard seed the one who steps out is in the world's people before the player's GO (their id is in \`world.peds\` at the freeze or while it waited)${mine.length ? ` -- not ${mine.slice(0, 5).map(htag).join(" ")}` : ""}`);
+  {
+    /* Source text: nothing in src/game writes a person into the world. The detector is shown to fire on a sample that does. */
+    const writes = /\bpeds\s*:|\.peds\s*=[^=]|peds\.push|\bpedN\s*:|strikePed|stepPeds|\.peds\s*\[[^\]]*\]\s*=[^=]/;
+    const files = ["Game.jsx", "autopilot.js", "control.js", "round.js", "rounds.js", "stage.js", "words.js", "look.js"];
+    const hits = files.filter((f) => writes.test(readFileSync(new URL(`../src/game/${f}`, import.meta.url), "utf8")));
+    check(writes.test("const w = { ...world, peds: [{ id: 'x' }] };") && writes.test("world.peds.push(p)") && !writes.test("const q = world.peds ?? [];"), "EXPOSURE: the source-text detector fires on a sample that writes a person into the world and not on one that reads");
+    check(hits.length === 0, `src/game never writes a person into the world (source text, ${files.length} files)${hits.length ? ` -- in ${hits.join(" ")}` : ""}`);
+    const rsrc = readFileSync(new URL("../src/game/round.js", import.meta.url), "utf8");
+    check(/pedRisk: HAZARD_RISK, pedEvery: HAZARD_EVERY/.test(rsrc) && (rsrc.match(/pedRisk/g) ?? []).length === 2, "the world's two fields, pedRisk and pedEvery, are set in one place, roundWorld, from the two constants (source text)");
+  }
+
+  /* 2. Fairness: the oracle with STOP at REACTION_FLOOR + 0.5 s strikes nobody. */
+  {
+    const bad = HAZ.filter((x) => { const r = stopped.get(htag(x)); return !r?.step || r.struck || !r.restShort || r.step.id !== free.get(htag(x))?.step?.id; });
+    check(bad.length === 0, `FAIRNESS: with STOP ${LAG.toFixed(2)} s (REACTION_FLOOR ${REACTION_FLOOR} + 0.5) after they step off, the oracle strikes nobody and rests short of the crosswalk, for the same person, in every hazard seed (${HAZ.length - bad.length} of ${HAZ.length})${bad.length ? ` -- not ${bad.slice(0, 5).map(htag).join(" ")}` : ""}`);
+    const room = HAZ.map((x) => { const r = stopped.get(htag(x)); return r?.step ? cwAheadOf(r.rs.me, r.rs.world, crosswalksOf(r.rs.world.course)[r.step.cw]) : NaN; }).filter((v) => v === v);
+    const gap = HAZ.map((x) => stopped.get(htag(x))?.minGap).filter((v) => v != null && v < 1e6);
+    console.log(`        the oracle's margin: at rest the nose is ${stat(room)} m short of the crosswalk's middle; the closest the person came to the car ${stat(gap)} m [M, this run]`);
+    check(room.length === HAZ.length && room.every((v) => v > 0), "EXPOSURE: every stop run came to rest with the crosswalk's middle ahead of the nose (the margin above is positive in all of them)");
+  }
+
+  /* 3. The danger is real: without a stop the person is struck or within 1 m. */
+  {
+    const near = HAZ.filter((x) => { const r = free.get(htag(x)); return r && (r.struck || r.minGap <= 1 + 1e-9); });
+    const struck = HAZ.filter((x) => free.get(htag(x))?.struck);
+    const share = near.length / Math.max(1, HAZ.length);
+    console.log(`        no stop: ${near.length} of ${HAZ.length} hazard seeds strike the person or come within 1 m (${(100 * share).toFixed(0)}%), ${struck.length} strike [M, this run]`);
+    check(HAZ.length >= 20 && share >= 0.8, `THE DANGER IS REAL: in ${(100 * share).toFixed(0)}% of hazard seeds the oracle with NO stop strikes the person or comes within 1 m of them (at least 80% [invented, the spec's])`);
+  }
+
+  /* 4. STOP: a tap after GO brakes at the car's full brake, and a drag is never a tap. */
+  {
+    const rows = [];
+    for (const x of HAZ) {
+      const r = stopped.get(htag(x));
+      if (!r?.stopTick) continue;
+      for (const q of r.speeds) if (q.t > r.stopTick + 1e-9 && q.v0 > 0.5) rows.push({ x, ratio: ((q.v0 - q.v) / DT) / -accelFor(-1, q.v0), dec: (q.v0 - q.v) / DT });
+    }
+    const worst = rows.reduce((m, q) => Math.min(m, q.ratio), Infinity);
+    check(rows.length >= 100, `EXPOSURE: ${rows.length} braking ticks after a STOP, over ${new Set(rows.map((q) => htag(q.x))).size} seeds (at least 100)`);
+    check(rows.every((q) => q.ratio >= 0.9), `STOP brakes at the car's full brake: every tick's deceleration is at least 0.9 of -accelFor(-1, v) (worst ${worst.toFixed(3)}; deceleration ${stat(rows.map((q) => q.dec))} m/s^2 [M, this run])`);
+    check(rows.some((q) => q.dec > HARSH_AT + 1), `...and it is the full brake and not the drag's soft one: some tick brakes harder than HARSH_AT + 1 (${(HARSH_AT + 1).toFixed(2)} m/s^2; HARSH_AT is the drag's own pace) [M, this run: peak ${Math.max(...rows.map((q) => q.dec)).toFixed(2)}]`);
+    /* A drag to 0 is the soft brake, in the same place: measured, so the two are shown to differ. */
+    const x1 = HAZ[0], st = free.get(htag(x1));
+    check(isTap(100, 0) && isTap(TAP_MS - 1, DEAD - 1) && !isTap(TAP_MS, 0) && !isTap(100, DEAD) && !isTap(100, 3 * DEAD) && TAP_MS === 250, `isTap: under TAP_MS (250 ms [invented]) and under DEAD (${DEAD} px) is a tap; a touch that lasts TAP_MS, or moves DEAD px or more, is not`);
+    let drag = true;
+    for (let ms = 0; ms <= 600; ms += 10) for (let px = DEAD; px <= 400; px += 2) if (isTap(ms, px)) drag = false;
+    check(drag, "A DRAG IS NEVER READ AS A TAP: no duration under 600 ms and movement from DEAD to 400 px is a tap (a 61 x 200 grid)");
+    /* STOP before GO is nothing; after it, a later drag up clears it and the car goes. */
+    const fz = toDecision(x1.ht, x1.seed, x1.ht.cars), w = press(fz);
+    check(stopNow(fz) === fz && stopNow(w) === w, "STOP before GO is nothing (frozen and waiting rounds are returned as they were): a tap there is slice 7's press");
+    let rs = setTarget(press(fz), LIMIT);
+    for (let i = 0; i < 60 && !rs.end; i++) rs = roundTick(rs);
+    const v0 = rs.me.v;
+    rs = stopNow(rs);
+    let n = 0;
+    while (rs.me.v > 0.1 && n++ < 200 && !rs.end) rs = roundTick(rs);
+    const atRest = rs.me.v <= 0.1, held = rs.stop === true && rs.target === 0;
+    const restS = rs.me.s;
+    rs = setTarget(rs, LIMIT);
+    for (let i = 0; i < 40 && !rs.end; i++) rs = roundTick(rs);
+    check(v0 > 3 && atRest && held && !rs.stop && rs.me.v > 1 && rs.me.s > restS + 1, `STOP, then a drag up: at ${v0.toFixed(1)} m/s STOP brings the car to rest (target 0, stop held), and the next target above 0 clears it and the car goes again (${rs.me.v.toFixed(1)} m/s two seconds on)`);
+    void st;
+  }
+
+  /* 5. The verdict. */
+  {
+    /* STOP runs at several lags, over every hazard seed, to get stops short, late stops and strikes. */
+    const lags = [LAG, 0.6, 1.0, 1.5, 2.2], runs = [];
+    for (const x of HAZ) for (const lag of lags) { const r = lag === LAG ? stopped.get(htag(x)) : hazardRun(x.ht, x.seed, x.ht.cars, { stopAfter: lag }); if (r?.step) runs.push({ x, lag, r }); }
+    const hits = runs.filter((q) => q.r.struck), shorts = runs.filter((q) => !q.r.struck && q.r.restShort);
+    check(hits.length >= 3 && shorts.length >= 20, `EXPOSURE: ${hits.length} runs strike the person (at least 3) and ${shorts.length} stop short of them (at least 20), over ${runs.length} stop runs`);
+    check(hits.every((q) => q.r.rs.end?.why === "contact" && q.r.verdict.stars === 0 && q.r.verdict.faults.some((f) => f.id === "struckPerson" && f.words === "You hit a pedestrian.")), `a strike gives 0 stars, the round ends in contact, and the words "You hit a pedestrian." (${hits.length} runs)`);
+    check(hits.every((q) => !q.r.verdict.praise.some((f) => f.id === "stoppedInTime")), "...and no \"Stopped in time.\" with it (every strike run)");
+    check(shorts.every((q) => q.r.verdict.praise.some((f) => f.id === "stoppedInTime" && f.words === "Stopped in time.")), `a stop short gives the praise stoppedInTime, "Stopped in time." (${shorts.length} runs)`);
+    const off = shorts.map((q) => ({ q, d: Math.abs(q.r.verdict.hazard.reaction - (q.r.stopTick - q.r.step.t)) }));
+    check(shorts.every((q) => q.r.verdict.hazard?.reaction != null) && off.every((o) => o.d <= DT + 1e-9), `the reaction time on the verdict equals the check's own (the tick of the STOP less the tick the person stepped off) to one tick: worst difference ${Math.max(...off.map((o) => o.d)).toFixed(3)} s (DT ${DT}) over ${shorts.length} runs; reactions ${stat(shorts.map((q) => q.r.verdict.hazard.reaction))} s [M, this run]`);
+    /* A STOP with no hazard costs nothing from this slice: seeds where nobody steps out, stopped two seconds after GO. */
+    const quiet = [];
+    for (const ht of HT) for (let seed = 1; seed <= 40 && quiet.length < 40; seed++) {
+      const f = hazardRun(ht, seed, ht.cars);
+      if (!f || f.step) continue;
+      let rs = toDecision(ht, seed, ht.cars);
+      const { policy } = oracle();
+      let t0 = null, anyStep = false, prevPeds = new Map();
+      while (!rs.end) {
+        if (rs.phase !== "gone") { if (policy(rs) === "go") { rs = setTarget(rs, LIMIT); t0 = rs.world.t; } else if (rs.phase === "frozen") rs = press(rs); }
+        else if (t0 != null && rs.world.t - t0 >= 2 && !rs.stop && rs.me.v > 1) rs = stopNow(rs);
+        rs = roundTick(rs);
+        if (rs.phase === "gone") { for (const p of rs.world.peds ?? []) if (p.state === "crossing" && prevPeds.get(p.id) !== "crossing") anyStep = true; prevPeds = new Map((rs.world.peds ?? []).map((p) => [p.id, p.state])); }
+        if (rs.phase === "gone" && rs.stop && rs.me.v < 0.1) break;
+      }
+      if (rs.stop && !anyStep) quiet.push({ ht, seed, v: verdictOf(rs) });
+    }
+    check(quiet.length >= 10, `EXPOSURE: ${quiet.length} rounds where nobody stepped out and the player stopped anyway (at least 10)`);
+    check(quiet.every((q) => q.v.hazard === null && !q.v.praise.some((f) => f.id === "stoppedInTime") && !q.v.faults.some((f) => f.id === "struckPerson")), "a STOP with no hazard has no hazard verdict: no reaction time, no praise, no struck person (the intersection's own faults are whatever the sim's detectors say)");
+  }
+
+  /* 6. Plain seeds are the plain maps, untouched; the autopilot's people rule only reaches the go phase. */
+  {
+    check(TYPES.every((t) => !t.hazard && t.map().roads.every((r) => !r.crosswalk)), "every plain type's map has no crosswalk and is not a hazard round: the plain seeds' verdicts are section 18's, unchanged");
+    const asrc = readFileSync(new URL("../src/game/autopilot.js", import.meta.url), "utf8");
+    check(/phase === "go" \? \{ \.\.\.world, ignorePeds: true \} : world/.test(asrc), "after GO the autopilot asks the sim's stop marker without people (ignorePeds); before GO it is asked as ever (source text)");
+    check(/if \(thumb && stopped\) slider = me\.v > 0\.05 \? -1 : HOLD/.test(asrc), "STOP is slider -1 until the car is at rest, then the hold (source text)");
+    const gsrc = readFileSync(new URL("../src/game/Game.jsx", import.meta.url), "utf8");
+    check(/if \(rs\.phase === "gone"\) tap = \{/.test(gsrc) && /isTap\(performance\.now\(\) - was\.t0, was\.moved\)\) rs = stopNow\(rs\)/.test(gsrc), "a tap is decided at lift with isTap, and a touch only becomes a tap candidate when the round is already gone (source text)");
   }
 }
 

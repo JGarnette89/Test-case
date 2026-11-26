@@ -20,22 +20,22 @@ const LEG = 140;
 const FAR = { S: { x: C.x, y: C.y + LEG }, N: { x: C.x, y: C.y - LEG }, W: { x: C.x - LEG, y: C.y }, E: { x: C.x + LEG, y: C.y } };
 
 /* A four-leg intersection, every leg a road that ends at the middle; `legs` says each one's kind and what governs it. */
-function crossroads(id, name, legs) {
+function crossroads(id, name, legs, walk = null) {
   const m = emptyMap(id, name);
   m.bounds = { x: 0, y: 0, w: 500, h: 500 };
   for (const side of ["S", "N", "W", "E"]) {
     const { kind, control } = legs[side];
-    m.roads.push(road({ id: side, kind, points: [FAR[side], C], control: { start: "none", end: control } }));
+    m.roads.push(road({ id: side, kind, points: [FAR[side], C], control: { start: "none", end: control }, ...(walk === side ? { crosswalk: { end: true } } : {}) }));
   }
   return m;
 }
 /* An all-way stop on residential streets. */
-const allWayStop = () => crossroads("round-all-way", "An all-way stop", Object.fromEntries(["S", "N", "W", "E"].map((s) => [s, { kind: "residential", control: "stop" }])));
+const allWayStop = (walk = null) => crossroads("round-all-way", "An all-way stop", Object.fromEntries(["S", "N", "W", "E"].map((s) => [s, { kind: "residential", control: "stop" }])), walk);
 /* A two-way stop: a residential minor road stops; a collector (50 km/h) runs through with no control. */
-const twoWayStop = () => crossroads("round-two-way", "A two-way stop", {
+const twoWayStop = (walk = null) => crossroads("round-two-way", "A two-way stop", {
   S: { kind: "residential", control: "stop" }, N: { kind: "residential", control: "stop" },
   W: { kind: "collector", control: "none" }, E: { kind: "collector", control: "none" },
-});
+}, walk);
 const START = { road: "S", end: "end" };   // the approach from the south, whose end is the intersection
 
 /* THE POOLS [M, tools/measure/round-seeds.mjs]: filled from the run named in POOLS_RUN. `now`: the way is open at the freeze and stays
@@ -58,7 +58,22 @@ const DEFS = [
   { id: "two-way-right", title: "Two-way stop, right", task: "right", brief: "Stop, then turn right onto the busy road.", say: "Turn right onto the busy road", map: twoWayStop, start: START },
   { id: "two-way-left", title: "Two-way stop, left", task: "left", brief: "Stop, then turn left across the busy road.", say: "Turn left across the busy road", map: twoWayStop, start: START },
 ];
-export const TYPES = DEFS.map((d) => ({ ...d, cars: POOLS[d.id].cars, pools: { now: POOLS[d.id].now, wait: POOLS[d.id].wait } }));
+/* THE HAZARD ROUNDS (slice 8; round.js HAZARD_RISK). The same four types on the same maps with ONE crosswalk, at the box on the leg the task EXITS BY
+   (straight N, left W, right E: the player comes from the south), so the people the sim sends there are on the player's path after the turn. Each has
+   its own pool of HAZARD seeds, chosen by measurement (tools/measure/round-seeds.mjs --hazard, HAZARDS below): a person the sim made steps onto the
+   player's path after its stop line, and a stop at REACTION_FLOOR + 0.5 s after they step off stops short of them. Plain seeds are on the plain maps
+   and are not touched. */
+const EXIT = { straight: "N", left: "W", right: "E" };
+export const HAZARD_P = 0.35;   // the chance a round of a set is a hazard round, from the types that have a pool [invented, the spec's]
+export const HAZARDS_RUN = "[M, tools/measure/round-seeds.mjs --hazard --seeds=1500, run 2026-11-25 (slice 8), at 4 cars, found by the search and kept if a stop at REACTION_FLOOR + 0.5 s rests with the crosswalk ahead of the nose: straight-4way 6, left-4way 0, right-2way 25, left-2way 60 (the first 30 kept) of 1500 seeds each; the first 30 of each pool are kept (a cap [invented] so verify-rounds stays short)]";
+const HAZARDS = {
+  "four-way-straight": { cars: 4, seeds: [46, 185, 458, 611, 695, 1061] },
+  "four-way-left": { cars: 4, seeds: [] },
+  "two-way-right": { cars: 4, seeds: [94, 113, 131, 201, 228, 333, 337, 425, 479, 493, 668, 694, 774, 811, 874, 914, 1021, 1025, 1110, 1139, 1208, 1245, 1321, 1429, 1456] },
+  "two-way-left": { cars: 4, seeds: [1, 4, 17, 19, 42, 84, 91, 103, 168, 216, 314, 386, 397, 398, 416, 442, 499, 502, 510, 511, 528, 567, 573, 606, 621, 643, 674, 704, 816, 880] },
+};
+const hazardOf = (d) => ({ ...d, id: `${d.id}-hazard`, hazard: true, map: () => d.map(EXIT[d.task]), cars: HAZARDS[d.id].cars, pools: { hazard: HAZARDS[d.id].seeds } });
+export const TYPES = DEFS.map((d) => ({ ...d, cars: POOLS[d.id].cars, pools: { now: POOLS[d.id].now, wait: POOLS[d.id].wait }, hazardType: hazardOf(d) }));
 
 /* A SET is five rounds: one of each type, then one more from a random type. Each is drawn from its type's pools: `wait` with probability
    P_WAIT, `now` otherwise, so that "go at once" is sometimes right and waiting is not a free habit. From a seed taken when Play is
@@ -70,10 +85,15 @@ export function drawSet(setSeed, types = TYPES) {
   if (!usable.length) return [];
   const order = usable.slice();
   while (order.length < SET_SIZE) order.push(usable[Math.floor(r() * usable.length)]);
+  /* THE HAZARD ROLL has its own stream, so the plain draws above are the draws they always were (slice 8): with probability HAZARD_P a round is the
+     type's HAZARD round, from its hazard pool, when it has one. Two draws per round, always, whether or not they are used. */
+  const rh = rng((setSeed ^ 0x9e3779b9) >>> 0);
   return order.slice(0, SET_SIZE).map((type) => {
     const wantWait = r() < P_WAIT;
     const pool = wantWait ? (type.pools.wait.length ? "wait" : "now") : (type.pools.now.length ? "now" : "wait");
     const seeds = type.pools[pool];
-    return { type, pool, seed: seeds[Math.floor(r() * seeds.length)], cars: type.cars };
+    const plain = { type, pool, seed: seeds[Math.floor(r() * seeds.length)], cars: type.cars };
+    const roll = rh(), pick = rh(), hz = type.hazardType;
+    return hz?.pools.hazard.length && roll < HAZARD_P ? { type: hz, pool: "hazard", seed: hz.pools.hazard[Math.floor(pick * hz.pools.hazard.length)], cars: hz.cars } : plain;
   });
 }
