@@ -909,9 +909,9 @@ export function drawFrame(ctx, canvas, scene, { audit = false, batchMarkings = t
         SIGN_GEOM.set(s, geom);
       }
       const { isLight, postH, post, lens, housing, arrowLens, face, speedBoard, oneWay, oneWayBar, band, plate } = geom;
+      if (game) { GL.signItems(items, GAME_HELPERS, { s, j, geom, ctx, view, canvas, scene, k, audit, depthOf }); continue; }
       items.push({ layer: 1, key: depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01, tag: audit && { kind: "sign", at: s.at }, paint: () => {
         paintBox(ctx, view, post, "#9a9da3");
-        if (game) { GL.paintSign(ctx, view, s, j, scene, k, geom); return; }
         if (s.kind === "speed-limit") {
           paintBox(ctx, view, speedBoard, "#f4f4ee");
           /* The number, projected onto the board's centre and sized to it. */

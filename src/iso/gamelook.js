@@ -64,6 +64,13 @@ export function personPaint(H, { ctx, view, a, at, deg, t, k }) {
 /* A face's size on screen: 3 px for each pixel-per-metre of zoom, between 26 and 56 [invented, the spec's bounds]. */
 export const SIGN_MIN_PX = 26, SIGN_MAX_PX = 56;
 export const signPx = (k) => Math.min(SIGN_MAX_PX, Math.max(SIGN_MIN_PX, 3 * k));
+/* A speed-limit board is not the decision (Jay's planner, slice 10 review): its face is at most this many px tall [invented, the review's]; the 26 px floor is for stop, yield, signal and the prohibition signs. */
+export const SPEED_MAX_PX = 30;
+const SPEED_H = 1.15;   // the board's height in units of S
+const sizeFor = (kind, k) => (kind === "speed-limit" ? Math.min(SPEED_MAX_PX / SPEED_H, signPx(k)) : signPx(k));
+/* The ALL WAY plate under the octagon: as wide as the octagon, its text never under 9 px [invented, the review's]. */
+export const PLATE_TEXT_MIN_PX = 9;
+const plateH = (S) => Math.max(Math.round(PLATE_TEXT_MIN_PX * 1.4), S * 0.3);
 const RED = "#d4202a", WHITE = "#f7f7f2", BLACK = "#16171a";
 const LENS = { red: "#e4483c", amber: "#f2b84b", green: "#4fd07a" };
 const DARK = { red: "#4a2622", amber: "#4a3d22", green: "#22402e" };
@@ -72,14 +79,22 @@ export const SIGN_COLOURS = { LENS, DARK };
 
 function poly(c, pts, fill) { c.beginPath(); pts.forEach((p, i) => (i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]))); c.closePath(); c.fillStyle = fill; c.fill(); }
 const octagon = (cx, cy, r) => Array.from({ length: 8 }, (_, i) => { const a = (Math.PI / 8) + (i * Math.PI) / 4; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; });
-function text(c, str, x, y, px, fill, floor = 5, weight = 800) { c.fillStyle = fill; c.font = `${weight} ${Math.max(floor, px).toFixed(1)}px sans-serif`; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(str, x, y); }
+function text(c, str, x, y, px, fill, floor = 5, weight = 800, maxW = undefined) { c.fillStyle = fill; c.font = `${weight} ${Math.max(floor, px).toFixed(1)}px sans-serif`; c.textAlign = "center"; c.textBaseline = "middle"; if (maxW) c.fillText(str, x, y, maxW); else c.fillText(str, x, y); }
 
 /* The face's height for a kind, in units of S: what the caller needs to stand it on its post. */
 export function faceHeight(kind, S, s) {
   if (kind === "signal") return S * (s?.hasArrow ? 1.85 : 1.45);
-  if (kind === "stop") return S * (s?.allWay ? 1.3 : 1);
-  if (kind === "speed-limit") return S * 1.15;
+  if (kind === "stop") return S + (s?.allWay ? 2 + plateH(S) : 0);
+  if (kind === "speed-limit") return S * SPEED_H;
   if (kind === "one-way") return S * 0.55;
+  return S;
+}
+/* The face's width, the other half of its screen rectangle. */
+export function faceWidth(kind, S) {
+  if (kind === "signal") return S * 0.66;   // the housing is 0.46 S wide; the lit lens's glow reaches 0.65 S
+  if (kind === "speed-limit") return S * 0.82;
+  if (kind === "one-way") return S * 1.2;
+  if (kind === "yield") return S * 1.05;
   return S;
 }
 
@@ -93,15 +108,15 @@ export function drawFace(c, kind, cx, top, S, o = {}) {
     c.strokeStyle = WHITE; c.lineWidth = Math.max(1.2, S * 0.05); c.beginPath(); octagon(cx, cy, Rv * 0.9).forEach((q, i) => (i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]))); c.closePath(); c.stroke();
     text(c, "STOP", cx, cy + S * 0.02, S * 0.3, WHITE);
     if (o.allWay) {
-      const w = S * 0.84, h = S * 0.26, y = top + S + 2;
+      const w = S, h = plateH(S), y = top + S + 2;
       c.fillStyle = RED; c.fillRect(cx - w / 2, y, w, h); c.strokeStyle = WHITE; c.lineWidth = Math.max(1, S * 0.04); c.strokeRect(cx - w / 2, y, w, h);
-      text(c, "ALL WAY", cx, y + h / 2 + 0.5, S * 0.15, WHITE);
+      text(c, "ALL WAY", cx, y + h / 2 + 0.5, PLATE_TEXT_MIN_PX, WHITE, PLATE_TEXT_MIN_PX, 800, w - 4);   // squeezed to the plate by fillText's own max width, never smaller than 9 px
     }
   } else if (kind === "yield") {
     const cy = top + R, t = (r) => [[cx - r, cy - r * 0.8], [cx + r, cy - r * 0.8], [cx, cy + r * 0.95]];
     poly(c, t(R * 1.05), RED); poly(c, t(R * 0.6), WHITE);
   } else if (kind === "speed-limit") {
-    const w = S * 0.82, h = S * 1.15;
+    const w = S * 0.82, h = S * SPEED_H;
     c.fillStyle = WHITE; c.fillRect(cx - w / 2, top, w, h); c.strokeStyle = BLACK; c.lineWidth = Math.max(1.2, S * 0.05); c.strokeRect(cx - w / 2, top, w, h);
     text(c, "MAXIMUM", cx, top + h * 0.2, S * 0.1, BLACK, 4, 700);
     text(c, String(o.kmh ?? ""), cx, top + h * 0.62, S * 0.42, BLACK);
@@ -146,16 +161,84 @@ function paintStatic(ctx, kind, cx, top, S, o) {
   else drawFace(ctx, kind, cx, top, S, o);
 }
 
-/* One sign, on its post: the face turned to the camera at the head of the post, over the post the frame has already drawn. */
-export function paintSign(ctx, view, s, j, scene, k, geom) {
-  const S = signPx(k), kind = s.kind === "signal" ? "signal" : s.kind;
-  const p = view.into(s.at.x, s.at.y, (s.at.z ?? 0) + geom.postH, [0, 0]);
-  const Hh = faceHeight(kind, S, { hasArrow: geom.hasArrow, allWay: s.allWay }), top = p[1] - Hh, cx = p[0];
-  if (kind === "signal") { paintSignal(ctx, view, s, j, scene, S, cx, top, Hh, geom); return; }
-  if (s.kind === "stop") paintStatic(ctx, "stop", cx, top, S, { allWay: !!s.allWay });
-  else if (s.kind === "speed-limit") paintStatic(ctx, "speed-limit", cx, top, S, { kmh: s.kmh });
-  else if (s.kind === "yield" || s.kind === "one-way" || s.kind === "do-not-enter" || s.kind === "no-left-turn") paintStatic(ctx, s.kind, cx, top, S, {});
-  else paintStatic(ctx, "yield", cx, top, S, {});
+/* ---- where a face stands -------------------------------------------- */
+
+/* THE ROAD IN THE SCREEN, once a frame: every road ribbon segment and every junction surface as a screen polygon (convex), kept on the view. Nothing typed in: the quantity a face must keep off is the road the sim drew. */
+const OBST = new WeakMap(), PLACED = new WeakMap();
+function obstaclesOf(view, scene, canvas) {
+  let o = OBST.get(view);
+  if (o) return o;
+  o = [];
+  const add = (pts) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const q of pts) { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); x1 = Math.max(x1, q[0]); y1 = Math.max(y1, q[1]); }
+    if (x1 < -80 || x0 > canvas.w + 80 || y1 < -80 || y0 > canvas.h + 80) return;
+    o.push({ pts, x0, y0, x1, y1 });
+  };
+  for (const j of scene.junctions ?? []) if (j.surface?.length) add(j.surface.map((q) => view.P(q.x, q.y, q.z ?? 0)));
+  for (const { road } of scene.roads ?? []) {
+    if (!road.left || !road.right) continue;
+    for (let i = 0; i + 1 < road.left.length; i++) {
+      const a = road.left[i], b = road.left[i + 1], c = road.right[i + 1], d = road.right[i];
+      if (!a || !b || !c || !d) continue;
+      add([view.P(a.x, a.y, a.z ?? 0), view.P(b.x, b.y, b.z ?? 0), view.P(c.x, c.y, c.z ?? 0), view.P(d.x, d.y, d.z ?? 0)]);
+    }
+  }
+  OBST.set(view, o);
+  return o;
+}
+/* Does a convex polygon overlap an axis-aligned rectangle (inflated by `m` px)? Separating axes: the rectangle's two and the polygon's edges. */
+function overlaps(poly, x0, y0, x1, y1) {
+  if (poly.x1 < x0 || poly.x0 > x1 || poly.y1 < y0 || poly.y0 > y1) return false;
+  const P = poly.pts, R = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length], nx = -(b[1] - a[1]), ny = b[0] - a[0];
+    let pmin = Infinity, pmax = -Infinity, rmin = Infinity, rmax = -Infinity;
+    for (const q of P) { const d = q[0] * nx + q[1] * ny; pmin = Math.min(pmin, d); pmax = Math.max(pmax, d); }
+    for (const q of R) { const d = q[0] * nx + q[1] * ny; rmin = Math.min(rmin, d); rmax = Math.max(rmax, d); }
+    if (pmax <= rmin || rmax <= pmin) return false;
+  }
+  return true;   // the rectangle's own axes were settled by the bounding-box test above
+}
+const DIRS = Array.from({ length: 16 }, (_, i) => [Math.cos((i * Math.PI) / 8), Math.sin((i * Math.PI) / 8)]);
+const CLEAR_PX = 1;   // [instrument] the clearance asked of the search
+/* The smallest push, in the screen, that takes a face's rectangle off every road polygon: the search walks outward in 2 px steps in 16 directions and takes the first step at which some direction is clear, the one most nearly away from the intersection's middle. A face already clear is not moved. */
+export function pushFor(view, scene, canvas, rect, away) {
+  const obs = obstaclesOf(view, scene, canvas), placed = PLACED.get(view) ?? [];   // faces already placed this frame keep each other apart too
+  const clearAt = (dx, dy) => { const x0 = rect.x + dx - CLEAR_PX, y0 = rect.y + dy - CLEAR_PX, x1 = rect.x + rect.w + dx + CLEAR_PX, y1 = rect.y + rect.h + dy + CLEAR_PX; for (const q of obs) if (overlaps(q, x0, y0, x1, y1)) return false; for (const r of placed) if (!(r.x1 < x0 || r.x0 > x1 || r.y1 < y0 || r.y0 > y1)) return false; return true; };
+  if (clearAt(0, 0)) return { dx: 0, dy: 0, t: 0 };
+  const al = Math.hypot(away[0], away[1]) || 1;
+  for (let t = 2; t <= 600; t += 2) {
+    let best = null, bestDot = -Infinity;
+    for (const d of DIRS) { if (!clearAt(d[0] * t, d[1] * t)) continue; const dot = (d[0] * away[0] + d[1] * away[1]) / al; if (dot > bestDot) { bestDot = dot; best = d; } }
+    if (best) return { dx: best[0] * t, dy: best[1] * t, t };
+  }
+  return { dx: 0, dy: 0, t: 0 };
+}
+
+/* One sign, as TWO items. The post stays a layer-1 box in the world. The FACE is a layer-0.75 item: after the whole floor (layers 0 and 0.5) and before every car and person, which is a deliberate game choice, information first: under the game look a vehicle or a person is never hidden by a sign. It is a flat face turned to the camera, stood at the head of its post and then moved off the road (pushFor), with a thin leader down to the post's foot. */
+export function signItems(items, H, { s, j, geom, ctx, view, canvas, scene, k, audit, depthOf }) {
+  const key = depthOf(s.at.x, s.at.y, s.at.z ?? 0) + 0.01;
+  items.push({ layer: 1, key, tag: audit && { kind: "sign", at: s.at }, paint: () => H.paintBox(ctx, view, geom.post, "#9a9da3") });
+  items.push({ layer: 0.75, key, tag: audit && { kind: "sign-face", layer: 0.75, at: s.at }, paint: () => paintFace(ctx, view, canvas, s, j, scene, k, geom) });
+}
+function paintFace(ctx, view, canvas, s, j, scene, k, geom) {
+  const kind = s.kind === "signal" ? "signal" : ["stop", "yield", "speed-limit", "one-way", "do-not-enter", "no-left-turn"].includes(s.kind) ? s.kind : "yield";
+  const S = sizeFor(kind, k), opts = { hasArrow: geom.hasArrow, allWay: !!s.allWay };
+  const post = view.into(s.at.x, s.at.y, (s.at.z ?? 0) + geom.postH, [0, 0]), foot = view.into(s.at.x, s.at.y, s.at.z ?? 0, [0, 0]), mid = view.into(j.at.x, j.at.y, j.at.z ?? 0, [0, 0]);
+  const w = faceWidth(kind, S), Hh = faceHeight(kind, S, opts);
+  const up = kind === "signal" ? 0.12 * S : 0;   // the top lens's glow reaches above the housing
+  const rect = { x: post[0] - w / 2, y: post[1] - Hh - up, w, h: Hh + up };
+  const { dx, dy, t } = pushFor(view, scene, canvas, rect, [foot[0] - mid[0], foot[1] - mid[1]]);
+  const cx = post[0] + dx, top = post[1] - Hh + dy;
+  { const list = PLACED.get(view) ?? []; list.push({ x0: rect.x + dx, y0: rect.y + dy, x1: rect.x + rect.w + dx, y1: rect.y + rect.h + dy }); PLACED.set(view, list); }
+  if (t > 0) { ctx.strokeStyle = "rgba(70,74,82,0.9)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(foot[0], foot[1]); ctx.lineTo(cx, top + Hh); ctx.stroke(); }
+  ctx.save();
+  if (kind === "signal") paintSignal(ctx, view, s, j, scene, S, cx, top, Hh, geom);
+  else if (kind === "stop") paintStatic(ctx, "stop", cx, top, S, { allWay: !!s.allWay });
+  else if (kind === "speed-limit") paintStatic(ctx, "speed-limit", cx, top, S, { kmh: s.kmh });
+  else paintStatic(ctx, kind, cx, top, S, {});
+  ctx.restore();
 }
 
 /* A signal: a black housing, three round lenses (red on top), the lit one bright with a glow and the rest dim; a fourth small lens with a green arrow where the approach has a protected left. The light comes from lightAt/arrowAt, the calls the drivers obey. */

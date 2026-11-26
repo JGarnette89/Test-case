@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { drawFrame } from "../../src/iso/draw.js";
 import { viewOf } from "../../src/iso/project.js";
-import { cornersOf, signPx, SIGN_MIN_PX, SIGN_MAX_PX, PERSON_MIN_PX, BAR_MIN_PX, STOP_MIN_PX, RETURN_R, spriteStats } from "../../src/iso/gamelook.js";
+import { cornersOf, signPx, SPEED_MAX_PX, PLATE_TEXT_MIN_PX, SIGN_MIN_PX, SIGN_MAX_PX, PERSON_MIN_PX, BAR_MIN_PX, STOP_MIN_PX, RETURN_R, spriteStats } from "../../src/iso/gamelook.js";
 import { lightAt, arrowAt } from "../../src/sim/signal.js";
 import { loadMap, groundFor } from "../../src/map/load.js";
 import * as MAPS from "../../src/map/samples.js";
@@ -34,11 +34,12 @@ import { frameCamera, decisionFrame } from "../../src/game/stage.js";
 const RED = "#d4202a", WHITE = "#f7f7f2", HOUSING = "#14161b";
 const LENS = { red: "#e4483c", amber: "#f2b84b", green: "#4fd07a" };
 const DARK = { red: "#4a2622", amber: "#4a3d22", green: "#22402e" };
-const CURB = "#e2dfd6", ZEBRA = "rgba(250,250,242,0.95)", STOPLINE = "rgba(252,252,246,0.98)";
+const LEADER = "rgba(70,74,82,0.9)", CURB = "#e2dfd6", ZEBRA = "rgba(250,250,242,0.95)", STOPLINE = "rgba(252,252,246,0.98)";
 
 /* A canvas context that records. */
 export function recorder() {
-  const raw = [], fills = [], strokes = [], texts = [], arcs = [], images = [];
+  const raw = [], fills = [], strokes = [], texts = [], arcs = [], images = [], groups = [];
+  let open = null;
   let path = [];
   const st = { fillStyle: "#000", strokeStyle: "#000", lineWidth: 1, font: "", globalAlpha: 1, lineCap: "butt", lineJoin: "miter", textAlign: "start", textBaseline: "alphabetic" };
   const n = (v) => (typeof v === "number" ? +v.toFixed(3) : String(v));
@@ -52,6 +53,7 @@ export function recorder() {
     fillRect(x, y, w, h) { fills.push({ style: st.fillStyle, pts: box(x, y, w, h), rect: { w, h }, at: raw.length }); },
     strokeRect(x, y, w, h) { strokes.push({ style: st.strokeStyle, lw: st.lineWidth, pts: box(x, y, w, h), rect: { w, h }, at: raw.length }); },
     fillText(s, x, y) { texts.push({ s, style: st.fillStyle, font: st.font, x, y, at: raw.length }); },
+    save() { open = raw.length; }, restore() { if (open != null) groups.push({ start: open, end: raw.length - 1 }); open = null; },
     drawImage(img, x, y, w, h) { images.push({ x, y, w, h, at: raw.length }); },
     getTransform() { return { a: 1 }; },
     measureText(s) { return { width: String(s).length * 6 }; },
@@ -64,7 +66,7 @@ export function recorder() {
     },
     set: (_, p, v) => { raw.push(`${String(p)}=${n(v)}`); st[p] = v; return true; },
   });
-  return { ctx, raw, fills, strokes, texts, arcs, images };
+  return { ctx, raw, fills, strokes, texts, arcs, images, groups };
 }
 const ptsOf = (op) => op.pts.flatMap((p) => (p.arc ? [[p.arc[0] - p.arc[2], p.arc[1] - p.arc[2]], [p.arc[0] + p.arc[2], p.arc[1] + p.arc[2]]] : [p]));
 export function bboxOf(ops) {
@@ -269,7 +271,10 @@ export async function gameLookChecks(check, { base = "9074f5e" } = {}) {
         const view = viewOf(sc.scene.k, sc.scene.cam, sc.scene.rot, SIZE);
         for (const sig of sigs) {
           /* the face stands on its post: its housing's bottom edge is the post top's screen point (a signal's post is 2.6 m, restated here) and it is centred on it */
-          const pt = view.P(sig.s.at.x, sig.s.at.y, (sig.s.at.z ?? 0) + 2.6);
+          let pt = view.P(sig.s.at.x, sig.s.at.y, (sig.s.at.z ?? 0) + 2.6);
+          /* a face moved off the road has a leader from the post's foot to the face's bottom edge */
+          const foot = view.P(sig.s.at.x, sig.s.at.y, sig.s.at.z ?? 0), lead = g.strokes.find((q) => q.style === LEADER && Math.hypot(q.pts[0][0] - foot[0], q.pts[0][1] - foot[1]) < 0.6);
+          if (lead) pt = lead.pts[1];
           const h = byAt.find((q) => { const bb = bboxOf([q]); return Math.abs((bb.x0 + bb.x1) / 2 - pt[0]) < 0.6 && Math.abs(bb.y1 - pt[1]) < 0.6; });
           if (!h) continue;
           const next = byAt[byAt.indexOf(h) + 1]?.at ?? Infinity, bb = bboxOf([h]);
@@ -295,11 +300,13 @@ export async function gameLookChecks(check, { base = "9074f5e" } = {}) {
     console.log(`        [M, this run] sign faces painted, per kind: ${Object.entries(counts).map(([k, n]) => `${k} ${n}`).join(", ")}`);
     console.log(`        [M, this run] face size (px across, the larger of width and height) per kind: ${kinds.map((k) => { const v = sizes.filter((s) => s[0] === k).map((s) => s[1]); return `${k} ${Math.min(...v).toFixed(1)}-${Math.max(...v).toFixed(1)}`; }).join(", ")}`);
     check(["stop", "speed-limit", "signal", "yield", "do-not-enter", "one-way"].every((k) => counts[k] > 0), `EXPOSURE: every kind arose (${Object.keys(counts).join(", ")}); no-left-turn has no map, see its own line below`);
-    check(sizes.every(([, v]) => v >= SIGN_MIN_PX - 0.01), `every sign face in view is at least ${SIGN_MIN_PX} px across (smallest ${Math.min(...sizes.map((s) => s[1])).toFixed(1)} px, of ${sizes.length} faces)`);
+    const nonSpeed = sizes.filter((x) => x[0] !== "speed"), speeds = sizes.filter((x) => x[0] === "speed");
+    check(nonSpeed.every(([, v]) => v >= SIGN_MIN_PX - 0.01), `every stop, yield, signal and prohibition face in view is at least ${SIGN_MIN_PX} px across (smallest ${Math.min(...nonSpeed.map((s) => s[1])).toFixed(1)} px, of ${nonSpeed.length} faces)`);
+    check(speeds.length >= 20 && speeds.every(([, v]) => v <= SPEED_MAX_PX + 0.01), `EXPOSURE: ${speeds.length} speed-limit faces, and every one is at most ${SPEED_MAX_PX} px tall (tallest ${Math.max(...speeds.map((s) => s[1])).toFixed(1)} px)`);
     /* the zoom clamp, on a stop sign at both ends */
     const j0 = junctionsOf(plain[0].world.course)[0], stopSc = { ...plain[0].scene, cam: { x: j0.at.x, y: j0.at.y, z: 0, id: null }, rot: 0 };
     const widths = [1, 3, 11, 30, 80].map((k) => { const r = draw({ ...stopSc, k }, { look: "game" }); const o = r.fills.filter((f) => f.style === RED && f.pts.length === 8).map((f) => bboxOf([f]).w); return o.length ? Math.max(...o) : null; });
-    check(widths.slice(1).every((w) => w != null) && Math.min(...widths.slice(1)) >= SIGN_MIN_PX - 0.01 && Math.max(...widths.slice(1)) <= SIGN_MAX_PX + 0.01 && widths[3] === widths[4], `a stop sign is clamped to ${SIGN_MIN_PX}-${SIGN_MAX_PX} px across the zoom range: ${widths.map((w) => (w == null ? "-" : w.toFixed(1))).join(", ")} px at 1, 3, 11, 30 and 80 px/m (px/m 1 is the far view, painted by the default code)`);
+    check(widths.slice(1).every((w) => w != null) && Math.min(...widths.slice(1)) >= SIGN_MIN_PX - 0.01 && Math.max(...widths.slice(1)) <= SIGN_MAX_PX + 0.01 && Math.abs(widths[3] - widths[4]) < 0.01, `a stop sign is clamped to ${SIGN_MIN_PX}-${SIGN_MAX_PX} px across the zoom range: ${widths.map((w) => (w == null ? "-" : w.toFixed(1))).join(", ")} px at 1, 3, 11, 30 and 80 px/m (px/m 1 is the far view, painted by the default code)`);
     check(signPx(2) === SIGN_MIN_PX && signPx(100) === SIGN_MAX_PX, "the size rule (restated: 3 px per px/m between the bounds)");
     /* NO LEFT TURN: no test map carries one; one is placed on a real junction */
     const nl = JSON.parse(JSON.stringify({ at: { x: tm1.j.at.x + 3, y: tm1.j.at.y + 3 } }));
@@ -321,6 +328,9 @@ export async function gameLookChecks(check, { base = "9074f5e" } = {}) {
       check(glyphs(f1) === 0 && glyphs(f2) === 0 && inSprites >= 1 && inSprites <= 2 && f2.images.length >= 4, `STOP is built once per variant into a sprite (${inSprites} builds in all) and is blitted on every frame after (${f2.images.length} drawImage calls in frame 2, no STOP text on the frame)`);
     } finally { delete globalThis.OffscreenCanvas; }
   }
+
+  const allScenes = [...hz.map((x) => ({ ...x, decision: true })), ...plain.map((x) => ({ ...x, decision: true })), tm1, loop, signs];
+  await faceChecks(check, allScenes);
 
   /* ---- 4. the intersection ---- */
   console.log("\n  20.4 THE INTERSECTION");
@@ -375,6 +385,75 @@ export async function gameLookChecks(check, { base = "9074f5e" } = {}) {
     check(all >= 6 && ok === all, `every tooth's point is on the far side of its line from the intersection's middle: ${ok} of ${all} teeth`);
     void shortest;
   }
+}
+
+
+/* Penetration depth of an axis-aligned rectangle into a convex polygon, by separating axes: 0 when they do not overlap. Written here, apart from the module's own test (the restated check). */
+function depthOf(poly, r) {
+  const R = [[r.x0, r.y0], [r.x1, r.y0], [r.x1, r.y1], [r.x0, r.y1]];
+  let least = Infinity;
+  const axes = [[1, 0], [0, 1]];
+  for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; const nx = -(b[1] - a[1]), ny = b[0] - a[0], l = Math.hypot(nx, ny) || 1; axes.push([nx / l, ny / l]); }
+  for (const [nx, ny] of axes) {
+    let pmin = Infinity, pmax = -Infinity, rmin = Infinity, rmax = -Infinity;
+    for (const q of poly) { const d = q[0] * nx + q[1] * ny; pmin = Math.min(pmin, d); pmax = Math.max(pmax, d); }
+    for (const q of R) { const d = q[0] * nx + q[1] * ny; rmin = Math.min(rmin, d); rmax = Math.max(rmax, d); }
+    const o = Math.min(pmax, rmax) - Math.max(pmin, rmin);
+    if (o <= 0) return 0;
+    least = Math.min(least, o);
+  }
+  return least;
+}
+/* Every road ribbon segment and junction surface of a scene, as screen polygons. */
+function roadPolys(scene) {
+  const v = viewOf(scene.k, scene.cam, scene.rot, SIZE), out = [];
+  for (const j of scene.junctions) if (j.surface.length) out.push(j.surface.map((q) => v.P(q.x, q.y, q.z ?? 0)));
+  for (const { road } of scene.roads) for (let i = 0; i + 1 < (road.left?.length ?? 0); i++) { const q = [road.left[i], road.left[i + 1], road.right[i + 1], road.right[i]]; out.push(q.map((p) => v.P(p.x, p.y, p.z ?? 0))); }
+  return out;
+}
+
+export async function faceChecks(check, scenes) {
+  console.log("\n  20.5 SIGN FACES NEVER COVER THE ROAD OR A CAR");
+  let faces = 0, moved = 0, worst = 0, worstWhere = "", pairs = 0, stacked = 0;
+  const decision = scenes.filter((x) => x.decision);
+  for (const sc of scenes) {
+    const g = draw(sc.scene, { look: "game" }), polys = roadPolys(sc.scene);
+    const face = g.groups.map((gr) => { const f = g.fills.filter((q) => q.at > gr.start && q.at <= gr.end); return f.length ? bboxOf(f) : null; }).filter(Boolean);
+    moved += g.strokes.filter((q) => q.style === LEADER).length;
+    const inView = face.filter((b) => !(b.x1 < 0 || b.x0 > SIZE.w || b.y1 < 0 || b.y0 > SIZE.h));
+    for (let i = 0; i < inView.length; i++) for (let m = i + 1; m < inView.length; m++) { pairs++; const u = inView[i], v = inView[m]; if (!(u.x1 <= v.x0 || v.x1 <= u.x0 || u.y1 <= v.y0 || v.y1 <= u.y0)) stacked++; }
+    for (const b of face) { if (b.x1 < 0 || b.x0 > SIZE.w || b.y1 < 0 || b.y0 > SIZE.h) continue; faces++; for (const p of polys) { const d = depthOf(p, { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }); if (d > worst) { worst = d; worstWhere = sc.type ?? ""; } } }
+  }
+  console.log(`        [M, this run] ${faces} sign faces in view on ${scenes.length} scenes; worst overlap of a face's painted rectangle with a junction surface or road ribbon polygon: ${worst.toFixed(2)} px${worst > 0 ? ` (${worstWhere})` : ""}`);
+  check(faces >= 100 && decision.length >= 10, `EXPOSURE: ${faces} faces on ${scenes.length} scenes (${decision.length} decision scenes), ${moved} of them moved off the road by the search and given a leader`);
+  check(moved >= 8, `EXPOSURE: at least 8 faces stood over the road at their post and were moved (${moved}), so the overlap line is not true for want of a case`);
+  check(worst === 0, "no sign face overlaps a junction surface or a road ribbon, on any scene (worst overlap 0 px)");
+  check(pairs >= 100 && stacked === 0, `no two sign faces overlap each other (${stacked} of ${pairs} pairs in view overlap)`);
+  /* every face before every car and person */
+  let fCount = 0, cCount = 0, pCount = 0, bad = 0;
+  for (const sc of scenes) {
+    const au = drawFrame(recorder().ctx, SIZE, sc.scene, { audit: true, look: "game" });
+    const lastFace = Math.max(...au.order.map((o, i) => (o.kind === "sign-face" ? i : -1))), firstMover = au.order.findIndex((o) => o.kind === "car" || o.kind === "ped");
+    const nf = au.order.filter((o) => o.kind === "sign-face").length, nc = au.order.filter((o) => o.kind === "car").length, np = au.order.filter((o) => o.kind === "ped").length;
+    fCount += nf; cCount += nc; pCount += np;
+    if (nf && firstMover >= 0 && lastFace > firstMover) bad++;
+    if (nf && au.order.some((o) => o.kind === "sign-face" && o.layer !== 0.75)) bad++;
+  }
+  console.log(`        [M, this run] ${fCount} faces painted before ${cCount} cars and ${pCount} people (over ${scenes.length} scenes)`);
+  check(fCount >= 100 && cCount >= 30 && pCount >= 20, `EXPOSURE: faces ${fCount}, cars ${cCount}, people ${pCount} in the audited frames`);
+  check(bad === 0, "every sign face (layer 0.75) is painted before every car and every person, on every scene: no vehicle or person is hidden by a sign");
+  /* ALL WAY */
+  let plates = 0, minPx = Infinity, narrow = 0;
+  for (const sc of scenes.filter((x) => x.decision)) {
+    const g = draw(sc.scene, { look: "game" });
+    for (const t of g.texts.filter((q) => q.s === "ALL WAY")) { plates++; minPx = Math.min(minPx, parseFloat(/([\d.]+)px/.exec(t.font)[1])); }
+    const oct = g.fills.filter((f) => f.style === RED && f.pts.length === 8).map((f) => bboxOf([f]).w), pl = g.fills.filter((f) => f.rect && f.style === RED);
+    for (const p of pl) if (!oct.some((w) => Math.abs(w - p.rect.w) < 0.01)) narrow++;
+  }
+  console.log(`        [M, this run] ${plates} ALL WAY plates; text size min ${minPx} px`);
+  check(plates >= 8, `EXPOSURE: ${plates} ALL WAY plates painted on the decision scenes`);
+  check(minPx >= PLATE_TEXT_MIN_PX, `the ALL WAY text is at least ${PLATE_TEXT_MIN_PX} px (smallest ${minPx} px)`);
+  check(narrow === 0, "every ALL WAY plate is as wide as its octagon");
 }
 
 function scName(sc) { return sc.type ? `${sc.type}#${sc.seed ?? ""}` : sc.j ? `map@${sc.j.node}` : "plain"; }
